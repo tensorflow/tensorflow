@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'graph\', \'op_log\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'graph\', \'op_log\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_step"
@@ -29,5 +29,9 @@ tf_class {
   member_method {
     name: "profile_python"
     argspec: "args=[\'self\', \'options\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize_to_string"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

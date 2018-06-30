@@ -240,7 +240,8 @@ class AudioProcessor(object):
     # Look through all the subfolders to find audio samples
     search_path = os.path.join(self.data_dir, '*', '*.wav')
     for wav_path in gfile.Glob(search_path):
-      word = re.search('.*/([^/]+)/.*.wav', wav_path).group(1).lower()
+      _, word = os.path.split(os.path.dirname(wav_path))
+      word = word.lower()
       # Treat the '_background_noise_' folder as a special case, since we expect
       # it to contain long audio samples we mix in to improve training.
       if word == BACKGROUND_NOISE_DIR_NAME:
@@ -416,8 +417,7 @@ class AudioProcessor(object):
       sess: TensorFlow session that was active when processor was created.
 
     Returns:
-      List of sample data for the transformed samples, and list of labels in
-      one-hot form.
+      List of sample data for the transformed samples, and list of label indexes
     """
     # Pick one of the partitions to choose samples from.
     candidates = self.data_index[mode]
@@ -427,7 +427,7 @@ class AudioProcessor(object):
       sample_count = max(0, min(how_many, len(candidates) - offset))
     # Data and labels will be populated and returned.
     data = np.zeros((sample_count, model_settings['fingerprint_size']))
-    labels = np.zeros((sample_count, model_settings['label_count']))
+    labels = np.zeros(sample_count)
     desired_samples = model_settings['desired_samples']
     use_background = self.background_data and (mode == 'training')
     pick_deterministically = (mode != 'training')
@@ -457,7 +457,7 @@ class AudioProcessor(object):
           self.time_shift_offset_placeholder_: time_shift_offset,
       }
       # Choose a section of background noise to mix in.
-      if use_background:
+      if use_background or sample['label'] == SILENCE_LABEL:
         background_index = np.random.randint(len(self.background_data))
         background_samples = self.background_data[background_index]
         background_offset = np.random.randint(
@@ -465,7 +465,9 @@ class AudioProcessor(object):
         background_clipped = background_samples[background_offset:(
             background_offset + desired_samples)]
         background_reshaped = background_clipped.reshape([desired_samples, 1])
-        if np.random.uniform(0, 1) < background_frequency:
+        if sample['label'] == SILENCE_LABEL:
+          background_volume = np.random.uniform(0, 1)
+        elif np.random.uniform(0, 1) < background_frequency:
           background_volume = np.random.uniform(0, background_volume_range)
         else:
           background_volume = 0
@@ -482,7 +484,7 @@ class AudioProcessor(object):
       # Run the graph to produce the output audio.
       data[i - offset, :] = sess.run(self.mfcc_, feed_dict=input_dict).flatten()
       label_index = self.word_to_index[sample['label']]
-      labels[i - offset, label_index] = 1
+      labels[i - offset] = label_index
     return data, labels
 
   def get_unprocessed_data(self, how_many, model_settings, mode):

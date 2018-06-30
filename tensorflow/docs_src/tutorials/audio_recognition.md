@@ -25,13 +25,15 @@ python tensorflow/examples/speech_commands/train.py
 ```
 
 The script will start off by downloading the [Speech Commands
-dataset](https://download.tensorflow.org/data/speech_commands_v0.01.tar.gz),
-which consists of 65,000 WAVE audio files of people saying thirty different
-words. This data was collected by Google and released under a CC BY license, and
-you can help improve it by [contributing five minutes of your own
+dataset](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz),
+which consists of over 105,000 WAVE audio files of people saying thirty
+different words. This data was collected by Google and released under a CC BY
+license, and you can help improve it by [contributing five minutes of your own
 voice](https://aiyprojects.withgoogle.com/open_speech_recording). The archive is
-over 1GB, so this part may take a while, but you should see progress logs, and
-once it's been downloaded once you won't need to do this step again.
+over 2GB, so this part may take a while, but you should see progress logs, and
+once it's been downloaded once you won't need to do this step again. You can
+find more information about this dataset in this
+[Speech Commands paper](https://arxiv.org/abs/1804.03209).
 
 Once the downloading has completed, you'll see logging information that looks
 like this:
@@ -229,7 +231,7 @@ You can also build this application yourself, since it's open source and
 [available as part of the TensorFlow repository on
 github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#building-in-android-studio-using-the-tensorflow-aar-from-jcenter).
 By default it downloads [a pretrained model from
-tensorflow.org](http://download.tensorflow.org/models/speech_commands_v0.01.zip),
+tensorflow.org](http://download.tensorflow.org/models/speech_commands_v0.02.zip),
 but you can easily [replace it with a model you've trained
 yourself](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#install-model-files-optional).
 If you do this, you'll need to make sure that the constants in [the main
@@ -246,7 +248,7 @@ results as in your server testing.
 The demo app updates its UI list of results automatically based on the labels
 text file you copy into assets alongside your frozen graph, which means you can
 easily try out different models without needing to make any code changes. You
-will need to updaye `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
+will need to update `LABEL_FILENAME` and `MODEL_FILENAME` to point to the files
 you've added if you change the paths though.
 
 ## How does this Model Work?
@@ -280,7 +282,7 @@ tool:
 ```
 bazel run tensorflow/examples/wav_to_spectrogram:wav_to_spectrogram -- \
 --input_wav=/tmp/speech_dataset/happy/ab00c4b2_nohash_0.wav \
---output_png=/tmp/spectrogram.png
+--output_image=/tmp/spectrogram.png
 ```
 
 If you open up `/tmp/spectrogram.png` you should see something like this:
@@ -361,7 +363,7 @@ This will output information about the number of words correctly matched, how
 many were given the wrong labels, and how many times the model triggered when
 there was no real word spoken. There are various parameters that control how the
 signal averaging works, including `--average_window_ms` which sets the length of
-time to average results over, `--sample_stride_ms` which is the time between
+time to average results over, `--clip_stride_ms` which is the time between
 applications of the model, `--suppression_ms` which stops subsequent word
 detections from triggering for a certain time after an initial one is found, and
 `--detection_threshold`, which controls how high the average score must be

@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "DatasetToSingleElement"
+  in_arg {
+    name: "dataset"
+    description: <<END
+A handle to a dataset that contains a single element.
+END
+  }
+  out_arg {
+    name: "components"
+    description: <<END
+The components of the single element of `input`.
+END
+  }
+  summary: "Outputs the single element from the given dataset."
+}

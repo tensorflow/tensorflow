@@ -18,9 +18,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace {
@@ -28,7 +30,7 @@ namespace {
 class SoftmaxOp : public XlaOpKernel {
  public:
   explicit SoftmaxOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    log_ = StringPiece(type_string()).starts_with("Log");
+    log_ = str_util::StartsWith(type_string(), "Log");
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -42,31 +44,29 @@ class SoftmaxOp : public XlaOpKernel {
     const DataType type = input_type(0);
     auto logits = ctx->Input(0);
 
-    xla::ComputationBuilder* b = ctx->builder();
-    const xla::Computation& max_func = *ctx->GetOrCreateMax(type);
-    const xla::Computation& add_func = *ctx->GetOrCreateAdd(type);
+    xla::XlaBuilder* const b = ctx->builder();
+    const xla::XlaComputation& max_func = *ctx->GetOrCreateMax(type);
 
     // Find the max in each batch, resulting in a tensor of shape [batch]
-    auto logits_max =
-        b->Reduce(logits, XlaHelpers::MinValue(b, type), max_func, {kClassDim});
+    auto logits_max = xla::Reduce(logits, XlaHelpers::MinValue(b, type),
+                                  max_func, {kClassDim});
     // Subtract the max in batch b from every element in batch b. Broadcasts
     // along the batch dimension.
-    auto shifted_logits = b->Sub(logits, logits_max, {kBatchDim});
-    xla::ComputationDataHandle softmax;
-    if (log_) {
-      // softmax = shifted_logits - log(sum(exp(shifted_logits)))
-      auto log_sum_exp =
-          b->Log(b->Reduce(b->Exp(shifted_logits), XlaHelpers::Zero(b, type),
-                           add_func, {kClassDim}));
-      softmax = b->Sub(shifted_logits, log_sum_exp, {kBatchDim});
-    } else {
-      // softmax = exp(shifted_logits) / sum(exp(shifted_logits))
-      auto exp_shifted = b->Exp(shifted_logits);
-      auto sum_exp = b->Reduce(exp_shifted, XlaHelpers::Zero(b, type), add_func,
-                               {kClassDim});
-      softmax = b->Div(exp_shifted, sum_exp, {kBatchDim});
-    }
-
+    auto shifted_logits = xla::Sub(logits, logits_max, {kBatchDim});
+    auto exp_shifted = xla::Exp(shifted_logits);
+    const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
+    auto converted =
+        XlaHelpers::ConvertElementType(b, exp_shifted, accumulation_type);
+    auto reduce =
+        xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                    *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+    auto sum = XlaHelpers::ConvertElementType(b, reduce, type);
+    auto softmax =
+        log_
+            // softmax = shifted_logits - log(sum(exp(shifted_logits)))
+            ? xla::Sub(shifted_logits, xla::Log(sum), {kBatchDim})
+            // softmax = exp(shifted_logits) / sum(exp(shifted_logits))
+            : xla::Div(exp_shifted, sum, {kBatchDim});
     ctx->SetOutput(0, softmax);
   }
 
@@ -77,48 +77,55 @@ class SoftmaxOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("Softmax"), SoftmaxOp);
 REGISTER_XLA_OP(Name("LogSoftmax"), SoftmaxOp);
 
-std::pair<xla::ComputationDataHandle, xla::ComputationDataHandle>
-CrossEntropyWithLogits(XlaOpKernelContext* ctx, DataType type,
-                       const xla::ComputationDataHandle& logits,
-                       const xla::ComputationDataHandle& labels) {
-  const xla::Computation& max_func = *ctx->GetOrCreateMax(type);
-  const xla::Computation& add_func = *ctx->GetOrCreateAdd(type);
+std::pair<xla::XlaOp, xla::XlaOp> CrossEntropyWithLogits(
+    XlaOpKernelContext* ctx, DataType type, const xla::XlaOp& logits,
+    const xla::XlaOp& labels) {
+  const xla::XlaComputation& max_func = *ctx->GetOrCreateMax(type);
 
   const int kBatchDim = 0;
   const int kClassDim = 1;
 
-  xla::ComputationBuilder* b = ctx->builder();
+  xla::XlaBuilder* b = ctx->builder();
   // Find the max in each batch, resulting in a tensor of shape [batch]
   auto logits_max =
-      b->Reduce(logits, XlaHelpers::MinValue(b, type), max_func, {kClassDim});
+      xla::Reduce(logits, XlaHelpers::MinValue(b, type), max_func, {kClassDim});
 
   // Subtract the max in batch b from every element in batch b.
   // Broadcasts along the batch dimension.
-  auto shifted_logits = b->Sub(logits, logits_max, {kBatchDim});
+  auto shifted_logits = xla::Sub(logits, logits_max, {kBatchDim});
 
   // exp(logits - max_logits)
-  auto exp_shifted_logits = b->Exp(shifted_logits);
+  auto exp_shifted_logits = xla::Exp(shifted_logits);
 
   // sum_{class} (exp(logits - max_logits))
-  auto sum_exp = b->Reduce(exp_shifted_logits, XlaHelpers::Zero(b, type),
-                           add_func, {kClassDim});
+  const DataType accumulation_type = XlaHelpers::SumAccumulationType(type);
+  auto converted =
+      XlaHelpers::ConvertElementType(b, exp_shifted_logits, accumulation_type);
+  auto reduce =
+      xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                  *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+  auto sum_exp = XlaHelpers::ConvertElementType(b, reduce, type);
 
   // log(sum(exp(logits - max_logits)))
-  auto log_sum_exp = b->Log(sum_exp);
+  auto log_sum_exp = xla::Log(sum_exp);
 
   // sum(-labels *
   //    ((logits - max_logits) - log(sum(exp(logits - max_logits)))))
   // along classes
   // (The subtraction broadcasts along the batch dimension.)
-  xla::ComputationDataHandle loss = b->Reduce(
-      b->Mul(b->Neg(labels), b->Sub(shifted_logits, log_sum_exp, {kBatchDim})),
-      XlaHelpers::Zero(b, type), add_func, {kClassDim});
+  auto sub = xla::Sub(shifted_logits, log_sum_exp, {kBatchDim});
+  auto mul = xla::Mul(xla::Neg(labels), sub);
+  auto sum =
+      xla::Reduce(XlaHelpers::ConvertElementType(b, mul, accumulation_type),
+                  XlaHelpers::Zero(b, accumulation_type),
+                  *ctx->GetOrCreateAdd(accumulation_type), {kClassDim});
+  auto loss = XlaHelpers::ConvertElementType(b, sum, type);
 
   // backprop: prob - labels, where
   //   prob = exp(logits - max_logits) / sum(exp(logits - max_logits))
   //     (where the division broadcasts along the batch dimension)
-  xla::ComputationDataHandle backprop =
-      b->Sub(b->Div(exp_shifted_logits, sum_exp, {kBatchDim}), labels);
+  xla::XlaOp backprop =
+      xla::Sub(xla::Div(exp_shifted_logits, sum_exp, {kBatchDim}), labels);
   return {loss, backprop};
 }
 
@@ -144,7 +151,7 @@ class SoftmaxXentWithLogitsOp : public XlaOpKernel {
     auto logits = ctx->Input(0);
     auto labels = ctx->Input(1);
 
-    xla::ComputationDataHandle loss, backprop;
+    xla::XlaOp loss, backprop;
     std::tie(loss, backprop) =
         CrossEntropyWithLogits(ctx, type, logits, labels);
     ctx->SetOutput(0, loss);
@@ -185,10 +192,10 @@ class SparseSoftmaxXentWithLogitsOp : public XlaOpKernel {
     DataType logits_type = input_type(0);
     DataType indices_type = input_type(1);
 
-    xla::ComputationDataHandle indices = ctx->Input(1);
+    xla::XlaOp indices = ctx->Input(1);
 
-    xla::ComputationBuilder* builder = ctx->builder();
-    xla::ComputationDataHandle labels;
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp labels;
     OP_REQUIRES_OK(ctx,
                    XlaHelpers::OneHot(
                        builder, depth, /*axis=*/1, input_type(1), labels_shape,
@@ -201,18 +208,16 @@ class SparseSoftmaxXentWithLogitsOp : public XlaOpKernel {
     // Builds a vector of {batch_size} that is 0 if the index is in range, or
     // NaN otherwise; then add that vector to the labels to force out-of-range
     // values to NaNs.
-    xla::ComputationDataHandle nan_or_zero = builder->Select(
-        builder->LogicalAnd(
-            builder->Le(XlaHelpers::Zero(builder, indices_type), indices),
-            builder->Lt(indices, XlaHelpers::IntegerLiteral(
-                                     builder, indices_type, depth))),
-        builder->Broadcast(XlaHelpers::Zero(builder, logits_type),
-                           {batch_size}),
-        builder->Broadcast(XlaHelpers::FloatLiteral(builder, logits_type, NAN),
-                           {batch_size}));
-    labels = builder->Add(labels, nan_or_zero, {0});
+    xla::XlaOp nan_or_zero = xla::Select(
+        xla::And(xla::Le(XlaHelpers::Zero(builder, indices_type), indices),
+                 xla::Lt(indices, XlaHelpers::IntegerLiteral(
+                                      builder, indices_type, depth))),
+        xla::Broadcast(XlaHelpers::Zero(builder, logits_type), {batch_size}),
+        xla::Broadcast(XlaHelpers::FloatLiteral(builder, logits_type, NAN),
+                       {batch_size}));
+    labels = xla::Add(labels, nan_or_zero, {0});
 
-    xla::ComputationDataHandle loss, backprop;
+    xla::XlaOp loss, backprop;
     std::tie(loss, backprop) =
         CrossEntropyWithLogits(ctx, logits_type, ctx->Input(0), labels);
     ctx->SetOutput(0, loss);

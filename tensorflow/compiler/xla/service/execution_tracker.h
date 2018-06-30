@@ -43,7 +43,7 @@ class AsyncExecution {
   AsyncExecution(Backend* backend, std::vector<Backend::StreamPtr> streams,
                  const ExecutionProfile& profile, GlobalDataHandle result);
 
-  tensorflow::Status BlockUntilDone() const;
+  Status BlockUntilDone() const;
 
   const GlobalDataHandle& result() const { return result_; }
 
@@ -77,7 +77,7 @@ class ExecutionTracker {
                            GlobalDataHandle data);
 
   // Unregisters the execution for the given handle.
-  tensorflow::Status Unregister(const ExecutionHandle& handle);
+  Status Unregister(const ExecutionHandle& handle);
 
   // Resolves the given ExecutionHandle to an AsyncExecution. Returns an
   // error status if the given handle is not found, which means that the

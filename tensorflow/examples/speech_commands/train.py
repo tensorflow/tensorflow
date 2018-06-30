@@ -75,6 +75,7 @@ import os.path
 import sys
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import input_data
@@ -113,8 +114,8 @@ def main(_):
   # example --how_many_training_steps=10000,3000 --learning_rate=0.001,0.0001
   # will run 13,000 training loops in total, with a rate of 0.001 for the first
   # 10,000, and 0.0001 for the final 3,000.
-  training_steps_list = map(int, FLAGS.how_many_training_steps.split(','))
-  learning_rates_list = map(float, FLAGS.learning_rate.split(','))
+  training_steps_list = list(map(int, FLAGS.how_many_training_steps.split(',')))
+  learning_rates_list = list(map(float, FLAGS.learning_rate.split(',')))
   if len(training_steps_list) != len(learning_rates_list):
     raise Exception(
         '--how_many_training_steps and --learning_rate must be equal length '
@@ -132,7 +133,7 @@ def main(_):
 
   # Define loss and optimizer
   ground_truth_input = tf.placeholder(
-      tf.float32, [None, label_count], name='groundtruth_input')
+      tf.int64, [None], name='groundtruth_input')
 
   # Optionally we can add runtime checks to spot when NaNs or other symptoms of
   # numerical errors start occurring during training.
@@ -143,9 +144,8 @@ def main(_):
 
   # Create the back propagation and training evaluation machinery in the graph.
   with tf.name_scope('cross_entropy'):
-    cross_entropy_mean = tf.reduce_mean(
-        tf.nn.softmax_cross_entropy_with_logits(
-            labels=ground_truth_input, logits=logits))
+    cross_entropy_mean = tf.losses.sparse_softmax_cross_entropy(
+        labels=ground_truth_input, logits=logits)
   tf.summary.scalar('cross_entropy', cross_entropy_mean)
   with tf.name_scope('train'), tf.control_dependencies(control_dependencies):
     learning_rate_input = tf.placeholder(
@@ -153,13 +153,13 @@ def main(_):
     train_step = tf.train.GradientDescentOptimizer(
         learning_rate_input).minimize(cross_entropy_mean)
   predicted_indices = tf.argmax(logits, 1)
-  expected_indices = tf.argmax(ground_truth_input, 1)
-  correct_prediction = tf.equal(predicted_indices, expected_indices)
-  confusion_matrix = tf.confusion_matrix(expected_indices, predicted_indices)
+  correct_prediction = tf.equal(predicted_indices, ground_truth_input)
+  confusion_matrix = tf.confusion_matrix(
+      ground_truth_input, predicted_indices, num_classes=label_count)
   evaluation_step = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
   tf.summary.scalar('accuracy', evaluation_step)
 
-  global_step = tf.contrib.framework.get_or_create_global_step()
+  global_step = tf.train.get_or_create_global_step()
   increment_global_step = tf.assign(global_step, global_step + 1)
 
   saver = tf.train.Saver(tf.global_variables())
@@ -288,7 +288,7 @@ if __name__ == '__main__':
       '--data_url',
       type=str,
       # pylint: disable=line-too-long
-      default='http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz',
+      default='http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz',
       # pylint: enable=line-too-long
       help='Location of speech training data archive on the web.')
   parser.add_argument(
@@ -357,12 +357,12 @@ if __name__ == '__main__':
       '--window_size_ms',
       type=float,
       default=30.0,
-      help='How long each spectrogram timeslice is',)
+      help='How long each spectrogram timeslice is.',)
   parser.add_argument(
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How long each spectrogram timeslice is',)
+      help='How far to move in time between spectogram timeslices.',)
   parser.add_argument(
       '--dct_coefficient_count',
       type=int,

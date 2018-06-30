@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/debug/debug_io_utils.h"
+#include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/summary.pb.h"
@@ -98,8 +99,8 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     std::vector<string> device_roots;
     DIR* dir0 = opendir(dump_roots[i].c_str());
     struct dirent* ent0;
-    const string kDeviceDirPrefix =
-        strings::StrCat(DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag);
+    const string kDeviceDirPrefix = strings::StrCat(
+        DebugNodeKey::kMetadataFilePrefix, DebugNodeKey::kDeviceTag);
     while ((ent0 = readdir(dir0)) != nullptr) {
       if (!strncmp(ent0->d_name, kDeviceDirPrefix.c_str(),
                    kDeviceDirPrefix.size())) {

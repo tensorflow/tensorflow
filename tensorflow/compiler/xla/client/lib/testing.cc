@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -30,15 +30,41 @@ limitations under the License.
 namespace xla {
 namespace {
 
+// Calculates the number of bytes required to store the data within the
+// specified shape. In case of a (nested) tuple shape this is the total byte
+// size of all sub-shapes within the tuple.
+int64 DataSizeOfShape(const Shape& shape) {
+  if (ShapeUtil::IsArray(shape)) {
+    return ShapeUtil::ByteSizeOf(shape);
+  }
+
+  int64 total_size = 0;
+  for (const Shape& s : shape.tuple_shapes()) {
+    total_size += DataSizeOfShape(s);
+  }
+  return total_size;
+}
+
+// Creates a XlaOp for an op what generates fake data with the given shape.
+XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
+  if (ShapeUtil::IsArray(shape)) {
+    return Broadcast(
+        ConstantLiteral(builder, Literal::One(shape.element_type())),
+        AsInt64Slice(shape.dimensions()));
+  }
+  std::vector<XlaOp> parts;
+  for (const Shape& s : shape.tuple_shapes()) {
+    parts.push_back(BuildFakeDataOpOnDevice(s, builder));
+  }
+  return Tuple(builder, parts);
+}
+
 std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
                                                        Client* client) {
-  ComputationBuilder b(
-      client,
+  XlaBuilder b(
       tensorflow::strings::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
-  // TODO(b/26811613): Replace this when RNG is supported on all backends.
-  b.Broadcast(b.ConstantLiteral(Literal::One(shape.element_type())),
-              AsInt64Slice(shape.dimensions()));
-  Computation computation = b.Build().ConsumeValueOrDie();
+  BuildFakeDataOpOnDevice(shape, &b);
+  XlaComputation computation = b.Build().ConsumeValueOrDie();
 
   auto execution_options = CreateDefaultExecutionOptions();
   *execution_options.mutable_shape_with_output_layout() = shape;
@@ -48,47 +74,9 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
-    std::vector<std::unique_ptr<Literal>> elements;
-    for (const Shape& element_shape : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> element,
-                          MakeFakeLiteral(element_shape));
-      elements.push_back(std::move(element));
-    }
-    return Literal::MakeTupleOwned(std::move(elements));
-  }
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
-  std::minstd_rand0 engine;
-  switch (shape.element_type()) {
-    case F32: {
-      std::uniform_real_distribution<float> generator(0.0f, 1.0f);
-      TF_CHECK_OK(literal->Populate<float>(
-          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
-            return generator(engine);
-          }));
-      break;
-    }
-    case S32: {
-      std::uniform_int_distribution<int32> generator(
-          std::numeric_limits<int32>::lowest(),
-          std::numeric_limits<int32>::max());
-      TF_CHECK_OK(literal->Populate<int32>(
-          [&](tensorflow::gtl::ArraySlice<int64> /*indices*/) {
-            return generator(engine);
-          }));
-      break;
-    }
-    default:
-      return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape).c_str());
-  }
-  return std::move(literal);
-}
-
 std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
                                               Client* client) {
-  if (ShapeUtil::ByteSizeOf(shape) < (1LL << 30)) {
+  if (DataSizeOfShape(shape) < (1LL << 20)) {
     StatusOr<std::unique_ptr<Literal>> literal_status = MakeFakeLiteral(shape);
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via
@@ -105,14 +93,15 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
 }
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const Computation& computation, Client* client) {
-  auto program_shape =
-      client->GetComputationShape(computation).ConsumeValueOrDie();
+    const XlaComputation& computation, Client* client) {
+  CHECK(computation.proto().has_program_shape())
+      << "Computation should have progran shape.";
+  auto program_shape = computation.proto().program_shape();
 
   // For every (unbound) parameter that the computation wants, we manufacture
   // some arbitrary data so that we can invoke the computation.
   std::vector<std::unique_ptr<GlobalData>> fake_arguments;
-  for (const Shape& parameter : program_shape->parameters()) {
+  for (const Shape& parameter : program_shape.parameters()) {
     fake_arguments.push_back(MakeFakeDataOrDie(parameter, client));
   }
 

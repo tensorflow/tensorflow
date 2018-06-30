@@ -18,8 +18,8 @@ limitations under the License.
 // that may be stored in the checkpoint are not restored in order to speedup the
 // initialization.
 
-#ifndef LEARNING_BRAIN_EXPERIMENTAL_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_
-#define LEARNING_BRAIN_EXPERIMENTAL_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_
+#define TENSORFLOW_CORE_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_
 
 #include <stddef.h>
 #include <limits>
@@ -53,4 +53,4 @@ class FileInputYielder : public InputYielder {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // LEARNING_BRAIN_EXPERIMENTAL_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_INPUTS_FILE_INPUT_YIELDER_H_

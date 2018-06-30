@@ -20,10 +20,10 @@ import android.os.Build.VERSION;
 import android.os.Trace;
 import android.text.TextUtils;
 import android.util.Log;
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
@@ -31,12 +31,13 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.List;
-import org.tensorflow.DataType;
 import org.tensorflow.Graph;
 import org.tensorflow.Operation;
 import org.tensorflow.Session;
 import org.tensorflow.Tensor;
 import org.tensorflow.TensorFlow;
+import org.tensorflow.Tensors;
+import org.tensorflow.types.UInt8;
 
 /**
  * Wrapper over the TensorFlow API ({@link Graph}, {@link Session}) providing a smaller API surface
@@ -79,24 +80,32 @@ public class TensorFlowInferenceInterface {
         throw new RuntimeException("Failed to load model from '" + model + "'", e);
       }
     }
-    
+
     try {
       if (VERSION.SDK_INT >= 18) {
         Trace.beginSection("initializeTensorFlow");
         Trace.beginSection("readGraphDef");
       }
-    
+
       // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
       byte[] graphDef = new byte[is.available()];
+      final int numBytesRead = is.read(graphDef);
+      if (numBytesRead != graphDef.length) {
+        throw new IOException(
+            "read error: read only "
+                + numBytesRead
+                + " of the graph, expected to read "
+                + graphDef.length);
+      }
 
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // readGraphDef.
       }
-      
+
       loadGraph(graphDef, g);
       is.close();
       Log.i(TAG, "Successfully loaded model from '" + model + "'");
-          
+
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // initializeTensorFlow.
       }
@@ -121,13 +130,13 @@ public class TensorFlowInferenceInterface {
     this.g = new Graph();
     this.sess = new Session(g);
     this.runner = sess.runner();
-    
+
     try {
       if (VERSION.SDK_INT >= 18) {
         Trace.beginSection("initializeTensorFlow");
         Trace.beginSection("readGraphDef");
       }
-    
+
       int baosInitSize = is.available() > 16384 ? is.available() : 16384;
       ByteArrayOutputStream baos = new ByteArrayOutputStream(baosInitSize);
       int numBytesRead;
@@ -143,13 +152,29 @@ public class TensorFlowInferenceInterface {
 
       loadGraph(graphDef, g);
       Log.i(TAG, "Successfully loaded model from the input stream");
-      
+
       if (VERSION.SDK_INT >= 18) {
         Trace.endSection(); // initializeTensorFlow.
       }
     } catch (IOException e) {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
+  }
+
+  /*
+   * Construct a TensorFlowInferenceInterface with provided Graph
+   *
+   * @param g The Graph to use to construct this interface.
+   */
+  public TensorFlowInferenceInterface(Graph g) {
+    prepareNativeRuntime();
+
+    // modelName is redundant here, here is for
+    // avoiding error in initialization as modelName is marked final.
+    this.modelName = "";
+    this.g = g;
+    this.sess = new Session(g);
+    this.runner = sess.runner();
   }
 
   /**
@@ -169,6 +194,11 @@ public class TensorFlowInferenceInterface {
    * @param outputNames A list of output nodes which should be filled by the inference pass.
    */
   public void run(String[] outputNames, boolean enableStats) {
+    run(outputNames, enableStats, new String[] {});
+  }
+
+  /** An overloaded version of runInference that allows supplying targetNodeNames as well */
+  public void run(String[] outputNames, boolean enableStats, String[] targetNodeNames) {
     // Release any Tensors from the previous run calls.
     closeFetches();
 
@@ -177,6 +207,11 @@ public class TensorFlowInferenceInterface {
       fetchNames.add(o);
       TensorId tid = TensorId.parse(o);
       runner.fetch(tid.name, tid.outputIndex);
+    }
+
+    // Add targets.
+    for (String t : targetNodeNames) {
+      runner.addTarget(t);
     }
 
     // Run the session.
@@ -263,6 +298,22 @@ public class TensorFlowInferenceInterface {
    * as many elements as that of the destination Tensor. If {@link src} has more elements than the
    * destination has capacity, the copy is truncated.
    */
+  public void feed(String inputName, boolean[] src, long... dims) {
+    byte[] b = new byte[src.length];
+
+    for (int i = 0; i < src.length; i++) {
+      b[i] = src[i] ? (byte) 1 : (byte) 0;
+    }
+
+    addFeed(inputName, Tensor.create(Boolean.class, dims, ByteBuffer.wrap(b)));
+  }
+
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
   public void feed(String inputName, float[] src, long... dims) {
     addFeed(inputName, Tensor.create(dims, FloatBuffer.wrap(src)));
   }
@@ -304,26 +355,25 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, byte[] src, long... dims) {
-    addFeed(inputName, Tensor.create(DataType.UINT8, dims, ByteBuffer.wrap(src)));
+    addFeed(inputName, Tensor.create(UInt8.class, dims, ByteBuffer.wrap(src)));
   }
 
   /**
    * Copy a byte sequence into the input Tensor with name {@link inputName} as a string-valued
-   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of
-   * bytes, not a Java {@code String} (which is a sequence of characters).
+   * scalar tensor. In the TensorFlow type system, a "string" is an arbitrary sequence of bytes, not
+   * a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[] src) {
-    addFeed(inputName, Tensor.create(src));
+    addFeed(inputName, Tensors.create(src));
   }
 
   /**
    * Copy an array of byte sequences into the input Tensor with name {@link inputName} as a
-   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string"
-   * is an arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of
-   * characters).
+   * string-valued one-dimensional tensor (vector). In the TensorFlow type system, a "string" is an
+   * arbitrary sequence of bytes, not a Java {@code String} (which is a sequence of characters).
    */
   public void feedString(String inputName, byte[][] src) {
-    addFeed(inputName, Tensor.create(src));
+    addFeed(inputName, Tensors.create(src));
   }
 
   // Methods for taking a native Tensor and filling it with src from Java native IO buffers.
@@ -380,7 +430,7 @@ public class TensorFlowInferenceInterface {
    * destination has capacity, the copy is truncated.
    */
   public void feed(String inputName, ByteBuffer src, long... dims) {
-    addFeed(inputName, Tensor.create(DataType.UINT8, dims, src));
+    addFeed(inputName, Tensor.create(UInt8.class, dims, src));
   }
 
   /**
@@ -521,7 +571,7 @@ public class TensorFlowInferenceInterface {
         "Model load took " + (endMs - startMs) + "ms, TensorFlow version: " + TensorFlow.version());
   }
 
-  private void addFeed(String inputName, Tensor t) {
+  private void addFeed(String inputName, Tensor<?> t) {
     // The string format accepted by TensorFlowInferenceInterface is node_name[:output_index].
     TensorId tid = TensorId.parse(inputName);
     runner.feed(tid.name, tid.outputIndex, t);
@@ -555,7 +605,7 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  private Tensor getTensor(String outputName) {
+  private Tensor<?> getTensor(String outputName) {
     int i = 0;
     for (String n : fetchNames) {
       if (n.equals(outputName)) {
@@ -568,7 +618,7 @@ public class TensorFlowInferenceInterface {
   }
 
   private void closeFeeds() {
-    for (Tensor t : feedTensors) {
+    for (Tensor<?> t : feedTensors) {
       t.close();
     }
     feedTensors.clear();
@@ -576,7 +626,7 @@ public class TensorFlowInferenceInterface {
   }
 
   private void closeFetches() {
-    for (Tensor t : fetchTensors) {
+    for (Tensor<?> t : fetchTensors) {
       t.close();
     }
     fetchTensors.clear();
@@ -591,9 +641,9 @@ public class TensorFlowInferenceInterface {
   // State reset on every call to run.
   private Session.Runner runner;
   private List<String> feedNames = new ArrayList<String>();
-  private List<Tensor> feedTensors = new ArrayList<Tensor>();
+  private List<Tensor<?>> feedTensors = new ArrayList<Tensor<?>>();
   private List<String> fetchNames = new ArrayList<String>();
-  private List<Tensor> fetchTensors = new ArrayList<Tensor>();
+  private List<Tensor<?>> fetchTensors = new ArrayList<Tensor<?>>();
 
   // Mutable state.
   private RunStats runStats;

@@ -14,9 +14,7 @@
 # ==============================================================================
 """Arithmetic Operations that don't fit into math_ops due to dependencies.
 
-To avoid circular dependencies, some math_ops should go here.  Documentation
-callouts, e.g. "@@my_op" should go in math_ops.  To the user, these are just
-normal math_ops.
+To avoid circular dependencies, some math_ops should go here.
 """
 
 from __future__ import absolute_import
@@ -31,10 +29,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
-def lbeta(x, name='lbeta'):
+@tf_export('lbeta')
+def lbeta(x, name=None):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
   Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
@@ -64,7 +64,7 @@ def lbeta(x, name='lbeta'):
   # This is consistent with a convention that the sum over the empty set 0, and
   # the product is 1.
   # This is standard.  See https://en.wikipedia.org/wiki/Empty_set.
-  with ops.name_scope(name, values=[x]):
+  with ops.name_scope(name, 'lbeta', [x]):
     x = ops.convert_to_tensor(x, name='x')
 
     # Note reduce_sum([]) = 0.
@@ -82,6 +82,55 @@ def lbeta(x, name='lbeta'):
     return result
 
 
+@tf_export('math.bessel_i0')
+def bessel_i0(x, name=None):
+  """Computes the Bessel i0 function of `x` element-wise.
+
+  Modified Bessel function of order 0.
+
+  It is preferable to use the numerically stabler function `i0e(x)` instead.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i0', [x]):
+    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i0e(x)
+
+
+@tf_export('math.bessel_i1')
+def bessel_i1(x, name=None):
+  """Computes the Bessel i1 function of `x` element-wise.
+
+  Modified Bessel function of order 1.
+
+  It is preferable to use the numerically stabler function `i1e(x)` instead.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1
+  @end_compatibility
+  """
+  with ops.name_scope(name, 'bessel_i1', [x]):
+    return math_ops.exp(math_ops.abs(x)) * math_ops.bessel_i1e(x)
+
+
+@tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
   """A generalized contraction between tensors of arbitrary dimension.
 
@@ -152,27 +201,26 @@ def einsum(equation, *inputs, **kwargs):
         indices in its subscript, or
       - the input shapes are inconsistent along a particular axis.
   """
-  name = kwargs.pop("name", None)
+  equation = equation.replace(' ', '')
+
+  name = kwargs.pop('name', None)
   if kwargs:
-    raise TypeError("invalid keyword arguments for this function: " +
-                    ", ".join([format(key)
-                               for key in sorted(list(kwargs.keys()))]))
-  with ops.name_scope(name, "einsum", [equation, inputs]) as name:
+    raise TypeError('invalid keyword arguments for this function: ' + ', '.join(
+        [format(key) for key in sorted(list(kwargs.keys()))]))
+  with ops.name_scope(name, 'einsum', [equation, inputs]) as name:
     if '...' in equation:
       raise ValueError('Subscripts with ellipses are not yet supported.')
 
-    match = re.match('([a-z,]+)(->[a-z]*)?', equation)
+    match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
     if not match:
-      raise ValueError(
-          'Indices have incorrect format: %s' % equation
-      )
+      raise ValueError('Indices have incorrect format: %s' % equation)
 
     inputs = list(inputs)
     input_axis_labels = match.group(1).split(',')
 
     if len(inputs) != len(input_axis_labels):
-      raise ValueError('Got %d arguments for equation "%s", expecting %d' % (
-          len(inputs), equation, len(input_axis_labels)))
+      raise ValueError('Got %d arguments for equation "%s", expecting %d' %
+                       (len(inputs), equation, len(input_axis_labels)))
 
     axis_labels = set(''.join(input_axis_labels))
     if match.group(2):
@@ -185,37 +233,36 @@ def einsum(equation, *inputs, **kwargs):
         for ax in axes_:
           counts[ax] += 1
 
-      output_axis_labels = ''.join(sorted(
-          ax for ax in indices
-          if counts[ax] == 1
-      ))
+      output_axis_labels = ''.join(
+          sorted(ax for ax in indices if counts[ax] == 1))
 
     for a in axis_labels:
       input_count = sum(1 for s in input_axis_labels if a in s)
       if input_count > 2 and a not in output_axis_labels:
         logging.warn(
-            'Falling back to exponential-space implementation of einsum() because'
-            ' index "%s" is summed over more than two inputs.', a)
+            'Falling back to exponential-space implementation of einsum()'
+            ' because index "%s" is summed over more than two inputs.', a)
         return _exponential_space_einsum(equation, *inputs)
 
     temp = inputs[0]
     temp_axis_labels = input_axis_labels[0]
-    for i in xrange(len(inputs)-1):
-      axes_to_sum = (set(temp_axis_labels) & set(input_axis_labels[i+1])
-                     - set(output_axis_labels))
-      temp, temp_axis_labels = _einsum_reduction(temp,
-                                                 temp_axis_labels,
-                                                 inputs[i+1],
-                                                 input_axis_labels[i+1],
-                                                 axes_to_sum)
+    for i in xrange(len(inputs) - 1):
+      axes_to_sum = (
+          set(temp_axis_labels) &
+          set(input_axis_labels[i + 1]) - set(output_axis_labels))
+      temp, temp_axis_labels = _einsum_reduction(
+          temp, temp_axis_labels, inputs[i + 1], input_axis_labels[i + 1],
+          axes_to_sum)
 
     missing_indices = set(temp_axis_labels) - set(output_axis_labels)
     if missing_indices:
-      reduction_indices = [i for i, a in enumerate(temp_axis_labels)
-                           if a not in output_axis_labels]
+      reduction_indices = [
+          i for i, a in enumerate(temp_axis_labels)
+          if a not in output_axis_labels
+      ]
       temp = math_ops.reduce_sum(temp, reduction_indices=reduction_indices)
-      temp_axis_labels = ''.join(a for a in temp_axis_labels
-                                 if a in output_axis_labels)
+      temp_axis_labels = ''.join(
+          a for a in temp_axis_labels if a in output_axis_labels)
 
     if sorted(temp_axis_labels) != sorted(output_axis_labels):
       raise ValueError('Invalid equation: %s' % equation)
@@ -251,9 +298,13 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       `t1_axis_labels`.
   """
   if len(t0_axis_labels) != len(t0.get_shape()):
-    raise ValueError()
+    raise ValueError(
+        'Tensor t0 of rank %d does not match einsum reduction of length %d' %
+        (len(t0.get_shape()), len(t0_axis_labels)))
   if len(t1_axis_labels) != len(t1.get_shape()):
-    raise ValueError()
+    raise ValueError(
+        'Tensor t1 of rank %d does not match einsum reduction of length %d' %
+        (len(t1.get_shape()), len(t1_axis_labels)))
 
   # This function computes the result of a two-argument einsum() using batch
   # matrix multiplication.  This involves
@@ -289,8 +340,10 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       return (1, a)
 
   axis_labels = [t0_axis_labels, t1_axis_labels]
-  sorted_axes = [sorted(sym_list, key=lambda a: sort_key(i, a))
-                 for i, sym_list in enumerate(axis_labels)]
+  sorted_axes = [
+      sorted(sym_list, key=lambda a: sort_key(i, a))
+      for i, sym_list in enumerate(axis_labels)
+  ]
   inputs = [t0, t1]
   for i, axes_str in enumerate(axis_labels):
     perm = [axes_str.find(a) for a in sorted_axes[i]]
@@ -318,30 +371,30 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
     num_broadcast_elements_t0 = _total_size(
         t0_shape[len(preserved_axes):-len(axes_to_sum)])
     num_summed_elements = _total_size(t0_shape[-len(axes_to_sum):])
-    new_shape = (t0_shape[:len(preserved_axes)]
-                 + [num_broadcast_elements_t0, num_summed_elements])
+    new_shape = (
+        t0_shape[:len(preserved_axes)] +
+        [num_broadcast_elements_t0, num_summed_elements])
     t0 = _reshape_if_necessary(t0, new_shape)
 
     t1_shape = _get_shape(t1)
     num_broadcast_elements_t1 = _total_size(
-        t1_shape[len(preserved_axes)+len(axes_to_sum):])
-    new_shape = (t1_shape[:len(preserved_axes)]
-                 + [num_summed_elements, num_broadcast_elements_t1])
+        t1_shape[len(preserved_axes) + len(axes_to_sum):])
+    new_shape = (
+        t1_shape[:len(preserved_axes)] +
+        [num_summed_elements, num_broadcast_elements_t1])
     t1 = _reshape_if_necessary(t1, new_shape)
 
     product = math_ops.matmul(t0, t1)
 
     # Undo compaction of broadcast axes
     uncompacted_shape = (
-        t0_shape[:len(preserved_axes)+len(broadcast_axes[0])]
-        + t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
-    )
+        t0_shape[:len(preserved_axes) + len(broadcast_axes[0])] +
+        t1_shape[len(t1_shape) - len(broadcast_axes[1]):])
     product = _reshape_if_necessary(product, uncompacted_shape)
 
     product_axes = (
-        sorted_axes[0][:len(preserved_axes)+len(broadcast_axes[0])] +
-        sorted_axes[1][len(sorted_axes[1])-len(broadcast_axes[1]):]
-    )
+        sorted_axes[0][:len(preserved_axes) + len(broadcast_axes[0])] +
+        sorted_axes[1][len(sorted_axes[1]) - len(broadcast_axes[1]):])
 
     return product, ''.join(product_axes)
 
@@ -395,13 +448,11 @@ def _total_size(shape_values):
 def _exponential_space_einsum(equation, *inputs):
   """Fallback implementation that supports summing an index over > 2 inputs."""
   if '...' in equation:
-    raise ValueError("Subscripts with ellipses are not yet supported.")
+    raise ValueError('Subscripts with ellipses are not yet supported.')
 
-  match = re.match('([a-z,]+)(->[a-z]*)?', equation)
+  match = re.match('^([a-zA-Z,]+)(->[a-zA-Z]*)?$', equation)
   if not match:
-    raise ValueError(
-        'Indices have incorrect format: %s' % equation
-    )
+    raise ValueError('Indices have incorrect format: %s' % equation)
 
   inputs = list(inputs)
   idx_in = match.group(1).split(',')
@@ -418,21 +469,15 @@ def _exponential_space_einsum(equation, *inputs):
       for ax in axes_:
         counts[ax] += 1
 
-    idx_out = ''.join(sorted(
-        ax for ax in indices
-        if counts[ax] == 1
-    ))
+    idx_out = ''.join(sorted(ax for ax in indices if counts[ax] == 1))
 
   if len(idx_in) != len(inputs):
-    raise ValueError(
-        'Expected %d inputs but got %d' % (len(idx_in), len(inputs))
-    )
+    raise ValueError('Expected %d inputs but got %d' % (len(idx_in),
+                                                        len(inputs)))
 
   missing_idx = set(idx_out).difference(idx_all)
   if missing_idx:
-    raise ValueError(
-        'Unknown output axes: %s' % missing_idx
-    )
+    raise ValueError('Unknown output axes: %s' % missing_idx)
 
   axis_order = {}
   for ax in indices:
@@ -445,18 +490,17 @@ def _exponential_space_einsum(equation, *inputs):
   for i, (input_, axes_) in enumerate(zip(inputs, idx_in)):
     if input_.get_shape().ndims != len(axes_):
       raise ValueError(
-        'Input %d with axes %s has incorrect' \
-        ' number of dimensions (expected %d, got %d)' % (
-          i, axes_, len(axes_), input_.get_shape().ndims
-        )
+          'Input %d with axes %s has incorrect' \
+          ' number of dimensions (expected %d, got %d)' % (
+              i, axes_, len(axes_), input_.get_shape().ndims
+          )
       )
 
     sorted_idx = sorted(axes_, key=axis_order.get)
 
     if len(set(axes_)) != len(axes_):
       raise ValueError(
-          'Subscript not supported: an axis appears more than once: %s' % axes_
-      )
+          'Subscript not supported: an axis appears more than once: %s' % axes_)
 
     if list(axes_) != sorted_idx:
       permuted = [axes_.find(ax) for ax in sorted_idx]
@@ -480,16 +524,15 @@ def _exponential_space_einsum(equation, *inputs):
           dims.append(dim)
 
     if len(set(dims)) > 1:
-      raise ValueError(
-          'Dimension mismatch on axis: %s' % ax
-      )
+      raise ValueError('Dimension mismatch on axis: %s' % ax)
 
     if ax not in idx_out:
       reduction_idx.append(j)
 
   # reshape, multiply
-  expanded_inputs = [array_ops.reshape(input_, shape)
-                     for input_, shape in zip(inputs, shapes)]
+  expanded_inputs = [
+      array_ops.reshape(input_, shape) for input_, shape in zip(inputs, shapes)
+  ]
   expanded_output = 1
   for input_ in expanded_inputs:
     expanded_output *= input_

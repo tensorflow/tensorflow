@@ -1,0 +1,11 @@
+path: "tensorflow.sparse"
+tf_module {
+  member_method {
+    name: "cross"
+    argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "cross_hashed"
+    argspec: "args=[\'inputs\', \'num_buckets\', \'hash_key\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
+}

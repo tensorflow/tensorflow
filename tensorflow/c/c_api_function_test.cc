@@ -18,6 +18,9 @@ limitations under the License.
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -149,9 +152,22 @@ class CApiFunctionTest : public ::testing::Test {
   void Define(int num_opers, const std::vector<TF_Operation*>& opers,
               const std::vector<TF_Operation*>& inputs,
               const std::vector<TF_Operation*>& outputs,
-              const char** output_names, bool expect_failure = false) {
+              const std::vector<string>& output_names,
+              bool expect_failure = false) {
     DefineT(num_opers, opers, ToOutput(inputs), ToOutput(outputs), output_names,
             expect_failure);
+  }
+
+  // Caller must delete[] the returned value
+  static const char** ToArray(const std::vector<string>& strs) {
+    const char** ptr = nullptr;
+    if (!strs.empty()) {
+      ptr = new const char*[strs.size()];
+      for (size_t i = 0; i < strs.size(); ++i) {
+        ptr[i] = strs[i].c_str();
+      }
+    }
+    return ptr;
   }
 
   // An explicit `num_opers` is needed so that we can distinguish between the
@@ -159,14 +175,17 @@ class CApiFunctionTest : public ::testing::Test {
   // operations specified (0).
   void DefineT(int num_opers, const std::vector<TF_Operation*>& opers,
                const std::vector<TF_Output>& inputs,
-               const std::vector<TF_Output>& outputs, const char** output_names,
+               const std::vector<TF_Output>& outputs,
+               const std::vector<string>& output_names,
                bool expect_failure = false) {
     ASSERT_EQ(func_, nullptr);
-    func_ = TF_GraphToFunction(func_graph_, func_name_, num_opers,
+    const char** output_names_ptr = ToArray(output_names);
+    func_ = TF_GraphToFunction(func_graph_, func_name_, false, num_opers,
                                num_opers == -1 ? nullptr : opers.data(),
                                inputs.size(), inputs.data(), outputs.size(),
-                               outputs.data(), output_names,
-                               /*opts=*/nullptr, s_);
+                               outputs.data(), output_names_ptr,
+                               /*opts=*/nullptr, /*description=*/nullptr, s_);
+    delete[] output_names_ptr;
     if (expect_failure) {
       ASSERT_EQ(func_, nullptr);
       return;
@@ -174,7 +193,7 @@ class CApiFunctionTest : public ::testing::Test {
 
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
     ASSERT_NE(func_, nullptr);
-    TF_GraphAddFunction(host_graph_, func_, s_);
+    TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
     ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
   }
 
@@ -313,6 +332,11 @@ class CApiFunctionTest : public ::testing::Test {
           << "Failed to find expected edge " << e.ToString()
           << " in fdef: " << fdef.DebugString();
     }
+    for (const EdgeSpec& e : c_edges) {
+      ASSERT_TRUE(a_edges.find(e) != a_edges.end())
+          << "Failed to find expected control edge " << e.ToString()
+          << " in fdef: " << fdef.DebugString();
+    }
 
     // If caller specified all edges, check that we have seen all
     if (is_exact_edges) {
@@ -338,6 +362,27 @@ class CApiFunctionTest : public ::testing::Test {
     VerifyFDefEdges(fdef, e_edges, c_edges, is_exact_edges);
   }
 
+  // Serialize func_ to fdef and import it back
+  void Reincarnate() {
+    // func_ -> fdef
+    tensorflow::FunctionDef fdef;
+    ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+    TF_DeleteFunction(func_);
+
+    // fdef -> func_
+    string buf;
+    ASSERT_TRUE(fdef.SerializeToString(&buf));
+    func_ = TF_FunctionImportFunctionDef(buf.data(), buf.size(), s_);
+    ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  }
+
+  void GetAttr(const char* attr_name, AttrValue* out_attr) {
+    TF_Buffer* attr_buf = TF_NewBuffer();
+    TF_FunctionGetAttrValueProto(func_, attr_name, attr_buf, s_);
+    ASSERT_TRUE(out_attr->ParseFromArray(attr_buf->data, attr_buf->length));
+    TF_DeleteBuffer(attr_buf);
+  }
+
   const char* func_name_ = "MyFunc";
   const char* func_node_name_ = "MyFunc_0";
   TF_Status* s_;
@@ -357,7 +402,7 @@ TEST_F(CApiFunctionTest, OneOp_ZeroInputs_OneOutput) {
    */
   // Define
   TF_Operation* c = ScalarConst(10, func_graph_, s_, "scalar10");
-  Define(-1, {}, {}, {c}, nullptr);
+  Define(-1, {}, {}, {c}, {});
 
   // Use, run, and verify
   TF_Operation* func_op = Use({});
@@ -377,7 +422,7 @@ TEST_F(CApiFunctionTest, OneOp_OneInput_OneOutput) {
   // Define
   TF_Operation* feed = Placeholder(func_graph_, s_);
   TF_Operation* neg = Neg(feed, func_graph_, s_);
-  Define(-1, {}, {feed}, {neg}, nullptr);
+  Define(-1, {}, {feed}, {neg}, {});
 
   // Use, run, and verify
   TF_Operation* func_feed = Placeholder(host_graph_, s_);
@@ -385,6 +430,48 @@ TEST_F(CApiFunctionTest, OneOp_OneInput_OneOutput) {
   Run({{func_feed, Int32Tensor(3)}}, func_op, -3);
   VerifyFDef({"neg_0"}, {{"feed", DT_INT32}}, {{"neg", DT_INT32}},
              {{"feed", "neg_0:0"}, {"neg_0:y:0", "neg"}}, {});
+}
+
+TEST_F(CApiFunctionTest, OneOutput_OutputNames) {
+  /*
+   *                   |
+   *                   v
+   *                 negate
+   *                   |
+   *                   v
+   */
+  // Define
+  TF_Operation* feed = Placeholder(func_graph_, s_);
+  TF_Operation* neg = Neg(feed, func_graph_, s_);
+  Define(-1, {}, {feed}, {neg}, {"negated_num"});
+
+  // Use, run, and verify
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, func_op, -3);
+  VerifyFDef({"neg"}, {{"feed", DT_INT32}}, {{"negated_num", DT_INT32}},
+             {{"feed", "neg:0"}, {"neg:y:0", "negated_num"}}, {});
+}
+
+TEST_F(CApiFunctionTest, OutputNames_SameNameAsInput) {
+  /*
+   *                   |
+   *                   v
+   *                 negate
+   *                   |
+   *                   v
+   */
+  // Define
+  TF_Operation* feed = Placeholder(func_graph_, s_, "negation");
+  TF_Operation* neg = Neg(feed, func_graph_, s_, "neg");
+  Define(-1, {}, {feed}, {neg}, {"negation"});
+
+  // Use, run, and verify
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, func_op, -3);
+  VerifyFDef({"neg"}, {{"negation_0", DT_INT32}}, {{"negation", DT_INT32}},
+             {{"negation_0", "neg:0"}, {"neg:y:0", "negation"}}, {});
 }
 
 TEST_F(CApiFunctionTest, ZeroOps_Identity) {
@@ -396,14 +483,14 @@ TEST_F(CApiFunctionTest, ZeroOps_Identity) {
    */
   // Define
   TF_Operation* feed = Placeholder(func_graph_, s_);
-  Define(-1, {}, {feed}, {feed}, nullptr);
+  Define(-1, {}, {feed}, {feed}, {});
 
   // Use, run, and verify
   TF_Operation* func_feed = Placeholder(host_graph_, s_);
   TF_Operation* func_op = Use({func_feed});
   Run({{func_feed, Int32Tensor(3)}}, func_op, 3);
-  VerifyFDef(empty_, {{"feed", DT_INT32}}, {{"feed_0", DT_INT32}},
-             {{"feed", "feed_0"}}, {});
+  VerifyFDef(empty_, {{"feed_0", DT_INT32}}, {{"feed", DT_INT32}},
+             {{"feed_0", "feed"}}, {});
 }
 
 TEST_F(CApiFunctionTest, ZeroOps_Permutation) {
@@ -420,15 +507,40 @@ TEST_F(CApiFunctionTest, ZeroOps_Permutation) {
   // Define
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
-  Define(-1, {}, {feed1, feed2}, {feed2, feed1}, nullptr);
+  Define(-1, {}, {feed1, feed2}, {feed2, feed1}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_);
   TF_Operation* func_feed = Placeholder(host_graph_, s_);
   TF_Operation* func_op = Use({two, func_feed});
   Run({{func_feed, Int32Tensor(3)}}, {{func_op, 0}, {func_op, 1}}, {3, 2});
-  VerifyFDef(empty_, M({{"feed1"}, {"feed2"}}), M({{"feed2_0"}, {"feed1_0"}}),
-             {{"feed1", "feed1_0"}, {"feed2", "feed2_0"}}, {});
+  VerifyFDef(empty_, M({{"feed1_0"}, {"feed2_0"}}), M({{"feed2"}, {"feed1"}}),
+             {{"feed1_0", "feed1"}, {"feed2_0", "feed2"}}, {});
+}
+
+TEST_F(CApiFunctionTest, ZeroOps_Permutation_OutputNames) {
+  /*
+   *                   |   |
+   *                   \  /
+   *                    \/
+   *                    x
+   *                   /\
+   *                  /  \
+   *                 |   |
+   *                 v   v
+   */
+  // Define
+  TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
+  TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
+  Define(-1, {}, {feed1, feed2}, {feed2, feed1}, {"first", "second"});
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_);
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, {{func_op, 0}, {func_op, 1}}, {3, 2});
+  VerifyFDef(empty_, M({{"feed1"}, {"feed2"}}), M({{"first"}, {"second"}}),
+             {{"feed1", "second"}, {"feed2", "first"}}, {});
 }
 
 TEST_F(CApiFunctionTest, OneOp_TwoInputs_OneOutput) {
@@ -443,7 +555,7 @@ TEST_F(CApiFunctionTest, OneOp_TwoInputs_OneOutput) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  Define(-1, {}, {feed1, feed2}, {add}, nullptr);
+  Define(-1, {}, {feed1, feed2}, {add}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_);
@@ -467,7 +579,7 @@ TEST_F(CApiFunctionTest, OneOp_TwoInputs_ZeroOutputs) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   Add(feed1, feed2, func_graph_, s_);
-  Define(-1, {}, {feed1, feed2}, {}, nullptr);
+  Define(-1, {}, {feed1, feed2}, {}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_);
@@ -494,7 +606,7 @@ TEST_F(CApiFunctionTest, TwoOps_ThreeInputs_OneOutput) {
   TF_Operation* feed3 = Placeholder(func_graph_, s_, "feed3");
   TF_Operation* add1 = Add(feed1, feed2, func_graph_, s_, "add1");
   TF_Operation* add2 = Add(add1, feed3, func_graph_, s_, "add2");
-  Define(-1, {}, {feed1, feed2, feed3}, {add2}, nullptr);
+  Define(-1, {}, {feed1, feed2, feed3}, {add2}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_, "two");
@@ -526,7 +638,7 @@ TEST_F(CApiFunctionTest, OneOp_TwoInputs_TwoDuplicateOutputs) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  Define(-1, {}, {feed1, feed2}, {add, add}, nullptr);
+  Define(-1, {}, {feed1, feed2}, {add, add}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_);
@@ -538,6 +650,35 @@ TEST_F(CApiFunctionTest, OneOp_TwoInputs_TwoDuplicateOutputs) {
               {"feed2", "add_1:1"},
               {"add_1:sum:0", "add"},
               {"add_1:sum:0", "add_0"}},
+             {});
+}
+
+TEST_F(CApiFunctionTest, TwoDuplicateOutputs_OutputNames) {
+  /*
+   *                  |  |
+   *                  v  v
+   *                  add
+   *                   |
+   *                 +-+-+
+   *                 |   |
+   *                 v   v
+   */
+  // Define
+  TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
+  TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
+  TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
+  Define(-1, {}, {feed1, feed2}, {add, add}, {"out1", "out2"});
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_);
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, {{func_op, 0}, {func_op, 1}}, {5, 5});
+  VerifyFDef({"add"}, M({{"feed1"}, {"feed2"}}), M({{"out1"}, {"out2"}}),
+             {{"feed1", "add:0"},
+              {"feed2", "add:1"},
+              {"add:sum:0", "out1"},
+              {"add:sum:0", "out2"}},
              {});
 }
 
@@ -560,7 +701,7 @@ TEST_F(CApiFunctionTest, TwoOps_ThreeInputs_TwoOutputs) {
   TF_Operation* feed3 = Placeholder(func_graph_, s_, "feed3");
   TF_Operation* add1 = Add(feed1, feed2, func_graph_, s_, "add1");
   TF_Operation* add2 = Add(add1, feed3, func_graph_, s_, "add2");
-  Define(-1, {}, {feed1, feed2, feed3}, {add1, add2}, nullptr);
+  Define(-1, {}, {feed1, feed2, feed3}, {add1, add2}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_, "two");
@@ -600,7 +741,7 @@ TEST_F(CApiFunctionTest, FromSubsetOfOps) {
   TF_Operation* feed3 = Placeholder(func_graph_, s_, "feed3");
   TF_Operation* add1 = Add(feed1, feed2, func_graph_, s_, "add1");
   TF_Operation* add2 = Add(add1, feed3, func_graph_, s_, "add2");
-  Define(1, {add2}, {add1, feed3}, {add2}, nullptr);
+  Define(1, {add2}, {add1, feed3}, {add2}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_, "two");
@@ -634,7 +775,7 @@ TEST_F(CApiFunctionTest, UsingOneOutputOfSplit) {
   // Define
   TF_Operation* feed = Placeholder(func_graph_, s_);
   TF_Operation* split = Split3(feed, func_graph_, s_);
-  DefineT(-1, {}, {{feed, 0}}, {{split, 1}}, nullptr);
+  DefineT(-1, {}, {{feed, 0}}, {{split, 1}}, {});
 
   // Use, run, and verify
   TF_Operation* func_feed = Placeholder(host_graph_, s_);
@@ -669,7 +810,7 @@ TEST_F(CApiFunctionTest, UsingTwoOutputsOfSplit) {
   // Define
   TF_Operation* feed = Placeholder(func_graph_, s_);
   TF_Operation* split = Split3(feed, func_graph_, s_);
-  DefineT(-1, {}, {{feed, 0}}, {{split, 0}, {split, 2}}, nullptr);
+  DefineT(-1, {}, {{feed, 0}}, {{split, 0}, {split, 2}}, {});
 
   // Use, run, and verify
   TF_Operation* func_feed = Placeholder(host_graph_, s_);
@@ -708,7 +849,7 @@ TEST_F(CApiFunctionTest, UsingTwoOutputsOfSplitAsInputs) {
   TF_Operation* split = Split3(feed, func_graph_, s_);
   TF_Operation* add = Add({split, 0}, {split, 2}, func_graph_, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  DefineT(1, {add}, {{split, 0}, {split, 2}}, {{add, 0}}, nullptr);
+  DefineT(1, {add}, {{split, 0}, {split, 2}}, {{add, 0}}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_, "two");
@@ -744,7 +885,7 @@ TEST_F(CApiFunctionTest, NodesUsedInInputsMustHaveSingleOutput) {
   TF_Operation* split = Split3(c, func_graph_, s_);
   TF_Operation* add = Add({split, 0}, {split, 2}, func_graph_, s_);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  DefineT(-1, {}, {{split, 0}, {split, 2}}, {{add, 0}}, nullptr, true);
+  DefineT(-1, {}, {{split, 0}, {split, 2}}, {{add, 0}}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("When `num_opers` is set to -1, nodes referenced in "
                    "`inputs` must have a single output. Node split3 has "
@@ -797,7 +938,7 @@ TEST_F(CApiFunctionTest, FunctionWithWhileLoop) {
   }
 
   // Define function, use it in graph, and run
-  DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {outputs[0]}, nullptr);
+  DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {outputs[0]}, {});
   TF_Operation* five = ScalarConst(5, host_graph_, s_, "five");
   TF_Operation* func_feed = Placeholder(host_graph_, s_);
   TF_Operation* func_op = Use({func_feed, five});
@@ -835,7 +976,7 @@ TEST_F(CApiFunctionTest, ControlDependency) {
   TF_Operation* add =
       AddWithCtrlDependency(feed1, feed2, func_graph_, five, s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  Define(-1, {}, {feed1, feed2}, {add}, nullptr);
+  Define(-1, {}, {feed1, feed2}, {add}, {});
 
   // Use, run, and verify
   TF_Operation* two = ScalarConst(2, host_graph_, s_);
@@ -845,7 +986,7 @@ TEST_F(CApiFunctionTest, ControlDependency) {
   VerifyFDef(
       {"add_0", "scalar"}, M({{"feed1"}, {"feed2"}}), M({{"add"}}),
       {{"feed1", "add_0:0"}, {"feed2", "add_0:1"}, {"add_0:sum:0", "add"}},
-      {{"scalar", "add_0"}});
+      {{"^scalar", "add_0:2"}});
 }
 
 TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody) {
@@ -864,7 +1005,7 @@ TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody) {
   TF_Operation* add =
       AddWithCtrlDependency(feed1, feed2, func_graph_, five, s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  Define(1, {add}, {feed1, feed2}, {add}, nullptr, true);
+  Define(1, {add}, {feed1, feed2}, {add}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("The source of control edge [id=3 scalar:-1 -> add:-1] "
                    "is not in the body. Encountered while creating "
@@ -888,12 +1029,17 @@ TEST_F(CApiFunctionTest, ControlDependencyOutsideOfBody_FromInputNode) {
   TF_Operation* add =
       AddWithCtrlDependency(feed1, feed2, func_graph_, feed1, s_);
   EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-  Define(-1, {}, {feed1, feed2}, {add}, nullptr, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
-  EXPECT_EQ(string("The source of control edge [id=3 feed1:-1 -> add:-1] "
-                   "is not in the body. Encountered while creating "
-                   "function 'MyFunc'"),
-            string(TF_Message(s_)));
+  Define(-1, {}, {feed1, feed2}, {add}, {});
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_);
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, func_op, 2 + 3);
+  VerifyFDef(
+      {"add_0"}, M({{"feed1"}, {"feed2"}}), M({{"add"}}),
+      {{"feed1", "add_0:0"}, {"feed2", "add_0:1"}, {"add_0:sum:0", "add"}},
+      {{"^feed1", "add_0:2"}});
 }
 
 TEST_F(CApiFunctionTest, DuplicateInputsAreNotAllowed) {
@@ -914,11 +1060,38 @@ TEST_F(CApiFunctionTest, DuplicateInputsAreNotAllowed) {
    */
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* add = Add(feed1, feed1, func_graph_, s_);
-  Define(-1, {}, {feed1, feed1}, {add}, nullptr, true);
+  Define(-1, {}, {feed1, feed1}, {add}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(
       string("TF_Output feed1:0 appears more than once in the input list"),
       string(TF_Message(s_)));
+}
+
+TEST_F(CApiFunctionTest, DuplicateOutputNamesAreNotAllowed) {
+  /*
+   *                  |  |  |
+   *                  v  v  /
+   *                  add  /
+   *                   |  |
+   *                 +-+  |
+   *                 | |  |
+   *                 | v  v
+   *                 | add
+   *                 |  |
+   *                 v  v
+   */
+  // Define
+  TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
+  TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
+  TF_Operation* feed3 = Placeholder(func_graph_, s_, "feed3");
+  TF_Operation* add1 = Add(feed1, feed2, func_graph_, s_, "add1");
+  TF_Operation* add2 = Add(add1, feed3, func_graph_, s_, "add2");
+  Define(-1, {}, {feed1, feed2, feed3}, {add1, add2}, {"my_out", "my_out"},
+         true);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Cannot have duplicate output names. Name 'my_out' "
+                   "appears more than once in 'output_names' array."),
+            string(TF_Message(s_)));
 }
 
 TEST_F(CApiFunctionTest, InvalidInputTensor_HighIndex) {
@@ -932,8 +1105,8 @@ TEST_F(CApiFunctionTest, InvalidInputTensor_HighIndex) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  DefineT(-1, {}, {{feed1, 0}, {feed2, 2}}, {{add, 0}}, nullptr, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  DefineT(-1, {}, {{feed1, 0}, {feed2, 2}}, {{add, 0}}, {}, true);
+  EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s_));
   EXPECT_EQ(string("Node 'feed2' (type: 'Placeholder', num of outputs: 1) does "
                    "not have output 2\n\tEncountered while processing "
                    "input 1 into function 'MyFunc'"),
@@ -951,7 +1124,7 @@ TEST_F(CApiFunctionTest, InvalidInputTensor_BadNodePtr) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  DefineT(-1, {}, {{feed1, 0}, {nullptr, 0}}, {{add, 0}}, nullptr, true);
+  DefineT(-1, {}, {{feed1, 0}, {nullptr, 0}}, {{add, 0}}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Node is null\n\tEncountered while processing input 1 "
                    "into function 'MyFunc'"),
@@ -969,8 +1142,8 @@ TEST_F(CApiFunctionTest, InvalidOutputTensor_HighIndex) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {{add, 3}}, nullptr, true);
-  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {{add, 3}}, {}, true);
+  EXPECT_EQ(TF_OUT_OF_RANGE, TF_GetCode(s_));
   EXPECT_EQ(string("Node 'add' (type: 'AddN', num of outputs: 1) does "
                    "not have output 3\n\tEncountered while processing "
                    "output 0 from function 'MyFunc'"),
@@ -988,7 +1161,7 @@ TEST_F(CApiFunctionTest, InvalidOutputTensor_BadNodePtr) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   Add(feed1, feed2, func_graph_, s_);
-  DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {{nullptr, 3}}, nullptr, true);
+  DefineT(-1, {}, {{feed1, 0}, {feed2, 0}}, {{nullptr, 3}}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Node is null\n\tEncountered while processing output 0 "
                    "from function 'MyFunc'"),
@@ -1006,7 +1179,7 @@ TEST_F(CApiFunctionTest, NodeMissingInput) {
   TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  DefineT(1, {add}, {{feed1, 0}}, {{add, 0}}, nullptr, true);
+  DefineT(1, {add}, {{feed1, 0}}, {{add, 0}}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("Input 1, 'feed2:0', of node 'add' in function 'MyFunc' "
                    "is not available. You might need to include it in inputs "
@@ -1027,12 +1200,421 @@ TEST_F(CApiFunctionTest, OutputOpNotInBody) {
   TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
   TF_Operation* scalar = ScalarConst(2, func_graph_, s_);
   TF_Operation* add = Add(feed1, feed2, func_graph_, s_);
-  Define(1, {add}, {feed1, feed2}, {add, scalar}, nullptr, true);
+  Define(1, {add}, {feed1, feed2}, {add, scalar}, {}, true);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
   EXPECT_EQ(string("TF_Output scalar:0 is neither in the function body nor "
                    "among function inputs. Encountered while creating "
                    "function 'MyFunc'"),
             string(TF_Message(s_)));
+}
+
+void DefineFunction(const char* name, TF_Function** func,
+                    const char* description = nullptr,
+                    bool append_hash = false) {
+  std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
+      TF_NewGraph(), TF_DeleteGraph);
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
+                                                           TF_DeleteStatus);
+
+  TF_Operation* feed = Placeholder(func_graph.get(), s.get());
+  TF_Operation* neg = Neg(feed, func_graph.get(), s.get());
+
+  TF_Output inputs[] = {{feed, 0}};
+  TF_Output outputs[] = {{neg, 0}};
+  *func = TF_GraphToFunction(func_graph.get(), name, append_hash, -1,
+                             /*opers=*/nullptr, 1, inputs, 1, outputs,
+                             /*output_names=*/nullptr,
+                             /*opts=*/nullptr, description, s.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
+  ASSERT_NE(*func, nullptr);
+}
+
+TEST_F(CApiFunctionTest, SetGradientAndRun) {
+  // Define the function and its grad
+  DefineFunction(func_name_, &func_);
+  TF_Function* grad_func;
+  DefineFunction("MyGrad", &grad_func);
+
+  // Add func and its gradient to host graph
+  TF_GraphCopyFunction(host_graph_, func_, grad_func, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Verify that function and its grad are in host graph's GraphDef
+  GraphDef gdef;
+  GetGraphDef(host_graph_, &gdef);
+  std::vector<string> func_names = GetFuncNames(gdef);
+  ASSERT_EQ(2, func_names.size());
+  ASSERT_EQ(func_name_, func_names[0]);
+  ASSERT_EQ("MyGrad", func_names[1]);
+  std::vector<std::pair<string, string>> grads = GetGradDefs(gdef);
+  ASSERT_EQ(1, grads.size());
+  ASSERT_EQ(func_name_, grads[0].first);
+  ASSERT_EQ("MyGrad", grads[0].second);
+
+  // These calls must be noops
+  TF_GraphCopyFunction(host_graph_, func_, grad_func, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Delete the gradient func.
+  // It is safe to delete after adding a copy to host graph.
+  TF_DeleteFunction(grad_func);
+
+  // Check that GraphDef did not change
+  GraphDef gdef2;
+  GetGraphDef(host_graph_, &gdef2);
+  ASSERT_EQ(gdef.DebugString(), gdef2.DebugString());
+
+  // Use and run func
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, func_op, -3);
+}
+
+TEST_F(CApiFunctionTest, SameGradForTwoFunctions) {
+  // Define the functions
+  TF_Function* func1;
+  TF_Function* func2;
+  TF_Function* grad_func;
+  DefineFunction("FooFunc1", &func1);
+  DefineFunction("FooFunc2", &func2);
+  DefineFunction("MyGrad", &grad_func);
+
+  // Make grad_func be a gradient of func1 and func2
+  TF_GraphCopyFunction(host_graph_, func1, grad_func, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_GraphCopyFunction(host_graph_, func2, grad_func, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Verify that functions and their gradients are in host graph's GraphDef
+  GraphDef gdef;
+  GetGraphDef(host_graph_, &gdef);
+  std::vector<std::pair<string, string>> grads = GetGradDefs(gdef);
+  ASSERT_EQ(2, grads.size());
+  ASSERT_EQ("FooFunc1", grads[0].first);
+  ASSERT_EQ("MyGrad", grads[0].second);
+  ASSERT_EQ("FooFunc2", grads[1].first);
+  ASSERT_EQ("MyGrad", grads[1].second);
+
+  TF_DeleteFunction(func1);
+  TF_DeleteFunction(func2);
+  TF_DeleteFunction(grad_func);
+}
+
+TEST_F(CApiFunctionTest, AddFunctionsThenMakeOneGradientOfAnother) {
+  // Define the functions
+  TF_Function* func;
+  TF_Function* grad_func;
+  DefineFunction("FooFunc", &func);
+  DefineFunction("MyGrad", &grad_func);
+
+  // Add functions individually
+  TF_GraphCopyFunction(host_graph_, func, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_GraphCopyFunction(host_graph_, grad_func, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Check that functions are added but not linked
+  GraphDef gdef;
+  GetGraphDef(host_graph_, &gdef);
+  std::vector<string> func_names = GetFuncNames(gdef);
+  ASSERT_EQ(2, func_names.size());
+  ASSERT_EQ("FooFunc", func_names[0]);
+  ASSERT_EQ("MyGrad", func_names[1]);
+  ASSERT_EQ(0, GetGradDefs(gdef).size());
+
+  // Make grad_func a gradient of func
+  TF_GraphCopyFunction(host_graph_, func, grad_func, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Verify that function and its grad are linked
+  gdef.Clear();
+  GetGraphDef(host_graph_, &gdef);
+  std::vector<std::pair<string, string>> grads = GetGradDefs(gdef);
+  ASSERT_EQ(1, grads.size());
+  ASSERT_EQ("FooFunc", grads[0].first);
+  ASSERT_EQ("MyGrad", grads[0].second);
+
+  TF_DeleteFunction(func);
+  TF_DeleteFunction(grad_func);
+}
+
+TEST_F(CApiFunctionTest, GradientErrorCases) {
+  // Define the function
+  DefineFunction(func_name_, &func_);
+  TF_Function* grad_func1;
+  TF_Function* grad_func2;
+  DefineFunction("MyGrad1", &grad_func1);
+  DefineFunction("MyGrad2", &grad_func2);
+
+  // func cannot be null
+  TF_GraphCopyFunction(host_graph_, nullptr, func_, s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("'func' argument to TF_GraphCopyFunction cannot be null"),
+            string(TF_Message(s_)));
+
+  // Cannot change gradient
+  TF_GraphCopyFunction(host_graph_, func_, grad_func1, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  TF_GraphCopyFunction(host_graph_, func_, grad_func2, s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Cannot assign gradient function 'MyGrad2' to 'MyFunc' "
+                   "because it already has gradient function 'MyGrad1'"),
+            string(TF_Message(s_)));
+
+  TF_DeleteFunction(grad_func1);
+  TF_DeleteFunction(grad_func2);
+}
+
+TEST_F(CApiFunctionTest, ImportFunctionDef) {
+  /*
+   * Using a fairly complex function with output names
+   *
+   *                  |  |  |
+   *                  v  v  /
+   *                  add  /
+   *                   |  |
+   *            +------+  |
+   *            |      |  |
+   *            |      v  v
+   *            |      add
+   *            |       |
+   *            v       v
+   *    internal_out  final_out
+   */
+  // Define
+  TF_Operation* feed1 = Placeholder(func_graph_, s_, "feed1");
+  TF_Operation* feed2 = Placeholder(func_graph_, s_, "feed2");
+  TF_Operation* feed3 = Placeholder(func_graph_, s_, "feed3");
+  TF_Operation* add1 = Add(feed1, feed2, func_graph_, s_, "add1");
+  TF_Operation* add2 = Add(add1, feed3, func_graph_, s_, "add2");
+  Define(-1, {}, {feed1, feed2, feed3}, {add1, add2},
+         {"internal_out", "final_out"});
+
+  // Save func_ to FunctionDef and import it back
+  Reincarnate();
+
+  // Use, run, and verify
+  TF_Operation* two = ScalarConst(2, host_graph_, s_, "two");
+  TF_Operation* ten = ScalarConst(10, host_graph_, s_, "ten");
+  TF_Operation* func_feed = Placeholder(host_graph_, s_);
+  TF_Operation* func_op = Use({two, ten, func_feed});
+  Run({{func_feed, Int32Tensor(3)}}, {{func_op, 0}, {func_op, 1}}, {12, 15});
+  VerifyFDef({"add1", "add2"}, M({{"feed1"}, {"feed2"}, {"feed3"}}),
+             M({{"internal_out"}, {"final_out"}}),
+             {{"feed1", "add1:0"},
+              {"feed2", "add1:1"},
+              {"add1:sum:0", "add2:0"},
+              {"feed3", "add2:1"},
+              {"add1:sum:0", "internal_out"},
+              {"add2:sum:0", "final_out"}},
+             {});
+}
+
+TEST_F(CApiFunctionTest, ImportFunctionDef_InvalidProto) {
+  // Invalid protobuf data (protos cannot start with 4 bytes of zeros)
+  char proto[] = {0x0, 0x0, 0x0, 0x0};
+  func_ = TF_FunctionImportFunctionDef(proto, 4, s_);
+  EXPECT_TRUE(func_ == nullptr);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Invalid FunctionDef given to TF_FunctionImportFunctionDef"),
+            string(TF_Message(s_)));
+}
+
+TEST_F(CApiFunctionTest, Attribute) {
+  DefineFunction(func_name_, &func_);
+
+  // Get non existent attribute
+  TF_Buffer* attr_buf = TF_NewBuffer();
+  TF_FunctionGetAttrValueProto(func_, "foo_attr", attr_buf, s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Function 'MyFunc' has no attr named 'foo_attr'."),
+            string(TF_Message(s_)));
+  TF_DeleteBuffer(attr_buf);
+
+  // Set attr
+  tensorflow::AttrValue attr;
+  attr.set_s("test_attr_value");
+  string bytes;
+  attr.SerializeToString(&bytes);
+  TF_FunctionSetAttrValueProto(func_, "test_attr_name", bytes.data(),
+                               bytes.size(), s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get attr
+  AttrValue read_attr;
+  GetAttr("test_attr_name", &read_attr);
+  ASSERT_EQ(attr.DebugString(), read_attr.DebugString());
+
+  // Retrieve the same attr after save/restore
+  Reincarnate();
+  AttrValue read_attr2;
+  GetAttr("test_attr_name", &read_attr2);
+  ASSERT_EQ(attr.DebugString(), read_attr2.DebugString());
+}
+
+TEST_F(CApiFunctionTest, Description) {
+  DefineFunction(func_name_, &func_, "Return something");
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("Return something"), fdef.signature().description());
+}
+
+TEST_F(CApiFunctionTest, Name) {
+  DefineFunction("long_func_name", &func_, "Return something",
+                 /*append_hash=*/false);
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+  ASSERT_EQ(string("long_func_name"), fdef.signature().name());
+}
+
+TEST_F(CApiFunctionTest, AppendHash) {
+  DefineFunction("func_name_base", &func_, "Return something",
+                 /*append_hash=*/true);
+  tensorflow::FunctionDef fdef;
+  ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  ASSERT_EQ(string("func_name_base_ZpgUD4x8oqk"), fdef.signature().name());
+#else
+  ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
+#endif
+}
+
+TEST_F(CApiFunctionTest, GetOpDef) {
+  DefineFunction(func_name_, &func_);
+  TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Test we can retrieve function OpDef from graph
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_GraphGetOpDef(host_graph_, func_name_, buffer, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Sanity check returned OpDef
+  string data(static_cast<const char*>(buffer->data), buffer->length);
+  OpDef op_def;
+  op_def.ParseFromString(data);
+  EXPECT_EQ(op_def.name(), func_name_);
+  EXPECT_EQ(op_def.input_arg_size(), 1);
+  EXPECT_EQ(op_def.output_arg_size(), 1);
+  EXPECT_FALSE(op_def.is_stateful());
+
+  TF_DeleteBuffer(buffer);
+}
+
+void DefineStatefulFunction(const char* name, TF_Function** func) {
+  std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
+      TF_NewGraph(), TF_DeleteGraph);
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
+                                                           TF_DeleteStatus);
+
+  TF_Tensor* tensor_shape = Int32Tensor({37, 1});
+  TF_Operation* shape = Const(tensor_shape, func_graph.get(), s.get(), "shape");
+  TF_Operation* random =
+      RandomUniform(shape, TF_FLOAT, func_graph.get(), s.get());
+
+  TF_Output inputs[] = {};
+  TF_Output outputs[] = {{random, 0}};
+  *func = TF_GraphToFunction(func_graph.get(), name, /*append_hash=*/false, -1,
+                             /*opers=*/nullptr, 0, inputs, 1, outputs,
+                             /*output_names=*/nullptr,
+                             /*opts=*/nullptr, "", s.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
+  ASSERT_NE(*func, nullptr);
+  TF_DeleteTensor(tensor_shape);
+}
+
+TEST_F(CApiFunctionTest, StatefulOpDef) {
+  DefineStatefulFunction(func_name_, &func_);
+  TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Test we can retrieve function OpDef from graph
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_GraphGetOpDef(host_graph_, func_name_, buffer, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Sanity check returned OpDef
+  string data(static_cast<const char*>(buffer->data), buffer->length);
+  OpDef op_def;
+  op_def.ParseFromString(data);
+  EXPECT_EQ(op_def.name(), func_name_);
+  EXPECT_EQ(op_def.input_arg_size(), 0);
+  EXPECT_EQ(op_def.output_arg_size(), 1);
+  EXPECT_TRUE(op_def.is_stateful());
+
+  TF_DeleteBuffer(buffer);
+}
+
+void AssertEqual(TF_Function* f1, TF_Function* f2) {
+  string s1, s2;
+  tensorflow::FunctionDef fdef1, fdef2;
+  ASSERT_TRUE(GetFunctionDef(f1, &fdef1));
+  ASSERT_TRUE(GetFunctionDef(f2, &fdef2));
+  SerializeToStringDeterministic(fdef1, &s1);
+  SerializeToStringDeterministic(fdef2, &s2);
+  ASSERT_EQ(s1, s2);
+}
+
+string GetName(TF_Function* func) {
+  tensorflow::FunctionDef fdef;
+  GetFunctionDef(func, &fdef);
+  return fdef.signature().name();
+}
+
+TEST_F(CApiFunctionTest, GetFunctionsFromGraph) {
+  TF_Function* funcs[2];
+
+  // Get functions from empty graph
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 0);
+  TF_GraphGetFunctions(host_graph_, nullptr, 0, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Define a function and add it to host_graph_
+  TF_Function* func0;
+  DefineFunction("FooFunc0", &func0);
+  TF_GraphCopyFunction(host_graph_, func0, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get this function from host_graph_
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 1);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 0, s_), 0);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 1, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  AssertEqual(func0, funcs[0]);
+  TF_DeleteFunction(funcs[0]);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 2, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  AssertEqual(func0, funcs[0]);
+  TF_DeleteFunction(funcs[0]);
+
+  // Define a second function
+  TF_Function* func1;
+  DefineFunction("FooFunc1", &func1);
+  TF_GraphCopyFunction(host_graph_, func1, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get both function from host_graph_
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 2);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 0, s_), 0);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 2, s_), 2);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  if (GetName(funcs[0]) == GetName(func0)) {
+    AssertEqual(func0, funcs[0]);
+    AssertEqual(func1, funcs[1]);
+  } else {
+    AssertEqual(func0, funcs[1]);
+    AssertEqual(func1, funcs[0]);
+  }
+
+  TF_DeleteFunction(funcs[0]);
+  TF_DeleteFunction(funcs[1]);
+
+  TF_DeleteFunction(func0);
+  TF_DeleteFunction(func1);
 }
 
 }  // namespace

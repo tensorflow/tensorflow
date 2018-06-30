@@ -26,6 +26,7 @@ import six
 
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
+from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import dnn_testing_utils
 from tensorflow.python.estimator.canned import linear_testing_utils
@@ -46,6 +47,7 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import optimizer as optimizer_lib
+
 
 try:
   # pylint: disable=g-import-not-at-top
@@ -729,6 +731,157 @@ class DNNLinearCombinedTests(test.TestCase):
             prediction_keys.PredictionKeys.PREDICTIONS: [188.],
         },
         next(est.predict(input_fn=input_fn)))
+
+
+class DNNLinearCombinedWarmStartingTest(test.TestCase):
+
+  def setUp(self):
+    # Create a directory to save our old checkpoint and vocabularies to.
+    self._ckpt_and_vocab_dir = tempfile.mkdtemp()
+
+    # Make a dummy input_fn.
+    def _input_fn():
+      features = {
+          'age': [[23.], [31.]],
+          'city': [['Palo Alto'], ['Mountain View']],
+      }
+      return features, [0, 1]
+
+    self._input_fn = _input_fn
+
+  def tearDown(self):
+    # Clean up checkpoint / vocab dir.
+    writer_cache.FileWriterCache.clear()
+    shutil.rmtree(self._ckpt_and_vocab_dir)
+
+  def test_classifier_basic_warm_starting(self):
+    """Tests correctness of DNNLinearCombinedClassifier default warm-start."""
+    age = feature_column.numeric_column('age')
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNLinearCombinedClassifier and train to save a checkpoint.
+    dnn_lc_classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=[age],
+        dnn_feature_columns=[city],
+        dnn_hidden_units=[256, 128],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        linear_optimizer='SGD',
+        dnn_optimizer='SGD')
+    dnn_lc_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNLinearCombinedClassifier, warm-started from the first.
+    # Use a learning_rate = 0.0 optimizer to check values (use SGD so we don't
+    # have accumulator values that change).
+    warm_started_dnn_lc_classifier = (
+        dnn_linear_combined.DNNLinearCombinedClassifier(
+            linear_feature_columns=[age],
+            dnn_feature_columns=[city],
+            dnn_hidden_units=[256, 128],
+            n_classes=4,
+            linear_optimizer=gradient_descent.GradientDescentOptimizer(
+                learning_rate=0.0),
+            dnn_optimizer=gradient_descent.GradientDescentOptimizer(
+                learning_rate=0.0),
+            warm_start_from=dnn_lc_classifier.model_dir))
+
+    warm_started_dnn_lc_classifier.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_lc_classifier.get_variable_names():
+      self.assertAllClose(
+          dnn_lc_classifier.get_variable_value(variable_name),
+          warm_started_dnn_lc_classifier.get_variable_value(variable_name))
+
+  def test_regressor_basic_warm_starting(self):
+    """Tests correctness of DNNLinearCombinedRegressor default warm-start."""
+    age = feature_column.numeric_column('age')
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNLinearCombinedRegressor and train to save a checkpoint.
+    dnn_lc_regressor = dnn_linear_combined.DNNLinearCombinedRegressor(
+        linear_feature_columns=[age],
+        dnn_feature_columns=[city],
+        dnn_hidden_units=[256, 128],
+        model_dir=self._ckpt_and_vocab_dir,
+        linear_optimizer='SGD',
+        dnn_optimizer='SGD')
+    dnn_lc_regressor.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNLinearCombinedRegressor, warm-started from the first.
+    # Use a learning_rate = 0.0 optimizer to check values (use SGD so we don't
+    # have accumulator values that change).
+    warm_started_dnn_lc_regressor = (
+        dnn_linear_combined.DNNLinearCombinedRegressor(
+            linear_feature_columns=[age],
+            dnn_feature_columns=[city],
+            dnn_hidden_units=[256, 128],
+            linear_optimizer=gradient_descent.GradientDescentOptimizer(
+                learning_rate=0.0),
+            dnn_optimizer=gradient_descent.GradientDescentOptimizer(
+                learning_rate=0.0),
+            warm_start_from=dnn_lc_regressor.model_dir))
+
+    warm_started_dnn_lc_regressor.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_lc_regressor.get_variable_names():
+      self.assertAllClose(
+          dnn_lc_regressor.get_variable_value(variable_name),
+          warm_started_dnn_lc_regressor.get_variable_value(variable_name))
+
+  def test_warm_starting_selective_variables(self):
+    """Tests selecting variables to warm-start."""
+    age = feature_column.numeric_column('age')
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNLinearCombinedClassifier and train to save a checkpoint.
+    dnn_lc_classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=[age],
+        dnn_feature_columns=[city],
+        dnn_hidden_units=[256, 128],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        linear_optimizer='SGD',
+        dnn_optimizer='SGD')
+    dnn_lc_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNLinearCombinedClassifier, warm-started from the first.
+    # Use a learning_rate = 0.0 optimizer to check values (use SGD so we don't
+    # have accumulator values that change).
+    warm_started_dnn_lc_classifier = (
+        dnn_linear_combined.DNNLinearCombinedClassifier(
+            linear_feature_columns=[age],
+            dnn_feature_columns=[city],
+            dnn_hidden_units=[256, 128],
+            n_classes=4,
+            linear_optimizer=gradient_descent.GradientDescentOptimizer(
+                learning_rate=0.0),
+            dnn_optimizer=gradient_descent.GradientDescentOptimizer(
+                learning_rate=0.0),
+            # The provided regular expression will only warm-start the deep
+            # portion of the model.
+            warm_start_from=estimator.WarmStartSettings(
+                ckpt_to_initialize_from=dnn_lc_classifier.model_dir,
+                vars_to_warm_start='.*(dnn).*')))
+
+    warm_started_dnn_lc_classifier.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_lc_classifier.get_variable_names():
+      if 'dnn' in variable_name:
+        self.assertAllClose(
+            dnn_lc_classifier.get_variable_value(variable_name),
+            warm_started_dnn_lc_classifier.get_variable_value(variable_name))
+      elif 'linear' in variable_name:
+        linear_values = warm_started_dnn_lc_classifier.get_variable_value(
+            variable_name)
+        # Since they're not warm-started, the linear weights will be
+        # zero-initialized.
+        self.assertAllClose(np.zeros_like(linear_values), linear_values)
 
 
 if __name__ == '__main__':

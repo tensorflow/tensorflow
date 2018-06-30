@@ -1,10 +1,10 @@
 path: "tensorflow.keras.preprocessing.image.ImageDataGenerator"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.preprocessing.image.ImageDataGenerator\'>"
+  is_instance: "<class \'tensorflow.python.keras.preprocessing.image.ImageDataGenerator\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'featurewise_center\', \'samplewise_center\', \'featurewise_std_normalization\', \'samplewise_std_normalization\', \'zca_whitening\', \'zca_epsilon\', \'rotation_range\', \'width_shift_range\', \'height_shift_range\', \'shear_range\', \'zoom_range\', \'channel_shift_range\', \'fill_mode\', \'cval\', \'horizontal_flip\', \'vertical_flip\', \'rescale\', \'preprocessing_function\', \'data_format\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'1e-06\', \'0.0\', \'0.0\', \'0.0\', \'0.0\', \'0.0\', \'0.0\', \'nearest\', \'0.0\', \'False\', \'False\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'featurewise_center\', \'samplewise_center\', \'featurewise_std_normalization\', \'samplewise_std_normalization\', \'zca_whitening\', \'zca_epsilon\', \'rotation_range\', \'width_shift_range\', \'height_shift_range\', \'brightness_range\', \'shear_range\', \'zoom_range\', \'channel_shift_range\', \'fill_mode\', \'cval\', \'horizontal_flip\', \'vertical_flip\', \'rescale\', \'preprocessing_function\', \'data_format\', \'validation_split\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'1e-06\', \'0.0\', \'0.0\', \'0.0\', \'None\', \'0.0\', \'0.0\', \'0.0\', \'nearest\', \'0.0\', \'False\', \'False\', \'None\', \'None\', \'None\', \'0.0\'], "
   }
   member_method {
     name: "fit"
@@ -12,11 +12,11 @@ tf_class {
   }
   member_method {
     name: "flow"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'shuffle\', \'seed\', \'save_to_dir\', \'save_prefix\', \'save_format\'], varargs=None, keywords=None, defaults=[\'None\', \'32\', \'True\', \'None\', \'None\', \'\', \'png\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'shuffle\', \'seed\', \'save_to_dir\', \'save_prefix\', \'save_format\', \'subset\'], varargs=None, keywords=None, defaults=[\'None\', \'32\', \'True\', \'None\', \'None\', \'\', \'png\', \'None\'], "
   }
   member_method {
     name: "flow_from_directory"
-    argspec: "args=[\'self\', \'directory\', \'target_size\', \'color_mode\', \'classes\', \'class_mode\', \'batch_size\', \'shuffle\', \'seed\', \'save_to_dir\', \'save_prefix\', \'save_format\', \'follow_links\'], varargs=None, keywords=None, defaults=[\'(256, 256)\', \'rgb\', \'None\', \'categorical\', \'32\', \'True\', \'None\', \'None\', \'\', \'png\', \'False\'], "
+    argspec: "args=[\'self\', \'directory\', \'target_size\', \'color_mode\', \'classes\', \'class_mode\', \'batch_size\', \'shuffle\', \'seed\', \'save_to_dir\', \'save_prefix\', \'save_format\', \'follow_links\', \'subset\', \'interpolation\'], varargs=None, keywords=None, defaults=[\'(256, 256)\', \'rgb\', \'None\', \'categorical\', \'32\', \'True\', \'None\', \'None\', \'\', \'png\', \'False\', \'None\', \'nearest\'], "
   }
   member_method {
     name: "random_transform"

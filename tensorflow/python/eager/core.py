@@ -19,8 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.eager import context
-from tensorflow.python.eager import memory_trace
 from tensorflow.python.framework import errors
 
 # Trace of execution and memory usage.
@@ -51,25 +49,15 @@ class _NotOkStatusException(Exception):
 pywrap_tensorflow.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
 
 
-def enable_tracing():
-  """Enables tracing of execution and memory usage.
+class _FallbackException(Exception):
+  """Exception class to handle fallback from the fastpath.
 
-  WARNING: tracing is not thread-safe.
+  The fastpath that we refer to here is the one implemented to reduce per-op
+  overheads (TFE_Py_FastPathExecute_C). If the conditions for executing the op
+  on the fastpath are not met, we fallback to a safer (and more complete)
+  slowpath, and this Exception is raised to signal that transition.
   """
-  global _active_trace
-  _active_trace = memory_trace.MemoryTrace(
-      len(context.get_default_context().devices()))
+  pass
 
 
-def flush_trace():
-  """Flushes the active trace, if it exists.
-
-  WARNING: tracing is not thread-safe.
-  """
-  if _active_trace is not None:
-    _active_trace.flush_trace()
-
-
-def active_trace():
-  """Returns the current global active trace of execution and memory usage."""
-  return _active_trace
+pywrap_tensorflow.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)

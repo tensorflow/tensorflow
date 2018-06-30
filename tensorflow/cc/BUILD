@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_binary",
     "tf_copts",
     "tf_gen_op_wrappers_cc",
     "cc_library_with_android_deps",
@@ -18,13 +19,20 @@ load(
 
 cc_library(
     name = "gradients",
-    srcs = ["framework/gradients.cc"],
+    srcs = [
+        "framework/gradients.cc",
+        "framework/while_gradients.cc",
+        "framework/while_gradients.h",
+    ],
     hdrs = ["framework/gradients.h"],
     deps = [
         ":cc_ops",
+        ":cc_ops_internal",
         ":grad_op_registry",
         ":ops",
         ":scope",
+        ":scope_internal",
+        ":while_loop",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -34,14 +42,36 @@ cc_library(
 
 tf_cc_test(
     name = "framework_gradients_test",
-    size = "small",
     srcs = ["framework/gradients_test.cc"],
     deps = [
         ":cc_ops",
+        ":client_session",
         ":grad_op_registry",
         ":grad_ops",
         ":gradients",
         ":testutil",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_while_gradients_test",
+    size = "small",
+    srcs = ["framework/while_gradients_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":grad_op_registry",
+        ":grad_ops",
+        ":gradients",
+        ":testutil",
+        ":while_loop",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -70,7 +100,6 @@ cc_library(
 
 tf_cc_test(
     name = "framework_gradient_checker_test",
-    size = "small",
     srcs = ["framework/gradient_checker_test.cc"],
     deps = [
         ":cc_ops",
@@ -153,7 +182,6 @@ cc_library_with_android_deps(
 
 tf_cc_test(
     name = "framework_scope_test",
-    size = "small",
     srcs = ["framework/scope_test.cc"],
     deps = [
         ":ops",
@@ -183,7 +211,6 @@ cc_library_with_android_deps(
 
 tf_cc_test(
     name = "client_client_session_test",
-    size = "small",
     srcs = ["client/client_session_test.cc"],
     deps = [
         ":cc_ops",
@@ -218,7 +245,6 @@ cc_library_with_android_deps(
 
 tf_cc_test(
     name = "ops_const_op_test",
-    size = "small",
     srcs = ["ops/const_op_test.cc"],
     deps = [
         ":const_op",
@@ -258,6 +284,7 @@ tf_cc_test(
         ":client_session",
         ":testutil",
         ":while_loop",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -289,7 +316,6 @@ cc_library(
 
 tf_cc_test(
     name = "gradients_array_grad_test",
-    size = "small",
     srcs = ["gradients/array_grad_test.cc"],
     deps = [
         ":array_grad",
@@ -319,7 +345,6 @@ cc_library(
 
 tf_cc_test(
     name = "gradients_math_grad_test",
-    size = "small",
     srcs = ["gradients/math_grad_test.cc"],
     deps = [
         ":cc_ops",
@@ -349,7 +374,6 @@ cc_library(
 
 tf_cc_test(
     name = "gradients_nn_grad_test",
-    size = "small",
     srcs = ["gradients/nn_grad_test.cc"],
     deps = [
         ":cc_ops",
@@ -397,6 +421,7 @@ tf_cc_test(
 
 tf_gen_op_wrappers_cc(
     name = "cc_ops",
+    api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
     op_lib_names = [
         "array_ops",
         "audio_ops",
@@ -408,6 +433,7 @@ tf_gen_op_wrappers_cc(
         "linalg_ops",
         "logging_ops",
         "lookup_ops",
+        "manip_ops",
         "math_ops",
         "nn_ops",
         "no_op",
@@ -423,13 +449,11 @@ tf_gen_op_wrappers_cc(
         "ops/const_op.h",
         "ops/standard_ops.h",
     ],
-    override_file = "ops/op_gen_overrides.pbtxt",
     pkg = "//tensorflow/core",
 )
 
 tf_cc_test(
     name = "framework_cc_ops_test",
-    size = "small",
     srcs = ["framework/cc_ops_test.cc"],
     deps = [
         ":cc_ops",
@@ -502,14 +526,35 @@ cc_library_with_android_deps(
         "//tensorflow/core:android_tensorflow_lib",
     ],
     copts = tf_copts(),
+    data = [
+        "//tensorflow/core/api_def:base_api_def",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cc_op_gen_test",
+    srcs = [
+        "framework/cc_op_gen.cc",
+        "framework/cc_op_gen.h",
+        "framework/cc_op_gen_test.cc",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:op_gen_overrides_proto_cc",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -544,7 +589,7 @@ tf_gen_op_wrappers_cc(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),
@@ -573,18 +618,6 @@ cc_binary(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
@@ -629,13 +662,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 
 tf_cc_test(
     name = "coordinator_test",
-    size = "small",
     srcs = ["training/coordinator_test.cc"],
     deps = [
         ":cc_ops",

@@ -23,8 +23,6 @@ import shutil
 import sys
 import tempfile
 
-import six
-
 # Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_shared
@@ -33,6 +31,7 @@ from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import profile_analyzer_cli
 from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.cli import ui_factory
+from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
 
@@ -83,6 +82,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if not dump_root:
       self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
     else:
+      dump_root = os.path.expanduser(dump_root)
       if os.path.isfile(dump_root):
         raise ValueError("dump_root path points to a file: %s" % dump_root)
       elif os.path.isdir(dump_root) and os.listdir(dump_root):
@@ -95,6 +95,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     # Registered tensor filters.
     self._tensor_filters = {}
+    # Register frequently-used filter(s).
+    self.add_tensor_filter("has_inf_or_nan", debug_data.has_inf_or_nan)
 
     # Below are the state variables of this wrapper object.
     # _active_tensor_filter: what (if any) tensor filter is in effect. If such
@@ -113,6 +115,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     #   unavailable (i.e., is None), the run-start CLI will be launched to ask
     #   the user. This is the case, e.g., right before the first run starts.
     self._active_tensor_filter = None
+    self._active_filter_exclude_node_names = None
     self._active_tensor_filter_run_start_response = None
     self._run_through_times = 1
     self._skip_debug = False
@@ -146,6 +149,15 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         type=str,
         default="",
         help="Run until a tensor in the graph passes the specified filter.")
+    ap.add_argument(
+        "-fenn",
+        "--filter_exclude_node_names",
+        dest="filter_exclude_node_names",
+        type=str,
+        default="",
+        help="When applying the tensor filter, exclude node with names "
+        "matching the regular expression. Applicable only if --tensor_filter "
+        "or -f is used.")
     ap.add_argument(
         "--node_name_filter",
         dest="node_name_filter",
@@ -278,6 +290,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if self._run_call_count == 1:
       # Show logo at the onset of the first run.
       help_intro.extend(cli_shared.get_tfdbg_logo())
+      help_intro.extend(debugger_cli_common.get_tensorflow_version_lines())
     help_intro.extend(debugger_cli_common.RichTextLines("Upcoming run:"))
     help_intro.extend(self._run_info)
 
@@ -322,9 +335,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       debug_dump.set_python_graph(self._sess.graph)
 
       passed_filter = None
+      passed_filter_exclude_node_names = None
       if self._active_tensor_filter:
         if not debug_dump.find(
-            self._tensor_filters[self._active_tensor_filter], first_n=1):
+            self._tensor_filters[self._active_tensor_filter], first_n=1,
+            exclude_node_names=self._active_filter_exclude_node_names):
           # No dumped tensor passes the filter in this run. Clean up the dump
           # directory and move on.
           self._remove_dump_root()
@@ -332,10 +347,14 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         else:
           # Some dumped tensor(s) from this run passed the filter.
           passed_filter = self._active_tensor_filter
+          passed_filter_exclude_node_names = (
+              self._active_filter_exclude_node_names)
           self._active_tensor_filter = None
+          self._active_filter_exclude_node_names = None
 
       self._prep_debug_cli_for_run_end(
-          debug_dump, request.tf_error, passed_filter)
+          debug_dump, request.tf_error, passed_filter,
+          passed_filter_exclude_node_names)
 
       self._run_start_response = self._launch_cli()
 
@@ -356,7 +375,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     if os.path.isdir(self._dump_root):
       shutil.rmtree(self._dump_root)
 
-  def _prep_debug_cli_for_run_end(self, debug_dump, tf_error, passed_filter):
+  def _prep_debug_cli_for_run_end(self,
+                                  debug_dump,
+                                  tf_error,
+                                  passed_filter,
+                                  passed_filter_exclude_node_names):
     """Prepare (but not launch) CLI for run-end, with debug dump from the run.
 
     Args:
@@ -366,6 +389,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         (if any).
       passed_filter: (None or str) Name of the tensor filter that just passed
         and caused the preparation of this run-end CLI (if any).
+      passed_filter_exclude_node_names: (None or str) Regular expression used
+        with the tensor filter to exclude ops with names matching the regular
+        expresssion.
     """
 
     if tf_error:
@@ -381,6 +407,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       if passed_filter is not None:
         # Some dumped tensor(s) from this run passed the filter.
         self._init_command = "lt -f %s" % passed_filter
+        if passed_filter_exclude_node_names:
+          self._init_command += (" --filter_exclude_node_names %s" %
+                                 passed_filter_exclude_node_names)
         self._title_color = "red_on_white"
 
     self._run_cli = analyzer_cli.create_analyzer_ui(
@@ -414,7 +443,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def _prep_profile_cli_for_run_end(self, py_graph, run_metadata):
     self._init_command = "lp"
     self._run_cli = profile_analyzer_cli.create_profiler_ui(
-        py_graph, run_metadata, ui_type=self._ui_type)
+        py_graph, run_metadata, ui_type=self._ui_type,
+        config=self._run_cli.config)
     self._title = "run-end (profiler mode): " + self._run_description
 
   def _launch_cli(self):
@@ -437,6 +467,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
     if self._run_call_count == 1:
       output.extend(cli_shared.get_tfdbg_logo())
+      output.extend(debugger_cli_common.get_tensorflow_version_lines())
     output.extend(self._run_info)
 
     if (not self._is_run_start and
@@ -463,12 +494,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     feed_key = None
     feed_value = None
     for key in self._feed_dict:
-      if isinstance(key, six.string_types):
-        if key == tensor_name:
-          feed_key = key
-      elif key.name == tensor_name:
-        feed_key = key.name
-      if feed_key is not None:
+      key_name = common.get_graph_element_name(key)
+      if key_name == tensor_name:
+        feed_key = key_name
         feed_value = self._feed_dict[key]
         break
 
@@ -495,6 +523,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     parsed.node_name_filter = parsed.node_name_filter or None
     parsed.op_type_filter = parsed.op_type_filter or None
     parsed.tensor_dtype_filter = parsed.tensor_dtype_filter or None
+
+    if parsed.filter_exclude_node_names and not parsed.till_filter_pass:
+      raise ValueError(
+          "The --filter_exclude_node_names (or -feon) flag is valid only if "
+          "the --till_filter_pass (or -f) flag is used.")
 
     if parsed.profile:
       raise debugger_cli_common.CommandLineExit(
@@ -525,6 +558,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       if parsed.till_filter_pass in self._tensor_filters:
         action = framework.OnRunStartAction.DEBUG_RUN
         self._active_tensor_filter = parsed.till_filter_pass
+        self._active_filter_exclude_node_names = (
+            parsed.filter_exclude_node_names)
         self._active_tensor_filter_run_start_response = run_start_response
       else:
         # Handle invalid filter name.
@@ -561,9 +596,9 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       # Register tab completion for the filter names.
       curses_cli.register_tab_comp_context(["run", "r"],
                                            list(self._tensor_filters.keys()))
-    if self._feed_dict:
+    if self._feed_dict and hasattr(self._feed_dict, "keys"):
       # Register tab completion for feed_dict keys.
-      feed_keys = [(key if isinstance(key, six.string_types) else key.name)
+      feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]
       curses_cli.register_tab_comp_context(["print_feed", "pf"], feed_keys)
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import logging_ops
@@ -58,6 +59,7 @@ class LoggingOpsTest(test.TestCase):
 
 class PrintGradientTest(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testPrintShape(self):
     inp = constant_op.constant(2.0, shape=[100, 32])
     inp_printed = logging_ops.Print(inp, [inp])

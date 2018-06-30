@@ -24,12 +24,20 @@ import tensorflow as tf
 import imports85  # pylint: disable=g-bad-import-order
 
 STEPS = 1000
+PRICE_NORM_FACTOR = 1000
 
 
 def main(argv):
   """Builds, trains, and evaluates the model."""
   assert len(argv) == 1
   (train, test) = imports85.dataset()
+
+  # Switch the labels to units of thousands for better convergence.
+  def to_thousands(features, labels):
+    return features, labels / PRICE_NORM_FACTOR
+
+  train = train.map(to_thousands)
+  test = test.map(to_thousands)
 
   # Build the training input_fn.
   def input_train():
@@ -67,7 +75,8 @@ def main(argv):
 
   # Convert MSE to Root Mean Square Error (RMSE).
   print("\n" + 80 * "*")
-  print("\nRMS error for the test set: ${:.0f}".format(average_loss**0.5))
+  print("\nRMS error for the test set: ${:.0f}"
+        .format(PRICE_NORM_FACTOR * average_loss**0.5))
 
   # Run the model in prediction mode.
   input_dict = {
@@ -85,7 +94,7 @@ def main(argv):
            "Highway: {: 0d}mpg, "
            "Prediction: ${: 9.2f}")
     msg = msg.format(input_dict["curb-weight"][i], input_dict["highway-mpg"][i],
-                     prediction["predictions"][0])
+                     PRICE_NORM_FACTOR * prediction["predictions"][0])
 
     print("    " + msg)
   print()

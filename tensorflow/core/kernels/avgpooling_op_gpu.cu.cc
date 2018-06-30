@@ -35,6 +35,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 DEFINE_GPU_KERNELS(Eigen::half)
 DEFINE_GPU_KERNELS(float)
+DEFINE_GPU_KERNELS(double)
 
 #undef DEFINE_GPU_KERNELS
 
@@ -71,8 +72,8 @@ __global__ void AvePoolBackwardNHWC(const int nthreads,
         hstart = max(hstart, 0);
         wstart = max(wstart, 0);
         int pool_size = (hend - hstart) * (wend - wstart);
-        gradient +=
-            top_diff_slice[(ph * pooled_width + pw) * channels] / dtype(pool_size);
+        gradient += top_diff_slice[(ph * pooled_width + pw) * channels] /
+                    dtype(pool_size);
       }
     }
     bottom_diff[index] = gradient;
@@ -90,15 +91,21 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const GPUDevice& d) {
   int x_size = num * height * width * channels;
   CudaLaunchConfig config = GetCudaLaunchConfig(x_size, d);
-  AvePoolBackwardNHWC<
-      T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      config.virtual_thread_count, top_diff, num, height, width, channels,
-      pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
-      pad_t, pad_t, bottom_diff);
+  AvePoolBackwardNHWC<T>
+      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+          config.virtual_thread_count, top_diff, num, height, width, channels,
+          pooled_height, pooled_width, kernel_h, kernel_w, stride_h, stride_w,
+          pad_t, pad_t, bottom_diff);
 
   return d.ok();
 }
 
+template bool RunAvePoolBackwardNHWC(
+    const double* const top_diff, const int num, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    double* const bottom_diff, const GPUDevice& d);
 template bool RunAvePoolBackwardNHWC(
     const float* const top_diff, const int num, const int height,
     const int width, const int channels, const int pooled_height,

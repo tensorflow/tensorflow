@@ -16,7 +16,8 @@ tf_library(
 )
 """
 
-load("//tensorflow:tensorflow.bzl", "if_android", "tf_copts")
+load("//tensorflow:tensorflow.bzl",
+     "if_android", "tf_cc_test", "tf_copts")
 
 def tf_library(name, graph, config,
                freeze_checkpoint=None, freeze_saver=None,
@@ -24,7 +25,8 @@ def tf_library(name, graph, config,
                visibility=None, testonly=None,
                tfcompile_flags=None,
                tfcompile_tool="//tensorflow/compiler/aot:tfcompile",
-               deps=None, tags=None):
+               include_standard_runtime_deps=True,
+               enable_xla_hlo_profiling=False, deps=None, tags=None):
   """Runs tfcompile to compile a TensorFlow graph into executable code.
 
   Given an invocation of tf_library(name="foo", ...), generates the following
@@ -41,7 +43,7 @@ def tf_library(name, graph, config,
     graph: The TensorFlow GraphDef to compile.  If the file ends in '.pbtxt' it
       is expected to be in the human-readable proto text format, otherwise it is
       expected to be in the proto binary format.
-    config: File containing tensorflow.tfcompile.Config proto.  If the file ends
+    config: File containing tensorflow.tf2xla.Config proto.  If the file ends
       in '.pbtxt' it is expected to be in the human-readable proto text format,
       otherwise it is expected to be in the proto binary format.
     freeze_checkpoint: If provided, run freeze_graph with this checkpoint to
@@ -64,8 +66,13 @@ def tf_library(name, graph, config,
     tfcompile_flags: Extra flags to pass to tfcompile to control compilation.
     tfcompile_tool: The tfcompile binary. A non-default can be passed to
       use a tfcompile built with extra dependencies.
-    deps: a list of extra deps to include on the build rules for
-      the generated library.
+    include_standard_runtime_deps: If True, the standard list of kernel/runtime
+      deps is added to deps.  If False, deps must contain the full set of deps
+      needed by the generated library.
+    enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated program,
+      and emit metadata that lets us pretty-print the gathered profile counters.
+    deps: a list of deps to include on the build rules for the generated
+      library, added to the standard deps if standard_runtime_deps is True.
     tags: tags to apply to subsidiary build rules.
 
   The output header is called <name>.h.
@@ -99,6 +106,7 @@ def tf_library(name, graph, config,
 
     # Now run freeze_graph to convert variables into constants.
     freeze_args = (" --input_graph=$(location " + graph + ")" +
+                   " --checkpoint_version=1" +
                    " --input_binary=" + str(not graph.endswith(".pbtxt")) +
                    " --input_checkpoint=$(location " + freeze_checkpoint + ")" +
                    " --output_graph=$(location " + freeze_file + ")" +
@@ -125,8 +133,17 @@ def tf_library(name, graph, config,
 
   # Rule that runs tfcompile to produce the header and object file.
   header_file = name + ".h"
-  object_file = name + ".o"
-  ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
+  metadata_object_file = name + "_tfcompile_metadata.o"
+  function_object_file = name + "_tfcompile_function.o"
+  ep = ("__" + native.package_name() + "__" + name).replace("/", "_")
+  if type(tfcompile_flags) == type(""):
+    flags = tfcompile_flags
+  else:
+    flags = " ".join(["'" + arg.replace("'", "'\\''") + "'" for arg in (tfcompile_flags or [])])
+  if enable_xla_hlo_profiling:
+    profiling_flag = "--xla_hlo_profile"
+  else:
+    profiling_flag = ""
   native.genrule(
       name=("gen_" + name),
       srcs=[
@@ -135,7 +152,8 @@ def tf_library(name, graph, config,
       ],
       outs=[
           header_file,
-          object_file,
+          metadata_object_file,
+          function_object_file,
       ],
       cmd=("$(location " + tfcompile_tool + ")" +
            " --graph=$(location " + tfcompile_graph + ")" +
@@ -144,8 +162,9 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
-           " --out_object=$(@D)/" + object_file +
-           " " + (tfcompile_flags or "")),
+           " --out_metadata_object=$(@D)/" + metadata_object_file +
+           " --out_function_object=$(@D)/" + function_object_file +
+           " " + flags + " " + profiling_flag),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -162,33 +181,64 @@ def tf_library(name, graph, config,
       tags=tags,
   )
 
+  # Rule that runs tfcompile to produce the SessionModule proto, useful for
+  # debugging.  TODO(b/64813587): Once the SessionModule proto is
+  # deterministic, move this into the main rule above.
+  session_module_pb = name + "_session_module.pb"
+  native.genrule(
+      name=(name + "_session_module"),
+      srcs=[
+          tfcompile_graph,
+          config,
+      ],
+      outs=[
+          session_module_pb,
+      ],
+      cmd=("$(location " + tfcompile_tool + ")" +
+           " --graph=$(location " + tfcompile_graph + ")" +
+           " --config=$(location " + config + ")" +
+           " --entry_point=" + ep +
+           " --cpp_class=" + cpp_class +
+           " --target_triple=" + target_llvm_triple() +
+           " --out_session_module=$(@D)/" + session_module_pb +
+           " " + flags),
+      tools=[tfcompile_tool],
+      visibility=visibility,
+      testonly=testonly,
+      local=1,
+      tags=tags,
+  )
+
   # The cc_library rule packaging up the header and object file, and needed
   # kernel implementations.
+  need_xla_data_proto = (flags and flags.find("--gen_program_shape") != -1)
   native.cc_library(
       name=name,
-      srcs=[object_file],
+      srcs=[function_object_file, metadata_object_file],
       hdrs=[header_file],
       visibility=visibility,
       testonly=testonly,
       deps = [
+          # These deps are required by all tf_library targets even if
+          # include_standard_runtime_deps is False.  Without them, the
+          # generated code will fail to compile.
+          "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+          "//tensorflow/core:framework_lite",
+      ] + (need_xla_data_proto and [
+          # If we're generating the program shape, we must depend on the proto.
+          "//tensorflow/compiler/xla:xla_data_proto",
+      ] or []) + (enable_xla_hlo_profiling and [
+          "//tensorflow/compiler/xla/service:hlo_profile_printer_data"
+      ] or []) + (include_standard_runtime_deps and [
           # TODO(cwhipkey): only depend on kernel code that the model actually needed.
-          "//tensorflow/compiler/tf2xla/kernels:gather_op_kernel_float_int32",
-          "//tensorflow/compiler/tf2xla/kernels:gather_op_kernel_float_int64",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
           "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
-          "//tensorflow/compiler/aot:runtime",
-          "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
-          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
-          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_neon",
-          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_sse4_1",
           "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
           "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
           "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
           "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
-          "//tensorflow/compiler/xla:executable_run_options",
           "//third_party/eigen3",
-          "//tensorflow/core:framework_lite",
-          ] + (deps or []),
+      ] or []) + (deps or []),
       tags=tags,
   )
 
@@ -222,13 +272,16 @@ def tf_library(name, graph, config,
         tags=tags,
     )
 
-    # The cc_test rule for the generated code.
-    native.cc_test(
+    # The cc_test rule for the generated code.  To ensure that this works
+    # reliably across build configurations, we must use tf_cc_test instead of
+    # native.cc_test.  This is related to how we build
+    # //tensorflow/core:lib -- see the note in tensorflow/core/BUILD
+    # for more details.
+    tf_cc_test(
         name=test_name,
         srcs=[test_file],
         deps=[
             ":" + name,
-            "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
             "//tensorflow/compiler/aot:runtime",
             "//tensorflow/compiler/aot:tf_library_test_main",
             "//tensorflow/compiler/xla:executable_run_options",
@@ -243,7 +296,7 @@ def tf_library(name, graph, config,
     benchmark_name = name + "_benchmark"
     benchmark_file = benchmark_name + ".cc"
     benchmark_main = ("//tensorflow/compiler/aot:" +
-        "benchmark_main.template")
+                      "benchmark_main.template")
 
     # Rule to rewrite benchmark.cc to produce the benchmark_file.
     native.genrule(
@@ -260,7 +313,9 @@ def tf_library(name, graph, config,
         tags=tags,
     )
 
-    # The cc_benchmark rule for the generated code.
+    # The cc_benchmark rule for the generated code.  This does not need the
+    # tf_cc_binary since we (by deliberate design) do not depend on
+    # //tensorflow/core:lib.
     #
     # Note: to get smaller size on android for comparison, compile with:
     #    --copt=-fvisibility=hidden
@@ -274,7 +329,6 @@ def tf_library(name, graph, config,
         linkopts = if_android(["-pie", "-s"]),
         deps=[
             ":" + name,
-            "//tensorflow/compiler/tf2xla:xla_local_runtime_context",
             "//tensorflow/compiler/aot:benchmark",
             "//tensorflow/compiler/aot:runtime",
             "//tensorflow/compiler/xla:executable_run_options",
@@ -284,7 +338,6 @@ def tf_library(name, graph, config,
         ]),
         tags=tags,
     )
-
 
 def target_llvm_triple():
   """Returns the target LLVM triple to be used for compiling the target."""

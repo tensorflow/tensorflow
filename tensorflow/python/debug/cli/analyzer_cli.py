@@ -29,6 +29,7 @@ import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -140,11 +141,13 @@ class DebugAnalyzer(object):
   _GRAPH_STRUCT_OP_TYPE_BLACKLIST = (
       "_Send", "_Recv", "_HostSend", "_HostRecv", "_Retval")
 
-  def __init__(self, debug_dump):
+  def __init__(self, debug_dump, config):
     """DebugAnalyzer constructor.
 
     Args:
       debug_dump: A DebugDumpDir object.
+      config: A `cli_config.CLIConfig` object that carries user-facing
+        configurations.
     """
 
     self._debug_dump = debug_dump
@@ -153,6 +156,21 @@ class DebugAnalyzer(object):
     # Initialize tensor filters state.
     self._tensor_filters = {}
 
+    self._build_argument_parsers(config)
+    config.set_callback("graph_recursion_depth",
+                        self._build_argument_parsers)
+
+    # TODO(cais): Implement list_nodes.
+
+  def _build_argument_parsers(self, config):
+    """Build argument parsers for DebugAnalayzer.
+
+    Args:
+      config: A `cli_config.CLIConfig` object.
+
+    Returns:
+      A dict mapping command handler name to `ArgumentParser` instance.
+    """
     # Argument parsers for command handlers.
     self._arg_parsers = {}
 
@@ -167,6 +185,15 @@ class DebugAnalyzer(object):
         type=str,
         default="",
         help="List only Tensors passing the filter of the specified name")
+    ap.add_argument(
+        "-fenn",
+        "--filter_exclude_node_names",
+        dest="filter_exclude_node_names",
+        type=str,
+        default="",
+        help="When applying the tensor filter, exclude node with names "
+        "matching the regular expression. Applicable only if --tensor_filter "
+        "or -f is used.")
     ap.add_argument(
         "-n",
         "--node_name_filter",
@@ -242,7 +269,7 @@ class DebugAnalyzer(object):
         "--depth",
         dest="depth",
         type=int,
-        default=20,
+        default=config.get("graph_recursion_depth"),
         help="Maximum depth of recursion used when showing the input tree.")
     ap.add_argument(
         "-r",
@@ -273,7 +300,7 @@ class DebugAnalyzer(object):
         "--depth",
         dest="depth",
         type=int,
-        default=20,
+        default=config.get("graph_recursion_depth"),
         help="Maximum depth of recursion used when showing the output tree.")
     ap.add_argument(
         "-r",
@@ -384,9 +411,13 @@ class DebugAnalyzer(object):
         action="store_true",
         help="Print the tensor in its entirety, i.e., do not use ellipses "
         "(may be slow for large results).")
+    ap.add_argument(
+        "-w",
+        "--write_path",
+        default="",
+        help="Path of the numpy file to write the evaluation result to, "
+        "using numpy.save()")
     self._arg_parsers["eval"] = ap
-
-    # TODO(cais): Implement list_nodes.
 
   def add_tensor_filter(self, filter_name, filter_callable):
     """Add a tensor filter.
@@ -462,6 +493,10 @@ class DebugAnalyzer(object):
 
     Returns:
       Output text lines as a RichTextLines object.
+
+    Raises:
+      ValueError: If `--filter_exclude_node_names` is used without `-f` or
+        `--tensor_filter` being used.
     """
 
     # TODO(cais): Add annotations of substrings for dumped tensor names, to
@@ -498,8 +533,15 @@ class DebugAnalyzer(object):
         _add_main_menu(output, node_name=None, enable_list_tensors=False)
         return output
 
-      data_to_show = self._debug_dump.find(filter_callable)
+      data_to_show = self._debug_dump.find(
+          filter_callable,
+          exclude_node_names=parsed.filter_exclude_node_names)
     else:
+      if parsed.filter_exclude_node_names:
+        raise ValueError(
+            "The flag --filter_exclude_node_names is valid only when "
+            "the flag -f or --tensor_filter is used.")
+
       data_to_show = self._debug_dump.dumped_tensor_data
 
     # TODO(cais): Implement filter by lambda on tensor value.
@@ -956,7 +998,8 @@ class DebugAnalyzer(object):
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
             highlight_options=highlight_options,
-            include_numeric_summary=parsed.numeric_summary)
+            include_numeric_summary=parsed.numeric_summary,
+            write_path=parsed.write_path)
       else:
         output = cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
@@ -1002,7 +1045,8 @@ class DebugAnalyzer(object):
             np_printoptions,
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
-            highlight_options=highlight_options)
+            highlight_options=highlight_options,
+            write_path=parsed.write_path)
       _add_main_menu(output, node_name=node_name, enable_print_tensor=False)
 
     return output
@@ -1055,7 +1099,8 @@ class DebugAnalyzer(object):
         "from eval of expression '%s'" % parsed.expression,
         np_printoptions,
         print_all=parsed.print_all,
-        include_numeric_summary=True)
+        include_numeric_summary=True,
+        write_path=parsed.write_path)
 
   def _reconstruct_print_source_command(self,
                                         parsed,
@@ -1397,7 +1442,7 @@ class DebugAnalyzer(object):
 
     for i in xrange(len(all_inputs)):
       inp = all_inputs[i]
-      op_type = self._debug_dump.node_op_type(inp)
+      op_type = self._debug_dump.node_op_type(debug_graphs.get_node_name(inp))
       if op_type in self._GRAPH_STRUCT_OP_TYPE_BLACKLIST:
         continue
 
@@ -1540,7 +1585,8 @@ class DebugAnalyzer(object):
 def create_analyzer_ui(debug_dump,
                        tensor_filters=None,
                        ui_type="curses",
-                       on_ui_exit=None):
+                       on_ui_exit=None,
+                       config=None):
   """Create an instance of CursesUI based on a DebugDumpDir object.
 
   Args:
@@ -1549,19 +1595,22 @@ def create_analyzer_ui(debug_dump,
       filter (Callable).
     ui_type: (str) requested UI type, e.g., "curses", "readline".
     on_ui_exit: (`Callable`) the callback to be called when the UI exits.
+    config: A `cli_config.CLIConfig` object.
 
   Returns:
     (base_ui.BaseUI) A BaseUI subtype object with a set of standard analyzer
       commands and tab-completions registered.
   """
+  if config is None:
+    config = cli_config.CLIConfig()
 
-  analyzer = DebugAnalyzer(debug_dump)
+  analyzer = DebugAnalyzer(debug_dump, config=config)
   if tensor_filters:
     for tensor_filter_name in tensor_filters:
       analyzer.add_tensor_filter(
           tensor_filter_name, tensor_filters[tensor_filter_name])
 
-  cli = ui_factory.get_ui(ui_type, on_ui_exit=on_ui_exit)
+  cli = ui_factory.get_ui(ui_type, on_ui_exit=on_ui_exit, config=config)
   cli.register_command_handler(
       "list_tensors",
       analyzer.list_tensors,

@@ -159,9 +159,12 @@ class FusedConv2DBiasActivationTest(test.TestCase):
   def _DtypesToTest(self, use_gpu):
     return [dtypes.float32]
 
+  def _FilterFormatsToTest(self, use_gpu):
+    return ["HWIO", "OIHW"]
+
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, bias,
                             strides, padding, activation_mode, data_format,
-                            dtype):
+                            filter_format, dtype):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -174,6 +177,7 @@ class FusedConv2DBiasActivationTest(test.TestCase):
       padding: Padding type.
       activation_mode: Activation mode.
       data_format: Format of the data tensors.
+      filter_format: Filter format to use for the fused convolution.
       dtype: Data type for inputs and outputs.
     Returns:
       Symbolic tensor value and reference value that can be used to
@@ -192,6 +196,9 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     with self.test_session(use_gpu=True):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
+      fused_t2 = t2
+      if filter_format == "OIHW":
+        fused_t2 = HwioToOihw(t2)
       t3 = constant_op.constant(x3, shape=[bias_size], dtype=dtype)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
@@ -199,11 +206,12 @@ class FusedConv2DBiasActivationTest(test.TestCase):
         strides = test_util.NHWCToNCHW(strides)
       output = fused_conv2d_bias_activation_op.fused_conv2d_bias_activation(
           t1,
-          t2,
+          fused_t2,
           t3,
           strides=strides,
           padding=padding,
           data_format=data_format,
+          filter_format=filter_format,
           activation_mode=activation_mode)
       ref_conv_output = nn_ops.conv2d(
           t1, t2, strides=strides, padding=padding, data_format=data_format)
@@ -268,9 +276,10 @@ class FusedConv2DBiasActivationTest(test.TestCase):
     ref_tensors = []
     for (data_format, use_gpu) in GetTestConfigs():
       for dtype in self._DtypesToTest(use_gpu):
-        result, expected = self._SetupValuesForDevice(
-            tensor_in_sizes, filter_in_sizes, bias, strides, padding, "Relu",
-            data_format, dtype)
+        for filter_format in self._FilterFormatsToTest(use_gpu):
+          result, expected = self._SetupValuesForDevice(
+              tensor_in_sizes, filter_in_sizes, bias, strides, padding, "Relu",
+              data_format, filter_format, dtype)
         tensors.append(result)
         ref_tensors.append(expected)
       with self.test_session() as sess:
@@ -280,8 +289,8 @@ class FusedConv2DBiasActivationTest(test.TestCase):
           conv = tensors[i]
           value = values[i]
           ref_value = ref_values[i]
-          print("expected = ", ref_value)
-          print("actual = ", value)
+          tf_logging.info("expected = ", ref_value)
+          tf_logging.info("actual = ", value)
           tol = 1e-5
           if value.dtype == np.float16:
             tol = 1e-3
@@ -557,7 +566,7 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding,
   return Test
 
 
-def CalculateCovolvedOutputDim(input_dim, filter_dim, stride, padding_type):
+def CalculateConvolvedOutputDim(input_dim, filter_dim, stride, padding_type):
   """Calculates the size of an output dimension of a strided convolution.
 
   Given the sizes of the corresponding dimension of the input and filter shapes,
@@ -607,6 +616,10 @@ def NchwToNchwVectC(in_tensor):
   return array_ops.transpose(t, [0, 1, 3, 4, 2])
 
 
+def HwioToOihw(in_tensor):
+  return array_ops.transpose(in_tensor, [3, 2, 0, 1])
+
+
 def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
                                           padding, strides, side_input_scale,
                                           side_input, biases):
@@ -645,6 +658,36 @@ def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
 
 class FusedConvInt8Tests(test.TestCase):
   _test_params = [
+      {
+          "batch_size": 1,
+          "input_channels": 4,
+          "output_channels": 4,
+          "input_height": 8,
+          "input_width": 8,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 2,
+          "horizontal_stride": 2,
+          "conv_input_scale": 0.002,
+          "side_input_scale": 0.0,
+          "bias_scale": 1,
+          "padding_type": "SAME"
+      },
+      {
+          "batch_size": 1,
+          "input_channels": 4,
+          "output_channels": 4,
+          "input_height": 6,
+          "input_width": 6,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 2,
+          "horizontal_stride": 2,
+          "conv_input_scale": 0.002,
+          "side_input_scale": 0.0,
+          "bias_scale": 1,
+          "padding_type": "SAME"
+      },
       {
           "batch_size": 2,
           "input_channels": 8,
@@ -784,11 +827,12 @@ class FusedConvInt8Tests(test.TestCase):
             maxval=1.0,
             dtype=dtypes.float32), -1.0, 1.0, dtypes.qint8)
 
-    output_height = CalculateCovolvedOutputDim(input_height, filter_height,
-                                               vertical_stride, padding_type)
-    output_width = CalculateCovolvedOutputDim(input_width, filter_width,
-                                              horizontal_stride, padding_type)
-    print("output_height=", output_height, ", output_width=", output_width)
+    output_height = CalculateConvolvedOutputDim(input_height, filter_height,
+                                                vertical_stride, padding_type)
+    output_width = CalculateConvolvedOutputDim(input_width, filter_width,
+                                               horizontal_stride, padding_type)
+    tf_logging.info("output_height=", output_height, ", output_width=", 
+			                 output_width)
 
     side_input, _, _ = gen_array_ops.quantize_v2(
         random_ops.random_uniform(
@@ -823,8 +867,8 @@ class FusedConvInt8Tests(test.TestCase):
 
     with self.test_session(use_gpu=True) as sess:
       actual_y, expected_y = sess.run([actual, expected])
-      print("actual_y = ", actual_y)
-      print("expected_y = ", expected_y)
+      tf_logging.info("actual_y = ", actual_y)
+      tf_logging.info("expected_y = ", expected_y)
       self.assertTrue(np.array_equal(actual_y, expected_y))
 
   def testFusedConvInt8(self):

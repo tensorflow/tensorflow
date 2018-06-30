@@ -25,6 +25,7 @@ limitations under the License.
 %include "tensorflow/python/util/tfprof.i"
 
 %include "tensorflow/python/lib/core/py_func.i"
+%include "tensorflow/python/lib/core/py_exception_registry.i"
 
 %include "tensorflow/python/lib/io/py_record_reader.i"
 %include "tensorflow/python/lib/io/py_record_writer.i"
@@ -33,6 +34,8 @@ limitations under the License.
 %include "tensorflow/python/client/tf_session.i"
 %include "tensorflow/python/client/device_lib.i"
 
+%include "tensorflow/python/lib/core/bfloat16.i"
+
 %include "tensorflow/python/lib/io/file_io.i"
 %include "tensorflow/python/training/quantize_training.i"
 %include "tensorflow/python/training/server_lib.i"
@@ -40,11 +43,15 @@ limitations under the License.
 %include "tensorflow/python/framework/python_op_gen.i"
 
 %include "tensorflow/python/framework/cpp_shape_inference.i"
+%include "tensorflow/python/platform/stacktrace_handler.i"
 %include "tensorflow/python/util/kernel_registry.i"
 
 %include "tensorflow/python/util/transform_graph.i"
 
+%include "tensorflow/python/util/util.i"
+
+%include "tensorflow/python/grappler/cluster.i"
+%include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"
-

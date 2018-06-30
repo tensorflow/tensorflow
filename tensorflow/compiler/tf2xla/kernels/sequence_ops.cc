@@ -55,9 +55,10 @@ Status GetIntValue(int index, XlaOpKernelContext* ctx, int64* value) {
 
 // The type-specific part of the implementation of Range.
 template <typename T>
-Status CreateRangeTensor(const xla::Literal& start_literal,
-                         const xla::Literal& limit_literal,
-                         const xla::Literal& delta_literal, Tensor* output) {
+Status CreateRangeTensor(const xla::LiteralSlice& start_literal,
+                         const xla::LiteralSlice& limit_literal,
+                         const xla::LiteralSlice& delta_literal,
+                         Tensor* output) {
   T start = start_literal.Get<T>({});
   T limit = limit_literal.Get<T>({});
   T delta = delta_literal.Get<T>({});
@@ -67,13 +68,13 @@ Status CreateRangeTensor(const xla::Literal& start_literal,
   }
   if (delta > 0) {
     if (start > limit) {
-      return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
-                                     start, "/", limit);
+      return errors::InvalidArgument(
+          "Requires start <= limit when delta > 0: ", start, "/", limit);
     }
   } else {
     if (start < limit) {
-      return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
-                                     start, "/", limit);
+      return errors::InvalidArgument(
+          "Requires start >= limit when delta < 0: ", start, "/", limit);
     }
   }
   int64 size =
@@ -138,7 +139,11 @@ class RangeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Range"), RangeOp);
+REGISTER_XLA_OP(Name("Range")
+                    .CompileTimeConstInput("start")
+                    .CompileTimeConstInput("limit")
+                    .CompileTimeConstInput("delta"),
+                RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
  public:
@@ -207,7 +212,11 @@ class LinSpaceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("LinSpace"), LinSpaceOp);
+REGISTER_XLA_OP(Name("LinSpace")
+                    .CompileTimeConstInput("start")
+                    .CompileTimeConstInput("stop")
+                    .CompileTimeConstInput("num"),
+                LinSpaceOp);
 
 }  // namespace
 }  // namespace tensorflow

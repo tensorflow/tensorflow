@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -30,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -60,19 +61,29 @@ bool IsRematerializable(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
+    case HloOpcode::kConditional:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kInfeed:
     case HloOpcode::kParameter:
-    case HloOpcode::kRecv:
-    case HloOpcode::kSend:
-    case HloOpcode::kTrace:
     case HloOpcode::kWhile:
       return false;
     default:
-      return true;
+      return !instruction->HasSideEffect();
   }
+}
+
+// Checks whether an instruction can be rematerialized, by looking up the
+// cache before, and eventually calling the IsRematerializable() API.
+bool CanBeRematerialized(
+    const HloInstruction* instruction,
+    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
+  auto it = remat_able->find(instruction);
+  if (it != remat_able->end()) {
+    return it->second;
+  }
+  bool rematerializable = IsRematerializable(instruction);
+  (*remat_able)[instruction] = rematerializable;
+  return rematerializable;
 }
 
 // Type holding a unique identifier for each Buffer object.
@@ -277,9 +288,8 @@ ItemList GetUsers(const InstructionList& instruction_list,
   for (const BufferAlias& buffer_alias :
        points_to_analysis.GetBufferAliases(*logical_buffer)) {
     for (const HloInstruction* user : buffer_alias.instruction()->users()) {
-      if (DoesNotUseOperandBuffer(buffer_alias.instruction(),
-                                  buffer_alias.index(), user,
-                                  points_to_analysis)) {
+      if (points_to_analysis.DoesNotUseOperandBuffer(
+              buffer_alias.instruction(), buffer_alias.index(), user)) {
         // The alias may be an operand of 'user', but the LogicalBuffer cannot
         // possibly be used by the instruction so ignore 'user'. This is the
         // case, for example, for the tuple element buffers in a GetTupleElement
@@ -571,7 +581,9 @@ Status MemoryUsageTracker::BeginInstruction(Item* item) {
   VLOG(3) << "  memory usage = " << memory_usage_;
   VLOG(10) << ToString();
 
-  DCHECK(Check());
+  if (VLOG_IS_ON(1)) {
+    DCHECK(Check());
+  }
   return Status::OK();
 }
 
@@ -608,8 +620,9 @@ Status MemoryUsageTracker::EndInstruction() {
   VLOG(3) << "  memory usage = " << memory_usage_;
   VLOG(10) << ToString();
 
-  DCHECK(Check());
-
+  if (VLOG_IS_ON(1)) {
+    DCHECK(Check());
+  }
   return Status::OK();
 }
 
@@ -761,9 +774,9 @@ bool MemoryUsageTracker::Check() const {
   };
 
   // Verify buffers_defined per instruction.
-  for (auto& instruction : computation_->instructions()) {
+  for (auto* instruction : computation_->instructions()) {
     const BufferIdList& defined_buffers =
-        instruction_list_.GetItem(instruction.get())->buffers_defined;
+        instruction_list_.GetItem(instruction)->buffers_defined;
     CHECK(elements_are_unique(defined_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique defined buffers: "
@@ -774,7 +787,7 @@ bool MemoryUsageTracker::Check() const {
                });
 
     for (const Buffer& buffer : buffers_) {
-      if (buffer.defining_instruction->instruction == instruction.get()) {
+      if (buffer.defining_instruction->instruction == instruction) {
         CHECK(std::find(defined_buffers.begin(), defined_buffers.end(),
                         buffer.id) != defined_buffers.end())
             << "Instruction " << instruction->name()
@@ -784,9 +797,9 @@ bool MemoryUsageTracker::Check() const {
   }
 
   // Verify buffers_used per instruction.
-  for (auto& instruction : computation_->instructions()) {
+  for (auto* instruction : computation_->instructions()) {
     const BufferIdList& used_buffers =
-        instruction_list_.GetItem(instruction.get())->buffers_used;
+        instruction_list_.GetItem(instruction)->buffers_used;
     CHECK(elements_are_unique(used_buffers))
         << "Instruction " << instruction->name()
         << " does not have unique used buffers: "
@@ -811,24 +824,6 @@ bool MemoryUsageTracker::Check() const {
     CHECK_EQ(buffer.unfinished_user_count, unfinished_uses)
         << "Incorrect unplaced use count for " << buffer.ToString();
   }
-
-  // Verify live set size against memory_usage_.
-  int64 live_size = 0;
-  for (const Buffer& buffer : buffers_) {
-    // The while instruction reuses its input buffers as output buffers so
-    // don't double count its buffers if it is currently executing.
-    if (IsCurrentlyLive(buffer.id) &&
-        !(buffer.defining_instruction == in_progress_item_ &&
-          in_progress_item_->instruction->opcode() == HloOpcode::kWhile)) {
-      live_size += AllocatedSize(buffer.id);
-    }
-  }
-  CHECK(live_size == memory_usage_)
-      << "Live set size " << live_size << " is not same as memory usage "
-      << memory_usage_
-      << ". This could happen if some nodes defined in the "
-         "computation are not being used/executed.";
-
   return true;
 }
 
@@ -863,9 +858,10 @@ int64 RematerializationCost(const HloInstruction* instruction,
 // candidate which reduce memory use at the program point of the current
 // instruction as indicated by memory_tracker. nullptr is returned if no
 // candidate can be found.
-Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
-                                     const InstructionList& instruction_list,
-                                     int64 memory_limit_bytes) {
+Item* PickRematerializationCandidate(
+    const MemoryUsageTracker& memory_tracker,
+    const InstructionList& instruction_list, int64 memory_limit_bytes,
+    tensorflow::gtl::FlatMap<const HloInstruction*, bool>* remat_able) {
   Item* best_item = nullptr;
   int64 best_cost = 0;
 
@@ -889,8 +885,7 @@ Item* PickRematerializationCandidate(const MemoryUsageTracker& memory_tracker,
               << " is excluded from rematerialization";
       continue;
     }
-
-    if (!IsRematerializable(candidate)) {
+    if (!CanBeRematerialized(candidate, remat_able)) {
       VLOG(5) << "candidate " << candidate->name()
               << " not viable: is not rematerializable";
       continue;
@@ -994,6 +989,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // blacklist.
   tensorflow::gtl::FlatSet<const HloInstruction*> remat_move_instructions;
 
+  // The map from instructions to their rematerializable status.
+  tensorflow::gtl::FlatMap<const HloInstruction*, bool> remat_able;
+
   // The peak memory of the computation at any point in the instruction
   // sequence.
   int64 peak_memory = memory_tracker.memory_usage();
@@ -1031,7 +1029,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
               << ", limit is " << HumanReadableNumBytes(memory_limit_bytes);
 
       Item* best_item = PickRematerializationCandidate(
-          memory_tracker, instruction_list, memory_limit_bytes);
+          memory_tracker, instruction_list, memory_limit_bytes, &remat_able);
 
       if (best_item == nullptr) {
         VLOG(3) << "Unable to find rematerialization candidate at program "
@@ -1044,7 +1042,9 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
       HloInstruction* best = best_item->instruction;
       VLOG(1) << "Rematerializing instruction " << best->name() << " (saving "
-              << memory_tracker.MemoryReducedIfRematerialized(best_item) << ")";
+              << HumanReadableNumBytes(
+                     memory_tracker.MemoryReducedIfRematerialized(best_item))
+              << ")";
       changed = true;
       remat_count++;
 
@@ -1124,8 +1124,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         net_instructions_added++;
       }
 
-      VLOG(3) << "memory_usage after rematerialization = "
-              << memory_tracker.memory_usage();
+      VLOG(1) << "memory_usage after rematerialization = "
+              << HumanReadableNumBytes(memory_tracker.memory_usage());
     }
 
     const CallSite* callsite = call_graph_node.GetCallSite(instruction);
@@ -1169,8 +1169,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
   // Verify some invariants on the memory tracker.
   CHECK_EQ(memory_tracker.memory_usage(), 0);
-  for (auto& instruction : computation->instructions()) {
-    CHECK(memory_tracker.IsPlaced(instruction.get()));
+  for (auto* instruction : computation->instructions()) {
+    CHECK(memory_tracker.IsPlaced(instruction));
   }
 
   VLOG(1) << "In computation " << computation->name() << " rematerialized "
@@ -1202,7 +1202,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
 StatusOr<bool> HloRematerialization::Run(
     HloModule* module, SequentialHloOrdering::HloModuleSequence* sequence,
-    int64 memory_limit_bytes, RematerializationSizes* sizes) {
+    int64 memory_limit_bytes, RematerializationSizes* sizes,
+    bool run_copy_elision) {
   // The sequence is constructed entirely by this method.
   TF_RET_CHECK(sequence->empty());
 
@@ -1231,11 +1232,21 @@ StatusOr<bool> HloRematerialization::Run(
 
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
   // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence,
-                      CreateMemoryMinimizingSequence(
-                          *module, [this](const LogicalBuffer& buffer) {
-                            return size_function_(buffer.shape());
-                          }));
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
+                                     *module,
+                                     [this](const BufferValue& buffer) {
+                                       return size_function_(buffer.shape());
+                                     },
+                                     scheduler_algorithm_));
+  if (run_copy_elision) {
+    // We run a separate pass of copy elision here because the sequential
+    // ordering from the HLO schedule allows for more copies to be eliminated.
+    // TODO(b/80249101): Instead of a separate copy elision pass, use the
+    // ordering from the HLO schedule directly for copy insertion.
+    SequentialHloOrdering ordering(module, *sequence);
+    TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, module));
+  }
+
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
   call_graph_ = CallGraph::Build(module);
@@ -1274,23 +1285,18 @@ StatusOr<bool> HloRematerialization::Run(
 
   // After DCE, the module sequence may include instructions which no longer
   // exist.
-  for (const auto& computation : module->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
-    if (sequence->at(computation.get()).size() !=
-        computation->instruction_count()) {
+  for (const auto* computation : module->MakeNonfusionComputations()) {
+    if (sequence->at(computation).size() != computation->instruction_count()) {
       // A size mismatch between the computation instruction count and the size
       // of the ordering of instructions can only be caused by DCE. Rebuild the
       // order by removing the deleted instructions from the order.
       tensorflow::gtl::FlatSet<const HloInstruction*> instruction_set;
       for (const auto& instruction : computation->instructions()) {
-        instruction_set.insert(instruction.get());
+        instruction_set.insert(instruction);
       }
       // Move the old order into a temporary vector, then build new order
       // inplace.
-      std::vector<const HloInstruction*>& order =
-          sequence->at(computation.get());
+      std::vector<const HloInstruction*>& order = sequence->at(computation);
       std::vector<const HloInstruction*> old_order;
       using std::swap;
       swap(order, old_order);
@@ -1299,7 +1305,7 @@ StatusOr<bool> HloRematerialization::Run(
                    [&instruction_set](const HloInstruction* instruction) {
                      return ContainsKey(instruction_set, instruction);
                    });
-      TF_RET_CHECK(sequence->at(computation.get()).size() ==
+      TF_RET_CHECK(sequence->at(computation).size() ==
                    computation->instruction_count());
     }
   }
@@ -1341,10 +1347,12 @@ StatusOr<bool> HloRematerialization::Run(
 /* static */ StatusOr<bool> HloRematerialization::RematerializeAndSchedule(
     const HloRematerialization::ShapeSizeFunction& size_function,
     int64 memory_limit_bytes, HloModule* hlo_module,
+    MemorySchedulerAlgorithm scheduler_algorithm,
     SequentialHloOrdering::HloModuleSequence* sequence,
-    RematerializationSizes* sizes) {
-  HloRematerialization remat(size_function);
-  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes);
+    RematerializationSizes* sizes, bool run_copy_elision) {
+  HloRematerialization remat(scheduler_algorithm, size_function);
+  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes,
+                   run_copy_elision);
 }
 
 }  // namespace xla

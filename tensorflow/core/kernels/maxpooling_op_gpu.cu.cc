@@ -29,6 +29,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+template <bool propagate_nans, typename dtype>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool IsGreaterThan(dtype a, dtype b) {
+  if (propagate_nans) {
+    return !(a <= b);
+  } else {
+    return a > b;
+  }
+}
+
 // This is Yangqing's custom kernel for the maxpooling operation. There are
 // three functions: MaxPoolForwardNCHW and MaxPoolForwardNHWC are the two
 // forward functions, dealing with the forward case. MaxPoolBackward is the
@@ -51,7 +60,7 @@ namespace {
 // const int output_size = batch * channels * pooled_height * pooled_width;
 // MaxPoolForwardNCHW<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
 //                      kThreadsPerBlock, 0, cuda_stream>>>(...);
-template <typename dtype>
+template <bool propagate_nans, typename dtype>
 __global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
                                    const int channels, const int height,
                                    const int width, const int pooled_height,
@@ -77,7 +86,7 @@ __global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = c * height * width + h * width + w;
-        if (bottom_data_n[idx] > maxval) {
+        if (IsGreaterThan<propagate_nans>(bottom_data_n[idx], maxval)) {
           maxidx = idx;
           maxval = bottom_data_n[idx];
         }
@@ -126,7 +135,7 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
   }
 }
 
-template <typename dtype>
+template <bool propagate_nans, typename dtype>
 __global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
                                    const int height, const int width,
                                    const int channels, const int pooled_height,
@@ -153,7 +162,7 @@ __global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
         int idx = (h * width + w) * channels + c;
-        if (bottom_data_n[idx] > maxval) {
+        if (IsGreaterThan<propagate_nans>(bottom_data_n[idx], maxval)) {
           maxidx = idx;
           maxval = bottom_data_n[idx];
         }
@@ -390,15 +399,24 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
     const int channels, const int pooled_height, const int pooled_width,
     const int kernel_h, const int kernel_w, const int stride_h,
     const int stride_w, const int pad_t, const int pad_l, T* top_data,
-    int64* mask, const Eigen::GpuDevice& d) {
+    int64* mask, const Eigen::GpuDevice& d, bool propagate_nans) {
   const int kThreadsPerBlock = 1024;
   const int output_size = batch * channels * pooled_height * pooled_width;
-
-  MaxPoolForwardNHWC<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-                       kThreadsPerBlock, 0, d.stream()>>>(
-      output_size, bottom_data, height, width, channels, pooled_height,
-      pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-      top_data, mask);
+  if (propagate_nans) {
+    MaxPoolForwardNHWC<true>
+        <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+           kThreadsPerBlock, 0, d.stream()>>>(
+            output_size, bottom_data, height, width, channels, pooled_height,
+            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+            top_data, mask);
+  } else {
+    MaxPoolForwardNHWC<false>
+        <<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
+           kThreadsPerBlock, 0, d.stream()>>>(
+            output_size, bottom_data, height, width, channels, pooled_height,
+            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+            top_data, mask);
+  }
   return d.ok();
 }
 
@@ -432,10 +450,10 @@ bool MaxPoolBackwardWithArgmax<T>::operator()(
     T* bottom_diff, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
   SetZero<<<(input_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
-    kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
+            kThreadsPerBlock, 0, d.stream()>>>(input_size, bottom_diff);
   MaxPoolBackward<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
                     kThreadsPerBlock, 0, d.stream()>>>(
-                                        output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
+      output_size, top_diff, mask, top_offset, bottom_offset, bottom_diff);
   return d.ok();
 }
 

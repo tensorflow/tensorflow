@@ -61,7 +61,8 @@ class OptimizersTest(test.TestCase):
     optimizers = [
         "SGD", gradient_descent.GradientDescentOptimizer,
         gradient_descent.GradientDescentOptimizer(learning_rate=0.1),
-        lambda lr: gradient_descent.GradientDescentOptimizer(learning_rate=lr)
+        lambda lr: gradient_descent.GradientDescentOptimizer(learning_rate=lr),
+        "Momentum"
     ]
     for optimizer in optimizers:
       with ops.Graph().as_default() as g:
@@ -176,7 +177,7 @@ class OptimizersTest(test.TestCase):
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
       # Due to randomness the following number may change if graph is different.
-      self.assertAlmostEqual(var_value, 8.5591021, 4)
+      self.assertAlmostEqual(var_value, 9.86912, 4)
       self.assertEqual(global_step_value, 1)
 
   def testGradientNoiseWithClipping(self):
@@ -193,7 +194,7 @@ class OptimizersTest(test.TestCase):
       variables.global_variables_initializer().run()
       session.run(train, feed_dict={x: 5})
       var_value, global_step_value = session.run([var, global_step])
-      self.assertAlmostEqual(var_value, 9.0, 4)
+      self.assertAlmostEqual(var_value, 9.86912, 4)
       self.assertEqual(global_step_value, 1)
 
   def testGradientClip(self):

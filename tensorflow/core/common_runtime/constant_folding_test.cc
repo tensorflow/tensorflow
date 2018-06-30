@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -119,6 +120,58 @@ TEST_F(ConstantFoldingTest, Basic) {
   EXPECT_EQ(1, s2->num_inputs());
   ExpectNodeClose<float>(*(s2->in_nodes().begin()), {2.0, 1.0, 4.0, 3.0},
                          {2, 2});
+}
+
+// Tests that different node creation ordering creates same graph after constant
+// folding.
+TEST_F(ConstantFoldingTest, DeterministicFolding) {
+  auto build_graph_and_constant_folding = [](Graph& g, bool swap) -> Status {
+    Scope s = Scope::NewRootScope();
+    auto a = ops::Const<float>(s, {1.0}, {});
+    auto b = ops::Const<float>(s, {2.0}, {});
+
+    if (swap) {
+      auto add1 = ops::Add(s.WithOpName("add1"), a, b);
+      auto add2 = ops::Add(s.WithOpName("add2"), a, b);
+      auto s1 =
+          ops::_Send(s.WithOpName("s1"), add1, "add1", "sender", 0, "receiver");
+      auto s2 =
+          ops::_Send(s.WithOpName("s2"), add2, "add2", "sender", 0, "receiver");
+    } else {
+      // Swap the order of node creation.
+      auto add2 = ops::Add(s.WithOpName("add2"), a, b);
+      auto add1 = ops::Add(s.WithOpName("add1"), a, b);
+      auto s1 =
+          ops::_Send(s.WithOpName("s1"), add1, "add1", "sender", 0, "receiver");
+      auto s2 =
+          ops::_Send(s.WithOpName("s2"), add2, "add2", "sender", 0, "receiver");
+    }
+
+    TF_CHECK_OK(s.ToGraph(&g));
+    bool was_mutated;
+    int64 unique_id = 0;
+    auto generate_new_name = [&unique_id](Graph* graph, string old_name) {
+      return strings::StrCat(graph->NewName(old_name), "__cf__", unique_id++);
+    };
+    ConstantFoldingOptions opt{};
+    opt.generate_new_name = generate_new_name;
+    TF_CHECK_OK(
+        ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+    return Status::OK();
+  };
+
+  Graph g1(OpRegistry::Global());
+  TF_ASSERT_OK(build_graph_and_constant_folding(g1, false));
+  Graph g2(OpRegistry::Global());
+  TF_ASSERT_OK(build_graph_and_constant_folding(g2, true));
+  EXPECT_EQ(g1.num_nodes(), g2.num_nodes());
+  auto index = NodeNameIndex(g2);
+
+  // All the nodes in g1 are expected to be present in g2.
+  for (int64 i = 0; i < g1.num_nodes(); ++i) {
+    Node* n1 = g1.FindNodeId(i);
+    EXPECT_GT(index.count(n1->name()), 0);
+  }
 }
 
 TEST_F(ConstantFoldingTest, ConsiderFunction) {
@@ -259,6 +312,13 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
                             nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
+
+  // Increase the limit and the concat should now be constant folded.
+  ConstantFoldingOptions opt;
+  opt.max_constant_size_in_bytes = 10 * 1024 * 1024 + 4;
+  TF_EXPECT_OK(
+      ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {

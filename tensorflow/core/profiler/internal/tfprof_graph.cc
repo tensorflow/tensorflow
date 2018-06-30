@@ -31,7 +31,7 @@ GraphNode* TFGraph::CreateParentNode(const string& name) {
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFGraphParent);
   parent_nodes_[name] = std::unique_ptr<TFGraphNode>(
-      new TFGraphNode(node_defs_.back().get(), -1));
+      new TFGraphNode(node_defs_.back().get(), -1, nullptr));
   nodes_map_[name] =
       std::unique_ptr<GraphNode>(new GraphNode(parent_nodes_[name].get()));
   return nodes_map_[name].get();

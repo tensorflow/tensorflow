@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import time
+import math
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -83,13 +84,17 @@ class _StopAfterNEvalsHook(session_run_hook.SessionRunHook):
     """Constructs the run hook.
 
     Args:
-      num_evals: The number of evaluations to run for.
+      num_evals: The number of evaluations to run for. if set to None, will
+        iterate the dataset until all inputs are exhausted.
       log_progress: Whether to log evaluation progress, defaults to True.
     """
     # The number of evals to run for.
     self._num_evals = num_evals
     self._evals_completed = None
     self._log_progress = log_progress
+    # Reduce logging frequency if there are 20 or more evaluations.
+    self._log_frequency = (1 if (num_evals is None or num_evals < 20)
+                           else math.floor(num_evals / 10.))
 
   def _set_evals_completed_tensor(self, updated_eval_step):
     self._evals_completed = updated_eval_step
@@ -102,8 +107,13 @@ class _StopAfterNEvalsHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     evals_completed = run_values.results['evals_completed']
     if self._log_progress:
-      logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
-    if evals_completed >= self._num_evals:
+      if self._num_evals is None:
+        logging.info('Evaluation [%d]', evals_completed)
+      else:
+        if ((evals_completed % self._log_frequency) == 0 or
+            (self._num_evals == evals_completed)):
+          logging.info('Evaluation [%d/%d]', evals_completed, self._num_evals)
+    if self._num_evals is not None and evals_completed >= self._num_evals:
       run_context.request_stop()
 
 

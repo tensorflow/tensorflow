@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 
+#include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
-#include "tensorflow/core/kernels/reduction_ops_gpu_kernels.h"
 
 namespace tensorflow {
 
@@ -56,7 +56,7 @@ class L2LossOp<GPUDevice, T> : public OpKernel {
     Constants<GPUDevice> constants;
     functor::ReduceImpl<T, cub::Sum, T*, inputIterType, ReductionAxes>(
         context, (T*)output->flat<T>().data(), input_itr, 1,
-        input.flat<T>().size(), 1, 1, 0, constants.kZero, cub::Sum(), T(0));
+        input.flat<T>().size(), 1, 1, 0, constants.kZero, cub::Sum());
   }
 };
 

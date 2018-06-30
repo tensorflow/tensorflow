@@ -88,12 +88,12 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
     *suffix = ":" + input_parts[1];
   }
   StringPiece node_name_piece(input_parts[0]);
-  if (node_name_piece.Consume("^")) {
+  if (str_util::ConsumePrefix(&node_name_piece, "^")) {
     *prefix = "^";
   } else {
     *prefix = "";
   }
-  *node_name = node_name_piece.ToString();
+  *node_name = std::string(node_name_piece);
 }
 
 string NodeNameFromInput(const string& input_name) {
@@ -200,8 +200,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
       // for merge only wait for one non-control input.
       int32 num_control_edges = 0;
       for (int i = 0; i < node_def.input_size(); ++i) {
-        StringPiece input_name(node_def.input(i));
-        if (input_name.starts_with("^")) {
+        if (str_util::StartsWith(node_def.input(i), "^")) {
           num_control_edges++;
         }
       }
@@ -504,7 +503,7 @@ Status RenameNodeInputs(const GraphDef& input_graph_def,
           const string& dest_name = input_to_rename.second;
           bool is_match;
           string match_name;
-          if (StringPiece(source_name).ends_with(":*")) {
+          if (str_util::EndsWith(source_name, ":*")) {
             is_match = true;
             string prefix;
             string unused_node_name;
@@ -583,6 +582,19 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
   TF_RETURN_IF_ERROR(InOutTypesForNode(node_def, *op_def, inputs, outputs));
+  return Status::OK();
+}
+
+Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
+  if (shape_string.empty()) {
+    return errors::InvalidArgument("Specificed shape is empty.");
+  }
+  std::vector<int64> dims;
+  if (!str_util::SplitAndParseAsInts(shape_string, ',', &dims)) {
+    return errors::InvalidArgument("Could parse as shape: '", shape_string,
+                                   "'");
+  }
+  *result = TensorShape(dims);
   return Status::OK();
 }
 

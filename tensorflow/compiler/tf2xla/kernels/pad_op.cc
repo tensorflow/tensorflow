@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 
@@ -63,28 +64,27 @@ class PadOp : public XlaOpKernel {
       int before = pad_literal.Get<int32>({i, 0});
       int after = pad_literal.Get<int32>({i, 1});
       OP_REQUIRES(ctx, before >= 0 && after >= 0,
-                  errors::InvalidArgument("Paddings must be non-negative: ",
-                                          before, " ", after));
+                  errors::InvalidArgument(
+                      "Paddings must be non-negative: ", before, " ", after));
       dim->set_edge_padding_low(before);
       dim->set_edge_padding_high(after);
     }
 
     // PadV2 added a "constant_values" input that indicates the pad value.
-    xla::ComputationDataHandle constant_values;
+    xla::XlaOp constant_values;
     if (ctx->num_inputs() == 3) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->InputShape(2)),
                   errors::InvalidArgument("constant_values must be a scalar."));
-      ctx->SetOutput(0,
-                     ctx->builder()->Pad(ctx->Input(0), ctx->Input(2), config));
+      ctx->SetOutput(0, xla::Pad(ctx->Input(0), ctx->Input(2), config));
     } else {
       auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
-      ctx->SetOutput(0, ctx->builder()->Pad(ctx->Input(0), zero, config));
+      ctx->SetOutput(0, xla::Pad(ctx->Input(0), zero, config));
     }
   }
 };
 
-REGISTER_XLA_OP(Name("Pad"), PadOp);
-REGISTER_XLA_OP(Name("PadV2"), PadOp);
+REGISTER_XLA_OP(Name("Pad").CompileTimeConstInput("paddings"), PadOp);
+REGISTER_XLA_OP(Name("PadV2").CompileTimeConstInput("paddings"), PadOp);
 
 }  // namespace
 }  // namespace tensorflow

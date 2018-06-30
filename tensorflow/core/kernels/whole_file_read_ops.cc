@@ -134,7 +134,7 @@ class WriteFileOp : public OpKernel {
                     "Contents tensor must be scalar, but had shape: ",
                     contents_input->shape().DebugString()));
     const string& filename = filename_input->scalar<string>()();
-    const string dir = io::Dirname(filename).ToString();
+    const string dir = std::string(io::Dirname(filename));
     if (!context->env()->FileExists(dir).ok()) {
       OP_REQUIRES_OK(context, context->env()->RecursivelyCreateDir(dir));
     }

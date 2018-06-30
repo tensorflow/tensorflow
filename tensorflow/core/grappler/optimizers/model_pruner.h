@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_MODEL_PRUNER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_MODEL_PRUNER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_MODEL_PRUNER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_MODEL_PRUNER_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 
@@ -41,4 +41,4 @@ class ModelPruner : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_MODEL_PRUNER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_MODEL_PRUNER_H_

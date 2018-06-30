@@ -389,7 +389,7 @@ def create_train_op(total_loss,
     total_loss: A `Tensor` representing the total loss.
     optimizer: A tf.Optimizer to use for computing the gradients.
     global_step: A `Tensor` representing the global step variable. If left as
-      `_USE_GLOBAL_STEP`, then slim.variables.global_step() is used.
+      `_USE_GLOBAL_STEP`, then tf.contrib.framework.global_step() is used.
     update_ops: An optional list of updates to execute. If `update_ops` is
       `None`, then the update ops are set to the contents of the
       `tf.GraphKeys.UPDATE_OPS` collection. If `update_ops` is not `None`, but
@@ -552,7 +552,8 @@ def train(train_op,
           sync_optimizer=None,
           session_config=None,
           session_wrapper=None,
-          trace_every_n_steps=None):
+          trace_every_n_steps=None,
+          ignore_live_threads=False):
   """Runs a training loop using a TensorFlow supervisor.
 
   When the sync_optimizer is supplied, gradient updates are applied
@@ -570,14 +571,15 @@ def train(train_op,
       default, two `Boolean`, scalar ops called "should_stop" and "should_log"
       are provided.
     log_every_n_steps: The frequency, in terms of global steps, that the loss
-      and global step and logged.
+      and global step are logged.
     graph: The graph to pass to the supervisor. If no graph is supplied the
       default graph is used.
     master: The address of the tensorflow master.
     is_chief: Specifies whether or not the training is being run by the primary
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,
-      then slim.variables.get_or_create_global_step() is used.
+      then training_util.get_or_create_global_step(), that is,
+      tf.contrib.framework.global_step() is used.
     number_of_steps: The max number of gradient steps to take during training,
       as measured by 'global_step': training will stop if global_step is
       greater than 'number_of_steps'. If the value is left as None, training
@@ -615,6 +617,9 @@ def train(train_op,
     trace_every_n_steps: produce and save a `Timeline` in Chrome trace format
       and add it to the summaries every `trace_every_n_steps`. If None, no trace
       information will be produced or saved.
+    ignore_live_threads: If `True` ignores threads that remain running after
+      a grace period when stopping the supervisor, instead of raising a
+      RuntimeError.
 
   Returns:
     the value of the loss function after training.
@@ -734,6 +739,7 @@ def train(train_op,
   if summary_writer is not None:
     train_step_kwargs['summary_writer'] = sv.summary_writer
 
+  total_loss = None
   should_retry = True
   while should_retry:
     try:
@@ -749,9 +755,10 @@ def train(train_op,
           if logdir:
             sv.start_standard_services(sess)
         elif startup_delay_steps > 0:
+           # (use sys.maxsize because sys.maxint doesn't exist in Python 3)
           _wait_for_step(sess, global_step,
                          min(startup_delay_steps, number_of_steps or
-                             sys.maxint))
+                             sys.maxsize))
         threads = sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:
@@ -765,14 +772,17 @@ def train(train_op,
               logging.info('Stopping Training.')
               sv.request_stop()
               break
-        except errors.OutOfRangeError:
+        except errors.OutOfRangeError as e:
           # OutOfRangeError is thrown when epoch limit per
           # tf.train.limit_epochs is reached.
-          logging.info('Caught OutOfRangeError. Stopping Training.')
+          logging.info('Caught OutOfRangeError. Stopping Training. %s', e)
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')
           sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-          sv.stop(threads, close_summary_writer=True)
+          sv.stop(
+              threads,
+              close_summary_writer=True,
+              ignore_live_threads=ignore_live_threads)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

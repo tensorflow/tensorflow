@@ -19,9 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
 
 
@@ -31,7 +34,8 @@ class CrossShardOptimizer(optimizer.Optimizer):
   def __init__(self,
                opt,
                reduction=losses.Reduction.MEAN,
-               name="CrossShardOptimizer"):
+               name="CrossShardOptimizer",
+               group_assignment=None):
     """Construct a new cross-shard optimizer.
 
     Args:
@@ -39,6 +43,8 @@ class CrossShardOptimizer(optimizer.Optimizer):
       reduction: The reduction to apply to the shard losses.
       name: Optional name prefix for the operations created when applying
         gradients. Defaults to "CrossShardOptimizer".
+      group_assignment: Optional list of group ids for applying the optimizer
+        to subgroups.
 
     Raises:
       ValueError: If reduction is not a valid cross-shard reduction.
@@ -49,6 +55,35 @@ class CrossShardOptimizer(optimizer.Optimizer):
     super(CrossShardOptimizer, self).__init__(False, name)
     self._opt = opt
     self._reduction = reduction
+    self._group_assignment = group_assignment
+
+  def _verify_and_get_subgroup_size(self, group_assignment, num_shards):
+    """Verify group_assignment and get the subgroup size".
+
+    Args:
+      group_assignment: list of group ids for applying the optimizer
+        to subgroups.
+      num_shards: The number of TPU shards.
+
+    Returns:
+      The size of one subgroup in group_assignment.
+
+    Raises:
+      ValueError: If group_assignment is invalid.
+    """
+    if not group_assignment:
+      return None
+    if len(group_assignment) != num_shards:
+      raise ValueError("The size of group_assignment does not equal to "
+                       "num_shard({0}). Got group_assignment={1}".format(
+                           num_shards, self._group_assignment))
+    subgroup_size_list = dict(collections.Counter(group_assignment)).values()
+    if all(subgroup_size_list[0] == size for size in subgroup_size_list):
+      return subgroup_size_list[0]
+    else:
+      raise ValueError("The size of each subgroup in group_assignment must "
+                       "be equal. Got group_assignment={}".format(
+                           self._group_assignment))
 
   def compute_gradients(self, loss, var_list=None, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
@@ -70,15 +105,26 @@ class CrossShardOptimizer(optimizer.Optimizer):
       A list of (gradient, variable) pairs.
 
     Raises:
-      ValueError: If not within a tpu_shard_context.
+      ValueError: If not within a tpu_shard_context or group_assignment is
+        invalid.
     """
     num_shards = tpu_function.get_tpu_context().number_of_shards
     if num_shards is None:
-      raise ValueError("CrossShardOptimizer must be used within a "
-                       "tpu_shard_context.")
+      logging.warning(
+          "CrossShardOptimizer should be used within a tpu_shard_context, but "
+          "got unset number_of_shards. Assuming 1.")
+      num_shards = 1
+
+    subgroup_size = self._verify_and_get_subgroup_size(self._group_assignment,
+                                                       num_shards)
+
     if num_shards > 1 and self._reduction == losses.Reduction.MEAN:
-      scale = 1.0 / num_shards
+      if self._group_assignment:
+        scale = 1.0 / subgroup_size
+      else:
+        scale = 1.0 / num_shards
       loss *= scale
+
     return self._opt.compute_gradients(loss, var_list=var_list, **kwargs)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
@@ -107,7 +153,8 @@ class CrossShardOptimizer(optimizer.Optimizer):
       if grad is None:
         summed_grads_and_vars.append((grad, var))
       else:
-        summed_grads_and_vars.append((tpu_ops.cross_replica_sum(grad), var))
+        summed_grads_and_vars.append((tpu_ops.cross_replica_sum(
+            grad, self._group_assignment), var))
     return self._opt.apply_gradients(summed_grads_and_vars, global_step, name)
 
   def get_slot(self, *args, **kwargs):

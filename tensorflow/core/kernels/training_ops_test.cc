@@ -176,8 +176,9 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
     auto beta2 = Scalar(g, 0.99);
     auto epsilon = Scalar(g, 1e-8);
     auto grad = Random(g, n);
-    test::graph::Multi(g, "ApplyAdam", {var, m, v, beta1_power, beta2_power, lr,
-                                        beta1, beta2, epsilon, grad});
+    test::graph::Multi(
+        g, "ApplyAdam",
+        {var, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad});
     *train_g = g;
   }
 }
@@ -232,5 +233,79 @@ static void BM_RMSProp(int iters, int params) {
   test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
 }
 BENCHMARK(BM_RMSProp)->Arg(128 << 10)->Arg(256 << 10);
+
+static void AddSign(int32 n, Graph** init_g, Graph** train_g) {
+  TensorShape shape({n});
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto m = Var(g, n);
+    auto zero = Zeros(g, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, m, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto m = Var(g, n);
+    auto lr = Scalar(g, 0.01);
+    auto alpha = Scalar(g, 0.1);
+    auto sign_decay = Scalar(g, 0.9);
+    auto beta = Scalar(g, 0.8);
+    auto grad = Random(g, n);
+    test::graph::Multi(g, "ApplyAddSign",
+                       {var, m, lr, alpha, sign_decay, beta, grad});
+    *train_g = g;
+  }
+}
+
+static void BM_AddSign(int iters, int params) {
+  const int64 tot = static_cast<int64>(iters) * params;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  AddSign(params, &init, &train);
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+}
+BENCHMARK(BM_AddSign)->Arg(128 << 10)->Arg(256 << 10);
+
+static void PowerSign(int32 n, Graph** init_g, Graph** train_g) {
+  TensorShape shape({n});
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto m = Var(g, n);
+    auto zero = Zeros(g, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, m, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, n);
+    auto m = Var(g, n);
+    auto lr = Scalar(g, 0.01);
+    auto logbase = Scalar(g, 2);
+    auto sign_decay = Scalar(g, 0.9);
+    auto beta = Scalar(g, 0.8);
+    auto grad = Random(g, n);
+    test::graph::Multi(g, "ApplyPowerSign",
+                       {var, m, lr, logbase, sign_decay, beta, grad});
+    *train_g = g;
+  }
+}
+
+static void BM_PowerSign(int iters, int params) {
+  const int64 tot = static_cast<int64>(iters) * params;
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  PowerSign(params, &init, &train);
+  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+}
+BENCHMARK(BM_PowerSign)->Arg(128 << 10)->Arg(256 << 10);
 
 }  // end namespace tensorflow

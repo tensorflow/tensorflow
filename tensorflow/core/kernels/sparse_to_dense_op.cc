@@ -73,8 +73,9 @@ class SparseToDense : public OpKernel {
     // sparse_values
     const Tensor& sparse_values = c->input(2);
     const int64 num_values = sparse_values.NumElements();
-    OP_REQUIRES(c, sparse_values.dims() == 0 ||
-                       (sparse_values.dims() == 1 && num_values == num_elems),
+    OP_REQUIRES(c,
+                sparse_values.dims() == 0 ||
+                    (sparse_values.dims() == 1 && num_values == num_elems),
                 errors::InvalidArgument("sparse_values has incorrect shape ",
                                         sparse_values.shape().DebugString(),
                                         ", should be [] or [", num_elems, "]"));

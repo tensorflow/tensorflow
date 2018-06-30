@@ -18,11 +18,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -39,7 +39,7 @@ namespace {
 
 class VecOpsSimpleTest : public ClientLibraryTestBase {
  public:
-  explicit VecOpsSimpleTest(perftools::gputools::Platform* platform = nullptr)
+  explicit VecOpsSimpleTest(se::Platform* platform = nullptr)
       : ClientLibraryTestBase(platform) {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
@@ -49,10 +49,10 @@ class VecOpsSimpleTest : public ClientLibraryTestBase {
 };
 
 XLA_TEST_F(VecOpsSimpleTest, ExpTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  auto exp = builder.Exp(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  Exp(x);
 
   std::vector<float> expected = {8.1662,     7.4274e-02, 13.4637,    1.8316e-02,
                                  8.1662,     9.9742,     6.7379e-03, 4.0657e-01,
@@ -63,14 +63,14 @@ XLA_TEST_F(VecOpsSimpleTest, ExpTenValues) {
 
 XLA_TEST_F(VecOpsSimpleTest, ExpManyValues) {
   for (int count : {63, 64, 65, 127, 128, 129, 17 * 4096}) {
-    ComputationBuilder builder(client_, TestName());
+    XlaBuilder builder(TestName());
     std::vector<float> exponents;
     exponents.reserve(count);
     for (int i = 0; i < count; ++i) {
       exponents.push_back(i / static_cast<float>(count));
     }
-    auto x = builder.ConstantR1<float>(exponents);
-    auto exp = builder.Exp(x);
+    auto x = ConstantR1<float>(&builder, exponents);
+    Exp(x);
 
     std::vector<float> expected;
     expected.reserve(exponents.size());
@@ -84,7 +84,7 @@ XLA_TEST_F(VecOpsSimpleTest, ExpManyValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ExpIn4D) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   Array4D<float> exponents(2, 2, 2, 2);
 
   std::vector<float> exponents_vector;
@@ -98,18 +98,18 @@ XLA_TEST_F(VecOpsSimpleTest, ExpIn4D) {
 
   Array4D<float> expected(2, 2, 2, 2, expected_vector);
 
-  auto x = builder.ConstantR4FromArray4D<float>(exponents);
-  auto exp = builder.Exp(x);
+  auto x = ConstantR4FromArray4D<float>(&builder, exponents);
+  Exp(x);
 
   ComputeAndCompareR4<float>(&builder, expected, {},
                              ErrorSpec(/*aabs=*/1e-2, /*arel=*/1e-3));
 }
 
 XLA_TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  builder.Neg(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  Neg(x);
 
   std::vector<float> expected = {-2.1, 2.6, -2.6, 4.0, -2.1,
                                  -2.3, 5.0, 0.9,  2.4, -1.6};
@@ -117,29 +117,29 @@ XLA_TEST_F(VecOpsSimpleTest, NegateTenFloatValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, NegateTenInt32Values) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<int32>({2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
-  builder.Neg(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<int32>(&builder, {2, -2, 12, -4, 5, 20, -15, 0, -2, 1});
+  Neg(x);
 
   std::vector<int> expected = {-2, 2, -12, 4, -5, -20, 15, 0, 2, -1};
   ComputeAndCompareR1<int32>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, NegateUint32Values) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<uint32>(
-      {0, 1, 42, static_cast<uint32>(-1), static_cast<uint32>(-12)});
-  builder.Neg(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<uint32>(
+      &builder, {0, 1, 42, static_cast<uint32>(-1), static_cast<uint32>(-12)});
+  Neg(x);
   std::vector<uint32> expected = {0, static_cast<uint32>(-1),
                                   static_cast<uint32>(-42), 1, 12};
   ComputeAndCompareR1<uint32>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, SquareTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  builder.SquareF32(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  SquareF32(x);
 
   std::vector<float> expected = {4.41, 6.76, 6.76, 16.,  4.41,
                                  5.29, 25.,  0.81, 5.76, 2.56};
@@ -147,10 +147,10 @@ XLA_TEST_F(VecOpsSimpleTest, SquareTenValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ReciprocalTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  builder.ReciprocalF32(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  ReciprocalF32(x);
 
   std::vector<float> expected = {
       0.47619048, -0.38461538, 0.38461538,  -0.25,       0.47619048,
@@ -159,27 +159,27 @@ XLA_TEST_F(VecOpsSimpleTest, ReciprocalTenValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, SqrtZeroes) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>({0.0, -0.0});
-  auto exp = builder.SqrtF32(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {0.0, -0.0});
+  SqrtF32(x);
 
   ComputeAndCompareR1<float>(&builder, {0, 0}, {}, error_spec_);
 }
 
 XLA_TEST_F(VecOpsSimpleTest, SqrtSixValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>({16.0, 1.0, 1024.0, 0.16, 0.2, 12345});
-  auto exp = builder.SqrtF32(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {16.0, 1.0, 1024.0, 0.16, 0.2, 12345});
+  SqrtF32(x);
 
   std::vector<float> expected = {4, 1, 32, 0.4, 0.4472, 111.1080};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
 XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x =
-      builder.ConstantR1<float>({16.0, 1.0, 1024.0, 0.16, 0.2, 12345, 1.2345});
-  auto exp = builder.Pow(x, builder.ConstantR0<float>(-.5f));
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder,
+                             {16.0, 1.0, 1024.0, 0.16, 0.2, 12345, 1.2345});
+  Pow(x, ConstantR0<float>(&builder, -.5f));
 
   std::vector<float> expected = {.25,     1,       .03125, 2.5,
                                  2.23607, .009000, .900025};
@@ -188,14 +188,14 @@ XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
   auto add = CreateScalarAddComputation(F32, &builder);
 
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  auto y = builder.ConstantR1<float>(
-      {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
-  auto max = builder.Map({x, y}, add);
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  auto y = ConstantR1<float>(
+      &builder, {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
+  Map(&builder, {x, y}, add, {0});
 
   std::vector<float> expected = {1.7, -3.2, -0.4, -3.8, 5.9,
                                  0.1, -6.8, 4.,   -1.,  2.2};
@@ -203,12 +203,12 @@ XLA_TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, MaxTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  auto y = builder.ConstantR1<float>(
-      {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
-  auto max = builder.Max(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  auto y = ConstantR1<float>(
+      &builder, {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
+  Max(x, y);
 
   std::vector<float> expected = {2.1, -0.6, 2.6, 0.2, 3.8,
                                  2.3, -1.8, 4.9, 1.4, 1.6};
@@ -218,8 +218,8 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValues) {
 XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesFromParams) {
   // Similar to MaxTenValues, except that the inputs come from params rather
   // than constants.
-  ComputationBuilder builder(client_, TestName());
-  ComputationDataHandle v1, v2;
+  XlaBuilder builder(TestName());
+  XlaOp v1, v2;
   std::unique_ptr<GlobalData> param0_data = CreateR1Parameter<float>(
       {41.0f, 2.0f, 3.0f, 84.0f}, /*parameter_number=*/0, /*name=*/"v1",
       /*builder=*/&builder, /*data_handle=*/&v1);
@@ -227,7 +227,7 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesFromParams) {
       {21.0f, 22.0f, 23.0f, 24.0f}, /*parameter_number=*/1, /*name=*/"v2",
       /*builder=*/&builder, /*data_handle=*/&v2);
 
-  auto max = builder.Max(v1, v2);
+  Max(v1, v2);
   ComputeAndCompareR1<float>(&builder, {41.0f, 22.0f, 23.0f, 84.0f},
                              {param0_data.get(), param1_data.get()},
                              error_spec_);
@@ -236,7 +236,7 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesFromParams) {
 XLA_TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
   // Similar to MaxTenValuesFromParams, except that the data size passed in and
   // out is large.
-  ComputationBuilder builder(client_, TestName());
+  XlaBuilder builder(TestName());
 
   // Number of floats in the data passed into and out of the computation.
   constexpr int datalen = 15 * 1000;
@@ -259,7 +259,7 @@ XLA_TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
     expected_vec.push_back(larger);
   }
 
-  ComputationDataHandle v1, v2;
+  XlaOp v1, v2;
   std::unique_ptr<GlobalData> param0_data =
       CreateR1Parameter<float>(v1vec, /*parameter_number=*/0, /*name=*/"v1",
                                /*builder=*/&builder, /*data_handle=*/&v1);
@@ -267,18 +267,18 @@ XLA_TEST_F(VecOpsSimpleTest, Max15000ValuesFromParams) {
       CreateR1Parameter<float>(v2vec, /*parameter_number=*/1, /*name=*/"v2",
                                /*builder=*/&builder, /*data_handle=*/&v2);
 
-  auto max = builder.Max(v1, v2);
+  Max(v1, v2);
   ComputeAndCompareR1<float>(&builder, expected_vec,
                              {param0_data.get(), param1_data.get()},
                              error_spec_);
 }
 
 XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesWithScalar) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  auto y = builder.ConstantR0<float>(0);
-  auto max = builder.Max(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  auto y = ConstantR0<float>(&builder, 0);
+  Max(x, y);
 
   std::vector<float> expected = {2.1, 0.0, 2.6, 0.0, 2.1,
                                  2.3, 0.0, 0.0, 0.0, 1.6};
@@ -286,12 +286,12 @@ XLA_TEST_F(VecOpsSimpleTest, MaxTenValuesWithScalar) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, MinTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  auto y = builder.ConstantR1<float>(
-      {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
-  auto min = builder.Min(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+  auto y = ConstantR1<float>(
+      &builder, {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
+  Min(x, y);
 
   std::vector<float> expected = {-0.4, -2.6, -3.0, -4.0, 2.1,
                                  -2.2, -5.0, -0.9, -2.4, 0.6};
@@ -299,12 +299,12 @@ XLA_TEST_F(VecOpsSimpleTest, MinTenValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, MinMaxTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto zero = builder.ConstantR0<float>(0);
-  auto one = builder.ConstantR0<float>(1);
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, 0.3, 3.1, 0.9, -5.0, 0.1, -2.4, 0.6});
-  auto clamp = builder.Min(builder.Max(x, zero), one);
+  XlaBuilder builder(TestName());
+  auto zero = ConstantR0<float>(&builder, 0);
+  auto one = ConstantR0<float>(&builder, 1);
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, 0.3, 3.1, 0.9, -5.0, 0.1, -2.4, 0.6});
+  Min(Max(x, zero), one);
 
   std::vector<float> expected = {1.0, 0.0, 1.0, 0.3, 1.0,
                                  0.9, 0.0, 0.1, 0.0, 0.6};
@@ -312,12 +312,12 @@ XLA_TEST_F(VecOpsSimpleTest, MinMaxTenValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstant) {
-  ComputationBuilder builder(client_, TestName());
-  auto zero = builder.ConstantR0<float>(0);
-  auto one = builder.ConstantR0<float>(1);
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, 0.3, 3.1, 0.9, -5.0, 0.1, -2.4, 0.6});
-  auto clamp = builder.Clamp(zero, x, one);
+  XlaBuilder builder(TestName());
+  auto zero = ConstantR0<float>(&builder, 0);
+  auto one = ConstantR0<float>(&builder, 1);
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, 0.3, 3.1, 0.9, -5.0, 0.1, -2.4, 0.6});
+  Clamp(zero, x, one);
 
   std::vector<float> expected = {1.0, 0.0, 1.0, 0.3, 1.0,
                                  0.9, 0.0, 0.1, 0.0, 0.6};
@@ -325,78 +325,89 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstant) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ClampTwoValuesConstant) {
-  ComputationBuilder builder(client_, TestName());
-  auto zero = builder.ConstantR1<float>({0.0f, 0.0f});
-  auto one = builder.ConstantR1<float>({1.0f, 1.0f});
-  auto x = builder.ConstantR1<float>({2.1, -2.6});
-  auto clamp = builder.Clamp(zero, x, one);
+  XlaBuilder builder(TestName());
+  auto zero = ConstantR1<float>(&builder, {0.0f, 0.0f});
+  auto one = ConstantR1<float>(&builder, {1.0f, 1.0f});
+  auto x = ConstantR1<float>(&builder, {2.1, -2.6});
+  Clamp(zero, x, one);
 
   std::vector<float> expected = {1.0, 0.0};
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
-  ComputationBuilder builder(client_, TestName());
-  auto one = builder.ConstantR0<float>(1);
-  auto two = builder.ConstantR0<float>(2);
-  auto x = builder.ConstantR1<float>(
-      {2.1, -2.6, 2.6, 0.3, 3.1, 0.9, -5.0, 0.1, -2.4, 0.6});
-  auto clamp = builder.Clamp(one, x, two);
+  XlaBuilder builder(TestName());
+  auto one = ConstantR0<float>(&builder, 1);
+  auto two = ConstantR0<float>(&builder, 2);
+  auto x = ConstantR1<float>(
+      &builder, {2.1, -2.6, 2.6, 0.3, 3.1, 0.9, -5.0, 0.1, -2.4, 0.6});
+  Clamp(one, x, two);
 
   std::vector<float> expected = {2.0, 1.0, 2.0, 1.0, 2.0,
                                  1.0, 1.0, 1.0, 1.0, 1.0};
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
+XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
+  XlaBuilder builder(TestName());
+  auto zero = ConstantR0<int64>(&builder, 0);
+  auto one = ConstantR0<int64>(&builder, 10);
+  auto x = ConstantR1<int64>(&builder, {-3, 3, 9, 13});
+  Clamp(zero, x, one);
+
+  std::vector<int64> expected = {0, 3, 9, 10};
+  ComputeAndCompareR1<int64>(&builder, expected, {});
+}
+
 XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
-  Computation add_half;
+  XlaComputation add_half;
   {
     // add_half(x) = x + 0.5
-    ComputationBuilder builder(client_, "add_half");
+    XlaBuilder builder("add_half");
     auto x_value =
-        builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "x_value");
-    auto half = builder.ConstantR0<float>(0.5);
-    builder.Add(x_value, half);
+        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x_value");
+    auto half = ConstantR0<float>(&builder, 0.5);
+    Add(x_value, half);
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
     add_half = computation_status.ConsumeValueOrDie();
   }
 
-  Computation clamp;
+  XlaComputation clamp;
   {
     // clamp(y) = clamp<0,5>(y)
-    ComputationBuilder builder(client_, "clamp");
+    XlaBuilder builder("clamp");
     auto y_value =
-        builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "y_value");
-    auto zero = builder.ConstantR0<float>(0.0);
-    auto clamped = builder.Clamp(zero, y_value, builder.ConstantR0<float>(5));
+        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "y_value");
+    auto zero = ConstantR0<float>(&builder, 0.0);
+    Clamp(zero, y_value, ConstantR0<float>(&builder, 5));
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
     clamp = computation_status.ConsumeValueOrDie();
   }
 
-  Computation mult_relu_add;
+  XlaComputation mult_relu_add;
   {
     // mult_relu_add(z) = clamp(add_half(2 * max(z, 0)))
-    ComputationBuilder builder(client_, "mult_relu_add");
+    XlaBuilder builder("mult_relu_add");
     auto z_value =
-        builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "z_value");
-    auto zero = builder.ConstantR0<float>(0.0);
-    auto two = builder.ConstantR0<float>(2.0);
-    auto max = builder.Max(z_value, zero);
-    auto mult = builder.Mul(two, max);
-    auto inner = builder.Map({mult}, add_half);
-    builder.Map({inner}, clamp);
+        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "z_value");
+    auto zero = ConstantR0<float>(&builder, 0.0);
+    auto two = ConstantR0<float>(&builder, 2.0);
+    auto max = Max(z_value, zero);
+    auto mult = Mul(two, max);
+    auto inner = Map(&builder, {mult}, add_half, {});
+    Map(&builder, {inner}, clamp, {});
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
     mult_relu_add = computation_status.ConsumeValueOrDie();
   }
 
-  ComputationBuilder builder(client_, "map10");
+  XlaBuilder builder("map10");
   {
-    auto x = builder.ConstantR1<float>(
-        {2.1, -21.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-    auto activations = builder.Map({x}, mult_relu_add);
+    auto x = ConstantR1<float>(
+        &builder, {2.1, -21.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
+    Map(&builder, {x}, mult_relu_add, {0});
   }
 
   std::vector<float> expected = {4.7, 0.5, 5.0, 0.5, 4.7,
@@ -405,30 +416,30 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
 }
 
 XLA_TEST_F(VecOpsSimpleTest, RemainderTenValuesS32) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<int32>({-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
-  auto y = builder.ConstantR0<int32>(3);
-  builder.Rem(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<int32>(&builder, {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4});
+  auto y = ConstantR0<int32>(&builder, 3);
+  Rem(x, y);
 
   std::vector<int32> expected = {-2, -1, 0, -2, -1, 0, 1, 2, 0, 1};
   ComputeAndCompareR1<int32>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, VectorPredicateEqual) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<bool>({false, true});
-  auto y = builder.ConstantR1<bool>({true, false});
-  builder.Eq(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<bool>(&builder, {false, true});
+  auto y = ConstantR1<bool>(&builder, {true, false});
+  Eq(x, y);
 
   std::array<bool, 2> expected = {{false, false}};
   ComputeAndCompareR1<bool>(&builder, expected, {});
 }
 
 XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<bool>({false, true});
-  auto y = builder.ConstantR1<bool>({true, false});
-  builder.Ne(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<bool>(&builder, {false, true});
+  auto y = ConstantR1<bool>(&builder, {true, false});
+  Ne(x, y);
 
   std::array<bool, 2> expected = {{true, true}};
   ComputeAndCompareR1<bool>(&builder, expected, {});

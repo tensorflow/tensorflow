@@ -38,8 +38,9 @@ cd ${TEST_TMPDIR}
 mkdir tensorflow
 ${TAR} -xzf ${TARFILE} -Ctensorflow
 
-# Compile the test .c file
-${CC} ${CFILE} -Itensorflow/include -Ltensorflow/lib -ltensorflow -oa.out
+# Compile the test .c file. Assumes with_framework_lib=True.
+${CC} ${CFILE} -Itensorflow/include -Ltensorflow/lib\
+  -ltensorflow_framework -ltensorflow -oa.out
 
 # Execute it, with the shared library available.
 # DYLD_LIBRARY_PATH is used on OS X, LD_LIBRARY_PATH on Linux.

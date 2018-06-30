@@ -97,10 +97,9 @@ class ValidateExportTest(test.TestCase):
   def testExportSingleConstant(self):
     module1 = self._CreateMockModule('module1')
 
-    test_constant = 123
     export_decorator = tf_export.tf_export('NAME_A', 'NAME_B')
-    export_decorator.export_constant('module1', test_constant)
-    self.assertEquals([(('NAME_A', 'NAME_B'), 123)],
+    export_decorator.export_constant('module1', 'test_constant')
+    self.assertEquals([(('NAME_A', 'NAME_B'), 'test_constant')],
                       module1._tf_api_constants)
 
   def testExportMultipleConstants(self):

@@ -32,8 +32,8 @@ be set:
     source ${HADOOP_HOME}/libexec/hadoop-config.sh
     ```
 
-*   **LD_LIBRARY_PATH**: To include the path to libjvm.so, and optionally the path 
-    to libhdfs.so if your Hadoop distribution does not install libhdfs.so in 
+*   **LD_LIBRARY_PATH**: To include the path to libjvm.so, and optionally the path
+    to libhdfs.so if your Hadoop distribution does not install libhdfs.so in
     `$HADOOP_HDFS_HOME/lib/native`. On Linux:
 
     ```shell

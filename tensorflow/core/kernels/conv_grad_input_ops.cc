@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
 #include "tensorflow/core/kernels/ops_util.h"
@@ -101,17 +101,18 @@ template <typename T>
 struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
-                  int row_stride, int col_stride, const Padding& padding,
-                  Tensor* in_backprop, TensorFormat data_format) {
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding, Tensor* in_backprop,
+                  TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
     functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
         d, in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
-        out_backprop.tensor<T, 4>(), in_backprop->dim_size(1),
-        in_backprop->dim_size(2), row_stride, col_stride);
+        out_backprop.tensor<T, 4>(), row_stride, col_stride,
+        /*row_dilation=*/1, /*col_dilation=*/1);
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM
+#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 template <typename Device, class T>
 struct LaunchXsmmBackwardInputConvolution {
   bool operator()(OpKernelContext* context, const Device& d,
@@ -198,7 +199,23 @@ class Conv2DFastBackpropInputOp : public OpKernel {
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
+                errors::InvalidArgument(
+                    "Row and column strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    OP_REQUIRES(context, dilations_.size() == 4,
+                errors::InvalidArgument("Sliding window dilations field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, (dilations_[0] && dilations_[3]),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
+    // TODO(yangzihao): Add a CPU implementation for dilated convolution.
+    OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
+                errors::InvalidArgument(
+                    "Current Eigen and libxsmm implementations do not "
+                    "yet support dilation rates larger than 1."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -225,7 +242,13 @@ class Conv2DFastBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
-#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
+#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
+    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(
@@ -258,11 +281,12 @@ class Conv2DFastBackpropInputOp : public OpKernel {
 
     LaunchConv2DBackpropInputOp<Device, T>()(
         context, false, false, out_backprop, filter,
-        dims.spatial_dims[0].stride, dims.spatial_dims[1].stride, padding_,
-        in_backprop, data_format_);
+        /*row_dilation=*/1, /*col_dilation=*/1, dims.spatial_dims[0].stride,
+        dims.spatial_dims[1].stride, padding_, in_backprop, data_format_);
   }
 
  private:
+  std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
@@ -291,7 +315,23 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
+                errors::InvalidArgument(
+                    "Row and column strides should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    OP_REQUIRES(context, dilations_.size() == 4,
+                errors::InvalidArgument("Sliding window dilations field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, (dilations_[0] == 1 && dilations_[3] == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
+    // TODO(yangzihao): Add a CPU implementation for dilated convolution.
+    OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
+                errors::InvalidArgument(
+                    "Current libxsmm and customized CPU implementations do "
+                    "not yet support dilation rates larger than 1."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -318,9 +358,15 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
 // TODO(andydavis) Consider moving code shared with
 // Conv2DCustomBackpropFilterOp into a shared helper function.
-#if defined TENSORFLOW_USE_LIBXSMM && defined TENSORFLOW_USE_LIBXSMM_BACKWARD
+#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
+    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
     int64 pad_top, pad_bottom;
     int64 pad_left, pad_right;
     OP_REQUIRES_OK(
@@ -522,6 +568,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   }
 
  private:
+  std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
@@ -546,7 +593,13 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
+
+// To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
+template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
+template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
 // GPU definitions.
 #if GOOGLE_CUDA
@@ -557,7 +610,7 @@ struct ConvBackwardDataAutoTuneGroup {
   static string name() { return "ConvBwdData"; }
 };
 typedef AutoTuneSingleton<ConvBackwardDataAutoTuneGroup, ConvParameters,
-                          perftools::gputools::dnn::AlgorithmConfig>
+                          se::dnn::AlgorithmConfig>
     AutoTuneConvBwdData;
 
 // Backprop for input.
@@ -576,10 +629,30 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
                                         "specify 4 dimensions"));
     int stride_n = GetTensorDim(strides_, data_format_, 'N');
     int stride_c = GetTensorDim(strides_, data_format_, 'C');
+    int stride_h = GetTensorDim(strides_, data_format_, 'H');
+    int stride_w = GetTensorDim(strides_, data_format_, 'W');
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    OP_REQUIRES(context, stride_h > 0 && stride_w > 0,
+                errors::InvalidArgument(
+                    "Row and column strides should be larger than 0."));
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    OP_REQUIRES(context, dilations_.size() == 4,
+                errors::InvalidArgument("Sliding window dilations field must "
+                                        "specify 4 dimensions"));
+    int dilation_n = GetTensorDim(dilations_, data_format_, 'N');
+    int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
+    int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
+    int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
+    OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, dilation_h > 0 && dilation_w > 0,
+        errors::InvalidArgument("Dilated rates should be larger than 0."));
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
     use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
@@ -603,16 +676,25 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
+    // If there is nothing to compute, return.
+    if (input_shape.num_elements() == 0) {
+      return;
+    }
+
     // For now we take the stride from the second and third dimensions only (we
     // do not support striding on the batch or depth dimension).
     const int stride_rows = GetTensorDim(strides_, data_format_, 'H');
     const int stride_cols = GetTensorDim(strides_, data_format_, 'W');
+    const int dilation_rows = GetTensorDim(dilations_, data_format_, 'H');
+    const int dilation_cols = GetTensorDim(dilations_, data_format_, 'W');
 
     launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop, filter,
-              stride_rows, stride_cols, padding_, in_backprop, data_format_);
+              dilation_rows, dilation_cols, stride_rows, stride_cols, padding_,
+              in_backprop, data_format_);
   }
 
  private:
+  std::vector<int32> dilations_;
   std::vector<int32> strides_;
   Padding padding_;
   bool use_cudnn_;
@@ -626,39 +708,48 @@ class Conv2DSlowBackpropInputOp : public OpKernel {
 template <typename T>
 void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-    const Tensor& out_backprop, const Tensor& filter, int row_stride,
-    int col_stride, const Padding& padding, Tensor* in_backprop,
-    TensorFormat data_format) {
-  using perftools::gputools::dnn::AlgorithmConfig;
-  using perftools::gputools::dnn::AlgorithmType;
-  using perftools::gputools::dnn::ProfileResult;
+    const Tensor& out_backprop, const Tensor& filter, int row_dilation,
+    int col_dilation, int row_stride, int col_stride, const Padding& padding,
+    Tensor* in_backprop, TensorFormat data_format) {
+  using se::dnn::AlgorithmConfig;
+  using se::dnn::AlgorithmDesc;
+  using se::dnn::ProfileResult;
 
   std::vector<int32> strides(4, 1);
-  strides[GetTensorDimIndex(data_format, 'H')] = row_stride;
-  strides[GetTensorDimIndex(data_format, 'W')] = col_stride;
+  std::vector<int32> dilations(4, 1);
+  auto input_h = GetTensorDimIndex(data_format, 'H');
+  auto input_w = GetTensorDimIndex(data_format, 'W');
+  strides[input_h] = row_stride;
+  strides[input_w] = col_stride;
+  dilations[input_h] = row_dilation;
+  dilations[input_w] = col_dilation;
   TensorShape input_shape = in_backprop->shape();
 
   const TensorShape& filter_shape = filter.shape();
   ConvBackpropDimensions dims;
-  OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensions(
+  OP_REQUIRES_OK(ctx, ConvBackpropComputeDimensionsV2(
                           "Conv2DSlowBackpropInput", /*num_spatial_dims=*/2,
                           input_shape, filter_shape, out_backprop.shape(),
-                          strides, padding, data_format, &dims));
+                          dilations, strides, padding, data_format, &dims));
 
+  // TODO(yangzihao): The padding computations should be done in
+  // GetWindowedOutputSize() functions.
   const int padding_rows =
       (padding == VALID)
           ? 0
           : std::max<int>(0, (dims.spatial_dims[0].output_size - 1) *
                                      dims.spatial_dims[0].stride +
-                                 dims.spatial_dims[0].filter_size -
-                                 dims.spatial_dims[0].input_size);
+                                 (dims.spatial_dims[0].filter_size - 1) *
+                                     dims.spatial_dims[0].dilation +
+                                 1 - dims.spatial_dims[0].input_size);
   const int padding_cols =
       (padding == VALID)
           ? 0
           : std::max<int>(0, (dims.spatial_dims[1].output_size - 1) *
                                      dims.spatial_dims[1].stride +
-                                 dims.spatial_dims[1].filter_size -
-                                 dims.spatial_dims[1].input_size);
+                                 (dims.spatial_dims[1].filter_size - 1) *
+                                     dims.spatial_dims[1].dilation +
+                                 1 - dims.spatial_dims[1].input_size);
 
   // TODO(keveman): cuDNN only supports equal padding on both sides, so only
   // calling it when that is true. Remove this check when (if?) cuDNN starts
@@ -676,8 +767,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     return;
   }
 
+  // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the
+  // input depth, it's a depthwise convolution. More generally, if the filter
+  // in-depth divides but is smaller than the input depth, it is a grouped
+  // convolution.
+  bool is_grouped_convolution = filter_shape.dim_size(2) != dims.in_depth;
   if (dims.spatial_dims[0].filter_size == 1 &&
-      dims.spatial_dims[1].filter_size == 1 &&
+      dims.spatial_dims[1].filter_size == 1 && !is_grouped_convolution &&
       dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
       data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
@@ -693,8 +789,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
                                 in_backprop->template flat<T>().size());
 
-    auto transpose = perftools::gputools::blas::Transpose::kTranspose;
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto transpose = se::blas::Transpose::kTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
 
     bool blas_launch_status =
         stream
@@ -710,9 +806,10 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                  dims.spatial_dims[0].input_size &&
              dims.spatial_dims[1].filter_size ==
                  dims.spatial_dims[1].input_size &&
-             padding == VALID && data_format == FORMAT_NHWC) {
-    // The input data and filter have the same height/width, so call cublas
-    // directly.
+             !is_grouped_convolution && padding == VALID &&
+             data_format == FORMAT_NHWC) {
+    // The input data and filter have the same height/width, and we are not
+    // using grouped convolution, so call cublas directly.
     const uint64 m = dims.batch_size;
     const uint64 k = dims.out_depth;
     const uint64 n = dims.spatial_dims[0].input_size *
@@ -725,8 +822,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     auto c_ptr = AsDeviceMemory(in_backprop->template flat<T>().data(),
                                 in_backprop->template flat<T>().size());
 
-    auto transpose = perftools::gputools::blas::Transpose::kTranspose;
-    auto no_transpose = perftools::gputools::blas::Transpose::kNoTranspose;
+    auto transpose = se::blas::Transpose::kTranspose;
+    auto no_transpose = se::blas::Transpose::kNoTranspose;
 
     bool blas_launch_status =
         stream
@@ -756,28 +853,31 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   CHECK(padding_rows >= 0 && padding_cols >= 0)
       << "Negative row or col paddings: (" << padding_rows << ", "
       << padding_cols << ")";
-  perftools::gputools::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(dims.batch_size)
       .set_height(GetTensorDim(compatible_input_shape, data_format, 'H'))
       .set_width(GetTensorDim(compatible_input_shape, data_format, 'W'))
       .set_feature_map_count(dims.in_depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::BatchDescriptor output_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(dims.batch_size)
       .set_height(dims.spatial_dims[0].output_size)
       .set_width(dims.spatial_dims[1].output_size)
       .set_feature_map_count(dims.out_depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
-  perftools::gputools::dnn::FilterDescriptor filter_desc;
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+  se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
       .set_input_filter_width(dims.spatial_dims[1].filter_size)
-      .set_input_feature_map_count(dims.in_depth)
-      .set_output_feature_map_count(dims.out_depth);
-  perftools::gputools::dnn::ConvolutionDescriptor conv_desc;
-  conv_desc.set_vertical_filter_stride(dims.spatial_dims[0].stride)
+      .set_input_feature_map_count(filter_shape.dim_size(2))
+      .set_output_feature_map_count(filter_shape.dim_size(3));
+  se::dnn::ConvolutionDescriptor conv_desc;
+  conv_desc.set_vertical_dilation_rate(dims.spatial_dims[0].dilation)
+      .set_horizontal_dilation_rate(dims.spatial_dims[1].dilation)
+      .set_vertical_filter_stride(dims.spatial_dims[0].stride)
       .set_horizontal_filter_stride(dims.spatial_dims[1].stride)
       .set_zero_padding_height(padding_rows / 2)
-      .set_zero_padding_width(padding_cols / 2);
+      .set_zero_padding_width(padding_cols / 2)
+      .set_group_count(dims.in_depth / filter_shape.dim_size(2));
 
   // NOTE(keveman):
   // cuDNN only supports the following layouts :
@@ -853,26 +953,30 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
   ConvParameters conv_parameters = {
-      dims.batch_size,                       // batch
-      dims.in_depth,                         // in_depths
-      {{input_desc.height(),                 // in_rows
-        input_desc.width()}},                // in_cols
-      dims.out_depth,                        // out_depths
-      {{dims.spatial_dims[0].filter_size,    // filter_rows
-        dims.spatial_dims[1].filter_size}},  // filter_cols
-      {{dims.spatial_dims[0].stride,         // stride_rows
-        dims.spatial_dims[1].stride}},       // stride_cols
-      {{padding_rows,                        // padding_rows
-        padding_cols}},                      // padding_cols
-      dtype,                                 // tensor data type
-      device_id,                             // device_id
+      dims.batch_size,                     // batch
+      dims.in_depth,                       // in_depths
+      {{input_desc.height(),               // in_rows
+        input_desc.width()}},              // in_cols
+      dims.out_depth,                      // out_depths
+      {{dims.spatial_dims[0].filter_size,  // filter_rows
+        dims.spatial_dims[1].filter_size,  // filter_cols
+        filter_shape.dim_size(2)}},        // filter_depths
+      {{dims.spatial_dims[0].dilation,     // dilation_rows
+        dims.spatial_dims[1].dilation}},   // dilation_cols
+      {{dims.spatial_dims[0].stride,       // stride_rows
+        dims.spatial_dims[1].stride}},     // stride_cols
+      {{padding_rows,                      // padding_rows
+        padding_cols}},                    // padding_cols
+      dtype,                               // tensor data type
+      device_id,                           // device_id
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
-    std::vector<AlgorithmType> algorithms;
+    std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
-        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
+        conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
+        &algorithms));
     ProfileResult best_result;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
@@ -1004,9 +1108,15 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
+REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T")
+                            .HostMemory("input_sizes"),
+                        Conv2DSlowBackpropInputOp<GPUDevice, double>);
 REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<float>("T")
@@ -1017,6 +1127,12 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .TypeConstraint<Eigen::half>("T")
                             .HostMemory("input_sizes"),
                         Conv2DSlowBackpropInputOp<GPUDevice, Eigen::half>);
+
+// To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropInputOp<GPUDevice, float>;
+template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
+template struct LaunchConv2DBackpropInputOp<GPUDevice, double>;
+
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

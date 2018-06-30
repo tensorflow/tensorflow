@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatrixSolve"
+  endpoint {
+    name: "linalg.solve"
+  }
+  endpoint {
+    name: "matrix_solve"
+    deprecation_message: "tf.matrix_solve is deprecated, please use tf.linalg.solve instead."
+  }
+}

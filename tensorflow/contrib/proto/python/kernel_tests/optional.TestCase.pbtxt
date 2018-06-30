@@ -1,0 +1,20 @@
+primitive {
+  bool_value: true
+}
+shape: 1
+sizes: 1
+sizes: 0
+field {
+  name: "bool_value"
+  dtype: DT_BOOL
+  expected {
+    bool_value: true
+  }
+}
+field {
+  name: "double_value"
+  dtype: DT_DOUBLE
+  expected {
+    double_value: 0.0
+  }
+}

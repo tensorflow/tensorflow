@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "perftools/gputools/executor/stream_executor.h"
+// IWYU pragma: private, include "third_party/tensorflow/stream_executor/stream_executor.h"
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_CASTS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_CASTS_H_
 
 #include <stdlib.h>
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 // port::bit_cast<Dest,Source> is a template function that implements the
@@ -96,7 +95,6 @@ inline Dest bit_cast(const Source& source) {
 }
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_CASTS_H_

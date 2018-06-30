@@ -23,239 +23,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
+import numpy as np
 from tensorflow.contrib.receptive_field.python.util import graph_compute_order
-from tensorflow.contrib.util import make_ndarray
+from tensorflow.contrib.receptive_field.python.util import parse_layer_parameters
+from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.platform import tf_logging as logging
-
-# White-listed layer operations, which do not affect the receptive field
-# computation.
-_UNCHANGED_RF_LAYER_OPS = [
-    "Softplus", "Relu", "BiasAdd", "Mul", "Add", "Const", "Identity",
-    "VariableV2", "Sub", "Rsqrt", "ConcatV2"
-]
-
-# Different ways in which padding modes may be spelled.
-_VALID_PADDING = ["VALID", b"VALID"]
-_SAME_PADDING = ["SAME", b"SAME"]
-
-
-def _stride_size(node):
-  """Computes stride size given a TF node.
-
-  Args:
-    node: Tensorflow node (NodeDef proto).
-
-  Returns:
-    stride_x: Stride size for horizontal direction (integer).
-    stride_y: Stride size for vertical direction (integer).
-  """
-  strides_attr = node.attr["strides"]
-  logging.vlog(4, "strides_attr = %s", strides_attr)
-  stride_y = strides_attr.list.i[1]
-  stride_x = strides_attr.list.i[2]
-  return stride_x, stride_y
-
-
-def _conv_kernel_size(node, name_to_order_node):
-  """Computes kernel size given a TF convolution or pooling node.
-
-  Args:
-    node: Tensorflow node (NodeDef proto).
-    name_to_order_node: Map from name to {order, node}. Output of
-      graph_compute_order.get_compute_order().
-
-  Returns:
-    kernel_size_x: Kernel size for horizontal direction (integer).
-    kernel_size_y: Kernel size for vertical direction (integer).
-
-  Raises:
-    ValueError: If the weight layer node is invalid.
-  """
-  weights_layer_read_name = node.input[1]
-  if not weights_layer_read_name.endswith("/read"):
-    raise ValueError(
-        "Weight layer's name input to conv layer does not end with '/read'")
-  weights_layer_param_name = weights_layer_read_name[:-5]
-  weights_node = name_to_order_node[weights_layer_param_name].node
-  if weights_node.op != "VariableV2":
-    raise ValueError("Weight layer is not of type VariableV2")
-  shape = weights_node.attr["shape"]
-  logging.vlog(4, "weight shape = %s", shape)
-  kernel_size_y = shape.shape.dim[0].size
-  kernel_size_x = shape.shape.dim[1].size
-  return kernel_size_x, kernel_size_y
-
-
-def _padding_size_conv_pool(node, kernel_size, stride):
-  """Computes padding size given a TF convolution or pooling node.
-
-  Args:
-    node: Tensorflow node (NodeDef proto).
-    kernel_size: Kernel size of node (integer).
-    stride: Stride size of node (integer).
-
-  Returns:
-    padding: Padding size (integer).
-
-  Raises:
-    ValueError: If padding is invalid.
-  """
-  # In this case, we need to carefully consider the different TF padding modes.
-  # The padding depends on kernel size, and may depend on input size. If it
-  # depends on input size, we raise an exception.
-  padding_attr = node.attr["padding"]
-  logging.vlog(4, "padding_attr = %s", padding_attr)
-  if padding_attr.s in _VALID_PADDING:
-    padding = 0
-  elif padding_attr.s in _SAME_PADDING:
-    if kernel_size == 1:
-      padding = 0
-    elif stride == 1:
-      padding = int(math.floor((float(kernel_size) - 1) / 2))
-    elif stride == 2 and kernel_size % 2 == 0:
-      padding = int(math.floor((float(kernel_size) - 1) / 2))
-    else:
-      padding = None
-      logging.warning(
-          "Padding depends on input size, which means that the effective "
-          "padding may be different depending on the input image "
-          "dimensionality. In this case, alignment check will be skipped.")
-  else:
-    raise ValueError("Invalid padding operation %s" % padding_attr.s)
-  return padding
-
-
-def _pool_kernel_size(node):
-  """Computes kernel size given a TF pooling node.
-
-  Args:
-    node: Tensorflow node (NodeDef proto).
-
-  Returns:
-    kernel_size_x: Kernel size for horizontal direction (integer).
-    kernel_size_y: Kernel size for vertical direction (integer).
-
-  Raises:
-    ValueError: If pooling is invalid.
-  """
-  ksize = node.attr["ksize"]
-  kernel_size_y = ksize.list.i[1]
-  kernel_size_x = ksize.list.i[2]
-  if ksize.list.i[0] != 1:
-    raise ValueError("pool ksize for first dim is not 1")
-  if ksize.list.i[3] != 1:
-    raise ValueError("pool ksize for last dim is not 1")
-  return kernel_size_x, kernel_size_y
-
-
-def _padding_size_pad_layer(node, name_to_order_node):
-  """Computes padding size given a TF padding node.
-
-  Args:
-    node: Tensorflow node (NodeDef proto).
-    name_to_order_node: Map from name to {order, node}. Output of
-      graph_compute_order.get_compute_order().
-
-  Returns:
-    padding_x: Padding size for horizontal direction (integer).
-    padding_y: Padding size for vertical direction (integer).
-
-  Raises:
-    ValueError: If padding layer is invalid.
-  """
-  paddings_layer_name = node.input[1]
-  if not paddings_layer_name.endswith("/paddings"):
-    raise ValueError("Padding layer name does not end with '/paddings'")
-  paddings_node = name_to_order_node[paddings_layer_name].node
-  if paddings_node.op != "Const":
-    raise ValueError("Padding op is not Const")
-  value = paddings_node.attr["value"]
-  t = make_ndarray(value.tensor)
-  padding_y = t[1][0]
-  padding_x = t[2][0]
-  if t[0][0] != 0:
-    raise ValueError("padding is not zero for first tensor dim")
-  if t[3][0] != 0:
-    raise ValueError("padding is not zero for last tensor dim")
-  return padding_x, padding_y
-
-
-def _get_layer_params(node, name_to_order_node):
-  """Gets layer parameters relevant for RF computation.
-
-  Currently, only these nodes are supported:
-  - Conv2D
-  - DepthwiseConv2dNative
-  - Pad
-  - MaxPool
-  - AvgPool
-  - all nodes listed in _UNCHANGED_RF_LAYER_OPS
-
-  Args:
-    node: Tensorflow node (NodeDef proto).
-    name_to_order_node: Map from name to {order, node}. Output of
-      graph_compute_order.get_compute_order().
-
-  Returns:
-    kernel_size_x: Kernel size for horizontal direction (integer).
-    kernel_size_y: Kernel size for vertical direction (integer).
-    stride_x: Stride size for horizontal direction (integer).
-    stride_y: Stride size for vertical direction (integer).
-    padding_x: Padding size for horizontal direction (integer).
-    padding_y: Padding size for vertical direction (integer).
-
-  Raises:
-    ValueError: If layer op is unknown.
-  """
-  logging.vlog(3, "node.op = %s", node.op)
-  logging.vlog(4, "node = %s", node)
-  if node.op == "Conv2D" or node.op == "DepthwiseConv2dNative":
-    stride_x, stride_y = _stride_size(node)
-    kernel_size_x, kernel_size_y = _conv_kernel_size(node, name_to_order_node)
-    # Compute the padding for this node separately for each direction.
-    padding_x = _padding_size_conv_pool(node, kernel_size_x, stride_x)
-    padding_y = _padding_size_conv_pool(node, kernel_size_y, stride_y)
-  elif node.op == "Pad":
-    # Kernel and stride are simply 1 in this case.
-    kernel_size_x = 1
-    kernel_size_y = 1
-    stride_x = 1
-    stride_y = 1
-    padding_x, padding_y = _padding_size_pad_layer(node, name_to_order_node)
-  elif node.op == "MaxPool" or node.op == "AvgPool":
-    stride_x, stride_y = _stride_size(node)
-    kernel_size_x, kernel_size_y = _pool_kernel_size(node)
-    # Compute the padding for this node separately for each direction.
-    padding_x = _padding_size_conv_pool(node, kernel_size_x, stride_x)
-    padding_y = _padding_size_conv_pool(node, kernel_size_y, stride_y)
-  elif node.op in _UNCHANGED_RF_LAYER_OPS:
-    # These nodes do not modify the RF parameters.
-    kernel_size_x = 1
-    kernel_size_y = 1
-    stride_x = 1
-    stride_y = 1
-    padding_x = 0
-    padding_y = 0
-  else:
-    raise ValueError("Unknown layer op: %s" % node.op)
-  return kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x, padding_y
-
-
-def _reverse_sort_by_order(name_to_order_node):
-  """Sorts map of name_to_order_node nodes in reverse order.
-
-  The output is such that the nodes in name_to_order_node are sorted in
-  descending order of the "order" field.
-
-  Args:
-    name_to_order_node: Map from name to {order, node}. Output of
-      graph_compute_order.get_compute_order().
-
-  Returns:
-    sorted_name_to_order_node: Sorted version of the input, in descending order.
-  """
-  return sorted(name_to_order_node.items(), key=lambda x: -x[1].order)
 
 
 def _get_rf_size_node_input(stride, kernel_size, rf_size_output):
@@ -304,13 +76,110 @@ def _get_effective_padding_node_input(stride, padding,
   return stride * effective_padding_output + padding
 
 
-def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
-  """Computes receptive field (RF) parameters from a GraphDef object.
+class ReceptiveField(object):
+  """Receptive field of a convolutional neural network.
 
   Args:
-    graph_def: GraphDef object.
-    input_node: Name of the input node from graph.
-    output_node: Name of the output node from graph.
+    size: Receptive field size.
+    stride: Effective stride.
+    padding: Effective padding.
+  """
+
+  def __init__(self, size, stride, padding):
+    self.size = np.asarray(size)
+    self.stride = np.asarray(stride)
+    self.padding = np.asarray(padding)
+
+  def compute_input_center_coordinates(self, y, axis=None):
+    """Computes the center of the receptive field that generated a feature.
+
+    Args:
+      y: An array of feature coordinates with shape `(..., d)`, where `d` is the
+        number of dimensions of the coordinates.
+      axis: The dimensions for which to compute the input center coordinates.
+        If `None` (the default), compute the input center coordinates for all
+        dimensions.
+
+    Returns:
+      x: Center of the receptive field that generated the features, at the input
+        of the network.
+
+    Raises:
+      ValueError: If the number of dimensions of the feature coordinates does
+        not match the number of elements in `axis`.
+    """
+    # Use all dimensions.
+    if axis is None:
+      axis = range(self.size.size)
+    # Ensure axis is a list because tuples have different indexing behavior.
+    axis = list(axis)
+    y = np.asarray(y)
+    if y.shape[-1] != len(axis):
+      raise ValueError("Dimensionality of the feature coordinates `y` (%d) "
+                       "does not match dimensionality of `axis` (%d)" %
+                       (y.shape[-1], len(axis)))
+    return -self.padding[axis] + y * self.stride[axis] + (
+        self.size[axis] - 1) / 2
+
+  def compute_feature_coordinates(self, x, axis=None):
+    """Computes the position of a feature given the center of a receptive field.
+
+    Args:
+      x: An array of input center coordinates with shape `(..., d)`, where `d`
+        is the number of dimensions of the coordinates.
+      axis: The dimensions for which to compute the feature coordinates.
+        If `None` (the default), compute the feature coordinates for all
+        dimensions.
+
+    Returns:
+      y: Coordinates of the features.
+
+    Raises:
+      ValueError: If the number of dimensions of the input center coordinates
+        does not match the number of elements in `axis`.
+    """
+    # Use all dimensions.
+    if axis is None:
+      axis = range(self.size.size)
+    # Ensure axis is a list because tuples have different indexing behavior.
+    axis = list(axis)
+    x = np.asarray(x)
+    if x.shape[-1] != len(axis):
+      raise ValueError("Dimensionality of the input center coordinates `x` "
+                       "(%d) does not match dimensionality of `axis` (%d)" %
+                       (x.shape[-1], len(axis)))
+    return (x + self.padding[axis] +
+            (1 - self.size[axis]) / 2) / self.stride[axis]
+
+  def __iter__(self):
+    return iter(np.concatenate([self.size, self.stride, self.padding]))
+
+
+def compute_receptive_field_from_graph_def(graph_def,
+                                           input_node,
+                                           output_node,
+                                           stop_propagation=None,
+                                           input_resolution=None):
+  """Computes receptive field (RF) parameters from a Graph or GraphDef object.
+
+  The algorithm stops the calculation of the receptive field whenever it
+  encounters an operation in the list `stop_propagation`. Stopping the
+  calculation early can be useful to calculate the receptive field of a
+  subgraph such as a single branch of the
+  [inception network](https://arxiv.org/abs/1512.00567).
+
+  Args:
+    graph_def: Graph or GraphDef object.
+    input_node: Name of the input node or Tensor object from graph.
+    output_node: Name of the output node or Tensor object from graph.
+    stop_propagation: List of operations or scope names for which to stop the
+      propagation of the receptive field.
+    input_resolution: 2D list. If the input resolution to the model is fixed and
+      known, this may be set. This is helpful for cases where the RF parameters
+      vary depending on the input resolution (this happens since SAME padding in
+      tensorflow depends on input resolution in general). If this is None, it is
+      assumed that the input resolution is unknown, so some RF parameters may be
+      unknown (depending on the model architecture).
 
   Returns:
     rf_size_x: Receptive field size of network in the horizontal direction, with
@@ -331,12 +200,26 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
       cannot be found. For network criterion alignment, see
       photos/vision/features/delf/g3doc/rf_computation.md
   """
+  # Convert a graph to graph_def if necessary.
+  if isinstance(graph_def, framework_ops.Graph):
+    graph_def = graph_def.as_graph_def()
+
+  # Convert tensors to names.
+  if isinstance(input_node, framework_ops.Tensor):
+    input_node = input_node.op.name
+  if isinstance(output_node, framework_ops.Tensor):
+    output_node = output_node.op.name
+
+  stop_propagation = stop_propagation or []
+
   # Computes order of computation for a given graph.
-  name_to_order_node = graph_compute_order.get_compute_order(
-      graph_def=graph_def)
+  node_info, name_to_node = graph_compute_order.get_compute_order(
+      graph_def=graph_def,
+      input_node_name=input_node,
+      input_node_size=input_resolution)
 
   # Sort in reverse topological order.
-  order = _reverse_sort_by_order(name_to_order_node)
+  ordered_node_info = sorted(node_info.items(), key=lambda x: -x[1].order)
 
   # Dictionaries to keep track of receptive field, effective stride and
   # effective padding of different nodes.
@@ -365,7 +248,7 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
   # alignment checks are skipped, and the effective padding is None.
   undefined_padding = False
 
-  for _, (o, node) in order:
+  for _, (o, node, _, _) in ordered_node_info:
     if node:
       logging.vlog(3, "%10d %-100s %-20s" % (o, node.name[:90], node.op))
     else:
@@ -391,13 +274,14 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
         continue
 
       # Get params for this layer.
-      kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x, padding_y = (
-          _get_layer_params(node, name_to_order_node))
+      (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x,
+       padding_y, _, _) = parse_layer_parameters.get_layer_params(
+           node, name_to_node, node_info[node.name].input_size)
       logging.vlog(3, "kernel_size_x = %s, kernel_size_y = %s, "
                    "stride_x = %s, stride_y = %s, "
-                   "padding_x = %s, padding_y = %s" %
+                   "padding_x = %s, padding_y = %s, input size = %s" %
                    (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x,
-                    padding_y))
+                    padding_y, node_info[node.name].input_size))
       if padding_x is None or padding_y is None:
         undefined_padding = True
 
@@ -419,67 +303,93 @@ def compute_receptive_field_from_graph_def(graph_def, input_node, output_node):
       else:
         effective_padding_input_x = None
         effective_padding_input_y = None
+      logging.vlog(
+          4, "rf_size_input_x = %s, rf_size_input_y = %s, "
+          "effective_stride_input_x = %s, effective_stride_input_y = %s, "
+          "effective_padding_input_x = %s, effective_padding_input_y = %s" %
+          (rf_size_input_x, rf_size_input_y, effective_stride_input_x,
+           effective_stride_input_y, effective_padding_input_x,
+           effective_padding_input_y))
 
       # Loop over this node's inputs and potentially propagate information down.
       for inp_name in node.input:
+        # Stop the propagation of the receptive field.
+        if any(inp_name.startswith(stop) for stop in stop_propagation):
+          logging.vlog(3, "Skipping explicitly ignored node %s.", inp_name)
+          continue
+
         logging.vlog(4, "inp_name = %s", inp_name)
-        inp_node = name_to_order_node[inp_name].node
+        if inp_name.startswith("^"):
+          # The character "^" denotes a control dependency, so this input node
+          # can be safely ignored.
+          continue
+
+        inp_node = name_to_node[inp_name]
         logging.vlog(4, "inp_node = \n%s", inp_node)
-        if inp_node.name in rf_sizes_x:
-          assert inp_node.name in rf_sizes_y, (
-              "Node %s is in rf_sizes_x, but "
-              "not in rf_sizes_y" % inp_node.name)
+        if inp_name in rf_sizes_x:
+          assert inp_name in rf_sizes_y, ("Node %s is in rf_sizes_x, but "
+                                          "not in rf_sizes_y" % inp_name)
+          logging.vlog(
+              4, "rf_sizes_x[inp_name] = %s,"
+              " rf_sizes_y[inp_name] = %s, "
+              "effective_strides_x[inp_name] = %s,"
+              " effective_strides_y[inp_name] = %s, "
+              "effective_paddings_x[inp_name] = %s,"
+              " effective_paddings_y[inp_name] = %s" %
+              (rf_sizes_x[inp_name], rf_sizes_y[inp_name],
+               effective_strides_x[inp_name], effective_strides_y[inp_name],
+               effective_paddings_x[inp_name], effective_paddings_y[inp_name]))
           # This node was already discovered through a previous path, so we need
           # to make sure that graph is aligned. This alignment check is skipped
           # if the padding is not defined, since in this case alignment cannot
           # be checked.
           if not undefined_padding:
-            if effective_strides_x[inp_node.name] != effective_stride_input_x:
+            if effective_strides_x[inp_name] != effective_stride_input_x:
               raise ValueError(
                   "Graph is not aligned since effective stride from different "
                   "paths is different in horizontal direction")
-            if effective_strides_y[inp_node.name] != effective_stride_input_y:
+            if effective_strides_y[inp_name] != effective_stride_input_y:
               raise ValueError(
                   "Graph is not aligned since effective stride from different "
                   "paths is different in vertical direction")
-            if (rf_sizes_x[inp_node.name] - 1
-               ) / 2 - effective_paddings_x[inp_node.name] != (
+            if (rf_sizes_x[inp_name] - 1
+               ) / 2 - effective_paddings_x[inp_name] != (
                    rf_size_input_x - 1) / 2 - effective_padding_input_x:
               raise ValueError(
                   "Graph is not aligned since center shift from different "
                   "paths is different in horizontal direction")
-            if (rf_sizes_y[inp_node.name] - 1
-               ) / 2 - effective_paddings_y[inp_node.name] != (
+            if (rf_sizes_y[inp_name] - 1
+               ) / 2 - effective_paddings_y[inp_name] != (
                    rf_size_input_y - 1) / 2 - effective_padding_input_y:
               raise ValueError(
                   "Graph is not aligned since center shift from different "
                   "paths is different in vertical direction")
           # Keep track of path with largest RF, for both directions.
-          if rf_sizes_x[inp_node.name] < rf_size_input_x:
-            rf_sizes_x[inp_node.name] = rf_size_input_x
-            effective_strides_x[inp_node.name] = effective_stride_input_x
-            effective_paddings_x[inp_node.name] = effective_padding_input_x
-          if rf_sizes_y[inp_node.name] < rf_size_input_y:
-            rf_sizes_y[inp_node.name] = rf_size_input_y
-            effective_strides_y[inp_node.name] = effective_stride_input_y
-            effective_paddings_y[inp_node.name] = effective_padding_input_y
+          if rf_sizes_x[inp_name] < rf_size_input_x:
+            rf_sizes_x[inp_name] = rf_size_input_x
+            effective_strides_x[inp_name] = effective_stride_input_x
+            effective_paddings_x[inp_name] = effective_padding_input_x
+          if rf_sizes_y[inp_name] < rf_size_input_y:
+            rf_sizes_y[inp_name] = rf_size_input_y
+            effective_strides_y[inp_name] = effective_stride_input_y
+            effective_paddings_y[inp_name] = effective_padding_input_y
         else:
-          assert inp_node.name not in rf_sizes_y, (
-              "Node %s is in rf_sizes_y, but "
-              "not in rf_sizes_x" % inp_node.name)
+          assert inp_name not in rf_sizes_y, ("Node %s is in rf_sizes_y, but "
+                                              "not in rf_sizes_x" % inp_name)
           # In this case, it is the first time we encounter this node. So we
           # propagate the RF parameters.
-          rf_sizes_x[inp_node.name] = rf_size_input_x
-          rf_sizes_y[inp_node.name] = rf_size_input_y
-          effective_strides_x[inp_node.name] = effective_stride_input_x
-          effective_strides_y[inp_node.name] = effective_stride_input_y
-          effective_paddings_x[inp_node.name] = effective_padding_input_x
-          effective_paddings_y[inp_node.name] = effective_padding_input_y
+          rf_sizes_x[inp_name] = rf_size_input_x
+          rf_sizes_y[inp_name] = rf_size_input_y
+          effective_strides_x[inp_name] = effective_stride_input_x
+          effective_strides_y[inp_name] = effective_stride_input_y
+          effective_paddings_x[inp_name] = effective_padding_input_x
+          effective_paddings_y[inp_name] = effective_padding_input_y
 
   if not found_output_node:
     raise ValueError("Output node was not found")
   if input_node not in rf_sizes_x:
     raise ValueError("Input node was not found")
-  return (rf_sizes_x[input_node], rf_sizes_y[input_node],
-          effective_strides_x[input_node], effective_strides_y[input_node],
-          effective_paddings_x[input_node], effective_paddings_y[input_node])
+  return ReceptiveField(
+      (rf_sizes_x[input_node], rf_sizes_y[input_node]),
+      (effective_strides_x[input_node], effective_strides_y[input_node]),
+      (effective_paddings_x[input_node], effective_paddings_y[input_node]))

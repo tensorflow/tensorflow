@@ -231,8 +231,8 @@ def _infer_device_name(graph_def):
       break
   if device_name is None:
     logging.warn(
-        "Failed to infer device name from partiton GraphDef: none of the nodes "
-        "of the GraphDef has a non-empty device name.")
+        "Failed to infer device name from partition GraphDef: none of the "
+        "nodes of the GraphDef has a non-empty device name.")
   return device_name
 
 

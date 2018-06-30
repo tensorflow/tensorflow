@@ -1,12 +1,40 @@
 path: "tensorflow.keras.layers.SimpleRNN"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.recurrent.SimpleRNN\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.recurrent.Recurrent\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.SimpleRNN\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.RNN\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {
-    name: "graph"
+    name: "activation"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "activity_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "bias_constraint"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "bias_initializer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "bias_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dropout"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inbound_nodes"
     mtype: "<type \'property\'>"
   }
   member {
@@ -22,7 +50,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "kernel_constraint"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "kernel_initializer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "kernel_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "losses"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
     mtype: "<type \'property\'>"
   }
   member {
@@ -31,6 +75,10 @@ tf_class {
   }
   member {
     name: "non_trainable_weights"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "outbound_nodes"
     mtype: "<type \'property\'>"
   }
   member {
@@ -46,7 +94,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "scope_name"
+    name: "recurrent_constraint"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "recurrent_dropout"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "recurrent_initializer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "recurrent_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "states"
     mtype: "<type \'property\'>"
   }
   member {
@@ -58,7 +122,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "units"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "updates"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "use_bias"
     mtype: "<type \'property\'>"
   }
   member {
@@ -71,7 +143,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'recurrent_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'recurrent_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'kernel_constraint\', \'recurrent_constraint\', \'bias_constraint\', \'dropout\', \'recurrent_dropout\'], varargs=None, keywords=kwargs, defaults=[\'tanh\', \'True\', \'glorot_uniform\', \'orthogonal\', \'zeros\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'0.0\', \'0.0\'], "
+    argspec: "args=[\'self\', \'units\', \'activation\', \'use_bias\', \'kernel_initializer\', \'recurrent_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'recurrent_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'kernel_constraint\', \'recurrent_constraint\', \'bias_constraint\', \'dropout\', \'recurrent_dropout\', \'return_sequences\', \'return_state\', \'go_backwards\', \'stateful\', \'unroll\'], varargs=None, keywords=kwargs, defaults=[\'tanh\', \'True\', \'glorot_uniform\', \'orthogonal\', \'zeros\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'0.0\', \'0.0\', \'False\', \'False\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "add_loss"
@@ -83,11 +155,11 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'getter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -95,7 +167,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
@@ -104,6 +176,10 @@ tf_class {
   member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"
@@ -116,10 +192,6 @@ tf_class {
   member_method {
     name: "get_config"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_constants"
-    argspec: "args=[\'self\', \'inputs\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_initial_state"
@@ -162,19 +234,11 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "preprocess_input"
-    argspec: "args=[\'self\', \'inputs\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "reset_states"
     argspec: "args=[\'self\', \'states\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "step"
-    argspec: "args=[\'self\', \'inputs\', \'states\'], varargs=None, keywords=None, defaults=None"
   }
 }

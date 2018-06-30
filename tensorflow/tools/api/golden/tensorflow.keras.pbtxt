@@ -1,6 +1,14 @@
 path: "tensorflow.keras"
 tf_module {
   member {
+    name: "Model"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Sequential"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "activations"
     mtype: "<type \'module\'>"
   }
@@ -22,6 +30,10 @@ tf_module {
   }
   member {
     name: "datasets"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "estimator"
     mtype: "<type \'module\'>"
   }
   member {

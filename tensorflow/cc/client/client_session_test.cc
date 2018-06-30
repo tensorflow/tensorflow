@@ -23,7 +23,13 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
+namespace {
+
+using ops::Add;
+using ops::Const;
+using ops::Mul;
+using ops::Placeholder;
+using ops::Sub;
 
 TEST(ClientSessionTest, Basic) {
   Scope root = Scope::NewRootScope();
@@ -89,4 +95,5 @@ TEST(ClientSessionTest, MultiThreaded) {
   test::ExpectTensorEqual<int>(outputs[0], test::AsTensor<int>({-1, 2}, {2}));
 }
 
-}  // end namespace tensorflow
+}  // namespace
+}  // namespace tensorflow

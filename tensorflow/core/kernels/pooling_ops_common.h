@@ -86,7 +86,9 @@ class MaxPoolingOp : public OpKernel {
                   errors::InvalidArgument("Invalid data format"));
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
-          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC."));
+          errors::InvalidArgument("Default MaxPoolingOp only supports NHWC ",
+                                  "on device type ",
+                                  DeviceTypeString(context->device_type())));
     } else {
       data_format_ = FORMAT_NHWC;
     }
@@ -193,7 +195,6 @@ class MaxPoolingOp : public OpKernel {
       //    and updates the corresponding column(s) in output_as_matrix with the
       //    max value.
       auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
-
         const int32 in_rows = params.tensor_in_rows;
         const int32 in_cols = params.tensor_in_cols;
         const int32 pad_rows = params.pad_rows;
@@ -441,7 +442,6 @@ class MaxPoolingV2Op : public OpKernel {
       //    and updates the corresponding column(s) in output_as_matrix with the
       //    max value.
       auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
-
         const int32 in_rows = params.tensor_in_rows;
         const int32 in_cols = params.tensor_in_cols;
         const int32 pad_rows = params.pad_rows;
@@ -596,7 +596,7 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
   // so the factor 0.01 (i.e. 1/100) with a max of 10000, was chosen to limit
   // the work unit cost to an operating range in which it emperically performed
   // best.
-  const int64 work_unit_cost = std::max(10000LL, work_unit_size / 100LL);
+  const int64 work_unit_cost = std::max(int64{10000}, work_unit_size / 100LL);
   const DeviceBase::CpuWorkerThreads& worker_threads =
       *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,

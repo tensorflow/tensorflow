@@ -20,15 +20,11 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace strings {
-
-AlphaNum::AlphaNum(const Eigen::half &f)
-    : piece_(digits_, strlen(FloatToBuffer(static_cast<float>(f), digits_))) {}
 
 AlphaNum::AlphaNum(Hex hex) {
   char *const end = &digits_[kFastToBufferSize];
@@ -45,7 +41,7 @@ AlphaNum::AlphaNum(Hex hex) {
     value >>= 4;
     mask >>= 4;
   } while (mask != 0);
-  piece_.set(writer, end - writer);
+  piece_ = StringPiece(writer, end - writer);
 }
 
 // ----------------------------------------------------------------------

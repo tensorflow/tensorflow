@@ -33,6 +33,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/eye_functor.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
 #endif
 
 namespace tensorflow {
@@ -68,7 +70,6 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
     // a result of basic user mistakes, such as providing integer valued
     // matrices that are exactly singular, or due to underflow if this
     // code is run with denormals being flushed to zero.
-    using RealScalar = typename Base::RealScalar;
     const RealScalar min_abs_pivot =
         lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
     OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
@@ -109,6 +110,13 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                                 input.dim_size(ndims - 2), " != ", n),
         done);
 
+    // By definition, an empty matrix's inverse is an empty matrix.
+    if (input.NumElements() == 0) {
+      context->set_output(0, input);
+      done();
+      return;
+    }
+
     // Allocate output.
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(context,
@@ -116,40 +124,45 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                              {0}, 0, input.shape(), &output),
                          done);
 
-    // By definition, an empty matrix's inverse is an empty matrix.
-    if (input.NumElements() == 0) {
-      done();
-      return;
-    }
+    // TODO(rmlarsen): Convert to std::make_unique when available.
+    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
 
     // Make a copy of the (possible adjointed) input that we will use for the
     // factorization step.
     Tensor input_copy;
-    OP_REQUIRES_OK_ASYNC(context,
-                         context->allocate_temp(DataTypeToEnum<Scalar>::value,
-                                                input.shape(), &input_copy),
-                         done);
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver->allocate_scoped_tensor(DataTypeToEnum<Scalar>::value,
+                                       input.shape(), &input_copy),
+        done);
     auto input_copy_reshaped = input_copy.template flat_inner_dims<Scalar, 3>();
-    auto input_reshaped = input.template flat_inner_dims<Scalar, 3>();
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     if (!adjoint_) {
       device.memcpy(input_copy.flat<Scalar>().data(),
                     input.flat<Scalar>().data(),
                     input.NumElements() * sizeof(Scalar));
     } else {
-      functor::AdjointBatchFunctor<GPUDevice, Scalar> functor;
-      functor(device, input_reshaped, input_copy_reshaped);
+      OP_REQUIRES_OK_ASYNC(
+          context, DoConjugateMatrixTranspose(device, input, &input_copy),
+          done);
     }
     const int64 batch_size = input_copy_reshaped.dimension(0);
 
-    CudaSolver solver(context);
+    Tensor pivots;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        solver->allocate_scoped_tensor(DataTypeToEnum<int>::value,
+                                       TensorShape{batch_size, n}, &pivots),
+        done);
+    auto pivots_mat = pivots.template matrix<int>();
+    auto input_copy_ptr_array = solver->GetScratchSpace<uint8>(
+        sizeof(Scalar*) * batch_size, "input_copy_ptr_array",
+        /* on_host */ true);
+    auto output_ptr_array = solver->GetScratchSpace<uint8>(
+        sizeof(Scalar*) * batch_size, "output_copy_ptr_array",
+        /* on_host */ true);
+    auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
     std::vector<DeviceLapackInfo> dev_info;
-    ScratchSpace<int> pivots(context, n * batch_size, /* on_host */ false);
-    ScratchSpace<uint8> input_copy_ptr_array(context,
-                                             sizeof(Scalar*) * batch_size,
-                                             /* on_host */ true);
-    ScratchSpace<uint8> output_ptr_array(context, sizeof(Scalar*) * batch_size,
-                                         /* on_host */ true);
     if (n < 32 || batch_size > n) {
       // For small matrices or very large batch sizes, we use the batched
       // interfaces in cuBlas to avoid being dominated by kernel launch
@@ -160,88 +173,76 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
           reinterpret_cast<const Scalar**>(input_copy_ptr_array.mutable_data());
       const Scalar** output_ptr_array_base =
           reinterpret_cast<const Scalar**>(output_ptr_array.mutable_data());
-      auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
-      for (int64 i = 0; i < batch_size; ++i) {
-        input_copy_ptr_array_base[i] = input_copy_reshaped.data() + i * n * n;
-        output_ptr_array_base[i] = output_reshaped.data() + i * n * n;
+      for (int batch = 0; batch < batch_size; ++batch) {
+        input_copy_ptr_array_base[batch] = &input_copy_reshaped(batch, 0, 0);
+        output_ptr_array_base[batch] = &output_reshaped(batch, 0, 0);
       }
 
       if (n < 32) {
         // MatInvBatched only supports n < 32.
-        dev_info.emplace_back(context, batch_size, "MatInvBatched");
-        OP_REQUIRES_OK_ASYNC(context,
-                             solver.MatInvBatched(n, input_copy_ptr_array_base,
-                                                  n, output_ptr_array_base, n,
-                                                  &dev_info.back(), batch_size),
+        dev_info.push_back(
+            solver->GetDeviceLapackInfo(batch_size, "MatInvBatched"));
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            solver->MatInvBatched(n, input_copy_ptr_array_base, n,
+                                  output_ptr_array_base, n, &dev_info.back(),
+                                  batch_size),
 
-                             done);
+            done);
       } else {
         // For larger matrices and large batch size, we used the batched
         // GETRF/GETRI kernels.
-        dev_info.emplace_back(context, batch_size, "GetrfBatched");
+        dev_info.push_back(
+            solver->GetDeviceLapackInfo(batch_size, "GetrfBatched"));
         OP_REQUIRES_OK_ASYNC(context,
-                             solver.GetrfBatched(n, input_copy_ptr_array_base,
-                                                 n, pivots.mutable_data(),
-                                                 &dev_info.back(), batch_size),
+                             solver->GetrfBatched(n, input_copy_ptr_array_base,
+                                                  n, pivots_mat.data(),
+                                                  &dev_info.back(), batch_size),
                              done);
         // 2. Compute the inverse(s).
-        dev_info.emplace_back(context, batch_size, "GetriBatched");
+        dev_info.push_back(
+            solver->GetDeviceLapackInfo(batch_size, "GetriBatched"));
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.GetriBatched(n, input_copy_ptr_array_base, n, pivots.data(),
-                                output_ptr_array_base, n, &dev_info.back(),
-                                batch_size),
+            solver->GetriBatched(n, input_copy_ptr_array_base, n,
+                                 pivots_mat.data(), output_ptr_array_base, n,
+                                 &dev_info.back(), batch_size),
             done);
       }
     } else {
-      // For large matrices, we wompute the inverse of each matrix in the batch
+      // For large matrices, we compute the inverse of each matrix in the batch
       // sequentially. Here we use the cuSolver methods GETRF/GETRS because they
       // are MUCH faster than their batched cuBlas equivalents for large
       // matrices.
-      dev_info.emplace_back(context, batch_size, "getrf");
-      int* dev_info_ptr = dev_info.back().mutable_data();
-      Scalar* input_copy_ptr = input_copy.flat<Scalar>().data();
-      int* pivots_ptr = pivots.mutable_data();
+      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Getrf(n, n, input_copy_ptr, n, pivots_ptr, dev_info_ptr),
+            solver->Getrf(n, n, &input_copy_reshaped(batch, 0, 0), n,
+                          &pivots_mat(batch, 0), &dev_info.back()(batch)),
             done);
-        input_copy_ptr += n * n;
-        pivots_ptr += n;
-        ++dev_info_ptr;
       }
 
       // Set all right-hand sides to the identity.
       functor::EyeFunctor<GPUDevice, Scalar> eye;
-      eye(device, output->template flat_inner_dims<Scalar, 3>());
+      eye(device, output_reshaped);
 
       // Solve A X = I.
-      Scalar* output_ptr = output->template flat<Scalar>().data();
-      input_copy_ptr = input_copy.flat<Scalar>().data();
-      pivots_ptr = pivots.mutable_data();
-      dev_info.emplace_back(context, batch_size, "getrs");
-      dev_info_ptr = dev_info.back().mutable_data();
+      dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "getrs"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
             context,
-            solver.Getrs(CUBLAS_OP_N, n, n, input_copy_ptr, n, pivots_ptr,
-                         output_ptr, n, dev_info_ptr),
+            solver->Getrs(CUBLAS_OP_N, n, n, &input_copy_reshaped(batch, 0, 0),
+                          n, &pivots_mat(batch, 0),
+                          &output_reshaped(batch, 0, 0), n,
+                          &dev_info.back()(batch)),
             done);
-        output_ptr += n * n;
-        input_copy_ptr += n * n;
-        pivots_ptr += n;
-        ++dev_info_ptr;
       }
     }
-    // Register callback to check info after kernels finish. Also capture the
-    // temporary Tensors/ScratchSpace so they don't get deallocated before the
-    // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
-    // available.
-    auto info_checker = [context, dev_info, input_copy, pivots,
-                         input_copy_ptr_array, output_ptr_array,
-                         done](const Status& status,
-                               const std::vector<HostLapackInfo>& host_infos) {
+    // Callback for checking info after kernels finish.
+    auto info_checker = [context, done](
+                            const Status& status,
+                            const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && errors::IsInvalidArgument(status)) {
         for (const auto& host_info : host_infos) {
           for (int i = 0; i < host_info.size(); ++i) {
@@ -249,7 +250,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
             // just print the original error message from the call itself
             // below.
             OP_REQUIRES_ASYNC(
-                context, host_info[i] <= 0,
+                context, host_info(i) <= 0,
                 errors::InvalidArgument("Input is not invertible."), done);
           }
         }
@@ -257,11 +258,8 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
       OP_REQUIRES_OK_ASYNC(context, status, done);
       done();
     };
-
-    OP_REQUIRES_OK_ASYNC(
-        context,
-        solver.CopyLapackInfoToHostAsync(dev_info, std::move(info_checker)),
-        done);
+    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                    std::move(info_checker));
   }
 
  private:

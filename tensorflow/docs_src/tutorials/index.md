@@ -1,53 +1,59 @@
 # Tutorials
 
+
 This section contains tutorials demonstrating how to do specific tasks
-in TensorFlow.  If you are new to TensorFlow, we recommend reading the
-documents in the "Get Started" section before reading these tutorials.
+in TensorFlow.  If you are new to TensorFlow, we recommend reading
+[Get Started with TensorFlow](/get_started/).
 
-The following tutorial explains the interaction of CPUs and GPUs on a
-TensorFlow system:
+## Images
 
-  * @{$using_gpu$Using GPUs}
+These tutorials cover different aspects of image recognition:
 
-The following tutorials cover different aspects of image recognition:
+  * @{$layers$MNIST}, which introduces convolutional neural networks (CNNs) and
+    demonstrates how to build a CNN in TensorFlow.
+  * @{$image_recognition}, which introduces the field of image recognition and
+    uses a pre-trained model (Inception) for recognizing images.
+  * @{$image_retraining}, which has a wonderfully self-explanatory title.
+  * @{$deep_cnn}, which demonstrates how to build a small CNN for recognizing
+    images.  This tutorial is aimed at advanced TensorFlow users.
 
-  * @{$image_recognition$Image Recognition}, which introduces the field of
-    image recognition and a model (Inception) for recognizing images.
-  * @{$image_retraining$How to Retrain Inception's Final Layer for New Categories},
-    which has a wonderfully self-explanatory title.
-  * @{$layers$A Guide to TF Layers: Building a Convolutional Neural Network},
-    which introduces convolutional neural networks (CNNs) and demonstrates how
-    to build a CNN in TensorFlow.
-  * @{$deep_cnn$Convolutional Neural Networks}, which demonstrates how to
-    build a small CNN for recognizing images.  This tutorial is aimed at
-    advanced TensorFlow users.
 
-The following tutorials focus on machine learning problems in human language:
+## Sequences
 
-  * @{$word2vec$Vector Representations of Words}, which demonstrates how to
-    create an embedding for words.
-  * @{$recurrent$Recurrent Neural Networks}, which demonstrates how to use a
+These tutorials focus on machine learning problems dealing with sequence data.
+
+  * @{$recurrent}, which demonstrates how to use a
     recurrent neural network to predict the next word in a sentence.
-  * @{$seq2seq$Sequence-to-Sequence Models}, which demonstrates how to use a
+  * @{$seq2seq}, which demonstrates how to use a
     sequence-to-sequence model to translate text from English to French.
-
-The following tutorials focus on linear models:
-
-  * @{$linear$Large-Scale Linear Models with TensorFlow}, which introduces
-    linear models and demonstrates how to build them with the high-level API.
-  * @{$wide$TensorFlow Linear Model Tutorial}, which demonstrates how to solve
-    a binary classification problem in TensorFlow.
-  * @{$wide_and_deep$TensorFlow Wide & Deep Learning Tutorial}, which explains
-    how to use the high-level API to jointly train both a wide linear model
-    and a deep feed-forward neural network.
-  * @{$kernel_methods$Improving Linear Models Using Explicit Kernel Methods},
-    which shows how to improve the quality of a linear model by using explicit
-    kernel mappings.
-  * @{$audio_recognition$Simple Audio Recognition}, which shows how to
+  * @{$recurrent_quickdraw}
+    builds a classification model for drawings, directly from the sequence of
+    pen strokes.
+  * @{$audio_recognition}, which shows how to
     build a basic speech recognition network.
 
-Although TensorFlow specializes in machine learning, you may also use
-TensorFlow to solve other kinds of math problems.  For example:
+## Data representation
 
-  * @{$mandelbrot$Mandelbrot Set}
-  * @{$pdes$Partial Differential Equations}
+These tutorials demonstrate various data representations that can be used in
+TensorFlow.
+
+  * @{$wide}, uses
+    @{tf.feature_column$feature columns} to feed a variety of data types
+    to linear model, to solve a classification problem.
+  * @{$wide_and_deep}, builds on the
+    above linear model tutorial, adding a deep feed-forward neural network
+    component and a DNN-compatible data representation.
+  * @{$word2vec}, which demonstrates how to
+    create an embedding for words.
+  * @{$kernel_methods},
+    which shows how to improve the quality of a linear model by using explicit
+    kernel mappings.
+
+## Non Machine Learning
+
+Although TensorFlow specializes in machine learning, the core of TensorFlow is
+a powerful numeric computation system which you can also use to solve other
+kinds of math problems.  For example:
+
+  * @{$mandelbrot}
+  * @{$pdes}

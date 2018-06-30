@@ -29,9 +29,12 @@ limitations under the License.
 #define NO_IMPORT_ARRAY
 #endif
 
+// Place `<locale>` before <Python.h> to avoid build failure in macOS.
 #include <Python.h>
+#include <locale>
 
 #include "numpy/arrayobject.h"
+#include "numpy/ufuncobject.h"
 
 namespace tensorflow {
 

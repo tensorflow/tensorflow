@@ -325,6 +325,13 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
         constant_op.constant(self._VAL_2_5_6, dtypes.int32),
         constant_op.constant(self._SHP_2_5_6, dtypes.int64))
 
+  def _SparseTensor_2x5x6_Empty(self):
+    return sparse_tensor.SparseTensor(
+        constant_op.constant(
+            np.empty(shape=[0, 3], dtype=np.int64), dtypes.int64),
+        constant_op.constant(np.empty(shape=[0], dtype=np.int32), dtypes.int32),
+        constant_op.constant(self._SHP_2_5_6, dtypes.int64))
+
   def _SparseTensorValue_2x5x6(self):
     return sparse_tensor.SparseTensorValue(self._IND_2_5_6, self._VAL_2_5_6,
                                            self._SHP_2_5_6)
@@ -386,6 +393,17 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
       self.assertAllEqual(output.values, [0, 10, 13, 14, 32, 33])
       self.assertAllEqual(output.dense_shape, [2, 4, 5])
+
+  def testTightBoundingBoxEmpty(self):
+    with self.test_session(use_gpu=False) as sess:
+      sp_input = self._SparseTensor_2x5x6_Empty()
+      sp_output = sparse_ops.sparse_reset_shape(sp_input)
+
+      output = sess.run(sp_output)
+
+      self.assertAllEqual(output.indices.shape, [0, 3])
+      self.assertAllEqual(output.values.shape, [0])
+      self.assertAllEqual(output.dense_shape, [0, 0, 0])
 
   def testInvalidRank(self):
     with self.test_session(use_gpu=False):
@@ -920,6 +938,7 @@ class SparseTransposeTest(test.TestCase):
           sp_trans = sparse_ops.sparse_transpose(sp_input, perm=perm)
           dn_trans = sparse_ops.sparse_tensor_to_dense(sp_trans).eval()
           expected_trans = array_ops.transpose(dn_input, perm=perm).eval()
+          self.assertAllEqual(expected_trans.shape, sp_trans.get_shape())
           self.assertAllEqual(dn_trans, expected_trans)
 
 

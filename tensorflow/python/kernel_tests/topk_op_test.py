@@ -58,7 +58,7 @@ class TopKTest(test.TestCase):
         # Do some special casing of equality of indices: if indices
         # are not the same, but values are floating type, ensure that
         # the values are within epsilon of each other.
-        if not np.issubdtype(np_expected_values.dtype, np.float):
+        if not np.issubdtype(np_expected_values.dtype, np.floating):
           # Values are not floating point type; check indices exactly
           self.assertAllEqual(np_expected_indices, indices)
         else:
@@ -99,6 +99,13 @@ class TopKTest(test.TestCase):
   def testTop2(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.4, 0.2]]
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
+
+  def testTop3(self):
+    k = 5
+    inputs = np.random.permutation(np.linspace(0, 100, 6140, dtype=np.float64))
+    indices = np.argsort(-inputs)[:k]
+    values = -np.sort(-inputs)[:k]
+    self._validateTopK(inputs, k, values, indices)
 
   def _testLargeSort(self, dtype):
     b = 10
@@ -190,13 +197,15 @@ class TopKTest(test.TestCase):
 
   def testTopKGradients(self):
     with self.test_session(use_gpu=True) as sess:
-      inputs = array_ops.placeholder(dtypes.int32, shape=[2, 5])
+      inputs = array_ops.placeholder(dtypes.float32, shape=[2, 5])
       values, _ = nn_ops.top_k(inputs, 3)
       grad = sess.run(
           gradients_impl.gradients(
-              values, inputs, grad_ys=[[[1, 2, 3], [4, 5, 6]]]),
-          feed_dict={inputs: [[2, -1, 1000, 3, 4], [1, 5, 2, 4, 3]]})[0]
-    self.assertEqual(grad.tolist(), [[0, 0, 1, 3, 2], [0, 4, 0, 5, 6]])
+              values, inputs, grad_ys=[[[1., 2., 3.], [4., 5., 6.]]]),
+          feed_dict={inputs: [[2., -1., 1000., 3., 4.],
+                              [1., 5., 2., 4., 3.]]})[0]
+    self.assertEqual(
+        grad.tolist(), [[0., 0., 1., 3., 2.], [0., 4., 0., 5., 6.]])
 
 
 class TopKBenchmark(test.Benchmark):

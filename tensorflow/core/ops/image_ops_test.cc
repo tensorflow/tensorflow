@@ -90,6 +90,58 @@ TEST(ImageOpsTest, DecodeImage_ShapeFn) {
   }
 }
 
+TEST(ImageOpsTest, DecodeAndCropJpeg_ShapeFn) {
+  const char* op_name = "DecodeAndCropJpeg";
+  ShapeInferenceTestOp op(op_name);
+
+  // Check the number of inputs.
+  INFER_ERROR("Wrong number of inputs passed: 1 while 2 expected", op, "[1]");
+
+  // Rank check.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];?");
+
+  // Set the channel to zero - output is not known.
+  TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                   .Input({"img", 0, DT_STRING})
+                   .Input({"crop_window", 1, DT_INT32})
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[];[?]", "[?,?,?]");
+
+  // Set the channel, so that part of output shape is known.
+  TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                   .Input({"img", 0, DT_STRING})
+                   .Input({"crop_window", 1, DT_INT32})
+                   .Attr("channels", 4)
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[];[?]", "[?,?,4]");
+
+  // Negative channel value is rejected.
+  TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                   .Input({"img", 0, DT_STRING})
+                   .Input({"crop_window", 1, DT_INT32})
+                   .Attr("channels", -1)
+                   .Finalize(&op.node_def));
+  INFER_ERROR("channels must be non-negative, got -1", op, "[];[]");
+}
+
+TEST(ImageOpsTest, DecodeAndCropJpeg_InvalidCropWindow) {
+  const char* op_name = "DecodeAndCropJpeg";
+  ShapeInferenceTestOp op(op_name);
+
+  // Check the number of inputs.
+  INFER_ERROR("Wrong number of inputs passed: 1 while 2 expected", op, "[1]");
+
+  // Rank check.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1];?");
+
+  // Set the channel to zero - output is not known.
+  TF_ASSERT_OK(NodeDefBuilder("test", op_name)
+                   .Input({"img", 0, DT_STRING})
+                   .Input({"crop_window", 1, DT_INT32})
+                   .Finalize(&op.node_def));
+  INFER_OK(op, "[];[?]", "[?,?,?]");
+}
+
 TEST(ImageOpsTest, EncodeImage_ShapeFn) {
   for (const char* op_name : {"EncodeJpeg", "EncodePng"}) {
     ShapeInferenceTestOp op(op_name);
@@ -260,4 +312,23 @@ TEST(ImageOpsTest, QuantizedResizeBilinear_ShapeFn) {
   INFER_OK(op, "[1,?,3,?];[2];[];[]", "[d0_0,20,30,d0_3];[];[]");
 }
 
+TEST(ImageOpsTest, DrawBoundingBoxes_ShapeFn) {
+  ShapeInferenceTestOp op("DrawBoundingBoxes");
+  op.input_tensors.resize(2);
+
+  // Check images.
+  INFER_ERROR("must be rank 4", op, "[1,?,3];?");
+  INFER_ERROR("should be either 1 (GRY), 3 (RGB), or 4 (RGBA)",
+      op, "[1,?,?,5];?");
+
+  // Check boxes.
+  INFER_ERROR("must be rank 3", op, "[1,?,?,4];[1,4]");
+  INFER_ERROR("Dimension must be 4", op, "[1,?,?,4];[1,2,2]");
+
+  // OK shapes.
+  INFER_OK(op, "[4,?,?,4];?", "in0");
+  INFER_OK(op, "[?,?,?,?];[?,?,?]", "in0");
+  INFER_OK(op, "[4,?,?,4];[?,?,?]", "in0");
+  INFER_OK(op, "[4,?,?,4];[?,?,4]", "in0");
+}
 }  // end namespace tensorflow

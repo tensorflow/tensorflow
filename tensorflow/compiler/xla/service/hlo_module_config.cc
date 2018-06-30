@@ -28,10 +28,10 @@ namespace xla {
 
 using tensorflow::strings::StrAppend;
 
-HloModuleConfig::HloModuleConfig() {}
-
-HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape)
-    : entry_computation_layout_(program_shape) {}
+HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape,
+                                 bool ignore_layouts)
+    : entry_computation_layout_(
+          ComputationLayout(program_shape, ignore_layouts)) {}
 
 void HloModuleConfig::SetDefaultComputationLayout(
     const ProgramShape& program_shape) {
@@ -39,8 +39,8 @@ void HloModuleConfig::SetDefaultComputationLayout(
 }
 
 string HloModuleConfig::compilation_cache_key() const {
-  string key = tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled_,
-                                           "::hybrid=", has_hybrid_result_);
+  string key =
+      tensorflow::strings::StrCat("profiling=", hlo_profiling_enabled());
   StrAppend(&key, "::(");
   std::vector<string> params;
   for (const ShapeLayout& param_layout :

@@ -14,10 +14,41 @@
 # ==============================================================================
 """TFGAN utilities for loss functions that accept GANModel namedtuples.
 
-Example:
+The losses and penalties in this file all correspond to losses in
+`losses_impl.py`. Losses in that file take individual arguments, whereas in this
+file they take a `GANModel` tuple. For example:
+
+losses_impl.py:
   ```python
-  # `tfgan.losses.args` losses take individual arguments.
-  w_loss = tfgan.losses.args.wasserstein_discriminator_loss(
+  def wasserstein_discriminator_loss(
+      discriminator_real_outputs,
+      discriminator_gen_outputs,
+      real_weights=1.0,
+      generated_weights=1.0,
+      scope=None,
+      loss_collection=ops.GraphKeys.LOSSES,
+      reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+      add_summaries=False)
+  ```
+
+tuple_losses_impl.py:
+  ```python
+  def wasserstein_discriminator_loss(
+      gan_model,
+      real_weights=1.0,
+      generated_weights=1.0,
+      scope=None,
+      loss_collection=ops.GraphKeys.LOSSES,
+      reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
+      add_summaries=False)
+  ```
+
+
+
+Example usage:
+  ```python
+  # `tfgan.losses.wargs` losses take individual arguments.
+  w_loss = tfgan.losses.wargs.wasserstein_discriminator_loss(
     discriminator_real_outputs,
     discriminator_gen_outputs)
 
@@ -29,6 +60,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.losses.python import losses_impl
 from tensorflow.python.util import tf_inspect
 
@@ -47,6 +79,7 @@ __all__ = [
     'wasserstein_gradient_penalty',
     'mutual_information_penalty',
     'combine_adversarial_loss',
+    'cycle_consistency_loss',
 ]
 
 
@@ -73,7 +106,21 @@ def _args_to_gan_model(loss_fn):
   default_args_dict = dict(zip(args_with_defaults, defaults))
 
   def new_loss_fn(gan_model, **kwargs):  # pylint:disable=missing-docstring
-    gan_model_dict = gan_model._asdict()
+    def _asdict(namedtuple):
+      """Returns a namedtuple as a dictionary.
+
+      This is required because `_asdict()` in Python 3.x.x is broken in classes
+      that inherit from `collections.namedtuple`. See
+      https://bugs.python.org/issue24931 for more details.
+
+      Args:
+        namedtuple: An object that inherits from `collections.namedtuple`.
+
+      Returns:
+        A dictionary version of the tuple.
+      """
+      return {k: getattr(namedtuple, k) for k in namedtuple._fields}
+    gan_model_dict = _asdict(gan_model)
 
     # Make sure non-tuple required args are supplied.
     args_from_tuple = set(argspec.args).intersection(set(gan_model._fields))
@@ -201,3 +248,32 @@ def combine_adversarial_loss(gan_loss,
       scalar_summaries,
       gradient_summaries)
   return gan_loss._replace(generator_loss=combined_loss)
+
+
+def cycle_consistency_loss(cyclegan_model, scope=None, add_summaries=False):
+  """Defines the cycle consistency loss.
+
+  Uses `cycle_consistency_loss` to compute the cycle consistency loss for a
+  `cyclegan_model`.
+
+  Args:
+    cyclegan_model: A `CycleGANModel` namedtuple.
+    scope: The scope for the operations performed in computing the loss.
+      Defaults to None.
+    add_summaries: Whether or not to add detailed summaries for the loss.
+      Defaults to False.
+
+  Returns:
+    A scalar `Tensor` of cycle consistency loss.
+
+  Raises:
+    ValueError: If `cyclegan_model` is not a `CycleGANModel` namedtuple.
+  """
+  if not isinstance(cyclegan_model, namedtuples.CycleGANModel):
+    raise ValueError(
+        '`cyclegan_model` must be a `CycleGANModel`. Instead, was %s.' %
+        type(cyclegan_model))
+  return losses_impl.cycle_consistency_loss(
+      cyclegan_model.model_x2y.generator_inputs, cyclegan_model.reconstructed_x,
+      cyclegan_model.model_y2x.generator_inputs, cyclegan_model.reconstructed_y,
+      scope, add_summaries)

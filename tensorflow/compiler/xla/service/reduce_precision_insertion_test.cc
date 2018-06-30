@@ -381,7 +381,7 @@ TEST_F(ReducePrecisionInsertionTest, IgnoreOpsInsideFusionNode) {
   // Manually fuse the kCos operation into a fusion operation.
   HloInstruction* z = computation->AddInstruction(HloInstruction::CreateFusion(
       shape, HloInstruction::FusionKind::kLoop, y));
-  EXPECT_IS_OK(computation->ReplaceUsesOfInstruction(y, z));
+  EXPECT_IS_OK(y->ReplaceAllUsesWith(z));
   EXPECT_IS_OK(computation->RemoveInstruction(y));
 
   // Confirm expected graph before adding reduce-precision ops.
@@ -417,7 +417,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInHeadOfFusionNode) {
   // Manually fuse the kCos operation into a fusion operation.
   HloInstruction* z = computation->AddInstruction(HloInstruction::CreateFusion(
       shape, HloInstruction::FusionKind::kLoop, y));
-  EXPECT_IS_OK(computation->ReplaceUsesOfInstruction(y, z));
+  EXPECT_IS_OK(y->ReplaceAllUsesWith(z));
   EXPECT_IS_OK(computation->RemoveInstruction(y));
 
   // Confirm expected graph before adding reduce-precision ops.
@@ -464,7 +464,7 @@ TEST_F(ReducePrecisionInsertionTest, OpGetsInsertedInTailOfFusionNode) {
   // Manually fuse the kCos operation into a fusion operation.
   HloInstruction* z = computation->AddInstruction(HloInstruction::CreateFusion(
       shape, HloInstruction::FusionKind::kLoop, y));
-  EXPECT_IS_OK(computation->ReplaceUsesOfInstruction(y, z));
+  EXPECT_IS_OK(y->ReplaceAllUsesWith(z));
   EXPECT_IS_OK(computation->RemoveInstruction(y));
 
   // Confirm expected graph before adding reduce-precision ops.
@@ -549,7 +549,3 @@ TEST_F(ReducePrecisionInsertionTest, MakeFilterFunctionWithSubstrings) {
 }
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

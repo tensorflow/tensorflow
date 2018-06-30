@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 
@@ -48,7 +49,7 @@ class FillOp : public XlaOpKernel {
                             0, {dims_shape.num_elements()}, &dims_literal));
 
     // Convert the dims literal into a vector that we can pass to
-    // ComputationBuilder.
+    // XlaBuilder.
     std::vector<int64> broadcast;
     broadcast.reserve(dims_literal.shape().dimensions(0));
     for (int i = 0; i < dims_literal.shape().dimensions(0); ++i) {
@@ -56,20 +57,20 @@ class FillOp : public XlaOpKernel {
     }
     // Look up the value input, reshaping to a scalar if it was a
     // 'legacy' scalar (secretly a vector).
-    xla::ComputationDataHandle data = ctx->Input(1);
+    xla::XlaOp data = ctx->Input(1);
     if (value_shape.dims() > 0) {
       CHECK_EQ(value_shape.dims(), 1);
-      data = ctx->builder()->Reshape(data, {});
+      data = xla::Reshape(data, {});
     }
     // Emit the actual computation, which broadcasts the scalar to the
     // desired shape.
-    auto result = ctx->builder()->Broadcast(data, broadcast);
+    auto result = xla::Broadcast(data, broadcast);
 
     ctx->SetOutput(0, result);
   }
 };
 
-REGISTER_XLA_OP(Name("Fill"), FillOp);
+REGISTER_XLA_OP(Name("Fill").CompileTimeConstInput("dims"), FillOp);
 
 }  // namespace
 }  // namespace tensorflow

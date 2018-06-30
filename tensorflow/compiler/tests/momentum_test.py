@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
 
-class MomentumOptimizerTest(XLATestCase):
+class MomentumOptimizerTest(xla_test.XLATestCase):
 
   def _update_nesterov_momentum_numpy(self, var, accum, g, lr, momentum):
     var += accum * lr * momentum
@@ -96,28 +96,27 @@ class MomentumOptimizerTest(XLATestCase):
   def testNesterovMomentum(self):
     for dtype in self.float_types:
       with self.test_session(), self.test_scope():
-        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
-        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
-        var0_np = np.array([1.0, 2.0], dtype=dtype)
-        var1_np = np.array([3.0, 4.0], dtype=dtype)
+        var0 = resource_variable_ops.ResourceVariable([0.1, 0.2], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([0.3, 0.4], dtype=dtype)
+        var0_np = np.array([0.1, 0.2], dtype=dtype)
+        var1_np = np.array([0.3, 0.4], dtype=dtype)
         accum0_np = np.array([0.0, 0.0], dtype=dtype)
         accum1_np = np.array([0.0, 0.0], dtype=dtype)
-        cost = 5 * var0 * var0 + 3 * var1
+        cost = 0.4 * var0 * var0 + 0.9 * var1
         global_step = resource_variable_ops.ResourceVariable(
             array_ops.zeros([], dtypes.int32), name="global_step")
         mom_op = momentum_lib.MomentumOptimizer(
-            learning_rate=2.0, momentum=0.9, use_nesterov=True)
+            learning_rate=0.1, momentum=0.9, use_nesterov=True)
         opt_op = mom_op.minimize(cost, global_step, [var0, var1])
         variables.global_variables_initializer().run()
         for _ in range(1, 5):
           opt_op.run()
           var0_np, accum0_np = self._update_nesterov_momentum_numpy(
-              var0_np, accum0_np, var0_np * 10, 2.0, 0.9)
-          var1_np, accum1_np = self._update_nesterov_momentum_numpy(var1_np,
-                                                                    accum1_np,
-                                                                    3, 2.0, 0.9)
-          self.assertAllClose(var0_np, var0.eval())
-          self.assertAllClose(var1_np, var1.eval())
+              var0_np, accum0_np, var0_np * 0.8, 0.1, 0.9)
+          var1_np, accum1_np = self._update_nesterov_momentum_numpy(
+              var1_np, accum1_np, 0.9, 0.1, 0.9)
+          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testTensorLearningRateAndMomentum(self):
     for dtype in self.float_types:

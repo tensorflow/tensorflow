@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -49,11 +50,11 @@ void LLVMIRGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const string& pattern,
     bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  ASSERT_TRUE(CompileToExecutable(std::move(hlo_module)).ok());
+  TF_ASSERT_OK(CompileToExecutable(std::move(hlo_module)).status());
   ResetIrHook();
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
-  ASSERT_TRUE(filecheck_result.ok());
+  TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
@@ -61,8 +62,8 @@ void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  ASSERT_TRUE(
-      CompileToAotCompilationResult(std::move(hlo_module), options).ok());
+  TF_ASSERT_OK(
+      CompileToAotCompilationResult(std::move(hlo_module), options).status());
   ResetIrHook();
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
@@ -70,8 +71,8 @@ void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() const {
-  return static_cast<LLVMCompiler*>(backend_->compiler());
+LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() {
+  return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
 Status LLVMIRGenTestBase::IrHook(const llvm::Module& module) {

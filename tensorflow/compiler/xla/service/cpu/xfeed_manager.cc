@@ -41,6 +41,8 @@ void XfeedQueueManager::EnqueueBuffersAtomically(
   tensorflow::mutex_lock l(mu_);
   bool was_empty = enqueued_buffers_.empty();
   for (XfeedBuffer* b : buffers) {
+    VLOG(3) << "Enqueueing " << queue_name_ << " buffer (of " << buffers.size()
+            << " buffers) with length: " << b->length();
     enqueued_buffers_.push_back(b);
   }
   if (was_empty && !buffers.empty()) {
@@ -54,9 +56,11 @@ void XfeedQueueManager::EnqueueBuffersAtomically(
 
 XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
   tensorflow::mutex_lock l(mu_);
+  VLOG(3) << "Waiting for an available buffer.";
   while (enqueued_buffers_.empty()) {
     cv_.wait(l);
   }
+  VLOG(3) << "A buffer is available!";
   CHECK(current_buffer_ == nullptr);
   current_buffer_ = enqueued_buffers_.front();
   enqueued_buffers_.pop_front();
@@ -65,6 +69,9 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
 
 void XfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
                                              StatusOr<Shape> shape) {
+  VLOG(3) << "Releasing buffer with shape: "
+          << (shape.ok() ? ShapeUtil::HumanString(shape.ValueOrDie())
+                         : "<error status>");
   tensorflow::mutex_lock l(mu_);
   CHECK(current_buffer_ != nullptr);
   CHECK_EQ(length, current_buffer_->length());

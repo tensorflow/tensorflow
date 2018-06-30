@@ -20,11 +20,12 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
 
 #include <Windows.h>
+#include <shlwapi.h>
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/demangle.h"
@@ -118,7 +119,7 @@ void AdjustFilenameForLogging(string* filename) {
 }
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
   snappy::RawCompress(input, length, &(*output)[0], &outlen);
@@ -131,7 +132,7 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   return snappy::GetUncompressedLength(input, length, result);
 #else
   return false;
@@ -139,7 +140,7 @@ bool Snappy_GetUncompressedLength(const char* input, size_t length,
 }
 
 bool Snappy_Uncompress(const char* input, size_t length, char* output) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   return snappy::RawUncompress(input, length, output);
 #else
   return false;
@@ -149,8 +150,30 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-  // TODO(yuefengz): implement it for this platform.
+  DWORD data;
+  DWORD data_size = sizeof(data);
+  #pragma comment(lib, "shlwapi.lib")  // For SHGetValue().
+  if (SUCCEEDED(
+          SHGetValueA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
+                      "~MHz", nullptr, &data, &data_size))) {
+    return data * 1e6;  // Value is MHz.
+  }
   return 1.0;
+}
+
+int64 AvailableRam() {
+  MEMORYSTATUSEX statex;
+  statex.dwLength = sizeof(statex);
+  if (GlobalMemoryStatusEx(&statex)) {
+    return statex.ullAvailPhys;
+  }
+  return INT64_MAX;
+}
+
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
 }  // namespace port

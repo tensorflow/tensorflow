@@ -24,9 +24,44 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
+namespace {
+
+// Synchronize with spinlocks.
+const char kScheduleSpinString[] = "spin";
+// Synchronize with spinlocks that also call CPU yield instructions.
+const char kScheduleYieldString[] = "yield";
+// Synchronize with a "synchronization primitive" (e.g. mutex).
+const char kScheduleBlockingSyncString[] = "blocking_sync";
+
+const DeviceOptions GetDeviceOptionsFromEnv() {
+  const char* gpu_schedule_string =
+      std::getenv("TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE");
+
+  if (gpu_schedule_string == nullptr) {
+    return DeviceOptions::Default();
+  }
+
+  unsigned device_flags = 0;
+  if (strcmp(kScheduleSpinString, gpu_schedule_string) == 0) {
+    device_flags = DeviceOptions::kScheduleSpin;
+  } else if (strcmp(kScheduleYieldString, gpu_schedule_string) == 0) {
+    device_flags = DeviceOptions::kScheduleYield;
+  } else if (strcmp(kScheduleBlockingSyncString, gpu_schedule_string) == 0) {
+    device_flags = DeviceOptions::kScheduleBlockingSync;
+  } else {
+    LOG(QFATAL) << "Unknown option for environment variable "
+                   "TF_CUDA_PLATFORM_GPU_DEVICE_SCHEDULE "
+                << gpu_schedule_string << " should be one of {"
+                << kScheduleBlockingSyncString << ", " << kScheduleSpinString
+                << ", " << kScheduleYieldString << "}";
+  }
+
+  return DeviceOptions(device_flags);
+}
+
+}  // namespace
 
 CudaPlatform::CudaPlatform()
     : name_("CUDA"), min_numa_node_(0), limit_numa_node_(0) {}
@@ -89,9 +124,9 @@ port::StatusOr<StreamExecutor*> CudaPlatform::FirstExecutorForBus(
     }
   }
 
-  return port::Status{
+  return port::Status(
       port::error::NOT_FOUND,
-      port::Printf("Executor for bus %d not found.", bus_ordinal)};
+      port::Printf("Executor for bus %d not found.", bus_ordinal));
 }
 
 Platform::Id CudaPlatform::id() const { return kCudaPlatformId; }
@@ -112,7 +147,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
-  config.device_options = DeviceOptions::Default();
+  config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
 
@@ -121,7 +156,7 @@ port::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDeviceWithPluginConfig(
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
   config.plugin_config = plugin_config;
-  config.device_options = DeviceOptions::Default();
+  config.device_options = GetDeviceOptionsFromEnv();
   return GetExecutor(config);
 }
 
@@ -133,15 +168,15 @@ port::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
 
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = port::MakeUnique<StreamExecutor>(
-      this, port::MakeUnique<CUDAExecutor>(config.plugin_config));
+  auto executor = MakeUnique<StreamExecutor>(
+      this, MakeUnique<CUDAExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
-    return port::Status{
+    return port::Status(
         port::error::INTERNAL,
         port::Printf(
             "failed initializing StreamExecutor for CUDA device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
+            config.ordinal, init_status.ToString().c_str()));
   }
 
   return std::move(executor);
@@ -161,18 +196,16 @@ void CudaPlatform::UnregisterTraceListener(TraceListener* listener) {
 static void InitializeCudaPlatform() {
   // Disabling leak checking, MultiPlatformManager does not destroy its
   // registered platforms.
-  
+
   std::unique_ptr<cuda::CudaPlatform> platform(new cuda::CudaPlatform);
   SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 REGISTER_MODULE_INITIALIZER(cuda_platform,
-                            perftools::gputools::InitializeCudaPlatform());
+                            stream_executor::InitializeCudaPlatform());
 
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(cuda_platform, multi_platform_manager);

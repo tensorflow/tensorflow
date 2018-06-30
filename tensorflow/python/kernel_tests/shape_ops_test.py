@@ -258,6 +258,16 @@ class ShapeOpsTest(test.TestCase):
       self.assertAllEqual([True], array_ops.expand_dims(inp, 0).eval())
       self.assertAllEqual([True], array_ops.expand_dims(inp, -1).eval())
 
+  def testExpandDimsDimType(self):
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = np.zeros([2])
+      np_ans = np.expand_dims(x, axis=0)
+      with self.test_session(use_gpu=True):
+        tensor = array_ops.expand_dims(x, constant_op.constant(0, dtype))
+        tf_ans = tensor.eval()
+      self.assertShapeEqual(np_ans, tensor)
+      self.assertAllEqual(np_ans, tf_ans)
+
   def _compareSqueeze(self, x, squeeze_dims, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       if squeeze_dims:
@@ -411,14 +421,16 @@ class TileTest(test.TestCase):
       self.assertEqual(7, result)
 
   def testSimple(self):
-    with self.test_session():
-      inp = np.random.rand(4, 1).astype(np.float32)
-      a = constant_op.constant(inp)
-      tiled = array_ops.tile(a, [1, 4])
-      result = tiled.eval()
-    self.assertEqual(result.shape, (4, 4))
-    self.assertEqual([4, 4], tiled.get_shape())
-    self.assertTrue((result == np.tile(inp, (1, 4))).all())
+    # multiples could be int32 or int64
+    for dtype in [dtypes.int32, dtypes.int64]:
+      with self.test_session(use_gpu=True):
+        inp = np.random.rand(4, 1).astype(np.float32)
+        a = constant_op.constant(inp)
+        tiled = array_ops.tile(a, constant_op.constant([1, 4], dtype=dtype))
+        result = tiled.eval()
+      self.assertEqual(result.shape, (4, 4))
+      self.assertEqual([4, 4], tiled.get_shape())
+      self.assertTrue((result == np.tile(inp, (1, 4))).all())
 
   def testIdentityTileAndGrad(self):
     with self.test_session():
@@ -629,6 +641,29 @@ class TileTest(test.TestCase):
       tiled = array_ops.tile(a, [1, 2])
       err = gradient_checker.compute_gradient_error(a, [4, 2], tiled, [4, 4])
     self.assertLess(err, 1e-3)
+
+  def testGradientWithSparseGradWithRank1(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
+                                  dtype=dtypes.float32)
+    outputs = array_ops.gather(array_ops.tile(inputs, [3]),
+                               [1, 5, 9, 3, 7, 2, 2, 2])
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
+
+  def testGradientWithSparseGradWithRank3(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
+                                  dtype=dtypes.float32)
+    inputs = array_ops.reshape(inputs, [-1, 1, 1])
+    outputs = array_ops.gather(array_ops.tile(inputs, [3, 4, 2]),
+                               [1, 5, 9, 3, 7, 2, 2, 2])
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
 
   def testShapeFunctionEdgeCases(self):
     # Unknown multiples shape.

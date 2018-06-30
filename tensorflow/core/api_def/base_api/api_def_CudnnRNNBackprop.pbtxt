@@ -1,0 +1,45 @@
+op {
+  graph_op_name: "CudnnRNNBackprop"
+  summary: "Backprop step of CudnnRNN."
+  description: <<END
+Compute the backprop of both data and weights in a RNN.
+
+rnn_mode: Indicates the type of the RNN model.
+input_mode: Indicate whether there is a linear projection between the input and
+    the actual computation before the first layer. 'skip_input' is only allowed
+    when input_size == num_units; 'auto_select' implies 'skip_input' when
+    input_size == num_units; otherwise, it implies 'linear_input'.
+direction: Indicates whether a bidirectional model will be used. Should be
+  "unidirectional" or "bidirectional".
+dropout: Dropout probability. When set to 0., dropout is disabled.
+seed: The 1st part of a seed to initialize dropout.
+seed2: The 2nd part of a seed to initialize dropout.
+input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
+input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
+    num_units].
+input_c: For LSTM, a 3-D tensor with the shape of
+    [num_layer * dir, batch, num_units]. For other models, it is ignored.
+params: A 1-D tensor that contains the weights and biases in an opaque layout.
+    The size must be created through CudnnRNNParamsSize, and initialized
+    separately. Note that they might not be compatible across different
+    generations. So it is a good idea to save and restore
+output: A 3-D tensor with the shape of [seq_length, batch_size,
+    dir * num_units].
+output_h: The same shape has input_h.
+output_c: The same shape as input_c for LSTM. An empty tensor for other models.
+output_backprop: A 3-D tensor with the same shape as output in the forward pass.
+output_h_backprop: A 3-D tensor with the same shape as output_h in the forward
+    pass.
+output_c_backprop: A 3-D tensor with the same shape as output_c in the forward
+    pass.
+reserve_space: The same reserve_space produced in for forward operation.
+input_backprop: The backprop to input in the forward pass. Has the same shape
+    as input.
+input_h_backprop: The backprop to input_h in the forward pass. Has the same
+    shape as input_h.
+input_c_backprop: The backprop to input_c in the forward pass. Has the same
+    shape as input_c.
+params_backprop: The backprop to the params buffer in the forward pass. Has the
+    same shape as params.
+END
+}

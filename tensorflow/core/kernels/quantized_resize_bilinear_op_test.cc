@@ -373,22 +373,20 @@ void RunBenchmarkResizeBilinearTwoDims() {
 
 }  // namespace tensorflow
 
-#if defined(__ANDROID__)
-int main(int argc, char** argv) {
-#define RUN_TEST(t)            \
-  LOG(INFO) << "Test: " << #t; \
-  tensorflow::t();
-#else
 #define RUN_TEST(t) \
   TEST(QuantizationResizeBilenarTest, t) { tensorflow::t(); }
-#endif
 
-  RUN_TEST(TestResizeBilinearOneDim);
-  RUN_TEST(TestResizeBilinearTwoDims);
+RUN_TEST(TestResizeBilinearOneDim);
+RUN_TEST(TestResizeBilinearTwoDims);
 
 #if defined(__ANDROID__)
-  RUN_TEST(RunBenchmarkResizeBilinearTwoDims);
-  LOG(INFO) << "All tests complete.";
-  return 0;
+
+RUN_TEST(RunBenchmarkResizeBilinearTwoDims);
+
+#endif  // __ANDROID__
+
+int main(int argc, char** argv) {
+  // On Linux, add: FLAGS_logtostderr = true;
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
-#endif

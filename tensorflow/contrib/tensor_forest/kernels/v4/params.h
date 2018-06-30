@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_PARAMS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_PARAMS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_PARAMS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_PARAMS_H_
 
 #include "tensorflow/contrib/tensor_forest/proto/tensor_forest_params.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -24,9 +24,7 @@ namespace tensorforest {
 // Return the value of the given depth-dependent parameter given a leaf's depth.
 float ResolveParam(const DepthDependentParam& param, int32 depth);
 
-
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_PARAMS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_PARAMS_H_

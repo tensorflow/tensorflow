@@ -36,7 +36,7 @@ bazel-bin/tensorflow/core/profiler/profiler \
 tfprof> op -select micros,bytes,occurrence -order_by micros
 
 # To be open sourced...
-bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
+bazel-bin/tensorflow/python/profiler/profiler_ui \
     --profile_path=/tmp/profiles/profile_1
 ```
 ![ProfilerUI](g3doc/profiler_ui.jpg)
@@ -48,7 +48,7 @@ bazel-bin/third_party/tensorflow/python/profiler/profiler_ui \
 # Create options to profile the time and memory information.
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
-# Create a profiling context, set contructor argument `trace_steps`, 
+# Create a profiling context, set constructor argument `trace_steps`,
 # `dump_steps` to empty for explicit control.
 with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
                                       trace_steps=[],
@@ -240,8 +240,9 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 # can also generate memory profile using `-select bytes`
 tfprof> code -select accelerator_micros -max_depth 100000 -output pprof:outfile=<filename>  -trim_name_regexes .*apply_op.*
 
-# Use pprof to visualize the generated file.
-pprof -png --nodecount=100 --sample_index=1 <filename>
+# Use google-pprof, from the google-perftools package to visualize the generated file.
+# On Ubuntu you can install it with `apt-get install it google-perftools`.
+google-pprof --pdf --nodecount=100 <filename>
 ```
 
 ![PprofGraph](g3doc/pprof.jpg)
@@ -256,7 +257,7 @@ bug fix. `OpLogProto` is a good plus if it is used.
 
 #### Teams
 
-* Xin Pan (xpan@google.com, github: panyx0718)
+* Xin Pan
 * Chris Antaki
 * Yao Zhang
 * Jon Shlens

@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -40,7 +41,7 @@ class CopyOpTest : public HloTestBase {
   void TestCopyOp(const Literal& literal) {
     auto builder = HloComputation::Builder(TestName());
     auto constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(MakeUnique<Literal>(literal)));
+        HloInstruction::CreateConstant(literal.CloneToUnique()));
     builder.AddInstruction(HloInstruction::CreateUnary(
         constant->shape(), HloOpcode::kCopy, constant));
     auto computation = builder.Build();
@@ -48,7 +49,7 @@ class CopyOpTest : public HloTestBase {
     module->AddEntryComputation(std::move(computation));
 
     std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
-    LiteralTestUtil::ExpectEqual(literal, *result);
+    EXPECT_TRUE(LiteralTestUtil::Equal(literal, *result));
   }
 
   void TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3);
@@ -56,9 +57,13 @@ class CopyOpTest : public HloTestBase {
                                 tensorflow::gtl::ArraySlice<int64> permutation);
 };
 
-XLA_TEST_F(CopyOpTest, CopyR0Bool) { TestCopyOp(*Literal::CreateR0<bool>(true)); }
+XLA_TEST_F(CopyOpTest, CopyR0Bool) {
+  TestCopyOp(*Literal::CreateR0<bool>(true));
+}
 
-XLA_TEST_F(CopyOpTest, CopyR1S0U32) { TestCopyOp(*Literal::CreateR1<uint32>({})); }
+XLA_TEST_F(CopyOpTest, CopyR1S0U32) {
+  TestCopyOp(*Literal::CreateR1<uint32>({}));
+}
 
 XLA_TEST_F(CopyOpTest, CopyR1S3U32) {
   TestCopyOp(*Literal::CreateR1<uint32>({1, 2, 3}));
@@ -85,7 +90,6 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   // Copy literal to device to use as parameter.
   auto literal = Literal::CreateR0<float>(42.0);
   Shape shape = literal->shape();
-  auto constant_device_base = TransferToDevice(*literal);
 
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param0"));
@@ -98,7 +102,7 @@ XLA_TEST_F(CopyOpTest, CopyParameterScalar) {
   module->AddEntryComputation(std::move(computation));
 
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(module), {constant_device_base});
+      ExecuteAndTransfer(std::move(module), {literal.get()});
   LiteralTestUtil::ExpectR0Near<float>(42.0f, *result, error_spec_);
 }
 
@@ -129,7 +133,8 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   std::unique_ptr<Literal> literal =
       Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   // Reverse the minor-to-major order of the literal.
-  Layout* literal_layout = literal->mutable_shape()->mutable_layout();
+  Layout* literal_layout =
+      literal->mutable_shape_do_not_use()->mutable_layout();
   ASSERT_EQ(2, literal_layout->minor_to_major_size());
   literal_layout->mutable_minor_to_major()->SwapElements(0, 1);
 
@@ -242,13 +247,13 @@ XLA_TEST_F(CopyOpClientTest, Copy0x0) {
   Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
   auto empty = Literal::CreateFromShape(in_shape);
 
-  ComputationBuilder builder(client_, TestName());
-  auto param0 = builder.Parameter(0, in_shape, "input");
+  XlaBuilder builder(TestName());
+  Parameter(&builder, 0, in_shape, "input");
   auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
 
   auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
                     .ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqual(*empty, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*empty, *actual));
 }
 
 }  // namespace

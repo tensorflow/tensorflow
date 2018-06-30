@@ -26,8 +26,7 @@ namespace {
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
 // When the traversal has completed, the provided call instruction is entriely
-// replaced in the caller's graph, and any calls encountered in the callee
-// computation have been added to the work_queue.
+// replaced in the caller's graph.
 class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
  public:
   // call is the call operation -- it will be replaced with the body of the
@@ -79,7 +78,12 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
+    call_->ClearCalledComputations();
     return outer_->ReplaceInstruction(call_, new_root);
+  }
+
+  CallInliner::InlinedInstructionMap ConsumeInstructionMap() {
+    return std::move(subcomputation_hlo_to_new_hlo_);
   }
 
  private:
@@ -112,12 +116,23 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   HloInstruction* call_;
   HloComputation* outer_;
-  std::unordered_map<HloInstruction*, HloInstruction*>
-      subcomputation_hlo_to_new_hlo_;
-  std::deque<HloInstruction*>* work_queue_;
+  CallInliner::InlinedInstructionMap subcomputation_hlo_to_new_hlo_;
 };
 
 }  // namespace
+
+/* static */ StatusOr<CallInliner::InlinedInstructionMap> CallInliner::Inline(
+    HloInstruction* call) {
+  TF_RET_CHECK(call->opcode() == HloOpcode::kCall)
+      << "Instruction was not a call op: " << call->opcode();
+  const auto& callees = call->called_computations();
+  TF_RET_CHECK(callees.size() == 1);
+  HloComputation* callee = callees[0];
+  // We visit the callee, cloning its body into its caller.
+  SubcomputationInsertionVisitor visitor(call);
+  TF_RETURN_IF_ERROR(callee->Accept(&visitor));
+  return visitor.ConsumeInstructionMap();
+}
 
 StatusOr<bool> CallInliner::Run(HloModule* module) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
@@ -129,13 +144,9 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
         for (const CallSite& callsite : node.caller_callsites()) {
           VLOG(1) << "Visiting callsite: " << callsite.ToString();
           if (callsite.instruction()->opcode() == HloOpcode::kCall) {
+            HloInstruction* call = callsite.instruction();
+            TF_RETURN_IF_ERROR(Inline(call).status());
             did_mutate = true;
-            const auto& callees = callsite.called_computations();
-            TF_RET_CHECK(callees.size() == 1);
-            HloComputation* callee = callees[0];
-            // We visit the callee, cloning its body into its caller.
-            SubcomputationInsertionVisitor visitor(callsite.instruction());
-            TF_RETURN_IF_ERROR(callee->Accept(&visitor));
           }
         }
         return Status::OK();

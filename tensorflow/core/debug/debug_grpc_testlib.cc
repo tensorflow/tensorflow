@@ -30,15 +30,17 @@ namespace test {
 
 ::grpc::Status TestEventListenerImpl::SendEvents(
     ::grpc::ServerContext* context,
-    ::grpc::ServerReaderWriter< ::tensorflow::EventReply, ::tensorflow::Event>*
+    ::grpc::ServerReaderWriter<::tensorflow::EventReply, ::tensorflow::Event>*
         stream) {
   Event event;
 
   while (stream->Read(&event)) {
     if (event.has_log_message()) {
       debug_metadata_strings.push_back(event.log_message().message());
+      stream->Write(EventReply());
     } else if (!event.graph_def().empty()) {
       encoded_graph_defs.push_back(event.graph_def());
+      stream->Write(EventReply());
     } else if (event.has_summary()) {
       const Summary::Value& val = event.summary().value(0);
 

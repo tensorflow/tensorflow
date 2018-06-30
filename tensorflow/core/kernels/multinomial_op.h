@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace functor {
 
 // Generic helper functor for the Multinomial Op.
-template <typename Device, typename T>
+template <typename Device, typename T, typename OutputType>
 struct MultinomialFunctor;
 
 }  // namespace functor

@@ -100,7 +100,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
-  LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*round_tripped, *actual));
 }
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
@@ -135,7 +135,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
-  LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*round_tripped, *actual));
 }
 
 }  // namespace

@@ -31,26 +31,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+using Detail = StatsCalculator::Detail;
+
 StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
-    : options_(options) {}
+    : stats_calculator_(new StatsCalculator(options)) {}
 
 StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
-    : StatSummarizer(StatSummarizerOptions()) {}
+    : stats_calculator_(new StatsCalculator(StatSummarizerOptions())) {}
 
 StatSummarizer::~StatSummarizer() {}
 
-void StatSummarizer::Reset() {
-  run_total_us_.Reset();
-  memory_.Reset();
-  details_.clear();
-}
-
-void StatSummarizer::Validate(const Detail* detail,
+void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
                               const NodeExecStats& ns) const {
-  if (detail->outputs.size() != ns.output_size()) {
+  if (outputs->size() != ns.output_size()) {
     LOG(WARNING) << "Number of outputs changed between runs for '"
-                 << ns.node_name() << "' - was " << detail->outputs.size()
-                 << ", now " << ns.output_size();
+                 << ns.node_name() << "' - was " << outputs->size() << ", now "
+                 << ns.output_size();
   } else {
     for (const auto& output : ns.output()) {
       const int32 slot = output.slot();
@@ -58,7 +54,7 @@ void StatSummarizer::Validate(const Detail* detail,
         // This is not a hard error for Switch ops, so just pass.
         continue;
       }
-      const auto& stored = detail->outputs[slot];
+      const auto& stored = (*outputs)[slot];
       const auto& current = output.tensor_description();
 
       bool do_tensors_match =
@@ -79,6 +75,14 @@ void StatSummarizer::Validate(const Detail* detail,
                      << ns.node_name();
       }
     }
+  }
+}
+
+void StatSummarizer::PrintStepStats() const {
+  string output = GetOutputString();
+  std::istringstream iss(output);
+  for (std::string line; std::getline(iss, line);) {
+    LOG(INFO) << line;
   }
 }
 
@@ -129,6 +133,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
   int64 first_node_start_us =
       step_stats.dev_stats(0).node_stats(0).all_start_micros();
+  std::map<std::string, Detail> details;
 
   int node_num = 0;
   for (const auto& ds : step_stats.dev_stats()) {
@@ -172,7 +177,10 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       ++node_num;
       const int64 curr_time = ns.all_end_rel_micros();
       curr_total_us += curr_time;
-      auto result = details_.emplace(name, Detail());
+      auto result = details.emplace(name, Detail());
+      auto output_result =
+          outputs_.emplace(name, std::vector<TensorDescription>());
+      std::vector<TensorDescription>* outputs = &(output_result.first->second);
       Detail* detail = &(result.first->second);
 
       detail->start_us.UpdateStat(ns.all_start_micros() - first_node_start_us);
@@ -185,16 +193,15 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
         detail->run_order = node_num;
 
-        detail->outputs.resize(ns.output_size());
+        outputs->resize(ns.output_size());
         for (const auto& output : ns.output()) {
           const int32 slot = output.slot();
           if ((slot < 0) || (slot >= ns.output_size())) {
             // This is not a hard error for Switch ops, so just pass.
             continue;
           }
-          detail->outputs[slot] = output.tensor_description();
+          (*outputs)[slot] = output.tensor_description();
         }
-
         detail->times_called = 0;
       }
 
@@ -207,273 +214,22 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       mem_total += curr_node_mem;
 
       ++detail->times_called;
+      stats_calculator_->UpdateDetails(details);
 
-      Validate(detail, ns);
+      Validate(outputs, ns);
     }
   }
 
-  run_total_us_.UpdateStat(curr_total_us);
-  memory_.UpdateStat(mem_total);
+  stats_calculator_->UpdateRunTotalUs(curr_total_us);
+  stats_calculator_->UpdateMemoryUsed(mem_total);
 }
 
-std::string StatSummarizer::ShortSummary() const {
-  std::stringstream stream;
-  stream << "Timings (microseconds): ";
-  run_total_us_.OutputToStream(&stream);
-  stream << std::endl;
-
-  stream << "Memory (bytes): ";
-  memory_.OutputToStream(&stream);
-  stream << std::endl;
-
-  stream << details_.size() << " nodes observed" << std::endl;
-  return stream.str();
-}
-
-std::ostream& InitField(std::ostream& stream, int width) {
-  stream << "\t" << std::right << std::setw(width) << std::fixed
-         << std::setprecision(3);
-  return stream;
-}
-
-std::string StatSummarizer::HeaderString(const string& title) const {
-  std::stringstream stream;
-
-  stream << "============================== " << title
-         << " ==============================" << std::endl;
-
-  InitField(stream, 24) << "[node type]";
-  InitField(stream, 9) << "[start]";
-  InitField(stream, 9) << "[first]";
-  InitField(stream, 9) << "[avg ms]";
-  InitField(stream, 8) << "[%]";
-  InitField(stream, 8) << "[cdf%]";
-  InitField(stream, 10) << "[mem KB]";
-  InitField(stream, 9) << "[times called]";
-  stream << "\t"
-         << "[Name]";
-  return stream.str();
-}
-
-std::string StatSummarizer::ColumnString(const Detail& detail,
-                                         const int64 cumulative_stat_on_node,
-                                         const Stat<int64>& stat) const {
-  const double start_ms = detail.start_us.avg() / 1000.0;
-  const double first_time_ms = detail.rel_end_us.first() / 1000.0;
-  const double avg_time_ms = detail.rel_end_us.avg() / 1000.0;
-  const double percentage = detail.rel_end_us.sum() * 100.0 / stat.sum();
-  const double cdf_percentage = (cumulative_stat_on_node * 100.0f) / stat.sum();
-  const int64 times_called = detail.times_called / num_runs();
-
-  std::stringstream stream;
-  InitField(stream, 24) << detail.type;
-  InitField(stream, 9) << start_ms;
-  InitField(stream, 9) << first_time_ms;
-  InitField(stream, 9) << avg_time_ms;
-  InitField(stream, 7) << percentage << "%";
-  InitField(stream, 7) << cdf_percentage << "%";
-  InitField(stream, 10) << detail.mem_used.newest() / 1000.0;
-  InitField(stream, 9) << times_called;
-  stream << "\t" << detail.name;
-
-  return stream.str();
-}
-
-void StatSummarizer::OrderNodesByMetric(
-    SortingMetric metric, std::vector<const Detail*>* details) const {
-  std::priority_queue<std::pair<string, const Detail*>> sorted_list;
-  const int num_nodes = details_.size();
-
-  for (const auto& det : details_) {
-    const Detail* detail = &(det.second);
-    std::stringstream stream;
-    stream << std::setw(20) << std::right << std::setprecision(10)
-           << std::fixed;
-
-    switch (metric) {
-      case BY_NAME:
-        stream << detail->name;
-        break;
-      case BY_RUN_ORDER:
-        stream << num_nodes - detail->run_order;
-        break;
-      case BY_TIME:
-        stream << detail->rel_end_us.avg();
-        break;
-      case BY_MEMORY:
-        stream << detail->mem_used.avg();
-        break;
-      case BY_TYPE:
-        stream << detail->type;
-        break;
-      default:
-        stream << "";
-        break;
-    }
-
-    sorted_list.emplace(stream.str(), detail);
-  }
-
-  while (!sorted_list.empty()) {
-    auto entry = sorted_list.top();
-    sorted_list.pop();
-    details->push_back(entry.second);
-  }
-}
-
-void StatSummarizer::ComputeStatsByType(
-    std::map<string, int64>* node_type_map_count,
-    std::map<string, int64>* node_type_map_time,
-    std::map<string, int64>* node_type_map_memory,
-    std::map<string, int64>* node_type_map_times_called,
-    int64* accumulated_us) const {
-  int64 run_count = run_total_us_.count();
-
-  for (const auto& det : details_) {
-    const string node_name = det.first;
-    const Detail& detail = det.second;
-
-    int64 curr_time_val =
-        static_cast<int64>(detail.rel_end_us.sum() / run_count);
-    *accumulated_us += curr_time_val;
-
-    int64 curr_memory_val = detail.mem_used.newest();
-
-    const string& node_type = detail.type;
-
-    (*node_type_map_count)[node_type] += 1;
-    (*node_type_map_time)[node_type] += curr_time_val;
-    (*node_type_map_memory)[node_type] += curr_memory_val;
-    (*node_type_map_times_called)[node_type] += detail.times_called / run_count;
-  }
-}
-
-std::string StatSummarizer::GetStatsByNodeType() const {
-  std::stringstream stream;
-
-  stream << "============================== Summary by node type "
-            "=============================="
-         << std::endl;
-
-  LOG(INFO) << "Number of nodes executed: " << details_.size();
-
-  std::map<string, int64> node_type_map_count;
-  std::map<string, int64> node_type_map_time;
-  std::map<string, int64> node_type_map_memory;
-  std::map<string, int64> node_type_map_times_called;
-  int64 accumulated_us = 0;
-
-  ComputeStatsByType(&node_type_map_count, &node_type_map_time,
-                     &node_type_map_memory, &node_type_map_times_called,
-                     &accumulated_us);
-
-  // Sort them.
-  std::priority_queue<std::pair<int64, std::pair<string, int64>>> timings;
-  for (const auto& node_type : node_type_map_time) {
-    const int64 mem_used = node_type_map_memory[node_type.first];
-    timings.emplace(node_type.second,
-                    std::pair<string, int64>(node_type.first, mem_used));
-  }
-
-  InitField(stream, 24) << "[Node type]";
-  InitField(stream, 9) << "[count]";
-  InitField(stream, 10) << "[avg ms]";
-  InitField(stream, 11) << "[avg %]";
-  InitField(stream, 11) << "[cdf %]";
-  InitField(stream, 10) << "[mem KB]";
-  InitField(stream, 10) << "[times called]";
-  stream << std::endl;
-
-  float cdf = 0.0f;
-  while (!timings.empty()) {
-    auto entry = timings.top();
-    timings.pop();
-
-    const string node_type = entry.second.first;
-    const float memory = entry.second.second / 1000.0f;
-
-    const int64 node_type_total_us = entry.first;
-    const float time_per_run_ms = node_type_total_us / 1000.0f;
-
-    const float percentage =
-        ((entry.first / static_cast<float>(accumulated_us)) * 100.0f);
-    cdf += percentage;
-
-    InitField(stream, 24) << node_type;
-    InitField(stream, 9) << node_type_map_count[node_type];
-    InitField(stream, 10) << time_per_run_ms;
-    InitField(stream, 10) << percentage << "%";
-    InitField(stream, 10) << cdf << "%";
-    InitField(stream, 10) << memory;
-    InitField(stream, 9) << node_type_map_times_called[node_type];
-    stream << std::endl;
-  }
-  stream << std::endl;
-  return stream.str();
-}
-
-std::string StatSummarizer::GetStatsByMetric(const string& title,
-                                             SortingMetric sorting_metric,
-                                             int num_stats) const {
-  std::vector<const Detail*> details;
-  OrderNodesByMetric(sorting_metric, &details);
-
-  double cumulative_stat_on_node = 0;
-
-  std::stringstream stream;
-  stream << HeaderString(title) << std::endl;
-  int stat_num = 0;
-  for (auto detail : details) {
-    ++stat_num;
-    if (num_stats > 0 && stat_num > num_stats) {
-      break;
-    }
-
-    // TODO(andrewharp): Make this keep track of the particular metric for cdf.
-    cumulative_stat_on_node += detail->rel_end_us.sum();
-    stream << ColumnString(*detail, cumulative_stat_on_node, run_total_us_)
-           << std::endl;
-  }
-  stream << std::endl;
-  return stream.str();
-}
-
-std::string StatSummarizer::GetOutputString() const {
-  std::stringstream stream;
-  if (options_.show_run_order) {
-    stream << GetStatsByMetric("Run Order", BY_RUN_ORDER,
-                               options_.run_order_limit);
-  }
-  if (options_.show_time) {
-    stream << GetStatsByMetric("Top by Computation Time", BY_TIME,
-                               options_.time_limit);
-  }
-  if (options_.show_memory) {
-    stream << GetStatsByMetric("Top by Memory Use", BY_MEMORY,
-                               options_.memory_limit);
-  }
-  if (options_.show_type) {
-    stream << GetStatsByNodeType();
-  }
-  if (options_.show_summary) {
-    stream << ShortSummary() << std::endl;
-  }
-  return stream.str();
-}
-
-void StatSummarizer::PrintStepStats() const {
-  string output = GetOutputString();
-  std::istringstream iss(output);
-  for (std::string line; std::getline(iss, line);) {
-    LOG(INFO) << line;
-  }
-}
 
 void StatSummarizer::PrintOutputs() const {
   std::priority_queue<
       std::pair<int64, const std::pair<const std::string, Detail>*>>
       timings;
-  for (const auto& entry : details_) {
+  for (const auto& entry : stats_calculator_->GetDetails()) {
     timings.emplace(-entry.second.start_us.avg(), &entry);
   }
 
@@ -481,10 +237,10 @@ void StatSummarizer::PrintOutputs() const {
   while (!timings.empty()) {
     auto entry = timings.top();
     timings.pop();
-    const Detail& detail = entry.second->second;
     std::stringstream stream;
-    stream << entry.second->first << "\t" << detail.outputs.size();
-    for (const auto& tensor : detail.outputs) {
+    const auto detail_outputs = outputs_.at(entry.second->first);
+    stream << entry.second->first << "\t" << detail_outputs.size();
+    for (const auto& tensor : detail_outputs) {
       stream << "\t" << DataTypeString(tensor.dtype());
       stream << "\t" << tensor.shape().dim_size();
       for (const auto& d : tensor.shape().dim()) {

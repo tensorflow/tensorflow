@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -80,27 +81,28 @@ class AtrousConvolutionTest(test.TestCase):
       otherwise, it's delayed after the context.
     """
     checks = []
+
     def add_check(check, *args, **kwargs):
-      if context.in_eager_mode():
+      if context.executing_eagerly():
         args_val, kwargs_val = self.evaluate([args, kwargs])
         check(*args_val, **kwargs_val)
       else:
         checks.append((check, args, kwargs))
 
     yield add_check
-    if context.in_graph_mode():
+    if not context.executing_eagerly():
       all_values = self.evaluate([[args, kwargs] for _, args, kwargs in checks])
       for (check, _, _), (args, kwargs) in zip(checks, all_values):
         check(*args, **kwargs)
 
   def _test_atrous_convolution(self, add_check, input_shape, filter_shape,
                                dilation_rate, **kwargs):
-    filters = np.arange(np.prod(filter_shape),
-                        dtype=np.float32).reshape(filter_shape)
+    filters = np.arange(
+        np.prod(filter_shape), dtype=np.float32).reshape(filter_shape)
     filters_upsampled = upsample_filters(filters, dilation_rate)
     x = np.arange(np.prod(input_shape), dtype=np.float32).reshape(input_shape)
-    y1 = nn_ops.convolution(input=x, filter=filters,
-                            dilation_rate=dilation_rate, **kwargs)
+    y1 = nn_ops.convolution(
+        input=x, filter=filters, dilation_rate=dilation_rate, **kwargs)
     y2 = nn_ops.convolution(input=x, filter=filters_upsampled, **kwargs)
 
     def check(y1_eval, y2_eval):
@@ -108,7 +110,21 @@ class AtrousConvolutionTest(test.TestCase):
 
     add_check(check, y1, y2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  def test_unknown_spatial_dims_for_channel_last_format(self):
+    x = array_ops.placeholder(dtypes.float32, [1, None, None, 10])
+    w = array_ops.zeros([3, 3, 10, 20])
+    y = nn_ops.convolution(
+        x, w, "VALID", dilation_rate=[2, 2], data_format="NHWC")
+    self.assertEqual(y.shape.as_list(), [1, None, None, 20])
+
+  def test_unknown_spatial_dims_for_channel_first_format(self):
+    x = array_ops.placeholder(dtypes.float32, [1, 10, None, None])
+    w = array_ops.zeros([3, 3, 10, 20])
+    y = nn_ops.convolution(
+        x, w, "VALID", dilation_rate=[2, 2], data_format="NCHW")
+    self.assertEqual(y.shape.as_list(), [1, 20, None, None])
+
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolution2D(self):
     with self._delay_checks() as add_check:
       for padding in ["SAME", "VALID"]:
@@ -123,7 +139,7 @@ class AtrousConvolutionTest(test.TestCase):
                   dilation_rate=dilation_rate,
               )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolution3D(self):
     with self._delay_checks() as add_check:
       for padding in ["SAME", "VALID"]:
@@ -142,7 +158,7 @@ class AtrousConvolutionTest(test.TestCase):
                   dilation_rate=dilation_rate,
               )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolution1D(self):
     with self._delay_checks() as add_check:
       for padding in ["SAME", "VALID"]:
@@ -157,7 +173,7 @@ class AtrousConvolutionTest(test.TestCase):
                   dilation_rate=[rate],
               )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousConvolutionNC(self):
     if test.is_gpu_available(cuda_only=True):
       # "NCW" and "NCHW" formats are currently supported only on CUDA.
@@ -181,7 +197,7 @@ class AtrousConvolutionTest(test.TestCase):
                 data_format="NCHW",
             )
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAtrousSequence(self):
     """Tests optimization of sequence of atrous convolutions.
 
@@ -202,28 +218,35 @@ class AtrousConvolutionTest(test.TestCase):
 
               def combined_op(converted_input, num_spatial_dims, padding_arg):  # pylint: disable=unused-argument
                 # pylint: disable=cell-var-from-loop
-                result = nn_ops.convolution(input=converted_input, filter=f1,
-                                            padding=padding)
-                result = nn_ops.convolution(input=result, filter=f2,
-                                            padding=padding)
+                result = nn_ops.convolution(
+                    input=converted_input, filter=f1, padding=padding)
+                result = nn_ops.convolution(
+                    input=result, filter=f2, padding=padding)
                 # pylint: enable=cell-var-from-loop
                 return result
 
               for rate_height in range(2, 4):
                 for rate_width in range(2, 4):
                   dilation_rate = [rate_height, rate_width]
-                  y1 = nn_ops.convolution(input=x, filter=f1, padding=padding,
-                                          dilation_rate=dilation_rate)
-                  y1 = nn_ops.convolution(input=y1, filter=f2,
-                                          padding=padding,
-                                          dilation_rate=dilation_rate)
+                  y1 = nn_ops.convolution(
+                      input=x,
+                      filter=f1,
+                      padding=padding,
+                      dilation_rate=dilation_rate)
+                  y1 = nn_ops.convolution(
+                      input=y1,
+                      filter=f2,
+                      padding=padding,
+                      dilation_rate=dilation_rate)
                   y2 = nn_ops.with_space_to_batch(
-                      input=x, dilation_rate=dilation_rate, op=combined_op,
+                      input=x,
+                      dilation_rate=dilation_rate,
+                      op=combined_op,
                       padding="VALID")
 
                   def check(y1_eval, y2_eval):
-                    self.assertAllClose(y1_eval, y2_eval, rtol=1e-2,
-                                        atol=1e-2)
+                    self.assertAllClose(y1_eval, y2_eval, rtol=1e-2, atol=1e-2)
+
                   add_check(check, y1, y2)
 
   def _test_gradient(self, x_shape, f_shape, dilation_rate, padding):

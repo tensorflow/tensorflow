@@ -20,14 +20,18 @@ from __future__ import print_function
 
 import abc
 
+import numpy as np
 import six
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BaseBijectorTest(test.TestCase):
   """Tests properties of the Bijector base-class."""
 
@@ -43,37 +47,40 @@ class BaseBijectorTest(test.TestCase):
       """Minimal specification of a `Bijector`."""
 
       def __init__(self):
-        super(_BareBonesBijector, self).__init__()
+        super(_BareBonesBijector, self).__init__(forward_min_event_ndims=0)
 
-    with self.test_session() as sess:
-      bij = _BareBonesBijector()
-      self.assertEqual(None, bij.event_ndims)
-      self.assertEqual([], bij.graph_parents)
-      self.assertEqual(False, bij.is_constant_jacobian)
-      self.assertEqual(False, bij.validate_args)
-      self.assertEqual(None, bij.dtype)
-      self.assertEqual("bare_bones_bijector", bij.name)
+    bij = _BareBonesBijector()
+    self.assertEqual([], bij.graph_parents)
+    self.assertEqual(False, bij.is_constant_jacobian)
+    self.assertEqual(False, bij.validate_args)
+    self.assertEqual(None, bij.dtype)
+    self.assertEqual("bare_bones_bijector", bij.name)
 
-      for shape in [[], [1, 2], [1, 2, 3]]:
-        [
-            forward_event_shape_,
-            inverse_event_shape_,
-        ] = sess.run([
-            bij.inverse_event_shape_tensor(shape),
-            bij.forward_event_shape_tensor(shape),
-        ])
-        self.assertAllEqual(shape, forward_event_shape_)
-        self.assertAllEqual(shape, bij.forward_event_shape(shape))
-        self.assertAllEqual(shape, inverse_event_shape_)
-        self.assertAllEqual(shape, bij.inverse_event_shape(shape))
+    for shape in [[], [1, 2], [1, 2, 3]]:
+      forward_event_shape_ = self.evaluate(
+          bij.inverse_event_shape_tensor(shape))
+      inverse_event_shape_ = self.evaluate(
+          bij.forward_event_shape_tensor(shape))
+      self.assertAllEqual(shape, forward_event_shape_)
+      self.assertAllEqual(shape, bij.forward_event_shape(shape))
+      self.assertAllEqual(shape, inverse_event_shape_)
+      self.assertAllEqual(shape, bij.inverse_event_shape(shape))
 
-      for fn in ["forward",
-                 "inverse",
-                 "inverse_log_det_jacobian",
-                 "forward_log_det_jacobian"]:
-        with self.assertRaisesRegexp(
-            NotImplementedError, fn + " not implemented"):
-          getattr(bij, fn)(0)
+    with self.assertRaisesRegexp(
+        NotImplementedError, "inverse not implemented"):
+      bij.inverse(0)
+
+    with self.assertRaisesRegexp(
+        NotImplementedError, "forward not implemented"):
+      bij.forward(0)
+
+    with self.assertRaisesRegexp(
+        NotImplementedError, "inverse_log_det_jacobian not implemented"):
+      bij.inverse_log_det_jacobian(0, event_ndims=0)
+
+    with self.assertRaisesRegexp(
+        NotImplementedError, "forward_log_det_jacobian not implemented"):
+      bij.forward_log_det_jacobian(0, event_ndims=0)
 
 
 class IntentionallyMissingError(Exception):
@@ -83,9 +90,10 @@ class IntentionallyMissingError(Exception):
 class BrokenBijector(bijector.Bijector):
   """Forward and inverse are not inverses of each other."""
 
-  def __init__(self, forward_missing=False, inverse_missing=False):
+  def __init__(
+      self, forward_missing=False, inverse_missing=False, validate_args=False):
     super(BrokenBijector, self).__init__(
-        event_ndims=0, validate_args=False, name="broken")
+        validate_args=validate_args, forward_min_event_ndims=0, name="broken")
     self._forward_missing = forward_missing
     self._inverse_missing = inverse_missing
 
@@ -109,6 +117,33 @@ class BrokenBijector(bijector.Bijector):
       raise IntentionallyMissingError
     return math_ops.log(2.)
 
+class BijectorTestEventNdims(test.TestCase):
+
+  def testBijectorNonIntegerEventNdims(self):
+    bij = BrokenBijector()
+    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+      bij.forward_log_det_jacobian(1., event_ndims=1.5)
+    with self.assertRaisesRegexp(ValueError, "Expected integer"):
+      bij.inverse_log_det_jacobian(1., event_ndims=1.5)
+
+  def testBijectorArrayEventNdims(self):
+    bij = BrokenBijector()
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      bij.forward_log_det_jacobian(1., event_ndims=(1, 2))
+    with self.assertRaisesRegexp(ValueError, "Expected scalar"):
+      bij.inverse_log_det_jacobian(1., event_ndims=(1, 2))
+
+  def testBijectorDynamicEventNdims(self):
+    bij = BrokenBijector(validate_args=True)
+    event_ndims = array_ops.placeholder(dtype=np.int32, shape=None)
+    with self.test_session():
+      with self.assertRaisesOpError("Expected scalar"):
+        bij.forward_log_det_jacobian(1., event_ndims=event_ndims).eval({
+            event_ndims: (1, 2)})
+      with self.assertRaisesOpError("Expected scalar"):
+        bij.inverse_log_det_jacobian(1., event_ndims=event_ndims).eval({
+            event_ndims: (1, 2)})
+
 
 @six.add_metaclass(abc.ABCMeta)
 class BijectorCachingTestBase(object):
@@ -120,35 +155,42 @@ class BijectorCachingTestBase(object):
 
   def testCachingOfForwardResults(self):
     broken_bijector = self.broken_bijector_cls(inverse_missing=True)
-    with self.test_session():
-      x = constant_op.constant(1.1)
+    x = constant_op.constant(1.1)
 
-      # Call forward and forward_log_det_jacobian one-by-one (not together).
-      y = broken_bijector.forward(x)
-      _ = broken_bijector.forward_log_det_jacobian(x)
+    # Call forward and forward_log_det_jacobian one-by-one (not together).
+    y = broken_bijector.forward(x)
+    _ = broken_bijector.forward_log_det_jacobian(x, event_ndims=0)
 
-      # Now, everything should be cached if the argument is y.
-      try:
-        broken_bijector.inverse(y)
-        broken_bijector.inverse_log_det_jacobian(y)
-      except IntentionallyMissingError:
-        raise AssertionError("Tests failed! Cached values not used.")
+    # Now, everything should be cached if the argument is y.
+    broken_bijector.inverse_log_det_jacobian(y, event_ndims=0)
+    try:
+      broken_bijector.inverse(y)
+      broken_bijector.inverse_log_det_jacobian(y, event_ndims=0)
+    except IntentionallyMissingError:
+      raise AssertionError("Tests failed! Cached values not used.")
+
+    # Different event_ndims should not be cached.
+    with self.assertRaises(IntentionallyMissingError):
+      broken_bijector.inverse_log_det_jacobian(y, event_ndims=1)
 
   def testCachingOfInverseResults(self):
     broken_bijector = self.broken_bijector_cls(forward_missing=True)
-    with self.test_session():
-      y = constant_op.constant(1.1)
+    y = constant_op.constant(1.1)
 
-      # Call inverse and inverse_log_det_jacobian one-by-one (not together).
-      x = broken_bijector.inverse(y)
-      _ = broken_bijector.inverse_log_det_jacobian(y)
+    # Call inverse and inverse_log_det_jacobian one-by-one (not together).
+    x = broken_bijector.inverse(y)
+    _ = broken_bijector.inverse_log_det_jacobian(y, event_ndims=0)
 
-      # Now, everything should be cached if the argument is x.
-      try:
-        broken_bijector.forward(x)
-        broken_bijector.forward_log_det_jacobian(x)
-      except IntentionallyMissingError:
-        raise AssertionError("Tests failed! Cached values not used.")
+    # Now, everything should be cached if the argument is x.
+    try:
+      broken_bijector.forward(x)
+      broken_bijector.forward_log_det_jacobian(x, event_ndims=0)
+    except IntentionallyMissingError:
+      raise AssertionError("Tests failed! Cached values not used.")
+
+    # Different event_ndims should not be cached.
+    with self.assertRaises(IntentionallyMissingError):
+      broken_bijector.forward_log_det_jacobian(x, event_ndims=1)
 
 
 class BijectorCachingTest(BijectorCachingTestBase, test.TestCase):
@@ -157,6 +199,119 @@ class BijectorCachingTest(BijectorCachingTestBase, test.TestCase):
   @property
   def broken_bijector_cls(self):
     return BrokenBijector
+
+
+class ExpOnlyJacobian(bijector.Bijector):
+  """Only used for jacobian calculations."""
+
+  def __init__(self, forward_min_event_ndims=0):
+    super(ExpOnlyJacobian, self).__init__(
+        validate_args=False,
+        is_constant_jacobian=False,
+        forward_min_event_ndims=forward_min_event_ndims,
+        name="exp")
+
+  def _inverse_log_det_jacobian(self, y):
+    return -math_ops.log(y)
+
+  def _forward_log_det_jacobian(self, x):
+    return math_ops.log(x)
+
+
+class ConstantJacobian(bijector.Bijector):
+  """Only used for jacobian calculations."""
+
+  def __init__(self, forward_min_event_ndims=0):
+    super(ConstantJacobian, self).__init__(
+        validate_args=False,
+        is_constant_jacobian=True,
+        forward_min_event_ndims=forward_min_event_ndims,
+        name="c")
+
+  def _inverse_log_det_jacobian(self, y):
+    return constant_op.constant(2., y.dtype)
+
+  def _forward_log_det_jacobian(self, x):
+    return constant_op.constant(-2., x.dtype)
+
+
+class BijectorReduceEventDimsTest(test.TestCase):
+  """Test caching with BrokenBijector."""
+
+  def testReduceEventNdimsForward(self):
+    x = [[[1., 2.], [3., 4.]]]
+    bij = ExpOnlyJacobian()
+    self.assertAllClose(
+        np.log(x),
+        self.evaluate(bij.forward_log_det_jacobian(x, event_ndims=0)))
+    self.assertAllClose(
+        np.sum(np.log(x), axis=-1),
+        self.evaluate(bij.forward_log_det_jacobian(x, event_ndims=1)))
+    self.assertAllClose(
+        np.sum(np.log(x), axis=(-1, -2)),
+        self.evaluate(bij.forward_log_det_jacobian(x, event_ndims=2)))
+
+  def testReduceEventNdimsForwardRaiseError(self):
+    x = [[[1., 2.], [3., 4.]]]
+    bij = ExpOnlyJacobian(forward_min_event_ndims=1)
+    with self.assertRaisesRegexp(ValueError, "must be larger than"):
+      bij.forward_log_det_jacobian(x, event_ndims=0)
+
+  def testReduceEventNdimsInverse(self):
+    x = [[[1., 2.], [3., 4.]]]
+    bij = ExpOnlyJacobian()
+    self.assertAllClose(
+        -np.log(x),
+        self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=0)))
+    self.assertAllClose(
+        np.sum(-np.log(x), axis=-1),
+        self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=1)))
+    self.assertAllClose(
+        np.sum(-np.log(x), axis=(-1, -2)),
+        self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=2)))
+
+  def testReduceEventNdimsInverseRaiseError(self):
+    x = [[[1., 2.], [3., 4.]]]
+    bij = ExpOnlyJacobian(forward_min_event_ndims=1)
+    with self.assertRaisesRegexp(ValueError, "must be larger than"):
+      bij.inverse_log_det_jacobian(x, event_ndims=0)
+
+  def testReduceEventNdimsForwardConstJacobian(self):
+    x = [[[1., 2.], [3., 4.]]]
+    bij = ConstantJacobian()
+    self.assertAllClose(
+        -2.,
+        self.evaluate(bij.forward_log_det_jacobian(x, event_ndims=0)))
+    self.assertAllClose(
+        -4.,
+        self.evaluate(bij.forward_log_det_jacobian(x, event_ndims=1)))
+    self.assertAllClose(
+        -8.,
+        self.evaluate(bij.forward_log_det_jacobian(x, event_ndims=2)))
+
+  def testReduceEventNdimsInverseConstJacobian(self):
+    x = [[[1., 2.], [3., 4.]]]
+    bij = ConstantJacobian()
+    self.assertAllClose(
+        2.,
+        self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=0)))
+    self.assertAllClose(
+        4.,
+        self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=1)))
+    self.assertAllClose(
+        8.,
+        self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=2)))
+
+  def testHandlesNonStaticEventNdims(self):
+    x_ = [[[1., 2.], [3., 4.]]]
+    x = array_ops.placeholder_with_default(x_, shape=None)
+    event_ndims = array_ops.placeholder(dtype=np.int32, shape=[])
+    bij = ExpOnlyJacobian(forward_min_event_ndims=1)
+    bij.inverse_log_det_jacobian(x, event_ndims=event_ndims)
+    with self.test_session() as sess:
+      ildj = sess.run(bij.inverse_log_det_jacobian(x, event_ndims=event_ndims),
+                      feed_dict={event_ndims: 1})
+    self.assertAllClose(-np.log(x_), ildj)
 
 
 if __name__ == "__main__":

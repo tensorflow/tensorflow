@@ -23,6 +23,7 @@ import glob
 import json
 import os
 import platform
+import re
 
 import numpy as np
 import six
@@ -222,7 +223,7 @@ def has_inf_or_nan(datum, tensor):
     # Also return False for data types that cannot be represented as numpy
     # arrays.
     return False
-  elif (np.issubdtype(tensor.dtype, np.float) or
+  elif (np.issubdtype(tensor.dtype, np.floating) or
         np.issubdtype(tensor.dtype, np.complex) or
         np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
@@ -558,8 +559,7 @@ class DebugDumpDir(object):
     for root, _, files in gfile.Walk(device_root):
       for f in files:
         if _is_graph_file(f):
-          self._dump_graph_file_paths[device_name] = os.path.join(
-              device_root, root, f)
+          self._dump_graph_file_paths[device_name] = os.path.join(root, f)
         else:
           datum = self._dump_file_name_to_datum(root, f)
           self._dump_tensor_data[device_name].append(datum)
@@ -748,7 +748,7 @@ class DebugDumpDir(object):
     return sum(len(self._dump_tensor_data[device_name])
                for device_name in self._dump_tensor_data)
 
-  def _load_partition_graphs(self, partition_graphs, validate):
+  def _load_partition_graphs(self, client_partition_graphs, validate):
     """Load and process partition graphs.
 
     Load the graphs; parse the input and control input structure; obtain the
@@ -757,8 +757,10 @@ class DebugDumpDir(object):
     tensor dumps.
 
     Args:
-      partition_graphs: A repeated field of GraphDefs representing the
-          partition graphs executed by the TensorFlow runtime.
+      client_partition_graphs: A repeated field of GraphDefs representing the
+        partition graphs executed by the TensorFlow runtime, from the Python
+        client. These partition graphs are used only if partition graphs
+        cannot be loaded from the dump directory on the file system.
       validate: (`bool`) Whether the dump files are to be validated against the
         partition graphs.
 
@@ -769,24 +771,23 @@ class DebugDumpDir(object):
     self._debug_graphs = {}
     self._node_devices = {}
 
-    if partition_graphs:
-      partition_graphs_and_device_names = [
-          (partition_graph, None) for partition_graph in partition_graphs]
-    else:
-      partition_graphs_and_device_names = []
-      for device_name in self._device_names:
-        partition_graph = None
-        if device_name in self._dump_graph_file_paths:
-          partition_graph = _load_graph_def_from_event_file(
-              self._dump_graph_file_paths[device_name])
-        else:
-          partition_graph = self._find_partition_graph(partition_graphs,
-                                                       device_name)
-        if partition_graph:
-          partition_graphs_and_device_names.append((partition_graph,
-                                                    device_name))
-        else:
-          logging.warn("Failed to load partition graphs from disk.")
+    partition_graphs_and_device_names = []
+    for device_name in self._device_names:
+      partition_graph = None
+      if device_name in self._dump_graph_file_paths:
+        partition_graph = _load_graph_def_from_event_file(
+            self._dump_graph_file_paths[device_name])
+      else:
+        logging.warn(
+            "Failed to load partition graphs for device %s from disk. "
+            "As a fallback, the client graphs will be used. This "
+            "may cause mismatches in device names." % device_name)
+        partition_graph = self._find_partition_graph(client_partition_graphs,
+                                                     device_name)
+
+      if partition_graph:
+        partition_graphs_and_device_names.append((partition_graph,
+                                                  device_name))
 
     for partition_graph, maybe_device_name in partition_graphs_and_device_names:
       debug_graph = debug_graphs.DebugGraph(partition_graph,
@@ -1412,7 +1413,11 @@ class DebugDumpDir(object):
 
     return self._watch_key_to_datum[device_name].get(debug_watch_key, [])
 
-  def find(self, predicate, first_n=0, device_name=None):
+  def find(self,
+           predicate,
+           first_n=0,
+           device_name=None,
+           exclude_node_names=None):
     """Find dumped tensor data by a certain predicate.
 
     Args:
@@ -1431,17 +1436,24 @@ class DebugDumpDir(object):
         time order) for which the predicate returns True. To return all the
         `DebugTensotDatum` instances, let first_n be <= 0.
       device_name: optional device name.
+      exclude_node_names: Optional regular expression to exclude nodes with
+        names matching the regular expression.
 
     Returns:
       A list of all `DebugTensorDatum` objects in this `DebugDumpDir` object
        for which predicate returns True, sorted in ascending order of the
        timestamp.
     """
+    if exclude_node_names:
+      exclude_node_names = re.compile(exclude_node_names)
 
     matched_data = []
     for device in (self._dump_tensor_data if device_name is None
                    else (self._dump_tensor_data[device_name],)):
       for datum in self._dump_tensor_data[device]:
+        if exclude_node_names and exclude_node_names.match(datum.node_name):
+          continue
+
         if predicate(datum, datum.get_tensor()):
           matched_data.append(datum)
 

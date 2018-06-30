@@ -1,16 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "utils",
@@ -27,9 +17,8 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
-    size = "small",
     srcs = [
         "utils_test.cc",
     ],

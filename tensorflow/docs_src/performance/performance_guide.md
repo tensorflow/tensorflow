@@ -18,6 +18,7 @@ following sections:
 *   [Input pipeline optimizations](#input-pipeline-optimization)
 *   [Data formats](#data-formats)
 *   [Common fused Ops](#common-fused-ops)
+*   [RNN Performance](#rnn-performance)
 *   [Building and installing from source](#building-and-installing-from-source)
 
 ### Input pipeline optimization
@@ -36,7 +37,7 @@ the difference in examples per second for the full model and the trivial model
 is minimal then the input pipeline is likely a bottleneck. Below are some other
 approaches to identifying issues:
 
-*   Check if a GPU is underutilized by running `watch -n 2 nvidia-smi`. If GPU
+*   Check if a GPU is underutilized by running `nvidia-smi -l 2`. If GPU
     utilization is not approaching 80-100%, then the input pipeline may be the
     bottleneck.
 *   Generate a timeline and look for large blocks of white space (waiting). An
@@ -65,27 +66,64 @@ with tf.device('/cpu:0'):
 If using `tf.estimator.Estimator` the input function is automatically placed on
 the CPU.
 
-#### Using the Dataset API
+#### Using the tf.data API
 
-The @{$datasets$Dataset API} is replacing `queue_runner` as the recommended API
-for building input pipelines. The API was added to contrib as part of TensorFlow
-1.2 and will move to core in the near future. This
+The @{$datasets$tf.data API} is replacing `queue_runner` as the recommended API
+for building input pipelines. This
 [ResNet example](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/cifar10_main.py)
 ([arXiv:1512.03385](https://arxiv.org/abs/1512.03385))
-training CIFAR-10 illustrates the use of the Dataset API along with
-`tf.estimator.Estimator`. The Dataset API utilizes C++ multi-threading and has a
-much lower overhead than the Python-based `queue_runner` that is limited by
-Python's multi-threading performance.
+training CIFAR-10 illustrates the use of the `tf.data` API along with
+`tf.estimator.Estimator`.
+
+The `tf.data` API utilizes C++ multi-threading and has a much lower overhead
+than the Python-based `queue_runner` that is limited by Python's multi-threading
+performance. A detailed performance guide for the `tf.data` API can be found
+@{$datasets_performance$here}.
 
 While feeding data using a `feed_dict` offers a high level of flexibility, in
-most instances using `feed_dict` does not scale optimally. However, in instances
-where only a single GPU is being used the difference can be negligible. Using
-the Dataset API is still strongly recommended. Try to avoid the following:
+general `feed_dict` does not provide a scalable solution. If only a single GPU
+is used, the difference between the `tf.data` API and `feed_dict` performance
+may be negligible. Our recommendation is to avoid using `feed_dict` for all but
+trivial examples. In particular, avoid using `feed_dict` with large inputs:
 
 ```python
 # feed_dict often results in suboptimal performance when using large inputs.
 sess.run(train_step, feed_dict={x: batch_xs, y_: batch_ys})
 ```
+
+#### Fused decode and crop
+
+If inputs are JPEG images that also require cropping, use fused
+@{tf.image.decode_and_crop_jpeg} to speed up preprocessing.
+`tf.image.decode_and_crop_jpeg` only decodes the part of
+the image within the crop window. This significantly speeds up the process if
+the crop window is much smaller than the full image. For imagenet data, this
+approach could speed up the input pipeline by up to 30%.
+
+Example Usage:
+
+```python
+def _image_preprocess_fn(image_buffer):
+    # image_buffer 1-D string Tensor representing the raw JPEG image buffer.
+
+    # Extract image shape from raw JPEG image buffer.
+    image_shape = tf.image.extract_jpeg_shape(image_buffer)
+
+    # Get a crop window with distorted bounding box.
+    sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
+      image_shape, ...)
+    bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
+
+    # Decode and crop image.
+    offset_y, offset_x, _ = tf.unstack(bbox_begin)
+    target_height, target_width, _ = tf.unstack(bbox_size)
+    crop_window = tf.stack([offset_y, offset_x, target_height, target_width])
+    cropped_image = tf.image.decode_and_crop_jpeg(image, crop_window)
+```
+
+`tf.image.decode_and_crop_jpeg` is available on all platforms. There is no speed
+up on Windows due to the use of `libjpeg` vs. `libjpeg-turbo` on other
+platforms.
 
 #### Use large files
 
@@ -93,7 +131,7 @@ Reading large numbers of small files significantly impacts I/O performance.
 One approach to get maximum I/O throughput is to preprocess input data into
 larger (~100MB) `TFRecord` files. For smaller data sets (200MB-1GB), the best
 approach is often to load the entire data set into memory. The document
-[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/slim#Data)
+[Downloading and converting to TFRecord format](https://github.com/tensorflow/models/tree/master/research/slim#downloading-and-converting-to-tfrecord-format)
 includes information and scripts for creating `TFRecords` and this
 [script](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10_estimator/generate_cifar10_tfrecords.py)
 converts the CIFAR-10 data set into `TFRecords`.
@@ -163,6 +201,53 @@ since before TensorFlow 1.0.
 bn = tf.contrib.layers.batch_norm(input_layer, fused=True, data_format='NCHW')
 ```
 
+### RNN Performance
+
+There are many ways to specify an RNN computation in TensorFlow and they have
+trade-offs with respect to model flexibility and performance. The
+@{tf.nn.rnn_cell.BasicLSTMCell} should be considered a reference implementation
+and used only as a last resort when no other options will work.
+
+When using one of the cells, rather than the fully fused RNN layers, you have a
+choice of whether to use @{tf.nn.static_rnn} or @{tf.nn.dynamic_rnn}.  There
+shouldn't generally be a performance difference at runtime, but large unroll
+amounts can increase the graph size of the @{tf.nn.static_rnn} and cause long
+compile times.  An additional advantage of @{tf.nn.dynamic_rnn} is that it can
+optionally swap memory from the GPU to the CPU to enable training of very long
+sequences.  Depending on the model and hardware configuration, this can come at
+a performance cost.  It is also possible to run multiple iterations of
+@{tf.nn.dynamic_rnn} and the underlying @{tf.while_loop} construct in parallel,
+although this is rarely useful with RNN models as they are inherently
+sequential.
+
+On NVIDIA GPUs, the use of @{tf.contrib.cudnn_rnn} should always be preferred
+unless you want layer normalization, which it doesn't support.  It is often at
+least an order of magnitude faster than @{tf.contrib.rnn.BasicLSTMCell} and
+@{tf.contrib.rnn.LSTMBlockCell} and uses 3-4x less memory than
+@{tf.contrib.rnn.BasicLSTMCell}.
+
+If you need to run one step of the RNN at a time, as might be the case in
+reinforcement learning with a recurrent policy, then you should use the
+@{tf.contrib.rnn.LSTMBlockCell} with your own environment interaction loop
+inside a @{tf.while_loop} construct. Running one step of the RNN at a time and
+returning to Python is possible, but it will be slower.
+
+On CPUs, mobile devices, and if @{tf.contrib.cudnn_rnn} is not available on
+your GPU, the fastest and most memory efficient option is
+@{tf.contrib.rnn.LSTMBlockFusedCell}.
+
+For all of the less common cell types like @{tf.contrib.rnn.NASCell},
+@{tf.contrib.rnn.PhasedLSTMCell}, @{tf.contrib.rnn.UGRNNCell},
+@{tf.contrib.rnn.GLSTMCell}, @{tf.contrib.rnn.Conv1DLSTMCell},
+@{tf.contrib.rnn.Conv2DLSTMCell}, @{tf.contrib.rnn.LayerNormBasicLSTMCell},
+etc., one should be aware that they are implemented in the graph like
+@{tf.contrib.rnn.BasicLSTMCell} and as such will suffer from the same poor
+performance and high memory usage.  One should consider whether or not those
+trade-offs are worth it before using these cells. For example, while layer
+normalization can speed up convergence, because cuDNN is 20x faster the fastest
+wall clock time to convergence is usually obtained without it.
+
+
 ### Building and installing from source
 
 The default TensorFlow binaries target the broadest range of hardware to make
@@ -222,9 +307,9 @@ and even how the hardware has been configured. An example of this, is that two
 systems can be built with NVIDIA Tesla P100s but one may be using PCIe and the
 other [NVLink](http://www.nvidia.com/object/nvlink.html). In that scenario, the
 optimal solution for each system may be different. For real world examples, read
-the @{$benchmarks$benchmark} page which details the settings that were optimal
-for a variety of platforms. Below is a summary of what was learned from
-benchmarking various platforms and configurations:
+the @{$performance/benchmarks$benchmark} page which details the settings that
+were optimal for a variety of platforms. Below is a summary of what was learned
+from benchmarking various platforms and configurations:
 
 *   **Tesla K80**: If the GPUs are on the same PCI Express root complex and are
     able to use [NVIDIA GPUDirect](https://developer.nvidia.com/gpudirect) Peer
@@ -390,7 +475,7 @@ optimizations.
 ### TensorFlow with Intel® MKL DNN
 
 Intel® has added optimizations to TensorFlow for Intel® Xeon® and Intel® Xeon
-Phi™ though the use of Intel® Math Kernel Library for Deep Neural Networks
+Phi™ through the use of the Intel® Math Kernel Library for Deep Neural Networks
 (Intel® MKL-DNN) optimized primitives. The optimizations also provide speedups
 for the consumer line of processors, e.g. i5 and i7 Intel processors. The Intel
 published paper
@@ -413,7 +498,7 @@ For TensorFlow source versions after 1.3.0:
 ```bash
 ./configure
 # Pick the desired options
-bazel build --config=mkl -c opt //tensorflow/tools/pip_package:build_pip_package
+bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package
 
 ```
 
@@ -496,9 +581,9 @@ Each variable that impacts performance is discussed below.
     for optimal settings.
 
 *   **intra_op_parallelism_threads**: Setting this equal to the number of
-    physical cores is recommended. Setting the value to 0, which is the default
-    and will result in the value being set to the number of logical cores, is an
-    option to try for some architectures.  This value and `OMP_NUM_THREADS`
+    physical cores is recommended. Setting the value to 0, which is the default,
+    results in the value being set to the number of logical cores - this is an
+    alternate option to try for some architectures.  This value and `OMP_NUM_THREADS`
     should be equal.
 
 *   **inter_op_parallelism_threads**: Setting this equal to the number of
@@ -541,11 +626,10 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads |
 :              :             : (step time)  :               :               :
 | ------------ | ----------- | ------------ | ------------- | ------------- |
-| AVX2         | NHWC        | 6.8 (147ms)  | 4             | 0             |
-| MKL          | NCHW        | 6.6 (151ms)  | 4             | 1             |
-| MKL          | NHWC        | 5.95 (168ms) | 4             | 1             |
-| AVX          | NHWC        | 4.7 (211ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.7 (370ms)  | 4             | 0             |
+| AVX2         | NHWC        | 7.0 (142ms)  | 4             | 0             |
+| MKL          | NCHW        | 6.6 (152ms)  | 4             | 1             |
+| AVX          | NHWC        | 5.0 (202ms)  | 4             | 0             |
+| SSE3         | NHWC        | 2.8 (361ms)  | 4             | 0             |
 
 **Batch Size: 32**
 
@@ -561,12 +645,11 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads |
 :              :             : (step time)   :               :               :
 | ------------ | ----------- | ------------- | ------------- | ------------- |
-| MKL          | NCHW        | 10.24         | 4             | 1             |
-:              :             : (3125ms)      :               :               :
-| MKL          | NHWC        | 8.9 (3595ms)  | 4             | 1             |
-| AVX2         | NHWC        | 7.3 (4383ms)  | 4             | 0             |
-| AVX          | NHWC        | 5.1 (6275ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.8 (11428ms) | 4             | 0             |
+| MKL          | NCHW        | 10.3          | 4             | 1             |
+:              :             : (3,104ms)     :               :               :
+| AVX2         | NHWC        | 7.5 (4,255ms) | 4             | 0             |
+| AVX          | NHWC        | 5.1 (6,275ms) | 4             | 0             |
+| SSE3         | NHWC        | 2.8 (11,428ms)| 4             | 0             |
 
 #### Inference ResNet-50
 
@@ -592,11 +675,10 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec   | Intra threads | Inter Threads |
 :              :             : (step time)  :               :               :
 | ------------ | ----------- | ------------ | ------------- | ------------- |
-| AVX2         | NHWC        | 6.8 (147ms)  | 4             | 0             |
-| MKL          | NCHW        | 6.6 (151ms)  | 4             | 1             |
-| MKL          | NHWC        | 5.95 (168ms) | 4             | 1             |
-| AVX          | NHWC        | 4.7 (211ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.7 (370ms)  | 4             | 0             |
+| AVX2         | NHWC        | 8.8 (113ms)  | 4             | 0             |
+| MKL          | NCHW        | 8.5 (120ms)  | 4             | 1             |
+| AVX          | NHWC        | 6.4 (157ms)  | 4             | 0             |
+| SSE3         | NHWC        | 3.7 (270ms)  | 4             | 0             |
 
 **Batch Size: 32**
 
@@ -612,12 +694,11 @@ python tf_cnn_benchmarks.py --forward_only=True --device=cpu --mkl=True \
 | Optimization | Data Format | Images/Sec    | Intra threads | Inter Threads |
 :              :             : (step time)   :               :               :
 | ------------ | ----------- | ------------- | ------------- | ------------- |
-| MKL          | NCHW        | 10.24         | 4             | 1             |
-:              :             : (3125ms)      :               :               :
-| MKL          | NHWC        | 8.9 (3595ms)  | 4             | 1             |
-| AVX2         | NHWC        | 7.3 (4383ms)  | 4             | 0             |
-| AVX          | NHWC        | 5.1 (6275ms)  | 4             | 0             |
-| SSE3         | NHWC        | 2.8 (11428ms) | 4             | 0             |
+| MKL          | NCHW        | 12.4          | 4             | 1             |
+:              :             : (2,590ms)     :               :               :
+| AVX2         | NHWC        | 10.4 (3,079ms)| 4             | 0             |
+| AVX          | NHWC        | 7.3 (4,4416ms)| 4             | 0             |
+| SSE3         | NHWC        | 4.0 (8,054ms) | 4             | 0             |
 
 #### Training InceptionV3
 

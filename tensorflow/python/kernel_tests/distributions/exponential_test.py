@@ -23,7 +23,9 @@ import importlib
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import exponential as exponential_lib
 from tensorflow.python.platform import test
@@ -42,6 +44,7 @@ def try_import(name):  # pylint: disable=invalid-name
 stats = try_import("scipy.stats")
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ExponentialTest(test.TestCase):
 
   def testExponentialLogPDF(self):
@@ -61,8 +64,8 @@ class ExponentialTest(test.TestCase):
       if not stats:
         return
       expected_log_pdf = stats.expon.logpdf(x, scale=1 / lam_v)
-      self.assertAllClose(log_pdf.eval(), expected_log_pdf)
-      self.assertAllClose(pdf.eval(), np.exp(expected_log_pdf))
+      self.assertAllClose(self.evaluate(log_pdf), expected_log_pdf)
+      self.assertAllClose(self.evaluate(pdf), np.exp(expected_log_pdf))
 
   def testExponentialCDF(self):
     with session.Session():
@@ -79,7 +82,7 @@ class ExponentialTest(test.TestCase):
       if not stats:
         return
       expected_cdf = stats.expon.cdf(x, scale=1 / lam_v)
-      self.assertAllClose(cdf.eval(), expected_cdf)
+      self.assertAllClose(self.evaluate(cdf), expected_cdf)
 
   def testExponentialMean(self):
     with session.Session():
@@ -89,7 +92,7 @@ class ExponentialTest(test.TestCase):
       if not stats:
         return
       expected_mean = stats.expon.mean(scale=1 / lam_v)
-      self.assertAllClose(exponential.mean().eval(), expected_mean)
+      self.assertAllClose(self.evaluate(exponential.mean()), expected_mean)
 
   def testExponentialVariance(self):
     with session.Session():
@@ -99,7 +102,8 @@ class ExponentialTest(test.TestCase):
       if not stats:
         return
       expected_variance = stats.expon.var(scale=1 / lam_v)
-      self.assertAllClose(exponential.variance().eval(), expected_variance)
+      self.assertAllClose(
+          self.evaluate(exponential.variance()), expected_variance)
 
   def testExponentialEntropy(self):
     with session.Session():
@@ -109,7 +113,8 @@ class ExponentialTest(test.TestCase):
       if not stats:
         return
       expected_entropy = stats.expon.entropy(scale=1 / lam_v)
-      self.assertAllClose(exponential.entropy().eval(), expected_entropy)
+      self.assertAllClose(
+          self.evaluate(exponential.entropy()), expected_entropy)
 
   def testExponentialSample(self):
     with self.test_session():
@@ -119,7 +124,7 @@ class ExponentialTest(test.TestCase):
       exponential = exponential_lib.Exponential(rate=lam)
 
       samples = exponential.sample(n, seed=137)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       self.assertEqual(sample_values.shape, (100000, 2))
       self.assertFalse(np.any(sample_values < 0.0))
       if not stats:
@@ -142,7 +147,7 @@ class ExponentialTest(test.TestCase):
       samples = exponential.sample(n, seed=138)
       self.assertEqual(samples.get_shape(), (n, batch_size, 2))
 
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
 
       self.assertFalse(np.any(sample_values < 0.0))
       if not stats:
@@ -159,12 +164,21 @@ class ExponentialTest(test.TestCase):
                 stats.expon(scale=1.0 / lam_v[i]).cdf)[0],
             0.01)
 
+  def testFullyReparameterized(self):
+    lam = constant_op.constant([0.1, 1.0])
+    with backprop.GradientTape() as tape:
+      tape.watch(lam)
+      exponential = exponential_lib.Exponential(rate=lam)
+      samples = exponential.sample(100)
+    grad_lam = tape.gradient(samples, lam)
+    self.assertIsNotNone(grad_lam)
+
   def testExponentialWithSoftplusRate(self):
     with self.test_session():
       lam = [-2.2, -3.4]
       exponential = exponential_lib.ExponentialWithSoftplusRate(rate=lam)
-      self.assertAllClose(nn_ops.softplus(lam).eval(),
-                          exponential.rate.eval())
+      self.assertAllClose(
+          self.evaluate(nn_ops.softplus(lam)), self.evaluate(exponential.rate))
 
 
 if __name__ == "__main__":

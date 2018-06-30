@@ -51,6 +51,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class DeviceMgr;
+
 class Device : public DeviceBase {
  public:
   Device(Env* env, const DeviceAttributes& device_attributes);
@@ -110,12 +112,9 @@ class Device : public DeviceBase {
   // prototyping of TensorFlow device implementations that need to modify
   // the GraphDef before execution.
   //
-  // 'library' provides access to the function library which is shared
-  // between all device partitions.
   // 'graph' supplies the partition of the graph assigned to this
   // device.
-  virtual Status MaybeRewriteGraph(const FunctionDefLibrary& /*library*/,
-                                   std::unique_ptr<Graph>* /*graph*/) {
+  virtual Status MaybeRewriteGraph(std::unique_ptr<Graph>* /*graph*/) {
     return Status::OK();
   }
 
@@ -134,7 +133,11 @@ class Device : public DeviceBase {
   OpSegment* op_segment() { return &op_seg_; }
 
   // Returns the resource manager associated w/ this device.
-  ResourceMgr* resource_manager() { return rmgr_; }
+  virtual ResourceMgr* resource_manager() { return rmgr_; }
+
+  // Returns the device manager that owns this device, or nullptr if this Device
+  // is not owned by a device manager.
+  DeviceMgr* device_mgr() const { return device_mgr_; }
 
   // Summarizes the status of this Device, for debugging.
   string DebugString() const { return ProtoDebugString(device_attributes_); }
@@ -151,6 +154,9 @@ class Device : public DeviceBase {
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
 
+  // Clears the resource manager associated with this device.
+  void ClearResourceMgr() { rmgr_->Clear(); }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;
@@ -158,6 +164,11 @@ class Device : public DeviceBase {
   }
 
  private:
+  friend class DeviceMgr;
+
+  // Pointer to the device manager that owns this device. Not owned.
+  DeviceMgr* device_mgr_ = nullptr;
+
   const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
 

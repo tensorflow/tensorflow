@@ -16,7 +16,7 @@ limitations under the License.
 // Registers the XLA_GPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "CUDA" (GPU) backend.
 
-#include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -34,6 +34,12 @@ class XlaGpuDeviceFactory : public DeviceFactory {
 Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
+  XlaOpRegistry::DeviceRegistration registration;
+  registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+  registration.requires_compilation = true;
+  registration.enable_jit_by_default = false;
+  registration.compile_resource_ops = true;
+
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_GPU, DEVICE_GPU_XLA_JIT);
   (void)registrations;
@@ -41,12 +47,24 @@ Status XlaGpuDeviceFactory::CreateDevices(const SessionOptions& options,
   std::unique_ptr<XlaDevice> device;
   Status status =
       XlaDevice::Create("CUDA", DEVICE_XLA_GPU, 0, DEVICE_GPU_XLA_JIT, options,
-                        name_prefix, &device);
+                        name_prefix, registration,
+                        /*transfer_as_literal=*/false,
+                        /*shape_representation_fn=*/{},
+                        /*padded_shape_fn=*/{}, &device);
   if (!status.ok()) {
     // Treat failures as non-fatal; there might not be a GPU in the machine.
     VLOG(1) << "Failed to create XLA_GPU device: " << status;
     return Status::OK();
   }
+
+  // TODO(b/78468222): Uncomment after fixing this bug
+  // status = device->CreateAndSetGpuDeviceInfo();
+  // if (!status.ok()) {
+  //  errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT,
+  //                          " device");
+  //  return status;
+  // }
+
   devices->push_back(device.release());
   return Status::OK();
 }
@@ -55,10 +73,11 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_GPU, XlaGpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 5> kAllXlaGpuTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_DOUBLE, DT_BOOL}};
+constexpr std::array<DataType, 8> kAllXlaGpuTypes = {
+    {DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_BOOL,
+     DT_BFLOAT16}};
 
-REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaDeviceLaunchOp, kAllXlaGpuTypes);
+REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_GPU, XlaLocalLaunchOp, kAllXlaGpuTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_GPU, kAllXlaGpuTypes);
 
 }  // namespace tensorflow

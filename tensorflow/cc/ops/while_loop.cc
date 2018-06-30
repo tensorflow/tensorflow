@@ -116,7 +116,7 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
   return Status::OK();
 }
 
-// Create the bdoy subgraph defined by `body`. `outputs` must be non-null and
+// Create the body subgraph defined by `body`. `outputs` must be non-null and
 // empty.
 Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
                   const std::vector<Output>& inputs,
@@ -172,7 +172,8 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
 Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
                       const CondGraphBuilderFn& cond,
                       const BodyGraphBuilderFn& body, const string& frame_name,
-                      OutputList* outputs) {
+                      OutputList* outputs, bool create_while_ctx,
+                      Output* cond_output) {
   DCHECK(!inputs.empty());
   DCHECK(outputs != nullptr);
   DCHECK(outputs->empty());
@@ -194,6 +195,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
 
   Output cond_out;
   TF_RETURN_IF_ERROR(CreateCond(scope, cond, merge_outputs, &cond_out));
+  if (cond_output != nullptr) *cond_output = cond_out;
 
   std::vector<Output> switch_trues(num_loop_vars);
   std::vector<Output> switch_falses(num_loop_vars);
@@ -226,7 +228,22 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   for (int i = 0; i < num_loop_vars; ++i) {
     (*outputs)[i] = internal::Exit(scope, switch_falses[i]);
   }
-  return scope.status();
+  TF_RETURN_IF_ERROR(scope.status());
+
+  if (create_while_ctx) {
+    WhileContext* while_ctx;
+    TF_RETURN_IF_ERROR(scope.graph()->AddWhileContext(
+        frame_name, ToNodes(enter_outputs), ToNodes(*outputs),
+        ToOutputTensor(cond_out), ToOutputTensors(switch_trues),
+        ToOutputTensors(body_outputs), &while_ctx));
+
+    // Set while_ctx for all exit nodes. We currently don't require knowing the
+    // while_ctx for any other nodes.
+    for (int i = 0; i < num_loop_vars; ++i) {
+      (*outputs)[i].node()->set_while_ctx(while_ctx);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace ops

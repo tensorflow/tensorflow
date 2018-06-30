@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""An estimator is a rule for calculating an estimate of a given quantity.
+"""An estimator is a rule for calculating an estimate of a given quantity (deprecated).
+
+These classes are deprecated and replaced with `tf.estimator`.
+
+See [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 # Estimators
 
@@ -321,9 +326,6 @@ from tensorflow.contrib.learn.python.learn.estimators.linear import LinearClassi
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearEstimator
 from tensorflow.contrib.learn.python.learn.estimators.linear import LinearRegressor
 from tensorflow.contrib.learn.python.learn.estimators.logistic_regressor import LogisticRegressor
-from tensorflow.contrib.learn.python.learn.estimators.logit_fns import call_logit_fn
-from tensorflow.contrib.learn.python.learn.estimators.logit_fns import dnn_logit_fn_builder
-from tensorflow.contrib.learn.python.learn.estimators.logit_fns import linear_logit_fn_builder
 from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKey
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
+#define TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
 
 #define EIGEN_USE_THREADS
 
@@ -273,8 +273,8 @@ inline void RequantizeManyInNewRangeReference(const qint32* input, int64 count,
     const int64 offset_intermediate = fp_value - output_offset_fp;
     const int64 round_intermediate = offset_intermediate + rounding_delta;
     int64 quantized_int64 = round_intermediate >> fp_shift;
-    quantized_int64 = std::max(quantized_int64, 0LL);
-    quantized_int64 = std::min(quantized_int64, 255LL);
+    quantized_int64 = std::max(quantized_int64, int64{0});
+    quantized_int64 = std::min(quantized_int64, int64{255});
     output[index] = static_cast<quint8>(static_cast<int32>(quantized_int64));
   }
 }
@@ -956,4 +956,4 @@ class TensorflowGemmContext : public gemmlowp::MultiThreadGemmContextBase {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_QUANTIZATION_UTILS_H_

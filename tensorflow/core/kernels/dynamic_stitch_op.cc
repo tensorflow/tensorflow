@@ -326,6 +326,7 @@ struct ParallelDynamicStitchOpCPU : DynamicStitchOpImplCPU<T, true> {
                           ParallelDynamicStitchOpCPU<type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
+TF_CALL_variant(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
 
 #if GOOGLE_CUDA

@@ -124,21 +124,23 @@ TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
       "attr: { name: 'a' type: 'type' allowed_values { list { type: "
       "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
       "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, "
-      "DT_QINT32] } } }");
+      "DT_QINT32, DT_UINT32, DT_UINT64, DT_BFLOAT16] } } }");
   ExpectSuccess(
       b().Attr("a:{numbertype, variant}"),
       "attr: { name: 'a' type: 'type' allowed_values { list { type: "
       "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
       "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, "
-      "DT_QINT32, DT_VARIANT] } } }");
+      "DT_QINT32, DT_UINT32, DT_UINT64, DT_BFLOAT16, DT_VARIANT] } } }");
   ExpectSuccess(b().Attr("a:realnumbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, "
-                "DT_INT16, DT_UINT16, DT_INT8] } } }");
+                "DT_INT16, DT_UINT16, DT_INT8, DT_UINT32, DT_UINT64, "
+                "DT_BFLOAT16] } } }");
   ExpectSuccess(b().Attr("a:{realnumbertype,  variant , string, }"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, "
-                "DT_INT16, DT_UINT16, DT_INT8, DT_VARIANT, DT_STRING] } } }");
+                "DT_INT16, DT_UINT16, DT_INT8, DT_UINT32, DT_UINT64, "
+                "DT_BFLOAT16, DT_VARIANT, DT_STRING] } } }");
   ExpectSuccess(b().Attr("a:quantizedtype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_QINT8, DT_QUINT8, DT_QINT32, DT_QINT16, DT_QUINT16]} } }");
@@ -215,12 +217,14 @@ TEST_F(OpDefBuilderTest, AttrListOfRestricted) {
       b().Attr("a:list(realnumbertype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
       "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-      "DT_UINT16, DT_INT8, DT_HALF] } } }");
+      "DT_UINT16, DT_INT8, DT_HALF, DT_BFLOAT16, DT_UINT32, DT_UINT64"
+      "] } } }");
   ExpectSuccess(
       b().Attr("a:list({realnumbertype, variant})"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "
       "[DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
-      "DT_UINT16, DT_INT8, DT_HALF, DT_VARIANT] } } }");
+      "DT_UINT16, DT_INT8, DT_HALF, DT_BFLOAT16, DT_UINT32, DT_UINT64, "
+      "DT_VARIANT] } } }");
   ExpectSuccess(
       b().Attr("a:list(quantizedtype)"),
       "attr: { name: 'a' type: 'list(type)' allowed_values { list { type: "

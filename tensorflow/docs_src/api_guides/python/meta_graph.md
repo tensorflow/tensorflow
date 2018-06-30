@@ -22,14 +22,14 @@ protocol buffer. It contains the following fields:
 * [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto) for describing the graph.
 * [`SaverDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/saver.proto) for the saver.
 * [`CollectionDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto)
-map that further describes additional components of the model, such as
+map that further describes additional components of the model such as
 @{$python/state_ops$`Variables`},
-@{tf.train.QueueRunner}, etc.  In order for a Python object to be serialized
+@{tf.train.QueueRunner}, etc.
+
+In order for a Python object to be serialized
 to and from `MetaGraphDef`, the Python class must implement `to_proto()` and
 `from_proto()` methods, and register them with the system using
-`register_proto_function`.
-
-  For example,
+`register_proto_function`. For example:
 
   ```Python
   def to_proto(self, export_scope=None):
@@ -221,15 +221,9 @@ Here are some of the typical usage models:
     # Addes loss and train.
     labels = tf.constant(0, tf.int32, shape=[100], name="labels")
     batch_size = tf.size(labels)
-    labels = tf.expand_dims(labels, 1)
-    indices = tf.expand_dims(tf.range(0, batch_size), 1)
-    concated = tf.concat([indices, labels], 1)
-    onehot_labels = tf.sparse_to_dense(
-        concated, tf.stack([batch_size, 10]), 1.0, 0.0)
     logits = tf.get_collection("logits")[0]
-    cross_entropy = tf.nn.softmax_cross_entropy_with_logits(
-        labels=onehot_labels, logits=logits, name="xentropy")
-    loss = tf.reduce_mean(cross_entropy, name="xentropy_mean")
+    loss = tf.losses.sparse_softmax_cross_entropy(labels=labels,
+                                                  logits=logits)
 
     tf.summary.scalar('loss', loss)
     # Creates the gradient descent optimizer with the given learning rate.

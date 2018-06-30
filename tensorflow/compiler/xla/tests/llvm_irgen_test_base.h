@@ -53,7 +53,7 @@ class LLVMIRGenTestBase : public CodegenTestBase {
                                      bool match_optimized_ir);
 
  private:
-  LLVMCompiler* GetLLVMCompiler() const;
+  LLVMCompiler* GetLLVMCompiler();
 
   void SetIrHook(bool match_optimized_ir);
   void ResetIrHook();

@@ -41,7 +41,7 @@ class ResizeAreaOpTest : public OpsTestBase {
     bool is_ref = IsRefType(input_types_[inputs_.size()]);
     Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
                                DataTypeToEnum<float>::v(), shape);
-    input->flat<float>().setZero();
+    input->flat<float>().setRandom();
     tensors_.push_back(input);
     if (is_ref) {
       CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
@@ -124,7 +124,8 @@ class ResizeAreaOpTest : public OpsTestBase {
                                   ? (j + 1 > in_x1 ? width_scale : j + 1 - in_x)
                                   : (j + 1 > in_x1 ? in_x1 - j : 1.0);
               for (int64 c = 0; c < channels; ++c) {
-#define BOUND(val, limit) std::min(((limit)-1ll), (std::max(0ll, (val))))
+#define BOUND(val, limit) \
+  std::min(((limit)-int64{1}), (std::max(int64{0}, (val))))
                 sum_data(c) +=
                     static_cast<float>(input_data(b, BOUND(i, in_height),
                                                   BOUND(j, in_width), c)) *

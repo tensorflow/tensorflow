@@ -65,7 +65,7 @@ def fused_conv2d_bias_activation(conv_input,
     side_input_scale: A scalar `float32` that will be multiplied by side_input.
         This is optional and defaults to 0.
     side_input: A `Tensor` of the format specified by `data_format`.
-        This is useful for imlementing ResNet blocks.
+        This is useful for implementing ResNet blocks.
     activation_mode: (optional) currently must be the default "Relu".
         Note that in qint8 mode, it also clips to 127, so acts like ReluX.
     data_format: Specifies the data format.
@@ -97,11 +97,11 @@ def fused_conv2d_bias_activation(conv_input,
       conv_input,
       filter,
       bias,
+      side_input,
+      conv_input_scale,
+      side_input_scale,
       padding=padding,
       strides=strides,
-      conv_input_scale=conv_input_scale,
-      side_input_scale=side_input_scale,
-      side_input=side_input,
       activation_mode=activation_mode,
       data_format=data_format,
       filter_format=filter_format,

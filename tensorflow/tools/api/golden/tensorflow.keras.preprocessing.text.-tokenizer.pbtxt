@@ -1,10 +1,10 @@
 path: "tensorflow.keras.preprocessing.text.Tokenizer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.preprocessing.text.Tokenizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.preprocessing.text.Tokenizer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_words\', \'filters\', \'lower\', \'split\', \'char_level\'], varargs=None, keywords=None, defaults=[\'None\', \'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \', \'False\'], "
+    argspec: "args=[\'self\', \'num_words\', \'filters\', \'lower\', \'split\', \'char_level\', \'oov_token\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \', \'False\', \'None\'], "
   }
   member_method {
     name: "fit_on_sequences"

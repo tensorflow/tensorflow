@@ -45,11 +45,16 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+        "@llvm//:transform_utils",
     ],
 )
 
@@ -91,7 +96,6 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_loop",
-        ":ops",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -110,7 +114,7 @@ cc_library(
         ":ir_array",
         ":llvm_util",
         ":loop_emitter",
-        ":ops",
+        ":tuple_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -127,6 +131,23 @@ cc_library(
     srcs = ["ops.cc"],
     hdrs = ["ops.h"],
     deps = [
+        ":fused_ir_emitter",
+        ":ir_array",
+        ":llvm_util",
+        ":loop_emitter",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:elemental_ir_emitter",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+    ],
+)
+
+cc_library(
+    name = "tuple_ops",
+    srcs = ["tuple_ops.cc"],
+    hdrs = ["tuple_ops.h"],
+    deps = [
         ":ir_array",
         ":llvm_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -137,16 +158,14 @@ cc_library(
     ],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+cc_library(
+    name = "kernel_support_library",
+    srcs = ["kernel_support_library.cc"],
+    hdrs = ["kernel_support_library.h"],
+    deps = [
+        ":llvm_loop",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
 )

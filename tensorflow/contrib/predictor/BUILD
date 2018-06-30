@@ -8,24 +8,15 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "predictor",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [":predictor_factories"],
+    deps = [
+        ":predictor_factories",
+        "//tensorflow/python:util",
+    ],
 )
 
 py_library(
@@ -58,7 +49,6 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:signature_constants",
-        "//tensorflow/python/saved_model:signature_def_utils",
     ],
 )
 
@@ -135,6 +125,18 @@ py_test(
 )
 
 py_test(
+    name = "predictor_factories_test",
+    srcs = ["predictor_factories_test.py"],
+    data = [":test_export_dir"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":predictor_factories",
+        ":testing_common",
+    ],
+)
+
+py_test(
     name = "core_estimator_predictor_test",
     srcs = ["core_estimator_predictor_test.py"],
     srcs_version = "PY2AND3",
@@ -163,5 +165,5 @@ py_test(
 filegroup(
     name = "test_export_dir",
     srcs = glob(["test_export_dir/**/*"]),
-    tags = ["nopip"],
+    tags = ["no_pip"],
 )

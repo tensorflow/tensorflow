@@ -22,7 +22,6 @@ py_library(
 
 py_test(
     name = "evaluation_test",
-    size = "small",
     srcs = ["python/slim/evaluation_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -40,6 +39,8 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/debug:debug_data",
+        "//tensorflow/python/debug:hooks",
         "//third_party/py/numpy",
     ],
 )
@@ -49,7 +50,6 @@ py_library(
     srcs = ["python/slim/learning.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
@@ -79,7 +79,6 @@ py_test(
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
@@ -168,7 +167,6 @@ py_library(
 
 py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["python/slim/summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -179,16 +177,4 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

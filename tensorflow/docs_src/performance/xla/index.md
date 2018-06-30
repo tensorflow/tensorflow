@@ -1,5 +1,9 @@
 # XLA Overview
 
+<div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<img style="width:50%" src="/images/xlalogo.png">
+</div>
+
 > Note: XLA is experimental and considered alpha.  Most use cases will not
 > see improvements in performance (speed or decreased memory usage). We have
 > released XLA early so the Open Source Community can contribute to its
@@ -65,18 +69,19 @@ The following diagram shows the compilation process in XLA:
   <img src="https://www.tensorflow.org/images/how-does-xla-work.png">
 </div>
 
-XLA comes with several optimizations and analyzes that are target-independent,
-such as [CSE](https://en.wikipedia.org/wiki/Common_subexpression_elimination),
+XLA comes with several optimizations and analysis passes that are
+target-independent, such as
+[CSE](https://en.wikipedia.org/wiki/Common_subexpression_elimination),
 target-independent operation fusion, and buffer analysis for allocating runtime
 memory for the computation.
 
 After the target-independent step, XLA sends the HLO computation to a backend.
-The backend can perform further HLO-level analyzes and optimizations, this time
-with target specific information and needs in mind. For example, the XLA GPU
-backend may perform operation fusion beneficial specifically for the GPU
-programming model and determine how to partition the computation into streams.
-At this stage, backends may also pattern-match certain operations or
-combinations thereof to optimized library calls.
+The backend can perform further HLO-level optimizations, this time with target
+specific information and needs in mind. For example, the XLA GPU backend may
+perform operation fusion beneficial specifically for the GPU programming model
+and determine how to partition the computation into streams. At this stage,
+backends may also pattern-match certain operations or combinations thereof to
+optimized library calls.
 
 The next step is target-specific code generation. The CPU and GPU backends
 included with XLA use [LLVM](http://llvm.org) for low-level IR, optimization,

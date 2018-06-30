@@ -18,9 +18,9 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
-using shape_inference::InferenceContext;
+namespace boosted_trees {
 using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 REGISTER_RESOURCE_HANDLE_OP(QuantileStreamResource);
@@ -39,6 +39,7 @@ REGISTER_OP("CreateQuantileAccumulator")
     .Attr("max_elements: int = 1099511627776")  // 1 << 40
     .Attr("epsilon: float")
     .Attr("num_quantiles: int")
+    .Attr("generate_quantiles: bool=False")
     .Input("quantile_accumulator_handle: resource")
     .Input("stamp_token: int64")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -268,8 +269,23 @@ REGISTER_OP("Quantiles")
     .Input("sparse_values: num_sparse_features * float")
     .Input("dense_buckets: num_dense_features * float")
     .Input("sparse_buckets: num_sparse_features * float")
+    .Input("sparse_indices: num_sparse_features * int64")
     .Output("dense_quantiles: num_dense_features * int32")
     .Output("sparse_quantiles: num_sparse_features * int32")
+    .SetShapeFn([](InferenceContext* c) {
+      int num_dense_features;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_dense_features", &num_dense_features));
+      int num_sparse_features;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("num_sparse_features", &num_sparse_features));
+      // Set output shapes (dense_quantiles and sparse_quantiles) by the
+      // relevant inputs (dense_values and sparse_values). Note that the output
+      // has an additional dimension for dimension_ids.
+      for (int i = 0; i < num_dense_features + num_sparse_features; ++i) {
+        c->set_output(i, c->MakeShape({c->Dim(c->input(i), 0), 2}));
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Computes quantile for each a given list of dense and sparse feature values using
 the given buckets.
@@ -280,10 +296,13 @@ dense_values: List of rank 1 tensors containing the dense values.
 sparse_values: List of rank 1 tensors containing the sparse feature values.
 dense_buckets: Quantile summary for each of the dense float tensor.
 sparse_buckets: Quantile summary for each of the sparse feature float tensor.
-dense_quantiles: Rank 1 tensors representing associated quantiles for each of
-dense float tensors.
-sparse_quantiles: Rank 1 tensors representing associated quantiles for each of
-the sparse feature tensors.
+sparse_indices: List of rank 2 tensors with indices for sparse float
+tensors.
+dense_quantiles: Rank 2 tensors representing associated quantiles for each of
+dense float tensors and the dimension.
+sparse_quantiles: Rank 2 tensors representing associated quantiles for each of
+the sparse feature tensors for each of sparse feature dimensions:
+[quantile id, dimension id].
 )doc");
 
 REGISTER_OP("BucketizeWithInputBoundaries")
@@ -314,5 +333,5 @@ of the buckets.
 output: Same shape as 'input', where each value of input is replaced with its corresponding bucket index.
 )doc");
 
-}  // namespace gtflow
+}  // namespace boosted_trees
 }  // namespace tensorflow

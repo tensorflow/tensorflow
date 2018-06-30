@@ -48,9 +48,8 @@ Status SoftmaxGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 
 Status LogSoftmaxGrad(const Scope& scope, const Operation& op,
-                   const std::vector<Output>& grad_inputs,
-                   std::vector<Output>* grad_outputs) {
-
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
   auto softmax = Exp(scope, op.output(0));
   auto sum = Sum(scope, grad_inputs[0], {1}, Sum::KeepDims(true));
   auto mul = Mul(scope, sum, softmax);
@@ -108,11 +107,10 @@ Status BiasAddGradHelper(const Scope& scope, const Operation& op,
                          const std::vector<Output>& grad_inputs,
                          std::vector<Output>* grad_outputs) {
   string data_format;
-  BiasAddGrad::Attrs input_attrs;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.output(0).node()->attrs(), "data_format", &data_format));
-  input_attrs.DataFormat(data_format);
-  auto dx_1 = BiasAddGrad(scope, grad_inputs[0], input_attrs);
+  auto dx_1 =
+      BiasAddGrad(scope, grad_inputs[0], BiasAddGrad::DataFormat(data_format));
   grad_outputs->push_back(Identity(scope, grad_inputs[0]));
   grad_outputs->push_back(dx_1);
   return scope.status();
@@ -127,23 +125,20 @@ Status Conv2DGrad(const Scope& scope, const Operation& op,
   std::vector<int32> strides;
   bool use_cudnn_on_gpu;
   auto attrs = op.output(0).node()->attrs();
-  GetNodeAttr(attrs, "data_format", &data_format);
-  GetNodeAttr(attrs, "padding", &padding);
-  GetNodeAttr(attrs, "strides", &strides);
-  GetNodeAttr(attrs, "use_cudnn_on_gpu", &use_cudnn_on_gpu);
-  Conv2DBackpropInput::Attrs input_attrs;
-  input_attrs.DataFormat(data_format);
-  input_attrs.UseCudnnOnGpu(use_cudnn_on_gpu);
-  auto dx_1 = Conv2DBackpropInput(scope, Shape(scope, op.input(0)),
-                                  op.input(1), grad_inputs[0],
-                                  strides, padding, input_attrs);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "use_cudnn_on_gpu", &use_cudnn_on_gpu));
+  auto dx_1 = Conv2DBackpropInput(scope, Shape(scope, op.input(0)), op.input(1),
+                                  grad_inputs[0], strides, padding,
+                                  Conv2DBackpropInput::DataFormat(data_format)
+                                      .UseCudnnOnGpu(use_cudnn_on_gpu));
   grad_outputs->push_back(dx_1);
-  Conv2DBackpropFilter::Attrs filter_attrs;
-  filter_attrs.DataFormat(data_format);
-  filter_attrs.UseCudnnOnGpu(use_cudnn_on_gpu);
-  auto dx_2 = Conv2DBackpropFilter(scope, op.input(0),
-                                   Shape(scope, op.input(1)), grad_inputs[0],
-                                   strides, padding, filter_attrs);
+  auto dx_2 =
+      Conv2DBackpropFilter(scope, op.input(0), Shape(scope, op.input(1)),
+                           grad_inputs[0], strides, padding,
+                           Conv2DBackpropFilter::DataFormat(data_format)
+                               .UseCudnnOnGpu(use_cudnn_on_gpu));
   grad_outputs->push_back(dx_2);
   return scope.status();
 }
@@ -157,17 +152,13 @@ Status MaxPoolGradHelper(const Scope& scope, const Operation& op,
   std::vector<int32> strides;
   std::vector<int32> ksize;
   auto attrs = op.output(0).node()->attrs();
-  GetNodeAttr(attrs, "data_format", &data_format);
-  GetNodeAttr(attrs, "ksize", &ksize);
-  GetNodeAttr(attrs, "padding", &padding);
-  GetNodeAttr(attrs, "strides", &strides);
-  internal::MaxPoolGrad::Attrs grad_attrs;
-  grad_attrs.DataFormat(data_format);
-  auto dx = internal::MaxPoolGrad(scope, op.input(0),
-                                  op.output(0),
-                                  grad_inputs[0],
-                                  ksize, strides,
-                                  padding, grad_attrs);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  auto dx = internal::MaxPoolGrad(
+      scope, op.input(0), op.output(0), grad_inputs[0], ksize, strides, padding,
+      internal::MaxPoolGrad::DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -179,17 +170,11 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
   string data_format;
   string padding;
   auto attrs = op.output(0).node()->attrs();
-  GetNodeAttr(attrs, "data_format", &data_format);
-  GetNodeAttr(attrs, "padding", &padding);
-  MaxPoolGradV2::Attrs grad_attrs;
-  grad_attrs.DataFormat(data_format);
-  auto dx = MaxPoolGradV2(scope, op.input(0),
-                          op.output(0),
-                          grad_inputs[0],
-                          op.input(1),
-                          op.input(2),
-                          padding,
-                          grad_attrs);
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  auto dx = MaxPoolGradV2(scope, op.input(0), op.output(0), grad_inputs[0],
+                          op.input(1), op.input(2), padding,
+                          MaxPoolGradV2::DataFormat(data_format));
   grad_outputs->push_back(dx);
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(NoGradient());
@@ -197,8 +182,126 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
+Status MaxPool3DGradHelper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  std::vector<int32> ksize;
+  std::vector<int32> strides;
+  string padding;
+  string data_format;
+  auto attrs = op.output(0).node()->attrs();
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  MaxPool3DGrad::Attrs grad_attrs;
+  auto dx = MaxPool3DGrad(scope, op.input(0), op.output(0), grad_inputs[0],
+                          ksize, strides, padding,
+                          grad_attrs.DataFormat(data_format));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MaxPool3D", MaxPool3DGradHelper);
 
-  
+Status AvgPoolGradHelper(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
+  std::vector<int32> ksize;
+  std::vector<int32> strides;
+  string padding;
+  string data_format;
+  auto attrs = op.output(0).node()->attrs();
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  internal::AvgPoolGrad::Attrs grad_attrs;
+  auto dx =
+      internal::AvgPoolGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
+                            ksize, strides, padding,
+                            grad_attrs.DataFormat(data_format));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("AvgPool", AvgPoolGradHelper);
+
+Status AvgPool3DGradHelper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  std::vector<int32> ksize;
+  std::vector<int32> strides;
+  string padding;
+  string data_format;
+  auto attrs = op.output(0).node()->attrs();
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  AvgPool3DGrad::Attrs grad_attrs;
+  auto dx = AvgPool3DGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
+                          ksize, strides, padding,
+                          grad_attrs.DataFormat(data_format));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("AvgPool3D", AvgPool3DGradHelper);
+
+Status LRNGradHelper(const Scope& scope, const Operation& op,
+                     const std::vector<Output>& grad_inputs,
+                     std::vector<Output>* grad_outputs) {
+  auto dx = internal::LRNGrad(scope, grad_inputs[0], op.input(0), op.output(0));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("LRN", LRNGradHelper);
+
+Status SoftplusGradHelper(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
+  auto dx = internal::SoftplusGrad(scope, grad_inputs[0], op.input(0));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Softplus", SoftplusGradHelper);
+
+Status SoftsignGradHelper(const Scope& scope, const Operation& op,
+                          const std::vector<Output>& grad_inputs,
+                          std::vector<Output>* grad_outputs) {
+  auto dx = internal::SoftsignGrad(scope, grad_inputs[0], op.input(0));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Softsign", SoftsignGradHelper);
+
+Status FractionalAvgPoolGradHelper(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  bool overlapping;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), "overlapping", &overlapping));
+  auto dx = internal::FractionalAvgPoolGrad(
+      scope, Shape(scope, op.input(0), Shape::OutType(DT_INT64)),
+      grad_inputs[0], op.output(1), op.output(2),
+      internal::FractionalAvgPoolGrad::Overlapping(overlapping));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("FractionalAvgPool", FractionalAvgPoolGradHelper);
+
+Status FractionalMaxPoolGradHelper(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  bool overlapping;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), "overlapping", &overlapping));
+  auto dx = internal::FractionalMaxPoolGrad(
+      scope, op.input(0), op.output(0), grad_inputs[0], op.output(1),
+      op.output(2), internal::FractionalMaxPoolGrad::Overlapping(overlapping));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("FractionalMaxPool", FractionalMaxPoolGradHelper);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

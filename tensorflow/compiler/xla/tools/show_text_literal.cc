@@ -39,13 +39,13 @@ int main(int argc, char **argv) {
   std::unique_ptr<xla::Literal> literal =
       xla::TextLiteralReader::ReadPath(argv[1]).ConsumeValueOrDie();
 
-  LOG(INFO) << "literal: " << literal->ShortDebugString();
+  LOG(INFO) << "literal: " << *literal;
   fprintf(stderr, "%s\n", literal->ToString().c_str());
   if (literal->shape().element_type() == xla::F32) {
-    float min =
-        *std::min_element(literal->f32s().begin(), literal->f32s().end());
-    float max =
-        *std::max_element(literal->f32s().begin(), literal->f32s().end());
+    float min = *std::min_element(literal->data<float>().begin(),
+                                  literal->data<float>().end());
+    float max = *std::max_element(literal->data<float>().begin(),
+                                  literal->data<float>().end());
     fprintf(stderr, "min: %a=%f\n", min, min);
     fprintf(stderr, "max: %a=%f\n", max, max);
   }

@@ -31,13 +31,13 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -140,10 +140,12 @@ int Run(int argc, char** argv) {
   }
   port::InitMain(argv[0], &argc, &argv);
 
-  if (!FLAGS_profile_path.empty() && !FLAGS_graph_path.empty()) {
+  if (!FLAGS_profile_path.empty() &&
+      (!FLAGS_graph_path.empty() || !FLAGS_run_meta_path.empty())) {
     fprintf(stderr,
-            "both --graph_path and --profile_path are set. "
-            "Ignore graph_path\n");
+            "--profile_path is set, do not set --graph_path or "
+            "--run_meta_path\n");
+    return 1;
   }
 
   std::vector<string> account_type_regexes =
@@ -165,7 +167,8 @@ int Run(int argc, char** argv) {
   CHECK(s.ok()) << s.ToString();
 
   string cmd = "";
-  if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty()) {
+  if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&
+      FLAGS_run_meta_path.empty()) {
     PrintHelp();
     return 0;
   } else if (argc > 1) {
@@ -202,8 +205,14 @@ int Run(int argc, char** argv) {
         "Try to use a single --profile_path instead of "
         "graph_path,op_log_path,run_meta_path\n");
     std::unique_ptr<GraphDef> graph(new GraphDef());
-    TF_CHECK_OK(
-        ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
+    if (!FLAGS_graph_path.empty()) {
+      s = ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false);
+      if (!s.ok()) {
+        fprintf(stderr, "Failed to read graph_path: %s\n",
+                s.ToString().c_str());
+        return 1;
+      }
+    }
 
     std::unique_ptr<OpLogProto> op_log(new OpLogProto());
     if (!FLAGS_op_log_path.empty()) {
@@ -234,6 +243,7 @@ int Run(int argc, char** argv) {
         return 1;
       }
       tf_stat->AddRunMeta(i, std::move(run_meta));
+      fprintf(stdout, "run graph coverage: %.2f\n", tf_stat->run_coverage());
     }
   }
 
@@ -265,7 +275,18 @@ int Run(int argc, char** argv) {
   linenoiseSetCompletionCallback(completion);
   linenoiseHistoryLoad(".tfprof_history.txt");
 
-  for (char* line = nullptr; (line = linenoise("tfprof> ")) != nullptr;) {
+  bool looped = false;
+  while (true) {
+    char* line = linenoise("tfprof> ");
+    if (line == nullptr) {
+      if (!looped) {
+        fprintf(stderr,
+                "Cannot start interative shell, "
+                "use 'bazel-bin' instead of 'bazel run'.\n");
+      }
+      break;
+    }
+    looped = true;
     string line_s = line;
     free(line);
 

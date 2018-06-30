@@ -134,3 +134,6 @@ class GceClusterResolver(ClusterResolver):
 
     worker_list.sort()
     return ClusterSpec({self._job_name: worker_list})
+
+  def master(self):
+    return ''

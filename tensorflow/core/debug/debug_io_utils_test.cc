@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_io_utils.h"
 
+#include "tensorflow/core/debug/debug_callback_registry.h"
+#include "tensorflow/core/debug/debug_node_key.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -55,7 +57,8 @@ class DebugIOUtilsTest : public ::testing::Test {
 TEST_F(DebugIOUtilsTest, ConstructDebugNodeKey) {
   DebugNodeKey debug_node_key("/job:worker/replica:1/task:0/device:GPU:2",
                               "hidden_1/MatMul", 0, "DebugIdentity");
-  EXPECT_EQ("/job:worker/replica:1/task:0/device:GPU:2", debug_node_key.device_name);
+  EXPECT_EQ("/job:worker/replica:1/task:0/device:GPU:2",
+            debug_node_key.device_name);
   EXPECT_EQ("hidden_1/MatMul", debug_node_key.node_name);
   EXPECT_EQ(0, debug_node_key.output_slot);
   EXPECT_EQ("DebugIdentity", debug_node_key.debug_op);
@@ -305,6 +308,38 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
     ASSERT_EQ(0, undeleted_files);
     ASSERT_EQ(0, undeleted_dirs);
   }
+}
+
+TEST_F(DebugIOUtilsTest, PublishTensorToMemoryCallback) {
+  Initialize();
+
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "foo/bar/qux/tensor_a", 0, "DebugIdentity");
+  const uint64 wall_time = env_->NowMicros();
+
+  bool called = false;
+  std::vector<string> urls = {"memcbk://test_callback"};
+  ;
+
+  auto* callback_registry = DebugCallbackRegistry::singleton();
+  callback_registry->RegisterCallback(
+      "test_callback", [this, &kDebugNodeKey, &called](const DebugNodeKey& key,
+                                                       const Tensor& tensor) {
+        called = true;
+        ASSERT_EQ(kDebugNodeKey.device_name, key.device_name);
+        ASSERT_EQ(kDebugNodeKey.node_name, key.node_name);
+        ASSERT_EQ(tensor_a_->shape(), tensor.shape());
+        for (int i = 0; i < tensor.flat<float>().size(); ++i) {
+          ASSERT_EQ(tensor_a_->flat<float>()(i), tensor.flat<float>()(i));
+        }
+      });
+
+  Status s =
+      DebugIO::PublishDebugTensor(kDebugNodeKey, *tensor_a_, wall_time, urls);
+  ASSERT_TRUE(s.ok());
+  ASSERT_TRUE(called);
+
+  callback_registry->UnregisterCallback("test_callback");
 }
 
 TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {

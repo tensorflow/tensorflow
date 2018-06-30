@@ -14,21 +14,11 @@ load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 package_group(name = "friends")
 
 cc_library(
     name = "boosted_trees_kernels",
     deps = [
-        ":ensemble_optimizer_ops_kernels",
         ":model_ops_kernels",
         ":prediction_ops_kernels",
         ":quantile_ops_kernels",
@@ -42,7 +32,6 @@ cc_library(
 cc_library(
     name = "boosted_trees_ops_op_lib",
     deps = [
-        ":ensemble_optimizer_ops_op_lib",
         ":model_ops_op_lib",
         ":prediction_ops_op_lib",
         ":quantile_ops_op_lib",
@@ -70,6 +59,10 @@ py_library(
     srcs = ["python/utils/losses.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
     ],
 )
@@ -79,12 +72,13 @@ py_test(
     size = "small",
     srcs = ["python/utils/losses_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":losses",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],
 )
@@ -96,76 +90,72 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":gen_model_ops_py",
         "//tensorflow/contrib/boosted_trees:batch_ops_utils_py",
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_py",
         "//tensorflow/contrib/boosted_trees/lib:categorical_split_handler",
         "//tensorflow/contrib/boosted_trees/lib:ordinal_split_handler",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
+        "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/stateless",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
     ],
 )
 
 py_test(
     name = "gbdt_batch_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/training/functions/gbdt_batch_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "nomac",  # b/63258195
         "notsan",  # b/62863147
     ],
     deps = [
         ":gbdt_batch",
         ":losses",
+        ":model_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
-        "//third_party/py/numpy",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:variables",
     ],
 )
 
 # Kernel tests
 
 py_test(
-    name = "ensemble_optimizer_ops_test",
-    size = "small",
-    srcs = ["python/kernel_tests/ensemble_optimizer_ops_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
-    deps = [
-        ":ensemble_optimizer_ops_py",
-        ":model_ops_py",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:resources",
-        "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "model_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/model_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
-        ":ensemble_optimizer_ops_py",
         ":model_ops_py",
         ":prediction_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -181,9 +171,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/prediction_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":model_ops_py",
         ":prediction_ops_py",
@@ -200,13 +187,14 @@ py_test(
     name = "quantile_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/quantile_ops_test.py"],
+    shard_count = 3,
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":quantile_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
@@ -222,9 +210,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/split_handler_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":split_handler_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
@@ -241,9 +226,6 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/stats_accumulator_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
         ":stats_accumulator_ops_py",
         "//tensorflow/python:framework_ops",
@@ -258,11 +240,7 @@ py_test(
     size = "small",
     srcs = ["python/kernel_tests/training_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/63258195
-    ],
     deps = [
-        ":boosted_trees_ops_loader",
         ":model_ops_py",
         ":training_ops_py",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
@@ -297,9 +275,8 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/util:util_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:resources",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -307,7 +284,6 @@ py_library(
     name = "boosted_trees_ops_py",
     srcs_version = "PY2AND3",
     deps = [
-        ":ensemble_optimizer_ops_py",
         ":model_ops_py",
         ":prediction_ops_py",
         ":quantile_ops_py",
@@ -339,21 +315,17 @@ tf_custom_op_py_library(
     deps = [
         ":boosted_trees_ops_loader",
         ":gen_model_ops_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
+        "//tensorflow/python:training",
     ],
 )
 
 tf_kernel_library(
     name = "model_ops_kernels",
-    srcs = [
-        "kernels/model_ops.cc",
-    ],
+    srcs = ["kernels/model_ops.cc"],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
@@ -364,14 +336,12 @@ tf_kernel_library(
 tf_custom_op_library(
     name = "python/ops/_boosted_trees_ops.so",
     srcs = [
-        "kernels/ensemble_optimizer_ops.cc",
         "kernels/model_ops.cc",
         "kernels/prediction_ops.cc",
         "kernels/quantile_ops.cc",
         "kernels/split_handler_ops.cc",
         "kernels/stats_accumulator_ops.cc",
         "kernels/training_ops.cc",
-        "ops/ensemble_optimizer_ops.cc",
         "ops/model_ops.cc",
         "ops/prediction_ops.cc",
         "ops/quantile_ops.cc",
@@ -381,8 +351,8 @@ tf_custom_op_library(
     ],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
-        "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
         "//tensorflow/contrib/boosted_trees/lib:models",
+        "//tensorflow/contrib/boosted_trees/lib:node-stats",
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
@@ -419,22 +389,18 @@ tf_custom_op_py_library(
     deps = [
         ":boosted_trees_ops_loader",
         ":gen_split_handler_ops_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
 tf_kernel_library(
     name = "split_handler_ops_kernels",
-    srcs = [
-        "kernels/split_handler_ops.cc",
-    ],
+    srcs = ["kernels/split_handler_ops.cc"],
     deps = [
-        "//tensorflow/contrib/boosted_trees/lib:feature-column-handlers",
+        "//tensorflow/contrib/boosted_trees/lib:node-stats",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -467,25 +433,21 @@ tf_custom_op_py_library(
     deps = [
         ":boosted_trees_ops_loader",
         ":gen_training_ops_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
     ],
 )
 
 tf_kernel_library(
     name = "training_ops_kernels",
-    srcs = [
-        "kernels/training_ops.cc",
-    ],
+    srcs = ["kernels/training_ops.cc"],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
+        "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
+        "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
-        "//tensorflow/core:framework",
+        "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -522,9 +484,7 @@ tf_custom_op_py_library(
 
 tf_kernel_library(
     name = "prediction_ops_kernels",
-    srcs = [
-        "kernels/prediction_ops.cc",
-    ],
+    srcs = ["kernels/prediction_ops.cc"],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:example_partitioner",
         "//tensorflow/contrib/boosted_trees/lib:models",
@@ -532,7 +492,6 @@ tf_kernel_library(
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
         "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
         "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
     ],
@@ -564,72 +523,22 @@ tf_custom_op_py_library(
         ":batch_ops_utils_py",
         ":boosted_trees_ops_loader",
         ":gen_quantile_ops_py_wrap",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
 )
 
 tf_kernel_library(
     name = "quantile_ops_kernels",
-    srcs = [
-        "kernels/quantile_ops.cc",
-    ],
+    srcs = ["kernels/quantile_ops.cc"],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/lib:weighted_quantiles",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_cc",
         "//tensorflow/contrib/boosted_trees/resources:quantile_stream_resource",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-# Ensemble optimizer ops
-tf_gen_op_libs(
-    op_lib_names = ["ensemble_optimizer_ops"],
-)
-
-tf_gen_op_wrapper_py(
-    name = "gen_ensemble_optimizer_ops_py",
-    out = "python/ops/gen_ensemble_optimizer_ops.py",
-    deps = [
-        ":ensemble_optimizer_ops_op_lib",
-    ],
-)
-
-tf_custom_op_py_library(
-    name = "ensemble_optimizer_ops_py",
-    srcs = ["python/ops/ensemble_optimizer_ops.py"],
-    kernels = [
-        ":ensemble_optimizer_ops_kernels",
-        ":ensemble_optimizer_ops_op_lib",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":boosted_trees_ops_loader",
-        ":gen_ensemble_optimizer_ops_py",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/python:framework_for_generated_wrappers",
-    ],
-)
-
-tf_kernel_library(
-    name = "ensemble_optimizer_ops_kernels",
-    srcs = [
-        "kernels/ensemble_optimizer_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/contrib/boosted_trees/lib:utils",
-        "//tensorflow/contrib/boosted_trees/proto:learner_proto_cc",
-        "//tensorflow/contrib/boosted_trees/proto:tree_config_proto_cc",
-        "//tensorflow/contrib/boosted_trees/resources:decision_tree_ensemble_resource",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -659,8 +568,6 @@ tf_custom_op_py_library(
         ":batch_ops_utils_py",
         ":boosted_trees_ops_loader",
         ":gen_stats_accumulator_ops_py_wrap",
-        "//tensorflow/contrib/util:util_py",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:resources",
         "//tensorflow/python:training",
@@ -669,13 +576,10 @@ tf_custom_op_py_library(
 
 tf_kernel_library(
     name = "stats_accumulator_ops_kernels",
-    srcs = [
-        "kernels/stats_accumulator_ops.cc",
-    ],
+    srcs = ["kernels/stats_accumulator_ops.cc"],
     deps = [
         "//tensorflow/contrib/boosted_trees/lib:utils",
         "//tensorflow/contrib/boosted_trees/resources:stamped_resource",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
     ],
     alwayslink = 1,
@@ -687,7 +591,13 @@ py_library(
     name = "boosted_trees_pip",
     deps = [
         ":init_py",
+        "//tensorflow/contrib/boosted_trees:gbdt_batch",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:custom_export_strategy",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:dnn_tree_combined_estimator",
         "//tensorflow/contrib/boosted_trees/estimator_batch:init_py",
+        "//tensorflow/contrib/boosted_trees/estimator_batch:trainer_hooks",
+        "//tensorflow/contrib/boosted_trees/lib:categorical_split_handler",
+        "//tensorflow/contrib/boosted_trees/lib:ordinal_split_handler",
         "//tensorflow/contrib/boosted_trees/proto:learner_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:quantiles_proto_py",
         "//tensorflow/contrib/boosted_trees/proto:split_info_proto_py",

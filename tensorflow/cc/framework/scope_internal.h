@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
+#define TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
 
 #include "tensorflow/cc/framework/scope.h"
 
@@ -34,8 +34,7 @@ class Scope::Impl {
   // name that has not been used so far in a scope will get no suffix. Later
   // uses of the same name will get suffixes _1, _2, _3, etc. Multiple scopes
   // can share the same NameMap. For instance, a new scope created using
-  // WithControlDependencies() should would share the same NameMap with the
-  // parent.
+  // WithControlDependencies() would share the same NameMap with the parent.
   typedef std::unordered_map<string, int> NameMap;
 
   Impl(const std::shared_ptr<Graph>& graph,
@@ -117,4 +116,4 @@ class Scope::Impl {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_SCOPE_INTERNAL_H_

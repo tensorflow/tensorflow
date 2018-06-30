@@ -16,7 +16,7 @@ include (ExternalProject)
 
 set(nsync_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/nsync/public)
 set(nsync_URL https://github.com/google/nsync)
-set(nsync_TAG 394e71f0ebeed6788ae6c84d42c1bedf6e1ee9f7)
+set(nsync_TAG 1.20.0)
 set(nsync_BUILD ${CMAKE_CURRENT_BINARY_DIR}/nsync/src/nsync)
 set(nsync_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/nsync/install)
 
@@ -42,6 +42,7 @@ ExternalProject_Add(nsync
     GIT_TAG ${nsync_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${nsync_STATIC_LIBRARIES}
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/nsync/CMakeLists.txt ${nsync_BUILD}
     INSTALL_DIR ${nsync_INSTALL}
     CMAKE_CACHE_ARGS

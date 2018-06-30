@@ -25,6 +25,7 @@ py_library(
         ":main_op",
         ":signature_constants",
         ":signature_def_utils",
+        ":simple_save",
         ":tag_constants",
         ":utils",
         "//tensorflow/python:util",
@@ -86,6 +87,47 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_test(
+    name = "loader_test",
+    size = "small",
+    srcs = ["loader_test.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:private"],
+    deps = [
+        ":builder",
+        ":loader",
+        ":signature_def_utils",
+        ":utils",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "simple_save",
+    srcs = [
+        "simple_save.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":builder",
+        ":signature_constants",
+        ":signature_def_utils",
+        ":tag_constants",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -130,6 +172,8 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
@@ -198,17 +242,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "simple_save_test",
+    size = "small",
+    srcs = ["simple_save_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_constants",
+        ":simple_save",
+        ":tag_constants",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

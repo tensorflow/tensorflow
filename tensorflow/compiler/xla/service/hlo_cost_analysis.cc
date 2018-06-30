@@ -20,15 +20,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace xla {
 
 constexpr char HloCostAnalysis::kFlopsKey[];
 constexpr char HloCostAnalysis::kTranscendentalsKey[];
 constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kSecondsKey[];
+constexpr char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -37,7 +39,7 @@ HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size,
                                  const Properties& per_second_rates)
     : shape_size_(shape_size), per_second_rates_(per_second_rates) {}
 
-Status HloCostAnalysis::Preprocess(HloInstruction* hlo) {
+Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
   // handler can overwrite these values. In Postprocess, these values are
   // accumulated and written to the per-instruction maps.
@@ -56,20 +58,20 @@ Status HloCostAnalysis::Preprocess(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::Postprocess(HloInstruction* hlo) {
+Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   if (current_should_compute_bottleneck_time_) {
     // Compute the time as the time of the bottleneck, i.e. the slowest property
     // given the per-second rate of each property.
-    float max_seconds = 0.0f;
+    float optimal_seconds = 0.0f;
     for (const auto& property : current_properties_) {
-      if (property.first != kSecondsKey) {
-        max_seconds = std::max(
-            max_seconds,
+      if (property.first != kOptimalSecondsKey) {
+        optimal_seconds = std::max(
+            optimal_seconds,
             property.second /
                 GetProperty(property.first, per_second_rates_, INFINITY));
       }
     }
-    current_properties_[kSecondsKey] = max_seconds;
+    current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
   TF_RET_CHECK(hlo_properties_.emplace(hlo, current_properties_).second);
@@ -80,7 +82,8 @@ Status HloCostAnalysis::Postprocess(HloInstruction* hlo) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
+Status HloCostAnalysis::HandleElementwiseOp(
+    const HloInstruction* hlo_instruction) {
   const auto& shape = hlo_instruction->shape();
   // For element-wise operations, the number of computations is the same as the
   // number of elements in the output shape.
@@ -118,82 +121,77 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   }
 }
 
-Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo) {
+Status HloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo) {
+Status HloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleCompare(HloInstruction* compare, HloOpcode opcode,
-                                      HloInstruction* lhs,
-                                      HloInstruction* rhs) {
+Status HloCostAnalysis::HandleCompare(const HloInstruction* compare) {
   return HandleElementwiseOp(compare);
 }
 
-Status HloCostAnalysis::HandleClamp(HloInstruction* clamp,
-                                    HloInstruction* min_instruction,
-                                    HloInstruction* arg_instruction,
-                                    HloInstruction* max_instruction) {
+Status HloCostAnalysis::HandleClamp(const HloInstruction* clamp) {
   return HandleElementwiseOp(clamp);
 }
 
-Status HloCostAnalysis::HandleReducePrecision(HloInstruction* hlo) {
+Status HloCostAnalysis::HandleReducePrecision(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status HloCostAnalysis::HandleParameter(HloInstruction* parameter) {
+Status HloCostAnalysis::HandleParameter(const HloInstruction*) {
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConstant(HloInstruction* constant,
-                                       const Literal& literal) {
+Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleGetTupleElement(HloInstruction* get_tuple_element,
-                                              HloInstruction* operand) {
+Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.
+  current_should_compute_bottleneck_time_ = false;
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSelect(HloInstruction* select,
-                                     HloInstruction* pred,
-                                     HloInstruction* on_true,
-                                     HloInstruction* on_false) {
+Status HloCostAnalysis::HandleSelect(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReverse(HloInstruction* reverse,
-                                      HloInstruction* operand_instruction) {
+Status HloCostAnalysis::HandleReverse(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSlice(HloInstruction* slice,
-                                    HloInstruction* operand_instruction) {
+Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
+  current_properties_[kBytesAccessedKey] = shape_size_(slice->shape()) * 2;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicSlice(HloInstruction* dynamic_slice,
-                                           HloInstruction* operand,
-                                           HloInstruction* start_indices) {
+Status HloCostAnalysis::HandleDynamicSlice(
+    const HloInstruction* dynamic_slice) {
+  current_properties_[kBytesAccessedKey] =
+      shape_size_(dynamic_slice->shape()) * 2;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleDynamicUpdateSlice(
-    HloInstruction* dynamic_update, HloInstruction* operand,
-    HloInstruction* update, HloInstruction* start_indices) {
+    const HloInstruction* dynamic_update_slice) {
+  current_properties_[kBytesAccessedKey] =
+      shape_size_(dynamic_update_slice->operand(1)->shape()) * 2;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status HloCostAnalysis::HandleTuple(const HloInstruction* tuple) {
   // The tuple instruction only gathers pointers from inputs (it doesn't iterate
   // through them). The memory touched is then only the size of the output
   // index table of the tuple.
@@ -202,29 +200,26 @@ Status HloCostAnalysis::HandleTuple(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConcatenate(
-    HloInstruction* concatenate,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status HloCostAnalysis::HandleConcatenate(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvert(HloInstruction* convert) {
+Status HloCostAnalysis::HandleConvert(const HloInstruction* convert) {
   return HandleElementwiseOp(convert);
 }
 
-Status HloCostAnalysis::HandleCopy(HloInstruction* copy) {
+Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDot(HloInstruction* dot,
-                                  HloInstruction* lhs_instruction,
-                                  HloInstruction* rhs_instruction) {
-  const Shape& lhs_shape = lhs_instruction->shape();
-  const Shape& rhs_shape = rhs_instruction->shape();
+Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
+  const Shape& lhs_shape = dot->operand(0)->shape();
+  const Shape& rhs_shape = dot->operand(1)->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
-
+  int64 reduction_width =
+      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
   // First divide by reduction width before multiplying by rhs elements to avoid
   // overflow.
   int64 fma_count;
@@ -240,21 +235,22 @@ Status HloCostAnalysis::HandleDot(HloInstruction* dot,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleInfeed(HloInstruction* infeed) {
+Status HloCostAnalysis::HandleInfeed(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleOutfeed(HloInstruction* outfeed) {
+Status HloCostAnalysis::HandleOutfeed(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleMap(
-    HloInstruction* map, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* function,
-    tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/) {
+Status HloCostAnalysis::HandleHostCompute(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute properties of the mapped function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
-                      ProcessSubcomputation(function));
+                      ProcessSubcomputation(map->to_apply()));
 
   // Compute the cost of all elements for this Map operation.
   const int64 element_count = ShapeUtil::ElementsIn(map->shape());
@@ -266,9 +262,9 @@ Status HloCostAnalysis::HandleMap(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReduce(
-    HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function) {
+Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
+  auto arg = reduce->operand(0);
+  HloComputation* function = reduce->to_apply();
   // Compute the cost of the user function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
@@ -284,10 +280,10 @@ Status HloCostAnalysis::HandleReduce(
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
-                                           HloInstruction* operand,
-                                           const Window& window,
-                                           HloComputation* function) {
+Status HloCostAnalysis::HandleReduceWindow(
+    const HloInstruction* reduce_window) {
+  const Window& window = reduce_window->window();
+  auto function = reduce_window->to_apply();
   // Compute the properties of the reduction function.
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(function));
@@ -310,7 +306,8 @@ Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
+Status HloCostAnalysis::HandleSelectAndScatter(
+    const HloInstruction* instruction) {
   // Compute the properties of the select and scatter function.
   // Compute the properties of the reduction function.
   TF_ASSIGN_OR_RETURN(const Properties select_properties,
@@ -342,81 +339,196 @@ Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBitcast(HloInstruction* bitcast) {
+Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
   // A bitcast does no computation and touches no memory.
   current_properties_[kBytesAccessedKey] = 0;
+  current_properties_[kOptimalSecondsKey] = 0;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBroadcast(HloInstruction* broadcast) {
+Status HloCostAnalysis::HandleBroadcast(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandlePad(HloInstruction* pad) { return Status::OK(); }
-
-Status HloCostAnalysis::HandleSend(HloInstruction* send) {
+Status HloCostAnalysis::HandlePad(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleRecv(HloInstruction* recv) {
+Status HloCostAnalysis::HandleSend(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleReshape(HloInstruction* reshape) {
+Status HloCostAnalysis::HandleSendDone(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormTraining(
-    HloInstruction* batchNormTraining) {
+Status HloCostAnalysis::HandleRecv(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleRecvDone(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleReshape(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleBatchNormTraining(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-training.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormInference(
-    HloInstruction* batchNormInference) {
+Status HloCostAnalysis::HandleBatchNormInference(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-inference.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleBatchNormGrad(HloInstruction* batchNormGrad) {
+Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
   // TODO(b/62294698): Implement cost analysis for batch-norm-grad.
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTranspose(HloInstruction* transpose) {
+Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
-                                          HloInstruction* lhs_instruction,
-                                          HloInstruction* rhs_instruction,
-                                          const Window& window) {
+Status HloCostAnalysis::HandleAfterAll(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
+  auto lhs = convolution->operand(0);
+  auto rhs = convolution->operand(1);
+  Window window = convolution->window();
+  const auto& result_shape = convolution->shape();
+  const Shape& lhs_shape = lhs->shape();
+  const Shape& rhs_shape = rhs->shape();
+
   const auto& dnums = convolution->convolution_dimension_numbers();
-  const int64 output_features =
-      convolution->shape().dimensions(dnums.feature_dimension());
 
-  // For each output element, we do one fma per element in the kernel at some
-  // given output feature index.
-  const int64 fmas_per_output_element =
-      ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features;
-  const int64 output_elements = ShapeUtil::ElementsIn(convolution->shape());
-  current_properties_[kFlopsKey] =
-      output_elements * fmas_per_output_element * kFmaFlops;
+  const int64 input_batch_dim = dnums.input_batch_dimension();
+  const int64 input_feature_dim = dnums.input_feature_dimension();
+  const int64 output_feature_dim = dnums.output_feature_dimension();
+  const int64 input_feature =
+      ShapeUtil::GetDimension(lhs_shape, input_feature_dim);
+  const int64 output_feature =
+      ShapeUtil::GetDimension(result_shape, output_feature_dim);
+  const int64 batch = ShapeUtil::GetDimension(lhs_shape, input_batch_dim);
+
+  DimensionVector kernel_limits;
+  DimensionVector output_limits;
+  DimensionVector input_limits;
+  if (window.dimensions().empty()) {
+    window = window_util::MakeWindow({1});
+    kernel_limits.push_back(1);
+    output_limits.push_back(1);
+    input_limits.push_back(1);
+  } else {
+    for (int64 spatial_dimension = 0;
+         spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
+      // Spatial dimension number for kernel (rhs).
+      const int64 kernel_spatial_dim =
+          dnums.kernel_spatial_dimensions(spatial_dimension);
+      const int64 kernel_limit = rhs_shape.dimensions(kernel_spatial_dim);
+      kernel_limits.push_back(kernel_limit);
+
+      // Spatial dimension number for output.
+      const int64 output_spatial_dim =
+          dnums.output_spatial_dimensions(spatial_dimension);
+      const int64 output_limit = result_shape.dimensions(output_spatial_dim);
+      output_limits.push_back(output_limit);
+
+      // Spatial dimension number for input (lhs).
+      const int64 input_spatial_dim =
+          dnums.input_spatial_dimensions(spatial_dimension);
+      const int64 input_limit = lhs_shape.dimensions(input_spatial_dim);
+      input_limits.push_back(input_limit);
+    }
+  }
+
+  DimensionVector valid_position_counts;
+
+  // Loop over each spatial dimension.
+  for (int64 spatial_dimension = 0;
+       spatial_dimension < window.dimensions_size(); ++spatial_dimension) {
+    int64 valid_position_count = 0;
+    // Loop over each point in the kernel.
+    for (int64 kernel_idx = 0; kernel_idx < kernel_limits[spatial_dimension];
+         ++kernel_idx) {
+      // Loop over each point in the output.
+      for (int64 output_idx = 0; output_idx < output_limits[spatial_dimension];
+           ++output_idx) {
+        // Calculate lhs (input) index without taking base dilation into
+        // account.
+        const auto& window_dim = window.dimensions(spatial_dimension);
+        const int64 undilated_index = output_idx * window_dim.stride() -
+                                      window_dim.padding_low() +
+                                      kernel_idx * window_dim.window_dilation();
+
+        // Calculate the actual lhs (input) index after dilation. Avoid the
+        // division as an optimization.
+        const int64 lhs_spatial_index =
+            window_dim.base_dilation() > 1
+                ? undilated_index / window_dim.base_dilation()
+                : undilated_index;
+
+        // Skip if the lhs (input) index is to be dilated.
+        if (undilated_index != lhs_spatial_index * window_dim.base_dilation()) {
+          continue;
+        }
+
+        // Skip if input index is not in bound.
+        if (lhs_spatial_index < 0 ||
+            lhs_spatial_index >= input_limits[spatial_dimension]) {
+          continue;
+        }
+
+        valid_position_count += 1;
+      }
+    }
+    valid_position_counts.push_back(valid_position_count);
+  }
+
+  const int64 fma_count =
+      input_feature * output_feature * batch * Product(valid_position_counts);
+  current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCrossReplicaSum(HloInstruction* crs) {
+Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+  auto real_shape =
+      ShapeUtil::IsTuple(fft->operand(0)->shape())
+          ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
+          : fft->operand(0)->shape();
+  constexpr int kFmaPerComplexMul = 4;
+  int64 log_factors = 1;
+  for (int64 dim : fft->fft_length()) {
+    log_factors *= tensorflow::Log2Floor(dim);
+  }
+  current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
+                                   ShapeUtil::ElementsIn(real_shape);
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
-  current_properties_[kFlopsKey] = ShapeUtil::ElementsIn(crs->shape());
+  double flops = 0.0;
+  ShapeUtil::ForEachSubshape(
+      crs->shape(), [&, this](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsArray(subshape)) {
+          flops += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  current_properties_[kFlopsKey] = flops;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleRng(HloInstruction* random,
-                                  RandomDistribution distribution) {
+Status HloCostAnalysis::HandleRng(const HloInstruction* random) {
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.
@@ -425,7 +537,7 @@ Status HloCostAnalysis::HandleRng(HloInstruction* random,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
+Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   // Compute the properties of the fused expression and attribute them to the
   // fusion node. Use a dummy shape_size to avoid any errors from trying to
   // calculate the size of a shape that does not have a layout, since nodes
@@ -453,30 +565,34 @@ Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCall(HloInstruction* call) {
+Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
   TF_ASSIGN_OR_RETURN(current_properties_,
                       ProcessSubcomputation(call->to_apply()));
   current_should_compute_bottleneck_time_ = false;
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCustomCall(
-    HloInstruction* custom_call,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    tensorflow::StringPiece custom_call_target) {
-  return Unimplemented("Custom-call is not implemented for HLO cost analysis.");
+Status HloCostAnalysis::HandleCustomCall(const HloInstruction*) {
+  // Mark applicable fields as "unknown", since we don't know what CustomCall
+  // does.  This is better than returning an error, which would stop iteration,
+  // and therefore would prevent us from getting *any* stats for a computation
+  // which contains a CustomCall.
+  current_properties_[kOptimalSecondsKey] = -1;
+  current_properties_[kBytesAccessedKey] = -1;
+  current_properties_[kFlopsKey] = -1;
+  current_should_compute_bottleneck_time_ = false;
+  return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSort(HloInstruction* sort,
-                                   HloInstruction* operand_instruction) {
+Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {
   // This assumes a comparison based N*log(N) algorithm. As for all ops, the
   // actual properties of the op depend on the backend implementation.
-  int64 elements = ShapeUtil::ElementsIn(operand_instruction->shape());
+  int64 elements = ShapeUtil::ElementsIn(sort->operand(0)->shape());
   current_properties_[kFlopsKey] = elements * tensorflow::Log2Ceiling(elements);
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while) {
+Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   // Since the number of iterations of the while node will not always be
   // something that we can statically analyze, we cannot precisely compute the
   // cost of a while node. For now compute the cost of a single iteration.
@@ -500,7 +616,31 @@ Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::FinishVisit(HloInstruction* root) {
+Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
+  // Compute the cost of the true and false computations and take the maximum
+  // from those for each property.
+  TF_ASSIGN_OR_RETURN(const Properties true_computation_properties,
+                      ProcessSubcomputation(conditional->true_computation()));
+  TF_ASSIGN_OR_RETURN(const Properties false_computation_properties,
+                      ProcessSubcomputation(conditional->false_computation()));
+  current_properties_ = true_computation_properties;
+  for (const auto& property : false_computation_properties) {
+    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
+      current_properties_[property.first] =
+          std::max(current_properties_[property.first], property.second);
+    }
+  }
+  current_should_compute_bottleneck_time_ = false;
+
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather does not issue any flops.
+  return Status::OK();
+}
+
+Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -516,8 +656,8 @@ float HloCostAnalysis::bytes_accessed() const {
   return GetProperty(kBytesAccessedKey, properties_sum_);
 }
 
-float HloCostAnalysis::seconds() const {
-  return GetProperty(kSecondsKey, properties_sum_);
+float HloCostAnalysis::optimal_seconds() const {
+  return GetProperty(kOptimalSecondsKey, properties_sum_);
 }
 
 int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
@@ -532,8 +672,8 @@ int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
 }
 
-float HloCostAnalysis::seconds(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kSecondsKey, hlo_properties_);
+float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

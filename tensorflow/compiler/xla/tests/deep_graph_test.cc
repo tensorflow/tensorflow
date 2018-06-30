@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 
 namespace xla {
@@ -22,14 +23,14 @@ TEST_F(ClientLibraryTestBase, DeepGraph) {
   // intended to track, we need to set kDepth to 20000.
   // Unfortunately, setting it that high causes the test to time out.
   const int kDepth = 200;
-  ComputationBuilder b(client_, TestName());
-  ComputationDataHandle x;
-  ComputationDataHandle y;
+  XlaBuilder b(TestName());
+  XlaOp x;
+  XlaOp y;
   auto x_data = CreateR0Parameter<int32>(3, 0, "x", &b, &x);
   auto y_data = CreateR0Parameter<int32>(1, 1, "y", &b, &y);
-  ComputationDataHandle z = x;
+  XlaOp z = x;
   for (int i = 0; i < kDepth; ++i) {
-    z = b.Add(z, y);
+    z = Add(z, y);
   }
   ComputeAndCompareR0<int32>(&b, /*expected=*/kDepth + 3,
                              {x_data.get(), y_data.get()});

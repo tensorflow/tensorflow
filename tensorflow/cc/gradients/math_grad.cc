@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define _USE_MATH_DEFINES
+#include <cmath>
+
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -35,6 +38,7 @@ REGISTER_NO_GRADIENT_OP("NotEqual");
 REGISTER_NO_GRADIENT_OP("LogicalAnd");
 REGISTER_NO_GRADIENT_OP("LogicalOr");
 REGISTER_NO_GRADIENT_OP("LogicalNot");
+REGISTER_NO_GRADIENT_OP("Floor");
 
 // Conjugate helper function returns the conjugate of an Output if it
 // is complex valued.
@@ -200,8 +204,8 @@ Status TanhGrad(const Scope& scope, const Operation& op,
   // evaluated.
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto y = ConjugateHelper(grad_scope, op.output(0));
-  grad_outputs->push_back(internal::TanhGrad(scope, y, grad));
-  return scope.status();
+  grad_outputs->push_back(internal::TanhGrad(grad_scope, y, grad));
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
 
@@ -256,8 +260,8 @@ Status SigmoidGrad(const Scope& scope, const Operation& op,
   // evaluated.
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto y = ConjugateHelper(grad_scope, op.output(0));
-  grad_outputs->push_back(internal::SigmoidGrad(scope, y, grad));
-  return scope.status();
+  grad_outputs->push_back(internal::SigmoidGrad(grad_scope, y, grad));
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Sigmoid", SigmoidGrad);
 
@@ -470,6 +474,41 @@ Status AddNGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("AddN", AddNGrad);
 
+Status PowGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto x = ConjugateHelper(scope, op.input(0));
+  auto y = ConjugateHelper(scope, op.input(1));
+  auto z = ConjugateHelper(scope, op.output(0));
+  auto grad = grad_inputs[0];
+  // grad * y * pow(x, y - 1)
+  auto one = Cast(scope, Const(scope, 1.0), y.type());
+  auto gx_1 = Mul(scope,
+                  Mul(scope, grad, y),
+                  Pow(scope, x, Sub(scope, y, one)));
+  // Avoid false singularity at x = 0
+  DataType x_dtype = x.type();
+  auto zero = Cast(scope, Const(scope, 0.0), x_dtype);
+  if (x_dtype == DT_COMPLEX64 || x_dtype == DT_COMPLEX128) {
+    // real(x) < 0 is fine for the complex case
+    auto log_x = Where3(scope,
+                        NotEqual(scope, x, zero),
+                        Log(scope, x),
+                        ZerosLike(scope, x));
+    auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
+    return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
+  } else {
+    // There's no sensible real value to return if x < 0, so return 0
+    auto log_x = Where3(scope,
+                        Greater(scope, x, zero),
+                        Log(scope, x),
+                        ZerosLike(scope, x));
+    auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
+    return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
+  }
+}
+REGISTER_GRADIENT_OP("Pow", PowGrad);
+
 // MaximumMinimumGradCommon adds shared ops to calculate gradients for
 // the binary Maximum and Minimum ops.
 Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
@@ -484,7 +523,7 @@ Status MaximumMinimumGradCommon(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   auto zeros = ZerosLike(scope, grad);
   auto gx_1 = Where3(scope, comparator, grad, zeros);
-  auto gx_2 = Where3(scope, LogicalNot(scope, comparator), grad, zeros);
+  auto gx_2 = Where3(scope, comparator, zeros, grad);
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
 
@@ -525,6 +564,15 @@ Status ImagGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Imag", ImagGrad);
+
+Status ComplexGrad(const Scope& scope, const Operation& op,
+                   const std::vector<Output>& grad_inputs,
+                   std::vector<Output>* grad_outputs) {
+  auto gx_1 = Real(scope, grad_inputs[0]);
+  auto gx_2 = Imag(scope, grad_inputs[0]);
+  return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
+}
+REGISTER_GRADIENT_OP("Complex", ComplexGrad);
 
 Status AngleGrad(const Scope& scope, const Operation& op,
                  const std::vector<Output>& grad_inputs,
@@ -687,15 +735,32 @@ Status MeanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Mean", MeanGrad);
 
+Status ErfGrad(const Scope& scope, const Operation& op,
+               const std::vector<Output>& grad_inputs,
+               std::vector<Output>* grad_outputs) {
+  auto grad = grad_inputs[0];
+  auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
+                               grad.type());
+  Scope grad_scope = scope.WithControlDependencies(grad);
+  auto x = ConjugateHelper(grad_scope, op.input(0));
+  // grad * 2/sqrt(pi) * exp(-x**2)
+  auto dx = Mul(grad_scope,
+                Mul(grad_scope, grad, two_over_root_pi),
+                Exp(grad_scope, Neg(grad_scope, Square(grad_scope, x))));
+  grad_outputs->push_back(dx);
+  return grad_scope.status();
+}
+REGISTER_GRADIENT_OP("Erf", ErfGrad);
+
 Status LgammaGrad(const Scope& scope, const Operation& op,
                   const std::vector<Output>& grad_inputs,
                   std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
-  auto dx = Mul(scope, grad, Digamma(scope, x));
+  auto dx = Mul(grad_scope, grad, Digamma(grad_scope, x));
   grad_outputs->push_back(dx);
-  return scope.status();
+  return grad_scope.status();
 }
 REGISTER_GRADIENT_OP("Lgamma", LgammaGrad);
 
@@ -765,6 +830,183 @@ Status MinOrMaxGrad(const Scope& scope, const Operation& op,
 REGISTER_GRADIENT_OP("Min", MinOrMaxGrad);
 REGISTER_GRADIENT_OP("Max", MinOrMaxGrad);
 
+Status ProdGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  auto zero = Const(scope, 0);
+  auto one = Const(scope, 1);
+
+  // The gradient can be expressed by dividing the product by each entry of
+  // the input tensor. If our input is
+  // [
+  //  [3, 4],
+  //  [5, 6],
+  //  [7, 8]
+  // ]
+  // and we do a Prod operation on the axis 1, we will obtain [[105, 192]].
+  // The gradient will have the same shape as the input
+  //     [
+  //       [105/3, 192/4],
+  // dz *  [105/5, 192/6],
+  //       [105/7, 192/6]
+  //     ]
+  // If the input contains a zero, the division is impossible but
+  // if we take the calculation that gave the first gradient
+  // (3 * 5 * 6)/3 is equal to 5 * 6
+  // the trick will be to cumprod the elements on the axis without
+  // the element at the current position (3 in the example above).
+  // We will take as example:
+  // [
+  //   [
+  //     [3.0, 4.0],
+  //     [5.0, 6.0],
+  //     [7.0, 8.0]
+  //   ],
+  //   [
+  //     [3.0, 5.0],
+  //     [0.0, 6.0],
+  //     [5.0, 6.0]
+  //   ]
+  // ]
+
+  // [2, 3, 2]
+  auto input_shape = Shape(scope, op.input(0));
+
+  // The Reshape with -1 flattens the reduction indices.
+  // [1]
+  auto reduction_indices = Reshape(scope, op.input(1), {-1});
+
+  // [2, 1, 2]
+  auto output_shape_kept_dims =
+      ReducedShapeHelper(scope, input_shape, reduction_indices);
+
+  // [1, 3, 1]
+  auto tile_scaling = SafeDivHelper(scope, input_shape, output_shape_kept_dims);
+
+  // [[[105, 192]], [[0, 180]]]
+  auto grad = Reshape(scope, grad_inputs[0], output_shape_kept_dims);
+
+  // [[[105, 192], [105, 192], [105, 192]], [[0, 180], [0, 180], [0, 180]]]
+  auto grad_tiled = Tile(scope, grad, tile_scaling);
+
+  Scope cpu_scope = scope.WithDevice("/cpu:0");
+
+  // [3]
+  auto rank = Rank(cpu_scope, op.input(0));
+
+
+  // Normalize any negative indices in the reduction_axes to positive values.
+  auto reduction_indices_pos = Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
+
+  // [1]
+  auto reduced = Cast(cpu_scope, reduction_indices_pos, DataType::DT_INT32);
+
+  // [0, 1, 2]
+  auto idx = Range(cpu_scope, zero, rank, one);
+
+  // [0, 2]
+  auto other = SetDiff1D(cpu_scope, idx, reduced).out;
+
+  // [1, 0, 2]
+  auto perm =
+      Concat(cpu_scope, std::initializer_list<Input>{reduced, other}, 0);
+
+  // 3 => [3]
+  auto reduced_num = Prod(cpu_scope, Gather(scope, input_shape, reduced), 0);
+
+  // 2 * 2 => [2]
+  auto other_num = Prod(cpu_scope, Gather(scope, input_shape, other), 0);
+
+  // [
+  //    [
+  //       [ 3.,  4.],
+  //       [ 3.,  5.]
+  //   ],
+  //   [
+  //       [ 5.,  6.],
+  //       [ 0.,  6.]
+  //   ],
+  //   [
+  //       [ 7.,  8.],
+  //       [ 5.,  6.]
+  //   ]
+  // ]
+  auto permuted = Transpose(scope, op.input(0), perm);
+
+  // [3, 2, 2]
+  auto permuted_shape = Shape(scope, permuted);
+
+  // [
+  //   [ 3.,  4.,  3.,  5.],
+  //   [ 5.,  6.,  0.,  6.],
+  //   [ 7.,  8.,  5.,  6.]
+  // ]
+  auto reshaped = Reshape(
+      scope, permuted,
+      Stack(scope, std::initializer_list<Input>{reduced_num, other_num}));
+
+  // [
+  //   [ 1.,  1.,  1.,  1.],
+  //   [ 3.,  4.,  3.,  5.],
+  //   [ 15.,  24.,  0.,  30.]
+  // ]
+  auto left = Cumprod(scope, reshaped, zero, Cumprod::Exclusive(true));
+
+  // [
+  //   [ 35.,  48.,  0.,  36.],
+  //   [  7.,   8.,   5.,   6.],
+  //   [  1.,   1.,   1.,   1.]
+  // ]
+  auto right =
+      Cumprod(scope, reshaped, zero, Cumprod::Exclusive(true).Reverse(true));
+
+  // left * right =
+  // [
+  //   [ 35.,  48.,  0.,  36.],
+  //   [ 21.,  32.,  15.,  30.],
+  //   [ 15.,  24.,  0.,  30.]
+  // ]
+  // y =
+  // [
+  //   [
+  //     [ 35.,  48.],
+  //     [ 0.,  36.]
+  //   ],
+  //   [
+  //     [ 21.,  32.],
+  //     [ 15.,  30.]
+  //   ],
+  //   [
+  //     [ 15.,  24.],
+  //     [ 0.,  30.]
+  //   ]
+  // ]
+  auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
+
+  // out = 
+  // [
+  //   [
+  //     [ 35.,  48.],
+  //     [ 21.,  32.],
+  //     [ 15.,  24.]
+  //   ],
+  //   [
+  //     [ 0.,   36.],
+  //     [ 15.,  30.],
+  //     [ 0.,  30.]
+  //   ]
+  // ]
+  auto out =
+      Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
+
+  grad_outputs->push_back(Reshape(scope, out, input_shape));
+
+  // stop propagation along reduction_indices
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Prod", ProdGrad);
+
 // MatMulGrad helper function used to compute two MatMul operations
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,
@@ -793,42 +1035,37 @@ Status MatMulGradHelper(const Scope& scope, const bool is_batch,
 // MatMulGrad common used to read and check node attr state, and determine
 // proper MatMul products for gradients based on input matrix transposition
 // combinations.
-// TODO(andydavis) Re-use this function for BatchMatMulGrad.
 Status MatMulGradCommon(const Scope& scope, const Operation& op,
                         const bool is_batch,
                         const std::vector<Output>& grad_inputs,
                         const string& attr_adj_x, const string& attr_adj_y,
                         std::vector<Output>* grad_outputs) {
-  DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->attrs(), "T", &dtype));
-  if (dtype == DT_COMPLEX64 || dtype == DT_COMPLEX128) {
-    return errors::Unimplemented(
-        "MatMul gradient for complex data type is not supported yet.");
+  auto a = op.input(0);
+  auto b = op.input(1);
+  // Use conjugate of the inputs for MatMul
+  if (is_batch == false) {
+    a = ConjugateHelper(scope, a);
+    b = ConjugateHelper(scope, b);
   }
+  auto product = op.output(0);
 
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_x, &ta));
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_y, &tb));
+  TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),
-                            true, op.input(0), true, grad_inputs[0], false,
-                            grad_outputs);
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true, a,
+                            true, grad_inputs[0], false, grad_outputs);
   } else if (!ta && tb) {
-    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),
-                            false, grad_inputs[0], true, op.input(0), false,
-                            grad_outputs);
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, false,
+                            grad_inputs[0], true, a, false, grad_outputs);
   } else if (ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, op.input(1), false, grad_inputs[0],
-                            true, op.input(0), false, grad_inputs[0], false,
-                            grad_outputs);
+    return MatMulGradHelper(scope, is_batch, b, false, grad_inputs[0], true, a,
+                            false, grad_inputs[0], false, grad_outputs);
   }
-  return MatMulGradHelper(scope, is_batch, op.input(1), true, grad_inputs[0],
-                          true, grad_inputs[0], true, op.input(0), true,
-                          grad_outputs);
+  return MatMulGradHelper(scope, is_batch, b, true, grad_inputs[0], true,
+                          grad_inputs[0], true, a, true, grad_outputs);
 }
 
 Status MatMulGrad(const Scope& scope, const Operation& op,

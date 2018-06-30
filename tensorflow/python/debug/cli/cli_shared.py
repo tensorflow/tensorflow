@@ -25,8 +25,10 @@ import six
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
+from tensorflow.python.debug.lib import common
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 
 RL = debugger_cli_common.RichLine
 
@@ -151,7 +153,8 @@ def format_tensor(tensor,
                   print_all=False,
                   tensor_slicing=None,
                   highlight_options=None,
-                  include_numeric_summary=False):
+                  include_numeric_summary=False,
+                  write_path=None):
   """Generate formatted str to represent a tensor or its slices.
 
   Args:
@@ -171,6 +174,8 @@ def format_tensor(tensor,
       for more details.
     include_numeric_summary: Whether a text summary of the numeric values (if
       applicable) will be included.
+    write_path: A path to save the tensor value (after any slicing) to
+      (optional). `numpy.save()` is used to save the value.
 
   Returns:
     An instance of `debugger_cli_common.RichTextLines` representing the
@@ -185,6 +190,16 @@ def format_tensor(tensor,
     value = tensor
     sliced_name = tensor_name
 
+  auxiliary_message = None
+  if write_path:
+    with gfile.Open(write_path, "wb") as output_file:
+      np.save(output_file, value)
+    line = debugger_cli_common.RichLine("Saved value to: ")
+    line += debugger_cli_common.RichLine(write_path, font_attr="bold")
+    line += " (%sB)" % bytes_to_readable_str(gfile.Stat(write_path).length)
+    auxiliary_message = debugger_cli_common.rich_text_lines_from_rich_line_list(
+        [line, debugger_cli_common.RichLine("")])
+
   if print_all:
     np_printoptions["threshold"] = value.size
   else:
@@ -195,6 +210,7 @@ def format_tensor(tensor,
       sliced_name,
       include_metadata=True,
       include_numeric_summary=include_numeric_summary,
+      auxiliary_message=auxiliary_message,
       np_printoptions=np_printoptions,
       highlight_options=highlight_options)
 
@@ -212,47 +228,6 @@ def error(msg):
 
   return debugger_cli_common.rich_text_lines_from_rich_line_list([
       RL("ERROR: " + msg, COLOR_RED)])
-
-
-def _get_fetch_name(fetch):
-  """Obtain the name or string representation of a fetch.
-
-  Args:
-    fetch: The fetch in question.
-
-  Returns:
-    If the attribute 'name' is available, return the name. Otherwise, return
-    str(fetch).
-  """
-
-  return fetch.name if hasattr(fetch, "name") else str(fetch)
-
-
-def _get_fetch_names(fetches):
-  """Get a flattened list of the names in run() call fetches.
-
-  Args:
-    fetches: Fetches of the `Session.run()` call. It maybe a Tensor, an
-      Operation or a Variable. It may also be nested lists, tuples or
-      dicts. See doc of `Session.run()` for more details.
-
-  Returns:
-    (list of str) A flattened list of fetch names from `fetches`.
-  """
-
-  lines = []
-  if isinstance(fetches, (list, tuple)):
-    for fetch in fetches:
-      lines.extend(_get_fetch_names(fetch))
-  elif isinstance(fetches, dict):
-    for key in fetches:
-      lines.extend(_get_fetch_names(fetches[key]))
-  else:
-    # This ought to be a Tensor, an Operation or a Variable, for which the name
-    # attribute should be available. (Bottom-out condition of the recursion.)
-    lines.append(_get_fetch_name(fetches))
-
-  return lines
 
 
 def _recommend_command(command, description, indent=2, create_link=False):
@@ -323,30 +298,27 @@ def get_run_start_intro(run_call_count,
     (RichTextLines) Formatted intro message about the `Session.run()` call.
   """
 
-  fetch_lines = _get_fetch_names(fetches)
+  fetch_lines = common.get_flattened_names(fetches)
 
   if not feed_dict:
     feed_dict_lines = [debugger_cli_common.RichLine("  (Empty)")]
   else:
     feed_dict_lines = []
     for feed_key in feed_dict:
-      if isinstance(feed_key, six.string_types):
-        feed_key_name = feed_key
-      elif hasattr(feed_key, "name"):
-        feed_key_name = feed_key.name
-      else:
-        feed_key_name = str(feed_key)
+      feed_key_name = common.get_graph_element_name(feed_key)
       feed_dict_line = debugger_cli_common.RichLine("  ")
       feed_dict_line += debugger_cli_common.RichLine(
           feed_key_name,
-          debugger_cli_common.MenuItem(None, "pf %s" % feed_key_name))
+          debugger_cli_common.MenuItem(None, "pf '%s'" % feed_key_name))
+      # Surround the name string with quotes, because feed_key_name may contain
+      # spaces in some cases, e.g., SparseTensors.
       feed_dict_lines.append(feed_dict_line)
   feed_dict_lines = debugger_cli_common.rich_text_lines_from_rich_line_list(
       feed_dict_lines)
 
   out = debugger_cli_common.RichTextLines(_HORIZONTAL_BAR)
   if is_callable_runner:
-    out.append("Running a runner returned by Session.make_callabe()")
+    out.append("Running a runner returned by Session.make_callable()")
   else:
     out.append("Session.run() call #%d:" % run_call_count)
     out.append("")
@@ -445,10 +417,10 @@ def get_run_short_description(run_call_count,
   description = "run #%d: " % run_call_count
 
   if isinstance(fetches, (ops.Tensor, ops.Operation, variables.Variable)):
-    description += "1 fetch (%s); " % _get_fetch_name(fetches)
+    description += "1 fetch (%s); " % common.get_graph_element_name(fetches)
   else:
     # Could be (nested) list, tuple, dict or namedtuple.
-    num_fetches = len(_get_fetch_names(fetches))
+    num_fetches = len(common.get_flattened_names(fetches))
     if num_fetches > 1:
       description += "%d fetches; " % num_fetches
     else:
@@ -479,42 +451,48 @@ def get_error_intro(tf_error):
       sample commands for debugging.
   """
 
-  op_name = tf_error.op.name
+  if hasattr(tf_error, "op") and hasattr(tf_error.op, "name"):
+    op_name = tf_error.op.name
+  else:
+    op_name = None
 
   intro_lines = [
       "--------------------------------------",
       RL("!!! An error occurred during the run !!!", "blink"),
       "",
-      "You may use the following commands to debug:",
   ]
 
   out = debugger_cli_common.rich_text_lines_from_rich_line_list(intro_lines)
 
-  out.extend(
-      _recommend_command("ni -a -d -t %s" % op_name,
-                         "Inspect information about the failing op.",
-                         create_link=True))
-  out.extend(
-      _recommend_command("li -r %s" % op_name,
-                         "List inputs to the failing op, recursively.",
-                         create_link=True))
+  if op_name is not None:
+    out.extend(debugger_cli_common.RichTextLines(
+        ["You may use the following commands to debug:"]))
+    out.extend(
+        _recommend_command("ni -a -d -t %s" % op_name,
+                           "Inspect information about the failing op.",
+                           create_link=True))
+    out.extend(
+        _recommend_command("li -r %s" % op_name,
+                           "List inputs to the failing op, recursively.",
+                           create_link=True))
 
-  out.extend(
-      _recommend_command(
-          "lt",
-          "List all tensors dumped during the failing run() call.",
-          create_link=True))
+    out.extend(
+        _recommend_command(
+            "lt",
+            "List all tensors dumped during the failing run() call.",
+            create_link=True))
+  else:
+    out.extend(debugger_cli_common.RichTextLines([
+        "WARNING: Cannot determine the name of the op that caused the error."]))
 
   more_lines = [
       "",
-      "Op name:    " + op_name,
+      "Op name:    %s" % op_name,
       "Error type: " + str(type(tf_error)),
       "",
       "Details:",
       str(tf_error),
       "",
-      "WARNING: Using client GraphDef due to the error, instead of "
-      "executor GraphDefs.",
       "--------------------------------------",
       "",
   ]

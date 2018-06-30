@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_OPS_WHILE_LOOP_H_
-#define THIRD_PARTY_TENSORFLOW_CC_OPS_WHILE_LOOP_H_
+#ifndef TENSORFLOW_CC_OPS_WHILE_LOOP_H_
+#define TENSORFLOW_CC_OPS_WHILE_LOOP_H_
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -48,6 +48,15 @@ typedef std::function<Status(const Scope&, const std::vector<Output>& inputs,
 //     unique name. This will be used as a prefix for created operations.
 // * outputs: output param that returns final loop variable outputs in non-error
 //     case. Must be non-null and empty.
+// * create_while_ctx: if true, a WhileContext is created and populated for this
+//     loop. See core/graph/while_context.h for more details on
+//     WhileContexts. This is set to false for loops used as part of gradient
+//     computations, since they're part of the gradient for a loop in the
+//     forward-pass.
+//     TODO(skyewm): revisit this. Should we create WhileContexts for all loops,
+//     even if we don't need them?
+// * cond_output: if non-null, the output of the predicate is returned. This
+//     will always be a LoopCond node.
 //
 // Returns an error if the while loop could not be fully constructed.
 //
@@ -56,9 +65,10 @@ typedef std::function<Status(const Scope&, const std::vector<Output>& inputs,
 Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
                       const CondGraphBuilderFn& cond,
                       const BodyGraphBuilderFn& body, const string& frame_name,
-                      OutputList* outputs);
+                      OutputList* outputs, bool create_while_ctx = true,
+                      Output* cond_output = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_OPS_WHILE_LOOP_H_
+#endif  // TENSORFLOW_CC_OPS_WHILE_LOOP_H_

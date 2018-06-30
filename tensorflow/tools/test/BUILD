@@ -92,24 +92,3 @@ tf_py_logged_benchmark(
     name = "rnn_op_benchmark",
     target = "//tensorflow/python/kernel_tests:rnn_test",
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-py_test(
-    name = "check_futures_test",
-    size = "small",
-    srcs = ["check_futures_test.py"],
-    data = ["//tensorflow:all_opensource_files"],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
-)

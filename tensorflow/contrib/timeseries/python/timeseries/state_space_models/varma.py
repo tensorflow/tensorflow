@@ -107,7 +107,7 @@ class VARMA(state_space_model.StateSpaceModel):
 
     Returns:
       the state transition matrix. It has shape
-        [self.state_dimendion, self.state_dimension].
+        [self.state_dimension, self.state_dimension].
     """
     # Pad any unused AR blocks with zeros. The extra state is necessary if
     # ma_order >= ar_order.
@@ -127,7 +127,7 @@ class VARMA(state_space_model.StateSpaceModel):
 
     Returns:
       the state noise transform matrix. It has shape
-        [self.state_dimendion, self.num_features].
+        [self.state_dimension, self.num_features].
     """
     # Noise is broadcast, through the moving average coefficients, to
     # un-observed parts of the latent state.
@@ -182,7 +182,8 @@ class VARMA(state_space_model.StateSpaceModel):
     # modeled as transition noise in VARMA, we set its initial value based on a
     # slight over-estimate empirical observation noise.
     if self._input_statistics is not None:
-      feature_variance = self._input_statistics.series_start_moments.variance
+      feature_variance = self._scale_variance(
+          self._input_statistics.series_start_moments.variance)
       initial_transition_noise_scale = math_ops.log(
           math_ops.maximum(
               math_ops.reduce_mean(feature_variance), minimum_initial_variance))

@@ -120,7 +120,7 @@ TEST_F(BufferLivenessTest, ElementwiseChain) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, negate));
@@ -167,10 +167,10 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
 
   SequentialHloOrdering::HloModuleSequence sequence;
   sequence.insert({entry, {param0, negate, param1, exp, add}});
-  auto liveness = BufferLiveness::Run(
-                      module.get(),
-                      MakeUnique<SequentialHloOrdering>(module.get(), sequence))
-                      .ConsumeValueOrDie();
+  auto liveness =
+      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
+                                            module.get(), sequence))
+          .ConsumeValueOrDie();
 
   // Entry parameters interfere as if they are defined simultaneously at
   // the very beginning.
@@ -216,7 +216,7 @@ TEST_F(BufferLivenessTest, NonElementwiseOperand) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
@@ -250,7 +250,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffers) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
@@ -294,7 +294,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   std::vector<const HloInstruction*> order = {param, negate, exp, add};
   module_sequence.emplace(computation, order);
   auto liveness =
-      BufferLiveness::Run(module.get(), MakeUnique<SequentialHloOrdering>(
+      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
                                             module.get(), module_sequence))
           .ConsumeValueOrDie();
 
@@ -309,6 +309,48 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, add, negate));
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, exp, add));
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, add, exp));
+}
+
+TEST_F(BufferLivenessTest, RootInstructionIsNotLastInSequentialOrder) {
+  // Tests that when the root instruction is not the last instruction in the
+  // schedule, the live range of its buffers interfere with the buffers of the
+  // later instructions.
+  //
+  // Two sets of independent instructions are executed in the computation.
+  // param --> add (root)
+  // recv --> recv-done --> send --> send-done
+  //
+  // Sequential order:
+  //  param, add (root), recv, recv-done, send, send-done
+  auto builder = HloComputation::Builder(TestName());
+  auto param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, vec_, "param"));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, param, param));
+  auto recv = builder.AddInstruction(
+      HloInstruction::CreateRecv(vec_, /*channel_id=*/0));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+  auto send = builder.AddInstruction(
+      HloInstruction::CreateSend(recv_done, /*channel_id=*/1));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build(add));
+
+  SequentialHloOrdering::HloModuleSequence module_sequence;
+  std::vector<const HloInstruction*> order = {param,     add,  recv,
+                                              recv_done, send, send_done};
+  module_sequence.emplace(computation, order);
+  auto liveness =
+      BufferLiveness::Run(module.get(), xla::MakeUnique<SequentialHloOrdering>(
+                                            module.get(), module_sequence))
+          .ConsumeValueOrDie();
+
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, add));
+  // Check the root instruction (add) buffer interferes with the recv buffer.
+  EXPECT_TRUE(
+      liveness->MayInterfere(GetBuffer(*liveness, add, /*index=*/{}),
+                             GetBuffer(*liveness, recv, /*index=*/{0})));
 }
 
 TEST_F(BufferLivenessTest, TupleLiveOut) {
@@ -334,7 +376,7 @@ TEST_F(BufferLivenessTest, TupleLiveOut) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // All buffers should be live out except the param
@@ -370,7 +412,7 @@ TEST_F(BufferLivenessTest, EmbeddedComputation) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // Buffers in different computations should always interfere.
@@ -409,7 +451,7 @@ TEST_F(BufferLivenessTest, TupleConstantLiveOut) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // Only the element buffers of the tuple constant which are pointed to by
@@ -474,7 +516,7 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // We compare tuple element pairs that are input/output to the computation:
@@ -536,7 +578,7 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
 
   auto liveness =
       BufferLiveness::Run(module.get(),
-                          MakeUnique<DependencyHloOrdering>(module.get()))
+                          xla::MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
   // We compare tuple element pairs that are input/output to the computation:
@@ -624,8 +666,8 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
 
     // Run BufferLiveness on 'module'.
     auto liveness =
-        BufferLiveness::Run(module.get(),
-                            MakeUnique<DependencyHloOrdering>(module.get()))
+        BufferLiveness::Run(
+            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()))
             .ConsumeValueOrDie();
     // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
@@ -736,8 +778,8 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     module->AddEmbeddedComputation(builder.Build());
     // Run BufferLiveness on 'module'.
     auto liveness =
-        BufferLiveness::Run(module.get(),
-                            MakeUnique<DependencyHloOrdering>(module.get()))
+        BufferLiveness::Run(
+            module.get(), xla::MakeUnique<DependencyHloOrdering>(module.get()))
             .ConsumeValueOrDie();
     // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
@@ -784,7 +826,3 @@ TEST_F(DynamicUpdateSliceLivenessTest, WithInterference) {
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

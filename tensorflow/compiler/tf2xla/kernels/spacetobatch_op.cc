@@ -16,13 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
 
-void SpaceToBatch(XlaOpKernelContext* ctx,
-                  const xla::ComputationDataHandle& input, DataType input_dtype,
-                  const TensorShape& input_tensor_shape,
+void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
+                  DataType input_dtype, const TensorShape& input_tensor_shape,
                   gtl::ArraySlice<int64> block_shape,
                   const xla::Literal& paddings) {
   const int input_rank = input_tensor_shape.dims();
@@ -46,7 +46,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx,
                               ", 2] instead of ",
                               xla::ShapeUtil::HumanString(paddings.shape())));
 
-  xla::ComputationBuilder* b = ctx->builder();
+  xla::XlaBuilder* b = ctx->builder();
 
   // 1. Zero-pad the start and end of dimensions `[1, ..., M]` of the
   //  input according to `paddings` to produce `padded` of shape `padded_shape`.
@@ -73,8 +73,8 @@ void SpaceToBatch(XlaOpKernelContext* ctx,
               errors::InvalidArgument(
                   "The product of the block dimensions must be positive"));
 
-  xla::ComputationDataHandle padded =
-      b->Pad(input, XlaHelpers::Zero(b, input_dtype), padding_config);
+  xla::XlaOp padded =
+      xla::Pad(input, XlaHelpers::Zero(b, input_dtype), padding_config);
 
   // 2. Reshape `padded` to `reshaped_padded` of shape:
   //
@@ -101,8 +101,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx,
   std::copy(remainder_shape.begin(), remainder_shape.end(),
             reshaped_padded_shape.begin() + 1 + 2 * block_rank);
 
-  xla::ComputationDataHandle reshaped_padded =
-      b->Reshape(padded, reshaped_padded_shape);
+  xla::XlaOp reshaped_padded = xla::Reshape(padded, reshaped_padded_shape);
 
   // 3. Permute dimensions of `reshaped_padded` to produce
   //    `permuted_reshaped_padded` of shape:
@@ -121,8 +120,8 @@ void SpaceToBatch(XlaOpKernelContext* ctx,
   permutation[block_rank] = 0;
   std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
             1 + block_rank * 2);
-  xla::ComputationDataHandle permuted_reshaped_padded =
-      b->Transpose(reshaped_padded, permutation);
+  xla::XlaOp permuted_reshaped_padded =
+      xla::Transpose(reshaped_padded, permutation);
 
   // 4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the
   //    batch dimension, producing an output tensor of shape:
@@ -142,8 +141,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx,
   std::copy(remainder_shape.begin(), remainder_shape.end(),
             output_shape.begin() + 1 + block_rank);
 
-  xla::ComputationDataHandle output =
-      b->Reshape(permuted_reshaped_padded, output_shape);
+  xla::XlaOp output = xla::Reshape(permuted_reshaped_padded, output_shape);
   ctx->SetOutput(0, output);
 }
 
@@ -162,7 +160,10 @@ class SpaceToBatchNDOp : public XlaOpKernel {
                  block_shape, paddings);
   }
 };
-REGISTER_XLA_OP(Name("SpaceToBatchND"), SpaceToBatchNDOp);
+REGISTER_XLA_OP(Name("SpaceToBatchND")
+                    .CompileTimeConstInput("paddings")
+                    .CompileTimeConstInput("block_shape"),
+                SpaceToBatchNDOp);
 
 class SpaceToBatchOp : public XlaOpKernel {
  public:
@@ -184,7 +185,8 @@ class SpaceToBatchOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("SpaceToBatch"), SpaceToBatchOp);
+REGISTER_XLA_OP(Name("SpaceToBatch").CompileTimeConstInput("paddings"),
+                SpaceToBatchOp);
 
 }  // namespace
 }  // namespace tensorflow

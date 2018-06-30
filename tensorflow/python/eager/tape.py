@@ -18,123 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
+import contextlib
 
-from autograd import container_types
-from autograd import core as ag_core
-
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python import pywrap_tensorflow
 
 
-class ImplicitTape(object):
-  """Global object which can watch tensors and wrap them with autograd."""
+class Tape(object):
+  """Represents a gradient propagation trace."""
 
-  def __init__(self):
-    self.tensors = {}
-    self.gradients = []
+  def __init__(self, tape):
+    self._tape = tape
 
-  def __eq__(self, other):
-    return self is other
-
-  def __hash__(self):
-    return id(self)
+  def watched_variables(self):
+    return pywrap_tensorflow.TFE_Py_TapeWatchedVariables(self._tape)
 
 
-@ag_core.primitive
-def _watch_with_tape_internal(_, tensor):
-  """Primitive to wrap a tensor around an ImplicitTape progenitor."""
-  return tensor
-
-
-def _watch_with_tape(tape, tensor):
-  """Wraps a watched Tensor and keeps track of it in the implicit tape."""
-  w = _watch_with_tape_internal(tape, tensor)
-  if ag_core.isnode(tape):
-    tape.value.tensors[ops.tensor_id(tensor)] = w
-  return w
-
-
-def _watch_with_tape_vjp(g, ans, vs, gvs, tape, tensor):
-  """Gradient for _watch_with_tape_internal."""
-  del ans, gvs, tape
-
-  def mut_add(implicit_tape):
-    t = ag_core.getval(tensor)
-    implicit_tape.gradients.append((t, g))
-    return implicit_tape
-
-  return ag_core.SparseObject(vs, mut_add)
-
-_watch_with_tape_internal.defvjp(_watch_with_tape_vjp, argnum=0)
-_watch_with_tape_internal.defvjp(
-    lambda g, ans, vs, gvs, tape, tensor: g,
-    argnum=1)
-
-
-class ImplicitTapeVSpace(ag_core.VSpace):
-  """VSpace needed to have ImplicitTape be a valid progenitor."""
-
-  def zeros(self):
-    return ImplicitTape()
-
-
-class ImplicitTapeNode(ag_core.Node):
-  """Node to wrap ImplicitTape in."""
-
-  def __eq__(self, other):
-    return self is other
-
-  def __hash__(self):
-    return id(self)
-
-ag_core.register_node(ImplicitTapeNode, ImplicitTape)
-ag_core.register_vspace(ImplicitTapeVSpace, ImplicitTape)
-
-
-# TODO(apassos) try to not do this.
-class NoneVSpace(ag_core.VSpace):
-  """VSpace for python None."""
-
-  def __init__(self, _):
-    self.size = 0
-
-  def zeros(self):
-    return 0
-
-
-ag_core.register_vspace(NoneVSpace, type(None))
-
-
-class _TapeStack(threading.local):
-
-  def __init__(self):
-    super(_TapeStack, self).__init__()
-    self._stack = []
-
-  @property
-  def stack(self):
-    return self._stack
-
-  @tf_contextlib.contextmanager
-  def replace_stack(self, new_stack):
-    old = self._stack
-    self._stack = new_stack
-    yield
-    self._stack = old
-
-
-# The global tape stack.
-_tape_stack = _TapeStack()
-
-
-def push_new_tape():
+def push_new_tape(persistent=False):
   """Pushes a new tape onto the tape stack."""
-  progenitor = ag_core.new_progenitor(ImplicitTape())
-  _tape_stack.stack.append(progenitor)
-  ag_core.active_progenitors.add(progenitor)
+  tape = pywrap_tensorflow.TFE_Py_TapeSetNew(persistent)
+  return Tape(tape)
+
+
+def push_tape(tape):
+  """Pushes an existing tape onto the tape stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetAdd(tape._tape)  # pylint: disable=protected-access
 
 
 def watch(tensor):
@@ -142,110 +49,49 @@ def watch(tensor):
 
   Args:
     tensor: tensor to be watched.
-
-  Returns:
-    The tensor, potentially wrapped by all tapes in the stack.
   """
-  for t in _tape_stack.stack:
-    tensor = _watch_with_tape(t, tensor)
-  return tensor
+  pywrap_tensorflow.TFE_Py_TapeSetWatch(tensor)
 
 
-def watch_variable(resource_variable):
-  """Marks this ResourceVariable to be watched by all tapes in the stack.
+def watch_variable(variable):
+  """Marks this variable to be watched by all tapes in the stack.
 
   Args:
-    resource_variable: A ResourceVariable to be watched.
+    variable: variable to be watched.
   """
-  watch(resource_variable.handle)  # py-lint: disable=protected-access
+  pywrap_tensorflow.TFE_Py_TapeSetWatchVariable(variable)
 
 
-def pop_tape():
+def pop_tape(tape):
   """Pops the top tape in the stack, if any."""
-  if _tape_stack.stack:
-    return _tape_stack.stack.pop()
-  return None
+  pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
-def any_tape_has(tensor):
-  for t in _tape_stack.stack:
-    if ops.tensor_id(tensor) in t.value.tensors:
-      return True
-  return False
+@contextlib.contextmanager
+def stop_recording():
+  try:
+    pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
+    yield
+  finally:
+    pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
 def should_record(tensors):
-  """Returns true if any tape in the stach watches any of these tensors."""
-  return any(ag_core.isnode(x) for x in tensors)
+  """Returns true if any tape in the stack watches any of these tensors."""
+  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecord(tensors)
 
 
-class _EagerSequenceNode(container_types.SequenceNode):
-  """Eager version of SequenceNode, to live in EagerSequenceVSpace."""
-  pass
+def record_operation(op_type, output_tensors, input_tensors, backward_function):
+  """Records the operation on all tapes in the stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
+      op_type, output_tensors, input_tensors, backward_function)
 
 
-class _EagerSequenceVSpace(container_types.SequenceVSpace):
-  """Changes equality on SequenceVSpace to conform to tfe requirements."""
-
-  def __init__(self, value):
-    self.shape = [ag_core.vspace(x) for x in value]
-    self.size = sum(s.size for s in self.shape)
-    self.sequence_type = type(value)
-
-  def __eq__(self, other):
-    if type(self) != type(other):  # pylint: disable=unidiomatic-typecheck
-      return False
-    if len(self.shape) != len(other.shape):
-      # TODO(apassos) function gradients sometimes return gradients for side
-      # inputs which breaks this assertion. Understand how to fix it.
-      return True
-    for ss, os in zip(self.shape, other.shape):
-      if ss != os:
-        if isinstance(ss, NoneVSpace) or isinstance(os, NoneVSpace):
-          continue
-        if ss.dtype == dtypes.resource or os.dtype == dtypes.resource:
-          continue
-        return False
-    return True
+def delete_trace(tensor_id):
+  """Deletes traces for this Tensor from all tapes in the stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetDeleteTrace(tensor_id)
 
 
-class EagerList(list):
-  """Type used to bypass SequenceVSpace.
-
-  SequenceVSpace has a very strict equality check which does not match
-  tensorflow semantics.
-  """
-
-  def __init__(self, value):
-    super(EagerList, self).__init__(value)
-    for v in value:
-      assert not ag_core.isnode(v)
-
-ag_core.register_vspace(_EagerSequenceVSpace, EagerList)
-ag_core.register_node(_EagerSequenceNode, EagerList)
-
-
-@ag_core.primitive
-def _record_operation(output_tensors, input_tensors, side_outputs,
-                      backward_function):
-  del input_tensors, side_outputs, backward_function
-  return EagerList(output_tensors)
-
-
-def record_operation(o, i, s, b):
-  """Primitive to trigger autograd tracing on outputs from inputs."""
-  inputs = container_types.make_sequence(EagerList, *i)
-  return _record_operation(o, inputs, s, b)
-
-
-def _record_operation_vjp(g, ans, vs, gvs, output_tensors, input_tensors,
-                          side_outputs, backward_function):
-  """Gradient for _record_operation."""
-  del vs, gvs, input_tensors, output_tensors
-  backward_args = tuple(g) + tuple(side_outputs)
-  backward_args = container_types.make_sequence(
-      EagerList, *(tuple(ans) + backward_args))
-  tensors = nest.flatten(backward_function(*backward_args))
-  return container_types.make_sequence(EagerList, *tensors)
-
-_record_operation.defvjp(_record_operation_vjp, argnum=1)
+def could_possibly_record():
+  """Returns True if any tape is active."""
+  return not pywrap_tensorflow.TFE_Py_TapeSetIsEmpty()

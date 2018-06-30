@@ -22,6 +22,7 @@ import tempfile
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_graphs
@@ -40,6 +41,13 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
 
   _OP_TYPE_BLACKLIST = (
       "_Send", "_Recv", "_HostSend", "_HostRecv", "_Retval")
+
+  def _no_rewrite_session_config(self):
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+        min_graph_nodes=-1)
+    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+    return config_pb2.ConfigProto(graph_options=graph_options)
 
   def setUp(self):
     super(ReconstructNonDebugGraphTest, self).setUp()
@@ -136,7 +144,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
           sess, c, expected_output=400.0)
 
   def testReonstructGraphWithCond(self):
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       x = variables.Variable(10.0, name="x")
       y = variables.Variable(20.0, name="y")
       cond = control_flow_ops.cond(
@@ -157,7 +165,7 @@ class ReconstructNonDebugGraphTest(test_util.TensorFlowTestCase):
       self._compareOriginalAndReconstructedGraphDefs(sess, loop)
 
   def testReconstructGraphWithGradients(self):
-    with session.Session() as sess:
+    with session.Session(config=self._no_rewrite_session_config()) as sess:
       u = variables.Variable(12.0, name="u")
       v = variables.Variable(30.0, name="v")
       x = constant_op.constant(1.1, name="x")

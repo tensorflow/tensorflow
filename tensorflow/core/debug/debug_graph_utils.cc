@@ -221,20 +221,25 @@ Status DebugNodeInserter::InsertNodes(
 }
 
 void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
+  bool deparallelized_a_loop = false;
   for (Node* node : graph->nodes()) {
     if (node->IsEnter()) {
       const AttrValue* parallel_iterations =
           node->attrs().Find("parallel_iterations");
       if (parallel_iterations && parallel_iterations->i() > 1) {
-        LOG(INFO) << "For debugging, tfdbg is changing the "
-                  << "parallel_iterations attribute of the Enter/RefEnter "
-                  << "node \"" << node->name() << "\" on device \""
-                  << device->name() << "\" from " << parallel_iterations->i()
-                  << " to 1. (This does not affect subsequent non-debug "
-                  << "runs.)";
+        deparallelized_a_loop = true;
+        VLOG(1) << "Changing the parallel_iterations attribute of the "
+                << "Enter/RefEnter node \"" << node->name() << "\" on device \""
+                << device->name() << "\" from " << parallel_iterations->i()
+                << " to 1.";
         node->AddAttr<int64>("parallel_iterations", 1);
       }
     }
+  }
+  if (deparallelized_a_loop) {
+    LOG(INFO) << "For debugging, tfdbg has set the parallel_iterations "
+              << "attribute of all scheduled Enter/RefEnter nodes to 1. (This "
+              << "does not affect subsequent non-debug runs.)";
   }
 }
 
@@ -351,10 +356,9 @@ Status DebugNodeInserter::ParseDebugOpName(
             "Malformed attributes in debug op name \"", debug_op_name, "\"");
       }
 
-      const string key = seg.substr(0, eq_index).ToString();
-      const string value =
-          seg.substr(eq_index + 1, attribute_seg.size() - eq_index - 1)
-              .ToString();
+      const string key = std::string(seg.substr(0, eq_index));
+      const string value = std::string(
+          seg.substr(eq_index + 1, attribute_seg.size() - eq_index - 1));
       if (key.empty() || value.empty()) {
         return errors::InvalidArgument(
             "Malformed attributes in debug op name \"", debug_op_name, "\"");

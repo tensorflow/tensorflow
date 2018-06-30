@@ -13,6 +13,25 @@ service TPUProfiler {
   }
 }
 
+message ProfileOptions {
+  // We don't collect the dataset ops by default for better trace-viewer
+  // scalability. The caller can mannually set this field to include the ops.
+  bool include_dataset_ops = 1;
+
+  // next-field: 2
+}
+
+message ToolRequestOptions {
+  // Required formats for the tool, it should be one of "json", "proto", "raw"
+  // etc. If not specified (backward compatible), use default format, i.e. most
+  // tools use json format.
+  string output_formats = 2;
+
+  // Whether save the result directly to repository or pass it back to caller.
+  // Default to false for backward compatibilities.
+  bool save_to_repo = 3;
+}
+
 message ProfileRequest {
   // In future, the caller will be able to customize when profiling starts and
   // stops. For now, it collects `duration_ms` milliseconds worth of data.
@@ -22,13 +41,43 @@ message ProfileRequest {
   // events.
   uint64 max_events = 2;
 
+  // Required profiling tools name such as "input_pipeline_analyzer" etc
+  repeated string tools = 3;
+
+  // Specifies the requirement for each tools.
+  map<string, ToolRequestOptions> tool_options = 8;
+
+  // Optional profiling options that control how a TF session will be profiled.
+  ProfileOptions opts = 4;
+
+  // The place where we will dump profile data. We will normally use
+  // MODEL_DIR/plugin/profile/ as our repository root.
+  string repository_root = 5;
+
+  // The user provided profile session identifier.
+  string session_id = 6;
+
+  // The hostname of system where the profile should happen.
+  // We use it as identifier in part of our output filename.
+  string host_name = 7;
+
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.
+  // next-field: 9
+}
+
+message ProfileToolData {
+  // The file name which this data is associated (e.g. "input_pipeline.json",
+  // "cluster_xxx.memory_viewer.json").
+  string name = 1;
+
+  // The data payload (likely json) for the specific tool.
+  bytes data = 2;
 }
 
 message ProfileResponse {
-  uint64 xprof_response_size = 1;  // Placeholder: return something meaningful.
+  reserved 1;  // was uint64 placeholder for returning something meaningful.
   // Graphs of programs executed on TPUs during the profiling period.
   repeated GraphDef computation_graph = 2;
 
@@ -45,5 +94,13 @@ message ProfileResponse {
   // If the trace covers multiple programs, the longest-running one is analyzed.
   // See op_profile.proto for the detailed semantics of the returned profile.
   tpu.op_profile.Profile op_profile = 4;
-  // next-field: 6
+
+  // Data payload for each required tools.
+  repeated ProfileToolData tool_data = 6;
+
+  // When we write profiling data directly to repository directory, we need a
+  // way to figure out whether the captured trace is empty (due to idle TPU).
+  bool empty_trace = 7;
+
+  // next-field: 8
 }

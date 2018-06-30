@@ -18,14 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 using tensorflow::gtl::InlinedVector;
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_INLINED_VECTOR_H_

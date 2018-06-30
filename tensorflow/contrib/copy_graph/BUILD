@@ -27,7 +27,6 @@ py_library(
 
 py_test(
     name = "copy_test",
-    size = "small",
     srcs = glob(["python/util/copy_test.py"]),
     srcs_version = "PY2AND3",
     deps = [
@@ -41,16 +40,4 @@ py_test(
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/matrix_band_part_op.h"
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -48,18 +50,6 @@ class MatrixBandPartOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const Tensor& num_lower_in = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_lower_in.shape()),
-                errors::InvalidArgument("num_lower must be scalar, got shape ",
-                                        num_lower_in.shape().DebugString()));
-    const int64 num_lower = num_lower_in.scalar<int64>()();
-
-    const Tensor& num_upper_in = context->input(2);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
-                errors::InvalidArgument("num_upper must be scalar, got shape ",
-                                        num_upper_in.shape().DebugString()));
-    const int64 num_upper = num_upper_in.scalar<int64>()();
-
     const TensorShape& input_shape = input.shape();
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
@@ -67,12 +57,52 @@ class MatrixBandPartOp : public OpKernel {
                     "input must be at least 2-dim, received shape: ",
                     input.shape().DebugString()));
     auto input_reshaped = input.flat_inner_dims<T, 3>();
+
+    const Tensor& num_lower_in = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_lower_in.shape()),
+                errors::InvalidArgument("num_lower must be scalar, got shape ",
+                                        num_lower_in.shape().DebugString()));
+
+    auto as_int64_scalar = [](const Tensor& tensor) -> int64 {
+      if (tensor.dtype() == DT_INT32) {
+        return tensor.scalar<int32>()();
+      } else {
+        return tensor.scalar<int64>()();
+      }
+    };
+    const int64 num_lower = as_int64_scalar(num_lower_in);
+    OP_REQUIRES(
+        context, num_lower <= input_reshaped.dimension(1),
+        errors::InvalidArgument(
+            "num_lower must be negative or less or equal to number of rows (",
+            input_reshaped.dimension(1), ") got: ", num_lower));
+
+    const Tensor& num_upper_in = context->input(2);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(num_upper_in.shape()),
+                errors::InvalidArgument("num_upper must be scalar, got shape ",
+                                        num_upper_in.shape().DebugString()));
+    const int64 num_upper = as_int64_scalar(num_upper_in);
+    OP_REQUIRES(context, num_upper <= input_reshaped.dimension(2),
+                errors::InvalidArgument("num_upper must be negative or less or "
+                                        "equal to number of columns (",
+                                        input_reshaped.dimension(2),
+                                        ") got: ", num_upper));
+
+    if (input.NumElements() == 0 ||
+        ((num_lower < 0 || num_lower == input_reshaped.dimension(1)) &&
+         (num_upper < 0 || num_upper == input_reshaped.dimension(2)))) {
+      // This is a no-op.
+      context->set_output(0, input);
+      return;
+    }
+
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, input_shape, &output));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input_shape, &output));
     auto output_reshaped = output->flat_inner_dims<T, 3>();
-    functor::MatrixBandPart<Device, T>::Compute(
-        context->eigen_device<Device>(), num_lower, num_upper, input_reshaped,
-        output_reshaped);
+    functor::MatrixBandPartFunctor<Device, T> fn;
+    fn(context, context->eigen_device<Device>(), num_lower, num_upper,
+       input_reshaped, output_reshaped);
   }
 
  private:
@@ -98,35 +128,70 @@ TF_CALL_NUMBER_TYPES(REGISTER_BATCH_MATRIX_BAND_PART);
 
 // Implementation of the functor specialization for CPU.
 namespace functor {
-template <typename T>
-struct MatrixBandPart<CPUDevice, T> {
-  static void Compute(const CPUDevice& d, int64 num_lower, int64 num_upper,
-                      typename TTypes<T, 3>::ConstTensor input,
-                      typename TTypes<T, 3>::Tensor output) {
-    if ((num_lower < 0 || num_lower >= input.dimension(1)) &&
-        (num_upper < 0 || num_upper >= input.dimension(2))) {
-      output.device(d) = input;
-    } else {
-      output.device(d) = output.constant(T());
-      for (int64 r = 0; r < output.dimension(0); ++r) {
-        for (int64 i = 0; i < output.dimension(1); ++i) {
+
+// CPU implementation of BandPartFunctor.
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
+template <typename Scalar>
+struct MatrixBandPartFunctor<CPUDevice, Scalar> {
+  void operator()(OpKernelContext* context, const CPUDevice& device,
+                  int num_lower_diags, int num_upper_diags,
+                  typename TTypes<Scalar, 3>::ConstTensor input,
+                  typename TTypes<Scalar, 3>::Tensor output) {
+    const int64 b = input.dimension(0);
+    const int64 m = input.dimension(1);
+    const int64 n = input.dimension(2);
+    auto thread_pool =
+        context->device()->tensorflow_cpu_worker_threads()->workers;
+    const int64 total_rows = b * m;
+    const int64 row_cost = 10 * n;
+    const bool in_place = input.data() == output.data();
+    auto compute_shard = [=, &input, &output](int64 begin, int64 end) {
+      if (!in_place) {
+        std::fill(output.data() + begin * n, output.data() + end * n, Scalar());
+      }
+      const int64 batch_begin = begin / m;
+      const int64 batch_end = (end + m - 1) / m;
+      for (int64 batch = batch_begin; batch < batch_end; ++batch) {
+        const int64 row_begin = begin > batch * m ? begin % m : 0;
+        const int64 row_end = end < (batch + 1) * m ? end % m : m;
+        for (int64 row = row_begin; row < row_end; ++row) {
           const int64 band_start =
-              num_lower < 0 ? 0 : std::max(0ll, i - num_lower);
+              num_lower_diags < 0
+                  ? 0
+                  : std::min(n, std::max(int64{0}, row - num_lower_diags));
           const int64 band_end =
-              num_upper < 0 ? output.dimension(2)
-                            : std::min(static_cast<int64>(output.dimension(2)),
-                                       i + num_upper + 1);
-          if (band_start < band_end) {
-            const Eigen::DSizes<Eigen::DenseIndex, 3> indices(r, i, band_start);
-            const Eigen::DSizes<Eigen::DenseIndex, 3> sizes(
-                1, 1, band_end - band_start);
-            output.slice(indices, sizes) = input.slice(indices, sizes);
+              num_upper_diags < 0
+                  ? n
+                  : std::min(static_cast<int64>(n), row + num_upper_diags + 1);
+          if (in_place) {
+            if (band_start > 0) {
+              std::fill(&output(batch, row, 0), &output(batch, row, band_start),
+                        Scalar());
+            }
+            if (band_end < n) {
+              std::fill(&output(batch, row, band_end), &output(batch, row, n),
+                        Scalar());
+            }
+          } else {
+            if (band_start < band_end) {
+              const Eigen::DSizes<Eigen::DenseIndex, 3> indices(batch, row,
+                                                                band_start);
+              const Eigen::DSizes<Eigen::DenseIndex, 3> sizes(
+                  1, 1, band_end - band_start);
+              output.slice(indices, sizes) = input.slice(indices, sizes);
+            }
           }
         }
       }
-    }
+    };
+    thread_pool->ParallelFor(total_rows, row_cost, std::move(compute_shard));
   }
 };
+
+#define DEFINE_CPU_SPEC(T) template struct MatrixBandPartFunctor<CPUDevice, T>;
+TF_CALL_POD_TYPES(DEFINE_CPU_SPEC);
+#undef DEFINE_CPU_SPEC
 
 }  // namespace functor
 
@@ -134,18 +199,21 @@ struct MatrixBandPart<CPUDevice, T> {
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                  \
-  template <>                                                                \
-  void MatrixBandPart<GPUDevice, T>::Compute(                                \
-      const GPUDevice& d, Eigen::DenseIndex num_lower,                       \
-      Eigen::DenseIndex num_upper, typename TTypes<T, 3>::ConstTensor input, \
-      typename TTypes<T, 3>::Tensor output);                                 \
-  extern template struct MatrixBandPart<GPUDevice, T>;
+#define DECLARE_GPU_SPEC(T)                                            \
+  template <>                                                          \
+  struct MatrixBandPartFunctor<GPUDevice, T> {                         \
+    void operator()(OpKernelContext* context, const GPUDevice& device, \
+                    int num_upper_diags, int num_lower_diags,          \
+                    typename TTypes<T, 3>::ConstTensor input,          \
+                    typename TTypes<T, 3>::Tensor output);             \
+  };                                                                   \
+  extern template struct MatrixBandPartFunctor<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_bool(DECLARE_GPU_SPEC);
 TF_CALL_complex64(DECLARE_GPU_SPEC);
 TF_CALL_complex128(DECLARE_GPU_SPEC);
+#undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 // Registration of the GPU implementations.

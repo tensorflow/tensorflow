@@ -11,6 +11,10 @@ tf_class {
     name: "receiver_tensors"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "receiver_tensors_alternatives"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

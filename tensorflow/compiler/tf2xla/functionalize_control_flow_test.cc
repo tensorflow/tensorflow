@@ -20,20 +20,152 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/tf2xla/cc/ops/functional_ops.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 namespace {
+
+// Returns the names of the "then" and "else" functions for the XlaIf node in a
+// graph.
+Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
+                         NameAttrList* then_fn, NameAttrList* else_fn) {
+  for (const NodeDef& node : graph.node()) {
+    if (node.op() == "XlaIf") {
+      *op_name = node.name();
+      const NameAttrList* result;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node, "then_branch", &result));
+      *then_fn = *result;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node, "else_branch", &result));
+      *else_fn = *result;
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("No XlaIf node found in graph");
+}
+
+// Graph:
+// x = array_ops.placeholder(dtypes.int32)
+// y = array_ops.placeholder(dtypes.int32)
+// z = control_flow_ops.cond(
+//     math_ops.less(y, x), lambda: math_ops.multiply(y, 17),
+//     lambda: math_ops.add(x, 23))
+TEST(FunctionalizeControlFlow, Conditional) {
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto switch_1 = ops::Switch(scope.WithOpName("cond/Switch"), less, less);
+
+    auto identity_t =
+        ops::Identity(scope.WithOpName("cond/Identity"), switch_1.output_true);
+    auto seventeen = ops::Const<int32>(
+        scope.WithOpName("cond").WithControlDependencies(identity_t), 17);
+    auto switch_2 = ops::Switch(scope.WithOpName("cond/Switch"), y, less);
+    auto mul = ops::Multiply(scope.WithOpName("cond/Mul"), switch_2.output_true,
+                             seventeen);
+
+    auto identity_f =
+        ops::Identity(scope.WithOpName("cond/Identity"), switch_1.output_false);
+    auto twenty_three = ops::Const<int32>(
+        scope.WithOpName("cond").WithControlDependencies(identity_f), 23);
+    auto switch_3 = ops::Switch(scope.WithOpName("cond/Switch"), x, less);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"),
+                        switch_3.output_false, twenty_three);
+
+    auto merge = ops::Merge(scope.WithOpName("cond/Merge"),
+                            std::initializer_list<Input>{add, mul});
+
+    TF_EXPECT_OK(scope.ToGraph(&graph));
+  }
+
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library));
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  string op_name;
+  NameAttrList then_fn;
+  NameAttrList else_fn;
+  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &op_name, &then_fn, &else_fn));
+  InstantiationResultForTest else_result;
+  TF_EXPECT_OK(
+      InstantiateFunctionForTest(else_fn.name(), library, &else_result));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto if_op = ops::XlaIf(scope.WithOpName(op_name), less,
+                            std::initializer_list<Input>{less, y, x}, then_fn,
+                            else_fn, {DT_INT32});
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // then body.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_BOOL, 0);
+    auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
+    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_0);
+    auto cond = ops::Const(
+        scope.WithOpName("cond").WithControlDependencies(identity), 17);
+    auto mul = ops::Mul(scope.WithOpName("cond/Mul"), arg_1, cond);
+    auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), mul, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(then_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+
+  // else body.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_BOOL, 0);
+    auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
+    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_0);
+    auto cond_1 = ops::Const(
+        scope.WithOpName("cond_1").WithControlDependencies(identity), 23);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_2, cond_1);
+    auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(else_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
 
 // Returns the names of the "cond" and "body" functions for the While node
 // in a graph.
@@ -121,6 +253,233 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
         ops::XlaWhile(scope.WithOpName("while/LoopCond"),
                       std::initializer_list<Input>{source}, cond_fn, body_fn);
     auto sink = ops::Identity(scope.WithOpName("sink"), while_op[0]);
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // Condition graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto ten = ops::Const<int32>(
+        scope.WithOpName("while/Less/y").WithControlDependencies(arg), 10);
+    auto less = ops::Less(scope.WithOpName("while/Less"), arg, ten);
+    auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), less, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(cond_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
+    EXPECT_EQ(DataTypeVector{DT_BOOL}, result.ret_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+
+  // Body graph.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
+    auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
+    auto retval = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(body_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
+
+// @function.Defun(noinline=True)
+// def increment_fn(x):
+//   return [x + 1]
+// Define the above function, and add it to the given graph. It's used as the
+// while loop body in NoinlineLoopBody test.
+Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
+  FunctionDef fdef = FunctionDefHelper::Create(
+      "increment_fn", {"x:int32"}, {"add:int32"}, {},
+      {
+          {{"add/y"}, "Const", {}, {{"dtype", DT_INT32}}},
+          {{"add_0"}, "Add", {"x", "add/y:output:0"}, {{"T", DT_INT32}}},
+      },
+      {{"add", "add_0:z:0"}});
+  (*fdef.mutable_attr())["_noinline"].set_b(true);
+  FunctionDefLibrary fdef_lib;
+  *(fdef_lib.add_function()) = fdef;
+  TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdef_lib));
+  NodeDef increment_fn;
+  increment_fn.set_name(node_name);
+  increment_fn.set_op("increment_fn");
+  *increment_fn.add_input() = "while/Identity";
+  *increment_fn.add_input() = "^while/Identity";
+  Status status;
+  graph->AddNode(increment_fn, &status);
+  return status;
+}
+
+// Graph:
+// x = array_ops.placeholder(dtypes.int32)
+// y = control_flow_ops.while_loop(lambda i: i < 10, increment_fn, [x])
+TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
+  const string& noinline_node_name = "while/increment_fn";
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto dummy = ops::Placeholder(scope.WithOpName("Dummy"), DT_INT32);
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto enter = ops::internal::Enter(scope.WithOpName("while/Enter"), source,
+                                      "while/while_context");
+    auto merge = ops::Merge(scope.WithOpName("while/Merge"),
+                            std::initializer_list<Input>{enter, dummy});
+    auto ten = ops::Const<int32>(
+        scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
+        10);
+    auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
+    auto loop_cond = ops::LoopCond(scope.WithOpName("while/LoopCond"), less);
+    auto switch_ =
+        ops::Switch(scope.WithOpName("while/Switch"), merge.output, loop_cond);
+    auto exit = ops::internal::Exit(scope.WithOpName("while/Exit"),
+                                    switch_.output_false);
+    auto identity =
+        ops::Identity(scope.WithOpName("while/Identity"), switch_.output_true);
+
+    TF_ASSERT_OK(AddNoinlineFunctionToGraph(noinline_node_name, scope.graph()));
+
+    NodeDef next_iter;
+    next_iter.set_name("while/NextIteration");
+    next_iter.set_op("NextIteration");
+    *next_iter.add_input() = noinline_node_name;
+    (*next_iter.mutable_attr())["T"].set_type(DT_INT32);
+
+    Status status;
+    Node* n = scope.graph()->AddNode(next_iter, &status);
+    TF_ASSERT_OK(status);
+
+    // Remove the dummy node and add the loop backedge.
+    scope.graph()->RemoveNode(dummy.node());
+    scope.graph()->AddEdge(n, 0, merge.output.node(), 1);
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+  }
+
+  FunctionLibraryDefinition lookup_lib(graph.flib_def());
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  // Function increment_fn will be copied from lookup_lib to library.
+  TF_ASSERT_OK(FunctionalizeControlFlow(&lookup_lib, &graph, &library));
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+
+  NameAttrList cond_fn, body_fn;
+  TF_ASSERT_OK(FindWhileCondAndBody(graph_def, &cond_fn, &body_fn));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto while_op =
+        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
+                      std::initializer_list<Input>{source}, cond_fn, body_fn);
+    GraphDef expected;
+    TF_ASSERT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // Body graph.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    TF_ASSERT_OK(AddNoinlineFunctionToGraph(noinline_node_name, scope.graph()));
+    auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
+    NodeDef retval;
+    retval.set_name("_retval0_RetVal");
+    retval.set_op(FunctionLibraryDefinition::kRetOp);
+    *retval.add_input() = noinline_node_name;
+    (*retval.mutable_attr())["T"].set_type(DT_INT32);
+    (*retval.mutable_attr())["index"].set_i(0);
+    Status status;
+    scope.graph()->AddNode(retval, &status);
+    TF_ASSERT_OK(status);
+
+    GraphDef expected;
+    TF_ASSERT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    // Verify that increment_fn has been copied to library.
+    TF_EXPECT_OK(InstantiateFunctionForTest(body_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.arg_types);
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    // Ignore the function library when comparing the graphs.
+    expected.clear_library();
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
+
+// Tests functionalizing OneLoopVar where the loop value is not used post the
+// loop.
+// Graph:
+// x = array_ops.placeholder(dtypes.int32)
+// control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [x])
+TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
+  Graph graph(OpRegistry::Global());
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto dummy = ops::Placeholder(scope.WithOpName("Dummy"), DT_INT32);
+
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto enter =
+        ops::internal::Enter(scope.WithOpName("while/Enter"), source, "aloop");
+    auto merge = ops::Merge(scope.WithOpName("while/Merge"),
+                            std::initializer_list<Input>{enter, dummy});
+    auto ten = ops::Const<int32>(
+        scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
+        10);
+    auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
+    auto loop_cond = ops::LoopCond(scope.WithOpName("while/LoopCond"), less);
+    auto switch_ =
+        ops::Switch(scope.WithOpName("while/Switch"), merge.output, loop_cond);
+    auto identity =
+        ops::Identity(scope.WithOpName("while/Identity"), switch_.output_true);
+    auto one = ops::Const<int32>(
+        scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
+    auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
+    auto next_iteration =
+        ops::NextIteration(scope.WithOpName("while/NextIteration"), add);
+
+    // Remove the dummy node and add the loop backedge.
+    scope.graph()->RemoveNode(dummy.node());
+    scope.graph()->AddEdge(next_iteration.node(), 0, merge.output.node(), 1);
+
+    TF_EXPECT_OK(scope.ToGraph(&graph));
+  }
+
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library));
+
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+
+  NameAttrList cond_fn, body_fn;
+  TF_EXPECT_OK(FindWhileCondAndBody(graph_def, &cond_fn, &body_fn));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+    auto while_op =
+        ops::XlaWhile(scope.WithOpName("while/LoopCond"),
+                      std::initializer_list<Input>{source}, cond_fn, body_fn);
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
     TF_EXPECT_GRAPH_EQ(expected, graph_def);
@@ -652,6 +1011,61 @@ TEST(FunctionalizeControlFlow, Complex) {
     EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32}), result.ret_types);
     TF_EXPECT_GRAPH_EQ(expected, result.gdef);
   }
+}
+
+TEST(FunctionalizeControlFlow, Cycle) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  //   -----------------------------------------------------
+  //   |                                                   |
+  //   |                                                   v
+  // less -> switch_1 --> add -> merge_1 -> identity -> switch_2
+  //            |          ^                               |
+  //            |          |                               v
+  //            --------> one -------------------------> add_2 ---> merge_2
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto switch_1 = ops::Switch(scope.WithOpName("cond/Switch"), x, less);
+    auto two =
+        ops::Const<int32>(scope.WithOpName("cond/two")
+                              .WithControlDependencies(switch_1.output_true),
+                          2);
+    auto mul = ops::Multiply(scope.WithOpName("cond/true/mul"),
+                             switch_1.output_true, two);
+    auto one =
+        ops::Const<int32>(scope.WithOpName("cond/one")
+                              .WithControlDependencies(switch_1.output_false),
+                          1);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"),
+                        switch_1.output_false, one);
+
+    auto merge_1 = ops::Merge(scope.WithOpName("cond/Merge"),
+                              std::initializer_list<Input>{add, mul});
+    auto identity =
+        ops::Identity(scope.WithOpName("cond/Merge/identity"), merge_1.output);
+    auto switch_2 =
+        ops::Switch(scope.WithOpName("grad/cond/Switch"), identity, less);
+    auto add_2 = ops::Add(scope.WithOpName("cond_2/false/add"),
+                          switch_2.output_false, one);
+    auto mul_2 = ops::Multiply(scope.WithOpName("cond_2/true/mul"),
+                               switch_2.output_true, two);
+    auto merge_2 = ops::Merge(scope.WithOpName("cond_2/Merge"),
+                              std::initializer_list<Input>{add_2, mul_2});
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  }
+  // No cycle before functionalize control flow.
+  TF_EXPECT_OK(graph::ValidateGraphHasNoCycle(*graph));
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  // switch_1 and switch_2 have the same switch depth. They are replaced by a
+  // single XlaIf node during FunctionalizeControlFlow, resulting in a cycle:
+  // less -> XlaIf <--> identity.
+  Status status = FunctionalizeControlFlow(graph.get(), &library);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Detect a cycle"))
+      << status.error_message();
 }
 
 }  // namespace

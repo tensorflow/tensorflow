@@ -20,25 +20,24 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>>&& thunks,
+SequentialThunk::SequentialThunk(std::vector<std::unique_ptr<Thunk>> thunks,
                                  const HloInstruction* hlo)
     : Thunk(Kind::kSequential, hlo), thunks_(std::move(thunks)) {}
 
-tensorflow::Status SequentialThunk::Initialize(
-    const GpuExecutable& executable) {
+Status SequentialThunk::Initialize(const GpuExecutable& executable,
+                                   se::StreamExecutor* executor) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(executable));
+    TF_RETURN_IF_ERROR(thunk->Initialize(executable, executor));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status SequentialThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+Status SequentialThunk::ExecuteOnStream(
+    const BufferAllocations& buffer_allocations, se::Stream* stream) {
   for (const auto& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

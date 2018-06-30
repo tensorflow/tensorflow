@@ -31,17 +31,21 @@ class ExpBijectorTest(test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      bijector = Exp(event_ndims=1)
+      bijector = Exp()
       self.assertEqual("exp", bijector.name)
       x = [[[1.], [2.]]]
       y = np.exp(x)
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
       self.assertAllClose(
-          -np.sum(np.log(y), axis=-1),
-          bijector.inverse_log_det_jacobian(y).eval())
-      self.assertAllClose(-bijector.inverse_log_det_jacobian(np.exp(x)).eval(),
-                          bijector.forward_log_det_jacobian(x).eval())
+          -np.squeeze(np.log(y), axis=-1),
+          bijector.inverse_log_det_jacobian(
+              y, event_ndims=1).eval())
+      self.assertAllClose(
+          -bijector.inverse_log_det_jacobian(
+              np.exp(x), event_ndims=1).eval(),
+          bijector.forward_log_det_jacobian(
+              x, event_ndims=1).eval())
 
   def testScalarCongruency(self):
     with self.test_session():
@@ -51,10 +55,10 @@ class ExpBijectorTest(test.TestCase):
 
   def testBijectiveAndFinite(self):
     with self.test_session():
-      bijector = Exp(event_ndims=0)
+      bijector = Exp()
       x = np.linspace(-10, 10, num=10).astype(np.float32)
       y = np.logspace(-10, 10, num=10).astype(np.float32)
-      assert_bijective_and_finite(bijector, x, y)
+      assert_bijective_and_finite(bijector, x, y, event_ndims=0)
 
 
 if __name__ == "__main__":

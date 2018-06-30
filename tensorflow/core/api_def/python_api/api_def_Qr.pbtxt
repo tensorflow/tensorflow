@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Qr"
+  endpoint {
+    name: "linalg.qr"
+  }
+  endpoint {
+    name: "qr"
+    deprecation_message: "tf.qr is deprecated, please use tf.linalg.qr instead."
+  }
+}

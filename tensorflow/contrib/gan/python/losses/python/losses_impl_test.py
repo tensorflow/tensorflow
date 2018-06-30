@@ -274,8 +274,8 @@ class ACGANLossTest(test.TestCase):
         self._discriminator_real_classification_logits,
         'one_hot_labels': self._one_hot_labels,
     }
-    self._generator_loss_name = 'softmax_cross_entropy_loss/value'
-    self._discriminator_loss_name = 'add'
+    self._generator_loss_name = 'acgan_generator_loss/value'
+    self._discriminator_loss_name = 'acgan_discriminator_loss/add'
     self._expected_g_loss = 3.84974
     self._expected_d_loss = 9.43950
 
@@ -453,10 +453,11 @@ class GradientPenaltyTest(test.TestCase, _PenaltyTest):
         'discriminator_scope': self._scope,
     }
     self._expected_loss = 9.00000
-    self._expected_op_name = 'weighted_loss/value'
+    self._expected_op_name = 'wasserstein_gradient_penalty/value'
     self._batch_size = 1
 
   def _discriminator_fn(self, inputs, _):
+    ops.add_to_collection('fake_update_ops', constant_op.constant(1.0))
     return variable_scope.get_variable('dummy_d', initializer=2.0) * inputs
 
   def test_loss_with_placeholder(self):
@@ -480,12 +481,77 @@ class GradientPenaltyTest(test.TestCase, _PenaltyTest):
                       })
       self.assertAlmostEqual(self._expected_loss, loss, 5)
 
+  def test_loss_using_one_sided_mode(self):
+    generated_data = array_ops.placeholder(dtypes.float32, shape=(None, None))
+    real_data = array_ops.placeholder(dtypes.float32, shape=(None, None))
+
+    loss = tfgan_losses.wasserstein_gradient_penalty(
+        generated_data,
+        real_data,
+        self._kwargs['generator_inputs'],
+        self._kwargs['discriminator_fn'],
+        self._kwargs['discriminator_scope'],
+        one_sided=True)
+    self.assertEqual(generated_data.dtype, loss.dtype)
+
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      loss = sess.run(loss,
+                      feed_dict={
+                          generated_data: self._generated_data_np,
+                          real_data: self._real_data_np,
+                      })
+      self.assertAlmostEqual(self._expected_loss, loss, 5)
+
+  def test_loss_with_gradient_norm_target(self):
+    """Test loss value with non default gradient norm target."""
+    generated_data = array_ops.placeholder(dtypes.float32, shape=(None, None))
+    real_data = array_ops.placeholder(dtypes.float32, shape=(None, None))
+
+    loss = tfgan_losses.wasserstein_gradient_penalty(
+        generated_data,
+        real_data,
+        self._kwargs['generator_inputs'],
+        self._kwargs['discriminator_fn'],
+        self._kwargs['discriminator_scope'],
+        target=2.0)
+
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      loss = sess.run(
+          loss,
+          feed_dict={
+              generated_data: self._generated_data_np,
+              real_data: self._real_data_np,
+          })
+      self.assertAlmostEqual(1.0, loss, 5)
+
   def test_reuses_scope(self):
     """Test that gradient penalty reuses discriminator scope."""
     num_vars = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
     tfgan_losses.wasserstein_gradient_penalty(**self._kwargs)
     self.assertEqual(
         num_vars, len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)))
+
+  def test_works_with_get_collection(self):
+    """Tests that gradient penalty works inside other scopes."""
+    # We ran the discriminator once in the setup, so there should be an op
+    # already in the collection.
+    self.assertEqual(1, len(ops.get_collection(
+        'fake_update_ops', self._kwargs['discriminator_scope'].name)))
+
+    # Make sure the op is added to the collection even if it's in a name scope.
+    with ops.name_scope('loss'):
+      tfgan_losses.wasserstein_gradient_penalty(**self._kwargs)
+    self.assertEqual(2, len(ops.get_collection(
+        'fake_update_ops', self._kwargs['discriminator_scope'].name)))
+
+    # Make sure the op is added to the collection even if it's in a variable
+    # scope.
+    with variable_scope.variable_scope('loss_vscope'):
+      tfgan_losses.wasserstein_gradient_penalty(**self._kwargs)
+    self.assertEqual(3, len(ops.get_collection(
+        'fake_update_ops', self._kwargs['discriminator_scope'].name)))
 
 
 class MutualInformationPenaltyTest(test.TestCase, _PenaltyTest):
@@ -504,7 +570,7 @@ class MutualInformationPenaltyTest(test.TestCase, _PenaltyTest):
         'predicted_distributions': self._predicted_distributions,
     }
     self._expected_loss = 1.61610
-    self._expected_op_name = 'mul'
+    self._expected_op_name = 'mutual_information_loss/mul_1'
     self._batch_size = 2
 
 
@@ -599,7 +665,34 @@ class CombineAdversarialLossTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       for _ in range(10):  # spot check closeness on more than one sample.
         gnorm_np, precond_gnorm_np = sess.run([gnorm, precond_gnorm])
-        self.assertNear(gnorm_np, precond_gnorm_np, 1e-5)
+        self.assertNear(gnorm_np, precond_gnorm_np, 1e-4)
+
+
+class CycleConsistencyLossTest(test.TestCase):
+  """Tests for cycle_consistency_loss."""
+
+  def setUp(self):
+    super(CycleConsistencyLossTest, self).setUp()
+
+    self._data_x_np = [[1.0, 2, 3], [4, 5, 6]]
+    self._reconstructed_data_x_np = [[7.0, 8, 9], [10, 11, 12]]
+    self._data_y_np = [1.0, 9]
+    self._reconstructed_data_y_np = [-2.0, 3]
+
+    self._data_x = constant_op.constant(self._data_x_np, dtype=dtypes.float32)
+    self._reconstructed_data_x = constant_op.constant(
+        self._reconstructed_data_x_np, dtype=dtypes.float32)
+    self._data_y = constant_op.constant(self._data_y_np, dtype=dtypes.float32)
+    self._reconstructed_data_y = constant_op.constant(
+        self._reconstructed_data_y_np, dtype=dtypes.float32)
+
+  def test_correct_loss(self):
+    loss = tfgan_losses.cycle_consistency_loss(
+        self._data_x, self._reconstructed_data_x, self._data_y,
+        self._reconstructed_data_y)
+    with self.test_session(use_gpu=True):
+      variables.global_variables_initializer().run()
+      self.assertNear(5.25, loss.eval(), 1e-5)
 
 
 if __name__ == '__main__':

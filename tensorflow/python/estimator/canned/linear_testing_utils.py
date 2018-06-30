@@ -43,17 +43,20 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import input as input_lib
-from tensorflow.python.training import optimizer
+from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
@@ -74,6 +77,7 @@ except ImportError:
 # Names of variables created by model.
 AGE_WEIGHT_NAME = 'linear/linear_model/age/weights'
 HEIGHT_WEIGHT_NAME = 'linear/linear_model/height/weights'
+OCCUPATION_WEIGHT_NAME = 'linear/linear_model/occupation/weights'
 BIAS_NAME = 'linear/linear_model/bias_weights'
 LANGUAGE_WEIGHT_NAME = 'linear/linear_model/language/weights'
 
@@ -94,7 +98,7 @@ def assert_close(expected, actual, rtol=1e-04, name='assert_close'):
 
 
 def save_variables_to_ckpt(model_dir):
-  init_all_op = [variables.global_variables_initializer()]
+  init_all_op = [variables_lib.global_variables_initializer()]
   with tf_session.Session() as sess:
     sess.run(init_all_op)
     saver.Saver().save(sess, os.path.join(model_dir, 'model.ckpt'))
@@ -139,7 +143,7 @@ class CheckPartitionerVarHook(session_run_hook.SessionRunHook):
       partitioned_weight = variable_scope.get_variable(
           self._var_name, shape=(self._var_dim, 1))
       self._test_case.assertTrue(
-          isinstance(partitioned_weight, variables.PartitionedVariable))
+          isinstance(partitioned_weight, variables_lib.PartitionedVariable))
       for part in partitioned_weight:
         self._test_case.assertEqual(self._var_dim // self._partitions,
                                     part.get_shape()[0])
@@ -240,9 +244,9 @@ class BaseLinearRegressorEvaluationTest(object):
 
   def test_evaluation_for_simple_data(self):
     with ops.Graph().as_default():
-      variables.Variable([[11.0]], name=AGE_WEIGHT_NAME)
-      variables.Variable([2.0], name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable([[11.0]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([2.0], name=BIAS_NAME)
+      variables_lib.Variable(
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -262,9 +266,9 @@ class BaseLinearRegressorEvaluationTest(object):
   def test_evaluation_batch(self):
     """Tests evaluation for batch_size==2."""
     with ops.Graph().as_default():
-      variables.Variable([[11.0]], name=AGE_WEIGHT_NAME)
-      variables.Variable([2.0], name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable([[11.0]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([2.0], name=BIAS_NAME)
+      variables_lib.Variable(
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -287,9 +291,9 @@ class BaseLinearRegressorEvaluationTest(object):
   def test_evaluation_weights(self):
     """Tests evaluation with weights."""
     with ops.Graph().as_default():
-      variables.Variable([[11.0]], name=AGE_WEIGHT_NAME)
-      variables.Variable([2.0], name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable([[11.0]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([2.0], name=BIAS_NAME)
+      variables_lib.Variable(
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -318,10 +322,10 @@ class BaseLinearRegressorEvaluationTest(object):
     x_dim = 3
     label_dim = 2
     with ops.Graph().as_default():
-      variables.Variable(
+      variables_lib.Variable(
           [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], name=AGE_WEIGHT_NAME)
-      variables.Variable([7.0, 8.0], name=BIAS_NAME)
-      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      variables_lib.Variable([7.0, 8.0], name=BIAS_NAME)
+      variables_lib.Variable(100, name='global_step', dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
@@ -352,10 +356,10 @@ class BaseLinearRegressorEvaluationTest(object):
 
   def test_evaluation_for_multiple_feature_columns(self):
     with ops.Graph().as_default():
-      variables.Variable([[10.0]], name=AGE_WEIGHT_NAME)
-      variables.Variable([[2.0]], name=HEIGHT_WEIGHT_NAME)
-      variables.Variable([5.0], name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable([[10.0]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([[2.0]], name=HEIGHT_WEIGHT_NAME)
+      variables_lib.Variable([5.0], name=BIAS_NAME)
+      variables_lib.Variable(
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -401,9 +405,9 @@ class BaseLinearRegressorPredictTest(object):
   def test_1d(self):
     """Tests predict when all variables are one-dimensional."""
     with ops.Graph().as_default():
-      variables.Variable([[10.]], name='linear/linear_model/x/weights')
-      variables.Variable([.2], name=BIAS_NAME)
-      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      variables_lib.Variable([[10.]], name='linear/linear_model/x/weights')
+      variables_lib.Variable([.2], name=BIAS_NAME)
+      variables_lib.Variable(100, name='global_step', dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
@@ -428,12 +432,12 @@ class BaseLinearRegressorPredictTest(object):
     x_dim = 4
     feature_columns = (feature_column_lib.numeric_column('x', shape=(x_dim,)),)
     with ops.Graph().as_default():
-      variables.Variable(  # shape=[x_dim, label_dimension]
+      variables_lib.Variable(  # shape=[x_dim, label_dimension]
           [[1., 2., 3.], [2., 3., 4.], [3., 4., 5.], [4., 5., 6.]],
           name='linear/linear_model/x/weights')
-      variables.Variable(  # shape=[label_dimension]
+      variables_lib.Variable(  # shape=[label_dimension]
           [.2, .4, .6], name=BIAS_NAME)
-      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      variables_lib.Variable(100, name='global_step', dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
@@ -457,10 +461,10 @@ class BaseLinearRegressorPredictTest(object):
   def testTwoFeatureColumns(self):
     """Tests predict with two feature columns."""
     with ops.Graph().as_default():
-      variables.Variable([[10.]], name='linear/linear_model/x0/weights')
-      variables.Variable([[20.]], name='linear/linear_model/x1/weights')
-      variables.Variable([.2], name=BIAS_NAME)
-      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      variables_lib.Variable([[10.]], name='linear/linear_model/x0/weights')
+      variables_lib.Variable([[20.]], name='linear/linear_model/x1/weights')
+      variables_lib.Variable([.2], name=BIAS_NAME)
+      variables_lib.Variable(100, name='global_step', dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
     linear_regressor = self._linear_regressor_fn(
@@ -678,7 +682,7 @@ class BaseLinearRegressorTrainingTest(object):
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
@@ -686,12 +690,12 @@ class BaseLinearRegressorTrainingTest(object):
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
         if global_step is not None:
-          return state_ops.assign_add(global_step, 1).op
+          return distribute_lib.increment_var(global_step)
         return control_flow_ops.no_op()
 
     mock_optimizer = test.mock.NonCallableMock(
-        spec=optimizer.Optimizer,
-        wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
+        spec=optimizer_lib.Optimizer,
+        wraps=optimizer_lib.Optimizer(use_locking=False, name='my_optimizer'))
     mock_optimizer.minimize = test.mock.MagicMock(wraps=_minimize)
 
     # NOTE: Estimator.params performs a deepcopy, which wreaks havoc with mocks.
@@ -810,9 +814,9 @@ class BaseLinearRegressorTrainingTest(object):
     bias = 5.0
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable([[age_weight]], name=AGE_WEIGHT_NAME)
-      variables.Variable([bias], name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable([[age_weight]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([bias], name=BIAS_NAME)
+      variables_lib.Variable(
           initial_global_step,
           name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
@@ -843,9 +847,9 @@ class BaseLinearRegressorTrainingTest(object):
     bias = 5.0
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable([[age_weight]], name=AGE_WEIGHT_NAME)
-      variables.Variable([bias], name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable([[age_weight]], name=AGE_WEIGHT_NAME)
+      variables_lib.Variable([bias], name=BIAS_NAME)
+      variables_lib.Variable(
           initial_global_step,
           name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
@@ -901,17 +905,17 @@ class BaseLinearClassifierTrainingTest(object):
       # Verify loss. We can't check the value directly, so we add an assert op.
       self.assertEquals(0, loss.shape.ndims)
       if expected_loss is None:
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
       assert_loss = assert_close(
           math_ops.to_float(expected_loss, name='expected'),
           loss,
           name='assert_loss')
       with ops.control_dependencies((assert_loss,)):
-        return state_ops.assign_add(global_step, 1).op
+        return distribute_lib.increment_var(global_step)
 
     mock_optimizer = test.mock.NonCallableMock(
-        spec=optimizer.Optimizer,
-        wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
+        spec=optimizer_lib.Optimizer,
+        wraps=optimizer_lib.Optimizer(use_locking=False, name='my_optimizer'))
     mock_optimizer.minimize = test.mock.MagicMock(wraps=_minimize)
 
     # NOTE: Estimator.params performs a deepcopy, which wreaks havoc with mocks.
@@ -1124,10 +1128,11 @@ class BaseLinearClassifierTrainingTest(object):
     bias = [-35.0] if n_classes == 2 else [-35.0] * n_classes
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(
-          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(
+          initial_global_step,
+          name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -1184,10 +1189,11 @@ class BaseLinearClassifierTrainingTest(object):
     bias = [-35.0]
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(
-          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(
+          initial_global_step,
+          name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -1228,10 +1234,11 @@ class BaseLinearClassifierTrainingTest(object):
     bias = [-35.0] if n_classes == 2 else [-35.0] * n_classes
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(
-          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(
+          initial_global_step,
+          name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -1310,9 +1317,9 @@ class BaseLinearClassifierEvaluationTest(object):
     bias = [-30.0] if n_classes == 2 else [-30.0] * n_classes
 
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -1330,6 +1337,8 @@ class BaseLinearClassifierEvaluationTest(object):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: 41.,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.,
           metric_keys.MetricKeys.LABEL_MEAN: 1.,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 1,
@@ -1372,10 +1381,11 @@ class BaseLinearClassifierEvaluationTest(object):
     bias = [-35.0] if n_classes == 2 else [-35.0] * n_classes
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(
-          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(
+          initial_global_step,
+          name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -1398,6 +1408,8 @@ class BaseLinearClassifierEvaluationTest(object):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: 0.5,
           metric_keys.MetricKeys.LABEL_MEAN: 0.5,
           metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
@@ -1445,10 +1457,11 @@ class BaseLinearClassifierEvaluationTest(object):
     bias = [-35.0] if n_classes == 2 else [-35.0] * n_classes
     initial_global_step = 100
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(
-          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(
+          initial_global_step,
+          name=ops.GraphKeys.GLOBAL_STEP,
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
@@ -1478,6 +1491,8 @@ class BaseLinearClassifierEvaluationTest(object):
           ops.GraphKeys.GLOBAL_STEP: 100,
           metric_keys.MetricKeys.LOSS_MEAN: loss_mean,
           metric_keys.MetricKeys.ACCURACY: 0.,
+          metric_keys.MetricKeys.PRECISION: 0.,
+          metric_keys.MetricKeys.RECALL: 0.,
           metric_keys.MetricKeys.PREDICTION_MEAN: predictions_mean,
           metric_keys.MetricKeys.LABEL_MEAN: label_mean,
           metric_keys.MetricKeys.ACCURACY_BASELINE: (
@@ -1526,7 +1541,7 @@ class BaseLinearClassifierPredictTest(object):
     if self._model_dir:
       shutil.rmtree(self._model_dir)
 
-  def _testPredications(self, n_classes, label_vocabulary, label_output_fn):
+  def _testPredictions(self, n_classes, label_vocabulary, label_output_fn):
     """Tests predict when all variables are one-dimensional."""
     age = 1.
 
@@ -1539,9 +1554,9 @@ class BaseLinearClassifierPredictTest(object):
     bias = [10.0] if n_classes == 2 else [10.0] * n_classes
 
     with ops.Graph().as_default():
-      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
-      variables.Variable(bias, name=BIAS_NAME)
-      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      variables_lib.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables_lib.Variable(bias, name=BIAS_NAME)
+      variables_lib.Variable(100, name='global_step', dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
     est = self._linear_classifier_fn(
@@ -1594,13 +1609,13 @@ class BaseLinearClassifierPredictTest(object):
 
   def testBinaryClassesWithoutLabelVocabulary(self):
     n_classes = 2
-    self._testPredications(n_classes,
-                           label_vocabulary=None,
-                           label_output_fn=lambda x: ('%s' % x).encode())
+    self._testPredictions(n_classes,
+                          label_vocabulary=None,
+                          label_output_fn=lambda x: ('%s' % x).encode())
 
   def testBinaryClassesWithLabelVocabulary(self):
     n_classes = 2
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=['class_vocab_{}'.format(i)
                           for i in range(n_classes)],
@@ -1608,14 +1623,14 @@ class BaseLinearClassifierPredictTest(object):
 
   def testMultiClassesWithoutLabelVocabulary(self):
     n_classes = 4
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=None,
         label_output_fn=lambda x: ('%s' % x).encode())
 
   def testMultiClassesWithLabelVocabulary(self):
     n_classes = 4
-    self._testPredications(
+    self._testPredictions(
         n_classes,
         label_vocabulary=['class_vocab_{}'.format(i)
                           for i in range(n_classes)],
@@ -1815,12 +1830,12 @@ class BaseLinearLogitFnTest(object):
     with ops.Graph().as_default():
       logit_fn = linear._linear_logit_fn_builder(units=2, feature_columns=[age])
       logits = logit_fn(features={'age': [[23.], [31.]]})
-      with variable_scope.variable_scope('linear_model', reuse=True):
-        bias_var = variable_scope.get_variable('bias_weights')
+      bias_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                    'linear_model/bias_weights')[0]
       age_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                    'linear_model/age')[0]
       with tf_session.Session() as sess:
-        sess.run([variables.global_variables_initializer()])
+        sess.run([variables_lib.global_variables_initializer()])
         self.assertAllClose([[0., 0.], [0., 0.]], logits.eval())
         sess.run(bias_var.assign([10., 5.]))
         self.assertAllClose([[10., 5.], [10., 5.]], logits.eval())
@@ -1828,3 +1843,262 @@ class BaseLinearLogitFnTest(object):
         # [2 * 23 + 10, 3 * 23 + 5] = [56, 74].
         # [2 * 31 + 10, 3 * 31 + 5] = [72, 98]
         self.assertAllClose([[56., 74.], [72., 98.]], logits.eval())
+
+  def test_compute_fraction_of_zero(self):
+    """Tests the calculation of sparsity."""
+    age = feature_column_lib.numeric_column('age')
+    occupation = feature_column_lib.categorical_column_with_hash_bucket(
+        'occupation', hash_bucket_size=5)
+    with ops.Graph().as_default():
+      cols_to_vars = {}
+      feature_column_lib.linear_model(
+          features={
+              'age': [[23.], [31.]],
+              'occupation': [['doctor'], ['engineer']]
+          },
+          feature_columns=[age, occupation],
+          units=3,
+          cols_to_vars=cols_to_vars)
+      cols_to_vars.pop('bias')
+      fraction_zero = linear._compute_fraction_of_zero(cols_to_vars)
+      age_var = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
+                                   'linear_model/age')[0]
+      with tf_session.Session() as sess:
+        sess.run([variables_lib.global_variables_initializer()])
+        # Upon initialization, all variables will be zero.
+        self.assertAllClose(1, fraction_zero.eval())
+
+        sess.run(age_var.assign([[2.0, 0.0, -1.0]]))
+        # 1 of the 3 age weights are zero, and all of the 15 (5 hash buckets
+        # x 3-dim output) are zero.
+        self.assertAllClose(16. / 18., fraction_zero.eval())
+
+
+class BaseLinearWarmStartingTest(object):
+
+  def __init__(self, _linear_classifier_fn, _linear_regressor_fn):
+    self._linear_classifier_fn = _linear_classifier_fn
+    self._linear_regressor_fn = _linear_regressor_fn
+
+  def setUp(self):
+    # Create a directory to save our old checkpoint and vocabularies to.
+    self._ckpt_and_vocab_dir = tempfile.mkdtemp()
+
+    # Make a dummy input_fn.
+    def _input_fn():
+      features = {
+          'age': [[23.], [31.]],
+          'age_in_years': [[23.], [31.]],
+          'occupation': [['doctor'], ['consultant']]
+      }
+      return features, [0, 1]
+
+    self._input_fn = _input_fn
+
+  def tearDown(self):
+    # Clean up checkpoint / vocab dir.
+    writer_cache.FileWriterCache.clear()
+    shutil.rmtree(self._ckpt_and_vocab_dir)
+
+  def test_classifier_basic_warm_starting(self):
+    """Tests correctness of LinearClassifier default warm-start."""
+    age = feature_column_lib.numeric_column('age')
+
+    # Create a LinearClassifier and train to save a checkpoint.
+    linear_classifier = self._linear_classifier_fn(
+        feature_columns=[age],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD')
+    linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second LinearClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_linear_classifier = self._linear_classifier_fn(
+        feature_columns=[age],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        warm_start_from=linear_classifier.model_dir)
+
+    warm_started_linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_linear_classifier.get_variable_names():
+      self.assertAllClose(
+          linear_classifier.get_variable_value(variable_name),
+          warm_started_linear_classifier.get_variable_value(variable_name))
+
+  def test_regressor_basic_warm_starting(self):
+    """Tests correctness of LinearRegressor default warm-start."""
+    age = feature_column_lib.numeric_column('age')
+
+    # Create a LinearRegressor and train to save a checkpoint.
+    linear_regressor = self._linear_regressor_fn(
+        feature_columns=[age],
+        model_dir=self._ckpt_and_vocab_dir,
+        optimizer='SGD')
+    linear_regressor.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second LinearRegressor, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_linear_regressor = self._linear_regressor_fn(
+        feature_columns=[age],
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        warm_start_from=linear_regressor.model_dir)
+
+    warm_started_linear_regressor.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_linear_regressor.get_variable_names():
+      self.assertAllClose(
+          linear_regressor.get_variable_value(variable_name),
+          warm_started_linear_regressor.get_variable_value(variable_name))
+
+  def test_warm_starting_selective_variables(self):
+    """Tests selecting variables to warm-start."""
+    age = feature_column_lib.numeric_column('age')
+
+    # Create a LinearClassifier and train to save a checkpoint.
+    linear_classifier = self._linear_classifier_fn(
+        feature_columns=[age],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD')
+    linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second LinearClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_linear_classifier = self._linear_classifier_fn(
+        feature_columns=[age],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        # The provided regular expression will only warm-start the age variable
+        # and not the bias.
+        warm_start_from=estimator.WarmStartSettings(
+            ckpt_to_initialize_from=linear_classifier.model_dir,
+            vars_to_warm_start='.*(age).*'))
+
+    warm_started_linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+    self.assertAllClose(
+        linear_classifier.get_variable_value(AGE_WEIGHT_NAME),
+        warm_started_linear_classifier.get_variable_value(AGE_WEIGHT_NAME))
+    # Bias should still be zero from initialization.
+    self.assertAllClose(
+        [0.0] * 4, warm_started_linear_classifier.get_variable_value(BIAS_NAME))
+
+  def test_warm_starting_with_vocab_remapping_and_partitioning(self):
+    """Tests warm-starting with vocab remapping and partitioning."""
+    vocab_list = ['doctor', 'lawyer', 'consultant']
+    vocab_file = os.path.join(self._ckpt_and_vocab_dir, 'occupation_vocab')
+    with open(vocab_file, 'w') as f:
+      f.write('\n'.join(vocab_list))
+    occupation = feature_column_lib.categorical_column_with_vocabulary_file(
+        'occupation',
+        vocabulary_file=vocab_file,
+        vocabulary_size=len(vocab_list))
+
+    # Create a LinearClassifier and train to save a checkpoint.
+    partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2)
+    linear_classifier = self._linear_classifier_fn(
+        feature_columns=[occupation],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD',
+        partitioner=partitioner)
+    linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second LinearClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).  Use a new FeatureColumn with a
+    # different vocabulary for occupation.
+    new_vocab_list = ['doctor', 'consultant', 'engineer']
+    new_vocab_file = os.path.join(self._ckpt_and_vocab_dir,
+                                  'new_occupation_vocab')
+    with open(new_vocab_file, 'w') as f:
+      f.write('\n'.join(new_vocab_list))
+    new_occupation = feature_column_lib.categorical_column_with_vocabulary_file(
+        'occupation',
+        vocabulary_file=new_vocab_file,
+        vocabulary_size=len(new_vocab_list))
+    # We can create our VocabInfo object from the new and old occupation
+    # FeatureColumn's.
+    occupation_vocab_info = estimator.VocabInfo(
+        new_vocab=new_occupation.vocabulary_file,
+        new_vocab_size=new_occupation.vocabulary_size,
+        num_oov_buckets=new_occupation.num_oov_buckets,
+        old_vocab=occupation.vocabulary_file,
+        old_vocab_size=occupation.vocabulary_size,
+        # Can't use constant_initializer with load_and_remap.  In practice,
+        # use a truncated normal initializer.
+        backup_initializer=init_ops.random_uniform_initializer(
+            minval=0.39, maxval=0.39))
+    warm_started_linear_classifier = self._linear_classifier_fn(
+        feature_columns=[occupation],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        warm_start_from=estimator.WarmStartSettings(
+            ckpt_to_initialize_from=linear_classifier.model_dir,
+            var_name_to_vocab_info={
+                OCCUPATION_WEIGHT_NAME: occupation_vocab_info
+            },
+            # Explicitly providing None here will only warm-start variables
+            # referenced in var_name_to_vocab_info (the bias will not be
+            # warm-started).
+            vars_to_warm_start=None),
+        partitioner=partitioner)
+
+    warm_started_linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+    # 'doctor' was ID-0 and still ID-0.
+    self.assertAllClose(
+        linear_classifier.get_variable_value(OCCUPATION_WEIGHT_NAME)[0, :],
+        warm_started_linear_classifier.get_variable_value(
+            OCCUPATION_WEIGHT_NAME)[0, :])
+    # 'consultant' was ID-2 and now ID-1.
+    self.assertAllClose(
+        linear_classifier.get_variable_value(OCCUPATION_WEIGHT_NAME)[2, :],
+        warm_started_linear_classifier.get_variable_value(
+            OCCUPATION_WEIGHT_NAME)[1, :])
+    # 'engineer' is a new entry and should be initialized with the
+    # backup_initializer in VocabInfo.
+    self.assertAllClose([0.39] * 4,
+                        warm_started_linear_classifier.get_variable_value(
+                            OCCUPATION_WEIGHT_NAME)[2, :])
+    # Bias should still be zero (from initialization logic).
+    self.assertAllClose(
+        [0.0] * 4, warm_started_linear_classifier.get_variable_value(BIAS_NAME))
+
+  def test_warm_starting_with_naming_change(self):
+    """Tests warm-starting with a Tensor name remapping."""
+    age_in_years = feature_column_lib.numeric_column('age_in_years')
+
+    # Create a LinearClassifier and train to save a checkpoint.
+    linear_classifier = self._linear_classifier_fn(
+        feature_columns=[age_in_years],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD')
+    linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second LinearClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_linear_classifier = self._linear_classifier_fn(
+        feature_columns=[feature_column_lib.numeric_column('age')],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        # The 'age' variable correspond to the 'age_in_years' variable in the
+        # previous model.
+        warm_start_from=estimator.WarmStartSettings(
+            ckpt_to_initialize_from=linear_classifier.model_dir,
+            var_name_to_prev_var_name={
+                AGE_WEIGHT_NAME: AGE_WEIGHT_NAME.replace('age', 'age_in_years')
+            }))
+
+    warm_started_linear_classifier.train(input_fn=self._input_fn, max_steps=1)
+    self.assertAllClose(
+        linear_classifier.get_variable_value(
+            AGE_WEIGHT_NAME.replace('age', 'age_in_years')),
+        warm_started_linear_classifier.get_variable_value(AGE_WEIGHT_NAME))
+    # The bias is also warm-started (with no name remapping).
+    self.assertAllClose(
+        linear_classifier.get_variable_value(BIAS_NAME),
+        warm_started_linear_classifier.get_variable_value(BIAS_NAME))

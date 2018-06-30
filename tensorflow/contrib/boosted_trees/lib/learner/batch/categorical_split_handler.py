@@ -23,6 +23,7 @@ from tensorflow.contrib.boosted_trees.python.ops import split_handler_ops
 from tensorflow.contrib.boosted_trees.python.ops import stats_accumulator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -44,6 +45,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
                hessian_shape,
                multiclass_strategy,
                init_stamp_token=0,
+               loss_uses_sum_reduction=False,
                name=None):
     """Initialize the internal state for this split handler.
 
@@ -62,6 +64,8 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
       multiclass_strategy: Strategy describing how to treat multiclass problems.
       init_stamp_token: A tensor containing an scalar for initial stamp of the
          stamped objects.
+      loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
+          SUM or MEAN reduction was used for the loss.
       name: An optional handler name.
     """
     super(EqualitySplitHandler, self).__init__(
@@ -73,6 +77,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
         gradient_shape=gradient_shape,
         hessian_shape=hessian_shape,
         multiclass_strategy=multiclass_strategy,
+        loss_uses_sum_reduction=loss_uses_sum_reduction,
         name=name)
     self._stats_accumulator = stats_accumulator_ops.StatsAccumulator(
         init_stamp_token,
@@ -110,8 +115,8 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
 
     def not_active_inputs():
       return (constant_op.constant([], dtype=dtypes.int32),
-              constant_op.constant([], dtype=dtypes.int64), empty_gradients,
-              empty_hessians)
+              constant_op.constant([], dtype=dtypes.int64, shape=[1, 2]),
+              empty_gradients, empty_hessians)
 
     def active_inputs():
       """The normal flow when the handler is active."""
@@ -154,7 +159,12 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
           [per_partition_hessians, filtered_hessians], 0)
       feature_ids = array_ops.concat(
           [bias_feature_ids, self._sparse_int_column.values], 0)
-      return partition_ids, feature_ids, filtered_gradients, filtered_hessians
+      # Dimension is always zero for sparse int features.
+      dimension_ids = array_ops.zeros_like(feature_ids, dtype=dtypes.int64)
+      feature_ids_and_dimensions = array_ops.stack(
+          [feature_ids, dimension_ids], axis=1)
+      return (partition_ids, feature_ids_and_dimensions, filtered_gradients,
+              filtered_hessians)
 
     partition_ids, feature_ids, gradients_out, hessians_out = (
         control_flow_ops.cond(is_active[0], active_inputs, not_active_inputs))
@@ -168,6 +178,11 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
     # pair.
     num_minibatches, partition_ids, feature_ids, gradients, hessians = (
         self._stats_accumulator.flush(stamp_token, next_stamp_token))
+    # For sum_reduction, we don't need to divide by number of minibatches.
+
+    num_minibatches = control_flow_ops.cond(
+        ops.convert_to_tensor(self._loss_uses_sum_reduction),
+        lambda: math_ops.to_int64(1), lambda: num_minibatches)
     partition_ids, gains, split_infos = (
         split_handler_ops.build_categorical_equality_splits(
             num_minibatches=num_minibatches,
@@ -182,7 +197,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
             tree_complexity_regularization=self._tree_complexity_regularization,
             min_node_weight=self._min_node_weight,
             bias_feature_id=_BIAS_FEATURE_ID,
-            multiclass_strategy=self._multiclass_strategy,))
+            multiclass_strategy=self._multiclass_strategy))
     # There are no warm-up rounds needed in the equality column handler. So we
     # always return ready.
     are_splits_ready = constant_op.constant(True)

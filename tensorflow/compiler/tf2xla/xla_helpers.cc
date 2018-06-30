@@ -13,115 +13,174 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file defines helper routines for Tla JIT compilation.
+// This file defines helper routines for XLA compilation.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
+
 #include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
-xla::ComputationDataHandle XlaHelpers::MinValue(xla::ComputationBuilder* b,
-                                                DataType data_type) {
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::Literal::MinValue(type));
-}
+namespace {
 
-xla::ComputationDataHandle XlaHelpers::MaxValue(xla::ComputationBuilder* b,
-                                                DataType data_type) {
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::Literal::MaxValue(type));
-}
-
-xla::ComputationDataHandle XlaHelpers::Zero(xla::ComputationBuilder* b,
-                                            DataType data_type) {
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::Literal::Zero(type));
-}
-
-xla::ComputationDataHandle XlaHelpers::One(xla::ComputationBuilder* b,
-                                           DataType data_type) {
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return b->ConstantLiteral(xla::Literal::One(type));
-}
-
-xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
-    xla::ComputationBuilder* b, DataType data_type, int64 value) {
-  xla::Literal literal;
-  xla::PrimitiveType type;
-  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  switch (type) {
-    case xla::U8:
-      literal = *xla::Literal::CreateR0<uint8>(value);
-      break;
-    case xla::U32:
-      literal = *xla::Literal::CreateR0<uint32>(value);
-      break;
-    case xla::U64:
-      literal = *xla::Literal::CreateR0<uint64>(value);
-      break;
-    case xla::S8:
-      literal = *xla::Literal::CreateR0<int8>(value);
-      break;
-    case xla::S32:
-      literal = *xla::Literal::CreateR0<int32>(value);
-      break;
-    case xla::S64:
-      literal = *xla::Literal::CreateR0<int64>(value);
-      break;
-    case xla::F32:
-      literal = *xla::Literal::CreateR0<float>(value);
-      break;
-    case xla::F64:
-      literal = *xla::Literal::CreateR0<double>(value);
-      break;
-    case xla::PRED:
-      LOG(FATAL) << "pred element type is not integral";
-    case xla::S16:
-    case xla::U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case xla::F16:
-      literal =
-          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value));
-      break;
-    case xla::TUPLE:
-      LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE:
-      LOG(FATAL) << "opaque element type is not integral";
-    default:
-      LOG(FATAL) << "unhandled element type " << type;
+Status ArgMinMax(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
+                 const xla::XlaOp& input, const TensorShape& input_shape,
+                 DataType input_type, DataType output_type, int axis,
+                 bool is_min, xla::XlaOp* argminmax) {
+  xla::XlaOp init_value;
+  const xla::XlaComputation* reducer;
+  if (is_min) {
+    init_value = XlaHelpers::MaxValue(builder, input_type);
+    reducer = ctx->GetOrCreateMin(input_type);
+  } else {
+    init_value = XlaHelpers::MinValue(builder, input_type);
+    reducer = ctx->GetOrCreateMax(input_type);
   }
-  return b->ConstantLiteral(literal);
+
+  xla::PrimitiveType xla_output_type;
+  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(output_type, &xla_output_type));
+
+  xla::XlaOp input_max = xla::Reduce(input, init_value, *reducer,
+                                     /*dimensions_to_reduce=*/{axis});
+  std::vector<int64> broadcast_dims(input_shape.dims() - 1);
+  std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
+  std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
+  // Compute a mask that has 1s for elements equal to the maximum.
+  xla::XlaOp partial_mask = xla::ConvertElementType(
+      xla::Eq(input, input_max, broadcast_dims), xla_output_type);
+
+  // In order to make identity elements for a bitwise And, we:
+  //   Left shift the 1 to the leftmost bit, yielding 0x10...0
+  //   Arithmetic right shift the 1 back to the rightmost bit, yielding
+  //   0xFF...F
+  int32 bits_in_type =
+      xla::ShapeUtil::ByteSizeOfPrimitiveType(xla_output_type) * 8 - 1;
+  xla::XlaOp shift_amount =
+      XlaHelpers::IntegerLiteral(builder, output_type, bits_in_type);
+  xla::XlaOp full_mask = xla::ShiftRightArithmetic(
+      xla::ShiftLeft(partial_mask, shift_amount), shift_amount);
+
+  // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its
+  // index.
+
+  const int64 axis_size = input_shape.dim_size(axis);
+  xla::XlaOp iota = xla::Iota(builder, xla_output_type, axis_size);
+  xla::XlaOp product =
+      xla::And(full_mask, iota, /*broadcast_dimensions=*/{axis});
+
+  // If there are multiple maximum elements, choose the one with the highest
+  // index.
+  xla::XlaOp output =
+      xla::Reduce(product, XlaHelpers::MinValue(builder, output_type),
+                  *ctx->GetOrCreateMax(output_type),
+                  /*dimensions_to_reduce=*/{axis});
+  *argminmax = output;
+  return Status::OK();
 }
 
-xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
-                                                    DataType data_type,
-                                                    double value) {
-  xla::Literal literal;
+}  // namespace
+
+xla::XlaOp XlaHelpers::MinValue(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  return xla::ConstantLiteral(b, xla::Literal::MinValue(type));
+}
+
+xla::XlaOp XlaHelpers::MinFiniteValue(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   switch (type) {
     case xla::F16:
-      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
-      break;
+      return xla::ConstantR0<Eigen::half>(
+          b, Eigen::NumTraits<Eigen::half>::lowest());
+    case xla::BF16:
+      return xla::ConstantR0<bfloat16>(b, bfloat16::lowest());
     case xla::F32:
-      return b->ConstantR0<float>(static_cast<float>(value));
-      break;
+      return xla::ConstantR0<float>(b, -std::numeric_limits<float>::max());
     case xla::F64:
-      return b->ConstantR0<double>(value);
-      break;
+      return xla::ConstantR0<double>(b, -std::numeric_limits<double>::max());
     default:
-      LOG(FATAL) << "unhandled element type " << type;
+      return xla::ConstantLiteral(b, xla::Literal::MinValue(type));
   }
+}
+
+xla::XlaOp XlaHelpers::MaxValue(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  return xla::ConstantLiteral(b, xla::Literal::MaxValue(type));
+}
+
+xla::XlaOp XlaHelpers::MaxFiniteValue(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  switch (type) {
+    case xla::F16:
+      return xla::ConstantR0<Eigen::half>(
+          b, Eigen::NumTraits<Eigen::half>::highest());
+    case xla::BF16:
+      return xla::ConstantR0<bfloat16>(b, bfloat16::highest());
+    case xla::F32:
+      return xla::ConstantR0<float>(b, std::numeric_limits<float>::max());
+    case xla::F64:
+      return xla::ConstantR0<double>(b, std::numeric_limits<double>::max());
+    default:
+      return xla::ConstantLiteral(b, xla::Literal::MaxValue(type));
+  }
+}
+
+xla::XlaOp XlaHelpers::Zero(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  return xla::ConstantLiteral(b, xla::Literal::Zero(type));
+}
+
+xla::XlaOp XlaHelpers::One(xla::XlaBuilder* b, DataType data_type) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  return xla::ConstantLiteral(b, xla::Literal::One(type));
+}
+
+xla::XlaOp XlaHelpers::Epsilon(xla::XlaBuilder* b, DataType data_type) {
+  switch (data_type) {
+    case DT_HALF:
+      return xla::ConstantR0<Eigen::half>(
+          b,
+          static_cast<Eigen::half>(Eigen::NumTraits<Eigen::half>::epsilon()));
+    case DT_BFLOAT16:
+      return xla::ConstantR0<bfloat16>(b, bfloat16::epsilon());
+    case DT_FLOAT:
+      return xla::ConstantR0<float>(b, std::numeric_limits<float>::epsilon());
+    case DT_DOUBLE:
+      return xla::ConstantR0<double>(b, std::numeric_limits<double>::epsilon());
+    default:
+      LOG(FATAL) << "Unsupported type in XlaHelpers::Epsilon: "
+                 << DataTypeString(data_type);
+  }
+}
+
+xla::XlaOp XlaHelpers::IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
+                                      int64 value) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  return ::tensorflow::IntegerLiteral(b, type, value);
+}
+
+xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
+                                    double value) {
+  xla::PrimitiveType type;
+  TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
+  return ::tensorflow::FloatLiteral(b, type, value);
 }
 
 /* static */ Status XlaHelpers::ReshapeLiteral(
@@ -140,8 +199,8 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
         "elements.");
   }
 
-  *output = input;
-  output->mutable_shape()->Swap(&shape);
+  *output = input.Clone();
+  output->mutable_shape_do_not_use()->Swap(&shape);
   return Status::OK();
 }
 
@@ -155,13 +214,26 @@ static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
   return linspace;
 }
 
-Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
-                          int axis, DataType index_type,
-                          const TensorShape& indices_shape,
-                          const xla::ComputationDataHandle& indices,
-                          const xla::ComputationDataHandle& on_value,
-                          const xla::ComputationDataHandle& off_value,
-                          xla::ComputationDataHandle* one_hot) {
+Status XlaHelpers::ArgMax(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
+                          const xla::XlaOp& input,
+                          const TensorShape& input_shape, DataType input_type,
+                          DataType output_type, int axis, xla::XlaOp* argmax) {
+  return ArgMinMax(builder, ctx, input, input_shape, input_type, output_type,
+                   axis, /*is_min=*/false, argmax);
+}
+
+Status XlaHelpers::ArgMin(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
+                          const xla::XlaOp& input,
+                          const TensorShape& input_shape, DataType input_type,
+                          DataType output_type, int axis, xla::XlaOp* argmin) {
+  return ArgMinMax(builder, ctx, input, input_shape, input_type, output_type,
+                   axis, /*is_min=*/true, argmin);
+}
+
+Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
+                          DataType index_type, const TensorShape& indices_shape,
+                          const xla::XlaOp& indices, const xla::XlaOp& on_value,
+                          const xla::XlaOp& off_value, xla::XlaOp* one_hot) {
   const int indices_dims = indices_shape.dims();
   const int output_dims = indices_dims + 1;
 
@@ -187,31 +259,40 @@ Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
       return errors::InvalidArgument("Invalid argument type ",
                                      DataTypeString(index_type));
   }
-  xla::Literal linspace_literal;
-  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+
+  xla::BorrowingLiteral linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(linspace, &linspace_literal));
 
   // Broadcast the linspace constant across the indices along the new axis,
   // and test equality at each position.
   std::vector<int64> broadcast_dims(indices_shape.dims());
   std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
   std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-  xla::ComputationDataHandle one_hot_bool = builder->Eq(
-      indices, builder->ConstantLiteral(linspace_literal), broadcast_dims);
+  xla::XlaOp one_hot_bool = xla::Eq(
+      indices, xla::ConstantLiteral(builder, linspace_literal), broadcast_dims);
 
   // Selects the user-provided off_value and on_value values.
-  *one_hot = builder->Select(
-      one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
-      builder->Broadcast(off_value, output_shape.dim_sizes()));
+  *one_hot = xla::Select(one_hot_bool,
+                         xla::Broadcast(on_value, output_shape.dim_sizes()),
+                         xla::Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
 }
 
-xla::ComputationDataHandle XlaHelpers::PadWithZeros(
-    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
-    int count) {
-  xla::ComputationDataHandle zero = builder->ConstantR1<int32>({0});
-  std::vector<xla::ComputationDataHandle> xs(count + 1, zero);
-  xs[0] = builder->Reshape(x, {1});
-  return builder->ConcatInDim(xs, 0);
+DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
+  // Upcast 16 bit sum reductions to 32 bit to reduce the precision loss from
+  // repeated floating point additions.
+  if (dtype == DT_BFLOAT16 || dtype == DT_HALF) {
+    return DT_FLOAT;
+  }
+  return dtype;
+}
+
+xla::XlaOp XlaHelpers::ConvertElementType(xla::XlaBuilder* const builder,
+                                          const xla::XlaOp& operand,
+                                          const DataType new_element_type) {
+  xla::PrimitiveType convert_to;
+  TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));
+  return xla::ConvertElementType(operand, convert_to);
 }
 
 }  // end namespace tensorflow

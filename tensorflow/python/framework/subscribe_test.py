@@ -58,12 +58,12 @@ class SubscribeTest(test_util.TensorFlowTestCase):
       return t
 
     c0 = c
-    self.assertTrue(c0.op in d.op._control_inputs)
+    self.assertTrue(c0.op in d.op.control_inputs)
     c = subscribe.subscribe(c,
                             lambda t: script_ops.py_func(sub, [t], [t.dtype]))
     # Verify that control dependencies are correctly moved to the subscription.
-    self.assertFalse(c0.op in d.op._control_inputs)
-    self.assertTrue(c.op in d.op._control_inputs)
+    self.assertFalse(c0.op in d.op.control_inputs)
+    self.assertTrue(c.op in d.op.control_inputs)
 
     with self.test_session() as sess:
       c_out = sess.run([c])

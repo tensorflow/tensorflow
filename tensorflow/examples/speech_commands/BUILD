@@ -10,6 +10,8 @@ exports_files([
     "LICENSE",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
@@ -123,7 +125,7 @@ tf_py_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "label_wav_cc",
     srcs = [
         "label_wav.cc",
@@ -177,7 +179,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "recognize_commands_test",
     size = "medium",
     srcs = [
@@ -211,7 +213,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "accuracy_utils_test",
     size = "medium",
     srcs = [
@@ -227,7 +229,7 @@ cc_test(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "test_streaming_accuracy",
     srcs = [
         "test_streaming_accuracy.cc",
@@ -242,16 +244,4 @@ cc_binary(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

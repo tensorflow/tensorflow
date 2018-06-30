@@ -68,17 +68,15 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
-  void ExpectError(
-      const string& gdef_ascii, const ImportGraphDefOptions& opts,
-      const std::vector<string>& expected_error_strs,
-      ShapeRefiner* refiner = nullptr,
-      std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+  void ExpectError(const string& gdef_ascii, const ImportGraphDefOptions& opts,
+                   const std::vector<string>& expected_error_strs,
+                   ShapeRefiner* refiner = nullptr,
+                   ImportGraphDefResults* results = nullptr) {
     // Used to verify that errors don't change graph
     const string original_graph_description = GraphDebugString();
 
     Convert(gdef_ascii);
-    Status status =
-        ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    Status status = ImportGraphDef(opts, gdef_, &graph_, refiner, results);
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
@@ -97,9 +95,9 @@ class GraphConstructorTest : public ::testing::Test {
 
   void ExpectOK(const string& gdef_ascii, const ImportGraphDefOptions& opts,
                 ShapeRefiner* refiner = nullptr,
-                std::vector<std::pair<Node*, int>>* return_tensors = nullptr) {
+                ImportGraphDefResults* results = nullptr) {
     Convert(gdef_ascii);
-    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, return_tensors);
+    Status s = ImportGraphDef(opts, gdef_, &graph_, refiner, results);
     EXPECT_EQ(Status::OK(), s) << s;
   }
 
@@ -158,13 +156,13 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     StringPiece loc(value[0]);
-    return loc.Consume(kColocationGroupPrefix) ? loc.ToString() : "";
+    return str_util::ConsumePrefix(&loc, kColocationGroupPrefix)
+               ? std::string(loc)
+               : "";
   }
 
   string GraphDebugString() const {
-    GraphDef def;
-    graph_.ToGraphDef(&def);
-    return def.DebugString();
+    return graph_.ToGraphDefDebug().DebugString();
   }
 
   Graph graph_;
@@ -1279,8 +1277,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
 
   // Create input_map containing control edges and use it to import more nodes
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("W1", -1);
-  opts.input_map[TensorId("W3", -1)] = TensorId("W1", -1);
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("W3", kControlSlot)] = TensorId("W1", kControlSlot);
   ExpectOK(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1316,7 +1315,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
   // node
   opts.prefix = "import";
   opts.input_map.clear();
-  opts.input_map[TensorId("W1", -1)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W1", kControlSlot)] = TensorId("W1", kControlSlot);
   ExpectOK(
       R"EOF(
       node { name: 'W1' op: 'TestParams' }
@@ -1343,7 +1342,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 
   // Create input_map with bad control edge mapping
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("W1", 0);
+  opts.input_map[TensorId("W2", Graph::kControlSlot)] = TensorId("W1", 0);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1355,7 +1354,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithBadControlEdge) {
 
   opts.input_map.clear();
   // "W2:0" isn't used in the imported graph but still causes an error
-  opts.input_map[TensorId("W2", 0)] = TensorId("W1", -1);
+  opts.input_map[TensorId("W2", 0)] = TensorId("W1", Graph::kControlSlot);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1396,7 +1395,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithMissingEntries) {
 
   // Create input_map referencing node that doesn't exist in graph
   ImportGraphDefOptions opts;
-  opts.input_map[TensorId("W2", -1)] = TensorId("DNE", -1);
+  const int kControlSlot = Graph::kControlSlot;
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("DNE", kControlSlot);
   ExpectError(
       R"EOF(
       node { name: 'W2' op: 'TestParams' }
@@ -1431,6 +1431,116 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapDuplicateNodeNames) {
       opts,
       {"cannot resolve input_map because multiple nodes exist with name 'dup'"},
       &refiner);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapMissingUnusedKeys) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // No input map
+  ImportGraphDefOptions opts;
+  ImportGraphDefResults results;
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }",
+      opts, &refiner, &results);
+  EXPECT_TRUE(results.missing_unused_input_map_keys.empty());
+
+  // Non-empty missing_unused_input_map_keys
+  results.missing_unused_input_map_keys.push_back(TensorId());
+  ExpectError(
+      "node { name: 'W2' op: 'TestParams' }", opts,
+      {"All fields in results argument to ImportGraphDef() must be empty."},
+      &refiner, &results);
+
+  // Input map with some used, some unused keys
+  const int kControlSlot = Graph::kControlSlot;
+  results.missing_unused_input_map_keys.clear();
+  opts.input_map[TensorId("W2", kControlSlot)] = TensorId("W1", kControlSlot);
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+  // Unused and missing (nonexistent index)
+  opts.input_map[TensorId("new_input", 3)] = TensorId("input", 0);
+  // Unused and missing (nonexistent node)
+  opts.input_map[TensorId("DNE", 0)] = TensorId("input", 0);
+  // Unused but not missing
+  opts.input_map[TensorId("t1", 0)] = TensorId("W1", 0);
+  ExpectOK(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner, &results);
+
+  std::set<TensorId> expected_unused_keys = {TensorId("new_input", 3),
+                                             TensorId("DNE", 0)};
+  ASSERT_EQ(results.missing_unused_input_map_keys.size(),
+            expected_unused_keys.size());
+
+  std::set<TensorId> actual_unused_keys(
+      results.missing_unused_input_map_keys.begin(),
+      results.missing_unused_input_map_keys.end());
+  EXPECT_EQ(actual_unused_keys, expected_unused_keys);
+
+  // Test edge case: node isn't imported due to skip_mapped_nodes, but we still
+  // have a bad input_map key involving it.
+  opts = ImportGraphDefOptions();
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 0);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 1);
+  // Index out of bounds
+  opts.input_map[TensorId("new_input", 2)] = TensorId("input", 1);
+  opts.skip_mapped_nodes = true;
+  opts.prefix = "import";
+  results = ImportGraphDefResults();
+  ExpectOK(
+      R"EOF(
+      node { name: 'W2' op: 'TestParams' }
+      node { name: 'new_input' op: 'TestInput' input: [ '^W2' ] }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      )EOF",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.missing_unused_input_map_keys.size(), 1);
+  EXPECT_EQ(results.missing_unused_input_map_keys[0],
+            SafeTensorId("new_input", 2));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithUnboundInput) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Create input_map and use it to import more nodes
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId("new_input", 0)] = TensorId("input", 1);
+  opts.input_map[TensorId("new_input", 1)] = TensorId("input", 0);
+
+  // new_input exists in input_map but not in the graph being imported.
+  ExpectOK(
+      R"EOF(
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      node { name: 't2' op: 'TestMul' input: [ 't1:0', 't1:0' ] }
+      )EOF",
+      opts, &refiner);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasNode("t2"));
+  EXPECT_FALSE(HasNode("new_input"));
+
+  EXPECT_TRUE(HasEdge("input", 1, "t1", 0));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 1));
+  // Test that t2 is unaffected
+  EXPECT_TRUE(HasEdge("t1", 0, "t2", 0));
+
+  // Check that t1's NodeDef is consistent with graph
+  Node* t1 = FindNode("t1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "input:1");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_SkipMappedNodes_FullyMapped) {
@@ -1520,11 +1630,11 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
   opts.return_tensors.push_back({"input", 1});
   opts.return_tensors.push_back({"t1", 0});
   opts.return_tensors.push_back({"input", 0});
-  std::vector<std::pair<Node*, int>> return_tensors;
+  ImportGraphDefResults results;
   ExpectOK(
       "node { name: 'input' op: 'TestInput' }"
       "node { name: 't1' op: 'TestMul' input: ['input:0', 'input:1'] }",
-      opts, &refiner, &return_tensors);
+      opts, &refiner, &results);
 
   // Sanity checks
   EXPECT_TRUE(HasNode("input"));
@@ -1533,74 +1643,70 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensors) {
   EXPECT_TRUE(HasEdge("input", 1, "t1", 1));
 
   // Check return tensors
-  ASSERT_EQ(return_tensors.size(), 3);
-  EXPECT_EQ(return_tensors[0].first->name(), "input");
-  EXPECT_EQ(return_tensors[0].second, 1);
-  EXPECT_EQ(return_tensors[1].first->name(), "t1");
-  EXPECT_EQ(return_tensors[1].second, 0);
-  EXPECT_EQ(return_tensors[2].first->name(), "input");
-  EXPECT_EQ(return_tensors[2].second, 0);
+  ASSERT_EQ(results.return_tensors.size(), 3);
+  EXPECT_EQ(results.return_tensors[0].first->name(), "input");
+  EXPECT_EQ(results.return_tensors[0].second, 1);
+  EXPECT_EQ(results.return_tensors[1].first->name(), "t1");
+  EXPECT_EQ(results.return_tensors[1].second, 0);
+  EXPECT_EQ(results.return_tensors[2].first->name(), "input");
+  EXPECT_EQ(results.return_tensors[2].second, 0);
 
   // Test using prefix and returning element from input_map
   opts.return_tensors.clear();
-  return_tensors.clear();
+  results = ImportGraphDefResults();
   opts.prefix = "import";
   opts.input_map[{"new_input", 1}] = {"input", 0};
   opts.return_tensors.push_back({"new_input", 0});
   opts.return_tensors.push_back({"new_input", 1});
   ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
-           &return_tensors);
+           &results);
 
   EXPECT_TRUE(HasNode("import/new_input"));
 
-  ASSERT_EQ(return_tensors.size(), 2);
-  EXPECT_EQ(return_tensors[0].first->name(), "import/new_input");
-  EXPECT_EQ(return_tensors[0].second, 0);
-  EXPECT_EQ(return_tensors[1].first->name(), "input");
-  EXPECT_EQ(return_tensors[1].second, 0);
+  ASSERT_EQ(results.return_tensors.size(), 2);
+  EXPECT_EQ(results.return_tensors[0].first->name(), "import/new_input");
+  EXPECT_EQ(results.return_tensors[0].second, 0);
+  EXPECT_EQ(results.return_tensors[1].first->name(), "input");
+  EXPECT_EQ(results.return_tensors[1].second, 0);
 
   // Test returning node remapped to source node
   opts.prefix.clear();
   opts.input_map.clear();
   opts.return_tensors.clear();
-  return_tensors.clear();
+  results = ImportGraphDefResults();
   opts.input_map[{"new_input", 0}] = {"_SOURCE", 0};
   opts.return_tensors.push_back({"new_input", 0});
   ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
-           &return_tensors);
+           &results);
 
   EXPECT_TRUE(HasNode("new_input"));
 
-  ASSERT_EQ(return_tensors.size(), 1);
-  EXPECT_EQ(return_tensors[0].first->name(), "_SOURCE");
-  EXPECT_EQ(return_tensors[0].second, 0);
+  ASSERT_EQ(results.return_tensors.size(), 1);
+  EXPECT_EQ(results.return_tensors[0].first->name(), "_SOURCE");
+  EXPECT_EQ(results.return_tensors[0].second, 0);
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
-  // Passing in return_tensors with empty opts.return_tensors is OK
+  // Null results with non-empty opts.return_tensors
   ImportGraphDefOptions opts;
-  std::vector<std::pair<Node*, int>> return_tensors;
-  ExpectOK("node { name: 'input' op: 'TestInput' }", opts, nullptr,
-           &return_tensors);
-
-  // Null return_tensors with non-empty opts.return_tensors
   opts.return_tensors.push_back({"new_input", 0});
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
-              {"return_tensors argument to ImportNodeDef() must be non-null "
-               "if opts.return_tensors is non-empty"});
+              {"results argument to ImportGraphDef() must be non-null if "
+               "opts.return_tensors is non-empty"});
 
-  // Non-empty return_tensors
-  return_tensors.push_back({nullptr, 0});
-  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
-              {"return_tensors argument to ImportNodeDef() should be empty "
-               "(has size 1)"},
-              nullptr, &return_tensors);
+  // Non-empty results.return_tensors
+  ImportGraphDefResults results;
+  results.return_tensors.push_back({nullptr, 0});
+  ExpectError(
+      "node { name: 'new_input' op: 'TestInput' }", opts,
+      {"All fields in results argument to ImportGraphDef() must be empty."},
+      nullptr, &results);
 
   // Requesting tensor that isn't in graph def
-  return_tensors.clear();
+  results.return_tensors.clear();
   ExpectError("node { name: 'W1' op: 'TestParams' }", opts,
-              {"Requested return node 'new_input' not found in graph def"},
-              nullptr, &return_tensors);
+              {"Requested return tensor 'new_input:0' not found in graph def"},
+              nullptr, &results);
 
   // Requesting invalid node index
   opts.return_tensors.clear();
@@ -1608,7 +1714,319 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ReturnTensorsErrors) {
   ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
               {"Invalid return output 2 of node 'new_input', which has 2 "
                "output(s)"},
-              nullptr, &return_tensors);
+              nullptr, &results);
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ReturnNodes) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  ImportGraphDefOptions opts;
+  opts.return_nodes.push_back("input");
+  opts.return_nodes.push_back("t1");
+  ImportGraphDefResults results;
+  ExpectOK(
+      "node { name: 'input' op: 'TestInput' }"
+      "node { name: 'input2' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' input: ['input:0', 'input2:1'] }",
+      opts, &refiner, &results);
+
+  // Sanity checks
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("input2"));
+  EXPECT_TRUE(HasNode("t1"));
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 0));
+  EXPECT_TRUE(HasEdge("input2", 1, "t1", 1));
+
+  // Check return tensors
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_tensors.size(), 0);
+  EXPECT_EQ(results.missing_unused_input_map_keys.size(), 0);
+  EXPECT_EQ(results.return_nodes[0]->name(), "input");
+  EXPECT_EQ(results.return_nodes[1]->name(), "t1");
+
+  // Test using prefix
+  opts = ImportGraphDefOptions();
+  results = ImportGraphDefResults();
+  opts.prefix = "import";
+  opts.return_nodes.push_back("input");
+  ExpectOK("node { name: 'input' op: 'TestInput' }", opts, &refiner, &results);
+
+  EXPECT_TRUE(HasNode("import/input"));
+
+  ASSERT_EQ(results.return_nodes.size(), 1);
+  EXPECT_EQ(results.return_nodes[0]->name(), "import/input");
+
+  // Test that input_map has no effect
+  opts = ImportGraphDefOptions();
+  results = ImportGraphDefResults();
+  opts.input_map[{"new_input", 0}] = {"input", 0};
+  opts.return_nodes.push_back("new_input");
+  ExpectOK("node { name: 'new_input' op: 'TestInput' }", opts, &refiner,
+           &results);
+
+  EXPECT_TRUE(HasNode("new_input"));
+
+  ASSERT_EQ(results.return_nodes.size(), 1);
+  EXPECT_EQ(results.return_nodes[0]->name(), "new_input");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ReturnNodesErrors) {
+  // Null results with non-empty opts.return_nodes
+  ImportGraphDefOptions opts;
+  opts.return_nodes.push_back("new_input");
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"results argument to ImportGraphDef() must be non-null if "
+               "opts.return_nodes is non-empty"});
+
+  // Non-empty results.return_nodes
+  ImportGraphDefResults results;
+  results.return_nodes.push_back(nullptr);
+  ExpectError(
+      "node { name: 'new_input' op: 'TestInput' }", opts,
+      {"All fields in results argument to ImportGraphDef() must be empty."},
+      nullptr, &results);
+
+  // Requesting node that isn't in graph def
+  results.return_nodes.clear();
+  ExpectError("node { name: 'W1' op: 'TestParams' }", opts,
+              {"Requested return node 'new_input' not found in graph def"},
+              nullptr, &results);
+
+  // Requesting return_nodes with skip_mapped_nodes not yet implemented
+  opts.skip_mapped_nodes = true;
+  ExpectError("node { name: 'new_input' op: 'TestInput' }", opts,
+              {"Requesting return_nodes with skip_mapped_nodes set is not "
+               "currently supported"});
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  const char* graph_def_str =
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }";
+
+  // Initial import
+  ImportGraphDefOptions opts;
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("B");
+  ImportGraphDefResults results;
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A");
+
+  // Repeat the same import
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_1");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_1:0");
+
+  // Repeat the same import again
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_2");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_2:0");
+
+  // Import with an already-used prefix and uniquify_prefix = true
+  opts.prefix = "A";
+  opts.uniquify_prefix = true;
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_3/A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A_3/B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_3/A");
+
+  // Create B_3 node to keep the A/B numbering in sync
+  ExpectOK("node { name: 'B_3' op: 'TestInput' }");
+
+  // Import with an already-used prefix and uniquify_prefix = false
+  opts.uniquify_prefix = false;
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A/A");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A/B");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A/A");
+
+  // Repeat the same import
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A/A_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A/B_1");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A/A_1:0");
+
+  // Import with existing de-duped node names
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A_1");
+  opts.return_nodes.push_back("B_1");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A_1' op: 'TestInput' }"
+      "node { name: 'B_1' op: 'TestOneInputTwoOutputs' input: ['A_1:0'] }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_1_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_1_1");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A_1_1:0");
+
+  // Import with node names that must be de-duped from names and prefixes that
+  // exist in both the existing graph and the GraphDef being imported.
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("A_4");
+  opts.return_nodes.push_back("B");
+  opts.return_nodes.push_back("B_4/B");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'A_4' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }"
+      "node { name: 'B_4/B' op: 'TestOneInputTwoOutputs' input: ['A_4'] }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 4);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_5");
+  EXPECT_EQ(results.return_nodes[1]->name(), "A_4");
+  EXPECT_EQ(results.return_nodes[2]->name(), "B_5");
+  EXPECT_EQ(results.return_nodes[2]->def().input(0), "A_5:0");
+  EXPECT_EQ(results.return_nodes[3]->name(), "B_4/B");
+  EXPECT_EQ(results.return_nodes[3]->def().input(0), "A_4");
+
+  // Create node with prefix and then import node with same name
+  ExpectOK("node { name: 'foo/abc' op: 'ABC' }");
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("foo");
+  results = ImportGraphDefResults();
+  ExpectOK("node { name: 'foo' op: 'TestInput' }", opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 1);
+  EXPECT_EQ(results.return_nodes[0]->name(), "foo_1");
+
+  // Imported nodes can't conflict with intermediate name (but can conflict with
+  // outer name)
+  ExpectOK("node { name: 'outer/inner/abc' op: 'ABC' }");
+
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("outer");
+  opts.return_nodes.push_back("inner");
+  opts.return_nodes.push_back("abc");
+  opts.return_nodes.push_back("outer/inner");
+  opts.return_nodes.push_back("outer/inner/abc");
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'outer' op: 'TestInput' }"
+      "node { name: 'inner' op: 'TestInput' }"
+      "node { name: 'abc' op: 'TestInput' }"
+      "node { name: 'outer/inner' op: 'TestInput' }"
+      "node { name: 'outer/inner/abc' op: 'TestInput' }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 5);
+  EXPECT_EQ(results.return_nodes[0]->name(), "outer_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "inner");
+  EXPECT_EQ(results.return_nodes[2]->name(), "abc");
+  EXPECT_EQ(results.return_nodes[3]->name(), "outer/inner_1");
+  EXPECT_EQ(results.return_nodes[4]->name(), "outer/inner/abc_1");
+
+  // Import with input map containing conflicting names
+  opts = ImportGraphDefOptions();
+  opts.uniquify_names = true;
+  opts.input_map[TensorId("A", 0)] = TensorId("A", 0);
+  opts.input_map[TensorId("B", 0)] = TensorId("B", 0);
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("B");
+  results = ImportGraphDefResults();
+  ExpectOK(graph_def_str, opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_6");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_6");
+  EXPECT_EQ(results.return_nodes[1]->def().input(0), "A:0");
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_UniquifyNames_ColocationGroups) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Create nodes 'A' and 'b"
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A'] }");
+
+  // Check that colocation groups are updated
+  ImportGraphDefOptions opts;
+  opts.uniquify_names = true;
+  opts.return_nodes.push_back("A");
+  opts.return_nodes.push_back("B");
+  ImportGraphDefResults results;
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] "
+      "       attr { key: '_class' value { list { s:'loc:@A' } } } }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_1");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_1");
+  const AttrValue* class_attr =
+      results.return_nodes[1]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@A_1");
+
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' "
+      "       attr { key: '_class' value { list { s:'loc:@B' } } } }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_2");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_2");
+  class_attr = results.return_nodes[0]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@B_2");
+
+  results = ImportGraphDefResults();
+  ExpectOK(
+      "node { name: 'A' op: 'TestInput' "
+      "       attr { key: '_class' value { list { s:'loc:@B' } } } }"
+      "node { name: 'B' op: 'TestOneInputTwoOutputs' input: ['A:0'] "
+      "       attr { key: '_class' value { list { s:'loc:@B' } } } }",
+      opts, &refiner, &results);
+
+  ASSERT_EQ(results.return_nodes.size(), 2);
+  EXPECT_EQ(results.return_nodes[0]->name(), "A_3");
+  EXPECT_EQ(results.return_nodes[1]->name(), "B_3");
+  class_attr = results.return_nodes[0]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@B_3");
+  class_attr = results.return_nodes[1]->attrs().Find(kColocationAttrName);
+  ASSERT_TRUE(class_attr != nullptr);
+  ASSERT_EQ(class_attr->list().s_size(), 1);
+  EXPECT_EQ(class_attr->list().s(0), "loc:@B_3");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_WithCycle) {
@@ -2037,7 +2455,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   } while (0)
 
   EXPECT_IMPORT_FAILURE(def, opts,
-                        "Node 'scope/A' already exists in the Graph");
+                        "Node name 'scope/A' already exists in the Graph");
 
   GraphDef bad_def;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
@@ -2120,7 +2538,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
       "node{name:'scope/A' op:'TestParams'}", &bad_def));
   EXPECT_IMPORT_FAILURE(bad_def, opts,
-                        "Node 'scope/A' already exists in the Graph");
+                        "Node name 'scope/A' already exists in the Graph");
 
   parsed = protobuf::TextFormat::ParseFromString(
       R"EOF(
@@ -2329,6 +2747,51 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
 
   ASSERT_EQ(outputs.size(), 1);
   EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
+}
+
+// NOTE(skyewm): the C API depends on this behavior, but it's easier to write
+// the test here.
+TEST_F(GraphConstructorTest, ImportGraphDef_OptionsMemMgmt) {
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+
+  // Populate graph with node we'll use in input map
+  ExpectOK("node { name: 'input' op: 'TestInput' }", ImportGraphDefOptions(),
+           &refiner);
+
+  // Add some strings to ImportGraphDefOptions and then rewrite the buffers.
+  char buf1[100];
+  char buf2[100];
+  char buf3[100];
+  snprintf(buf1, sizeof(buf1), "input");
+  snprintf(buf2, sizeof(buf2), "new_input");
+  snprintf(buf3, sizeof(buf3), "t1");
+
+  ImportGraphDefOptions opts;
+  opts.input_map[TensorId(buf2, 0)] = TensorId(buf1, 0);
+  opts.return_tensors.push_back(TensorId(buf3, 0));
+
+  snprintf(buf1, sizeof(buf1), "xxxxxxxxxxxxxxxxxxxx");
+  snprintf(buf2, sizeof(buf2), "xxxxxxxxxxxxxxxxxxxx");
+  snprintf(buf3, sizeof(buf3), "xxxxxxxxxxxxxxxxxxxx");
+
+  // Import some new nodes using opts.
+  ImportGraphDefResults results;
+  ExpectOK(
+      R"EOF(
+      node { name: 'new_input' op: 'TestInput' }
+      node { name: 't1' op: 'TestMul' input: [ 'new_input:0', 'new_input:1' ] }
+      )EOF",
+      opts, &refiner, &results);
+
+  EXPECT_TRUE(HasNode("input"));
+  EXPECT_TRUE(HasNode("new_input"));
+  EXPECT_TRUE(HasNode("t1"));
+
+  EXPECT_TRUE(HasEdge("input", 0, "t1", 0));
+  EXPECT_TRUE(HasEdge("new_input", 1, "t1", 1));
+
+  ASSERT_EQ(results.return_tensors.size(), 1);
+  EXPECT_EQ(results.return_tensors[0].first->name(), "t1");
 }
 
 TEST_F(GraphConstructorTest, CopyGraph) {
@@ -2726,6 +3189,36 @@ versions {
   // Check that the refiner's graph def version is the lowest of
   // the graph defs we have seen so far.
   EXPECT_EQ(17, refiner.graph_def_version());
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_ValidateColationConstraints) {
+  GraphDef def;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
+      "node { name: 'A' op: 'TestInput' attr { key: '_class' value { list { "
+      "s:'loc:@missing' } } } }",
+      &def));
+  ImportGraphDefOptions options;
+  // TODO(yaozhang): Extend ExpectError to check error type and use ExpectError
+  // and ExpectOK to replace the code below.
+  Status s = ImportGraphDef(options, def, &graph_, nullptr);
+  EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
+  options.validate_colocation_constraints = false;
+  TF_EXPECT_OK(ImportGraphDef(options, def, &graph_, nullptr));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
+  const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
+  // Try load twice to check for two parts of the error message. We cannot check
+  // for the whole thing in one go because the message includes the hostname.
+  ExpectError(pb_ascii, {"Op type not registered 'OpFromContrib'"});
+  ExpectError(
+      pb_ascii,
+      {"Make sure the Op and Kernel are registered in the "
+       "binary running in this process. Note that if you "
+       "are loading a saved graph which used ops from "
+       "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+       "before importing the graph, as contrib ops are lazily registered "
+       "when the module is first accessed."});
 }
 
 }  // namespace

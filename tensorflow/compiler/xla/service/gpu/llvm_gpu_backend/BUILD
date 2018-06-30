@@ -11,6 +11,8 @@ package_group(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "llvm_gpu_backend",
     srcs = [
@@ -45,11 +47,10 @@ cc_library(
         "@llvm//:scalar",
         "@llvm//:support",
         "@llvm//:target",
-        "@llvm//:transform_utils",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "utils_test",
     size = "small",
     srcs = ["utils_test.cc"],
@@ -59,24 +60,10 @@ cc_test(
     deps = [
         ":llvm_gpu_backend",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@llvm//:core",
         "@llvm//:support",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -62,13 +63,15 @@ REGISTER_UNARY_VARIANT_DECODE_FUNCTION(KnownVecSize, "KNOWN VECTOR SIZE TYPE");
 REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(KnownVecSize, "KNOWN VECTOR SIZE TYPE",
                                       GetShapeFromKnownVecSize);
 
-static void ExpectHasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+static void ExpectHasError(const Status& s, StringPiece substr) {
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }
 
 TEST_F(ShapeOpTest, Simple) {
-  Scope root = Scope::NewRootScope();
+  // Ensure the ops run on CPU, as we have no device copy registration
+  // for NoKnownShape and KnownVecSize objects.
+  Scope root = Scope::NewRootScope().WithDevice("/cpu:0");
 
   // Use a placeholder so the graph optimizer doesn't optimize away
   // the shape function.

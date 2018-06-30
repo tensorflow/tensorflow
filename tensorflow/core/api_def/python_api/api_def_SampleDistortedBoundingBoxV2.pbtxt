@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "SampleDistortedBoundingBoxV2"
+  visibility: HIDDEN
+}

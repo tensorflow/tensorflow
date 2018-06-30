@@ -21,7 +21,6 @@ import android.app.Activity;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
@@ -38,18 +37,16 @@ import android.os.HandlerThread;
 import android.os.Trace;
 import android.util.Size;
 import android.view.KeyEvent;
+import android.view.Surface;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
-
 import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
+import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
 
-// Explicit import needed for internal Google builds.
-import org.tensorflow.demo.R;
-
-public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.
-        PreviewCallback {
+public abstract class CameraActivity extends Activity
+    implements OnImageAvailableListener, Camera.PreviewCallback {
   private static final Logger LOGGER = new Logger();
 
   private static final int PERMISSIONS_REQUEST = 1;
@@ -62,19 +59,16 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   private Handler handler;
   private HandlerThread handlerThread;
   private boolean useCamera2API;
-  protected Bitmap rgbFrameBitmap = null;
+  private boolean isProcessingFrame = false;
+  private byte[][] yuvBytes = new byte[3][];
   private int[] rgbBytes = null;
+  private int yRowStride;
+
   protected int previewWidth = 0;
   protected int previewHeight = 0;
-  protected Bitmap croppedBitmap = null;
-  protected static final boolean SAVE_PREVIEW_BITMAP = false;
-  protected long lastProcessingTimeMs;
-  protected Bitmap cropCopyBitmap;
-  protected ResultsView resultsView;
-  protected boolean computing = false;
-  protected Runnable postInferenceCallback;
-  protected byte[][] yuvBytes=new byte[3][];
-  protected int yRowStride;
+
+  private Runnable postInferenceCallback;
+  private Runnable imageConverter;
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
@@ -91,16 +85,31 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
+  private byte[] lastPreviewFrame;
+
+  protected int[] getRgbBytes() {
+    imageConverter.run();
+    return rgbBytes;
+  }
+
+  protected int getLuminanceStride() {
+    return yRowStride;
+  }
+
+  protected byte[] getLuminance() {
+    return yuvBytes[0];
+  }
+
   /**
    * Callback for android.hardware.Camera API
    */
   @Override
   public void onPreviewFrame(final byte[] bytes, final Camera camera) {
-    if (computing) {
+    if (isProcessingFrame) {
+      LOGGER.w("Dropping frame!");
       return;
     }
-    computing = true;
-    yuvBytes[0] = bytes;
+
     try {
       // Initialize the storage bitmaps once when the resolution is known.
       if (rgbBytes == null) {
@@ -110,18 +119,33 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         rgbBytes = new int[previewWidth * previewHeight];
         onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
       }
-      ImageUtils.convertYUV420SPToARGB8888(bytes, previewWidth, previewHeight, rgbBytes);
     } catch (final Exception e) {
       LOGGER.e(e, "Exception!");
       return;
     }
-    postInferenceCallback = new Runnable() {
-      @Override
-      public void run() {
-        camera.addCallbackBuffer(bytes);
-      }
-    };
-    processImageRGBbytes(rgbBytes);
+
+    isProcessingFrame = true;
+    lastPreviewFrame = bytes;
+    yuvBytes[0] = bytes;
+    yRowStride = previewWidth;
+
+    imageConverter =
+        new Runnable() {
+          @Override
+          public void run() {
+            ImageUtils.convertYUV420SPToARGB8888(bytes, previewWidth, previewHeight, rgbBytes);
+          }
+        };
+
+    postInferenceCallback =
+        new Runnable() {
+          @Override
+          public void run() {
+            camera.addCallbackBuffer(bytes);
+            isProcessingFrame = false;
+          }
+        };
+    processImage();
   }
 
   /**
@@ -129,51 +153,64 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
    */
   @Override
   public void onImageAvailable(final ImageReader reader) {
-    Image image = null;
     //We need wait until we have some size from onPreviewSizeChosen
     if (previewWidth == 0 || previewHeight == 0) {
       return;
     }
-    rgbBytes = new int[previewWidth * previewHeight];
+    if (rgbBytes == null) {
+      rgbBytes = new int[previewWidth * previewHeight];
+    }
     try {
-      image = reader.acquireLatestImage();
+      final Image image = reader.acquireLatestImage();
 
       if (image == null) {
         return;
       }
 
-      if (computing) {
+      if (isProcessingFrame) {
         image.close();
         return;
       }
-      computing = true;
+      isProcessingFrame = true;
       Trace.beginSection("imageAvailable");
       final Plane[] planes = image.getPlanes();
       fillBytes(planes, yuvBytes);
       yRowStride = planes[0].getRowStride();
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
-      ImageUtils.convertYUV420ToARGB8888(
-          yuvBytes[0],
-          yuvBytes[1],
-          yuvBytes[2],
-          previewWidth,
-          previewHeight,
-          yRowStride,
-          uvRowStride,
-          uvPixelStride,
-          rgbBytes);
-      image.close();
 
+      imageConverter =
+          new Runnable() {
+            @Override
+            public void run() {
+              ImageUtils.convertYUV420ToARGB8888(
+                  yuvBytes[0],
+                  yuvBytes[1],
+                  yuvBytes[2],
+                  previewWidth,
+                  previewHeight,
+                  yRowStride,
+                  uvRowStride,
+                  uvPixelStride,
+                  rgbBytes);
+            }
+          };
+
+      postInferenceCallback =
+          new Runnable() {
+            @Override
+            public void run() {
+              image.close();
+              isProcessingFrame = false;
+            }
+          };
+
+      processImage();
     } catch (final Exception e) {
-      if (image != null) {
-        image.close();
-      }
       LOGGER.e(e, "Exception!");
       Trace.endSection();
       return;
     }
-    processImageRGBbytes(rgbBytes);
     Trace.endSection();
   }
 
@@ -235,15 +272,13 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   @Override
   public void onRequestPermissionsResult(
       final int requestCode, final String[] permissions, final int[] grantResults) {
-    switch (requestCode) {
-      case PERMISSIONS_REQUEST: {
-        if (grantResults.length > 0
-            && grantResults[0] == PackageManager.PERMISSION_GRANTED
-            && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
-          setFragment();
-        } else {
-          requestPermission();
-        }
+    if (requestCode == PERMISSIONS_REQUEST) {
+      if (grantResults.length > 0
+          && grantResults[0] == PackageManager.PERMISSION_GRANTED
+          && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+        setFragment();
+      } else {
+        requestPermission();
       }
     }
   }
@@ -269,7 +304,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   // Returns true if the device supports the required hardware level, or better.
-  boolean isHardwareLevelSupported(CameraCharacteristics characteristics, int requiredLevel) {
+  private boolean isHardwareLevelSupported(
+      CameraCharacteristics characteristics, int requiredLevel) {
     int deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
     if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
       return requiredLevel == deviceLevel;
@@ -297,8 +333,12 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
           continue;
         }
 
-        useCamera2API = isHardwareLevelSupported(characteristics,
-            CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        // Fallback to camera1 API for internal cameras that don't have full support.
+        // This should help with legacy situations where using the camera2 API causes
+        // distorted or otherwise broken previews.
+        useCamera2API = (facing == CameraCharacteristics.LENS_FACING_EXTERNAL)
+            || isHardwareLevelSupported(characteristics, 
+                                        CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }
@@ -311,6 +351,10 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   protected void setFragment() {
     String cameraId = chooseCamera();
+    if (cameraId == null) {
+      Toast.makeText(this, "No Camera Detected", Toast.LENGTH_SHORT).show();
+      finish();
+    }
 
     Fragment fragment;
     if (useCamera2API) {
@@ -331,7 +375,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
       camera2Fragment.setCamera(cameraId);
       fragment = camera2Fragment;
     } else {
-      fragment = new LegacyCameraConnectionFragment(this, getLayoutId());
+      fragment =
+          new LegacyCameraConnectionFragment(this, getLayoutId(), getDesiredPreviewFrameSize());
     }
 
     getFragmentManager()
@@ -375,7 +420,8 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   @Override
   public boolean onKeyDown(final int keyCode, final KeyEvent event) {
-    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
+            || keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
       debug = !debug;
       requestRender();
       onSetDebug(debug);
@@ -384,7 +430,27 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     return super.onKeyDown(keyCode, event);
   }
 
-  protected abstract void processImageRGBbytes(int[] rgbBytes ) ;
+  protected void readyForNextImage() {
+    if (postInferenceCallback != null) {
+      postInferenceCallback.run();
+    }
+  }
+
+  protected int getScreenOrientation() {
+    switch (getWindowManager().getDefaultDisplay().getRotation()) {
+      case Surface.ROTATION_270:
+        return 270;
+      case Surface.ROTATION_180:
+        return 180;
+      case Surface.ROTATION_90:
+        return 90;
+      default:
+        return 0;
+    }
+  }
+
+  protected abstract void processImage();
+
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
   protected abstract Size getDesiredPreviewFrameSize();

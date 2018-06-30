@@ -16,35 +16,59 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status SendTensorsToRendezvous(Rendezvous* rendezvous,
-                               const Rendezvous::Args& args,
-                               const std::vector<string>& keys,
-                               gtl::ArraySlice<Tensor> tensors_to_send) {
+Status SendTensorsToRendezvous(
+    Rendezvous* rendezvous, DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs,
+    const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send) {
   if (keys.size() != tensors_to_send.size()) {
     return errors::InvalidArgument(
         "keys and tensors_to_send are not the same size. keys.size() = ",
         keys.size(), "; tensors_to_send.size() = ", tensors_to_send.size());
   }
+  if (!alloc_attrs.empty() && (keys.size() != alloc_attrs.size())) {
+    return errors::InvalidArgument(
+        "keys and alloc_attrs are not the same size. ",
+        "keys.size() = ", keys.size(),
+        "; alloc_attrs.size() = ", alloc_attrs.size());
+  }
+
+  if (!rendezvous) {
+    return errors::InvalidArgument("Rendezvous is null.");
+  }
+
   Rendezvous::ParsedKey parsed;
   for (int i = 0; i < keys.size(); ++i) {
+    Rendezvous::Args rendez_args;
+    rendez_args.device_context = device_context;
+    if (!alloc_attrs.empty()) {
+      rendez_args.alloc_attrs = alloc_attrs[i];
+    }
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(keys[i], &parsed));
     TF_RETURN_IF_ERROR(
-        rendezvous->Send(parsed, args, tensors_to_send[i], false));
+        rendezvous->Send(parsed, rendez_args, tensors_to_send[i], false));
   }
   return Status::OK();
 }
 
-void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
-                                    const Rendezvous::Args& args,
-                                    const std::vector<string>& keys,
-                                    std::vector<Tensor>* received_tensors,
-                                    const StatusCallback& done) {
+void RecvOutputsFromRendezvousAsync(
+    Rendezvous* rendezvous, DeviceContext* device_context,
+    const std::vector<AllocatorAttributes>& alloc_attrs,
+    const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
+    const StatusCallback& done) {
   if (keys.empty()) {
     done(Status::OK());
     return;
   }
+  if (!alloc_attrs.empty() && (keys.size() != alloc_attrs.size())) {
+    done(errors::InvalidArgument(
+        "keys and alloc_attrs are not the same size. ", "keys.size() = ",
+        keys.size(), "; alloc_attrs.size() = ", alloc_attrs.size()));
+  }
+
   received_tensors->reserve(keys.size());
-  std::vector<std::tuple<string, Tensor*, Rendezvous::ParsedKey>> arguments;
+  std::vector<
+      std::tuple<string, Tensor*, Rendezvous::ParsedKey, AllocatorAttributes>>
+      arguments;
   for (int i = 0; i < keys.size(); ++i) {
     Rendezvous::ParsedKey parsed;
     Status s = Rendezvous::ParseKey(keys[i], &parsed);
@@ -53,8 +77,12 @@ void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
       done(s);
       return;
     }
-    arguments.push_back(
-        std::make_tuple(keys[i], &((*received_tensors)[i]), parsed));
+    AllocatorAttributes alloc_attr;
+    if (!alloc_attrs.empty()) {
+      alloc_attr = alloc_attrs[i];
+    }
+    arguments.emplace_back(keys[i], &((*received_tensors)[i]), parsed,
+                           alloc_attr);
   }
 
   typedef struct {
@@ -68,8 +96,12 @@ void RecvOutputsFromRendezvousAsync(Rendezvous* rendezvous,
     const string& key = std::get<0>(p);
     Tensor* val = std::get<1>(p);
     Rendezvous::ParsedKey parsed = std::get<2>(p);
+    Rendezvous::Args rendez_args;
+    rendez_args.device_context = device_context;
+    rendez_args.alloc_attrs = std::get<3>(p);
+
     rendezvous->RecvAsync(
-        parsed, args,
+        parsed, rendez_args,
         [val, done, key, call_state](const Status& s,
                                      const Rendezvous::Args& send_args,
                                      const Rendezvous::Args& recv_args,

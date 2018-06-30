@@ -1,5 +1,9 @@
 path: "tensorflow.keras.backend"
 tf_module {
+  member {
+    name: "name_scope"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "abs"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
@@ -289,10 +293,6 @@ tf_module {
     argspec: "args=[\'x\', \'value\', \'momentum\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "name_scope"
-    argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
     name: "ndim"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
@@ -398,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "rnn"
-    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'step_function\', \'inputs\', \'initial_states\', \'go_backwards\', \'mask\', \'constants\', \'unroll\', \'input_length\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "round"
@@ -450,7 +450,7 @@ tf_module {
   }
   member_method {
     name: "softmax"
-    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'x\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
     name: "softplus"

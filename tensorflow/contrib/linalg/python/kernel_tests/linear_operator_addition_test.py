@@ -19,10 +19,10 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import linalg as linalg_lib
 from tensorflow.contrib.linalg.python.ops import linear_operator_addition
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
@@ -114,7 +114,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
   def test_diag_tril_diag(self):
     op1 = linalg.LinearOperatorDiag(
         [1., 1.], is_non_singular=True, name="diag_a")
-    op2 = linalg.LinearOperatorTriL(
+    op2 = linalg.LinearOperatorLowerTriangular(
         [[2., 0.], [0., 2.]],
         is_self_adjoint=True,
         is_non_singular=True,
@@ -125,7 +125,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
       op_sum = add_operators([op1, op2, op3])
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
-      self.assertTrue(isinstance(op, linalg_lib.LinearOperatorTriL))
+      self.assertTrue(isinstance(op, linalg_lib.LinearOperatorLowerTriangular))
       self.assertAllClose([[6., 0.], [0., 6.]], op.to_dense().eval())
 
       # The diag operators will be self-adjoint (because real and diagonal).
@@ -140,7 +140,8 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
     op0 = linalg.LinearOperatorFullMatrix(
         [[-1., -1.], [-1., -1.]], name="matrix")
     op1 = linalg.LinearOperatorDiag([1., 1.], name="diag_a")
-    op2 = linalg.LinearOperatorTriL([[2., 0.], [1.5, 2.]], name="tril")
+    op2 = linalg.LinearOperatorLowerTriangular(
+        [[2., 0.], [1.5, 2.]], name="tril")
     op3 = linalg.LinearOperatorDiag([3., 3.], name="diag_b")
     with self.test_session():
       op_sum = add_operators([op0, op1, op2, op3], operator_name="my_operator")
@@ -189,7 +190,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
   def test_tier_1_additions_done_by_tier_1(self):
     diag1 = linalg.LinearOperatorDiag([1.])
     diag2 = linalg.LinearOperatorDiag([1.])
-    tril = linalg.LinearOperatorTriL([[1.]])
+    tril = linalg.LinearOperatorLowerTriangular([[1.]])
     addition_tiers = [
         [linear_operator_addition._AddAndReturnDiag()],
         [linear_operator_addition._AddAndReturnTriL()],
@@ -199,12 +200,12 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
     # _BadAdder) was never reached.
     op_sum = add_operators([diag1, diag2, tril], addition_tiers=addition_tiers)
     self.assertEqual(1, len(op_sum))
-    self.assertTrue(isinstance(op_sum[0], linalg.LinearOperatorTriL))
+    self.assertTrue(isinstance(op_sum[0], linalg.LinearOperatorLowerTriangular))
 
   def test_tier_1_additions_done_by_tier_1_with_order_flipped(self):
     diag1 = linalg.LinearOperatorDiag([1.])
     diag2 = linalg.LinearOperatorDiag([1.])
-    tril = linalg.LinearOperatorTriL([[1.]])
+    tril = linalg.LinearOperatorLowerTriangular([[1.]])
     addition_tiers = [
         [linear_operator_addition._AddAndReturnTriL()],
         [linear_operator_addition._AddAndReturnDiag()],
@@ -216,12 +217,12 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
     # Tier 2 was never used (therefore, _BadAdder didn't raise).
     op_sum = add_operators([diag1, diag2, tril], addition_tiers=addition_tiers)
     self.assertEqual(1, len(op_sum))
-    self.assertTrue(isinstance(op_sum[0], linalg.LinearOperatorTriL))
+    self.assertTrue(isinstance(op_sum[0], linalg.LinearOperatorLowerTriangular))
 
   def test_cannot_add_everything_so_return_more_than_one_operator(self):
     diag1 = linalg.LinearOperatorDiag([1.])
     diag2 = linalg.LinearOperatorDiag([2.])
-    tril5 = linalg.LinearOperatorTriL([[5.]])
+    tril5 = linalg.LinearOperatorLowerTriangular([[5.]])
     addition_tiers = [
         [linear_operator_addition._AddAndReturnDiag()],
     ]
@@ -237,7 +238,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
         if isinstance(op, linalg.LinearOperatorDiag):
           found_diag = True
           self.assertAllClose([[3.]], op.to_dense().eval())
-        if isinstance(op, linalg.LinearOperatorTriL):
+        if isinstance(op, linalg.LinearOperatorLowerTriangular):
           found_tril = True
           self.assertAllClose([[5.]], op.to_dense().eval())
       self.assertTrue(found_diag and found_tril)
@@ -245,7 +246,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
   def test_intermediate_tier_is_not_skipped(self):
     diag1 = linalg.LinearOperatorDiag([1.])
     diag2 = linalg.LinearOperatorDiag([1.])
-    tril = linalg.LinearOperatorTriL([[1.]])
+    tril = linalg.LinearOperatorLowerTriangular([[1.]])
     addition_tiers = [
         [linear_operator_addition._AddAndReturnDiag()],
         [_BadAdder()],
@@ -369,14 +370,14 @@ class AddAndReturnTriLTest(test.TestCase):
 
   def test_diag_plus_tril(self):
     diag = linalg.LinearOperatorDiag([1., 2.])
-    tril = linalg.LinearOperatorTriL([[10., 0.], [30., 0.]])
+    tril = linalg.LinearOperatorLowerTriangular([[10., 0.], [30., 0.]])
     hints = linear_operator_addition._Hints(
         is_positive_definite=True, is_non_singular=True)
 
     self.assertTrue(self._adder.can_add(diag, diag))
     self.assertTrue(self._adder.can_add(diag, tril))
     operator = self._adder.add(diag, tril, "my_operator", hints)
-    self.assertTrue(isinstance(operator, linalg.LinearOperatorTriL))
+    self.assertTrue(isinstance(operator, linalg.LinearOperatorLowerTriangular))
 
     with self.test_session():
       self.assertAllClose([[11., 0.], [30., 2.]], operator.to_dense().eval())

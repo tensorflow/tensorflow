@@ -17,12 +17,17 @@
 See the @{$python/contrib.linalg} guide.
 
 @@LinearOperator
+@@LinearOperatorBlockDiag
+@@LinearOperatorCirculant
+@@LinearOperatorCirculant2D
+@@LinearOperatorCirculant3D
 @@LinearOperatorDiag
 @@LinearOperatorIdentity
 @@LinearOperatorScaledIdentity
 @@LinearOperatorFullMatrix
-@@LinearOperatorTriL
-@@LinearOperatorUDVHUpdate
+@@LinearOperatorKronecker
+@@LinearOperatorLowerTriangular
+@@LinearOperatorLowRankUpdate
 @@LinearOperatorComposition
 @@add_operators
 
@@ -33,16 +38,20 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
-from tensorflow.contrib.linalg.python.ops.linear_operator import *
 from tensorflow.contrib.linalg.python.ops.linear_operator_addition import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_composition import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_diag import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_full_matrix import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_identity import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_tril import *
-from tensorflow.contrib.linalg.python.ops.linear_operator_udvh_update import *
+from tensorflow.python.ops.linalg.linear_operator import *
+from tensorflow.python.ops.linalg.linear_operator_block_diag import *
+from tensorflow.python.ops.linalg.linear_operator_circulant import *
+from tensorflow.python.ops.linalg.linear_operator_composition import *
+from tensorflow.python.ops.linalg.linear_operator_diag import *
+from tensorflow.python.ops.linalg.linear_operator_full_matrix import *
+from tensorflow.python.ops.linalg.linear_operator_identity import *
+from tensorflow.python.ops.linalg.linear_operator_kronecker import *
+from tensorflow.python.ops.linalg.linear_operator_low_rank_update import *
+from tensorflow.python.ops.linalg.linear_operator_lower_triangular import *
 
 # pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
 
 from tensorflow.python.util.all_util import remove_undocumented
+
 remove_undocumented(__name__)

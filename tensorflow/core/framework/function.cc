@@ -30,11 +30,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-
-namespace {
 
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
@@ -90,6 +89,8 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   dtypes->resize(num, dtype);
   return Status::OK();
 }
+
+namespace {
 
 template <typename T>
 void AddAttr(const string& name, const T& val, NodeDef* ndef) {
@@ -168,7 +169,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Arg");
+      gnode->set_op(FunctionLibraryDefinition::kArgOp);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
@@ -278,7 +279,7 @@ class FunctionInstantiationHelper {
       auto it = index_.lower_bound(node_name);
       while (it != index_.end() && it->first <= node_colon_bound) {
         if (it->first == node_name ||
-            tensorflow::StringPiece(it->first).starts_with(node_colon)) {
+            tensorflow::str_util::StartsWith(it->first, node_colon)) {
           nid = it->second.nid;
           break;
         }
@@ -328,7 +329,7 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op("_Retval");
+      gnode->set_op(FunctionLibraryDefinition::kRetOp);
       AddInput(nodes_.size() - 1, item->nid, item->idx + i);
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", (*ret_index)++, gnode);
@@ -502,8 +503,8 @@ string Print(const NodeDef& n) {
   std::vector<StringPiece> dat;
   std::vector<string> dep;
   for (StringPiece s : n.input()) {
-    if (s.Consume("^")) {
-      dep.push_back(s.ToString());
+    if (str_util::ConsumePrefix(&s, "^")) {
+      dep.push_back(std::string(s));
     } else {
       dat.push_back(s);
     }
@@ -558,9 +559,9 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == "_Arg") {
+    if (n->op() == FunctionLibraryDefinition::kArgOp) {
       arg.push_back(n);
-    } else if (n->op() == "_Retval") {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -749,16 +750,7 @@ std::map<string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
 }  // end namespace
 
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
-  // NOTE(skyewm): Using MessageDifferencer would be better here, but that is
-  // currently not included in tensorflow/core/platform/default/protobuf.h, so
-  // play fast and loose here.  I don't see anything in OpDef that should allow
-  // multiple equivalent string serializations, with the exception of
-  // AttrValues, which can vary for tensor values (see AreAttrValuesEqual()
-  // comments).
-  string sig1, sig2;
-  f1.signature().SerializeToString(&sig1);
-  f2.signature().SerializeToString(&sig2);
-  if (sig1 != sig2) return false;
+  if (!OpDefEqual(f1.signature(), f2.signature())) return false;
 
   std::map<string, AttrValue> f1_attrs = GetSetAttrs(f1);
   std::map<string, AttrValue> f2_attrs = GetSetAttrs(f2);
@@ -780,11 +772,52 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   return true;
 }
 
-string Canonicalize(const string& funcname, AttrSlice attrs) {
+uint64 FunctionDefHash(const FunctionDef& fdef) {
+  // signature
+  uint64 h = OpDefHash(fdef.signature());
+
+  // attrs
+  std::map<string, AttrValue> attrs = GetSetAttrs(fdef);
+  for (const auto& p : attrs) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64Combine(AttrValueHash(p.second), h);
+  }
+
+  // node defs
+  h = Hash64Combine(RepeatedNodeDefHash(fdef.node_def()), h);
+
+  // output names
+  std::map<string, string> ret(fdef.ret().begin(), fdef.ret().end());
+  for (const auto& p : ret) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64(p.second.data(), p.second.size(), h);
+  }
+
+  return h;
+}
+
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(attrs.size());
+  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
   for (auto p : attrs) {
     entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+  }
+  if (!options.target.empty()) {
+    entries.push_back(
+        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+  }
+  if (options.overlay_lib) {
+    entries.push_back(strings::StrCat(
+        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+  }
+  if (!options.state_handle.empty()) {
+    entries.push_back(
+        strings::StrCat("_state_handle", "=", options.state_handle));
+  }
+  if (!options.executor_type.empty()) {
+    entries.push_back(
+        strings::StrCat("_executor_type", "=", options.executor_type));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
@@ -877,7 +910,10 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
     : fdef(fdef_in),
-      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
+      // Exact shape inference for functions is handled by ShapeRefiner.
+      // Here we pass a dummy shape inference function for legacy code paths.
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape,
+                           true /* is_function */) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
@@ -1033,26 +1069,36 @@ Status FunctionLibraryDefinition::AddLibrary(
   return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveFunction(const string& func) {
+Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
   const auto& i = function_defs_.find(func);
-  DCHECK(i != function_defs_.end());
+  if (i == function_defs_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent function ",
+                                   func);
+  }
   function_defs_.erase(i);
+  return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveGradient(const string& func) {
+Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
-  DCHECK(i != func_grad_.end());
+  if (i == func_grad_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent gradient ",
+                                   func);
+  }
   func_grad_.erase(i);
+  return Status::OK();
 }
 
 void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    RemoveFunction(f);
+    Status s = RemoveFunction(f);
+    DCHECK(s.ok());
   }
   for (const string& f : funcs_with_grads) {
-    RemoveGradient(f);
+    Status s = RemoveGradient(f);
+    DCHECK(s.ok());
   }
 }
 
@@ -1233,8 +1279,8 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
-      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
-                                     << src.ret[0] << "' of " << name;
+      CHECK(iter != ret_index.end())
+          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {

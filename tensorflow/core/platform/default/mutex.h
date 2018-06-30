@@ -22,40 +22,41 @@ limitations under the License.
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include "nsync_cv.h"
-#include "nsync_mu.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+
 namespace tensorflow {
 
 #undef mutex_lock
 
 enum LinkerInitialized { LINKER_INITIALIZED };
 
+class condition_variable;
+
 // Mimic std::mutex + C++17's shared_mutex, adding a LinkerInitialized
 // constructor interface.  This type is as fast as mutex, but is also a shared
 // lock.
 class LOCKABLE mutex {
  public:
-  mutex() { nsync::nsync_mu_init(&mu_); }
-  // The default implementation of nsync_mutex is safe to use after the linker
-  // initializations
+  mutex();
+  // The default implementation of the underlying mutex is safe to use after
+  // the linker initialization to zero.
   explicit mutex(LinkerInitialized x) {}
 
-  void lock() EXCLUSIVE_LOCK_FUNCTION() { nsync::nsync_mu_lock(&mu_); }
-  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true) {
-    return nsync::nsync_mu_trylock(&mu_) != 0;
-  };
-  void unlock() UNLOCK_FUNCTION() { nsync::nsync_mu_unlock(&mu_); }
+  void lock() EXCLUSIVE_LOCK_FUNCTION();
+  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true);
+  void unlock() UNLOCK_FUNCTION();
 
-  void lock_shared() SHARED_LOCK_FUNCTION() { nsync::nsync_mu_rlock(&mu_); }
-  bool try_lock_shared() SHARED_TRYLOCK_FUNCTION(true) {
-    return nsync::nsync_mu_rtrylock(&mu_) != 0;
+  void lock_shared() SHARED_LOCK_FUNCTION();
+  bool try_lock_shared() SHARED_TRYLOCK_FUNCTION(true);
+  void unlock_shared() UNLOCK_FUNCTION();
+
+  struct external_mu_space {
+    void* space[2];
   };
-  void unlock_shared() UNLOCK_FUNCTION() { nsync::nsync_mu_runlock(&mu_); }
 
  private:
   friend class condition_variable;
-  nsync::nsync_mu mu_;
+  external_mu_space mu_;
 };
 
 // Mimic a subset of the std::unique_lock<tensorflow::mutex> functionality.
@@ -76,9 +77,7 @@ class SCOPED_LOCKABLE mutex_lock {
 
   // Manually nulls out the source to prevent double-free.
   // (std::move does not null the source pointer by default.)
-  explicit mutex_lock(mutex_lock&& ml) noexcept : mu_(ml.mu_) {
-    ml.mu_ = nullptr;
-  }
+  mutex_lock(mutex_lock&& ml) noexcept : mu_(ml.mu_) { ml.mu_ = nullptr; }
   ~mutex_lock() UNLOCK_FUNCTION() {
     if (mu_ != nullptr) {
       mu_->unlock();
@@ -137,26 +136,29 @@ class SCOPED_LOCKABLE tf_shared_lock {
 // Mimic std::condition_variable.
 class condition_variable {
  public:
-  condition_variable() { nsync::nsync_cv_init(&cv_); }
+  condition_variable();
 
-  void wait(mutex_lock& lock) {
-    nsync::nsync_cv_wait(&cv_, &lock.mutex()->mu_);
-  }
+  void wait(mutex_lock& lock);
   template <class Rep, class Period>
   std::cv_status wait_for(mutex_lock& lock,
                           std::chrono::duration<Rep, Period> dur) {
-    int r = nsync::nsync_cv_wait_with_deadline(
-        &cv_, &lock.mutex()->mu_, std::chrono::system_clock::now() + dur,
-        nullptr);
-    return r ? std::cv_status::timeout : std::cv_status::no_timeout;
+    return wait_until_system_clock(lock,
+                                   std::chrono::system_clock::now() + dur);
   }
-  void notify_one() { nsync::nsync_cv_signal(&cv_); }
-  void notify_all() { nsync::nsync_cv_broadcast(&cv_); }
+  void notify_one();
+  void notify_all();
+
+  struct external_cv_space {
+    void* space[2];
+  };
 
  private:
   friend ConditionResult WaitForMilliseconds(mutex_lock* mu,
                                              condition_variable* cv, int64 ms);
-  nsync::nsync_cv cv_;
+  std::cv_status wait_until_system_clock(
+      mutex_lock& lock,
+      const std::chrono::system_clock::time_point timeout_time);
+  external_cv_space cv_;
 };
 
 inline ConditionResult WaitForMilliseconds(mutex_lock* mu,

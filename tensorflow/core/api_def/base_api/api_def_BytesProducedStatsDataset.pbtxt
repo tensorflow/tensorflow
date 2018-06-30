@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "BytesProducedStatsDataset"
+  summary: "Records the bytes size of each element of `input_dataset` in a StatsAggregator."
+}

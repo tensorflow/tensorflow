@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <random>
@@ -23,14 +24,17 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -38,21 +42,25 @@ namespace xla {
 
 // Describes a compilation unit at the HLO level.
 //
-// A HLO module contains one or more HLO computations. The module contains one
-// "entry" computation which produces the result. The module also includes any
-// embedded computations used by instructions such as "map" and "reduce". All
-// computations are owned by the module.
+// HloModule is the top-level unit in the HLO IR.  It corresponds to a whole
+// "program".  Running a module, from beginning to end, is the only way to run
+// an XLA program.
+//
+// A module contains one "entry computation"; this HloComputation is like main()
+// in a C program.  The result of running the module is the result of running
+// this computation.
+//
+// A module also contains some number of "nested computations".  Each nested
+// computation is attached to an HloInstruction within some other computation.
+// The meaning of the nested computation depends on the instruction it's
+// attached to.
 class HloModule {
  public:
-  HloModule(const string& name,
-            const VersionedComputationHandle& entry_computation_handle,
-            const HloModuleConfig& config);
-
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache. A default configuration is created for this module.
-  explicit HloModule(const string& name);
+  explicit HloModule(const string& name, const HloModuleConfig& config);
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -79,35 +87,103 @@ class HloModule {
   const string& name() const { return name_; }
 
   // Returns a deep copy of this module including all computations.
-  std::unique_ptr<HloModule> Clone(const string& suffix = "clone");
+  std::unique_ptr<HloModule> Clone(const string& suffix = "clone") const;
+
+  // Performs a deep clone of the computation, by recursively cloning all
+  // the called computations as well. If the clone context is specified, it
+  // will be populated with the cloned object mappings.
+  HloComputation* DeepCloneComputation(HloComputation* computation,
+                                       HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module..
-  HloComputation* entry_computation() const {
+  const HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
+  }
+  HloComputation* entry_computation() {
+    CHECK_NE(nullptr, entry_computation_);
+    return entry_computation_;
+  }
+
+  // Creates the ComputationLayout which describes the current status of the HLO
+  // module entry computation.
+  ComputationLayout compute_computation_layout() const {
+    return ComputationLayout(entry_computation()->ComputeProgramShape(),
+                             /*ignore_layouts=*/false);
   }
 
   ComputationLayout* mutable_entry_computation_layout() {
     return config_.mutable_entry_computation_layout();
   }
 
-  const VersionedComputationHandle& entry_computation_handle() const {
-    return entry_computation_handle_;
+  const ComputationLayout& entry_computation_layout() const {
+    return config_.entry_computation_layout();
   }
 
-  const std::vector<std::unique_ptr<HloComputation>>& computations() const {
-    return computations_;
+  // Gets the computations in this module.
+  //
+  // Returns a view of HloComputation*s, so you can iterate over this in the
+  // natural way:
+  //
+  //   for (HloComputation* c : module->computations()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
+  computations() const {
+    return {MakeUnwrappingIterator(computations_.begin()),
+            MakeUnwrappingIterator(computations_.end())};
   }
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::iterator>>
+  computations() {
+    return {MakeUnwrappingIterator(computations_.begin()),
+            MakeUnwrappingIterator(computations_.end())};
+  }
+
+  // Returns the computation in this module that has the name `name`.  Returns
+  // null if there is no such computation.
+  HloComputation* GetComputationWithName(tensorflow::StringPiece name);
+
+  // Gets the number of computations in this module.
+  int64 computation_count() const { return computations_.size(); }
+
+  // Gets the number of instructions in this module.
+  int64 instruction_count() const;
 
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::list<HloComputation*> MakeComputationPostOrder() const;
+  std::vector<HloComputation*> MakeComputationPostOrder() const;
+
+  // Gets the computations in this module which aren't for fusion nodes.
+  //
+  // Postcondition: All computations in the returned list have
+  // !IsFusionComputation().
+  //
+  // Note: Callers can and do rely on the return value here being a *snapshot*
+  // of the module's non-fusion computations -- that is, it's OK to add or
+  // remove computations from a module while iterating over
+  // MakeNonfusionComputations().
+  std::vector<HloComputation*> MakeNonfusionComputations() const;
 
   const HloModuleConfig& config() const { return config_; }
 
-  string ToString() const;
+  // Return a string representation of the module.
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
+
+  // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
+  static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
+      const HloModuleProto& proto, const HloModuleConfig& module_config);
+
+  // Creates and returns an HloModuleConfig with an appropriate program shape
+  // for the HLO module in the given proto.
+  static StatusOr<HloModuleConfig> CreateModuleConfigFromProto(
+      const HloModuleProto& module, const DebugOptions& debug_options);
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.
@@ -121,11 +197,6 @@ class HloModule {
 
   // Returns a randomly generated uint64.
   uint64 RandomNew64() const;
-
-  // Returns the unique name for a computation in this module.
-  string GetUniqueCompuationName(const string& prefix) {
-    return computation_name_uniquer_.GetUniqueName(prefix);
-  }
 
   // Returns the NameUniquer for uniquing instruction names in this module.
   NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
@@ -141,9 +212,33 @@ class HloModule {
   // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
   int NumUniqueInstructionIds() const { return next_unique_id_; }
 
+  // Returns an id that is unique to this module across all modules created over
+  // the lifetime of this process.
+  int unique_id() const { return unique_id_; }
+
+  // Returns a non-const version of the passed-in const HloInstruction*. This is
+  // safe on the argument that if you have a non-const module, then you can
+  // access all instructions in the module as non-const.
+  //
+  // Returns an error if the passed-in instruction is not from this module,
+  // except that it is allowed to pass in a null pointer.
+  //
+  // TODO(b/78350259): Eliminate const laundering. The argument above is not
+  // reliable since at any time someone could add or discover a way for a
+  // non-const module to transitively contain a const HloInstruction. The
+  // reliable way to do this would be to create a const laundering map from a
+  // module, mapping each encountered HloInstruction to its non-const version
+  // and then look up each instruction in need of laundering in that map, but
+  // this is much more expensive and complicated. This returns a Status instead
+  // of doing a CHECK-failure in part to make it strongly apparent that this is
+  // something that can fail.
+  StatusOr<HloInstruction*> LaunderConstInstructionFromModule(
+      const HloInstruction* hlo);
+
  private:
   HloComputation* AddComputationInternal(
-      std::unique_ptr<HloComputation> computation);
+      std::unique_ptr<HloComputation> computation, bool is_entry,
+      bool uniquify_names);
 
   const string name_;
   HloModuleConfig config_;
@@ -157,15 +252,16 @@ class HloModule {
   mutable std::mt19937_64 rng_{42};
   mutable tensorflow::mutex rng_mutex_;
 
-  // Versioned handle of the entry computation of the module.
-  bool has_entry_computation_handle_ = false;
-  VersionedComputationHandle entry_computation_handle_;
-
   // Unique name generator for computation and instruction names, which are
   // unique per module.
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
   int next_unique_id_ = 0;
+
+  // Used to keep track of the next unique module id that should be assigned.
+  static std::atomic<int> next_unique_module_id_;
+  // A unique id to label modules with.
+  int unique_id_;
 };
 
 }  // namespace xla

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
 
@@ -51,7 +51,7 @@ class DecodeRawOp : public OpKernel {
     }
     TensorShape out_shape = input.shape();
     if (str_size == -1 || str_size == 0) {  // Empty input
-      out_shape.AddDim(1);
+      out_shape.AddDim(0);
       Tensor* output_tensor = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output("output", out_shape,
                                                        &output_tensor));
@@ -105,6 +105,7 @@ REGISTER(Eigen::half);
 REGISTER(float);
 REGISTER(double);
 REGISTER(int32);
+REGISTER(uint16);
 REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);

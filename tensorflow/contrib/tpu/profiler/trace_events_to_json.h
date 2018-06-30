@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
+#ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
+#define TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
 
 #include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -29,4 +29,4 @@ string TraceEventsToJson(const Trace &trace);
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
+#endif  // TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_

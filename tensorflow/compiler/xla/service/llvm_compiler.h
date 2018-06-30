@@ -57,6 +57,23 @@ class LLVMCompiler : public Compiler {
 
   void RemovePostOptimizationHook() { user_post_optimization_hook_ = nullptr; }
 
+  // Bring in
+  //   StatusOr<std::unique_ptr<Executable>> RunBackend(
+  //       std::unique_ptr<HloModule> module,
+  //       se::StreamExecutor* stream_exec,
+  //       DeviceMemoryAllocator* device_allocator)
+  //   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  //       std::unique_ptr<HloModule> module,
+  //       se::StreamExecutor* stream_exec,
+  //       DeviceMemoryAllocator* device_allocator)
+  using Compiler::RunBackend;
+  using Compiler::RunHloPasses;
+
+  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+      std::vector<std::unique_ptr<HloModule>> modules,
+      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      DeviceMemoryAllocator* device_allocator) override;
+
  protected:
   ModuleHook user_pre_optimization_hook_;
   ModuleHook user_post_optimization_hook_;

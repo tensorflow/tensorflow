@@ -53,15 +53,17 @@ TEST_F(CpuUtilsTest, CheckGetCurrentClockCycle) {
 }
 
 TEST_F(CpuUtilsTest, CheckCycleCounterFrequency) {
-  #if (defined(__powerpc__) || defined(__ppc__) && ( __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || (defined(__s390x__))
-     const uint64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
-     CHECK_GT(cpu_frequency, 0);
-     CHECK_NE(cpu_frequency, unsigned(CpuUtils::INVALID_FREQUENCY));
-  #else
-     const int64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
-     CHECK_GT(cpu_frequency, 0);
-     CHECK_NE(cpu_frequency, CpuUtils::INVALID_FREQUENCY);
-  #endif
+#if (defined(__powerpc__) ||                                             \
+     defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || \
+    (defined(__s390x__))
+  const uint64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
+  CHECK_GT(cpu_frequency, 0);
+  CHECK_NE(cpu_frequency, unsigned(CpuUtils::INVALID_FREQUENCY));
+#else
+  const int64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
+  CHECK_GT(cpu_frequency, 0);
+  CHECK_NE(cpu_frequency, CpuUtils::INVALID_FREQUENCY);
+#endif
   if (DBG) {
     LOG(INFO) << "Cpu frequency = " << cpu_frequency;
   }

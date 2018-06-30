@@ -12,13 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#ifndef TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#define TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
 
 #include <array>
 
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/util/padding.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -74,6 +75,32 @@ Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
                              Padding padding_type, int64* output_size,
                              int64* padding_size);
 
+// The V2 version computes the same outputs with arbitrary dilation_rate.
+// The output dimensions are computed as follows:
+// - When adding dilation_rate (D), we compute an effective filter size (K'):
+//     K' = (K - 1) * D + 1
+// - When Padding = SAME: the output size is (H'), where
+//     H' = ceil(float(H) / float(S))
+//   where ceil is the ceiling function. The number of padded cells
+//   is computed as:
+//     Pc = ((H' - 1) * S + K' - H) / 2
+//   When the stride is 1, the expression simplifies to
+//     H' = H, Pc = (K'-1)/2.
+//   This is where SAME comes from - the output has the same size as the input
+//   has.
+//
+// - When Padding = VALID: the output size is computed as
+//     H' = ceil(float(H - K' + 1) / float(S))
+//   and the number of padded cells is always zero.
+//   When the stride is 1, the expression simplifies to
+//     H' = H-K'+1.
+//
+// TODO(b/67112639): Merge V2 versions and the original versions eventually.
+Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
+                               int64 dilation_rate, int64 stride,
+                               Padding padding_type, int64* output_size,
+                               int64* padding_size);
+
 // Returns the same output dimensions as in GetWindowedOutputSize, but returns
 // verbose padding dimensions (before/after). Any excess padding
 // (caused by an odd padding size value) is added to the 'padding_after'
@@ -83,6 +110,14 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
                                     int64* output_size, int64* padding_before,
                                     int64* padding_after);
 
+// The V2 version computes the same outputs with arbitrary dilation_rate. For
+// detailed equations, refer to the comments for GetWindowedOutputSizeV2().
+Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
+                                      int64 dilation_rate, int64 stride,
+                                      Padding padding_type, int64* output_size,
+                                      int64* padding_before,
+                                      int64* padding_after);
+
 // Given an input tensor, kernel, stride and padding type, populates the 3D size
 // of the output tensor and padding to be applied to the input tensor at the
 // lower end of every dimension. Use for 3D convolutions, where the input data
@@ -91,8 +126,17 @@ Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
 Status Get3dOutputSize(const std::array<int64, 3>& input,
                        const std::array<int64, 3>& window,
                        const std::array<int64, 3>& strides,
-                       Padding padding_type, std::array<int64, 3>* output,
-                       std::array<int64, 3>* padding);
+                       Padding padding_type, std::array<int64, 3>* output_ptr,
+                       std::array<int64, 3>* padding_ptr);
+
+// The V2 version computes the same outputs with arbitrary dilation_rate. For
+// detailed equations, refer to the comments for GetWindowedOutputSizeV2().
+Status Get3dOutputSizeV2(const std::array<int64, 3>& input,
+                         const std::array<int64, 3>& window,
+                         const std::array<int64, 3>& dilations,
+                         const std::array<int64, 3>& strides,
+                         Padding padding_type, std::array<int64, 3>* output_ptr,
+                         std::array<int64, 3>* padding_ptr);
 
 namespace shape_inference {
 
@@ -102,6 +146,15 @@ Status GetWindowedOutputSizeFromDims(InferenceContext* c,
                                      DimensionOrConstant filter_size,
                                      int64 stride, Padding padding_type,
                                      DimensionHandle* output_size);
+
+// The V2 version computes the same outputs with arbitrary dilation_rate. For
+// detailed equations, refer to the comments for GetWindowedOutputSizeV2().
+Status GetWindowedOutputSizeFromDimsV2(InferenceContext* c,
+                                       DimensionHandle input_size,
+                                       DimensionOrConstant filter_size,
+                                       int64 dilation_rate, int64 stride,
+                                       Padding padding_type,
+                                       DimensionHandle* output_size);
 
 // Transfers shape of input(0) to output(0).
 Status UnchangedShape(shape_inference::InferenceContext* c);
@@ -152,6 +205,14 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Returns a new shape with the specified dims arranged in the specified
+// format. The returned value is owned by this context.
+// Note: if format = "FORMAT_NCHW_VECT_C" then C represents the outer_depth.
+Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
+                           const std::vector<DimensionOrConstant>& spatial,
+                           DimensionOrConstant C, ShapeHandle* out,
+                           shape_inference::InferenceContext* context);
+
 // Shape function for MatMul-like operations.
 Status MatMulShape(shape_inference::InferenceContext* c);
 
@@ -167,14 +228,17 @@ Status Conv2DShape(shape_inference::InferenceContext* c);
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
-// Shape function for FusedConvBiasActivation operation.
-Status FusedConvBiasActivationShape(shape_inference::InferenceContext* c);
-
 // Shape function for DepthwiseConv2D-like operations.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
+Status FusedBatchNormShape(shape_inference::InferenceContext* c);
+
+// Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
+Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
@@ -201,9 +265,15 @@ Status ConcatShape(shape_inference::InferenceContext* c,
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
+// Shape function for binary operators that broadcast their inputs
+// and with output to output_index.
+Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c, int output_index);
+
 // Shape function for binary operators that broadcast their inputs.
 // Tested by ops/math_ops_test.cc.
-Status BroadcastBinaryOpShapeFn(InferenceContext* c);
+inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
+  return BroadcastBinaryOpOutputShapeFn(c, 0);
+}
 
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);
@@ -216,8 +286,14 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);
 
+// Shape function for ops with an explicit "shape" attribute.
+Status ExplicitShape(InferenceContext* c);
+
+// Shape function for multiple-output ops with an explicit "shapes" attribute.
+Status ExplicitShapes(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#endif  // TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_

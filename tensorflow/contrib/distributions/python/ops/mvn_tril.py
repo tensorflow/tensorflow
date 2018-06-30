@@ -22,6 +22,7 @@ from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import mvn_linear_operator as mvn_linop
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -76,12 +77,13 @@ class MultivariateNormalTriL(
   ```
 
   Trainable (batch) lower-triangular matrices can be created with
-  `ds.matrix_diag_transform()` and/or `ds.fill_lower_triangular()`
+  `tf.contrib.distributions.matrix_diag_transform()` and/or
+  `tf.contrib.distributions.fill_triangular()`
 
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 3-variate Gaussian.
   mu = [1., 2, 3]
@@ -92,7 +94,7 @@ class MultivariateNormalTriL(
   # ==> [[ 0.6,  0. ,  0. ],
   #      [ 0.2,  0.5,  0. ],
   #      [ 0.1, -0.3,  0.4]])
-  mvn = ds.MultivariateNormalTriL(
+  mvn = tfd.MultivariateNormalTriL(
       loc=mu,
       scale_tril=scale)
 
@@ -112,7 +114,7 @@ class MultivariateNormalTriL(
   mu = [[1., 2, 3],
         [11, 22, 33]]              # shape: [2, 3]
   tril = ...  # shape: [2, 3, 3], lower triangular, non-zero diagonal.
-  mvn = ds.MultivariateNormalTriL(
+  mvn = tfd.MultivariateNormalTriL(
       loc=mu,
       scale_tril=tril)
 
@@ -121,10 +123,26 @@ class MultivariateNormalTriL(
        [-10, 0, 9]]     # shape: [2, 3]
   mvn.prob(x).eval()    # shape: [2]
 
+  # Instantiate a "learnable" MVN.
+  dims = 4
+  with tf.variable_scope("model"):
+    mvn = tfd.MultivariateNormalTriL(
+        loc=tf.get_variable(shape=[dims], dtype=tf.float32, name="mu"),
+        scale_tril=tfd.fill_triangular(
+            tf.get_variable(shape=[dims * (dims + 1) / 2],
+                            dtype=tf.float32, name="chol_Sigma")))
   ```
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_tril=None,
@@ -170,12 +188,12 @@ class MultivariateNormalTriL(
     Raises:
       ValueError: if neither `loc` nor `scale_tril` are specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
     def _convert_to_tensor(x, name):
       return None if x is None else ops.convert_to_tensor(x, name=name)
     if loc is None and scale_tril is None:
       raise ValueError("Must specify one or both of `loc`, `scale_tril`.")
-    with ops.name_scope(name):
+    with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[loc, scale_tril]):
         loc = _convert_to_tensor(loc, name="loc")
         scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")
@@ -188,9 +206,9 @@ class MultivariateNormalTriL(
               assert_proper_shapes=validate_args)
         else:
           # No need to validate that scale_tril is non-singular.
-          # LinearOperatorTriL has an assert_non_singular method that is called
-          # by the Bijector.
-          scale = linalg.LinearOperatorTriL(
+          # LinearOperatorLowerTriangular has an assert_non_singular
+          # method that is called by the Bijector.
+          scale = linalg.LinearOperatorLowerTriangular(
               scale_tril,
               is_non_singular=True,
               is_self_adjoint=False,

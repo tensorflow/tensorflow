@@ -30,13 +30,21 @@ struct ControlFlowInfo {
   string frame_name;                   // frame name of a node
 };
 
-// Assign to each node the name of the frame and the level it belongs to.
-// We check the well-formedness of the graph: All inputs to a node must
-// come from the same frame and have the same "static" iteration level.
-// NOTE(yuanbyu): For now, we require all sends/recvs have iteration level
-// 0. This essentially means there can't be multiple serial Nexts in
-// an iteration, which all sane front-ends should satisfy.
-Status BuildControlFlowInfo(Graph* g, std::vector<ControlFlowInfo>* info);
+// Clear and populate `info` with each node's frame and the level it belongs to.
+// We check the well-formedness of the graph:
+// 1) All inputs to a node must come from the same frame and have the same
+//    "static" iteration level.
+// 2) Each frame has at most one LoopCond node.
+// 3) Each frame has a single parent frame.
+// If `unreachable_nodes` is set, return names of nodes unreachable from the
+// source node. We cannot build ControlFlowInfo for such nodes. They might be
+// pruned later.
+//
+// NOTE(yuanbyu): For now, we require all sends/recvs have iteration level 0.
+// This essentially means there can't be multiple serial Nexts in an iteration,
+// which all sane front-ends should satisfy.
+Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
+                            std::vector<string>* unreachable_nodes = nullptr);
 
 }  // namespace tensorflow
 

@@ -19,7 +19,9 @@ exports_files([
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_ios",
     "tf_generate_proto_text_sources",
+    "tf_cc_test",
 )
 
 # For platform specific build config
@@ -31,17 +33,20 @@ load(
 cc_binary(
     name = "gen_proto_text_functions",
     srcs = ["gen_proto_text_functions.cc"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
+        "@protobuf_archive//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
-    ],
+    ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 
 cc_library(
     name = "gen_proto_text_functions_lib",
     srcs = ["gen_proto_text_functions_lib.cc"],
     hdrs = ["gen_proto_text_functions_lib.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
     linkopts = select({
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
@@ -61,7 +66,7 @@ cc_library(
     }),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
-    ],
+    ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 
 tf_proto_library_cc(
@@ -70,12 +75,17 @@ tf_proto_library_cc(
 )
 
 tf_generate_proto_text_sources(
-    name = "test_proto_text_srcs",
+    name = "test_proto_text",
     srcs = ["test.proto"],
     srcs_relative_dir = "tensorflow/tools/proto_text/",
+    deps = [
+        ":test_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
-cc_test(
+tf_cc_test(
     name = "gen_proto_text_functions_lib_test",
     size = "small",
     srcs = [
@@ -90,19 +100,4 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

@@ -25,7 +25,9 @@ namespace xla {
 using tensorflow::strings::Appendf;
 using tensorflow::strings::HumanReadableElapsedTime;
 using tensorflow::strings::HumanReadableNumBytes;
+using tensorflow::strings::Printf;
 using tensorflow::strings::StrAppend;
+using tensorflow::strings::StrCat;
 
 string HumanReadableProfileBuilder::ToString() const {
   string s;
@@ -34,16 +36,27 @@ string HumanReadableProfileBuilder::ToString() const {
           computation_name_.c_str(),
           HumanReadableElapsedTime(CyclesToSeconds(total_cycles_)).c_str());
 
-  auto append_op = [&](const OpInfo& op) {
+  auto print_op = [&](const OpInfo& op) {
+    // Skip ops with 0 optimal seconds and 0 actual cycles.  These are ops that
+    // were expected to be free and are actually free -- things like (on most
+    // backends) kParameter or kConstant HLOs.  There's no need to clutter the
+    // profile with these.
+    if (op.optimal_seconds == 0 && op.cycles == 0) {
+      return;
+    }
+
     string bytes_per_sec;
     string bytes_per_cycle;
-    if (op.cycles <= 0 || op.bytes_accessed < 0) {
-      bytes_per_sec = "<unknown>";
-      bytes_per_cycle = "<unknown>";
-    } else {
-      bytes_per_sec =
-          HumanReadableNumBytes(op.bytes_accessed / CyclesToSeconds(op.cycles));
-      bytes_per_cycle = HumanReadableNumBytes(op.bytes_accessed / op.cycles);
+    if (op.cycles > 0 && op.bytes_accessed >= 0) {
+      bytes_per_sec = StrCat(
+          HumanReadableNumBytes(op.bytes_accessed / CyclesToSeconds(op.cycles)),
+          "/s");
+      double bpc = static_cast<double>(op.bytes_accessed) / op.cycles;
+      if (op.bytes_accessed > op.cycles) {
+        bytes_per_cycle = StrCat(HumanReadableNumBytes(bpc), "/cycle");
+      } else {
+        bytes_per_cycle = Printf("%.3fB/cycle", bpc);
+      }
     }
 
     double cycles_percent = 0;
@@ -53,14 +66,16 @@ string HumanReadableProfileBuilder::ToString() const {
 
     double nsecs = op.cycles / clock_rate_ghz_;
     Appendf(&s,
-            "%15lld cycles (%6.2f%%) :: %12.1f usec (%12.1f optimal) :: %18s "
-            ":: %18s :: %12s/s :: %12s/cycle :: %s\n",
+            "%15lld cycles (%6.2f%%) :: %12.1f usec %22s :: %18s "
+            ":: %18s :: %14s :: %16s :: %s\n",
             op.cycles, cycles_percent, CyclesToMicroseconds(op.cycles),
-            op.optimal_seconds * 1e6,
+            op.optimal_seconds < 0
+                ? ""
+                : Printf("(%12.1f optimal)", op.optimal_seconds * 1e6).c_str(),
             op.flop_count <= 0
-                ? "<none>"
+                ? ""
                 : HumanReadableNumFlops(op.flop_count, nsecs).c_str(),
-            op.transcendental_count <= 0 ? "<none>"
+            op.transcendental_count <= 0 ? ""
                                          : HumanReadableNumTranscendentalOps(
                                                op.transcendental_count, nsecs)
                                                .c_str(),
@@ -68,20 +83,30 @@ string HumanReadableProfileBuilder::ToString() const {
   };
 
   float optimal_seconds_sum = 0.0;
+  int64 total_flops = 0.;
+  int64 total_transcendentals = 0.;
+  int64 total_bytes = 0;
   for (const auto& op : op_infos_) {
-    optimal_seconds_sum += op.optimal_seconds;
+    if (op.optimal_seconds > 0) {
+      optimal_seconds_sum += op.optimal_seconds;
+    }
+    total_flops += std::max(op.flop_count, int64{0});
+    total_transcendentals += std::max(op.transcendental_count, int64{0});
+    total_bytes += std::max(op.bytes_accessed, int64{0});
   }
 
-  append_op({"[total]", "[total]", /*category=*/"", total_cycles_, -1, -1, -1,
-             optimal_seconds_sum});
+  VLOG(1) << "Total floating point ops: " << total_flops;
 
-  // Sort ops in decreasing order of cycles.
+  print_op({"[total]", "[total]", /*category=*/"", total_cycles_, total_flops,
+            total_transcendentals, total_bytes, optimal_seconds_sum});
+
+  // Sort ops in decreasing order of cycles, and print them.
   std::vector<OpInfo> sorted_ops(op_infos_);
   std::sort(
       sorted_ops.begin(), sorted_ops.end(),
       [](const OpInfo& a, const OpInfo& b) { return a.cycles > b.cycles; });
   for (const auto& op : sorted_ops) {
-    append_op(op);
+    print_op(op);
   }
 
   if (total_cycles_ <= 0) {
@@ -95,8 +120,20 @@ string HumanReadableProfileBuilder::ToString() const {
       table.SetMetricName("microseconds above estimated optimum");
       table.SetEntryName("ops");
       table.SetShowCategoryTable();
+      table.SetShowAllEntries();
       float total_discrepancy_in_microseconds = 0.0f;
-      for (const auto& op : sorted_ops) {
+      for (const auto& op : op_infos_) {
+        // Skip ops with < 0 optimal seconds.  These are ops for which we don't
+        // know the optimal time.
+        if (op.optimal_seconds < 0) {
+          continue;
+        }
+        // Also skip ops with 0 actual cycles.  These ops were free; there's no
+        // need to clutter the "above estimated optimum" table with them,
+        // because they can't be optimized further.
+        if (op.cycles == 0) {
+          continue;
+        }
         MetricTableReport::Entry entry;
         entry.text = op.name;
         entry.short_text = op.short_name;
@@ -114,7 +151,14 @@ string HumanReadableProfileBuilder::ToString() const {
       table.SetMetricName("microseconds");
       table.SetEntryName("ops");
       table.SetShowCategoryTable();
-      for (const auto& op : sorted_ops) {
+      table.SetShowAllEntries();
+      for (const auto& op : op_infos_) {
+        // Skip ops with 0 optimal seconds and 0 actual cycles.  As in
+        // print_op(), these are uninteresting because they're expected to be
+        // free, and they were actually free.
+        if (op.cycles == 0 && op.optimal_seconds == 0) {
+          continue;
+        }
         MetricTableReport::Entry entry;
         entry.text = op.name;
         entry.short_text = op.short_name;
@@ -124,6 +168,23 @@ string HumanReadableProfileBuilder::ToString() const {
       }
       StrAppend(&s, table.MakeReport(CyclesToMicroseconds(total_cycles_)));
     }
+  }
+
+  if (total_bytes > 0) {
+    MetricTableReport table;
+    table.SetMetricName("MiB read+written");
+    table.SetEntryName("ops");
+    table.SetShowCategoryTable();
+    for (const auto& op : op_infos_) {
+      MetricTableReport::Entry entry;
+      entry.text = op.name;
+      entry.short_text = op.short_name;
+      entry.category_text = op.category;
+      entry.metric = static_cast<double>(op.bytes_accessed) / (1 << 20);
+      table.AddEntry(std::move(entry));
+    }
+    StrAppend(&s,
+              table.MakeReport(static_cast<double>(total_bytes) / (1 << 20)));
   }
   return s;
 }

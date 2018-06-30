@@ -57,13 +57,12 @@ gtl::InlinedVector<int32, 8> ReductionHelper::permutation() {
   return perm;
 }
 
-Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
-                                 const bool keep_dims) {
-  // bitmap[i] indicates whether to reduce data along i-th axis.
-  gtl::InlinedVector<bool, 4> bitmap(data.dims(), false);
-  auto axis_vec = axis.flat<int32>();
+template <typename Tperm>
+Status SimplifyHelper(const Tensor& data, const Tensor& axis,
+                      gtl::InlinedVector<bool, 4>& bitmap) {
+  auto axis_vec = axis.flat<Tperm>();
   for (int64 i = 0; i < axis.NumElements(); ++i) {
-    int32 index = axis_vec(i);
+    Tperm index = axis_vec(i);
     if (index < -data.dims() || index >= data.dims()) {
       return errors::InvalidArgument("Invalid reduction dimension (", index,
                                      " for input with ", data.dims(),
@@ -72,7 +71,18 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
     index = (index + data.dims()) % data.dims();
     bitmap[index] = true;
   }
+  return Status::OK();
+}
 
+Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
+                                 const bool keep_dims) {
+  // bitmap[i] indicates whether to reduce data along i-th axis.
+  gtl::InlinedVector<bool, 4> bitmap(data.dims(), false);
+  if (axis.dtype() == DT_INT32) {
+    TF_RETURN_IF_ERROR(SimplifyHelper<int32>(data, axis, bitmap));
+  } else {
+    TF_RETURN_IF_ERROR(SimplifyHelper<int64>(data, axis, bitmap));
+  }
   // Output tensor's dim sizes.
   out_shape_.clear();
   for (int i = 0; i < data.dims(); ++i) {

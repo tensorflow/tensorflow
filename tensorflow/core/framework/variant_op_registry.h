@@ -20,6 +20,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -35,11 +37,19 @@ class OpKernelContext;
 enum VariantUnaryOp {
   INVALID_VARIANT_UNARY_OP = 0,
   ZEROS_LIKE_VARIANT_UNARY_OP = 1,
+  CONJ_VARIANT_UNARY_OP = 2,
 };
 
 enum VariantBinaryOp {
   INVALID_VARIANT_BINARY_OP = 0,
   ADD_VARIANT_BINARY_OP = 1,
+};
+
+enum VariantDeviceCopyDirection {
+  INVALID_DEVICE_COPY_DIRECTION = 0,
+  HOST_TO_DEVICE = 1,
+  DEVICE_TO_HOST = 2,
+  DEVICE_TO_DEVICE = 3,
 };
 
 class UnaryVariantOpRegistry {
@@ -51,6 +61,33 @@ class UnaryVariantOpRegistry {
   typedef std::function<Status(OpKernelContext*, const Variant&, const Variant&,
                                Variant*)>
       VariantBinaryOpFn;
+
+  // An AsyncTensorDeviceCopyFn is a function provided to
+  // the user-provided DeviceCopyFn callback as the third argument ("copier").
+  //
+  // Expected inputs:
+  //   from: A Tensor on the host (if performing cpu->gpu copy), or
+  //         device (if performing gpu->cpu or gpu->gpu copy).
+  //   to: An empty/uninitialized tensor.  It will be updated upon
+  //       successful return of the function with the correct dtype and shape.
+  //       However, the copied data will not be available until the compute
+  //       stream has been synchronized.
+  //
+  // Returns:
+  //   The status upon memory allocation / initialization of the
+  //   "to" tensor, and enqueue of the copy onto the compute stream.
+  //   Any failure of the copy itself will update the underlying
+  //   stream status and propagate through the runtime independent
+  //   of the caller.
+  typedef std::function<Status(const Tensor& from, Tensor* to)>
+      AsyncTensorDeviceCopyFn;
+
+  // The AsyncVariantDeviceCopyFn is the signature of the 'device_copy_fn'
+  // expected to be passed to the registration macro
+  // INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION.
+  typedef std::function<Status(const Variant& from, Variant* to,
+                               AsyncTensorDeviceCopyFn copy_fn)>
+      AsyncVariantDeviceCopyFn;
 
   // Add a shape lookup function to the registry.
   void RegisterShapeFn(const string& type_name, const VariantShapeFn& shape_fn);
@@ -64,6 +101,16 @@ class UnaryVariantOpRegistry {
 
   // Returns nullptr if no decode function was found for the given TypeName.
   VariantDecodeFn* GetDecodeFn(StringPiece type_name);
+
+  // Add a copy-to-GPU function to the registry.
+  void RegisterDeviceCopyFn(const VariantDeviceCopyDirection direction,
+                            const string& type_name,
+                            const AsyncVariantDeviceCopyFn& device_copy_fn);
+
+  // Returns nullptr if no copy function was found for the given
+  // TypeName and direction.
+  AsyncVariantDeviceCopyFn* GetDeviceCopyFn(
+      const VariantDeviceCopyDirection direction, StringPiece type_name);
 
   // Add a unary op function to the registry.
   void RegisterUnaryOpFn(VariantUnaryOp op, const string& device,
@@ -98,34 +145,71 @@ class UnaryVariantOpRegistry {
   static std::unordered_set<string>* PersistentStringStorage();
 
  private:
-  std::unordered_map<StringPiece, VariantShapeFn, StringPiece::Hasher>
-      shape_fns;
-  std::unordered_map<StringPiece, VariantDecodeFn, StringPiece::Hasher>
+  std::unordered_map<StringPiece, VariantShapeFn, StringPieceHasher> shape_fns;
+  std::unordered_map<StringPiece, VariantDecodeFn, StringPieceHasher>
       decode_fns;
 
+  // Map std::pair<Direction, type_name> to function.
+  struct PairHash {
+    template <typename Direction>
+    std::size_t operator()(const std::pair<Direction, StringPiece>& x) const {
+      // The hash of an enum is just its value as a std::size_t.
+      std::size_t ret = static_cast<std::size_t>(std::get<0>(x));
+      ret = Hash64Combine(ret, sp_hasher_(std::get<1>(x)));
+      return ret;
+    }
+    StringPieceHasher sp_hasher_;
+  };
+
+  std::unordered_map<std::pair<VariantDeviceCopyDirection, StringPiece>,
+                     AsyncVariantDeviceCopyFn, PairHash>
+      device_copy_fns;
+
   // Map std::tuple<Op, device, type_name> to function.
+
+  // this breaks by falling victim to "too perfect forwarding"
+  // see https://stackoverflow.com/questions/44475317/variadic-template-issue
+  // and references therein
+  template <typename Op>
+  struct FuncTuple {
+    FuncTuple(const Op& op, const StringPiece& dev, const StringPiece& tname)
+        : op_type_(op), device_(dev), typename_(tname){};
+    Op op_type_;
+    StringPiece device_, typename_;
+  };
+  // friend declaration for operator==
+  // needed for clang
+  template <typename Op>
+  friend bool operator==(const FuncTuple<Op>& l, const FuncTuple<Op>& r);
   struct TupleHash {
     template <typename Op>
     std::size_t operator()(
         const std::tuple<Op, StringPiece, StringPiece>& x) const {
       // The hash of an enum is just its value as a std::size_t.
       std::size_t ret = static_cast<std::size_t>(std::get<0>(x));
-      StringPiece::Hasher sp_hasher;
-      ret = Hash64Combine(ret, sp_hasher(std::get<1>(x)));
-      ret = Hash64Combine(ret, sp_hasher(std::get<2>(x)));
+      ret = Hash64Combine(ret, sp_hasher_(std::get<1>(x)));
+      ret = Hash64Combine(ret, sp_hasher_(std::get<2>(x)));
       return ret;
     }
+
+    template <typename Op>
+    std::size_t operator()(const FuncTuple<Op>& x) const {
+      // The hash of an enum is just its value as a std::size_t.
+      std::size_t ret = static_cast<std::size_t>(x.op_type_);
+      ret = Hash64Combine(ret, sp_hasher_(x.device_));
+      ret = Hash64Combine(ret, sp_hasher_(x.typename_));
+      return ret;
+    }
+    StringPieceHasher sp_hasher_;
   };
-  std::unordered_map<std::tuple<VariantUnaryOp, StringPiece, StringPiece>,
-                     VariantUnaryOpFn, TupleHash>
+  std::unordered_map<FuncTuple<VariantUnaryOp>, VariantUnaryOpFn, TupleHash>
       unary_op_fns;
-  std::unordered_map<std::tuple<VariantBinaryOp, StringPiece, StringPiece>,
-                     VariantBinaryOpFn, TupleHash>
+  std::unordered_map<FuncTuple<VariantBinaryOp>, VariantBinaryOpFn, TupleHash>
       binary_op_fns;
 
   // Find or insert a string into a persistent string storage
-  // container; return the StringPiece pointing to the permanent
-  // string location.
+  // container; return the StringPiece pointing to the permanent string
+  // location.
   static StringPiece GetPersistentStringPiece(const string& str) {
     const auto string_storage = PersistentStringStorage();
     auto found = string_storage->find(str);
@@ -137,7 +221,12 @@ class UnaryVariantOpRegistry {
     }
   }
 };
-
+template <typename Op>
+inline bool operator==(const UnaryVariantOpRegistry::FuncTuple<Op>& lhs,
+                       const UnaryVariantOpRegistry::FuncTuple<Op>& rhs) {
+  return (lhs.op_type_ == rhs.op_type_) && (lhs.device_ == rhs.device_) &&
+         (lhs.typename_ == rhs.typename_);
+}
 // Gets a TensorShape from a Tensor containing a scalar Variant.
 // Returns an Internal error if the Variant does not have a registered shape
 // function, or if it's a serialized Variant that cannot be decoded.
@@ -156,6 +245,23 @@ Status GetUnaryVariantShape(const Tensor& variant_tensor, TensorShape* shape);
 //   variant is not null.
 //
 bool DecodeUnaryVariant(Variant* variant);
+
+// Copies a variant between CPU<->GPU, or between GPU<->GPU.
+// The variant 'from' must have a registered DeviceCopyFn for the
+// given direction.  The returned variant 'to' will have
+// (some subset of its) tensors stored on destination according to the
+// registered DeviceCopyFn function for the given direction.  Returns
+// an Internal error if the Variant does not have a registered
+// DeviceCopyFn function for the given direction, or if initiating the
+// copy fails.
+//
+// REQUIRES:
+//   'to' is not null.
+//
+Status VariantDeviceCopy(
+    const VariantDeviceCopyDirection direction, const Variant& from,
+    Variant* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy_fn);
 
 // Sets *v_out = unary_op(v).  The variant v must have a registered
 // UnaryOp function for the given Device.  Returns an Internal error
@@ -204,8 +310,8 @@ Status BinaryOpVariants(OpKernelContext* ctx, VariantBinaryOp op,
     return errors::Internal(
         "No unary variant binary_op function found for binary variant op "
         "enum: ",
-        op, " Variant type_name: '", a.TypeName(),
-        "' for device type: ", device);
+        op, " Variant type_name: '", a.TypeName(), "' for device type: ",
+        device);
   }
   return (*binary_op_fn)(ctx, a, b, out);
 }
@@ -219,16 +325,17 @@ class UnaryVariantShapeRegistration {
 
   UnaryVariantShapeRegistration(const string& type_name,
                                 const LocalVariantShapeFn& shape_fn) {
-    auto wrapped_fn = [type_name, shape_fn](const Variant& v,
-                                            TensorShape* s) -> Status {
-      const T* t = v.get<T>();
-      if (t == nullptr) {
-        return errors::Internal(
-            "VariantShapeFn: Could not access object, type_name: ", type_name);
-      }
-      return shape_fn(*t, s);
-    };
-    UnaryVariantOpRegistry::Global()->RegisterShapeFn(type_name, wrapped_fn);
+    UnaryVariantOpRegistry::Global()->RegisterShapeFn(
+        type_name,
+        [type_name, shape_fn](const Variant& v, TensorShape* s) -> Status {
+          const T* t = v.get<T>();
+          if (t == nullptr) {
+            return errors::Internal(
+                "VariantShapeFn: Could not access object, type_name: ",
+                type_name);
+          }
+          return shape_fn(*t, s);
+        });
   }
 };
 
@@ -240,21 +347,50 @@ class UnaryVariantDecodeRegistration {
     // mutable: get below may Decode the variant, which
     // is a self-mutating behavior.  The variant is not modified in
     // any other way.
-    auto wrapped_fn = [type_name](Variant* v) -> bool {
-      CHECK_NOTNULL(v);
-      VariantTensorDataProto* t = v->get<VariantTensorDataProto>();
-      if (t == nullptr) {
-        return false;
-      }
-      Variant decoded = T();
-      VariantTensorData data(*t);
-      if (!decoded.Decode(data)) {
-        return false;
-      }
-      *v = std::move(decoded);
-      return true;
-    };
-    UnaryVariantOpRegistry::Global()->RegisterDecodeFn(type_name, wrapped_fn);
+    UnaryVariantOpRegistry::Global()->RegisterDecodeFn(
+        type_name, [type_name](Variant* v) -> bool {
+          DCHECK_NE(v, nullptr);
+          VariantTensorDataProto* t = v->get<VariantTensorDataProto>();
+          if (t == nullptr) {
+            return false;
+          }
+          Variant decoded = T();
+          VariantTensorData data(*t);
+          if (!decoded.Decode(data)) {
+            return false;
+          }
+          *v = std::move(decoded);
+          return true;
+        });
+  }
+};
+
+template <typename T>
+class UnaryVariantDeviceCopyRegistration {
+ public:
+  typedef std::function<Status(const T& t, T* t_out,
+                               UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn)>
+      LocalVariantDeviceCopyFn;
+  UnaryVariantDeviceCopyRegistration(
+      const VariantDeviceCopyDirection direction, const string& type_name,
+      const LocalVariantDeviceCopyFn& device_copy_fn) {
+    UnaryVariantOpRegistry::Global()->RegisterDeviceCopyFn(
+        direction, type_name,
+        [type_name, device_copy_fn](
+            const Variant& from, Variant* to,
+            UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn
+                device_copy_tensor_fn) -> Status {
+          DCHECK_NE(to, nullptr);
+          *to = T();
+          if (from.get<T>() == nullptr) {
+            return errors::Internal(
+                "VariantCopyToGPUFn: Could not access object, type_name: ",
+                type_name);
+          }
+          const T& t = *from.get<T>();
+          T* t_out = to->get<T>();
+          return device_copy_fn(t, t_out, device_copy_tensor_fn);
+        });
   }
 };
 
@@ -267,22 +403,21 @@ class UnaryVariantUnaryOpRegistration {
   UnaryVariantUnaryOpRegistration(VariantUnaryOp op, const string& device,
                                   const string& type_name,
                                   const LocalVariantUnaryOpFn& unary_op_fn) {
-    auto wrapped_fn = [type_name, unary_op_fn](OpKernelContext* ctx,
-                                               const Variant& v,
-                                               Variant* v_out) -> Status {
-      CHECK_NOTNULL(v_out);
-      *v_out = T();
-      if (v.get<T>() == nullptr) {
-        return errors::Internal(
-            "VariantUnaryOpFn: Could not access object, type_name: ",
-            type_name);
-      }
-      const T& t = *v.get<T>();
-      T* t_out = v_out->get<T>();
-      return unary_op_fn(ctx, t, t_out);
-    };
-    UnaryVariantOpRegistry::Global()->RegisterUnaryOpFn(op, device, type_name,
-                                                        wrapped_fn);
+    UnaryVariantOpRegistry::Global()->RegisterUnaryOpFn(
+        op, device, type_name,
+        [type_name, unary_op_fn](OpKernelContext* ctx, const Variant& v,
+                                 Variant* v_out) -> Status {
+          DCHECK_NE(v_out, nullptr);
+          *v_out = T();
+          if (v.get<T>() == nullptr) {
+            return errors::Internal(
+                "VariantUnaryOpFn: Could not access object, type_name: ",
+                type_name);
+          }
+          const T& t = *v.get<T>();
+          T* t_out = v_out->get<T>();
+          return unary_op_fn(ctx, t, t_out);
+        });
   }
 };
 
@@ -296,28 +431,27 @@ class UnaryVariantBinaryOpRegistration {
   UnaryVariantBinaryOpRegistration(VariantBinaryOp op, const string& device,
                                    const string& type_name,
                                    const LocalVariantBinaryOpFn& binary_op_fn) {
-    auto wrapped_fn = [type_name, binary_op_fn](
-                          OpKernelContext* ctx, const Variant& a,
-                          const Variant& b, Variant* out) -> Status {
-      CHECK_NOTNULL(out);
-      *out = T();
-      if (a.get<T>() == nullptr) {
-        return errors::Internal(
-            "VariantBinaryOpFn: Could not access object 'a', type_name: ",
-            type_name);
-      }
-      if (b.get<T>() == nullptr) {
-        return errors::Internal(
-            "VariantBinaryOpFn: Could not access object 'b', type_name: ",
-            type_name);
-      }
-      const T& t_a = *a.get<T>();
-      const T& t_b = *b.get<T>();
-      T* t_out = out->get<T>();
-      return binary_op_fn(ctx, t_a, t_b, t_out);
-    };
-    UnaryVariantOpRegistry::Global()->RegisterBinaryOpFn(op, device, type_name,
-                                                         wrapped_fn);
+    UnaryVariantOpRegistry::Global()->RegisterBinaryOpFn(
+        op, device, type_name,
+        [type_name, binary_op_fn](OpKernelContext* ctx, const Variant& a,
+                                  const Variant& b, Variant* out) -> Status {
+          DCHECK_NE(out, nullptr);
+          *out = T();
+          if (a.get<T>() == nullptr) {
+            return errors::Internal(
+                "VariantBinaryOpFn: Could not access object 'a', type_name: ",
+                type_name);
+          }
+          if (b.get<T>() == nullptr) {
+            return errors::Internal(
+                "VariantBinaryOpFn: Could not access object 'b', type_name: ",
+                type_name);
+          }
+          const T& t_a = *a.get<T>();
+          const T& t_b = *b.get<T>();
+          T* t_out = out->get<T>();
+          return binary_op_fn(ctx, t_a, t_b, t_out);
+        });
   }
 };
 
@@ -351,6 +485,56 @@ class UnaryVariantBinaryOpRegistration {
   static variant_op_registry_fn_registration::UnaryVariantDecodeRegistration< \
       T>                                                                      \
       register_unary_variant_op_decoder_fn_##ctr(type_name)
+
+// ****** NOTE ******
+// FOR INTERNAL USE ONLY.  IF YOU USE THIS WE MAY BREAK YOUR CODE.
+// ****** NOTE ******
+//
+// Register a device copy variant function for the given copy
+// direction and type; where direction is the enum
+// VariantDeviceCopyDirection, and the device_copy_fn has signature:
+//
+//   Status device_copy_fn(
+//     const T& t, T* t_out,
+//     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copier);
+//
+// And device_copy_fn calls copier 0 or more times.  For details on
+// the behavior of the copier function, see the comments at the
+// declaration of UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn.
+//
+// Note, the device_copy_fn may choose to keep some tensors
+// on host, e.g. by assigning to->tensor = from.tensor (assuming
+// from.tensor is already on host); or by setting
+//   to->tensor = Tensor(cpu_allocator(), ...)
+// and manually updating its values.
+//
+// If this is the case, the CopyFns for HOST_TO_DEVICE,
+// DEVICE_TO_HOST, and DEVICE_TO_DEVICE must perform host-to-host
+// copies in a consistent manner.  For example, one must always
+// manually copy any "always on host" tensors in all directions instead of e.g.
+//   - performing a host-to-host copy in one direction,
+//   - using the provided copier function in the reverse direction.
+// Doing the latter will cause program failures.
+//
+// ****** NOTE ******
+// FOR INTERNAL USE ONLY.  IF YOU USE THIS WE MAY BREAK YOUR CODE.
+// ****** NOTE ******
+#define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(       \
+    T, direction, type_name, device_copy_fn)                        \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER( \
+      __COUNTER__, T, direction, type_name, device_copy_fn)
+
+#define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ_HELPER( \
+    ctr, T, direction, type_name, device_copy_fn)                         \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ(              \
+      ctr, T, direction, type_name, device_copy_fn)
+
+#define INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION_UNIQ(             \
+    ctr, T, direction, type_name, device_copy_fn)                              \
+  static variant_op_registry_fn_registration::                                 \
+      UnaryVariantDeviceCopyRegistration<T>                                    \
+          register_unary_variant_op_device_copy_fn_##ctr(direction, type_name, \
+                                                         device_copy_fn)
 
 // Register a unary unary_op variant function with the signature:
 //    Status UnaryOpFn(OpKernelContext* ctx, const T& t, T* t_out);

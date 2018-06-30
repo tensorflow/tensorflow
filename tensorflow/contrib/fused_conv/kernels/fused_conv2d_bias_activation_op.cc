@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/activation_mode.h"
@@ -41,6 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
@@ -66,6 +68,7 @@ template <>
 struct Int8x4ToInt32<int8> {
   using type = int32;
 };
+}  // namespace
 
 // T is the element type of the conv_input, filter and side_input tensors.
 // BiasType is the element type of the bias tensor, which can be different.
@@ -73,9 +76,20 @@ struct Int8x4ToInt32<int8> {
 template <typename Device, typename T, typename BiasType, typename ScaleType>
 class FusedConv2DBiasActivationOp : public OpKernel {
  public:
+  enum InputIndexes {
+    kConvInput = 0,
+    kFilter,
+    kBias,
+    kSideInput,
+    kConvInputScale,
+    kSideInputScale,
+    kNumInputs
+  };
+
   explicit FusedConv2DBiasActivationOp(OpKernelConstruction* context)
       : OpKernel(context) {
     string data_format_str, filter_format_str;
+    CHECK_EQ(kNumInputs, context->num_inputs());
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -125,13 +139,6 @@ class FusedConv2DBiasActivationOp : public OpKernel {
                 errors::InvalidArgument("Current implementation only supports "
                                         "RELU as the activation function."));
     cudnn_use_autotune_ = CudnnUseAutotune();
-    float conv_input_scale_flt, side_input_scale_flt;
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("conv_input_scale", &conv_input_scale_flt));
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("side_input_scale", &side_input_scale_flt));
-    conv_input_scale_ = conv_input_scale_flt;
-    side_input_scale_ = side_input_scale_flt;
   }
 
   Status CheckShape(const Tensor& tensor, const string& tensor_name) {
@@ -154,22 +161,30 @@ class FusedConv2DBiasActivationOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // The conv_input tensor is one of the following formats:
     // NHWC, NCHW, NCHW_VECT_C.
-    const Tensor& conv_input = context->input(0);
+    const Tensor& conv_input = context->input(kConvInput);
     OP_REQUIRES_OK(context, CheckShape(conv_input, "conv_input"));
 
     // The filter tensor is one of the following formats:
     // HWIO, OIHW, OIHW_VECT_I.
-    const Tensor& filter = context->input(1);
+    const Tensor& filter = context->input(kFilter);
     OP_REQUIRES_OK(context, CheckShape(filter, "filter"));
 
     // Input bias is a 1-D tensor, with size matching output depth.
-    const Tensor& bias = context->input(2);
+    const Tensor& bias = context->input(kBias);
     OP_REQUIRES_OK(context, CheckShape(bias, "conv_input"));
+
+    const Tensor& conv_input_scale_tensor = context->input(kConvInputScale);
+    const Tensor& side_input_scale_tensor = context->input(kSideInputScale);
+
+    auto conv_input_scale = *reinterpret_cast<const ScaleType*>(
+        conv_input_scale_tensor.tensor_data().data());
+    auto side_input_scale = *reinterpret_cast<const ScaleType*>(
+        side_input_scale_tensor.tensor_data().data());
 
     // If side_input_scale != 0, then side_input is not ignored and
     // has the same type and dimensions as the output.
-    const Tensor& side_input = context->input(3);
-    if (side_input_scale_ != 0) {
+    const Tensor& side_input = context->input(kSideInput);
+    if (side_input_scale != 0) {
       OP_REQUIRES_OK(context, CheckShape(side_input, "side_input"));
     }
 
@@ -212,10 +227,10 @@ class FusedConv2DBiasActivationOp : public OpKernel {
       return;
     }
 
-    launcher_.launch(context, cudnn_use_autotune_, conv_input,
-                     conv_input_scale_, filter, stride_rows_, stride_cols_,
-                     eigen_padding_type_, side_input, side_input_scale_, bias,
-                     activation_mode_, data_format_, filter_format_, output);
+    launcher_.launch(context, cudnn_use_autotune_, conv_input, conv_input_scale,
+                     filter, stride_rows_, stride_cols_, eigen_padding_type_,
+                     side_input, side_input_scale, bias, activation_mode_,
+                     data_format_, filter_format_, output);
   }
 
  private:
@@ -225,8 +240,6 @@ class FusedConv2DBiasActivationOp : public OpKernel {
   ActivationMode activation_mode_;
   TensorFormat data_format_;
   FilterTensorFormat filter_format_;
-  ScaleType conv_input_scale_;
-  ScaleType side_input_scale_;
   LaunchFusedConv2DBiasActivationOp<Device, T, BiasType, ScaleType> launcher_;
   bool cudnn_use_autotune_;
 
@@ -234,7 +247,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 };
 
 #if GOOGLE_CUDA
-namespace dnn = ::perftools::gputools::dnn;
+namespace dnn = se::dnn;
 
 // A dummy type to group forward convolution autotune results together.
 struct ConvBiasActivationAutoTuneGroup {
@@ -266,6 +279,28 @@ Status TransformNHWCToNCHW(OpKernelContext* ctx, const Tensor& nhwc_tensor,
   return Status::OK();
 }
 
+// Adjusts padding so cudnn supports it. Sets `adjusted_padding` to be the
+// adjusted padding, and `extra_padding_before` and `extra_padding_after` to be
+// the extra padding that FusedConv needs to apply before calling cudnn.
+void AdjustPaddingForCudnn(int padding, bool is_int8x4, int filter_size,
+                           int* adjusted_padding, int* extra_padding_before,
+                           int* extra_padding_after) {
+#if CUDNN_VERSION < 7000
+  if (is_int8x4 && filter_size >= 6) {
+    // TODO(b/70795525): Remove after NVIDIA fixes this bug with int8 fused
+    // convolution. I don't know cuDNN7 still has the bug, so enable this
+    // workaround for cuDNN6 or older.
+    *adjusted_padding = 0;
+    *extra_padding_before = padding / 2;
+    *extra_padding_after = padding - *extra_padding_before;
+    return;
+  }
+#endif
+  *adjusted_padding = padding / 2 * 2;
+  *extra_padding_before = 0;
+  *extra_padding_after = padding % 2;
+}
+
 template <typename T, typename BiasType, typename ScaleType>
 void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     launch(OpKernelContext* ctx, bool cudnn_use_autotune,
@@ -285,6 +320,17 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
   constexpr int rank = is_int8x4 ? 5 : 4;
   constexpr int vect = is_int8x4 ? 4 : 1;
+
+  if (is_int8x4) {
+    int cc_major, cc_minor;
+    stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                     &cc_minor);
+    OP_REQUIRES(
+        ctx, ((cc_major == 6 && cc_minor >= 1) || cc_major > 6),
+        errors::Unimplemented(
+            "FusedConv2DBiasActivation for int8 is only supported on GPUs with "
+            "compute capability 6.1 or later."));
+  }
 
   const int batch_size = GetTensorDim(conv_input_param, data_format, 'N');
   int conv_input_rows = GetTensorDim(conv_input_param, data_format, 'H');
@@ -315,12 +361,21 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
         0, (output_rows - 1) * row_stride + filter_rows - conv_input_rows);
     padding_cols = std::max<int>(
         0, (output_cols - 1) * col_stride + filter_cols - conv_input_cols);
-    const int padding_rows_parity = padding_rows & 1;
-    const int padding_cols_parity = padding_cols & 1;
-    if ((padding_rows_parity | padding_cols_parity) != 0) {
+    int extra_top_padding = 0;
+    int extra_bottom_padding = 0;
+    int extra_left_padding = 0;
+    int extra_right_padding = 0;
+    AdjustPaddingForCudnn(padding_rows, is_int8x4, filter_rows, &padding_rows,
+                          &extra_top_padding, &extra_bottom_padding);
+    AdjustPaddingForCudnn(padding_cols, is_int8x4, filter_cols, &padding_cols,
+                          &extra_left_padding, &extra_right_padding);
+    if (extra_top_padding != 0 || extra_bottom_padding != 0 ||
+        extra_left_padding != 0 || extra_right_padding != 0) {
       Tensor transformed_input;
-      const int new_conv_input_rows = conv_input_rows + padding_rows_parity;
-      const int new_conv_input_cols = conv_input_cols + padding_cols_parity;
+      const int new_conv_input_rows =
+          conv_input_rows + extra_top_padding + extra_bottom_padding;
+      const int new_conv_input_cols =
+          conv_input_cols + extra_left_padding + extra_right_padding;
 
       using VectT = typename Int8x4ToInt32<typename RawType<T>::type>::type;
       auto pad_data_format = is_int8x4 ? FORMAT_NCHW : data_format;
@@ -338,8 +393,9 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
           maybe_padded_conv_input.reinterpret_last_dimension<VectT, 4>());
 
       functor::PadInput<GPUDevice, VectT, int, 4>()(
-          ctx->eigen_device<GPUDevice>(), conv_input_eigen_tensor, {{0, 0}},
-          {{padding_rows_parity, padding_cols_parity}},
+          ctx->eigen_device<GPUDevice>(), conv_input_eigen_tensor,
+          {{extra_top_padding, extra_left_padding}},
+          {{extra_bottom_padding, extra_right_padding}},
           padded_conv_input_eigen_tensor, pad_data_format);
 
       conv_input = &maybe_padded_conv_input;
@@ -416,17 +472,19 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       .set_feature_map_count(output_depth)
       .set_layout(data_layout);
   dnn::ConvolutionDescriptor conv_desc;
+  CHECK_EQ(0, padding_rows % 2);
+  CHECK_EQ(0, padding_cols % 2);
   conv_desc.set_vertical_filter_stride(row_stride)
       .set_horizontal_filter_stride(col_stride)
       .set_zero_padding_height(padding_rows / 2)
       .set_zero_padding_width(padding_cols / 2);
 
   Tensor maybe_transformed_filter;
-  const Tensor* filter;
-  if (is_int8x4) {
-    // We have already checked filter is OIHW_VECT_I in the constructor.
-    filter = &filter_param;
-  } else if (filter_format == FORMAT_HWIO) {
+  const Tensor* filter = &filter_param;
+  // For qint8, we have already checked filter is OIHW_VECT_I in the
+  // constructor, but we need to test for is_int8x4 so the if block doesn't
+  // generate code for qint8.
+  if (!is_int8x4 && filter_format == FORMAT_HWIO) {
     // Shuffle filter tensor from HWIO to OIHW:
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             DataTypeToEnum<T>::value,
@@ -470,6 +528,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       {{conv_input_rows, conv_input_cols}},
       output_depth,
       {{filter_rows, filter_cols}},
+      // TODO(yangzihao): Add support for arbitrary dilations for fused conv.
+      {{1, 1}},  // dilation_rows, dilation_cols
       {{row_stride, col_stride}},
       {{padding_rows, padding_cols}},
       conv_input->dtype(),
@@ -481,9 +541,10 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   dnn::AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBiasActivation::GetInstance()->Find(
                                 fused_conv_parameters, &algorithm_config)) {
-    std::vector<dnn::AlgorithmType> algorithms;
+    std::vector<dnn::AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveAlgorithms(
-        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(),
+        fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+            stream->parent()),
         &algorithms));
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;
@@ -579,14 +640,18 @@ REGISTER_KERNEL_BUILDER(
     Name("FusedConv2DBiasActivation")
         .Device(DEVICE_GPU)
         .TypeConstraint<float>("T")
-        .TypeConstraint<float>("Tbias"),
+        .TypeConstraint<float>("Tbias")
+        .HostMemory("conv_input_scale")
+        .HostMemory("side_input_scale"),
     FusedConv2DBiasActivationOp<GPUDevice, float, float, float>);
 
 REGISTER_KERNEL_BUILDER(
     Name("FusedConv2DBiasActivation")
         .Device(DEVICE_GPU)
         .TypeConstraint<qint8>("T")
-        .TypeConstraint<float>("Tbias"),
+        .TypeConstraint<float>("Tbias")
+        .HostMemory("conv_input_scale")
+        .HostMemory("side_input_scale"),
     FusedConv2DBiasActivationOp<GPUDevice, qint8, float, float>);
 
 #endif  // GOOGLE_CUDA

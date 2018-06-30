@@ -22,6 +22,7 @@ import operator
 
 import numpy as np
 
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -495,6 +496,23 @@ class VariablesTestCase(test.TestCase):
       with self.assertRaises(ValueError):
         sess.run(v.initialized_value())
 
+  def testTrainableInProto(self):
+    with ops.Graph().as_default():
+      non_trainable_variable = variables.Variable(
+          trainable=False,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          False,
+          variables.Variable(variable_def=non_trainable_variable.to_proto())
+          .trainable)
+      trainable_variable = variables.Variable(
+          trainable=True,
+          initial_value=constant_op.constant(10.0))
+      self.assertEqual(
+          True,
+          variables.Variable(variable_def=trainable_variable.to_proto())
+          .trainable)
+
   def testLoad(self):
     with self.test_session():
       var = variables.Variable(np.zeros((5, 5), np.float32))
@@ -504,10 +522,19 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
 
   def testRepr(self):
-    var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
+    var = variables.Variable(np.zeros((5, 5), np.float32), name="noop")
     self.assertEqual(
         "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
         repr(var))
+
+  def testVariableNamesPreserveNameScopesWithDefun(self):
+    @function.defun
+    def create_variable():
+      with ops.name_scope("foo"):
+        v = variables.Variable(0.0, name="bar")
+      self.assertEqual(v.name, "foo/bar:0")
+    with ops.get_default_graph().as_default():
+      create_variable()
 
 
 class IsInitializedTest(test.TestCase):
@@ -677,7 +704,7 @@ class VariableContainerTest(test.TestCase):
         v1 = variables.Variable([1])
         with ops.container("l2"):
           v2 = variables.Variable([2])
-          special_v = gen_state_ops._variable(
+          special_v = gen_state_ops.variable(
               shape=[1],
               dtype=dtypes.float32,
               name="VariableInL3",

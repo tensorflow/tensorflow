@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -91,14 +92,14 @@ class MatrixSolveOpTest(test.TestCase):
   def testNonSquareMatrix(self):
     # When the solve of a non-square matrix is attempted we should return
     # an error
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaises(ValueError):
         matrix = constant_op.constant([[1., 2., 3.], [3., 4., 5.]])
         linalg_ops.matrix_solve(matrix, matrix)
 
   def testWrongDimensions(self):
     # The matrix and right-hand sides should have the same number of rows.
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       matrix = constant_op.constant([[1., 0.], [0., 1.]])
       rhs = constant_op.constant([[1., 0.]])
       with self.assertRaises(ValueError):
@@ -106,12 +107,27 @@ class MatrixSolveOpTest(test.TestCase):
 
   def testNotInvertible(self):
     # The input should be invertible.
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       with self.assertRaisesOpError("Input matrix is not invertible."):
         # All rows of the matrix below add to zero
         matrix = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
                                        [0., -1., 1.]])
         linalg_ops.matrix_solve(matrix, matrix).eval()
+
+  def testConcurrent(self):
+    with self.test_session(use_gpu=True) as sess:
+      all_ops = []
+      for adjoint_ in False, True:
+        lhs1 = random_ops.random_normal([3, 3], seed=42)
+        lhs2 = random_ops.random_normal([3, 3], seed=42)
+        rhs1 = random_ops.random_normal([3, 3], seed=42)
+        rhs2 = random_ops.random_normal([3, 3], seed=42)
+        s1 = linalg_ops.matrix_solve(lhs1, rhs1, adjoint=adjoint_)
+        s2 = linalg_ops.matrix_solve(lhs2, rhs2, adjoint=adjoint_)
+        all_ops += [s1, s2]
+      val = sess.run(all_ops)
+      self.assertAllEqual(val[0], val[1])
+      self.assertAllEqual(val[2], val[3])
 
 
 class MatrixSolveBenchmark(test.Benchmark):

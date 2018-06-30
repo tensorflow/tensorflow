@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -46,19 +45,19 @@ TEST(StrCat, Ints) {
   const intptr_t intptr = -12;
   const uintptr_t uintptr = 13;
   string answer;
-  answer = StrCat(s, us);
+  answer = tensorflow::strings::StrCat(s, us);
   EXPECT_EQ(answer, "-12");
-  answer = StrCat(i, ui);
+  answer = tensorflow::strings::StrCat(i, ui);
   EXPECT_EQ(answer, "-34");
-  answer = StrCat(l, ul);
+  answer = tensorflow::strings::StrCat(l, ul);
   EXPECT_EQ(answer, "-56");
-  answer = StrCat(ll, ull);
+  answer = tensorflow::strings::StrCat(ll, ull);
   EXPECT_EQ(answer, "-78");
-  answer = StrCat(ptrdiff, size);
+  answer = tensorflow::strings::StrCat(ptrdiff, size);
   EXPECT_EQ(answer, "-910");
-  answer = StrCat(ssize, intptr);
+  answer = tensorflow::strings::StrCat(ssize, intptr);
   EXPECT_EQ(answer, "-11-12");
-  answer = StrCat(uintptr, 0);
+  answer = tensorflow::strings::StrCat(uintptr, 0);
   EXPECT_EQ(answer, "130");
 }
 
@@ -74,118 +73,132 @@ TEST(StrCat, Basics) {
   int32 i32s[] = {'H', 'C', 'W'};
   uint64 ui64s[] = {12345678910LL, 10987654321LL};
 
-  result = StrCat(false, true, 2, 3);
+  result = tensorflow::strings::StrCat(false, true, 2, 3);
   EXPECT_EQ(result, "0123");
 
-  result = StrCat(-1);
+  result = tensorflow::strings::StrCat(-1);
   EXPECT_EQ(result, "-1");
 
-  result = StrCat(0.5);
+  result = tensorflow::strings::StrCat(0.5);
   EXPECT_EQ(result, "0.5");
 
-  result = StrCat(strs[1], pieces[2]);
+  result = tensorflow::strings::StrCat(strs[1], pieces[2]);
   EXPECT_EQ(result, "CruelWorld");
 
-  result = StrCat(strs[0], ", ", pieces[2]);
+  result = tensorflow::strings::StrCat(strs[0], ", ", pieces[2]);
   EXPECT_EQ(result, "Hello, World");
 
-  result = StrCat(strs[0], ", ", strs[1], " ", strs[2], "!");
+  result =
+      tensorflow::strings::StrCat(strs[0], ", ", strs[1], " ", strs[2], "!");
   EXPECT_EQ(result, "Hello, Cruel World!");
 
-  result = StrCat(pieces[0], ", ", pieces[1], " ", pieces[2]);
+  result =
+      tensorflow::strings::StrCat(pieces[0], ", ", pieces[1], " ", pieces[2]);
   EXPECT_EQ(result, "Hello, Cruel World");
 
-  result = StrCat(c_strs[0], ", ", c_strs[1], " ", c_strs[2]);
+  result =
+      tensorflow::strings::StrCat(c_strs[0], ", ", c_strs[1], " ", c_strs[2]);
   EXPECT_EQ(result, "Hello, Cruel World");
 
-  result = StrCat("ASCII ", i32s[0], ", ", i32s[1], " ", i32s[2], "!");
+  result = tensorflow::strings::StrCat("ASCII ", i32s[0], ", ", i32s[1], " ",
+                                       i32s[2], "!");
   EXPECT_EQ(result, "ASCII 72, 67 87!");
 
-  result = StrCat(ui64s[0], ", ", ui64s[1], "!");
+  result = tensorflow::strings::StrCat(ui64s[0], ", ", ui64s[1], "!");
   EXPECT_EQ(result, "12345678910, 10987654321!");
 
   string one = "1";  // Actually, it's the size of this string that we want; a
                      // 64-bit build distinguishes between size_t and uint64,
                      // even though they're both unsigned 64-bit values.
-  result = StrCat("And a ", one.size(), " and a ", &result[2] - &result[0],
-                  " and a ", one, " 2 3 4", "!");
+  result = tensorflow::strings::StrCat("And a ", one.size(), " and a ",
+                                       &result[2] - &result[0], " and a ", one,
+                                       " 2 3 4", "!");
   EXPECT_EQ(result, "And a 1 and a 2 and a 1 2 3 4!");
 
   // result = StrCat("Single chars won't compile", '!');
   // result = StrCat("Neither will NULLs", NULL);
-  result = StrCat("To output a char by ASCII/numeric value, use +: ", '!' + 0);
+  result = tensorflow::strings::StrCat(
+      "To output a char by ASCII/numeric value, use +: ", '!' + 0);
   EXPECT_EQ(result, "To output a char by ASCII/numeric value, use +: 33");
 
   float f = 100000.5;
-  result = StrCat("A hundred K and a half is ", f);
+  result = tensorflow::strings::StrCat("A hundred K and a half is ", f);
   EXPECT_EQ(result, "A hundred K and a half is 100000.5");
 
   double d = f;
   d *= d;
-  result = StrCat("A hundred K and a half squared is ", d);
+  result = tensorflow::strings::StrCat("A hundred K and a half squared is ", d);
   EXPECT_EQ(result, "A hundred K and a half squared is 10000100000.25");
 
-  Eigen::half h(10007.0f);
-  result = StrCat("Ten thousand seven is approximately ", h);
-  EXPECT_EQ(result, "Ten thousand seven is approximately 10008");
-
-  result = StrCat(1, 2, 333, 4444, 55555, 666666, 7777777, 88888888, 999999999);
+  result = tensorflow::strings::StrCat(1, 2, 333, 4444, 55555, 666666, 7777777,
+                                       88888888, 999999999);
   EXPECT_EQ(result, "12333444455555666666777777788888888999999999");
 }
 
 TEST(StrCat, MaxArgs) {
   string result;
   // Test 10 up to 26 arguments, the current maximum
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a");
   EXPECT_EQ(result, "123456789a");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b");
   EXPECT_EQ(result, "123456789ab");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c");
-  EXPECT_EQ(result, "123456789abc");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d");
-  EXPECT_EQ(result, "123456789abcd");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e");
-  EXPECT_EQ(result, "123456789abcde");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f");
-  EXPECT_EQ(result, "123456789abcdef");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g");
-  EXPECT_EQ(result, "123456789abcdefg");
   result =
-      StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g", "h");
+      tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c");
+  EXPECT_EQ(result, "123456789abc");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d");
+  EXPECT_EQ(result, "123456789abcd");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e");
+  EXPECT_EQ(result, "123456789abcde");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f");
+  EXPECT_EQ(result, "123456789abcdef");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g");
+  EXPECT_EQ(result, "123456789abcdefg");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h");
   EXPECT_EQ(result, "123456789abcdefgh");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i");
   EXPECT_EQ(result, "123456789abcdefghi");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i", "j");
   EXPECT_EQ(result, "123456789abcdefghij");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i", "j", "k");
   EXPECT_EQ(result, "123456789abcdefghijk");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k", "l");
+  result =
+      tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d",
+                                  "e", "f", "g", "h", "i", "j", "k", "l");
   EXPECT_EQ(result, "123456789abcdefghijkl");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k", "l", "m");
+  result =
+      tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d",
+                                  "e", "f", "g", "h", "i", "j", "k", "l", "m");
   EXPECT_EQ(result, "123456789abcdefghijklm");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k", "l", "m", "n");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i", "j", "k",
+                                       "l", "m", "n");
   EXPECT_EQ(result, "123456789abcdefghijklmn");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k", "l", "m", "n", "o");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i", "j", "k",
+                                       "l", "m", "n", "o");
   EXPECT_EQ(result, "123456789abcdefghijklmno");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k", "l", "m", "n", "o", "p");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i", "j", "k",
+                                       "l", "m", "n", "o", "p");
   EXPECT_EQ(result, "123456789abcdefghijklmnop");
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c", "d", "e", "f", "g",
-                  "h", "i", "j", "k", "l", "m", "n", "o", "p", "q");
+  result = tensorflow::strings::StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, "a", "b", "c",
+                                       "d", "e", "f", "g", "h", "i", "j", "k",
+                                       "l", "m", "n", "o", "p", "q");
   EXPECT_EQ(result, "123456789abcdefghijklmnopq");
   // No limit thanks to C++11's variadic templates
-  result = StrCat(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "a", "b", "c", "d", "e", "f",
-                  "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
-                  "s", "t", "u", "v", "w", "x", "y", "z", "A", "B", "C", "D",
-                  "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
-                  "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z");
+  result = tensorflow::strings::StrCat(
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "a", "b", "c", "d", "e", "f", "g", "h",
+      "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w",
+      "x", "y", "z", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L",
+      "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z");
   EXPECT_EQ(result,
             "12345678910abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ");
 }
@@ -203,78 +216,85 @@ TEST(StrAppend, Basics) {
   uint64 ui64s[] = {12345678910LL, 10987654321LL};
 
   string::size_type old_size = result.size();
-  StrAppend(&result, strs[0]);
+  tensorflow::strings::StrAppend(&result, strs[0]);
   EXPECT_EQ(result.substr(old_size), "Hello");
 
   old_size = result.size();
-  StrAppend(&result, strs[1], pieces[2]);
+  tensorflow::strings::StrAppend(&result, strs[1], pieces[2]);
   EXPECT_EQ(result.substr(old_size), "CruelWorld");
 
   old_size = result.size();
-  StrAppend(&result, strs[0], ", ", pieces[2]);
+  tensorflow::strings::StrAppend(&result, strs[0], ", ", pieces[2]);
   EXPECT_EQ(result.substr(old_size), "Hello, World");
 
   old_size = result.size();
-  StrAppend(&result, strs[0], ", ", strs[1], " ", strs[2], "!");
+  tensorflow::strings::StrAppend(&result, strs[0], ", ", strs[1], " ", strs[2],
+                                 "!");
   EXPECT_EQ(result.substr(old_size), "Hello, Cruel World!");
 
   old_size = result.size();
-  StrAppend(&result, pieces[0], ", ", pieces[1], " ", pieces[2]);
+  tensorflow::strings::StrAppend(&result, pieces[0], ", ", pieces[1], " ",
+                                 pieces[2]);
   EXPECT_EQ(result.substr(old_size), "Hello, Cruel World");
 
   old_size = result.size();
-  StrAppend(&result, c_strs[0], ", ", c_strs[1], " ", c_strs[2]);
+  tensorflow::strings::StrAppend(&result, c_strs[0], ", ", c_strs[1], " ",
+                                 c_strs[2]);
   EXPECT_EQ(result.substr(old_size), "Hello, Cruel World");
 
   old_size = result.size();
-  StrAppend(&result, "ASCII ", i32s[0], ", ", i32s[1], " ", i32s[2], "!");
+  tensorflow::strings::StrAppend(&result, "ASCII ", i32s[0], ", ", i32s[1], " ",
+                                 i32s[2], "!");
   EXPECT_EQ(result.substr(old_size), "ASCII 72, 67 87!");
 
   old_size = result.size();
-  StrAppend(&result, ui64s[0], ", ", ui64s[1], "!");
+  tensorflow::strings::StrAppend(&result, ui64s[0], ", ", ui64s[1], "!");
   EXPECT_EQ(result.substr(old_size), "12345678910, 10987654321!");
 
   string one = "1";  // Actually, it's the size of this string that we want; a
                      // 64-bit build distinguishes between size_t and uint64,
                      // even though they're both unsigned 64-bit values.
   old_size = result.size();
-  StrAppend(&result, "And a ", one.size(), " and a ", &result[2] - &result[0],
-            " and a ", one, " 2 3 4", "!");
+  tensorflow::strings::StrAppend(&result, "And a ", one.size(), " and a ",
+                                 &result[2] - &result[0], " and a ", one,
+                                 " 2 3 4", "!");
   EXPECT_EQ(result.substr(old_size), "And a 1 and a 2 and a 1 2 3 4!");
 
   // result = StrCat("Single chars won't compile", '!');
   // result = StrCat("Neither will NULLs", NULL);
   old_size = result.size();
-  StrAppend(&result, "To output a char by ASCII/numeric value, use +: ",
-            '!' + 0);
+  tensorflow::strings::StrAppend(
+      &result, "To output a char by ASCII/numeric value, use +: ", '!' + 0);
   EXPECT_EQ(result.substr(old_size),
             "To output a char by ASCII/numeric value, use +: 33");
 
   float f = 100000.5;
   old_size = result.size();
-  StrAppend(&result, "A hundred K and a half is ", f);
+  tensorflow::strings::StrAppend(&result, "A hundred K and a half is ", f);
   EXPECT_EQ(result.substr(old_size), "A hundred K and a half is 100000.5");
 
   double d = f;
   d *= d;
   old_size = result.size();
-  StrAppend(&result, "A hundred K and a half squared is ", d);
+  tensorflow::strings::StrAppend(&result, "A hundred K and a half squared is ",
+                                 d);
   EXPECT_EQ(result.substr(old_size),
             "A hundred K and a half squared is 10000100000.25");
 
   // Test 9 arguments, the old maximum
   old_size = result.size();
-  StrAppend(&result, 1, 22, 333, 4444, 55555, 666666, 7777777, 88888888, 9);
+  tensorflow::strings::StrAppend(&result, 1, 22, 333, 4444, 55555, 666666,
+                                 7777777, 88888888, 9);
   EXPECT_EQ(result.substr(old_size), "1223334444555556666667777777888888889");
 
   // No limit thanks to C++11's variadic templates
   old_size = result.size();
-  StrAppend(&result, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "a", "b", "c", "d", "e",
-            "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r",
-            "s", "t", "u", "v", "w", "x", "y", "z", "A", "B", "C", "D", "E",
-            "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R",
-            "S", "T", "U", "V", "W", "X", "Y", "Z",
-            "No limit thanks to C++11's variadic templates");
+  tensorflow::strings::StrAppend(
+      &result, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "a", "b", "c", "d", "e", "f", "g",
+      "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v",
+      "w", "x", "y", "z", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K",
+      "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+      "No limit thanks to C++11's variadic templates");
   EXPECT_EQ(result.substr(old_size),
             "12345678910abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
             "No limit thanks to C++11's variadic templates");
@@ -282,8 +302,8 @@ TEST(StrAppend, Basics) {
 
 TEST(StrAppend, Death) {
   string s = "self";
-  EXPECT_DEBUG_DEATH(StrAppend(&s, s.c_str() + 1), "Check failed:");
-  EXPECT_DEBUG_DEATH(StrAppend(&s, s), "Check failed:");
+  EXPECT_DEBUG_DEATH(strings::StrAppend(&s, s.c_str() + 1), "Check failed:");
+  EXPECT_DEBUG_DEATH(strings::StrAppend(&s, s), "Check failed:");
 }
 
 static void CheckHex64(uint64 v) {

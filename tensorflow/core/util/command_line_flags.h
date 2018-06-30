@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#ifndef TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#define TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
 
 #include <functional>
 #include <string>
@@ -134,4 +134,4 @@ class Flags {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H
+#endif  // TENSORFLOW_CORE_UTIL_COMMAND_LINE_FLAGS_H

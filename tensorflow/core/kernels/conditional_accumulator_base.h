@@ -160,20 +160,22 @@ class ConditionalAccumulatorBase : public ResourceBase {
  * Modifications to convenience macros defined in core/framework/op_kernel.h.
  * The below macros return a boolean if the test fails, so that the calling
  * function can get an indication that a failure has occurred.
-*/
-#define OP_REQUIRES_BOOLEAN(CTX, EXP, STATUS) \
-  if (!TF_PREDICT_TRUE(EXP)) {                \
-    (CTX)->CtxFailure((STATUS));              \
-    return false;                             \
-  }
+ */
+#define OP_REQUIRES_BOOLEAN(CTX, EXP, STATUS)          \
+  do {                                                 \
+    if (!TF_PREDICT_TRUE(EXP)) {                       \
+      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
+      return false;                                    \
+    }                                                  \
+  } while (0)
 
-#define OP_REQUIRES_OK_BOOLEAN(CTX, STATUS) \
-  do {                                      \
-    ::tensorflow::Status _s(STATUS);        \
-    if (!TF_PREDICT_TRUE(_s.ok())) {        \
-      (CTX)->CtxFailureWithWarning(_s);     \
-      return false;                         \
-    }                                       \
+#define OP_REQUIRES_OK_BOOLEAN(CTX, STATUS)                 \
+  do {                                                      \
+    ::tensorflow::Status _s(STATUS);                        \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
+      return false;                                         \
+    }                                                       \
   } while (0)
 
 /*

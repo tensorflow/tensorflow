@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include "tensorflow/core/lib/strings/str_util.h"
 
 #define EIGEN_USE_THREADS
 
@@ -77,6 +78,13 @@ struct VariantValue {
     out->value = -(a.value + b.value);  // GPU
     return Status::OK();
   }
+  static Status CPUToGPUCopyFn(
+      const VariantValue& from, VariantValue* to,
+      const std::function<Status(const Tensor&, Tensor*)>& copier) {
+    TF_RETURN_IF_ERROR(copier(Tensor(), nullptr));
+    to->value = 0xdeadbeef;
+    return Status::OK();
+  }
   bool early_exit;
   int value;
 };
@@ -85,6 +93,10 @@ REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(VariantValue, "TEST VariantValue",
                                       VariantValue::ShapeFn);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantValue, "TEST VariantValue");
+
+INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
+    VariantValue, VariantDeviceCopyDirection::HOST_TO_DEVICE,
+    "TEST VariantValue", VariantValue::CPUToGPUCopyFn);
 
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, VariantValue,
@@ -119,7 +131,7 @@ TEST(VariantOpShapeRegistryTest, TestBasic) {
   Variant v = vv_early_exit;
   Status s0 = (*shape_fn)(v, &shape);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit!"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit!"));
 
   VariantValue vv_ok{false /* early_exit */};
   v = vv_ok;
@@ -166,6 +178,44 @@ TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
                "fjfjfj already registered");
 }
 
+TEST(VariantOpCopyToGPURegistryTest, TestBasic) {
+  // No registered copy fn for GPU<->GPU.
+  EXPECT_EQ(
+      UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(
+          VariantDeviceCopyDirection::DEVICE_TO_DEVICE, "TEST VariantValue"),
+      nullptr);
+
+  auto* copy_to_gpu_fn = UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(
+      VariantDeviceCopyDirection::HOST_TO_DEVICE, "TEST VariantValue");
+  EXPECT_NE(copy_to_gpu_fn, nullptr);
+
+  VariantValue vv{true /* early_exit */};
+  Variant v = vv;
+  Variant v_out;
+  bool dummy_executed = false;
+  auto dummy_copy_fn = [&dummy_executed](const Tensor& from,
+                                         Tensor* to) -> Status {
+    dummy_executed = true;
+    return Status::OK();
+  };
+  TF_EXPECT_OK((*copy_to_gpu_fn)(v, &v_out, dummy_copy_fn));
+  EXPECT_TRUE(dummy_executed);
+  VariantValue* copied_value = v_out.get<VariantValue>();
+  EXPECT_NE(copied_value, nullptr);
+  EXPECT_EQ(copied_value->value, 0xdeadbeef);
+}
+
+TEST(VariantOpCopyToGPURegistryTest, TestDuplicate) {
+  UnaryVariantOpRegistry registry;
+  UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn f;
+  string kTypeName = "fjfjfj";
+  registry.RegisterDeviceCopyFn(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                                kTypeName, f);
+  EXPECT_DEATH(registry.RegisterDeviceCopyFn(
+                   VariantDeviceCopyDirection::HOST_TO_DEVICE, kTypeName, f),
+               "fjfjfj already registered");
+}
+
 TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
                 ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU, "YOU SHALL NOT PASS"),
@@ -180,7 +230,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(
-      StringPiece(s0.error_message()).contains("early exit zeros_like"));
+      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -205,7 +255,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(
-      StringPiece(s0.error_message()).contains("early exit zeros_like"));
+      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -250,7 +300,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   Status s0 = BinaryOpVariants<CPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit add"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -276,7 +326,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   Status s0 = BinaryOpVariants<GPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit add"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;

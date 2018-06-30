@@ -22,24 +22,24 @@ limitations under the License.
 
 namespace xla {
 
-tensorflow::Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
+Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
   if (!ShapeUtil::Compatible(other_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
                            ShapeUtil::HumanString(other_shape).c_str(),
                            ShapeUtil::HumanString(shape()).c_str());
   }
   shape_ = other_shape;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status ShapeLayout::AssignLayoutToShape(Shape* other_shape) const {
-  if (!ShapeUtil::Compatible(*other_shape, shape_)) {
+Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
+  if (!ShapeUtil::Compatible(*to_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(*other_shape).c_str(),
+                           ShapeUtil::HumanString(*to_shape).c_str(),
                            ShapeUtil::HumanString(shape()).c_str());
   }
-  *other_shape = shape_;
-  return tensorflow::Status::OK();
+  *to_shape = shape_;
+  return Status::OK();
 }
 
 void ShapeLayout::SetToDefaultLayout() {

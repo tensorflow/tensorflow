@@ -24,7 +24,8 @@ limitations under the License.
 namespace tensorflow {
 
 void DFS(const Graph& g, const std::function<void(Node*)>& enter,
-         const std::function<void(Node*)>& leave) {
+         const std::function<void(Node*)>& leave,
+         const NodeComparator& stable_comparator) {
   // Stack of work to do.
   struct Work {
     Node* node;
@@ -51,27 +52,47 @@ void DFS(const Graph& g, const std::function<void(Node*)>& enter,
     // Arrange to call leave(n) when all done with descendants.
     if (leave) stack.push_back(Work{n, true});
 
-    // Arrange to work on descendants.
-    for (Node* out : n->out_nodes()) {
+    gtl::iterator_range<NeighborIter> nodes = n->out_nodes();
+    auto add_work = [&visited, &stack](Node* out) {
       if (!visited[out->id()]) {
         // Note; we must not mark as visited until we actually process it.
         stack.push_back(Work{out, false});
+      }
+    };
+
+    if (stable_comparator) {
+      std::vector<Node*> nodes_sorted;
+      for (Node* out : nodes) {
+        nodes_sorted.emplace_back(out);
+      }
+      std::sort(nodes_sorted.begin(), nodes_sorted.end(), stable_comparator);
+      for (Node* out : nodes_sorted) {
+        add_work(out);
+      }
+    } else {
+      for (Node* out : nodes) {
+        add_work(out);
       }
     }
   }
 }
 
 void ReverseDFS(const Graph& g, const std::function<void(Node*)>& enter,
-                const std::function<void(Node*)>& leave) {
-  ReverseDFSFrom(g, {g.sink_node()}, enter, leave);
+                const std::function<void(Node*)>& leave,
+                const NodeComparator& stable_comparator) {
+  ReverseDFSFrom(g, {g.sink_node()}, enter, leave, stable_comparator);
 }
 
-void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
-                    const std::function<void(Node*)>& enter,
-                    const std::function<void(Node*)>& leave) {
+namespace {
+
+template <typename T>
+void ReverseDFSFromHelper(const Graph& g, gtl::ArraySlice<T> start,
+                          const std::function<void(T)>& enter,
+                          const std::function<void(T)>& leave,
+                          const NodeComparator& stable_comparator) {
   // Stack of work to do.
   struct Work {
-    Node* node;
+    T node;
     bool leave;  // Are we entering or leaving n?
   };
   std::vector<Work> stack(start.size());
@@ -84,7 +105,7 @@ void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
     Work w = stack.back();
     stack.pop_back();
 
-    Node* n = w.node;
+    T n = w.node;
     if (w.leave) {
       leave(n);
       continue;
@@ -97,23 +118,57 @@ void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
     // Arrange to call leave(n) when all done with descendants.
     if (leave) stack.push_back(Work{n, true});
 
-    // Arrange to work on parents.
-    for (Node* in : n->in_nodes()) {
-      if (!visited[in->id()]) {
+    gtl::iterator_range<NeighborIter> nodes = n->in_nodes();
+
+    auto add_work = [&visited, &stack](T out) {
+      if (!visited[out->id()]) {
         // Note; we must not mark as visited until we actually process it.
-        stack.push_back(Work{in, false});
+        stack.push_back(Work{out, false});
+      }
+    };
+
+    if (stable_comparator) {
+      std::vector<T> nodes_sorted;
+      for (T in : nodes) {
+        nodes_sorted.emplace_back(in);
+      }
+      std::sort(nodes_sorted.begin(), nodes_sorted.end(), stable_comparator);
+      for (T in : nodes_sorted) {
+        add_work(in);
+      }
+    } else {
+      for (T in : nodes) {
+        add_work(in);
       }
     }
   }
 }
 
-void GetPostOrder(const Graph& g, std::vector<Node*>* order) {
-  order->clear();
-  DFS(g, nullptr, [order](Node* n) { order->push_back(n); });
+}  // namespace
+
+void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
+                    const std::function<void(const Node*)>& enter,
+                    const std::function<void(const Node*)>& leave,
+                    const NodeComparator& stable_comparator) {
+  ReverseDFSFromHelper(g, start, enter, leave, stable_comparator);
 }
 
-void GetReversePostOrder(const Graph& g, std::vector<Node*>* order) {
-  GetPostOrder(g, order);
+void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
+                    const std::function<void(Node*)>& enter,
+                    const std::function<void(Node*)>& leave,
+                    const NodeComparator& stable_comparator) {
+  ReverseDFSFromHelper(g, start, enter, leave, stable_comparator);
+}
+
+void GetPostOrder(const Graph& g, std::vector<Node*>* order,
+                  const NodeComparator& stable_comparator) {
+  order->clear();
+  DFS(g, nullptr, [order](Node* n) { order->push_back(n); }, stable_comparator);
+}
+
+void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
+                         const NodeComparator& stable_comparator) {
+  GetPostOrder(g, order, stable_comparator);
   std::reverse(order->begin(), order->end());
 }
 

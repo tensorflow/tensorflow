@@ -21,13 +21,17 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -146,6 +150,18 @@ class ConstantInitializersTest(test.TestCase):
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
       self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
 
+  def testConstantTupleInitializer(self):
+    with self.test_session(use_gpu=True):
+      shape = [3]
+      x = variable_scope.get_variable(
+          "x",
+          shape=shape,
+          dtype=dtypes.int32,
+          initializer=init_ops.constant_initializer((10, 20, 30)))
+      x.initializer.run()
+      self.assertEqual(x.dtype.base_dtype, dtypes.int32)
+      self.assertAllEqual(x.eval(), [10, 20, 30])
+
   def _testNDimConstantInitializer(self, name, value, shape, expected):
     with self.test_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
@@ -213,6 +229,16 @@ class ConstantInitializersTest(test.TestCase):
     self._testNDimConstantInitializerMoreValues(np.asarray(value), shape)
     self._testNDimConstantInitializerMoreValues(
         np.asarray(value).reshape(tuple([2, 4])), shape)
+
+  def testInvalidValueTypeForConstantInitializerCausesTypeError(self):
+    c = constant_op.constant([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Invalid type for initial value: .*Tensor.*"):
+      init_ops.constant_initializer(c, dtype=dtypes.float32)
+    v = variables.Variable([3.0, 2.0, 1.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Invalid type for initial value: .*Variable.*"):
+      init_ops.constant_initializer(v, dtype=dtypes.float32)
 
 
 class RandomNormalInitializationTest(test.TestCase):
@@ -334,6 +360,71 @@ class UniformUnitScalingInitializationTest(test.TestCase):
         ValueError,
         init_ops.uniform_unit_scaling_initializer,
         dtype=dtypes.string)
+
+
+class VarianceScalingInitializationTest(test.TestCase):
+
+  def testTruncatedNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(
+        distribution='truncated_normal')
+
+    with self.test_session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
+          as mock_truncated_normal:
+      x = init(shape).eval()
+      self.assertTrue(mock_truncated_normal.called)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(distribution='normal')
+
+    with self.test_session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
+          as mock_truncated_normal:
+      x = init(shape).eval()
+      self.assertTrue(mock_truncated_normal.called)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testUntruncatedNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(
+        distribution='untruncated_normal')
+
+    with self.test_session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'random_normal', wraps=random_ops.random_normal) \
+          as mock_random_normal:
+      x = init(shape).eval()
+      self.assertTrue(mock_random_normal.called)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testUniformDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(distribution='uniform')
+
+    with self.test_session(use_gpu=True):
+      x = init(shape).eval()
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
 
 
 # TODO(vrv): move to sequence_ops_test?
@@ -525,7 +616,6 @@ class OrthogonalInitializerTest(test.TestCase):
       init2 = init_ops.orthogonal_initializer(gain=3.14, seed=1, dtype=dtype)
       with self.test_session(graph=ops.Graph(), use_gpu=True):
         t1 = init1(shape).eval()
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
         t2 = init2(shape).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
 
@@ -546,6 +636,440 @@ class OrthogonalInitializerTest(test.TestCase):
           else:
             self.assertAllClose(
                 np.dot(t, t.T), np.eye(t.shape[0]), rtol=tol, atol=tol)
+
+
+class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2, (3, 3, 10, 10)))
+
+  def testInitializerDifferent(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_delta_orthogonal(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2, (3, 3, 10, 10)))
+
+  def testDuplicatedInitializer(self):
+    init = init_ops.convolutional_delta_orthogonal()
+    self.assertFalse(duplicated_initializer(self, init, 1, (3, 3, 10, 10)))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError, init_ops.convolutional_delta_orthogonal,
+        dtype=dtypes.string)
+
+  def testInvalidShape(self):
+    init1 = init_ops.convolutional_delta_orthogonal()
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init1, shape=[3, 3, 6, 5])
+
+  def testGain(self):
+    shape = (3, 3, 10, 10)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_delta_orthogonal(gain=3.14,
+                                                      seed=1, dtype=dtype)
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        t1 = init1(shape).eval()
+        t2 = init2(shape).eval()
+      return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
+
+  def testShapesValues(self):
+    gain = 3.14
+    for dtype in [dtypes.float32]:
+      for kernel_size in [[3], [8], [3, 5], [2, 4], [3, 3, 3], [2, 2, 2]]:
+        tol = 1e-2
+        # Check orthogonality by computing ratio between
+        # the 2-norms of the inputs and outputs.
+        if len(kernel_size) == 1:
+          shape = [4, 32, 64]
+          convolution = convolutional.conv1d
+        elif len(kernel_size) == 2:
+          convolution = convolutional.conv2d
+          shape = [4, 32, 32, 64]
+        else:
+          shape = [4, 16, 16, 16, 64]
+          convolution = convolutional.conv3d
+        inputs = random_ops.random_normal(shape, dtype=dtype)
+        inputs_2norm = linalg_ops.norm(inputs)
+        outputs = convolution(
+            inputs, padding="same", filters=128,
+            kernel_size=kernel_size, use_bias=False,
+            kernel_initializer=init_ops.convolutional_delta_orthogonal(
+                gain=gain))
+        outputs_shape = shape[0:-1] + [128]
+        outputs_2norm = linalg_ops.norm(outputs)
+        ratio = outputs_2norm / inputs_2norm
+        my_ops = variables.global_variables_initializer()
+        with self.test_session(use_gpu=True) as sess:
+          sess.run(my_ops)
+          # Check the shape of the outputs
+          t = outputs.eval()
+          self.assertAllEqual(t.shape, outputs_shape)
+          # Check isometry of the delta-orthogonal kernel.
+          self.assertAllClose(sess.run(ratio), np.sqrt(gain),
+                              rtol=tol, atol=tol)
+
+  def testNonuniformity(self):
+    value = 0
+    abs_value = 0
+    shape = [3, 3, 10, 10]
+    count = 70
+    tol = 1e-5
+    with self.test_session(use_gpu=True):
+      for i in range(count):
+        x = variable_scope.get_variable("{}".format(i), shape=shape,
+                                        initializer=
+                                        init_ops.convolutional_delta_orthogonal)
+        x.initializer.run()
+        y = x.eval()[1, 1, :, :]
+        determinant = np.linalg.det(y)
+        value += determinant
+        abs_value += np.abs(determinant)
+
+      # Check there is some variation in the signs of the determinants
+      self.assertLess(value, count - tol)
+      self.assertLess(-count + tol, value)
+      # Check all determinants have absolute value 1
+      # Compute the sum of the absolute values of 'count' determinants
+      self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
+
+
+class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_1d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_1d(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2, (3, 10, 10)))
+
+  def testInitializerDifferent(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_1d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_1d(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2, (3, 10, 10)))
+
+  def testDuplicatedInitializer(self):
+    init = init_ops.convolutional_orthogonal_1d()
+    self.assertFalse(duplicated_initializer(self, init, 1, (3, 10, 10)))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError, init_ops.convolutional_orthogonal_1d,
+        dtype=dtypes.string)
+
+  def testInvalidShape(self):
+    init1 = init_ops.convolutional_orthogonal_1d()
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init1, shape=[3, 6, 5])
+
+  def testGain(self):
+    shape = (3, 10, 10)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_1d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_1d(gain=3.14,
+                                                   seed=1, dtype=dtype)
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        t1 = init1(shape).eval()
+        t2 = init2(shape).eval()
+      return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
+
+  def testNonuniformity(self):
+    value = 0
+    abs_value = 0
+    shape = [3, 10, 10]
+    count = 70
+    tol = 1e-5
+    with self.test_session(use_gpu=True):
+      for i in range(count):
+        x = variable_scope.get_variable("{}".format(i), shape=shape,
+                                        initializer=
+                                        init_ops.convolutional_orthogonal_1d)
+        x.initializer.run()
+        y = np.sum(x.eval(), axis=0)
+        determinant = np.linalg.det(y)
+        value += determinant
+        abs_value += np.abs(determinant)
+
+      # Check there is some variation in the signs of the determinants.
+      self.assertLess(value, count - tol)
+      self.assertLess(-count + tol, value)
+      # Check all determinants have absolute value 1
+      # Compute the sum of the absolute values of 'count' determinants
+      self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
+
+  def testShapesValues(self):
+    def circular_pad(input_, width, kernel_size):
+      """Pad input_ for computing (circular) convolution.
+
+      Args:
+        input_: the input tensor
+        width: the width of the tensor.
+        kernel_size: the kernel size of the filter.
+      Returns:
+        a tensor whose width is (width + kernel_size - 1).
+      """
+
+      beginning = kernel_size // 2
+      end = kernel_size - 1 - beginning
+
+      tmp_up = array_ops.slice(input_, [0, width - beginning, 0],
+                               [-1, beginning, -1])
+      tmp_down = array_ops.slice(input_, [0, 0, 0], [-1, end, -1])
+      tmp = array_ops.concat([tmp_up, input_, tmp_down], 1)
+
+      return tmp
+
+    cout = 64
+    shape = [10, 20, 32]
+    outputs_shape = shape[0:-1] + [cout]
+    dtype = dtypes.float32
+    tol = 1e-3
+    gain = 3.14
+    # Check orthogonality/isometry by computing the ratio between
+    # the 2-norms of the inputs and ouputs.
+    for kernel_size in [[1], [2], [3], [4], [5], [6]]:
+      convolution = convolutional.conv1d
+      inputs = random_ops.random_normal(shape, dtype=dtype)
+      inputs_2norm = linalg_ops.norm(inputs)
+      input_with_circular_pad = circular_pad(inputs, shape[1], kernel_size[0])
+      outputs = convolution(
+          input_with_circular_pad, padding="valid", filters=cout,
+          kernel_size=kernel_size[0], use_bias=False,
+          kernel_initializer=init_ops.convolutional_orthogonal_1d(gain=gain))
+      outputs_2norm = linalg_ops.norm(outputs)
+      ratio = outputs_2norm / inputs_2norm
+      my_ops = variables.global_variables_initializer()
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(my_ops)
+        # Check the shape of the outputs
+        t = outputs.eval()
+        self.assertAllEqual(t.shape, outputs_shape)
+        # Check isometry of the orthogonal kernel.
+        self.assertAllClose(sess.run(ratio), np.sqrt(gain), rtol=tol, atol=tol)
+
+
+class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_2d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_2d(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2, (3, 3, 10, 10)))
+
+  def testInitializerDifferent(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_2d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_2d(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2, (3, 3, 10, 10)))
+
+  def testDuplicatedInitializer(self):
+    init = init_ops.convolutional_orthogonal_2d()
+    self.assertFalse(duplicated_initializer(self, init, 1, (3, 3, 10, 10)))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError, init_ops.convolutional_orthogonal_2d,
+        dtype=dtypes.string)
+
+  def testInvalidShape(self):
+    init1 = init_ops.convolutional_orthogonal_2d()
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init1, shape=[3, 3, 6, 5])
+
+  def testGain(self):
+    shape = (3, 3, 10, 10)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_2d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_2d(gain=3.14,
+                                                   seed=1, dtype=dtype)
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        t1 = init1(shape).eval()
+        t2 = init2(shape).eval()
+      return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
+
+  def testShapesValues(self):
+    def circular_pad(input_, width, kernel_size):
+      """Pad input_ for computing (circular) convolution.
+
+      Args:
+        input_: the input tensor
+        width: the width of the tensor.
+        kernel_size: the kernel size of the filter.
+      Returns:
+        a tensor whose width is (width + kernel_size - 1).
+      """
+      beginning = kernel_size // 2
+      end = kernel_size - 1 - beginning
+
+      tmp_up = array_ops.slice(input_, [0, width - beginning, 0, 0],
+                               [-1, beginning, width, -1])
+      tmp_down = array_ops.slice(input_, [0, 0, 0, 0], [-1, end, width, -1])
+      tmp = array_ops.concat([tmp_up, input_, tmp_down], 1)
+
+      new_width = width + kernel_size - 1
+      tmp_left = array_ops.slice(tmp, [0, 0, width - beginning, 0],
+                                 [-1, new_width, beginning, -1])
+      tmp_right = array_ops.slice(tmp, [0, 0, 0, 0], [-1, new_width, end, -1])
+
+      final = array_ops.concat([tmp_left, tmp, tmp_right], 2)
+      return final
+
+    cout = 45
+    shape = [64, 28, 28, 32]
+    outputs_shape = shape[0:-1] + [cout]
+    dtype = dtypes.float32
+    tol = 1e-3
+    gain = 3.14
+    # Check orthogonality/isometry by computing the ratio between
+    # the 2-norms of the inputs and ouputs.
+    for kernel_size in [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]:
+      convolution = convolutional.conv2d
+      inputs = random_ops.random_normal(shape, dtype=dtype)
+      inputs_2norm = linalg_ops.norm(inputs)
+      input_with_circular_pad = circular_pad(inputs, shape[1], kernel_size[0])
+      outputs = convolution(
+          input_with_circular_pad, padding="valid", filters=cout,
+          kernel_size=kernel_size, use_bias=False,
+          kernel_initializer=init_ops.convolutional_orthogonal_2d(gain=gain))
+      outputs_2norm = linalg_ops.norm(outputs)
+      ratio = outputs_2norm / inputs_2norm
+      my_ops = variables.global_variables_initializer()
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(my_ops)
+        # Check the shape of the outputs
+        t = outputs.eval()
+        self.assertAllEqual(t.shape, outputs_shape)
+        # Check isometry of the orthogonal kernel.
+        self.assertAllClose(sess.run(ratio), np.sqrt(gain), rtol=tol, atol=tol)
+
+
+class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
+
+  def testInitializerIdentical(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_3d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_3d(seed=1, dtype=dtype)
+      self.assertTrue(identicaltest(self, init1, init2, (3, 3, 3, 10, 10)))
+
+  def testInitializerDifferent(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_3d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_3d(seed=2, dtype=dtype)
+      self.assertFalse(identicaltest(self, init1, init2, (3, 3, 3, 10, 10)))
+
+  def testDuplicatedInitializer(self):
+    init = init_ops.convolutional_orthogonal_3d()
+    self.assertFalse(duplicated_initializer(self, init, 1, (3, 3, 3, 10, 10)))
+
+  def testInvalidDataType(self):
+    self.assertRaises(
+        ValueError, init_ops.convolutional_orthogonal_3d,
+        dtype=dtypes.string)
+
+  def testInvalidShape(self):
+    init1 = init_ops.convolutional_orthogonal_3d()
+    with self.test_session(graph=ops.Graph(), use_gpu=True):
+      self.assertRaises(ValueError, init1, shape=[3, 3, 3, 6, 5])
+
+  def testGain(self):
+    shape = (3, 3, 3, 10, 10)
+    for dtype in [dtypes.float32, dtypes.float64]:
+      init1 = init_ops.convolutional_orthogonal_3d(seed=1, dtype=dtype)
+      init2 = init_ops.convolutional_orthogonal_3d(gain=3.14,
+                                                   seed=1, dtype=dtype)
+      with self.test_session(graph=ops.Graph(), use_gpu=True):
+        t1 = init1(shape).eval()
+        t2 = init2(shape).eval()
+      return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
+
+  def testNonuniformity(self):
+    value = 0
+    abs_value = 0
+    shape = [3, 3, 3, 5, 5]
+    count = 20
+    tol = 1e-5
+    with self.test_session(use_gpu=True):
+      for i in range(count):
+        x = variable_scope.get_variable("{}".format(i), shape=shape,
+                                        initializer=
+                                        init_ops.convolutional_orthogonal_3d)
+        x.initializer.run()
+        y = np.sum(x.eval(), axis=(0, 1, 2))
+        determinant = np.linalg.det(y)
+        value += determinant
+        abs_value += np.abs(determinant)
+
+      # Check there is some variation in the signs of the determinants
+      self.assertLess(value, count - tol)
+      self.assertLess(-count + tol, value)
+      # Check all determinants have absolute value 1
+      # Compute the sum of the absolute values of 'count' determinants
+      self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
+
+  def testShapesValues(self):
+    def circular_pad(input_, width, kernel_size):
+      """Padding input_ for computing circular convolution.
+
+      Args:
+        input_: the input tensor
+        width: the width of the tensor.
+        kernel_size: the kernel size of the filter.
+
+      Returns:
+        a tensor whose width is (width + kernel_size - 1).
+      """
+
+      beginning = kernel_size // 2
+      end = kernel_size - 1 - beginning
+
+      tmp_up = array_ops.slice(input_, [0, width - beginning, 0, 0, 0],
+                               [-1, beginning, -1, -1, -1])
+      tmp_down = array_ops.slice(input_, [0, 0, 0, 0, 0],
+                                 [-1, end, -1, -1, -1])
+      tmp = array_ops.concat([tmp_up, input_, tmp_down], 1)
+
+      tmp_left = array_ops.slice(tmp, [0, 0, width - beginning, 0, 0],
+                                 [-1, -1, beginning, -1, -1])
+      tmp_right = array_ops.slice(tmp, [0, 0, 0, 0, 0],
+                                  [-1, -1, end, -1, -1])
+      tmp = array_ops.concat([tmp_left, tmp, tmp_right], 2)
+
+      tmp_front = array_ops.slice(tmp, [0, 0, 0, width - beginning, 0],
+                                  [-1, -1, -1, beginning, -1])
+      tmp_back = array_ops.slice(tmp, [0, 0, 0, 0, 0], [-1, -1, -1, end, -1])
+      return array_ops.concat([tmp_front, tmp, tmp_back], 3)
+
+    cout = 32
+    shape = [1, 7, 7, 7, 16]
+    outputs_shape = shape[0:-1] + [cout]
+    dtype = dtypes.float32
+    tol = 1e-3
+    gain = 3.14
+    # Check orthogonality/isometry by computing the ratio between
+    # the 2-norms of the inputs and ouputs.
+    for kernel_size in [[1, 1, 1], [2, 2, 2], [3, 3, 3]]:
+      convolution = convolutional.conv3d
+      inputs = random_ops.random_normal(shape, dtype=dtype)
+      inputs_2norm = linalg_ops.norm(inputs)
+      input_with_circular_pad = circular_pad(inputs, shape[1], kernel_size[0])
+      outputs = convolution(
+          input_with_circular_pad, padding="valid", filters=cout,
+          kernel_size=kernel_size[0], use_bias=False,
+          kernel_initializer=init_ops.convolutional_orthogonal_3d(gain=gain))
+      outputs_2norm = linalg_ops.norm(outputs)
+      ratio = outputs_2norm / inputs_2norm
+      my_ops = variables.global_variables_initializer()
+      with self.test_session(use_gpu=True) as sess:
+        sess.run(my_ops)
+        # Check the shape of the outputs
+        t = outputs.eval()
+        self.assertAllEqual(t.shape, outputs_shape)
+        # Check isometry of the orthogonal kernel.
+        self.assertAllClose(sess.run(ratio), np.sqrt(gain), rtol=tol, atol=tol)
 
 
 class IdentityInitializerTest(test.TestCase):

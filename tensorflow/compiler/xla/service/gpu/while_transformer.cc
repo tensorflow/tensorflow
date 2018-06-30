@@ -44,7 +44,7 @@ namespace {
 //
 //            Parameter
 //               |
-//   Const  GetTupleElemet
+//   Const  GetTupleElement
 //      \   /
 //       Add (root)
 //
@@ -62,7 +62,7 @@ namespace {
 //                                &tagged_instructions));
 //
 // Instructions that are "tagged" with a context-specific string will
-// be returned in 'tagged_instructions' for further procesing (i.e. parsing
+// be returned in 'tagged_instructions' for further processing (i.e. parsing
 // constants or recording the tuple_index).
 //
 class ExprTree {
@@ -144,7 +144,7 @@ class ExprTree {
       TF_RETURN_IF_ERROR(pair.second->Match(instruction->operand(pair.first),
                                             tagged_instructions));
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
  private:
@@ -169,7 +169,7 @@ class MatcherBase {
 
   // Attempts to match each ExprTree in 'expr_trees_'.
   // Returns OK on the first successful match, error status otherwise.
-  virtual tensorflow::Status Run() {
+  virtual Status Run() {
     Status status;
     for (const ExprTree& expr_tree : expr_trees_) {
       status = MatchExprTree(expr_tree);
@@ -201,7 +201,7 @@ class MatcherBase {
     } else if (type == S64) {
       *const_value = literal.GetFirstElement<int64>();
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   StatusOr<const HloInstruction*> GetTaggedInstruction(
@@ -315,7 +315,7 @@ class WhileConditionComputationMatcher : public MatcherBase {
                              gte_fusion_param0->name().c_str());
     }
 
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   const HloComputation* computation_;
@@ -379,7 +379,7 @@ class WhileInitOperandMatcher : public MatcherBase {
         GetTaggedInstruction("loop_start", tagged_instructions));
     TF_RETURN_IF_ERROR(ParseConstInteger(const_hlo, &loop_start_));
 
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   const HloInstruction* while_hlo_;
@@ -457,8 +457,8 @@ class WhileBodyComputationMatcher : public MatcherBase {
         return InvalidArgument("Unexpected tuple index instruction : %s",
                                inst->name().c_str());
       } else if (tag == "loop_increment") {
-        // Parse the constant which represents the loop induction variable
-        // increment value.
+        // ParseHloString the constant which represents the loop induction
+        // variable increment value.
         TF_RETURN_IF_ERROR(ParseConstInteger(inst, &loop_increment_));
       } else if (tag == "param0" &&
                  inst != computation_->parameter_instruction(0)) {
@@ -477,7 +477,7 @@ class WhileBodyComputationMatcher : public MatcherBase {
         }
       }
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 
   const HloComputation* computation_;

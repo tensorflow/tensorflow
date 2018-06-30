@@ -17,35 +17,42 @@ limitations under the License.
 #define TENSORFLOW_JAVA_SRC_GEN_CC_OP_GENERATOR_H_
 
 #include <string>
+#include <vector>
 
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/java/src/gen/cc/op_specs.h"
 
 namespace tensorflow {
+namespace java {
 
-/// \brief A generator of Java operation wrappers.
-///
-/// Such generator is normally ran only once per executable, outputting
-/// wrappers for the all registered operations it has been compiled with.
-/// Nonetheless, it is designed to support multiple runs, giving a different
-/// list of operations on each cycle.
+// A generator of Java operation wrappers.
+//
+// This generator takes a list of ops definitions in input and outputs
+// a Java Op wrapper for each of them in the provided directory. The same
+// generator instance can be invoked multiple times with a different list of
+// ops definitions.
 class OpGenerator {
  public:
-  OpGenerator();
-  virtual ~OpGenerator();
+  explicit OpGenerator(const std::vector<string>& api_dirs,
+                       Env* env = Env::Default())
+      : api_dirs_(api_dirs), env_(env) {}
 
-  /// \brief Generates wrappers for the given list of 'ops'.
-  ///
-  /// Output files are generated in <output_dir>/<base_package>/<lib_package>,
-  /// where 'lib_package' is derived from 'lib_name'.
-  Status Run(const OpList& ops, const string& lib_name,
-             const string& base_package, const string& output_dir);
+  // Generates wrappers for the given list of 'ops'.
+  //
+  // Output files are generated in <output_dir>/<base_package>/<op_package>,
+  // where 'op_package' is derived from ops endpoints.
+  Status Run(const OpList& op_list, const string& base_package,
+             const string& output_dir);
 
  private:
-  Env* env;
+  const std::vector<string> api_dirs_;
+  Env* env_;
 };
 
+}  // namespace java
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_JAVA_SRC_GEN_CC_OP_GENERATOR_H_

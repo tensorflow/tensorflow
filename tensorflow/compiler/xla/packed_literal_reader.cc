@@ -44,11 +44,11 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
   VLOG(3) << "reading shape from file: " << ShapeUtil::HumanString(shape)
           << " layout: "
           << (layout == nullptr ? "<none>" : layout->ShortDebugString());
-  auto result = MakeUnique<Literal>();
-  *result->mutable_shape() = shape;
+  Shape literal_shape = shape;
   if (layout != nullptr) {
-    TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(*layout, shape));
-    *result->mutable_shape()->mutable_layout() = *layout;
+    TF_RETURN_IF_ERROR(
+        LayoutUtil::ValidateLayoutForShape(*layout, literal_shape));
+    *literal_shape.mutable_layout() = *layout;
   }
 
   if (shape.element_type() != F32) {
@@ -57,10 +57,12 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
         PrimitiveType_Name(shape.element_type()).c_str());
   }
 
+  auto result = MakeUnique<Literal>(literal_shape);
+  result->PopulateWithValue(std::numeric_limits<float>::quiet_NaN());
+
   int64 elements = ShapeUtil::ElementsIn(shape);
-  result->Resize(elements, std::numeric_limits<float>::quiet_NaN());
-  std::vector<float>* field = result->mutable_f32s();
-  char* data = tensorflow::bit_cast<char*>(field->data());
+  tensorflow::gtl::ArraySlice<float> field = result->data<float>();
+  char* data = tensorflow::bit_cast<char*>(field.data());
   uint64 bytes = elements * sizeof(float);
   tensorflow::StringPiece sp;
   auto s = file_->Read(offset_, bytes, &sp, data);

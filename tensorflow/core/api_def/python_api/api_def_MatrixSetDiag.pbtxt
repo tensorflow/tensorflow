@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatrixSetDiag"
+  endpoint {
+    name: "linalg.set_diag"
+  }
+  endpoint {
+    name: "matrix_set_diag"
+    deprecation_message: "tf.matrix_set_diag is deprecated, please use tf.linalg.set_diag instead."
+  }
+}

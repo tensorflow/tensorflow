@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_CORE_RAW_CODING_H_
 
 #include <string.h>
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
