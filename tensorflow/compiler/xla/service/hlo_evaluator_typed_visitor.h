@@ -1025,83 +1025,47 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_EQ(dnums.lhs_batch_dimensions_size(),
              dnums.rhs_batch_dimensions_size());
 
-    std::vector<int64> lhs_non_contracting_dims;
-    for (int64 i = 0; i < lhs_rank; i++) {
-      if (i != lhs_contracting_dimension) {
-        lhs_non_contracting_dims.push_back(i);
-      }
-    }
-
-    std::vector<int64> rhs_non_batch_non_contracting_dims;
-    tensorflow::gtl::FlatSet<int64> batch_dims_set(
-        dnums.rhs_batch_dimensions().begin(),
-        dnums.rhs_batch_dimensions().end());
-    for (int64 i = 0; i < rhs_rank; i++) {
-      if (i != rhs_contracting_dimension && batch_dims_set.count(i) == 0) {
-        rhs_non_batch_non_contracting_dims.push_back(i);
-      }
-    }
-
-    const int64 batch_dim_size = dnums.lhs_batch_dimensions_size();
-    const int64 lhs_non_contracting_size = lhs_non_contracting_dims.size();
-
     DimensionVector lhs_index(lhs_rank);
     DimensionVector rhs_index(rhs_rank);
+
+    // result_index_locations[i] contains one or two pointers to the locations
+    // in lhs_index or rhs_index where the i'th result index should go.
+    tensorflow::gtl::InlinedVector<std::pair<int64*, int64*>, kInlineRank>
+        result_index_locations;
+    result_index_locations.reserve(lhs_rank + rhs_rank - 2);
+
+    // The first components in the output shape are the LHS and RHS batch
+    // dimensions:
+    for (int64 i = 0; i < dnums.lhs_batch_dimensions_size(); i++) {
+      result_index_locations.push_back(
+          {&lhs_index[dnums.lhs_batch_dimensions(i)],
+           &rhs_index[dnums.rhs_batch_dimensions(i)]});
+    }
+
+    // Then we have the LHS and RHS non-contracting dimensions, if any:
+    for (int64 i = 0; i < lhs_rank; i++) {
+      if (i != lhs_contracting_dimension &&
+          !ArrayContains(AsInt64Slice(dnums.lhs_batch_dimensions()), i)) {
+        result_index_locations.push_back({&lhs_index[i], nullptr});
+      }
+    }
+    for (int64 i = 0; i < rhs_rank; i++) {
+      if (i != rhs_contracting_dimension &&
+          !ArrayContains(AsInt64Slice(dnums.rhs_batch_dimensions()), i)) {
+        result_index_locations.push_back({&rhs_index[i], nullptr});
+      }
+    }
+
     auto result = MakeUnique<Literal>(dot->shape());
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
         [&](tensorflow::gtl::ArraySlice<int64> result_index) {
           ElementwiseT result_val = static_cast<ElementwiseT>(0);
 
-          // Find the corresponding non-contracting indices for lhs and rhs.
-          //
-          // For `result_index`, its batch dimension, if exists, will be at the
-          // same dimension as the batch dimension of lhs and rhs. More
-          // specifically:
-          // - For lhs, the non-contracting dimensions, including the batch
-          // dimension have the same index as the `result_index`.
-          // - For rhs, the batch dimension is set seperately from other
-          // non-contracting dimensions, since these other non-contracting
-          // dimensions in rhs follow the non-contracting dimensions of lhs in
-          // the resulting index.
-          //
-          // As an example, for a resulting index:
-          //  result_index [result_batch, result_x, result_y]
-          // the effecting lhs and rhs indices are:
-          //  lhs [result_batch, lhs_non_contracting_dim, contracting_dim
-          //  rhs [result_batch, contracting_dim, rhs_non_contracting_dim]
-          // `result_x` is only affected by the lhs_non_contracting_dim and
-          // likewise `result_y` only depends on rhs_non_contracting_dim.
-          //
-          // so we can look up the lhs and rhs indices by:
-          //
-          // lhs:
-          //  batch index is the same as `result_batch`.
-          //    non-contracting dimension is the same as
-          //    result_index[lhs_non_contracting_dim]
-          // rhs:
-          //  batch index: the same as `result_batch`.
-          //  non-contracting dimension index: *not* the same as
-          //    result_index[rhs_non_contractng_dim], since the
-          //    non-contracting dimensions of lhs are included in the
-          //    result_index first. Instead, the non_contracting_dim of rhs must
-          //    be calculated as following:
-          //      lhs_non_contracting_dimensions_size +
-          //      (rhs_non_batch_non_contracting_dim - batch_dim_size) - 1
-          //
-          //    Note that (rhs_non_batch_contracting_dim - batch_dim_size) is
-          //    the index offset to the result_index that only depends on
-          //    the non_batch and non-contracting dimensions of rhs. -1 at the
-          //    end translates size to index.
-          for (auto i : lhs_non_contracting_dims) {
-            lhs_index[i] = result_index[i];
-          }
-          for (auto i : dnums.rhs_batch_dimensions()) {
-            rhs_index[i] = result_index[i];
-          }
-          for (auto i : rhs_non_batch_non_contracting_dims) {
-            const int64 rhs_non_batch_non_contracting_dim =
-                lhs_non_contracting_size + (i - batch_dim_size) - 1;
-            rhs_index[i] = result_index[rhs_non_batch_non_contracting_dim];
+          for (int64 i = 0; i < result_index.size(); i++) {
+            *result_index_locations[i].first = result_index[i];
+            if (result_index_locations[i].second) {
+              *result_index_locations[i].second = result_index[i];
+            }
           }
 
           // Accumulates resulting product along the contracted dimension.
@@ -1402,24 +1366,68 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 !is_complex_t<NativeT>::value &&
                 !std::is_same<NativeT, bool>::value>::type* = nullptr>
   Status HandleSort(HloInstruction* sort) {
-    TF_RET_CHECK(ShapeUtil::Rank(sort->shape()) == 1)
+    auto keys = sort->operand(0);
+    TF_RET_CHECK(ShapeUtil::Rank(keys->shape()) == 1)
         << "Sort is only supported for R1 shapes";
 
-    auto arg = sort->operand(0);
-    const Literal& arg_literal = parent_->GetEvaluatedLiteralFor(arg);
-    VLOG(3) << "HandleSort arg_literal: " << arg_literal.ToString();
-    const auto& arg_data = arg_literal.data<ReturnT>();
+    const Literal& keys_literal = parent_->GetEvaluatedLiteralFor(keys);
+    VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
+    const auto& keys_data = keys_literal.data<ReturnT>();
 
-    std::vector<ReturnT> return_data(arg_data.begin(), arg_data.end());
-    std::sort(return_data.begin(), return_data.end(),
-              [](const ReturnT& a, const ReturnT& b) {
-                return SafeLess<ReturnT>(a, b);
-              });
-    auto result_literal = MakeUnique<Literal>(sort->shape());
-    result_literal->PopulateR1(
-        tensorflow::gtl::ArraySlice<ReturnT>(return_data));
-    VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
-    parent_->evaluated_[sort] = std::move(result_literal);
+    if (sort->operand_count() == 1) {
+      std::vector<ReturnT> result_data(keys_data.begin(), keys_data.end());
+      std::sort(result_data.begin(), result_data.end(),
+                [](const ReturnT& a, const ReturnT& b) {
+                  return SafeLess<ReturnT>(a, b);
+                });
+      auto result_literal = MakeUnique<Literal>(sort->shape());
+      result_literal->PopulateR1(
+          tensorflow::gtl::ArraySlice<ReturnT>(result_data));
+      VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
+      parent_->evaluated_[sort] = std::move(result_literal);
+    } else {
+      CHECK_EQ(sort->operand_count(), 2);
+      auto values = sort->operand(1);
+      if (values->shape().element_type() !=
+          primitive_util::NativeToPrimitiveType<ReturnT>()) {
+        return InvalidArgument(
+            "Evaluator requires value and key types for Sort to match");
+      }
+
+      // We need to sort and array of keys and an array of values, where the
+      // sorted order of the values is determined by the keys. The simplest(?)
+      // way to do this is to go to an array-of-pairs representation, sort the
+      // array using the keys, and then go back to pair-of-arrays.
+      const Literal& values_literal = parent_->GetEvaluatedLiteralFor(values);
+      VLOG(3) << "HandleSort values_literal: " << values_literal.ToString();
+      const auto& values_data = values_literal.data<ReturnT>();
+      using kv_pair = std::pair<ReturnT, ReturnT>;
+      std::vector<kv_pair> key_value_vector;
+      CHECK_EQ(keys_data.size(), values_data.size());
+      for (int i = 0; i < keys_data.size(); ++i) {
+        key_value_vector.push_back(
+            std::make_pair(keys_data[i], values_data[i]));
+      }
+      std::sort(key_value_vector.begin(), key_value_vector.end(),
+                [](const kv_pair& a, const kv_pair& b) {
+                  return SafeLess<ReturnT>(a.first, b.first);
+                });
+      std::vector<ReturnT> result_keys, result_values;
+      for (const auto& key_value : key_value_vector) {
+        result_keys.push_back(key_value.first);
+        result_values.push_back(key_value.second);
+      }
+      auto result_keys_literal = MakeUnique<Literal>(keys->shape());
+      result_keys_literal->PopulateR1(
+          tensorflow::gtl::ArraySlice<ReturnT>(result_keys));
+      auto result_values_literal = MakeUnique<Literal>(values->shape());
+      result_values_literal->PopulateR1(
+          tensorflow::gtl::ArraySlice<ReturnT>(result_values));
+      auto result_tuple = Literal::MakeTuple(
+          {result_keys_literal.get(), result_values_literal.get()});
+      VLOG(3) << "HandleSort result_tuple: " << result_tuple->ToString();
+      parent_->evaluated_[sort] = std::move(result_tuple);
+    }
     return Status::OK();
   }
 

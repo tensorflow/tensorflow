@@ -118,7 +118,7 @@ XLAJIT_MAKE_UNARY(Inv, xla::Div(XlaHelpers::One(b, input_type(0)), x));
 XLAJIT_MAKE_UNARY(Reciprocal, xla::Div(XlaHelpers::One(b, input_type(0)), x));
 XLAJIT_MAKE_UNARY(Log, xla::Log(x));
 
-XLAJIT_MAKE_UNARY(Log1p, b->Log1p(x));
+XLAJIT_MAKE_UNARY(Log1p, xla::Log1p(x));
 
 XLAJIT_MAKE_UNARY(Invert, xla::Not(x));
 XLAJIT_MAKE_UNARY(LogicalNot, xla::Not(x));
@@ -172,7 +172,7 @@ XLAJIT_MAKE_UNARY(Sinh,
 //   max(x, 0) + log1p(exp(-abs(x)))
 XLAJIT_MAKE_UNARY(Softplus,
                   xla::Add(xla::Max(x, XlaHelpers::Zero(b, input_type(0))),
-                           b->Log1p(xla::Exp(xla::Neg(xla::Abs(x))))));
+                           xla::Log1p(xla::Exp(xla::Neg(xla::Abs(x))))));
 
 // softsign(x) = x / (abs(x) + 1)
 XLAJIT_MAKE_UNARY(Softsign,

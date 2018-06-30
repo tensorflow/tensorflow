@@ -854,7 +854,16 @@ def load_weights_from_hdf5_group_by_name(f, layers):
                          str(len(weight_values)) + ' element(s).')
       # Set values.
       for i in range(len(weight_values)):
-        weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
+        if K.int_shape(symbolic_weights[i]) != weight_values[i].shape:
+          raise ValueError('Layer #' + str(k) +' (named "' + layer.name +
+                           '"), weight ' + str(symbolic_weights[i]) +
+                           ' has shape {}'.format(K.int_shape(
+                               symbolic_weights[i])) +
+                           ', but the saved weight has shape ' +
+                           str(weight_values[i].shape) + '.')
+
+        else:
+          weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
   K.batch_set_value(weight_value_tuples)
 
 

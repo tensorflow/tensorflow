@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
@@ -69,7 +69,7 @@ def handle_options(func, x, axis, exclusive, reverse):
   return x
 
 
-class CumsumTest(XLATestCase):
+class CumsumTest(xla_test.XLATestCase):
 
   valid_dtypes = [np.float32]
 
@@ -147,7 +147,7 @@ class CumsumTest(XLATestCase):
         math_ops.cumsum(input_tensor, [0]).eval()
 
 
-class CumprodTest(XLATestCase):
+class CumprodTest(xla_test.XLATestCase):
 
   valid_dtypes = [np.float32]
 

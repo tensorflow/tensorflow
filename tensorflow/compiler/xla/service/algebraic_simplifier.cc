@@ -1252,9 +1252,10 @@ bool OutputIsPermutationOfOperandElements(HloInstruction* instruction,
   switch (instruction->opcode()) {
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kSort:
     case HloOpcode::kTranspose:
       return true;
+    case HloOpcode::kSort:
+      return (!ShapeUtil::IsTuple(instruction->shape()));
     default:
       return false;
   }

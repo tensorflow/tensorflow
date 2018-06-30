@@ -167,7 +167,16 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
 }
 
 Status ShapeVerifier::HandleSort(HloInstruction* sort) {
-  return CheckUnaryShape(sort);
+  if (sort->operand_count() == 2 &&
+      !ShapeUtil::SameDimensions(sort->operand(0)->shape(),
+                                 sort->operand(1)->shape())) {
+    return InternalError(
+        "Expected sort to have to have the same dimensions for the keys and "
+        "the values. Keys shape is: %s\n, Values shape is: %s",
+        ShapeUtil::HumanString(sort->operand(0)->shape()).c_str(),
+        ShapeUtil::HumanString(sort->operand(1)->shape()).c_str());
+  }
+  return CheckVariadicShape(sort);
 }
 
 Status ShapeVerifier::HandleConstant(HloInstruction* constant) {

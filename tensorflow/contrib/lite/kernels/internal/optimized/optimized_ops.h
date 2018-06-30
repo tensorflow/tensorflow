@@ -59,6 +59,7 @@ using reference_ops::Mean;
 using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
 using reference_ops::Relu6;
+using reference_ops::ReluX;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::StridedSlice;
