@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -66,6 +67,20 @@ const xla::XlaOp& XlaOpKernelContext::Input(int index) {
 
 TensorShape XlaOpKernelContext::InputShape(int index) {
   return context_->input(index).shape();
+}
+
+DataType XlaOpKernelContext::input_type(int index) const {
+  return context_->input(index).dtype();
+}
+
+xla::PrimitiveType XlaOpKernelContext::input_xla_type(int index) {
+  xla::PrimitiveType type;
+  Status status = DataTypeToPrimitiveType(input_type(index), &type);
+  if (!status.ok()) {
+    SetStatus(status);
+    return xla::PRIMITIVE_TYPE_INVALID;
+  }
+  return type;
 }
 
 Status XlaOpKernelContext::ConstantInput(int index,

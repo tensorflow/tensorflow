@@ -43,10 +43,9 @@ namespace tensorflow {
 // It is computed as:
 //
 //     output[..., :, :] = matrix(x[..., :, :]) * matrix(y[..., :, :])
-xla::StatusOr<xla::XlaOp> BatchDot(xla::XlaBuilder* builder, xla::XlaOp x,
-                                   xla::XlaOp y, bool transpose_x,
-                                   bool transpose_y, bool conjugate_x = false,
-                                   bool conjugate_y = false);
+xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x = false,
+                    bool transpose_y = false, bool conjugate_x = false,
+                    bool conjugate_y = false);
 
 }  // namespace tensorflow
 

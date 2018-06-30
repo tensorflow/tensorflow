@@ -27,7 +27,6 @@ py_library(
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/checkpoint/python:checkpoint",
-        "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/coder:coder_py",
@@ -126,6 +125,8 @@ py_library(
     }) + if_not_windows_cuda([
         "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
     ]) + if_not_windows([
+        "//tensorflow/contrib/bigtable",
+        "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),

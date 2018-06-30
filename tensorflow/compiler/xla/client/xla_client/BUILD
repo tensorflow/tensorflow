@@ -1,7 +1,5 @@
 # Description:
 #   The new XLA client libraries.
-#
-# This is NOT YET ready to use.
 
 licenses(["notice"])  # Apache 2.0
 
@@ -41,6 +39,7 @@ cc_library(
     name = "xla_builder",
     srcs = ["xla_builder.cc"],
     hdrs = ["xla_builder.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":xla_computation",
         "//tensorflow/compiler/xla:execution_options_util",

@@ -23,7 +23,7 @@ import itertools
 import numpy as np
 import scipy.signal as sps
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.contrib.signal.python.ops import spectral_ops as signal
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -58,7 +58,7 @@ INNER_DIMS_2D = pick_10(itertools.product(POWS_OF_2, POWS_OF_2))
 INNER_DIMS_3D = pick_10(itertools.product(POWS_OF_2, POWS_OF_2, POWS_OF_2))
 
 
-class FFTTest(XLATestCase):
+class FFTTest(xla_test.XLATestCase):
 
   def _VerifyFftMethod(self, inner_dims, complex_to_input, input_to_expected,
                        tf_method):
