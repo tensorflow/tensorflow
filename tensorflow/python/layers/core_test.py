@@ -477,7 +477,8 @@ class FlattenTest(test.TestCase):
     self.assertEqual(shape.as_list(), [None, None])
 
   def testDataFormat5d(self):
-    np_input_channels_last = np.arange(120, dtype='float32').reshape([1, 5, 4, 3, 2])
+    np_input_channels_last = np.arange(120, dtype='float32').reshape(
+        [1, 5, 4, 3, 2])
 
     with self.test_session() as sess:
       x = array_ops.placeholder(shape=(1, 5, 4, 3, 2), dtype='float32')
@@ -493,7 +494,8 @@ class FlattenTest(test.TestCase):
       self.assertEqual(np_output_cl, np_output_cf)
 
   def testDataFormat4d(self):
-    np_input_channels_last = np.arange(24, dtype='float32').reshape([1, 4, 3, 2])
+    np_input_channels_last = np.arange(24, dtype='float32').reshape(
+        [1, 4, 3, 2])
 
     with self.test_session() as sess:
       x = array_ops.placeholder(shape=(1, 4, 3, 2), dtype='float32')
