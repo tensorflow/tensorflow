@@ -766,7 +766,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         if scale_loss_by_num_towers is None:
           scale_loss_by_num_towers = (
-              distribute_lib.get_loss_reduction() == "mean")
+              distribute_lib.get_loss_reduction() ==
+              variable_scope.VariableAggregation.MEAN)
         if scale_loss_by_num_towers:
           num_towers = distribute_lib.get_distribution_strategy().num_towers
           if num_towers > 1:
@@ -784,7 +785,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # Scale loss for number of towers (non-callable-loss case).
     if scale_loss_by_num_towers is None:
       scale_loss_by_num_towers = (
-          distribute_lib.get_loss_reduction() == "mean")
+          distribute_lib.get_loss_reduction() ==
+          variable_scope.VariableAggregation.MEAN)
     if scale_loss_by_num_towers:
       num_towers = distribute_lib.get_distribution_strategy().num_towers
       if num_towers > 1:
@@ -896,7 +898,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
-    reduced_grads = distribution.batch_reduce("sum", grads_and_vars)
+    reduced_grads = distribution.batch_reduce(
+        variable_scope.VariableAggregation.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 

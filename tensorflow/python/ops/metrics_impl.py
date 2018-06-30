@@ -73,7 +73,8 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
     A (non-trainable) variable initialized to zero, or if inside a
     `DistributionStrategy` scope a tower-local variable container.
   """
-  with distribute_lib.get_tower_context().tower_local_var_scope('sum'):
+  with distribute_lib.get_tower_context().tower_local_var_scope(
+      variable_scope.VariableAggregation.SUM):
     # Note that "tower local" implies trainable=False.
     return variable_scope.variable(
         lambda: array_ops.zeros(shape, dtype),
