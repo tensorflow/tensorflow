@@ -21,24 +21,14 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long
-from tensorflow.contrib.bayesflow.python.ops import csiszar_divergence
-from tensorflow.contrib.bayesflow.python.ops import custom_grad
-from tensorflow.contrib.bayesflow.python.ops import entropy
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
-from tensorflow.contrib.bayesflow.python.ops import stochastic_gradient_estimators
-from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
-from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
-from tensorflow.contrib.bayesflow.python.ops import stochastic_variables
-from tensorflow.contrib.bayesflow.python.ops import variational_inference
 # pylint: enable=unused-import,line-too-long
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 
-_allowed_symbols = ['csiszar_divergence', 'custom_grad', 'entropy',
-                    'monte_carlo', 'special_math',
-                    'stochastic_gradient_estimators', 'stochastic_graph',
-                    'stochastic_tensor', 'stochastic_variables',
-                    'variational_inference']
+_allowed_symbols = [
+    'monte_carlo',
+]
 
 remove_undocumented(__name__, _allowed_symbols)

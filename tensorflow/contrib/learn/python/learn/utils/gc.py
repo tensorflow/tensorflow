@@ -13,7 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-r"""System for specifying garbage collection (GC) of path based data.
+r"""System for specifying garbage collection (GC) of path based data (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
 
 This framework allows for GC of data specified by path names, for example files
 on disk.  gc.Path objects each represent a single item stored at a path and may
@@ -73,10 +77,12 @@ import os
 
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 Path = collections.namedtuple('Path', 'path export_version')
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def largest_export_versions(n):
   """Creates a filter that keeps the largest n export versions.
 
@@ -97,6 +103,7 @@ def largest_export_versions(n):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def one_of_every_n_export_versions(n):
   """Creates a filter that keeps one of every n export versions.
 
@@ -128,6 +135,7 @@ def one_of_every_n_export_versions(n):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def mod_export_version(n):
   """Creates a filter that keeps every export that is a multiple of n.
 
@@ -146,6 +154,7 @@ def mod_export_version(n):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def union(lf, rf):
   """Creates a filter that keeps the union of two filters.
 
@@ -163,6 +172,7 @@ def union(lf, rf):
   return keep
 
 
+@deprecated(None, 'Please implement your own file management or use Saver.')
 def negation(f):
   """Negate a filter.
 
@@ -179,6 +189,7 @@ def negation(f):
   return keep
 
 
+@deprecated(None, 'Please implement your own file name management.')
 def get_paths(base_dir, parser):
   """Gets a list of Paths in a given directory.
 

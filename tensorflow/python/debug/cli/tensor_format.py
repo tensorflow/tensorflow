@@ -72,6 +72,7 @@ class HighlightOptions(object):
 def format_tensor(tensor,
                   tensor_label,
                   include_metadata=False,
+                  auxiliary_message=None,
                   include_numeric_summary=False,
                   np_printoptions=None,
                   highlight_options=None):
@@ -84,6 +85,8 @@ def format_tensor(tensor,
       suppress the tensor name line in the return value.
     include_metadata: Whether metadata such as dtype and shape are to be
       included in the formatted text.
+    auxiliary_message: An auxiliary message to display under the tensor label,
+      dtype and shape information lines.
     include_numeric_summary: Whether a text summary of the numeric values (if
       applicable) will be included.
     np_printoptions: A dictionary of keyword arguments that are passed to a
@@ -131,12 +134,15 @@ def format_tensor(tensor,
 
   if include_metadata:
     lines.append("  dtype: %s" % str(tensor.dtype))
-    lines.append("  shape: %s" % str(tensor.shape))
+    lines.append("  shape: %s" % str(tensor.shape).replace("L", ""))
 
   if lines:
     lines.append("")
   formatted = debugger_cli_common.RichTextLines(
       lines, font_attr_segs=font_attr_segs)
+
+  if auxiliary_message:
+    formatted.extend(auxiliary_message)
 
   if include_numeric_summary:
     formatted.append("Numeric summary:")
@@ -480,7 +486,7 @@ def _pad_string_to_length(string, length):
 
 
 def numeric_summary(tensor):
-  """Get a text summmary of a numeric tensor.
+  """Get a text summary of a numeric tensor.
 
   This summary is only available for numeric (int*, float*, complex*) and
   Boolean tensors.
@@ -529,7 +535,7 @@ def numeric_summary(tensor):
   if not isinstance(tensor, np.ndarray) or not np.size(tensor):
     return debugger_cli_common.RichTextLines([
         "No numeric summary available due to empty tensor."])
-  elif (np.issubdtype(tensor.dtype, np.float) or
+  elif (np.issubdtype(tensor.dtype, np.floating) or
         np.issubdtype(tensor.dtype, np.complex) or
         np.issubdtype(tensor.dtype, np.integer)):
     counts = [

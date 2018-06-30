@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class NegativeBinomial(distribution.Distribution):
@@ -51,6 +52,14 @@ class NegativeBinomial(distribution.Distribution):
   * `n!` is the factorial of `n`.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                total_count,
                logits=None,
@@ -90,8 +99,8 @@ class NegativeBinomial(distribution.Distribution):
       name: Python `str` name prefixed to Ops created by this class.
     """
 
-    parameters = locals()
-    with ops.name_scope(name, values=[total_count, logits, probs]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[total_count, logits, probs]) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits, probs, validate_args=validate_args, name=name)
       with ops.control_dependencies(
@@ -167,8 +176,8 @@ class NegativeBinomial(distribution.Distribution):
   def _log_unnormalized_prob(self, x):
     if self.validate_args:
       x = distribution_util.embed_check_nonnegative_integer_form(x)
-    return (self.total_count * math_ops.log1p(-self.probs)
-            + x * math_ops.log(self.probs))
+    return (self.total_count * math_ops.log_sigmoid(-self.logits)
+            + x * math_ops.log_sigmoid(self.logits))
 
   def _log_normalization(self, x):
     if self.validate_args:

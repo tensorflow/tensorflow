@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -50,9 +52,17 @@ using ::testing::ElementsAre;
 class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
-                     ComputationLayout* entry_computation_layout) {
-    LayoutAssignment layout_assignment(entry_computation_layout);
+                     ComputationLayout* entry_computation_layout,
+                     ChannelLayoutConstraints* channel_constraints = nullptr) {
+    LayoutAssignment layout_assignment(
+        entry_computation_layout, /*channel_constraints=*/channel_constraints);
     EXPECT_IS_OK(layout_assignment.Run(module).status());
+  }
+
+  std::vector<int64> LayoutOf(HloModule* module, tensorflow::StringPiece name) {
+    auto minor_to_major =
+        FindInstruction(module, name)->shape().layout().minor_to_major();
+    return std::vector<int64>(minor_to_major.begin(), minor_to_major.end());
   }
 };
 
@@ -131,10 +141,10 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
   std::vector<std::initializer_list<int64>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
-    auto constant_literal1 = test_utils::CreateR2LiteralWithLayout<float>(
-        {{1.0, 2.0}, {3.0, 4.0}}, minor_to_major);
-    auto constant_literal2 = test_utils::CreateR2LiteralWithLayout<float>(
-        {{5.0, 6.0}, {7.0, 8.0}}, minor_to_major);
+    auto constant_literal1 = Literal::CreateR2WithLayout<float>(
+        {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout(minor_to_major));
+    auto constant_literal2 = Literal::CreateR2WithLayout<float>(
+        {{5.0, 6.0}, {7.0, 8.0}}, LayoutUtil::MakeLayout(minor_to_major));
     Shape ashape = constant_literal1->shape();
 
     auto constant1 = builder.AddInstruction(
@@ -181,12 +191,12 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
   // Verify the layouts of a tuple are assigned properly (the element layouts
   // match their source).
   auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {0, 1})));
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {1, 0})));
+  auto constant0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant0, constant1}));
 
@@ -205,7 +215,7 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
 
   AssignLayouts(module.get(), &computation_layout);
 
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       LayoutUtil::LayoutsInShapesEqual(constant0->shape(), constant1->shape()));
 
   EXPECT_TRUE(LayoutUtil::HasLayout(tuple->shape()));
@@ -218,12 +228,12 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
 TEST_F(LayoutAssignmentTest, TupleSelect) {
   // Verify layouts of a select with tuple operands is assigned properly.
   auto builder = HloComputation::Builder(TestName());
-  auto constant0 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {0, 1})));
-  auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      test_utils::CreateR2LiteralWithLayout<float>({{1.0, 2.0}, {3.0, 4.0}},
-                                                   {1, 0})));
+  auto constant0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({1, 0}))));
   auto tuple0 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant0, constant1}));
   auto tuple1 = builder.AddInstruction(
@@ -587,9 +597,268 @@ TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
   EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(transpose->operand(0)->shape(),
                                             transpose->shape(), {2, 3, 0, 1}));
 }
+
+// TransposeIsBitcast shouldn't be called without layout information.
+TEST_F(LayoutAssignmentTest, TransposeIsBitcastFail) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape_with_layout(input_shape);
+  *input_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto hlo = builder.AddInstruction(
+      HloInstruction::CreateTranspose(input_shape, param, {0, 2, 1}));
+  // Clear the default layout assigned to the instruction.
+  LayoutUtil::ClearLayout(hlo->mutable_shape());
+  EXPECT_DEATH(ShapeUtil::TransposeIsBitcast(hlo->operand(0)->shape(),
+                                             hlo->shape(), hlo->dimensions()),
+               "LayoutUtil::HasLayout");
+}
+
+// ReshapeIsBitcast shouldn't be called without layout information.
+TEST_F(LayoutAssignmentTest, ReshapeIsBitcastFail) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape_with_layout(input_shape);
+  *input_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape_with_layout, "param"));
+  auto hlo =
+      builder.AddInstruction(HloInstruction::CreateReshape(input_shape, param));
+  // Clear the default layout assigned to the instruction.
+  LayoutUtil::ClearLayout(hlo->mutable_shape());
+  EXPECT_DEATH(
+      ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape()),
+      "LayoutUtil::HasLayout");
+}
+
+// Check that the computation below doesn't crash the compiler.
+//
+// Within a fusion computation, only the parameters and result get assigned a
+// layout.  When we run the algebraic simplifier on this computation post layout
+// assignment, it should not call TransposeIsBitcast on the `transpose` node
+// inside the fusion computation as TransposeIsBitcast checks both input_shape
+// and output_shape have layouts.
+TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    fused_computation {
+      param_1 = f32[2,2,2]{2,1,0} parameter(1)
+      transpose = f32[2,2,2]{2,1,0} transpose(param_1), dimensions={0,2,1}
+      reduce_1 = f32[] parameter(0)
+      broadcast_1 = f32[2,2,2]{2,1,0} broadcast(reduce_1), dimensions={}
+      ROOT divide_1 = f32[2,2,2]{2,1,0} divide(transpose, broadcast_1)
+    }
+
+    ENTRY entry_computation {
+      fusion.1 = f32[2,2,2]{2,1,0} parameter(1)
+      reduce.1 = f32[] parameter(0)
+      fusion.2 = f32[2,2,2]{2,1,0} fusion(reduce.1, fusion.1), kind=kLoop, calls=fused_computation
+     ROOT tuple.1 = (f32[2,2,2]{2,1,0}) tuple(fusion.2)
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+
+  module =
+      backend()
+          .compiler()
+          ->RunHloPasses(std::move(module), backend().default_stream_executor(),
+                         /*device_allocator=*/nullptr)
+          .ConsumeValueOrDie();
+
+  EXPECT_EQ(Status::OK(), backend()
+                              .compiler()
+                              ->RunBackend(std::move(module),
+                                           backend().default_stream_executor(),
+                                           /*device_allocator=*/nullptr)
+                              .status());
+}
+
+// A GTE inside of a fusion node inherits the layout of its operand (which
+// should, if we keep following operands, eventually be a parameter).
+TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    fused_computation {
+      fparam = (f32[2,2,2], (f32[2,2,2], f32[2,2,2])) parameter(0)
+      gte0 = f32[2,2,2] get-tuple-element(fparam), index=0
+      gte1 = (f32[2,2,2], f32[2,2,2]) get-tuple-element(fparam), index=1
+      gte1a = f32[2,2,2] get-tuple-element(gte1), index=0
+      gte1b = f32[2,2,2] get-tuple-element(gte1), index=1
+      add = f32[2,2,2] add(gte1a, gte1b)
+      ROOT fresult = f32[2,2,2] add(gte0, add)
+    }
+
+    ENTRY entry_computation {
+      param = (f32[2,2,2], (f32[2,2,2], f32[2,2,2])) parameter(0)
+      ROOT fusion =
+        f32[2,2,2] fusion(param), kind=kLoop, calls=fused_computation
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  Shape param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {0, 1, 2}),
+       ShapeUtil::MakeTupleShape({
+           ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {1, 2, 0}),
+           ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {2, 0, 1}),
+       })});
+  TF_ASSERT_OK(
+      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+          param_shape));
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({2, 1, 0}));
+  AssignLayouts(module.get(), &computation_layout);
+
+  EXPECT_THAT(LayoutOf(module.get(), "gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(LayoutOf(module.get(), "gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(LayoutOf(module.get(), "gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 2, 0));
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(2, 0, 1));
+}
+
+TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
+  auto builder = HloComputation::Builder(TestName());
+  auto module = CreateNewModule();
+  Shape shape = ShapeUtil::MakeShape(F32, {128, 8});
+  Shape tshape = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape result_tshape = ShapeUtil::MakeTupleShape({shape});
+
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param0"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "param1"));
+  auto pred = builder.AddInstruction(HloInstruction::CreateParameter(
+      2, ShapeUtil::MakeShape(PRED, {}), "param2"));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({param0, param1}));
+
+  auto true_builder = HloComputation::Builder(TestName() + "_TrueBranch");
+  {
+    auto param = true_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tshape, "param"));
+    auto gte0 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, param, 0));
+    auto gte1 = true_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(shape, param, 1));
+    auto add = true_builder.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, gte0, gte1));
+    true_builder.AddInstruction(HloInstruction::CreateTuple({add}));
+  }
+  HloComputation* true_computation =
+      module->AddEmbeddedComputation(true_builder.Build());
+
+  auto false_builder = HloComputation::Builder(TestName() + "_FalseBranch");
+  {
+    Shape xshape = ShapeUtil::MakeShapeWithLayout(F32, {128, 8}, {0, 1});
+    false_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tshape, "param"));
+    // Using infeed as layout assignment does not mess up with it.
+    auto token =
+        false_builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+    auto infeed = false_builder.AddInstruction(
+        HloInstruction::CreateInfeed(xshape, token, ""));
+    auto infeed_data = false_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(xshape, infeed, 0));
+    false_builder.AddInstruction(HloInstruction::CreateTuple({infeed_data}));
+  }
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(false_builder.Build());
+  builder.AddInstruction(HloInstruction::CreateConditional(
+      result_tshape, pred, tuple, true_computation, tuple, false_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+
+  AssignLayouts(module.get(), &computation_layout);
+
+  const HloInstruction* true_root = true_computation->root_instruction();
+  const HloInstruction* false_root = false_computation->root_instruction();
+  EXPECT_THAT(true_root->opcode(), HloOpcode::kTuple);
+  EXPECT_THAT(false_root->opcode(), HloOpcode::kTuple);
+
+  const HloInstruction* true_result = true_root->operand(0);
+  const HloInstruction* false_result = false_root->operand(0);
+  EXPECT_TRUE(LayoutUtil::Equal(true_result->shape().layout(),
+                                false_result->shape().layout()));
+  EXPECT_THAT(false_result->opcode(), HloOpcode::kCopy);
+}
+
+TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR2WithLayout<float>(
+          {{1.0, 2.0}, {3.0, 4.0}}, LayoutUtil::MakeLayout({0, 1}))));
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      constant0->shape(), HloOpcode::kBitcast, constant0));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  LayoutAssignment layout_assignment(&computation_layout);
+  Status error_status = layout_assignment.Run(module.get()).status();
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(
+      error_status.error_message(),
+      ::testing::HasSubstr(
+          "Unexpected bitcast operation seen during layout assignment"));
+}
+
+TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      param = (f32[2,2]) parameter(0)
+      gte = f32[2,2] get-tuple-element(param), index=0
+      recv = (f32[2,2], u32[]) recv(), channel_id=1, sharding={maximal device=1}
+      ROOT recv-done = f32[2,2] recv-done(recv), channel_id=1,
+        sharding={maximal device=1}
+      send = (f32[2,2], u32[]) send(gte), channel_id=1,
+        sharding={maximal device=0}
+      send-done = () send-done(send), channel_id=1, sharding={maximal device=0}
+    }
+  )";
+
+  auto module = ParseHloString(module_str).ValueOrDie();
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  Shape param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1})});
+  TF_ASSERT_OK(
+      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+          param_shape));
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({1, 0}));
+
+  ChannelLayoutConstraints channel_constraints;
+  AssignLayouts(module.get(), &computation_layout, &channel_constraints);
+
+  EXPECT_THAT(LayoutOf(module.get(), "gte"), ElementsAre(0, 1));
+  EXPECT_THAT(LayoutOf(module.get(), "recv-done"), ElementsAre(1, 0));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::GetSubshape(
+                           FindInstruction(module.get(), "send")->shape(), {0}),
+                       ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

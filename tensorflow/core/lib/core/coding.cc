@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/coding.h"
 
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 
 namespace tensorflow {
 namespace core {

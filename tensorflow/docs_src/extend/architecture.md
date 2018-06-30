@@ -4,19 +4,18 @@ We designed TensorFlow for large-scale distributed training and inference, but
 it is also flexible enough to support experimentation with new machine
 learning models and system-level optimizations.
 
-This document describes the system architecture that makes possible this
-combination of scale and flexibility. It assumes that you have basic familiarity
+This document describes the system architecture that makes this
+combination of scale and flexibility possible. It assumes that you have basic familiarity
 with TensorFlow programming concepts such as the computation graph, operations,
-and sessions. See @{$get_started/get_started$Getting Started}
-for an introduction to these topics. Some familiarity
-with @{$distributed$distributed TensorFlow}
+and sessions. See @{$guide/low_level_intro$this document} for an introduction to
+these topics. Some familiarity with @{$distributed$distributed TensorFlow}
 will also be helpful.
 
 This document is for developers who want to extend TensorFlow in some way not
 supported by current APIs, hardware engineers who want to optimize for
 TensorFlow, implementers of machine learning systems working on scaling and
-distribution, or anyone who wants to look under Tensorflow's hood. After
-reading it you should understand TensorFlow architecture well enough to read
+distribution, or anyone who wants to look under Tensorflow's hood. By the end of this document 
+you should understand the TensorFlow architecture well enough to read
 and modify the core TensorFlow code.
 
 ## Overview
@@ -35,7 +34,7 @@ This document focuses on the following layers:
 *  **Client**:
    *  Defines the computation as a dataflow graph.
    *  Initiates graph execution using a [**session**](
-      https://www.tensorflow.org/code/tensorflow/python/client/session.py)
+      https://www.tensorflow.org/code/tensorflow/python/client/session.py).
 *  **Distributed Master**
    *  Prunes a specific subgraph from the graph, as defined by the arguments
       to Session.run().
@@ -55,7 +54,7 @@ Figure 2 illustrates the interaction of these components. "/job:worker/task:0" a
 server": a task responsible for storing and updating the model's parameters.
 Other tasks send updates to these parameters as they work on optimizing the
 parameters. This particular division of labor between tasks is not required, but
-it is common for distributed training.
+ is common for distributed training.
 
 ![TensorFlow Architecture Diagram](https://www.tensorflow.org/images/diag1.svg){: width="500"}
 
@@ -193,7 +192,7 @@ https://www.tensorflow.org/code/tensorflow/contrib/nccl/python/ops/nccl_ops.py))
 
 ## Kernel Implementations
 
-The runtime contains over 200 standard operations, including mathematical, array
+The runtime contains over 200 standard operations including mathematical, array
 manipulation, control flow, and state management operations. Each of these
 operations can have kernel implementations optimized for a variety of devices.
 Many of the operation kernels are implemented using Eigen::Tensor, which uses

@@ -15,8 +15,8 @@ limitations under the License.
 
 // Parent class and utilities for tfprof_code.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_
 
 #include <algorithm>
 #include <string>
@@ -29,11 +29,11 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_show.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -45,11 +45,12 @@ class TFMultiShow {
   virtual ~TFMultiShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const MultiGraphNodeProto& Show(const Options& opts);
+  virtual const MultiGraphNodeProto& Show(const string& prefix,
+                                          const Options& opts) final;
 
  protected:
   virtual const ShowMultiNode* ShowInternal(const Options& opts,
-                                           Timeline* timeline) = 0;
+                                            Timeline* timeline) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);
@@ -90,21 +91,30 @@ class TFMultiShow {
                   return n1->proto().total_requested_bytes() >
                          n2->proto().total_requested_bytes();
                 } else if (opts.order_by == kOrderBy[2]) {
+                  return n1->proto().total_peak_bytes() >
+                         n2->proto().total_peak_bytes();
+                } else if (opts.order_by == kOrderBy[3]) {
+                  return n1->proto().total_residual_bytes() >
+                         n2->proto().total_residual_bytes();
+                } else if (opts.order_by == kOrderBy[4]) {
+                  return n1->proto().total_output_bytes() >
+                         n2->proto().total_output_bytes();
+                } else if (opts.order_by == kOrderBy[5]) {
                   return n1->proto().total_exec_micros() >
                          n2->proto().total_exec_micros();
-                } else if (opts.order_by == kOrderBy[3]) {
+                } else if (opts.order_by == kOrderBy[6]) {
                   return n1->proto().total_accelerator_exec_micros() >
                          n2->proto().total_accelerator_exec_micros();
-                } else if (opts.order_by == kOrderBy[4]) {
+                } else if (opts.order_by == kOrderBy[7]) {
                   return n1->proto().total_cpu_exec_micros() >
                          n2->proto().total_cpu_exec_micros();
-                } else if (opts.order_by == kOrderBy[5]) {
+                } else if (opts.order_by == kOrderBy[8]) {
                   return n1->proto().total_parameters() >
                          n2->proto().total_parameters();
-                } else if (opts.order_by == kOrderBy[6]) {
+                } else if (opts.order_by == kOrderBy[9]) {
                   return n1->proto().total_float_ops() >
                          n2->proto().total_float_ops();
-                } else if (opts.order_by == kOrderBy[7]) {
+                } else if (opts.order_by == kOrderBy[10]) {
                   return n1->node->graph_nodes().size() >
                          n2->node->graph_nodes().size();
                 }
@@ -117,4 +127,4 @@ class TFMultiShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_MULTI_H_

@@ -876,7 +876,7 @@ class SequenceQueueingStateSaver(object):
         ]):
           self._length = array_ops.identity(self._length)
 
-        # Only create barrier; enqueu and dequeue operations happen when you
+        # Only create barrier; enqueue and dequeue operations happen when you
         # access prefetch_op and next_batch.
         self._create_barrier()
         self._scope = scope
@@ -1574,8 +1574,9 @@ def _padding(sequences, num_unroll):
   if not sequences:
     return 0, {}
 
-  sequences_dict = {}
-  for key, value in sequences.items():
+  # Sort 'sequences_dict' so 'length' will have a predictable value below.
+  sequences_dict = collections.OrderedDict()
+  for key, value in sorted(sequences.items()):
     if not (isinstance(value, sparse_tensor.SparseTensor) or
             isinstance(value, sparse_tensor.SparseTensorValue)):
       sequences_dict[key] = ops.convert_to_tensor(value)
@@ -1596,7 +1597,7 @@ def _padding(sequences, num_unroll):
   else:  # Only have SparseTensors
     sparse_lengths = [value.dense_shape[0] for value in sequences_dict.values()
                       if isinstance(value, sparse_tensor.SparseTensor)]
-    length = math_ops.maximum(sparse_lengths)
+    length = math_ops.reduce_max(math_ops.to_int32(sparse_lengths))
 
   unroll = array_ops.constant(num_unroll)
   padded_length = length + ((unroll - (length % unroll)) % unroll)
@@ -1636,7 +1637,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
 
   For `key, value` pairs in `input_context` with `SparseTensor` `value` removes
   them from `input_context` and transforms the `value` into a sequence and
-  then adding `key`, transformed `value` into `input_seuqences`.
+  then adding `key`, transformed `value` into `input_sequences`.
   The transformation is done by adding a new first dimension of `value_length`
   equal to that of the other values in input_sequences` and tiling the `value`
   every `num_unroll` steps.
@@ -1652,7 +1653,8 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
   if input_sequences:
     seq = list(input_sequences.values())[0]
     if isinstance(seq, ops.Tensor):
-      value_length = array_ops.shape(seq)[0]
+      with ops.control_dependencies([seq]):
+        value_length = array_ops.shape(seq)[0]
     else:
       value_length = seq.dense_shape[0]
   value_length = math_ops.cast(value_length, dtype=dtypes.int64)

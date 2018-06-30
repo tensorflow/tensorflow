@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 void TemporaryMemoryManager::ForceDeallocateAll() {
@@ -124,5 +123,4 @@ TemporaryMemoryManager::AllocateArrayBase(uint64 element_count,
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -156,7 +157,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 // Finished.  Allocate attempt->tuple and
                 // copy from attempt->tuples to attempt->tuple.
                 attempt->tuple.reserve(num_components());
-                const std::vector<Tuple>& tuples = attempt->tuples;
+                std::vector<Tuple>& tuples = attempt->tuples;
 
                 std::vector<bool> dynamic_shape;
                 const int64 batch_size = tuples.size();
@@ -206,8 +207,10 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       attempt->context->SetStatus(CopyElementToLargerSlice(
                           tuples[index][i], &attempt->tuple[i], index));
                     } else {
-                      attempt->context->SetStatus(CopyElementToSlice(
-                          tuples[index][i], &attempt->tuple[i], index));
+                      attempt->context->SetStatus(
+                          batch_util::CopyElementToSlice(
+                              std::move(tuples[index][i]), &attempt->tuple[i],
+                              index));
                     }
                     if (!attempt->context->status().ok()) return kComplete;
                   }

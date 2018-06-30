@@ -1,11 +1,11 @@
-# Legacy command line flags for the XLA libraries.
+# Legacy command-line flags for the XLA libraries.
 
 # Please do not add more flags to this package.
 
-# The XLA libraries were written in an environment that allowed command - line
+# The XLA libraries were written in an environment that allowed command-line
 # flags to be scattered freely throughout the libraries.  This model, while
-# initially convenient, leads to a proliferation in unused commnd line flags in
-# tests and binaries, and serious problems in servers, where one might wish
+# initially convenient, leads to a proliferation in unused command-line flags
+# in tests and binaries, and serious problems in servers, where one might wish
 # parameters to be different in independent RPC calls to the same routine.
 #
 # Please don't add more flags.  If you're a library author, pass options and
@@ -14,6 +14,8 @@
 package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
+
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
     name = "parse_flags_from_env",
@@ -27,9 +29,8 @@ cc_library(
         ],
 )
 
-cc_test(
+tf_cc_test(
     name = "parse_flags_from_env_test",
-    size = "small",
     srcs = ["parse_flags_from_env_test.cc"],
     deps =
         [
@@ -43,27 +44,34 @@ cc_test(
 
 cc_library(
     name = "debug_options_flags",
-    srcs = ["debug_options_flags.cc"],
+    srcs = [
+        "debug_options_flags.cc",
+        "debug_options_parsers.h",
+    ],
     hdrs = ["debug_options_flags.h"],
     deps =
         [
             ":parse_flags_from_env",
             "//tensorflow/compiler/xla:xla_proto",
+            "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
 )
 
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
+tf_cc_test(
+    name = "debug_options_parsers_test",
+    size = "small",
+    srcs = [
+        "debug_options_parsers.h",
+        "debug_options_parsers_test.cc",
+    ],
+    deps =
+        [
+            "//tensorflow/compiler/xla:xla_proto",
+            "//tensorflow/compiler/xla/service:hlo",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
         ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

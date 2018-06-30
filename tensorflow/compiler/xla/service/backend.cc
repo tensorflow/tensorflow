@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/compiler/xla/service/backend.h"
 
 #include <algorithm>
 #include <string>
 #include <utility>
-
-#define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -31,24 +31,20 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
-BackendOptions& BackendOptions::set_platform(
-    perftools::gputools::Platform* platform) {
+BackendOptions& BackendOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
   return *this;
 }
 
-perftools::gputools::Platform* BackendOptions::platform() const {
-  return platform_;
-}
+se::Platform* BackendOptions::platform() const { return platform_; }
 
 BackendOptions& BackendOptions::set_intra_op_parallelism_threads(
     int num_threads) {
@@ -77,7 +73,7 @@ struct Backend::EigenThreadPoolWrapper {
 
 /* static */ StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
-  perftools::gputools::Platform* platform = options.platform();
+  se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto stream_executors,
                       PlatformUtil::GetStreamExecutors(platform));
@@ -121,7 +117,7 @@ StatusOr<Backend::StreamPtr> Backend::BorrowStream(
 }
 
 Backend::Backend(
-    perftools::gputools::Platform* platform, Compiler* compiler,
+    se::Platform* platform, Compiler* compiler,
     tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
     TransferManager* transfer_manager, ComputationPlacer* computation_placer,
     int intra_op_parallelism_threads)
@@ -142,9 +138,6 @@ Backend::Backend(
       << "Service found no devices for backend " << platform_->Name() << '.';
 
   if (platform->id() == se::host::kHostPlatformId) {
-    inter_op_thread_pool_.reset(new tensorflow::thread::ThreadPool(
-        tensorflow::Env::Default(), "xla_inter_op",
-        tensorflow::port::NumSchedulableCPUs()));
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tensorflow::port::NumSchedulableCPUs();
@@ -157,10 +150,6 @@ Backend::~Backend() {}
 
 int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();
-}
-
-tensorflow::thread::ThreadPool* Backend::inter_op_thread_pool() const {
-  return inter_op_thread_pool_.get();
 }
 
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
@@ -178,7 +167,7 @@ tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
   return intra_op_thread_pool_wrapper_->pool.get();
 }
 
-StatusOr<perftools::gputools::StreamExecutor*> Backend::stream_executor(
+StatusOr<se::StreamExecutor*> Backend::stream_executor(
     int device_ordinal) const {
   if (device_ordinal < 0 ||
       device_ordinal > stream_executors_.back()->device_ordinal()) {
@@ -201,9 +190,9 @@ StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
   // bit crude but works for GPUs which is the important case where we compile
   // an executable for one GPU and want to know if it will run (well) on
   // another.
-  TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * executor_a,
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor_a,
                       stream_executor(device_ordinal_a));
-  TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * executor_b,
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor_b,
                       stream_executor(device_ordinal_b));
   return (executor_a->GetDeviceDescription().name() ==
           executor_b->GetDeviceDescription().name());

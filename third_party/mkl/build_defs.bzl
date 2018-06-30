@@ -20,7 +20,19 @@ def if_mkl(if_true, if_false = []):
 
     """
     return select({
-        "//third_party/mkl:using_mkl": if_true,
+        str(Label("//third_party/mkl:using_mkl")): if_true,
+        "//conditions:default": if_false
+    })
+
+def if_mkl_lnx_x64(if_true, if_false = []):
+    """Shorthand for select()'ing on whether we're building with MKL.
+
+    Returns a select statement which evaluates to if_true if we're building
+    with MKL enabled.  Otherwise, the select statement evaluates to if_false.
+
+    """
+    return select({
+        str(Label("//third_party/mkl:using_mkl_lnx_x64")): if_true,
         "//conditions:default": if_false
     })
 
@@ -60,7 +72,6 @@ mkl_repository = repository_rule(
     ],
     attrs = {
         "build_file": attr.label(),
-        "repository": attr.string(),
         "urls": attr.string_list(default = []),
         "sha256": attr.string(default = ""),
         "strip_prefix": attr.string(default = ""),

@@ -32,9 +32,9 @@ namespace tensorforest {
 //   smoothed_sum = stats.sum() + #_classes
 float GiniImpurity(const LeafStat& stats, int32 num_classes) {
   const float smoothed_sum = num_classes + stats.weight_sum();
-  return 1.0 - (
-      (stats.classification().gini().square()
-       + 2 * stats.weight_sum() + num_classes) / (smoothed_sum * smoothed_sum));
+  return 1.0 - ((stats.classification().gini().square() +
+                 2 * stats.weight_sum() + num_classes) /
+                (smoothed_sum * smoothed_sum));
 }
 
 float WeightedGiniImpurity(const LeafStat& stats, int32 num_classes) {
@@ -46,21 +46,20 @@ void UpdateGini(LeafStat* stats, float old_val, float weight) {
   // Equivalent to stats->square() - old_val * old_val + new_val * new_val,
   // (for new_val = old_val + weight), but more numerically stable.
   stats->mutable_classification()->mutable_gini()->set_square(
-      stats->classification().gini().square()
-      + weight * weight + 2 * old_val * weight);
+      stats->classification().gini().square() + weight * weight +
+      2 * old_val * weight);
 }
-
 
 float Variance(const LeafStat& stats, int output) {
   if (stats.weight_sum() == 0) {
     return 0;
   }
   const float e_x =
-      stats.regression().mean_output().value(output).float_value()
-      / stats.weight_sum();
+      stats.regression().mean_output().value(output).float_value() /
+      stats.weight_sum();
   const auto e_x2 =
-      stats.regression().mean_output_squares().value(output).float_value()
-      / stats.weight_sum();
+      stats.regression().mean_output_squares().value(output).float_value() /
+      stats.weight_sum();
   return e_x2 - e_x * e_x;
 }
 
@@ -75,8 +74,7 @@ float TotalVariance(const LeafStat& stats) {
 float SmoothedGini(float sum, float square, int num_classes) {
   // See comments for GiniImpurity above.
   const float smoothed_sum = num_classes + sum;
-  return 1.0 -
-         (square + 2 * sum + num_classes) / (smoothed_sum * smoothed_sum);
+  return 1.0 - (square + 2 * sum + num_classes) / (smoothed_sum * smoothed_sum);
 }
 
 float WeightedSmoothedGini(float sum, float square, int num_classes) {

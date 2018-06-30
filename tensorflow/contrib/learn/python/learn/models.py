@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Various high level TF models."""
+"""Various high level TF models (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,8 +33,10 @@ from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated(None, 'Consider using a tf.estimator.LinearRegressor')
 def linear_regression_zero_init(x, y):
   """Linear regression subgraph with zero-value initial weights and bias.
 
@@ -43,6 +50,7 @@ def linear_regression_zero_init(x, y):
   return linear_regression(x, y, init_mean=0.0, init_stddev=0.0)
 
 
+@deprecated(None, 'Consider using a class from tf.estimator.LinearClassifier')
 def logistic_regression_zero_init(x, y):
   """Logistic regression subgraph with zero-value initial weights and bias.
 
@@ -56,6 +64,7 @@ def logistic_regression_zero_init(x, y):
   return logistic_regression(x, y, init_mean=0.0, init_stddev=0.0)
 
 
+@deprecated(None, 'Consider using a class from tf.estimator.')
 def linear_regression(x, y, init_mean=None, init_stddev=1.0):
   """Creates linear regression TensorFlow subgraph.
 
@@ -107,6 +116,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
+@deprecated(None, 'Consider using a class from tf.estimator.')
 def logistic_regression(x,
                         y,
                         class_weight=None,
@@ -203,6 +213,7 @@ def _reverse_seq(input_seq, lengths):
   return result
 
 
+@deprecated(None, 'Please consider `tf.nn.bidirectional_dynamic_rnn`.')
 def bidirectional_rnn(cell_fw,
                       cell_bw,
                       inputs,
@@ -283,6 +294,7 @@ def bidirectional_rnn(cell_fw,
 # End of TensorFlow 0.7
 
 
+@deprecated(None, 'Please consider tensorflow/tensor2tensor.')
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
                   target_predictor_fn, sequence_length, initial_state,
                   attn_length, attn_size, attn_vec_size):

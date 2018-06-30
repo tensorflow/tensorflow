@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,108 +12,91 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Estimator related util."""
+
+"""Tests for util.py."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
+import numpy as np
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import util
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
+from tensorflow.python.training import training
 
 
-class FnArgsTest(test.TestCase):
+class UtilTest(test.TestCase):
+  """Tests for miscellaneous Estimator utils."""
 
-  def test_simple_function(self):
-    def fn(a, b):
-      return a + b
-    self.assertEqual(('a', 'b'), util.fn_args(fn))
+  def test_parse_input_fn_result_tuple(self):
+    def _input_fn():
+      features = constant_op.constant(np.arange(100))
+      labels = constant_op.constant(np.arange(100, 200))
+      return features, labels
 
-  def test_callable(self):
+    features, labels, hooks = util.parse_input_fn_result(_input_fn())
 
-    class Foo(object):
+    with self.test_session() as sess:
+      vals = sess.run([features, labels])
 
-      def __call__(self, a, b):
-        return a + b
+    self.assertAllEqual(vals[0], np.arange(100))
+    self.assertAllEqual(vals[1], np.arange(100, 200))
+    self.assertEqual(hooks, [])
 
-    self.assertEqual(('self', 'a', 'b'), util.fn_args(Foo()))
+  def test_parse_input_fn_result_dataset(self):
+    def _input_fn():
+      features = np.expand_dims(np.arange(100), 0)
+      labels = np.expand_dims(np.arange(100, 200), 0)
+      return dataset_ops.Dataset.from_tensor_slices((features, labels))
 
-  def test_partial_function(self):
-    expected_test_arg = 123
+    features, labels, hooks = util.parse_input_fn_result(_input_fn())
 
-    def fn(a, test_arg):
-      if test_arg != expected_test_arg:
-        return ValueError('partial fn does not work correctly')
-      return a
+    with training.MonitoredSession(hooks=hooks) as sess:
+      vals = sess.run([features, labels])
 
-    wrapped_fn = functools.partial(fn, test_arg=123)
+    self.assertAllEqual(vals[0], np.arange(100))
+    self.assertAllEqual(vals[1], np.arange(100, 200))
+    self.assertIsInstance(hooks[0], util._DatasetInitializerHook)
 
-    self.assertEqual(('a',), util.fn_args(wrapped_fn))
+  def test_parse_input_fn_result_features_only(self):
+    def _input_fn():
+      return constant_op.constant(np.arange(100))
 
-  def test_partial_function_with_positional_args(self):
-    expected_test_arg = 123
+    features, labels, hooks = util.parse_input_fn_result(_input_fn())
 
-    def fn(test_arg, a):
-      if test_arg != expected_test_arg:
-        return ValueError('partial fn does not work correctly')
-      return a
+    with self.test_session() as sess:
+      vals = sess.run([features])
 
-    wrapped_fn = functools.partial(fn, 123)
+    self.assertAllEqual(vals[0], np.arange(100))
+    self.assertEqual(labels, None)
+    self.assertEqual(hooks, [])
 
-    self.assertEqual(('a',), util.fn_args(wrapped_fn))
+  def test_parse_input_fn_result_features_only_dataset(self):
+    def _input_fn():
+      features = np.expand_dims(np.arange(100), 0)
+      return dataset_ops.Dataset.from_tensor_slices(features)
 
-    self.assertEqual(3, wrapped_fn(3))
-    self.assertEqual(3, wrapped_fn(a=3))
+    features, labels, hooks = util.parse_input_fn_result(_input_fn())
 
-  def test_double_partial(self):
-    expected_test_arg1 = 123
-    expected_test_arg2 = 456
+    with training.MonitoredSession(hooks=hooks) as sess:
+      vals = sess.run([features])
 
-    def fn(a, test_arg1, test_arg2):
-      if test_arg1 != expected_test_arg1 or test_arg2 != expected_test_arg2:
-        return ValueError('partial does not work correctly')
-      return a
+    self.assertAllEqual(vals[0], np.arange(100))
+    self.assertEqual(labels, None)
+    self.assertIsInstance(hooks[0], util._DatasetInitializerHook)
 
-    wrapped_fn = functools.partial(fn, test_arg2=456)
-    double_wrapped_fn = functools.partial(wrapped_fn, test_arg1=123)
+  def test_parse_input_fn_result_invalid(self):
+    def _input_fn():
+      features = np.expand_dims(np.arange(100), 0)
+      labels = np.expand_dims(np.arange(100, 200), 0)
+      return dataset_ops.Dataset.from_tensor_slices((features, labels, labels))
 
-    self.assertEqual(('a',), util.fn_args(double_wrapped_fn))
+    with self.assertRaisesRegexp(ValueError, 'input_fn should return'):
+      util.parse_input_fn_result(_input_fn())
 
-  def test_double_partial_with_positional_args_in_outer_layer(self):
-    expected_test_arg1 = 123
-    expected_test_arg2 = 456
-
-    def fn(test_arg1, a, test_arg2):
-      if test_arg1 != expected_test_arg1 or test_arg2 != expected_test_arg2:
-        return ValueError('partial fn does not work correctly')
-      return a
-
-    wrapped_fn = functools.partial(fn, test_arg2=456)
-    double_wrapped_fn = functools.partial(wrapped_fn, 123)
-
-    self.assertEqual(('a',), util.fn_args(double_wrapped_fn))
-
-    self.assertEqual(3, double_wrapped_fn(3))
-    self.assertEqual(3, double_wrapped_fn(a=3))
-
-  def test_double_partial_with_positional_args_in_both_layers(self):
-    expected_test_arg1 = 123
-    expected_test_arg2 = 456
-
-    def fn(test_arg1, test_arg2, a):
-      if test_arg1 != expected_test_arg1 or test_arg2 != expected_test_arg2:
-        return ValueError('partial fn does not work correctly')
-      return a
-
-    wrapped_fn = functools.partial(fn, 123)  # binds to test_arg1
-    double_wrapped_fn = functools.partial(wrapped_fn, 456)  # binds to test_arg2
-
-    self.assertEqual(('a',), util.fn_args(double_wrapped_fn))
-
-    self.assertEqual(3, double_wrapped_fn(3))
-    self.assertEqual(3, double_wrapped_fn(a=3))
 
 if __name__ == '__main__':
   test.main()

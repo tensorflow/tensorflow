@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import random
 import threading
 
@@ -27,12 +29,18 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
@@ -75,6 +83,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       print("GoogleCuda is enabled")
     else:
       print("GoogleCuda is disabled")
+
+  def testIsMklEnabled(self):
+    # This test doesn't assert anything.
+    # It ensures the py wrapper function is generated correctly.
+    if test_util.IsMklEnabled():
+      print("MKL is enabled")
+    else:
+      print("MKL is disabled")
 
   def testAssertProtoEqualsStr(self):
 
@@ -179,11 +195,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
-      node_def = ops._NodeDef("op_type", "name")
-      node_def_orig = ops._NodeDef("op_type_orig", "orig")
-      op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-      op = ops.Operation(node_def, ops.get_default_graph(), original_op=op_orig)
-      raise errors.UnauthenticatedError(node_def, op, "true_err")
+      with ops.Graph().as_default():
+        node_def = ops._NodeDef("IntOutput", "name")
+        node_def_orig = ops._NodeDef("IntOutput", "orig")
+        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
+        op = ops.Operation(node_def, ops.get_default_graph(),
+                           original_op=op_orig)
+        raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   def testAssertRaisesOpErrorDoesNotPassMessageDueToLeakedStack(self):
     with self.assertRaises(AssertionError):
@@ -192,6 +210,21 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self._WeMustGoDeeper("true_err")
     self._WeMustGoDeeper("name")
     self._WeMustGoDeeper("orig")
+
+  def testAllCloseTensors(self):
+    a_raw_data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    a = constant_op.constant(a_raw_data)
+    b = math_ops.add(1, constant_op.constant([[0, 1, 2], [3, 4, 5], [6, 7, 8]]))
+    self.assertAllClose(a, b)
+    self.assertAllClose(a, a_raw_data)
+
+    a_dict = {"key": a}
+    b_dict = {"key": b}
+    self.assertAllClose(a_dict, b_dict)
+
+    x_list = [a, b]
+    y_list = [a_raw_data, b]
+    self.assertAllClose(x_list, y_list)
 
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
@@ -203,6 +236,18 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(1, {"a": 1})
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseNamedtuples(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["a", "b", "c"])
+
+    # Identity.
+    self.assertAllClose(expected, my_named_tuple(a=a, b=b, c=c))
+    self.assertAllClose(
+        my_named_tuple(a=a, b=b, c=c), my_named_tuple(a=a, b=b, c=c))
 
   def testAllCloseDicts(self):
     a = 7
@@ -231,12 +276,30 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
 
-  def testAllCloseNestedDicts(self):
-    a = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"inputs could not be safely coerced to any supported types"):
-      self.assertAllClose(a, a)
+  def testAllCloseListOfNamedtuples(self):
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["x", "y"])
+    l1 = [
+        my_named_tuple(x=np.array([[2.3, 2.5]]), y=np.array([[0.97, 0.96]])),
+        my_named_tuple(x=np.array([[3.3, 3.5]]), y=np.array([[0.98, 0.99]]))
+    ]
+    l2 = [
+        ([[2.3, 2.5]], [[0.97, 0.96]]),
+        ([[3.3, 3.5]], [[0.98, 0.99]]),
+    ]
+    self.assertAllClose(l1, l2)
+
+  def testAllCloseNestedStructure(self):
+    a = {"x": np.ones((3, 2, 4)) * 7, "y": (2, [{"nested": {"m": 3, "n": 4}}])}
+    self.assertAllClose(a, a)
+
+    b = copy.deepcopy(a)
+    self.assertAllClose(a, b)
+
+    # Test mismatched values
+    b["y"][1][0]["nested"]["n"] = 4.2
+    with self.assertRaisesRegexp(AssertionError,
+                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+      self.assertAllClose(a, b)
 
   def testArrayNear(self):
     a = [1, 2]
@@ -261,12 +324,21 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         control_flow_ops.Assert(x, y).run()
 
   def testAssertAllCloseAccordingToType(self):
+    # test plain int
+    self.assertAllCloseAccordingToType(1, 1, rtol=1e-8, atol=1e-8)
+
     # test float64
     self.assertAllCloseAccordingToType(
         np.asarray([1e-8], dtype=np.float64),
         np.asarray([2e-8], dtype=np.float64),
         rtol=1e-8, atol=1e-8
     )
+
+    self.assertAllCloseAccordingToType(
+        constant_op.constant([1e-8], dtype=dtypes.float64),
+        constant_op.constant([2e-8], dtype=dtypes.float64),
+        rtol=1e-8,
+        atol=1e-8)
 
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
@@ -282,6 +354,14 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         rtol=1e-8, atol=1e-8,
         float_rtol=1e-7, float_atol=1e-7
     )
+
+    self.assertAllCloseAccordingToType(
+        constant_op.constant([1e-7], dtype=dtypes.float32),
+        constant_op.constant([2e-7], dtype=dtypes.float32),
+        rtol=1e-8,
+        atol=1e-8,
+        float_rtol=1e-7,
+        float_atol=1e-7)
 
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
@@ -300,6 +380,16 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         half_rtol=1e-4, half_atol=1e-4
     )
 
+    self.assertAllCloseAccordingToType(
+        constant_op.constant([1e-4], dtype=dtypes.float16),
+        constant_op.constant([2e-4], dtype=dtypes.float16),
+        rtol=1e-8,
+        atol=1e-8,
+        float_rtol=1e-7,
+        float_atol=1e-7,
+        half_rtol=1e-4,
+        half_atol=1e-4)
+
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
           np.asarray([1e-3], dtype=np.float16),
@@ -309,7 +399,162 @@ class TestUtilTest(test_util.TensorFlowTestCase):
           half_rtol=1e-4, half_atol=1e-4
       )
 
+  def testAssertAllEqual(self):
+    i = variables.Variable([100] * 3, dtype=dtypes.int32, name="i")
+    j = constant_op.constant([20] * 3, dtype=dtypes.int32, name="j")
+    k = math_ops.add(i, j, name="k")
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual([120] * 3, k)
+    self.assertAllEqual([20] * 3, j)
+
+  def testAssertNotAllClose(self):
+    # Test with arrays
+    self.assertNotAllClose([0.1], [0.2])
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([-1.0, 2.0], [-1.0, 2.0])
+
+    # Test with tensors
+    x = constant_op.constant([1.0, 1.0], name="x")
+    y = math_ops.add(x, x)
+
+    self.assertAllClose([2.0, 2.0], y)
+    self.assertNotAllClose([0.9, 1.0], x)
+
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([1.0, 1.0], x)
+
+  def testAssertNotAllCloseRTol(self):
+    # Test with arrays
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([1.1, 2.1], [1.0, 2.0], rtol=0.2)
+
+    # Test with tensors
+    x = constant_op.constant([1.0, 1.0], name="x")
+    y = math_ops.add(x, x)
+
+    self.assertAllClose([2.0, 2.0], y)
+
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([0.9, 1.0], x, rtol=0.2)
+
+  def testAssertNotAllCloseATol(self):
+    # Test with arrays
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([1.1, 2.1], [1.0, 2.0], atol=0.2)
+
+    # Test with tensors
+    x = constant_op.constant([1.0, 1.0], name="x")
+    y = math_ops.add(x, x)
+
+    self.assertAllClose([2.0, 2.0], y)
+
+    with self.assertRaises(AssertionError):
+      self.assertNotAllClose([0.9, 1.0], x, atol=0.2)
+
+  def testAssertAllGreaterLess(self):
+    x = constant_op.constant([100.0, 110.0, 120.0], dtype=dtypes.float32)
+    y = constant_op.constant([10.0] * 3, dtype=dtypes.float32)
+    z = math_ops.add(x, y)
+
+    self.assertAllClose([110.0, 120.0, 130.0], z)
+
+    self.assertAllGreater(x, 95.0)
+    self.assertAllLess(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllGreater(x, 105.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllGreater(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllLess(x, 115.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllLess(x, 95.0)
+
+  def testAssertAllGreaterLessEqual(self):
+    x = constant_op.constant([100.0, 110.0, 120.0], dtype=dtypes.float32)
+    y = constant_op.constant([10.0] * 3, dtype=dtypes.float32)
+    z = math_ops.add(x, y)
+
+    self.assertAllEqual([110.0, 120.0, 130.0], z)
+
+    self.assertAllGreaterEqual(x, 95.0)
+    self.assertAllLessEqual(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllGreaterEqual(x, 105.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllGreaterEqual(x, 125.0)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllLessEqual(x, 115.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllLessEqual(x, 95.0)
+
+  def testAssertAllInRangeWithNonNumericValuesFails(self):
+    s1 = constant_op.constant("Hello, ", name="s1")
+    c = constant_op.constant([1 + 2j, -3 + 5j], name="c")
+    b = constant_op.constant([False, True], name="b")
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(s1, 0.0, 1.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(c, 0.0, 1.0)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(b, 0, 1)
+
+  def testAssertAllInRange(self):
+    x = constant_op.constant([10.0, 15.0], name="x")
+    self.assertAllInRange(x, 10, 15)
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, 15, open_lower_bound=True)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, 15, open_upper_bound=True)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(
+          x, 10, 15, open_lower_bound=True, open_upper_bound=True)
+
+  def testAssertAllInRangeErrorMessageEllipses(self):
+    x_init = np.array([[10.0, 15.0]] * 12)
+    x = constant_op.constant(x_init, name="x")
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 5, 10)
+
+  def testAssertAllInRangeDetectsNaNs(self):
+    x = constant_op.constant(
+        [[np.nan, 0.0], [np.nan, np.inf], [np.inf, np.nan]], name="x")
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 0.0, 2.0)
+
+  def testAssertAllInRangeWithInfinities(self):
+    x = constant_op.constant([10.0, np.inf], name="x")
+    self.assertAllInRange(x, 10, np.inf)
+    with self.assertRaises(AssertionError):
+      self.assertAllInRange(x, 10, np.inf, open_upper_bound=True)
+
+  def testAssertAllInSet(self):
+    b = constant_op.constant([True, False], name="b")
+    x = constant_op.constant([13, 37], name="x")
+
+    self.assertAllInSet(b, [False, True])
+    self.assertAllInSet(b, (False, True))
+    self.assertAllInSet(b, {False, True})
+    self.assertAllInSet(x, [0, 13, 37, 42])
+    self.assertAllInSet(x, (0, 13, 37, 42))
+    self.assertAllInSet(x, {0, 13, 37, 42})
+
+    with self.assertRaises(AssertionError):
+      self.assertAllInSet(b, [False])
+    with self.assertRaises(AssertionError):
+      self.assertAllInSet(x, (42,))
+
   def testRandomSeed(self):
+    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # after setup).
+    # TODO(skyewm): remove this when C API is permanently enabled.
+    self.setUp()
     a = random.randint(1, 1000)
     a_np_rand = np.random.rand(1)
     with self.test_session():
@@ -324,6 +569,167 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_callable_evaluate(self):
+    def model():
+      return resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1) + 1
+    with context.eager_mode():
+      self.assertEqual(2, self.evaluate(model))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_nested_tensors_evaluate(self):
+    expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    nested = {"a": constant_op.constant(1),
+              "b": constant_op.constant(2),
+              "nested": {"d": constant_op.constant(3),
+                         "e": constant_op.constant(4)}}
+
+    self.assertEqual(expected, self.evaluate(nested))
+
+  def test_run_in_graph_and_eager_modes(self):
+    l = []
+    def inc(self, with_brackets):
+      del self  # self argument is required by run_in_graph_and_eager_modes.
+      mode = "eager" if context.executing_eagerly() else "graph"
+      with_brackets = "with_brackets" if with_brackets else "without_brackets"
+      l.append((with_brackets, mode))
+
+    f = test_util.run_in_graph_and_eager_modes(inc)
+    f(self, with_brackets=False)
+    f = test_util.run_in_graph_and_eager_modes()(inc)
+    f(self, with_brackets=True)
+
+    self.assertEqual(len(l), 4)
+    self.assertEqual(set(l), {
+        ("with_brackets", "graph"),
+        ("with_brackets", "eager"),
+        ("without_brackets", "graph"),
+        ("without_brackets", "eager"),
+    })
+
+  def test_get_node_def_from_graph(self):
+    graph_def = graph_pb2.GraphDef()
+    node_foo = graph_def.node.add()
+    node_foo.name = "foo"
+    self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
+    self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
+  def test_run_in_eager_and_graph_modes_test_class(self):
+    msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
+    with self.assertRaisesRegexp(ValueError, msg):
+      @test_util.run_in_graph_and_eager_modes()
+      class Foo(object):
+        pass
+      del Foo  # Make pylint unused happy.
+
+  def test_run_in_eager_and_graph_modes_skip_graph_runs_eager(self):
+    modes = []
+    def _test(self):
+      if not context.executing_eagerly():
+        self.skipTest("Skipping in graph mode")
+      modes.append("eager" if context.executing_eagerly() else "graph")
+    test_util.run_in_graph_and_eager_modes(_test)(self)
+    self.assertEqual(modes, ["eager"])
+
+  def test_run_in_eager_and_graph_modes_skip_eager_runs_graph(self):
+    modes = []
+    def _test(self):
+      if context.executing_eagerly():
+        self.skipTest("Skipping in eager mode")
+      modes.append("eager" if context.executing_eagerly() else "graph")
+    test_util.run_in_graph_and_eager_modes(_test)(self)
+    self.assertEqual(modes, ["graph"])
+
+  def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
+    modes = []
+    mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
+
+    class ExampleTest(test_util.TensorFlowTestCase):
+
+      def runTest(self):
+        pass
+
+      def setUp(self):
+        modes.append("setup_" + mode_name())
+
+      @test_util.run_in_graph_and_eager_modes
+      def testBody(self):
+        modes.append("run_" + mode_name())
+
+    e = ExampleTest()
+    e.setUp()
+    e.testBody()
+
+    self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
+    self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
+
+
+class GarbageCollectionTest(test_util.TensorFlowTestCase):
+
+  def test_no_reference_cycle_decorator(self):
+
+    class ReferenceCycleTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_garbage_created
+      def test_has_cycle(self):
+        a = []
+        a.append(a)
+
+      @test_util.assert_no_garbage_created
+      def test_has_no_cycle(self):
+        pass
+
+    with self.assertRaises(AssertionError):
+      ReferenceCycleTest().test_has_cycle()
+
+    ReferenceCycleTest().test_has_no_cycle()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_no_leaked_tensor_decorator(self):
+
+    class LeakedTensorTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_new_tensors
+      def test_has_leak(self):
+        self.a = constant_op.constant([3.], name="leak")
+
+      @test_util.assert_no_new_tensors
+      def test_has_no_leak(self):
+        constant_op.constant([3.], name="no-leak")
+
+    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+      LeakedTensorTest().test_has_leak()
+
+    LeakedTensorTest().test_has_no_leak()
+
+  def test_no_new_objects_decorator(self):
+
+    class LeakedObjectTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+        inner_self.accumulation = []
+
+      @test_util.assert_no_new_pyobjects_executing_eagerly
+      def test_has_leak(self):
+        self.accumulation.append([1.])
+
+      @test_util.assert_no_new_pyobjects_executing_eagerly
+      def test_has_no_leak(self):
+        self.not_accumulating = [1.]
+
+    with self.assertRaises(AssertionError):
+      LeakedObjectTest().test_has_leak()
+
+    LeakedObjectTest().test_has_no_leak()
 
 if __name__ == "__main__":
   googletest.main()

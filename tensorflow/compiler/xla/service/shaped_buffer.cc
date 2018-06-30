@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include <set>
 #include <string>
 #include <utility>
 
@@ -25,141 +24,136 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-/* static */ StatusOr<std::unique_ptr<ShapedBuffer>>
-ShapedBuffer::MakeShapedBuffer(const Shape& shape,
-                               const perftools::gputools::Platform* platform,
-                               int device_ordinal) {
-  if (!LayoutUtil::HasLayout(shape)) {
-    return InvalidArgument("Shape must have a layout: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
-  }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return WrapUnique(new ShapedBuffer(shape, platform, device_ordinal));
-}
+using ::tensorflow::strings::Appendf;
 
-/* static */ StatusOr<std::unique_ptr<ShapedBuffer>>
-ShapedBuffer::MakeArrayShapedBuffer(
-    const Shape& shape, const perftools::gputools::Platform* platform,
-    int device_ordinal, const perftools::gputools::DeviceMemoryBase& buffer) {
-  if (ShapeUtil::IsTuple(shape)) {
-    return InvalidArgument("Shape must be an array: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
-  }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> shaped_buffer,
-                      MakeShapedBuffer(shape, platform, device_ordinal));
-  *shaped_buffer->mutable_shape_index_to_buffer_entry()->mutable_element({}) =
-      0;
-  *shaped_buffer->mutable_buffers() = {buffer};
-  return std::move(shaped_buffer);
-}
-
-/* static */ StatusOr<std::unique_ptr<ShapedBuffer>>
-ShapedBuffer::MakeUnnestedTupleShapedBuffer(
-    const Shape& shape, const perftools::gputools::Platform* platform,
-    int device_ordinal,
-    const tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        buffers) {
-  if (!ShapeUtil::IsTuple(shape) || ShapeUtil::IsNestedTuple(shape)) {
-    return InvalidArgument("Shape must be an unnested tuple: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
-  }
-  if (buffers.size() != ShapeUtil::TupleElementCount(shape)) {
-    return InvalidArgument("Tuple has %lld elements, but %zu buffers given",
-                           ShapeUtil::TupleElementCount(shape), buffers.size());
-  }
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> shaped_buffer,
-                      MakeShapedBuffer(shape, platform, device_ordinal));
-  shaped_buffer->mutable_shape_index_to_buffer_entry()->ForEachMutableElement(
-      [&shaped_buffer](const ShapeIndex& index, size_t* buffer_element) {
-        if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-          CHECK_EQ(index.size(), 1);
-          *buffer_element = index[0];
-        }
-      });
-  shaped_buffer->mutable_buffers()->reserve(buffers.size());
-  for (const perftools::gputools::DeviceMemoryBase& memory_base : buffers) {
-    shaped_buffer->mutable_buffers()->push_back(memory_base);
-  }
-  return std::move(shaped_buffer);
-}
-
-ShapedBuffer::ShapedBuffer(const Shape& shape,
-                           const perftools::gputools::Platform* platform,
-                           int device_ordinal)
-    : shape_(shape),
-      shape_index_to_buffer_entry_(shape),
+ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
+                           const Shape& on_device_shape,
+                           const se::Platform* platform, int device_ordinal)
+    : on_host_shape_(on_host_shape),
+      on_device_shape_(on_device_shape),
       platform_(platform),
-      device_ordinal_(device_ordinal) {}
+      device_ordinal_(device_ordinal),
+      buffers_(&on_device_shape_) {}
 
-const perftools::gputools::DeviceMemoryBase& ShapedBuffer::buffer(
-    const ShapeIndex& index) const {
-  // Buffer are only set at the leaves (array elements of the shape).
-  CHECK(shape_index_to_buffer_entry_.IsLeaf(index));
-  return buffers_[shape_index_to_buffer_entry_.element(index)];
+ShapedBuffer::ShapedBuffer(ShapedBuffer&& s)
+    : on_host_shape_(std::move(s.on_host_shape_)),
+      on_device_shape_(std::move(s.on_device_shape_)),
+      platform_(s.platform_),
+      device_ordinal_(s.device_ordinal_),
+      buffers_(std::move(s.buffers_)) {
+  // s.buffers_ has a pointer to s.on_device_shape_. When we move s.buffers_
+  // into buffers_, we also need to update this pointer so that buffers_ doesn't
+  // point into s.
+  buffers_.replace_shape_ptr(&on_device_shape_);
 }
 
-perftools::gputools::DeviceMemoryBase* ShapedBuffer::mutable_buffer(
-    const ShapeIndex& index) {
-  // Buffer are only set at the leaves (array elements of the shape).
-  CHECK(shape_index_to_buffer_entry_.IsLeaf(index));
-  return &buffers_[shape_index_to_buffer_entry_.element(index)];
+ShapedBuffer& ShapedBuffer::operator=(ShapedBuffer&& s) {
+  on_host_shape_ = std::move(s.on_host_shape_);
+  on_device_shape_ = std::move(s.on_device_shape_);
+  platform_ = s.platform_;
+  device_ordinal_ = s.device_ordinal_;
+  buffers_ = std::move(s.buffers_);
+  // buffers_ has a pointer to its on_device_shape_. When we move s.buffers_
+  // into buffers_, we also need to update this pointer so that buffers_ doesn't
+  // point into s.
+  buffers_.replace_shape_ptr(&on_device_shape_);
+  return *this;
 }
 
-/* static */ StatusOr<std::unique_ptr<ScopedShapedBuffer>>
-ScopedShapedBuffer::MakeScopedShapedBuffer(const Shape& shape,
-                                           DeviceMemoryAllocator* allocator,
-                                           int device_ordinal) {
-  if (!LayoutUtil::HasLayout(shape)) {
-    return InvalidArgument("Shape must have a layout: %s",
-                           ShapeUtil::HumanStringWithLayout(shape).c_str());
+ShapedBuffer::~ShapedBuffer() {}
+
+void ShapedBuffer::clear() {
+  for (auto& pair : buffers_) {
+    // A default constructed DeviceMemoryBase is a null pointer.
+    pair.second = se::DeviceMemoryBase();
   }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  auto shaped_buffer =
-      WrapUnique(new ScopedShapedBuffer(shape, allocator, device_ordinal));
-
-  // Allocate an appropriate sized buffer for each array element in the shape.
-  TF_RETURN_IF_ERROR(
-      shaped_buffer->shape_index_to_buffer_entry_
-          .ForEachMutableElementWithStatus([&shaped_buffer](
-                                               const ShapeIndex& index,
-                                               size_t* buffer_entry)
-                                               -> tensorflow::Status {
-            if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
-              TF_ASSIGN_OR_RETURN(
-                  perftools::gputools::DeviceMemoryBase memory_base,
-                  shaped_buffer->allocator_->Allocate(
-                      shaped_buffer->device_ordinal(),
-                      ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(
-                          shaped_buffer->shape(), index))));
-              shaped_buffer->buffers_.push_back(memory_base);
-              *buffer_entry = shaped_buffer->buffers_.size() - 1;
-            }
-            return tensorflow::Status::OK();
-          }));
-  return std::move(shaped_buffer);
 }
 
-ScopedShapedBuffer::ScopedShapedBuffer(const Shape& shape,
+string ShapedBuffer::ToString() const {
+  string s = tensorflow::strings::StrCat(
+      "ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
+      "), on-host shape=" + ShapeUtil::HumanStringWithLayout(on_host_shape()),
+      ", on-device shape=" +
+          ShapeUtil::HumanStringWithLayout(on_device_shape()),
+      ":\n");
+  ShapeUtil::ForEachSubshape(
+      on_device_shape(),
+      [this, &s](const Shape& subshape, const ShapeIndex& index) {
+        string shape_str;
+        if (ShapeUtil::IsTuple(subshape)) {
+          shape_str = "tuple";
+        } else {
+          shape_str = ShapeUtil::HumanStringWithLayout(subshape);
+        }
+        const se::DeviceMemoryBase& memory = buffer(index);
+        Appendf(&s, "  %s%p (%lld bytes) : %s\n",
+                string(index.size() * 2, ' ').c_str(), memory.opaque(),
+                memory.size(), shape_str.c_str());
+      });
+  return s;
+}
+
+std::ostream& operator<<(std::ostream& out, const ShapedBuffer& buffer) {
+  out << buffer.ToString();
+  return out;
+}
+
+ScopedShapedBuffer::ScopedShapedBuffer(const Shape& on_host_shape,
+                                       const Shape& on_device_shape,
                                        DeviceMemoryAllocator* allocator,
                                        int device_ordinal)
-    : ShapedBuffer(shape, allocator->platform(), device_ordinal),
+    : ShapedBuffer(on_host_shape, on_device_shape, allocator->platform(),
+                   device_ordinal),
       allocator_(allocator) {}
 
-ScopedShapedBuffer::~ScopedShapedBuffer() {
+ScopedShapedBuffer::ScopedShapedBuffer(ShapedBuffer shaped_buffer,
+                                       DeviceMemoryAllocator* allocator)
+    : ShapedBuffer(std::move(shaped_buffer)), allocator_(allocator) {}
+
+ScopedShapedBuffer::ScopedShapedBuffer(ScopedShapedBuffer&& s)
+    : ShapedBuffer(static_cast<ShapedBuffer&&>(s)), allocator_(s.allocator_) {
+  // Null out s.allocator_ so it doesn't try to free anything in its destructor.
+  s.allocator_ = nullptr;
+}
+
+ScopedShapedBuffer& ScopedShapedBuffer::operator=(ScopedShapedBuffer&& s) {
+  Deallocate();
+
+  *static_cast<ShapedBuffer*>(this) = std::move(static_cast<ShapedBuffer&>(s));
+  allocator_ = s.allocator_;
+  // Null out s.allocator_ so it doesn't try to free anything in its destructor.
+  s.allocator_ = nullptr;
+  return *this;
+}
+
+ScopedShapedBuffer::~ScopedShapedBuffer() { Deallocate(); }
+
+ShapedBuffer ScopedShapedBuffer::release() {
+  ShapedBuffer shaped_buffer(static_cast<ShapedBuffer&&>(*this));
+  buffers_ = ShapeTree<se::DeviceMemoryBase>();
+  return shaped_buffer;
+}
+
+void ScopedShapedBuffer::Deallocate() {
+  // allocator_ will be null if we were moved-from.
+  if (allocator_ == nullptr) {
+    return;
+  }
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
-  std::set<void*> deallocated_opaques;
-  for (perftools::gputools::DeviceMemoryBase& memory_base : buffers_) {
+  tensorflow::gtl::FlatSet<void*> deallocated_ptrs;
+  for (auto& pair : buffers_) {
+    se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
-        deallocated_opaques.count(memory_base.opaque()) == 0) {
-      deallocated_opaques.insert(memory_base.opaque());
-      TF_CHECK_OK(
-          this->allocator_->Deallocate(this->device_ordinal(), &memory_base));
+        deallocated_ptrs.insert(memory_base.opaque()).second) {
+      TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
 }

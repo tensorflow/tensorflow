@@ -1,115 +1,76 @@
 # TensorFlow Builds
 
-This directory contains all the files and setup instructions to run all
-the important builds and tests. **You can trivially run it yourself!** It also
-run continuous integration [ci.tensorflow.org](https://ci.tensorflow.org).
-
-
+This directory contains all the files and setup instructions to run all the
+important builds and tests. You can run it yourself!
 
 ## Run It Yourself
 
-1. Install [Docker](http://www.docker.com/). Follow instructions
-   [on the Docker site](https://docs.docker.com/installation/).
+You have two options when running TensorFlow tests locally on your
+machine. First, using docker, you can run our Continuous Integration
+(CI) scripts on tensorflow devel images. The other option is to install
+all TensorFlow dependencies on your machine and run the scripts
+natively on your system.
 
-   You can run all the jobs **without docker** if you are on mac or on linux
-   and you just don't want docker. Just install all the dependencies from
-   [Installing TensorFlow](https://www.tensorflow.org/install/).
-   Then run any of the one liners below without the
-   `tensorflow/tools/ci_build/ci_build.sh` in them.
+### Run TensorFlow CI Scripts using Docker
 
-2. Clone tensorflow repository.
+1.  Install Docker following the [instructions on the docker website](https://docs.docker.com/engine/installation/).
 
-   ```bash
-   git clone https://github.com/tensorflow/tensorflow.git
-   ```
+2.  Start a container with one of the devel images here:
+    https://hub.docker.com/r/tensorflow/tensorflow/tags/.
 
-3. Go to tensorflow directory
+3.  Based on your choice of the image, pick one of the scripts under
+    https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build/linux
+    and run them from the TensorFlow repository root.
 
-   ```bash
-   cd tensorflow
-   ```
+### Run TensorFlow CI Scripts Natively on your Machine
 
-4. Build what you want, for example
+1.  Follow the instructions at https://www.tensorflow.org/install/install_sources,
+    but stop when you get to the section "Configure the installation". You do not
+    need to configure the installation to run the CI scripts.
 
-   ```bash
-   tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
-   ```
-   If you are using the Docker image on Windows or OS X, the Docker VM's default
-   memory limit may be too low to build TensorFlow. This can result in
-   strange-looking errors, e.g. the compilation may fail with `gcc: internal
-   compiler error: Killed (program cc1plus)`. Try increasing the memory limit in
-   the Docker preferences.
+2.  Pick the appropriate OS and python version you have installed,
+    and run the script under tensorflow/tools/ci_build/<OS>.
 
+## TensorFlow Continuous Integration
 
-## Jobs
+To verify that new changes don’t break TensorFlow, we run builds and
+tests on either [Jenkins](https://jenkins-ci.org/) or a CI system
+internal to Google.
 
-The jobs run by [ci.tensorflow.org](https://ci.tensorflow.org) include following:
+We can trigger builds and tests on updates to master or on each pull
+request. Contact one of the repository maintainers to trigger builds
+on your pull request.
 
-```bash
-# Note: You can run the following one-liners yourself if you have Docker. Run
-# without `tensorflow/tools/ci_build/ci_build.sh` on mac or linux without Docker.
+### View CI Results
 
-# build and run cpu tests
-tensorflow/tools/ci_build/ci_build.sh CPU bazel test //tensorflow/...
+The Pull Request will show if the change passed or failed the checks.
 
-# build and run gpu tests (note if you get unstable results you may be running
-# out of gpu memory - if so add "--jobs=1" argument)
-tensorflow/tools/ci_build/ci_build.sh GPU bazel test -c opt --config=cuda //tensorflow/...
+From the pull request, click **Show all checks** to see the list of builds
+and tests. Click on **Details** to see the results from Jenkins or the internal
+CI system.
 
-# build pip with gpu support
-tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU -c opt --config=cuda
+Results from Jenkins are displayed in the Jenkins UI. For more information,
+see the [Jenkins documentation](https://jenkins.io/doc/).
 
-# build and run gpu tests using python 3
-CI_DOCKER_EXTRA_PARAMS="-e CI_BUILD_PYTHON=python3" tensorflow/tools/ci_build/ci_build.sh GPU tensorflow/tools/ci_build/builds/pip.sh GPU -c opt --config=cuda
+Results from the internal CI system are displayed in the Build Status UI. In
+this UI, to see the logs for a failed build:
 
-# build android example app
-tensorflow/tools/ci_build/ci_build.sh ANDROID tensorflow/tools/ci_build/builds/android.sh
+*   Click on the **INVOCATION LOG** tab to see the invocation log.
 
-# cmake cpu build and test
-tensorflow/tools/ci_build/ci_build.sh CPU tensorflow/tools/ci_build/builds/cmake.sh
+*   Click on the **ARTIFACTS** tab to see a list of all artifacts, including logs.
 
-# run bash inside the container
-CI_DOCKER_EXTRA_PARAMS='-it --rm' tensorflow/tools/ci_build/ci_build.sh CPU /bin/bash
-```
+*   Individual test logs may be available. To see these logs, from the **TARGETS**
+    tab, click on the failed target. Then, click on the **TARGET LOG** tab to see
+    its test log.
 
-**Note**: The set of jobs and how they are triggered is still evolving.
-There are builds for master branch on cpu, gpu and android. There is a build
-for incoming gerrit changes. Gpu tests and benchmark are coming soon. Check
-[ci.tensorflow.org](https://ci.tensorflow.org) for current jobs.
+    If you’re looking at target that is sharded or a test that is flaky, then
+    the build tool divided the target into multiple shards or ran the test
+    multiple times. Each test log is specific to the shard, run, and attempt.
+    To see a specific log:
 
+    1.  Click on the log icon that is on the right next to the shard, run,
+        and attempt number.
 
-
-## How Does TensorFlow Continuous Integration Work
-
-We use [jenkins](https://jenkins-ci.org/) as our continuous integration.
-It is running at [ci.tensorflow.org](https://ci.tensorflow.org).
-All the jobs are run within [docker](http://www.docker.com/) containers.
-
-Builds can be triggered by push to master, push a change set or manually.
-The build started in jenkins will first pull the git tree. Then jenkins builds
-a docker container (using one of those Dockerfile.* files in this directory).
-The build itself is run within the container itself.
-
-Source tree lives in jenkins job workspace. Docker container for jenkins
-are transient - deleted after the build. Containers build very fast thanks
-to docker caching. Individual builds are fast thanks to bazel caching.
-
-
-
-## Implementation Details
-
-* The ci_build.sh script create and run docker container with all dependencies.
-  The builds/with_the_same_user together with ci_build.sh creates an environment
-  which is the same inside the container as it is outside. The same user, group,
-  path, so that docker symlinks work inside and outside the container. You can
-  use it for your development. Edit files in your git clone directory. If you
-  run the ci_build.sh it gets this directory mapped inside the container and
-  build your tree.
-
-* The unusual `bazel-ci_build-cache` directory is mapped to docker container
-  performing the build using docker's --volume parameter. This way we cache
-  bazel output between builds.
-
-* The `builds` directory within this folder contains shell scripts to run within
-  the container. They essentially contains workarounds for current limitations
-  of bazel.
+    2.  In the grid that appears on the right, click on the specific shard,
+        run, and attempt to view its log. You can also type the desired shard,
+        run, or attempt number in the field above its grid.

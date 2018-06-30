@@ -104,18 +104,18 @@ string DeviceNameUtils::FullName(const string& job, int replica, int task,
   return DeviceName(job, replica, task, "/device:", type, id);
 }
 
-/* static */
-string DeviceNameUtils::LegacyName(const string& job, int replica, int task,
-                                   const string& type, int id) {
+namespace {
+string LegacyName(const string& job, int replica, int task, const string& type,
+                  int id) {
   return DeviceName(job, replica, task, "/", str_util::Lowercase(type), id);
 }
+}  // anonymous namespace
 
 bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
   p->Clear();
   if (fullname == "/") {
     return true;
   }
-  StringPiece tmp;
   while (!fullname.empty()) {
     bool progress = false;
     if (str_util::ConsumePrefix(&fullname, "/job:")) {
@@ -182,6 +182,67 @@ bool DeviceNameUtils::ParseFullName(StringPiece fullname, ParsedName* p) {
     }
   }
   return true;
+}
+
+namespace {
+
+void CompleteName(const DeviceNameUtils::ParsedName& parsed_basename,
+                  DeviceNameUtils::ParsedName* parsed_name) {
+  if (!parsed_name->has_job) {
+    parsed_name->job = parsed_basename.job;
+    parsed_name->has_job = true;
+  }
+  if (!parsed_name->has_replica) {
+    parsed_name->replica = parsed_basename.replica;
+    parsed_name->has_replica = true;
+  }
+  if (!parsed_name->has_task) {
+    parsed_name->task = parsed_basename.task;
+    parsed_name->has_task = true;
+  }
+  if (!parsed_name->has_type) {
+    parsed_name->type = parsed_basename.type;
+    parsed_name->has_type = true;
+  }
+  if (!parsed_name->has_id) {
+    parsed_name->id = parsed_basename.id;
+    parsed_name->has_id = true;
+  }
+}
+
+}  // namespace
+
+/* static */
+Status DeviceNameUtils::CanonicalizeDeviceName(StringPiece fullname,
+                                               StringPiece basename,
+                                               string* canonical_name) {
+  *canonical_name = "";
+  ParsedName parsed_basename;
+  if (!ParseFullName(basename, &parsed_basename)) {
+    return errors::InvalidArgument("Could not parse basename: ", basename,
+                                   " into a device specification.");
+  }
+  if (!(parsed_basename.has_job && parsed_basename.has_replica &&
+        parsed_basename.has_task && parsed_basename.has_type &&
+        parsed_basename.has_id)) {
+    return errors::InvalidArgument("Basename: ", basename,
+                                   " should be fully "
+                                   "specified.");
+  }
+  ParsedName parsed_name;
+  if (ParseLocalName(fullname, &parsed_name)) {
+    CompleteName(parsed_basename, &parsed_name);
+    *canonical_name = ParsedNameToString(parsed_name);
+    return Status::OK();
+  }
+  if (ParseFullName(fullname, &parsed_name)) {
+    CompleteName(parsed_basename, &parsed_name);
+    *canonical_name = ParsedNameToString(parsed_name);
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Could not parse ", fullname,
+                                 " into a device "
+                                 "specification.");
 }
 
 /* static */
@@ -338,8 +399,16 @@ bool DeviceNameUtils::IsSameAddressSpace(StringPiece src, StringPiece dst) {
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece type, int id) {
+  return strings::StrCat("/device:", type, ":", id);
+}
+
+namespace {
+// Returns the legacy local device name given its "type" and "id" (which is
+// '/device:type:id').
+string LegacyLocalName(StringPiece type, int id) {
   return strings::StrCat(type, ":", id);
 }
+}  // anonymous namespace
 
 /* static */
 string DeviceNameUtils::LocalName(StringPiece fullname) {
@@ -353,12 +422,14 @@ bool DeviceNameUtils::ParseLocalName(StringPiece name, ParsedName* p) {
   if (!ConsumeDeviceType(&name, &p->type)) {
     return false;
   }
+  p->has_type = true;
   if (!str_util::ConsumePrefix(&name, ":")) {
     return false;
   }
   if (!ConsumeNumber(&name, &p->id)) {
     return false;
   }
+  p->has_id = true;
   return name.empty();
 }
 
@@ -393,8 +464,17 @@ std::vector<string> DeviceNameUtils::GetNamesForDeviceMappings(
   if (pn.has_job && pn.has_replica && pn.has_task && pn.has_type && pn.has_id) {
     return {
         DeviceNameUtils::FullName(pn.job, pn.replica, pn.task, pn.type, pn.id),
-        DeviceNameUtils::LegacyName(pn.job, pn.replica, pn.task, pn.type,
-                                    pn.id)};
+        LegacyName(pn.job, pn.replica, pn.task, pn.type, pn.id)};
+  } else {
+    return {};
+  }
+}
+
+std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
+    const ParsedName& pn) {
+  if (pn.has_type && pn.has_id) {
+    return {DeviceNameUtils::LocalName(pn.type, pn.id),
+            LegacyLocalName(pn.type, pn.id)};
   } else {
     return {};
   }

@@ -15,9 +15,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/tile_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/tile_functor.h"
 
 namespace tensorflow {
 
@@ -50,7 +51,9 @@ namespace functor {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 // Register functors used for Tile functor.
-#define DEFINE_TYPE(T) template struct Tile<CPUDevice, T>;
+#define DEFINE_TYPE(T)                       \
+  template struct Tile<CPUDevice, T, int32>; \
+  template struct Tile<CPUDevice, T, int64>;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
@@ -69,7 +72,9 @@ TF_CALL_string(DEFINE_TYPE);
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
-#define DEFINE_TYPE(T) template struct Tile<SYCLDevice, T>;
+#define DEFINE_TYPE(T)                        \
+  template struct Tile<SYCLDevice, T, int32>; \
+  template struct Tile<SYCLDevice, T, int64>;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
@@ -80,7 +85,7 @@ TF_CALL_int16(DEFINE_TYPE);
 TF_CALL_int64(DEFINE_TYPE);
 
 #undef DEFINE_TYPE
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 }  // end namespace tensorflow

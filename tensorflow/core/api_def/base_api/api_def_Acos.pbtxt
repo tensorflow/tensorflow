@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Acos"
+  summary: "Computes acos of x element-wise."
+}

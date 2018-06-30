@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.keras.python.keras.applications.inception_v3 import decode_predictions
-from tensorflow.contrib.keras.python.keras.applications.inception_v3 import InceptionV3
-from tensorflow.contrib.keras.python.keras.applications.inception_v3 import preprocess_input
+from tensorflow.python.keras.applications.inception_v3 import decode_predictions
+from tensorflow.python.keras.applications.inception_v3 import InceptionV3
+from tensorflow.python.keras.applications.inception_v3 import preprocess_input
 
 del absolute_import
 del division

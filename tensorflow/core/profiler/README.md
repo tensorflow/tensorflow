@@ -1,12 +1,10 @@
 <h1>TensorFlow Profiler and Advisor</h1>
 
 * [Features](#features)
-* [Interfaces](#interfaces)
-* [Tutorials](#tutorials)
+* [Quick Start](#quick-start)
 * [Demo](#demo)
 * [Feature Request and Bug Report](#feature-request-and-bug-report)
 
-Contact for bug report and feature request (xpan@google.com)
 
 ### Features
 
@@ -20,43 +18,75 @@ Contact for bug report and feature request (xpan@google.com)
   * operation configuration check
   * distributed runtime check (Not OSS)
 
-### Interfaces
+### Quick Start
 
-* Python API
-* Command Line
-* Visualization
-* C++ API (Not public, contact us if needed.)
+```python
+# When using high-level API, session is usually hidden.
+#
+# Under the default ProfileContext, run a few hundred steps.
+# The ProfileContext will sample some steps and dump the profiles
+# to files. Users can then use command line tool or Web UI for
+# interactive profiling.
+with tf.contrib.tfprof.ProfileContext('/tmp/train_dir') as pctx:
+  # High level API, such as slim, Estimator, etc.
+  train_loop()
 
-tfprof provides 4 different views to organize the profiles.
+bazel-bin/tensorflow/core/profiler/profiler \
+    --profile_path=/tmp/train_dir/profile_xx
+tfprof> op -select micros,bytes,occurrence -order_by micros
 
-    *  code view: operations are grouped by Python codes that generate them.
-    *  op view: operations are grouped by operation type (E.g. MatMul, Conv2D).
-    *  scope view: operations are organized based on name scope hierarchies.
-    *  graph view: operations are organized based on input/output.
-
-tfprof provides options to help user select, filter and order statistics.
-See [Options](g3doc/options.md) for detail instructions.
-
+# To be open sourced...
+bazel-bin/tensorflow/python/profiler/profiler_ui \
+    --profile_path=/tmp/profiles/profile_1
 ```
--max_depth                  10
--min_bytes                  0
--min_micros                 0
--min_params                 0
--min_float_ops              0
--min_occurrence             0
--step                       -1
--order_by                   name
--account_type_regexes       .*
--start_name_regexes         .*
--trim_name_regexes
--show_name_regexes          .*
--hide_name_regexes
--account_displayed_op_only  false
--select                     params
--output                     stdout:
+![ProfilerUI](g3doc/profiler_ui.jpg)
+
+```python
+# When using lower-level APIs with a Session object. User can have
+# explicit control of each step.
+#
+# Create options to profile the time and memory information.
+builder = tf.profiler.ProfileOptionBuilder
+opts = builder(builder.time_and_memory()).order_by('micros').build()
+# Create a profiling context, set constructor argument `trace_steps`,
+# `dump_steps` to empty for explicit control.
+with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+                                      trace_steps=[],
+                                      dump_steps=[]) as pctx:
+  with tf.Session() as sess:
+    # Enable tracing for next session.run.
+    pctx.trace_next_step()
+    # Dump the profile to '/tmp/train_dir' after the step.
+    pctx.dump_next_step()
+    _ = session.run(train_op)
+    pctx.profiler.profile_operations(options=opts)
 ```
 
-### Tutorials
+```python
+# For more advanced usage, user can control the tracing steps and
+# dumping steps. User can also run online profiling during training.
+#
+# Create options to profile time/memory as well as parameters.
+builder = tf.profiler.ProfileOptionBuilder
+opts = builder(builder.time_and_memory()).order_by('micros').build()
+opts2 = tf.profiler.ProfileOptionBuilder.trainable_variables_parameter()
+
+# Collect traces of steps 10~20, dump the whole profile (with traces of
+# step 10~20) at step 20. The dumped profile can be used for further profiling
+# with command line interface or Web UI.
+with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+                                      trace_steps=range(10, 20),
+                                      dump_steps=[20]) as pctx:
+  # Run online profiling with 'op' view and 'opts' options at step 15, 18, 20.
+  pctx.add_auto_profiling('op', opts, [15, 18, 20])
+  # Run online profiling with 'scope' view and 'opts2' options at step 20.
+  pctx.add_auto_profiling('scope', opts2, [20])
+  # High level API, such as slim, Estimator, etc.
+  train_loop()
+```
+
+
+<b>Detail Tutorials</b>
 
 *  [Python API](g3doc/python_api.md)
 *  [Command Line Interface](g3doc/command_line.md)
@@ -64,6 +94,9 @@ See [Options](g3doc/options.md) for detail instructions.
 *  [Profile Memory](g3doc/profile_memory.md)
 *  [Profile Model Architecture](g3doc/profile_model_architecture.md)
 *  [Auto Detect and Advise](g3doc/advise.md)
+
+<b>Detail Documentation</b>
+
 *  [Options](g3doc/options.md)
 
 ## Demo
@@ -106,7 +139,7 @@ _TFProfRoot (--/930.58k params)
 ### Show the most expensive operation types.
 ```
 tfprof> op -select micros,bytes,occurrence -order_by micros
-node name | output bytes | total execution time | accelerator execution time | cpu execution time | op occurrence (run|defined)
+node name | requested bytes | total execution time | accelerator execution time | cpu execution time | op occurrence (run|defined)
 SoftmaxCrossEntropyWithLogits      36.58MB (100.00%, 0.05%),      1.37sec (100.00%, 26.68%),           0us (100.00%, 0.00%),      1.37sec (100.00%, 30.75%),      30|30
 MatMul                        2720.57MB (99.95%, 3.66%),      708.14ms (73.32%, 13.83%),     280.76ms (100.00%, 41.42%),       427.39ms (69.25%, 9.62%),  2694|3450
 ConcatV2                       741.37MB (96.29%, 1.00%),       389.63ms (59.49%, 7.61%),        31.80ms (58.58%, 4.69%),       357.83ms (59.63%, 8.05%),  4801|6098
@@ -122,15 +155,15 @@ ApplyAdam                      231.65MB (85.28%, 0.31%),        92.66ms (23.43%,
 
 ### Auto-profile.
 
-```
+```shell
 tfprof> advise
 Not running under xxxx. Skip JobChecker.
 
 AcceleratorUtilizationChecker:
-device: /job:worker/replica:0/task:0/gpu:0 low utilization: 0.03
-device: /job:worker/replica:0/task:0/gpu:1 low utilization: 0.08
-device: /job:worker/replica:0/task:0/gpu:2 low utilization: 0.04
-device: /job:worker/replica:0/task:0/gpu:3 low utilization: 0.21
+device: /job:worker/replica:0/task:0/device:GPU:0 low utilization: 0.03
+device: /job:worker/replica:0/task:0/device:GPU:1 low utilization: 0.08
+device: /job:worker/replica:0/task:0/device:GPU:2 low utilization: 0.04
+device: /job:worker/replica:0/task:0/device:GPU:3 low utilization: 0.21
 
 OperationChecker:
 Found operation using NHWC data_format on GPU. Maybe NCHW is faster.
@@ -179,10 +212,11 @@ seq2seq_attention_model.py:363:build_graph:self._add_train_o..., cpu: 1.28sec, a
       optimizer.py:97:update_op:return optimizer...., cpu: 84.76ms, accelerator: 0us, total: 84.76ms
 ```
 
-### Visualize time and memory.
-```
+### Visualize time and memory
+
+```shell
 # The following example generates a timeline.
-tfprof> graph -step 0 -max_depth 100000 -output timeline:outfile=<filename>
+tfprof> graph -step -1 -max_depth 100000 -output timeline:outfile=<filename>
 
 generating trace file.
 
@@ -191,30 +225,27 @@ Timeline file is written to <filename>.
 Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 ******************************************************
 ```
-<left>
-[Timeline](g3doc/graph_timeline.png)
-</left>
 
-```
+![Timeline](g3doc/graph_timeline.png)
+
+```shell
 # The following example generates a pprof graph (only supported by code view).
 # Since TensorFlow runs the graph instead of Python code, the pprof graph
 # doesn't profile the statistics of Python, but the TensorFlow graph
 # nodes created by the Python call stack.
 # Nevertheless, it pops critical Python code path for us.
 #
-# `-trim_name_regexes` trims the python call stack, which are always the same
-# for the leaves.
+# `-trim_name_regexes` trims the some traces that have no valuable information.
 # `-select accelerator_micros` pick accelerator time for pprof graph. User
 # can also generate memory profile using `-select bytes`
-tfprof> code -max_depth 100 -trim_name_regexes '^ops.py.*' -select accelerator_micros -output pprof:outfile=<filename>
+tfprof> code -select accelerator_micros -max_depth 100000 -output pprof:outfile=<filename>  -trim_name_regexes .*apply_op.*
 
-# Use pprof to visualize the generated file.
-pprof -png --nodecount=20 --sample_index=1 <filename>
+# Use google-pprof, from the google-perftools package to visualize the generated file.
+# On Ubuntu you can install it with `apt-get install it google-perftools`.
+google-pprof --pdf --nodecount=100 <filename>
 ```
 
-<left>
-[PprofGraph](g3doc/pprof.jpg)
-</left>
+![PprofGraph](g3doc/pprof.jpg)
 
 ### Feature Request and Bug Report
 
@@ -226,6 +257,7 @@ bug fix. `OpLogProto` is a good plus if it is used.
 
 #### Teams
 
-* Xin Pan (xpan@google.com, github: panyx0718)
+* Xin Pan
+* Chris Antaki
 * Yao Zhang
 * Jon Shlens

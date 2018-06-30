@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "IFFT"
+  endpoint {
+    name: "spectral.ifft"
+  }
+  endpoint {
+    name: "ifft"
+    deprecation_message: "tf.ifft is deprecated, please use tf.spectral.ifft instead."
+  }
+}

@@ -28,6 +28,8 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -76,8 +78,24 @@ string DumpToString(const T& entity) {
 // and Modules are slightly different.
 string DumpModuleToString(const llvm::Module& module);
 
-// Sanitizes the given name to be a valid LLVM IR value name.
-string SanitizeIrName(string name);
+// Constructs a human-friendly name from the given inputs.  The result is
+// suitable for use as an llvm::Value's name.
+//
+// This is equivalent to
+//
+//   - changing the HloInstruction* to its name() (if we called that overload),
+//   - joining all of the nonempty inputs by '.', and then
+//   - removing all '%'s.
+//
+string IrName(string a);
+string IrName(tensorflow::StringPiece a, tensorflow::StringPiece b);
+string IrName(const HloInstruction* a, tensorflow::StringPiece b = "");
+
+// Removes special characters from a function name.
+//
+// Note that this can cause different inputs to map to the same output, so after
+// sanitizing a function name, you must run it through a uniquer.
+string SanitizeFunctionName(string function_name);
 
 // Emits a call to the specified intrinsic with the given operands. Overloaded
 // intrinsics (for example, "minnum") must include a type in overloaded_types
@@ -88,6 +106,16 @@ llvm::Value* EmitCallToIntrinsic(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
     llvm::IRBuilder<>* ir_builder);
+
+// Emit float max. Emit maxnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder);
+
+// Emit float min. Emit minnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* ir_builder);
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
@@ -100,11 +128,14 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::IRBuilder<>* ir_builder);
+                                  llvm::Module* module);
+
+// Returns the type size in bits. If "type" is a struct, it must be packed.
+int GetSizeInBits(llvm::Type* type);
 
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
@@ -122,7 +153,7 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::IRBuilder<>* ir_builder);
+                                           llvm::Module* module);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -137,7 +168,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
-// intead of a single element.
+// instead of a single element.
 llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
     llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
     llvm::IRBuilder<>* ir_builder, int alignment = 0);
@@ -200,12 +231,6 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 void EmitLogging(const char* tag, llvm::Value* value,
                  llvm::IRBuilder<>* ir_builder);
 
-// Adds TBAA metadata to a load or store instruction using the given shape as
-// it's type.  The is_pointer_to parameter is used to indicate whether or not
-// this instruction loads or stores a pointer to an array.
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to);
-
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment);
@@ -221,6 +246,8 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
                                     llvm::Instruction* inst);
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
+
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
 
 // Create a bitwise rotation of `rotand` by `rotor`.
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
@@ -245,6 +272,25 @@ void SetTargetOptions(bool fast_math_enabled,
 std::map<int, llvm::MDNode*> MergeMetadata(
     llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
     const std::map<int, llvm::MDNode*>& b);
+
+// Dumps out `llvm_module` to a file in the directory named `directory_name`,
+// creating the directory if necessary.  A sanitized version of
+// `hlo_module_name` is incorporated into the file name.  If `optimized` is true
+// then a suffix of "-with-opt.ll" is used, else a suffix of "-no-opt.ll" is
+// used.
+Status DumpIRToDirectory(const string& directory_name,
+                         const string& hlo_module_name,
+                         const llvm::Module& llvm_module, bool optimized);
+
+llvm::Function* CreateFunction(llvm::FunctionType* function_type,
+                               llvm::GlobalValue::LinkageTypes linkage,
+                               bool enable_fast_math, bool optimize_for_size,
+                               tensorflow::StringPiece name,
+                               llvm::Module* module);
+
+// Extracts the xla_backend_extra_options from `config` and passes those that
+// don't start with xla_ to LLVM.
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
 
 }  // namespace llvm_ir
 }  // namespace xla

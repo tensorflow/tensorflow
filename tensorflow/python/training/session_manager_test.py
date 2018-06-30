@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -504,6 +505,7 @@ class SessionManagerTest(test.TestCase):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           name="x")
+      # TODO(b/70206927): Use ResourceVariables once they are handled properly.
       v_res = variables.Variable(1, name="v_res")
       w_res = variables.Variable(
           v_res,
@@ -555,6 +557,24 @@ class SessionManagerTest(test.TestCase):
               sess.graph.get_tensor_by_name("x_res:0")).eval(session=sess))
       self.assertEquals(1, sess.run(w_res))
       self.assertEquals(3, sess.run(x_res))
+
+  def testPrepareSessionWithCyclicInitializer(self):
+    # Regression test. Previously Variable._build_initializer_expr would enter
+    # into an infinite recursion when the variable's initial_value involved
+    # cyclic dependencies.
+    with ops.Graph().as_default():
+      i = control_flow_ops.while_loop(lambda i: i < 1, lambda i: i + 1, [0])
+      v = variables.Variable(array_ops.identity(i), name="v")
+      with self.test_session():
+        self.assertEqual(False, variables.is_variable_initialized(v).eval())
+      sm = session_manager.SessionManager(
+          ready_op=variables.report_uninitialized_variables())
+      sess = sm.prepare_session("", init_op=v.initializer)
+      self.assertEqual(1, sess.run(v))
+      self.assertEqual(
+          True,
+          variables.is_variable_initialized(
+              sess.graph.get_tensor_by_name("v:0")).eval(session=sess))
 
   def testPrepareSessionDidNotInitLocalVariable(self):
     with ops.Graph().as_default():

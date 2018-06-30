@@ -163,7 +163,7 @@ class ResamplerTest(test.TestCase):
     data_channels = 3
     warp_width = 2
     warp_height = 6
-    batch_size = 10
+    batch_size = 3
 
     warp = _make_warp(batch_size, warp_height, warp_width, dtype.as_numpy_dtype)
     data_shape = (batch_size, data_height, data_width, data_channels)

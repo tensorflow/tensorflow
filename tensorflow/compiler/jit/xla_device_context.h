@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -27,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 
 // The allocator used for Tensors assigned to the XLA device. The allocator
-// doesn't actually back Tensors with storage. Instead, each tensor is a thin
-// wrapper around XLA-managed storage.
+// ignores the alignment and size of the request and always returns a new,
+// empty, XlaTensor.
 class XlaDeviceAllocator : public Allocator {
  public:
   XlaDeviceAllocator();
@@ -39,18 +41,14 @@ class XlaDeviceAllocator : public Allocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
-
- private:
-  void RunStringCtor(string* p, size_t n) override;
-  void RunStringDtor(string* p, size_t n) override;
-  void RunResourceCtor(ResourceHandle* p, size_t n) override;
-  void RunResourceDtor(ResourceHandle* p, size_t n) override;
 };
 
 // Helper class for managing data transfers between host and XLA devices.
 class XlaTransferManager {
  public:
-  explicit XlaTransferManager(xla::Client* client);
+  explicit XlaTransferManager(
+      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done) const;
@@ -58,15 +56,28 @@ class XlaTransferManager {
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
 
-  // Helper methods to get/set the xla::GlobalData backing a Tensor on the
-  // XlaDevice.
-  static std::shared_ptr<xla::GlobalData> GetTensorGlobalData(
-      const Tensor& tensor);
-  static void SetTensorGlobalData(std::shared_ptr<xla::GlobalData> global_data,
-                                  Tensor* tensor);
+  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
+                                const StatusCallback& done);
+
+  se::Stream* stream() const { return stream_; }
 
  private:
-  xla::Client* client_;
+  Status TransferLiteralToDevice(const Tensor& host_tensor,
+                                 Tensor* device_tensor) const;
+  void TransferLiteralFromDevice(Tensor* host_tensor,
+                                 const Tensor& device_tensor,
+                                 const StatusCallback& done) const;
+
+  // Stream obtained from a Device, used to transfer tensors between
+  // CPU and device.
+  se::Stream* stream_;
+  // For the underlying memory allocator and XLA's TransferManager.
+  xla::LocalClient* client_;
+  // Transfer manager, for marshalling data to and from the device.
+  xla::TransferManager* transfer_manager_;
+  // True if we must use XLA's TransferManager for correct device transfers.
+  const bool transfer_as_literal_;
+  XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -74,7 +85,9 @@ class XlaTransferManager {
 // wraps the methods in XlaTransferManager.
 class XlaDeviceContext : public DeviceContext {
  public:
-  explicit XlaDeviceContext(xla::Client* client);
+  explicit XlaDeviceContext(
+      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor,
@@ -82,6 +95,10 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
+                                const StatusCallback& done);
+
+  se::Stream* stream() const override { return manager_.stream(); }
 
  private:
   XlaTransferManager manager_;

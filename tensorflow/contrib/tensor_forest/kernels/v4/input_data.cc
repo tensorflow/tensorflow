@@ -21,8 +21,6 @@ namespace tensorflow {
 namespace tensorforest {
 namespace {
 
-const int32 SPARSE_DEFAULT = 0;
-
 bool DecideInequalityTest(const decision_trees::InequalityTest& test,
                           float value) {
   float bias = test.threshold().float_value();
@@ -111,10 +109,10 @@ void TensorDataSet::set_input_tensors(const Tensor& dense,
     dense_data_.reset(new DenseStorageType(dense.tensor<float, 2>()));
   }
   if (sparse_indices.shape().dims() == 2) {
-    sparse_indices_.reset(new SparseIndicesStorageType(
-        sparse_indices.tensor<int64, 2>()));
-    sparse_values_.reset(new SparseValuesStorageType(
-        sparse_values.tensor<float, 1>()));
+    sparse_indices_.reset(
+        new SparseIndicesStorageType(sparse_indices.tensor<int64, 2>()));
+    sparse_values_.reset(
+        new SparseValuesStorageType(sparse_values.tensor<float, 1>()));
     sparse_batch_size_ = sparse_shape.tensor<int64, 1>()(0);
   }
   original_dense_tensor_ = dense;

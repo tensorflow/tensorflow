@@ -126,6 +126,50 @@ TEST(DataFlowOpsTest, DynamicStitch) {
           .Attr("N", 2)
           .Finalize(&op.node_def));
 
+  // Bad prefix for the second data input.
+  INFER_ERROR("Dimensions must be equal, but are 10 and 5", op,
+              "[2,3];[5,6];[2,3,4,5];[10,11,4,5]");
+
+  // Inconsistent suffix dimensions
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 4 and 13", op,
+              "[2,3];[5,6];[2,3,4,5];[5,6,13,14]");
+
+  // Good case, but no known input tensors.
+  INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
+
+  // 1 known input tensors, not enough to change answer.
+  Tensor tensor_2 = test::AsTensor<int32>(
+      std::vector<int32>{2, 4, 6, 0, 10, 11}, TensorShape({2, 3}));
+  Tensor tensor_5 = test::AsTensor<int32>(
+      std::vector<int32>{0,    1,  2,  3,  4,  5,  6,  7,  8,  9,
+                         10,   11, 12, 13, 14, 15, 16, 17, 18, 19,
+                         1000, 21, 22, 23, 24, 25, 26, 27, 28, 29},
+      TensorShape({5, 6}));
+  op.input_tensors.push_back(nullptr);
+  op.input_tensors.push_back(&tensor_5);
+  INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
+
+  op.input_tensors[0] = &tensor_2;
+  op.input_tensors[1] = nullptr;
+  INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
+  INFER_OK(op, "[2,3];?;[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
+
+  op.input_tensors[1] = &tensor_5;
+  INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[1001,d2_2,d2_3]");
+
+  tensor_2.flat<int32>()(3) = 10000;
+  INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[10001,d2_2,d2_3]");
+}
+
+TEST(DataFlowOpsTest, ParallelDynamicStitch) {
+  ShapeInferenceTestOp op("ParallelDynamicStitch");
+  TF_ASSERT_OK(
+      NodeDefBuilder("test", "ParallelDynamicStitch")
+          .Input({{"indices", 0, DT_INT32}, {"indices_2", 1, DT_INT32}})
+          .Input({{"data", 0, DT_FLOAT}, {"data_2", 1, DT_FLOAT}})
+          .Attr("N", 2)
+          .Finalize(&op.node_def));
+
   INFER_OK(op, "[2,3];[5,6];[2,3,4,5];[5,6,4,5]", "[?,d2_2,d2_3]");
 
   // Bad prefix for the second data input.

@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,6 +43,15 @@ namespace tensorflow {
 // TrackingAllocator keeps track of outstanding calls using a
 // reference count, and deletes itself once the last call has been
 // received and the high watermark has been retrieved.
+struct AllocRecord {
+  AllocRecord(int64 a_btyes, int64 a_micros)
+      : alloc_bytes(a_btyes), alloc_micros(a_micros) {}
+  AllocRecord() : AllocRecord(0, 0) {}
+
+  int64 alloc_bytes;
+  int64 alloc_micros;
+};
+
 class TrackingAllocator : public Allocator {
  public:
   explicit TrackingAllocator(Allocator* allocator, bool track_ids);
@@ -53,10 +63,11 @@ class TrackingAllocator : public Allocator {
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns
   // a tuple where the first value is the total number of bytes
@@ -67,12 +78,15 @@ class TrackingAllocator : public Allocator {
   // value is the total number of bytes requested through this wrapper
   // and the second and the third are 0.
   //
-  // After GetSizesAndUnref is called, the only further calls allowed
+  std::tuple<size_t, size_t, size_t> GetSizes();
+  // After GetRecordsAndUnRef is called, the only further calls allowed
   // on this wrapper are calls to DeallocateRaw with pointers that
   // were allocated by this wrapper and have not yet been
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
-  std::tuple<size_t, size_t, size_t> GetSizesAndUnRef();
+  gtl::InlinedVector<AllocRecord, 4> GetRecordsAndUnRef();
+  // Returns a copy of allocation records collected so far.
+  gtl::InlinedVector<AllocRecord, 4> GetCurrentRecords();
 
  protected:
   ~TrackingAllocator() override {}
@@ -100,6 +114,8 @@ class TrackingAllocator : public Allocator {
   // this allocator.
   size_t total_bytes_ GUARDED_BY(mu_);
 
+  gtl::InlinedVector<AllocRecord, 4> allocations_ GUARDED_BY(mu_);
+
   // Track allocations locally if requested in the constructor and the
   // underlying allocator doesn't already do it for us.
   const bool track_sizes_locally_;
@@ -108,7 +124,7 @@ class TrackingAllocator : public Allocator {
     size_t allocated_size;
     int64 allocation_id;
   };
-  std::unordered_map<void*, Chunk> in_use_ GUARDED_BY(mu_);
+  std::unordered_map<const void*, Chunk> in_use_ GUARDED_BY(mu_);
   int64 next_allocation_id_ GUARDED_BY(mu_);
 };
 

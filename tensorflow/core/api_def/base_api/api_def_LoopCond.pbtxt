@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "LoopCond"
+  in_arg {
+    name: "input"
+    description: <<END
+A boolean scalar, representing the branch predicate of the Switch op.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The same tensor as `input`.
+END
+  }
+  summary: "Forwards the input to the output."
+  description: <<END
+This operator represents the loop termination condition used by the
+"pivot" switches of a loop.
+END
+}

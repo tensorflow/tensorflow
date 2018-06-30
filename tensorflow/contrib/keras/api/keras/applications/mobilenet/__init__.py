@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.keras.python.keras.applications.mobilenet import decode_predictions
-from tensorflow.contrib.keras.python.keras.applications.mobilenet import MobileNet
-from tensorflow.contrib.keras.python.keras.applications.mobilenet import preprocess_input
+from tensorflow.python.keras.applications.mobilenet import decode_predictions
+from tensorflow.python.keras.applications.mobilenet import MobileNet
+from tensorflow.python.keras.applications.mobilenet import preprocess_input
 
 del absolute_import
 del division

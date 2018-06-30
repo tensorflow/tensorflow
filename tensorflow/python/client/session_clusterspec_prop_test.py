@@ -29,6 +29,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -41,7 +42,6 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
-ops._USE_C_API = True
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -76,7 +76,8 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     config = config_pb2.ConfigProto(cluster_def=cluster_def)
 
     with ops.Graph().as_default() as g, ops.device('/job:worker/task:1'):
-      const = constant_op.constant(17)
+      with ops.device('/cpu:0'):
+        const = constant_op.constant(17)
     sess = session.Session(server1.target, config=config, graph=g)
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -169,11 +170,11 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
     # BaseRemoteRendezvous::SameWorkerRecvDone that means the test doesn't
     # actually capture the motivating bug unless run on a GPU machine.
     #
-    # Example error message (before bugfix -- linebreaks added because  lint):
+    # Example error message (before bugfix -- line breaks added because  lint):
     #
     # W0718 17:14:41.521534  190121 device_mgr.cc:107] Unknown device:
     #     /job:worker/replica:0/task:0/device:CPU:0 all devices:
-    #     /job:local/replica:0/task:0/gpu:0,
+    #     /job:local/replica:0/task:0/device:GPU:0,
     #     /job:local/replica:0/task:0/device:GPU:0,
     #     /job:local/replica:0/task:0/cpu:1, CPU:0, GPU:0,
     #     /job:local/replica:0/task:0/device:CPU:1,
@@ -198,7 +199,7 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
         sum1 = input1 + input2
 
       if test.is_gpu_available():
-        device_str = '/job:worker/task:0/gpu:0'
+        device_str = '/job:worker/task:0/device:GPU:0'
       else:
         device_str = '/job:worker/task:0/cpu:1'
       with ops.device(device_str):
@@ -415,7 +416,48 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
               node_stats.node_name.startswith('Const')
           ]), run_metadata)
 
-  @test_util.disable_c_api  # Partial runs don't work with C API
+  def testClusterSpecPropagationIsolation(self):
+    """Test that two sessions using ClusterSpec propagation are isolated."""
+    server = server_lib.Server.create_local_server()
+    init_value = array_ops.placeholder(dtypes.int32, shape=[])
+    v = variables.Variable(init_value)
+
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    sess1 = session.Session(server.target, config=config)
+    sess2 = session.Session(server.target, config=config)
+
+    # Initially, the variable is uninitialized in both sessions.
+    with self.assertRaises(errors.FailedPreconditionError):
+      sess1.run(v)
+    with self.assertRaises(errors.FailedPreconditionError):
+      sess2.run(v)
+
+    # An update in sess1 should be visible in sess1 only.
+    sess1.run(v.initializer, feed_dict={init_value: 37})
+    self.assertEqual(37, sess1.run(v))
+    with self.assertRaises(errors.FailedPreconditionError):
+      sess2.run(v)
+
+    # An update in sess2 should be visible in sess2 only.
+    sess2.run(v.initializer, feed_dict={init_value: 86})
+    self.assertEqual(37, sess1.run(v))
+    self.assertEqual(86, sess2.run(v))
+
+    # Closing sess2 has no effect on the state of sess1.
+    sess2.close()
+    self.assertEqual(37, sess1.run(v))
+
+    # Subsequent sessions will not see the state of existing sessions.
+    sess3 = session.Session(server.target, config=config)
+    self.assertEqual(37, sess1.run(v))
+    with self.assertRaises(errors.FailedPreconditionError):
+      sess3.run(v)
+
   def testClusterSpecPropagationPartialRun(self):
     """Test successful partial run with ClusterSpec propagation."""
     server1 = server_lib.Server.create_local_server()

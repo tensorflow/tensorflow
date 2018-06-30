@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.distributions.python.ops import distribution_util as distribution_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +32,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Mixture(distribution.Distribution):
@@ -48,13 +50,13 @@ class Mixture(distribution.Distribution):
 
   ```python
   # Create a mixture of two Gaussians:
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
   mix = 0.3
-  bimix_gauss = ds.Mixture(
-    cat=ds.Categorical(probs=[mix, 1.-mix]),
+  bimix_gauss = tfd.Mixture(
+    cat=tfd.Categorical(probs=[mix, 1.-mix]),
     components=[
-      ds.Normal(loc=-1., scale=0.1),
-      ds.Normal(loc=+1., scale=0.5),
+      tfd.Normal(loc=-1., scale=0.1),
+      tfd.Normal(loc=+1., scale=0.5),
   ])
 
   # Plot the PDF.
@@ -65,11 +67,20 @@ class Mixture(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                cat,
                components,
                validate_args=False,
                allow_nan_stats=True,
+               use_static_graph=False,
                name="Mixture"):
     """Initialize a Mixture distribution.
 
@@ -95,6 +106,11 @@ class Mixture(distribution.Distribution):
        exception if a statistic (e.g. mean/mode/etc...) is undefined for any
         batch member. If `True`, batch members with valid parameters leading to
         undefined statistics will return NaN for this statistic.
+      use_static_graph: Calls to `sample` will not rely on dynamic tensor
+        indexing, allowing for some static graph compilation optimizations, but
+        at the expense of sampling all underlying distributions in the mixture.
+        (Possibly useful when running on TPUs).
+        Default value: `False` (i.e., use dynamic indexing).
       name: A name for this distribution (optional).
 
     Raises:
@@ -109,7 +125,7 @@ class Mixture(distribution.Distribution):
         matching static batch shapes, or all components do not
         have matching static event shapes.
     """
-    parameters = locals()
+    parameters = dict(locals())
     if not isinstance(cat, categorical.Categorical):
       raise TypeError("cat must be a Categorical distribution, but saw: %s" %
                       cat)
@@ -138,7 +154,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]):
+    with ops.name_scope(name, values=[cat.logits]) as name:
       num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -177,6 +193,10 @@ class Mixture(distribution.Distribution):
       self._static_event_shape = static_event_shape
       self._static_batch_shape = static_batch_shape
 
+      self._use_static_graph = use_static_graph
+      if use_static_graph and static_num_components is None:
+        raise ValueError("Number of categories must be known statically when "
+                         "`static_sample=True`.")
     # We let the Mixture distribution access _graph_parents since its arguably
     # more like a baseclass.
     graph_parents = self._cat._graph_parents  # pylint: disable=protected-access
@@ -216,26 +236,53 @@ class Mixture(distribution.Distribution):
   def _event_shape(self):
     return self._static_event_shape
 
+  def _expand_to_event_rank(self, x):
+    """Expand the rank of x up to static_event_rank times for broadcasting.
+
+    The static event rank was checked to not be None at construction time.
+
+    Args:
+      x: A tensor to expand.
+    Returns:
+      The expanded tensor.
+    """
+    expanded_x = x
+    for _ in range(self.event_shape.ndims):
+      expanded_x = array_ops.expand_dims(expanded_x, -1)
+    return expanded_x
+
   def _mean(self):
     with ops.control_dependencies(self._assertions):
       distribution_means = [d.mean() for d in self.components]
       cat_probs = self._cat_probs(log_probs=False)
-      # This was checked to not be None at construction time.
-      static_event_rank = self.event_shape.ndims
-      # Expand the rank of x up to static_event_rank times so that
-      # broadcasting works correctly.
-      def expand(x):
-        expanded_x = x
-        for _ in range(static_event_rank):
-          expanded_x = array_ops.expand_dims(expanded_x, -1)
-        return expanded_x
-      cat_probs = [expand(c_p) for c_p in cat_probs]
+      cat_probs = [self._expand_to_event_rank(c_p) for c_p in cat_probs]
       partial_means = [
           c_p * m for (c_p, m) in zip(cat_probs, distribution_means)
       ]
       # These should all be the same shape by virtue of matching
       # batch_shape and event_shape.
       return math_ops.add_n(partial_means)
+
+  def _stddev(self):
+    with ops.control_dependencies(self._assertions):
+      distribution_means = [d.mean() for d in self.components]
+      distribution_devs = [d.stddev() for d in self.components]
+      cat_probs = self._cat_probs(log_probs=False)
+
+      stacked_means = array_ops.stack(distribution_means, axis=-1)
+      stacked_devs = array_ops.stack(distribution_devs, axis=-1)
+      cat_probs = [self._expand_to_event_rank(c_p) for c_p in cat_probs]
+      broadcasted_cat_probs = (array_ops.stack(cat_probs, axis=-1) *
+                               array_ops.ones_like(stacked_means))
+
+      batched_dev = distribution_utils.mixture_stddev(
+          array_ops.reshape(broadcasted_cat_probs, [-1, len(self.components)]),
+          array_ops.reshape(stacked_means, [-1, len(self.components)]),
+          array_ops.reshape(stacked_devs, [-1, len(self.components)]))
+
+      # I.e. re-shape to list(batch_shape) + list(event_shape).
+      return array_ops.reshape(batched_dev,
+                               array_ops.shape(broadcasted_cat_probs)[:-1])
 
   def _log_prob(self, x):
     with ops.control_dependencies(self._assertions):
@@ -263,10 +310,32 @@ class Mixture(distribution.Distribution):
       mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
       return mixture_log_cdf
 
-  def _prob(self, x):
-    return math_ops.exp(self._log_prob(x))
-
   def _sample_n(self, n, seed=None):
+    if self._use_static_graph:
+      # This sampling approach is almost the same as the approach used by
+      # `MixtureSameFamily`. The differences are due to having a list of
+      # `Distribution` objects rather than a single object, and maintaining
+      # random seed management that is consistent with the non-static code path.
+      samples = []
+      cat_samples = self.cat.sample(n, seed=seed)
+      for c in range(self.num_components):
+        seed = distribution_util.gen_new_seed(seed, "mixture")
+        samples.append(self.components[c].sample(n, seed=seed))
+      x = array_ops.stack(
+          samples, -self._static_event_shape.ndims - 1)     # [n, B, k, E]
+      npdt = x.dtype.as_numpy_dtype
+      mask = array_ops.one_hot(
+          indices=cat_samples,                              # [n, B]
+          depth=self._num_components,                       # == k
+          on_value=np.ones([], dtype=npdt),
+          off_value=np.zeros([], dtype=npdt))               # [n, B, k]
+      mask = distribution_utils.pad_mixture_dimensions(
+          mask, self, self._cat,
+          self._static_event_shape.ndims)                   # [n, B, k, [1]*e]
+      return math_ops.reduce_sum(
+          x * mask,
+          axis=-1 - self._static_event_shape.ndims)         # [n, B, E]
+
     with ops.control_dependencies(self._assertions):
       n = ops.convert_to_tensor(n, name="n")
       static_n = tensor_util.constant_value(n)

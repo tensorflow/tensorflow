@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -35,90 +36,84 @@ class SliceOp : public XlaOpKernel {
   explicit SliceOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    bool is_identity = true;
+    const TensorShape input_shape = ctx->InputShape(0);
+    const TensorShape begin_tensor_shape = ctx->InputShape(1);
+    const TensorShape size_tensor_shape = ctx->InputShape(2);
+
+    OP_REQUIRES(
+        ctx,
+        IsLegacyVector(begin_tensor_shape) &&
+            IsLegacyVector(size_tensor_shape) &&
+            begin_tensor_shape.num_elements() == input_shape.dims() &&
+            size_tensor_shape.num_elements() == input_shape.dims(),
+        errors::InvalidArgument(
+            "Expected begin and size arguments to be 1-D tensors of size ",
+            input_shape.dims(), ", but got shapes ",
+            begin_tensor_shape.DebugString(), " and ",
+            size_tensor_shape.DebugString(), " instead."));
+
+    const int input_dims = input_shape.dims();
+
     std::vector<int64> begin;
     std::vector<int64> size;
-    SharedValidation(ctx, &is_identity, &begin, &size);
-    if (!ctx->status().ok()) return;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &size));
+    if (ctx->ConstantInputAsIntVector(1, &begin).ok()) {
+      // `begin` is a compile-time constant.
+      for (int i = 0; i < input_dims; ++i) {
+        if (size[i] == -1) {
+          // A size[i] of -1 means "all elements from begin[i] to dim_size(i)".
+          size[i] = input_shape.dim_size(i) - begin[i];
+        }
+      }
 
-    if (is_identity) {
-      VLOG(1) << "Slice identity";
-      ctx->SetOutput(0, ctx->Input(0));
-      return;
-    }
+      for (int i = 0; i < input_dims; ++i) {
+        int64 b = begin[i];
+        int64 s = size[i];
+        if (input_shape.dim_size(i) == 0) {
+          OP_REQUIRES(ctx, b == 0 && s == 0,
+                      errors::InvalidArgument(
+                          "Expected begin[", i, "] == 0 (got ", b,
+                          ") and size[", i, "] == 0 ", "(got ", s, ") when ",
+                          "input_shape.dim_size(", i, ") == 0"));
+        } else {
+          OP_REQUIRES(ctx, 0 <= b && b <= input_shape.dim_size(i),
+                      errors::InvalidArgument("Expected begin[", i, "] in [0, ",
+                                              input_shape.dim_size(i),
+                                              "], but got ", b));
+          OP_REQUIRES(ctx, 0 <= s && b + s <= input_shape.dim_size(i),
+                      errors::InvalidArgument("Expected size[", i, "] in [0, ",
+                                              input_shape.dim_size(i) - b,
+                                              "], but ", "got ", s));
+        }
+      }
 
-    // slice will be an empty handle if the output has no elements.
-    CHECK_EQ(begin.size(), size.size());
-    std::vector<int64> limits;
-    limits.reserve(begin.size());
-    for (int i = 0; i < begin.size(); ++i) {
-      limits.push_back(begin[i] + size[i]);
+      std::vector<int64> limits;
+      limits.reserve(begin.size());
+      for (int i = 0; i < begin.size(); ++i) {
+        limits.push_back(begin[i] + size[i]);
+      }
+      std::vector<int64> strides(begin.size(), 1);
+      ctx->SetOutput(0, xla::Slice(ctx->Input(0), begin, limits, strides));
+    } else {
+      // `begin` is not a compile-time constant.
+      for (int i = 0; i < input_dims; ++i) {
+        OP_REQUIRES(ctx, 0 <= size[i],
+                    errors::InvalidArgument(
+                        "XLA compilation of Slice operator with negative sizes "
+                        "requires that 'begin' is a compile-time constant."));
+        OP_REQUIRES(ctx, size[i] <= input_shape.dim_size(i),
+                    errors::InvalidArgument("Expected size[", i, "] in [0, ",
+                                            input_shape.dim_size(i), "], but ",
+                                            "got ", size[i]));
+      }
+      ctx->SetOutput(0, xla::DynamicSlice(ctx->Input(0), ctx->Input(1), size));
     }
-    std::vector<int64> strides(begin.size(), 1);
-    ctx->SetOutput(0, ctx->builder()->Slice(ctx->Input(0), begin, limits,
-                                            strides));
   }
-
- private:
-  void SharedValidation(XlaOpKernelContext* ctx, bool* is_identity,
-                        std::vector<int64>* begin, std::vector<int64>* size);
 };
 
-void SliceOp::SharedValidation(XlaOpKernelContext* ctx, bool* is_identity,
-                               std::vector<int64>* begin,
-                               std::vector<int64>* size) {
-  const TensorShape input_shape = ctx->InputShape(0);
-  const TensorShape begin_tensor_shape = ctx->InputShape(1);
-  const TensorShape size_tensor_shape = ctx->InputShape(2);
-
-  OP_REQUIRES(
-      ctx,
-      IsLegacyVector(begin_tensor_shape) && IsLegacyVector(size_tensor_shape) &&
-          begin_tensor_shape.num_elements() == input_shape.dims() &&
-          size_tensor_shape.num_elements() == input_shape.dims(),
-      errors::InvalidArgument(
-          "Expected begin and size arguments to be 1-D tensors of size ",
-          input_shape.dims(), ", but got shapes ",
-          begin_tensor_shape.DebugString(), " and ",
-          size_tensor_shape.DebugString(), " instead."));
-
-  const int input_dims = input_shape.dims();
-
-  OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, begin));
-  OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, size));
-  for (int i = 0; i < input_dims; ++i) {
-    if ((*size)[i] == -1) {
-      // A size[i] of -1 means "all elements from begin[i] to dim_size(i)".
-      (*size)[i] = input_shape.dim_size(i) - (*begin)[i];
-    }
-  }
-
-  *is_identity = true;
-  for (int i = 0; i < input_dims; ++i) {
-    int64 b = (*begin)[i];
-    int64 s = (*size)[i];
-    if (input_shape.dim_size(i) == 0) {
-      OP_REQUIRES(ctx, b == 0 && s == 0,
-                  errors::InvalidArgument(
-                      "Expected begin[", i, "] == 0 (got ", b, ") and size[", i,
-                      "] == 0 ", "(got ", s, ") when ", "input_shape.dim_size(",
-                      i, ") == 0"));
-    } else {
-      OP_REQUIRES(
-          ctx, 0 <= b && b <= input_shape.dim_size(i),
-          errors::InvalidArgument("Expected begin[", i, "] in [0, ",
-                                  input_shape.dim_size(i), "], but got ", b));
-      OP_REQUIRES(ctx, 0 <= s && b + s <= input_shape.dim_size(i),
-                  errors::InvalidArgument("Expected size[", i, "] in [0, ",
-                                          input_shape.dim_size(i) - b,
-                                          "], but ", "got ", s));
-    }
-    const bool take_all = (b == 0) && (s == input_shape.dim_size(i));
-    (*is_identity) &= take_all;
-  }
-}
-
-REGISTER_XLA_OP(Name("Slice"), SliceOp);
+REGISTER_XLA_OP(
+    Name("Slice").CompileTimeConstInput("begin").CompileTimeConstInput("size"),
+    SliceOp);
 
 }  // namespace
 }  // namespace tensorflow

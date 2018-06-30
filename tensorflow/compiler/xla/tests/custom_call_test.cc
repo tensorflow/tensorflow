@@ -16,13 +16,16 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -31,19 +34,19 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
-
-extern "C" void TF_EXPORT R0F32Add2(float* out, float** in) {
+namespace {
+void R0F32Add2(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;
 }
 
-extern "C" void TF_EXPORT R2F32ReduceSum(float* out, float** in) {
+void R2F32ReduceSum(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   *out = array[0] + array[1] + array[2] + array[3];
 }
 
-extern "C" void TF_EXPORT Add1ToValues(float* out, float** in) {
+void Add1ToValues(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   out[0] = array[0] + 1;
@@ -51,6 +54,11 @@ extern "C" void TF_EXPORT Add1ToValues(float* out, float** in) {
   out[2] = array[2] + 1;
   out[3] = array[3] + 1;
 }
+}  // namespace
+
+REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
+REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
+REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
 
 namespace xla {
 namespace {
@@ -120,6 +128,20 @@ XLA_TEST_F(CustomCallTest,
   std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, *result);
+}
+
+class CustomCallClientAPITest : public ClientLibraryTestBase {};
+
+// When using the client API, CustomCall targets can't begin with '$' -- these
+// are reserved for internal use.
+XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
+  XlaBuilder builder(TestName());
+  CustomCall(&builder, "$illegal", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {1}));
+
+  StatusOr<std::unique_ptr<GlobalData>> result =
+      Execute(&builder, /*arguments=*/{});
+  EXPECT_FALSE(result.ok());
 }
 
 }  // namespace

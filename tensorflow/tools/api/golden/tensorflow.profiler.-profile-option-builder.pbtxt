@@ -28,7 +28,7 @@ tf_class {
   }
   member_method {
     name: "time_and_memory"
-    argspec: "args=[\'min_micros\', \'min_bytes\'], varargs=None, keywords=None, defaults=[\'1\', \'1\'], "
+    argspec: "args=[\'min_micros\', \'min_bytes\', \'min_accelerator_micros\', \'min_cpu_micros\', \'min_peak_bytes\', \'min_residual_bytes\', \'min_output_bytes\'], varargs=None, keywords=None, defaults=[\'1\', \'1\', \'0\', \'0\', \'0\', \'0\', \'0\'], "
   }
   member_method {
     name: "trainable_variables_parameter"
@@ -52,7 +52,7 @@ tf_class {
   }
   member_method {
     name: "with_min_execution_time"
-    argspec: "args=[\'self\', \'min_micros\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'min_micros\', \'min_accelerator_micros\', \'min_cpu_micros\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\'], "
   }
   member_method {
     name: "with_min_float_operations"
@@ -60,7 +60,7 @@ tf_class {
   }
   member_method {
     name: "with_min_memory"
-    argspec: "args=[\'self\', \'min_bytes\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'min_bytes\', \'min_peak_bytes\', \'min_residual_bytes\', \'min_output_bytes\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'0\', \'0\'], "
   }
   member_method {
     name: "with_min_occurrence"

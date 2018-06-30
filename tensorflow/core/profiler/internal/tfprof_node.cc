@@ -19,18 +19,15 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-namespace {
 bool CountAsAcceleratorTime(const string& device) {
   return device.find("stream:all") != device.npos;
 }
-
 bool CountAsCPUTime(const string& device) {
-  return RE2::FullMatch(device, ".*/(gpu|cpu|device:sycl):\\d+");
+  return RE2::FullMatch(device,
+                        ".*/(device:gpu|gpu|device:cpu|cpu|device:sycl):\\d+");
 }
-
 bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
 
-}  // namespace
 // Notes about start and end time from the NodeExecStats proto:
 // For GPU, there is no difference between op_end_rel_micros and
 // all_end_rel_micros. All are kernel times.
@@ -50,19 +47,21 @@ bool IsCanonicalDevice(const string& device) { return CountAsCPUTime(device); }
 void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
   devices_.insert(dev);
   if (step_stat.all_start_micros() > 0) {
-    if (all_start_micros_ > 0) {
-      all_start_micros_ = std::min(
-          all_start_micros_, static_cast<int64>(step_stat.all_start_micros()));
+    if (exec_.all_start_micros() > 0) {
+      exec_.set_all_start_micros(
+          std::min(static_cast<int64>(exec_.all_start_micros()),
+                   static_cast<int64>(step_stat.all_start_micros())));
     } else {
-      all_start_micros_ = step_stat.all_start_micros();
+      exec_.set_all_start_micros(step_stat.all_start_micros());
     }
     int64 op_end_rel_micros = step_stat.op_end_rel_micros();
     // Round quick execution to 1 micro to be semantically robust.
     if (op_end_rel_micros == 0) {
       ++op_end_rel_micros;
     }
-    latest_end_micros_ = std::max(
-        latest_end_micros_, step_stat.all_start_micros() + op_end_rel_micros);
+    exec_.set_latest_end_micros(
+        std::max(static_cast<int64>(exec_.latest_end_micros()),
+                 step_stat.all_start_micros() + op_end_rel_micros));
 
     const std::pair<int64, int64> pair =
         std::make_pair(step_stat.all_start_micros(), op_end_rel_micros);
@@ -74,28 +73,43 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
       op_execs_[dev].push_back(pair);
       // In while-loop, a graph node is executed multiple times under
       // the same name.
-      run_count_ += 1;
+      exec_.set_run_count(exec_.run_count() + 1);
     }
   }
 }
 
 void ExecStep::AddMemoryStats(const string& dev,
                               const NodeExecStats& step_stat) {
-  if (mem_initiated_) {
+  ExecMemory exec_mem;
+  if (step_stat.all_start_micros() > 0) {
+    exec_mem.set_memory_micros(step_stat.all_start_micros() +
+                               step_stat.op_end_rel_micros());
+  } else {
+    fprintf(stderr, "%s has no start time, skipping\n",
+            step_stat.node_name().c_str());
     return;
   }
-  mem_initiated_ = true;
 
+  int accelerator_allocator_cnt = 0;
   for (const auto& mem : step_stat.memory()) {
     // TODO(xpan): Fix this hack. Currently the allocator name seems quite
     // ad-hoc.
     if (mem.allocator_name().find("GPU") == mem.allocator_name().npos) {
       continue;
     }
-    allocator_bytes_in_use_ =
-        std::max(allocator_bytes_in_use_,
-                 static_cast<int64>(mem.allocator_bytes_in_use()));
+    ++accelerator_allocator_cnt;
+    exec_mem.set_allocator_bytes_in_use(
+        std::max(static_cast<int64>(exec_mem.allocator_bytes_in_use()),
+                 static_cast<int64>(mem.allocator_bytes_in_use())));
+    for (const auto& alloc : mem.allocation_records()) {
+      allocations_.push_back(alloc);
+    }
   }
+  if (accelerator_allocator_cnt > 1) {
+    fprintf(stderr, "found %d gpu allocator for 1 node\n",
+            accelerator_allocator_cnt);
+  }
+
   int64 total_output_bytes = 0;
   for (const auto& output : step_stat.output()) {
     if (output.has_tensor_description() &&
@@ -110,19 +124,72 @@ void ExecStep::AddMemoryStats(const string& dev,
       uint64 output_ptr =
           output.tensor_description().allocation_description().ptr();
       total_output_bytes += output_bytes;
-      output_bytes_[output.slot()] = std::make_pair(output_bytes, output_ptr);
+
+      auto& mem = (*exec_mem.mutable_output_memory())[output.slot()];
+      mem.set_ptr(output_ptr);
+      mem.set_bytes(output_bytes);
     }
   }
+  exec_mem.set_output_bytes(total_output_bytes);
+
   if (step_stat.has_memory_stats()) {
-    host_temp_bytes_ += step_stat.memory_stats().host_temp_memory_size();
-    host_persistent_bytes_ +=
-        step_stat.memory_stats().host_persistent_memory_size();
-    accelerator_temp_bytes_ +=
-        step_stat.memory_stats().device_temp_memory_size();
-    accelerator_persistent_bytes_ +=
-        step_stat.memory_stats().device_persistent_memory_size();
+    if (IsPlacedOnCPU(dev)) {
+      // Currently we assume ops placed on gpu only allocate memory on gpu.
+      exec_mem.set_host_temp_bytes(exec_mem.host_temp_bytes() +
+                                   step_stat.memory_stats().temp_memory_size());
+      exec_mem.set_host_persistent_bytes(
+          exec_mem.host_persistent_bytes() +
+          step_stat.memory_stats().persistent_memory_size());
+    } else {
+      exec_mem.set_accelerator_temp_bytes(
+          exec_mem.accelerator_temp_bytes() +
+          step_stat.memory_stats().temp_memory_size());
+      exec_mem.set_accelerator_persistent_bytes(
+          exec_mem.accelerator_persistent_bytes() +
+          step_stat.memory_stats().persistent_memory_size());
+    }
   }
-  requested_bytes_ = total_output_bytes;
+
+  // TODO(xpan): Make this more accurate:
+  // High level: Memory tracking is suspicous and requires large scale
+  // clean up.
+  // Investigte the memory usage difference between CPU/GPU with OpViewTest.
+  //
+  // 1. OpKernelConstruction::allocate_xxx is not traced. Below, we only
+  //    discuss OpKernelContext-related allocations.
+  // 2. allocate_output calls allocate_tensor, which is properly tracked in
+  //    'NodeExecStats.memory'.
+  // 3. allocate_temp is only tracked through record_xxx_temp. It appears
+  //    in 'NodeExecStats.memory_stats'.
+  // 4. allocate_persistent calls allocate_tensor, which is properly tracked
+  //    in 'NodeExecStats.memory'. However, there is no way to count it as
+  //    persistent now.
+  // 5. record_xxx_persistent is called when allocate_persistent
+  //    is not used and hence tracks some complementary bytes. It appears in
+  //    'NodeExecStats.memory_stats'. It's suspicious. But we should
+  //    use it now since it covers constant op.
+  int64 residual_bytes = 0;
+  int64 requested_bytes = 0;
+  int64 peak_bytes = 0;
+  for (const auto& mem : step_stat.memory()) {
+    residual_bytes += mem.live_bytes();
+    requested_bytes += mem.total_bytes();
+    peak_bytes += mem.peak_bytes();
+  }
+  residual_bytes += exec_mem.host_persistent_bytes() +
+                    exec_mem.accelerator_persistent_bytes();
+  requested_bytes += exec_mem.host_persistent_bytes() +
+                     exec_mem.accelerator_persistent_bytes() +
+                     exec_mem.host_temp_bytes() +
+                     exec_mem.accelerator_temp_bytes();
+  peak_bytes += exec_mem.host_persistent_bytes() +
+                exec_mem.accelerator_persistent_bytes() +
+                exec_mem.host_temp_bytes() + exec_mem.accelerator_temp_bytes();
+
+  exec_mem.set_requested_bytes(requested_bytes);
+  exec_mem.set_residual_bytes(residual_bytes);
+  exec_mem.set_peak_bytes(peak_bytes);
+  memory_execs_.emplace_back(exec_mem);
 }
 
 void TFGraphNode::AddStepStat(int64 step, const string& device,
@@ -131,36 +198,36 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py
-  // It can be /job:0/replica:0/xxxx/gpu:0, or simply /gpu:0.
+  // It can be /job:0/replica:0/xxxx/device:GPU:0, or simply /device:GPU:0.
   // It can has some ad-hoc suffix, such as /stream:xx or /memcpy:xx.
   if (IsCanonicalDevice(dev)) {
-    if (!canonical_device_.empty()) {
-      if (canonical_device_ != dev) {
-        fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
-                canonical_device_.c_str(), dev.c_str());
+    if (!node_.canonical_device().empty()) {
+      if (node_.canonical_device() != dev) {
+        // TODO(xpan): Some RunMetadata node appears at multiple devices.
+        // Need to address it.
         return;
       }
     } else {
-      canonical_device_ = dev;
+      node_.set_canonical_device(dev);
       // TODO(xpan): Support things other than gpu?
       if (dev.find("sycl") != dev.npos) {
-        host_device_ = StringReplace(dev, "device:sycl:\\d+", "cpu:0");
+        node_.set_host_device(StringReplace(dev, "device:sycl:\\d+", "cpu:0"));
       } else {
-        host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+        node_.set_host_device(StringReplace(dev, "gpu:\\d+", "cpu:0"));
       }
-      AddOpType(canonical_device_);
+      AddOpType(node_.canonical_device());
     }
   }
 
   auto exec = execs_.find(step);
   if (exec == execs_.end()) {
-    execs_.insert(std::pair<int64, ExecStep>(step, ExecStep(this)));
+    execs_.insert(std::pair<int64, ExecStep>(step, ExecStep()));
     exec = execs_.find(step);
   }
 
   exec->second.AddTimeStats(dev, step_stat);
 
-  if (dev == canonical_device_) {
+  if (dev == node_.canonical_device()) {
     exec->second.AddMemoryStats(dev, step_stat);
   }
 }
@@ -208,7 +275,7 @@ std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb) {
   return shape_vec;
 }
 
-TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
+TensorShapeProto VecToShapeProto(const std::vector<int64>& shape_vec) {
   TensorShapeProto shape_pb;
   if (shape_vec.empty()) {
     shape_pb.set_unknown_rank(true);
@@ -223,6 +290,9 @@ TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
 bool IsPlacedOnAccelerator(const string& device) {
   return device.find("gpu") != device.npos ||
          device.find("sycl") != device.npos;
+}
+bool IsPlacedOnCPU(const string& device) {
+  return device.find("cpu") != device.npos;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -1,7 +1,7 @@
 # Vector Representations of Words
 
 In this tutorial we look at the word2vec model by
-[Mikolov et al.](http://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf)
+[Mikolov et al.](https://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf)
 This model is used for learning vector representations of words, called "word
 embeddings".
 
@@ -78,7 +78,7 @@ model).
 
 Word2vec is a particularly computationally-efficient predictive model for
 learning word embeddings from raw text. It comes in two flavors, the Continuous
-Bag-of-Words model (CBOW) and the Skip-Gram model (Section 3.1 and 3.2 in [Mikolov et al.](http://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
+Bag-of-Words model (CBOW) and the Skip-Gram model (Section 3.1 and 3.2 in [Mikolov et al.](https://arxiv.org/pdf/1301.3781.pdf)). Algorithmically, these
 models are similar, except that CBOW predicts target words (e.g. 'mat') from
 source context words ('the cat sits on the'), while the skip-gram does the
 inverse and predicts source context-words from the target words. This inversion
@@ -155,14 +155,14 @@ from the noise distribution (i.e. we compute a
 This objective is maximized when the model assigns high probabilities
 to the real words, and low probabilities to noise words. Technically, this is
 called
-[Negative Sampling](http://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf),
+[Negative Sampling](https://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf),
 and there is good mathematical motivation for using this loss function:
 The updates it proposes approximate the updates of the softmax function in the
 limit. But computationally it is especially appealing because computing the
 loss function now scales only with the number of *noise words* that we
 select (\\(k\\)), and not *all words* in the vocabulary (\\(V\\)). This makes it
 much faster to train. We will actually make use of the very similar
-[noise-contrastive estimation (NCE)](http://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf)
+[noise-contrastive estimation (NCE)](https://papers.nips.cc/paper/5165-learning-word-embeddings-efficiently-with-noise-contrastive-estimation.pdf)
 loss, for which TensorFlow has a handy helper function `tf.nn.nce_loss()`.
 
 Let's get an intuitive feel for how this would work in practice!
@@ -222,7 +222,7 @@ successful at discriminating real words from noise words.
 
 We can visualize the learned vectors by projecting them down to 2 dimensions
 using for instance something like the
-[t-SNE dimensionality reduction technique](http://lvdmaaten.github.io/tsne/).
+[t-SNE dimensionality reduction technique](https://lvdmaaten.github.io/tsne/).
 When we inspect these visualizations it becomes apparent that the vectors
 capture some general, and in fact quite useful, semantic information about
 words and their relationships to one another. It was very interesting when we
@@ -230,7 +230,7 @@ first discovered that certain directions in the induced vector space specialize
 towards certain semantic relationships, e.g. *male-female*, *verb tense* and
 even *country-capital* relationships between words, as illustrated in the figure
 below (see also for example
-[Mikolov et al., 2013](http://www.aclweb.org/anthology/N13-1090)).
+[Mikolov et al., 2013](https://www.aclweb.org/anthology/N13-1090)).
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/linear-relationships.png" alt>
@@ -239,9 +239,9 @@ below (see also for example
 This explains why these vectors are also useful as features for many canonical
 NLP prediction tasks, such as part-of-speech tagging or named entity recognition
 (see for example the original work by
-[Collobert et al., 2011](http://arxiv.org/abs/1103.0398)
-([pdf](http://arxiv.org/pdf/1103.0398.pdf)), or follow-up work by
-[Turian et al., 2010](http://www.aclweb.org/anthology/P10-1040)).
+[Collobert et al., 2011](https://arxiv.org/abs/1103.0398)
+([pdf](https://arxiv.org/pdf/1103.0398.pdf)), or follow-up work by
+[Turian et al., 2010](https://www.aclweb.org/anthology/P10-1040)).
 
 But for now, let's just use them to draw pretty pictures!
 
@@ -351,7 +351,7 @@ to evaluate embeddings is to directly use them to predict syntactic and semantic
 relationships like `king is to queen as father is to ?`. This is called
 *analogical reasoning* and the task was introduced by
 [Mikolov and colleagues
-](http://www.anthology.aclweb.org/N/N13/N13-1090.pdf).
+](https://www.aclweb.org/anthology/N13-1090).
 Download the dataset for this task from
 [download.tensorflow.org](http://download.tensorflow.org/data/questions-words.txt).
 

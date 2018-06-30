@@ -52,7 +52,7 @@ Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
 
   // Save a tensor after the proto to check that alignment works.
   test::FillFn<float>(test_tensor,
-                      [](int i) { return static_cast<float>(i * i * i); });
+                      [](int i) { return static_cast<float>(i) * i * i; });
   TF_RETURN_IF_ERROR(writer.SaveTensor(*test_tensor, kTensor2FileName));
 
   if (!corrupted) {
@@ -144,8 +144,8 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   TF_ASSERT_OK(memmapped_env.NewAppendableFile(filename, &writable_file_temp));
   // Making sure to clean up after the test finishes.
   const auto adh = [&memmapped_env, &filename](WritableFile* f) {
-      delete f;
-      TF_CHECK_OK(memmapped_env.DeleteFile(filename));
+    delete f;
+    TF_CHECK_OK(memmapped_env.DeleteFile(filename));
   };
   std::unique_ptr<WritableFile, decltype(adh)> writable_file(
       writable_file_temp.release(), adh);

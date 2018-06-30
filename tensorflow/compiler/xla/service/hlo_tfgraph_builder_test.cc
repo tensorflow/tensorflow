@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -182,7 +181,3 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
 }  // namespace
 }  // namespace hlo_graph_dumper
 }  // namespace xla
-
-int main(int argc, char **argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

@@ -33,6 +33,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
@@ -152,6 +153,25 @@ class RegressionHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+
+  def testRegressionWithLogitFn(self):
+    head = head_lib.regression_head(link_fn=math_ops.square)
+    def _assert_preditions(test_case, expected_predictions, model_fn_ops):
+      variables.initialize_local_variables().run()
+      test_case.assertAllClose(expected_predictions,
+                               model_fn_ops.predictions["scores"].eval())
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          labels=((0.,), (1.,), (1.,)),
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_summary_tags(self, ["loss"])
+      _assert_no_variables(self)
+      _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+      _assert_preditions(self, ([1.0, 1.0, 9.0]), model_fn_ops)
 
   def testRegressionWithInvalidLogits(self):
     head = head_lib.regression_head()
@@ -1703,7 +1723,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1728,7 +1748,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
@@ -1755,7 +1775,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.predictions)
     self.assertIsNotNone(model_fn_ops.loss)
     self.assertIsNotNone(model_fn_ops.train_op)
-    self.assertFalse(model_fn_ops.eval_metric_ops)
+    self.assertTrue(model_fn_ops.eval_metric_ops)
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:

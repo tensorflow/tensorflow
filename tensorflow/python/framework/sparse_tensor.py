@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _TensorLike = ops._TensorLike
@@ -31,6 +33,7 @@ _override_helper = ops._override_helper
 # pylint: enable=protected-access
 
 
+@tf_export("SparseTensor")
 class SparseTensor(_TensorLike):
   """Represents a sparse tensor.
 
@@ -93,8 +96,7 @@ class SparseTensor(_TensorLike):
 
   @classmethod
   def from_value(cls, sparse_tensor_value):
-    if not (isinstance(sparse_tensor_value, SparseTensor) or
-            isinstance(sparse_tensor_value, SparseTensorValue)):
+    if not is_sparse(sparse_tensor_value):
       raise TypeError("Neither a SparseTensor nor SparseTensorValue: %s." %
                       sparse_tensor_value)
     return SparseTensor(
@@ -223,8 +225,11 @@ class SparseTensor(_TensorLike):
 
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
+tf_export("SparseTensorValue")(SparseTensorValue)
+pywrap_tensorflow.RegisterSparseTensorValueClass(SparseTensorValue)
 
 
+@tf_export("convert_to_tensor_or_sparse_tensor")
 def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
   """Converts value to a `SparseTensor` or `Tensor`.
 
@@ -253,3 +258,17 @@ def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
     return value
   return ops.internal_convert_to_tensor(
       value, dtype=dtype, name=name)
+
+
+def is_sparse(x):
+  """Check whether `x` is sparse.
+
+  Check whether an object is a `tf.SparseTensor` or `tf.SparseTensorValue`.
+
+  Args:
+    x: A python object to check.
+
+  Returns:
+    `True` iff `x` is a `tf.SparseTensor` or `tf.SparseTensorValue`.
+  """
+  return isinstance(x, (SparseTensor, SparseTensorValue))

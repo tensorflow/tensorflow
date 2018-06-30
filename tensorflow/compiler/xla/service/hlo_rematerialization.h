@@ -20,6 +20,7 @@
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 
 namespace xla {
@@ -27,6 +28,13 @@ namespace xla {
 class HloRematerialization {
  public:
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
+
+  // Helper struct that communicates the before / after sizes for the
+  // rematerialization process.
+  struct RematerializationSizes {
+    int64 before_bytes;
+    int64 after_bytes;
+  };
 
   // Rematerialize HLO instructions in the given module to reduce peak memory
   // use below memory_limit_bytes where memory use is defined as the total size
@@ -46,6 +54,15 @@ class HloRematerialization {
   //     rematerialization. This is the order in which HLO instructions should
   //     be emitted to minimize memory use.
   //
+  //   sizes: Optional outparam that indicates the peak memory usage of the HLO
+  //     module before/after rematerialization.
+  //
+  //   run_copy_elision: Enable copy elision. This pass is used to eliminate
+  //     copies that were inserted before HLO scheduling.
+  //
+  // TODO(b/80249101): Remove the 'run_copy_elision' parameter when copy
+  // insertion is integrated with HLO scheduling.
+  //
   // Returns whether any instructions were rematerialized. If memory use is
   // already below the given limit then no instructions are rematerialized and
   // false is returned.
@@ -55,12 +72,15 @@ class HloRematerialization {
   // code generation.
   static StatusOr<bool> RematerializeAndSchedule(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      HloModule* hlo_module,
-      SequentialHloOrdering::HloModuleSequence* sequence);
+      HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
+      SequentialHloOrdering::HloModuleSequence* sequence,
+      RematerializationSizes* sizes, bool run_copy_elision = true);
 
  protected:
-  HloRematerialization(const ShapeSizeFunction& size_function)
-      : size_function_(size_function) {}
+  HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
+                       const ShapeSizeFunction& size_function)
+      : scheduler_algorithm_(scheduler_algorithm),
+        size_function_(size_function) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -69,7 +89,8 @@ class HloRematerialization {
   // contains the memory-minimizing order in which to emit the HLO instructions.
   StatusOr<bool> Run(HloModule* module,
                      SequentialHloOrdering::HloModuleSequence* sequence,
-                     int64 memory_limit);
+                     int64 memory_limit, RematerializationSizes* sizes,
+                     bool run_copy_elision);
 
   // Rematerializes instructions within the given computation. 'order' is the
   // order in which the computation's instructions will be emitted in the
@@ -92,6 +113,9 @@ class HloRematerialization {
   // instruction. Zero is returned if the instruction calls no computations.
   StatusOr<int64> CalledComputationsMemoryUsage(
       const HloInstruction* instruction) const;
+
+  // Selects an algorithm to use for HLO scheduling.
+  MemorySchedulerAlgorithm scheduler_algorithm_;
 
   // Function which computes the size of the top-level buffer of a shape.
   const ShapeSizeFunction size_function_;

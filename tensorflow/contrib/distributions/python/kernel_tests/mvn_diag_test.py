@@ -68,7 +68,7 @@ class MultivariateNormalDiagTest(test.TestCase):
       dist = ds.TransformedDistribution(
           base_dist,
           validate_args=True,
-          bijector=bijectors.Softplus(event_ndims=1))
+          bijector=bijectors.Softplus())
       samps = dist.sample(5)  # Shape [5, 1, 3].
       self.assertAllEqual([5, 1], dist.log_prob(samps).get_shape())
 
@@ -288,6 +288,18 @@ class MultivariateNormalDiagTest(test.TestCase):
         scale_diag=array_ops.placeholder(dtypes.float32, shape=[2, 3, None]))
     self.assertListEqual(mvn.batch_shape.as_list(), [2, 3])
     self.assertListEqual(mvn.event_shape.as_list(), [None])
+
+  def testKLDivIdenticalGradientDefined(self):
+    dims = 3
+    with self.test_session() as sess:
+      loc = array_ops.zeros([dims], dtype=dtypes.float32)
+      mvn = ds.MultivariateNormalDiag(
+          loc=loc,
+          scale_diag=np.ones([dims], dtype=np.float32))
+      g = gradients_impl.gradients(ds.kl_divergence(mvn, mvn), loc)
+      g_ = sess.run(g)
+      self.assertAllEqual(np.ones_like(g_, dtype=np.bool),
+                          np.isfinite(g_))
 
 
 if __name__ == "__main__":

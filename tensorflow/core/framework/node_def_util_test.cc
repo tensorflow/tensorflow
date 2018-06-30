@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -65,7 +66,7 @@ void ExpectFailure(const NodeDef& bad, const OpDef& op_def,
       << "; OpDef: " << SummarizeOpDef(op_def);
 
   LOG(INFO) << "Message: " << status.error_message();
-  EXPECT_TRUE(StringPiece(status.ToString()).contains(message))
+  EXPECT_TRUE(str_util::StrContains(status.ToString(), message))
       << "NodeDef: " << SummarizeNodeDef(bad)
       << "; OpDef: " << SummarizeOpDef(op_def) << "\nActual error: " << status
       << "\nDoes not contain: " << message;
@@ -151,8 +152,9 @@ TEST(NodeDefUtilTest, Out) {
   AddNodeAttr("T", DT_STRING, &bad);
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
-                "values: float, double, int64, int32, uint8, uint16, int16, "
-                "int8, complex64, complex128, qint8, quint8, qint32");
+                "values: float, double, int32, uint8, int16, int8, complex64, "
+                "int64, qint8, quint8, qint32, bfloat16, uint16, complex128, "
+                "half, uint32, uint64");
 }
 
 TEST(NodeDefUtilTest, Enum) {
@@ -264,7 +266,7 @@ void ExpectInvalidSyntax(const NodeDef& bad, const string& message) {
   EXPECT_TRUE(errors::IsInvalidArgument(status))
       << status << "; NodeDef: " << SummarizeNodeDef(bad);
 
-  EXPECT_TRUE(StringPiece(status.ToString()).contains(message))
+  EXPECT_TRUE(str_util::StrContains(StringPiece(status.ToString()), message))
       << "NodeDef: " << SummarizeNodeDef(bad) << ", " << status << ", "
       << message;
 }
@@ -491,6 +493,20 @@ TEST(NameRangesForNodeTest, TypeList) {
   NodeDef bad_node_def = node_def2;
   bad_node_def.clear_attr();
   EXPECT_FALSE(NameRangesForNode(bad_node_def, op_def, &inputs, &outputs).ok());
+}
+
+TEST(AddPrefixAndSuffixToNode, Enter) {
+  NodeDef node_def;
+  node_def.set_name("enter");
+  node_def.set_op("Enter");
+  AddNodeAttr("frame_name", "test_frame", &node_def);
+  const string prefix = "prefix/";
+  const string suffix = "/suffix";
+  TF_ASSERT_OK(AddPrefixAndSuffixToNode(prefix, suffix, &node_def));
+  EXPECT_EQ("prefix/enter/suffix", node_def.name());
+  string frame_name;
+  TF_ASSERT_OK(GetNodeAttr(node_def, "frame_name", &frame_name));
+  EXPECT_EQ("prefix/test_frame/suffix", frame_name);
 }
 
 }  // namespace

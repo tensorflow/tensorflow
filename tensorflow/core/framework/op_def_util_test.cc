@@ -32,6 +32,12 @@ OpDef FromText(const string& text) {
   return op_def;
 }
 
+OpDef::AttrDef ADef(const string& text) {
+  OpDef::AttrDef attr_def;
+  EXPECT_TRUE(protobuf::TextFormat::MergeFromString(text, &attr_def));
+  return attr_def;
+}
+
 class ValidateOpDefTest : public ::testing::Test {
  protected:
   Status TestProto(const string& text) { return ValidateOpDef(FromText(text)); }
@@ -51,7 +57,7 @@ class ValidateOpDefTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << "Did not see error with: " << message;
     if (!status.ok()) {
       LOG(INFO) << "message: " << status;
-      EXPECT_TRUE(StringPiece(status.ToString()).contains(message))
+      EXPECT_TRUE(str_util::StrContains(status.ToString(), message))
           << "Actual: " << status << "\nExpected to contain: " << message;
     }
   }
@@ -194,10 +200,11 @@ TEST_F(ValidateOpDefTest, BadAttrDefault) {
                           "default_value { list { s: ['foo'] } } }"),
                 "Length for attr 'a' of 1 must be at least minimum 2\n\t in Op "
                 "'BadAttrDef'");
-  ExpectFailure(TestBuilder(OpDefBuilder("GoodAttrDef")
-                                .Attr("a: list(type) >=2 = [DT_STRING]")),
-                "Length for attr 'a' of 1 must be at least minimum 2\n\t in Op "
-                "'GoodAttrDef'");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("GoodAttrDef").Attr("a: list(type) >=2 = [DT_STRING]")),
+      "Length for attr 'a' of 1 must be at least minimum 2\n\t in Op "
+      "'GoodAttrDef'");
 }
 
 TEST_F(ValidateOpDefTest, NoRefTypes) {
@@ -207,9 +214,10 @@ TEST_F(ValidateOpDefTest, NoRefTypes) {
   ExpectFailure(
       TestBuilder(OpDefBuilder("BadAttrDef").Attr("T: type = DT_INT32_REF")),
       "AttrValue must not have reference type value of int32_ref");
-  ExpectFailure(TestBuilder(OpDefBuilder("BadAttrDef")
-                                .Attr("T: list(type) = [DT_STRING_REF]")),
-                "AttrValue must not have reference type value of string_ref");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("BadAttrDef").Attr("T: list(type) = [DT_STRING_REF]")),
+      "AttrValue must not have reference type value of string_ref");
 }
 
 TEST_F(ValidateOpDefTest, BadAttrMin) {
@@ -239,9 +247,10 @@ TEST_F(ValidateOpDefTest, BadAttrAllowed) {
   TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: numbertype = DT_INT32")));
   // Not in list of allowed types.
-  ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
-                                .Attr("x: numbertype = DT_STRING")),
-                "attr 'x' of string is not in the list of allowed values");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("BadAttrtude").Attr("x: numbertype = DT_STRING")),
+      "attr 'x' of string is not in the list of allowed values");
   ExpectFailure(
       TestBuilder(OpDefBuilder("BadAttrtude")
                       .Attr("x: list(realnumbertype) = [DT_COMPLEX64]")),
@@ -254,9 +263,10 @@ TEST_F(ValidateOpDefTest, BadAttrAllowed) {
   TF_EXPECT_OK(TestBuilder(
       OpDefBuilder("GoodAttrtude").Attr("x: {'foo', 'bar'} = 'bar'")));
   // Not in list of allowed strings.
-  ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
-                                .Attr("x: {'foo', 'bar'} = 'baz'")),
-                "attr 'x' of \"baz\" is not in the list of allowed values");
+  ExpectFailure(
+      TestBuilder(
+          OpDefBuilder("BadAttrtude").Attr("x: {'foo', 'bar'} = 'baz'")),
+      "attr 'x' of \"baz\" is not in the list of allowed values");
   ExpectFailure(TestBuilder(OpDefBuilder("BadAttrtude")
                                 .Attr("x: list({'foo', 'bar'}) = ['baz']")),
                 "attr 'x' of \"baz\" is not in the list of allowed values");
@@ -341,6 +351,165 @@ TEST_F(ValidateOpDefTest, BadArgType) {
                           "'int' has_minimum: true minimum: 1 } attr { name: "
                           "'x' type: 'list(type)' }"),
                 "Can't have both number_attr and type_list_attr for input 'a'");
+}
+
+void ExpectDifferent(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2) {
+  EXPECT_FALSE(AttrDefEqual(a1, a2));
+  EXPECT_FALSE(AttrDefEqual(a2, a1));
+  EXPECT_NE(AttrDefHash(a1), AttrDefHash(a2));
+}
+
+TEST(AttrDefUtilTest, EqualAndHash) {
+  OpDef::AttrDef a = ADef(
+      "name: 'foo' type: 'string' description: 'cool' has_minimum: true "
+      "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }");
+
+  EXPECT_TRUE(AttrDefEqual(a, a));
+  EXPECT_EQ(AttrDefHash(a), AttrDefHash(a));
+
+  ExpectDifferent(
+      a,
+      ADef("name: 'FOO' type: 'string' description: 'cool' has_minimum: true "
+           "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'int32'  description: 'cool' has_minimum: true "
+           "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'COOL' has_minimum: true "
+           "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'cool' has_minimum: false "
+           "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'cool' has_minimum: true "
+           "minimum: 3 default_value { i: 2 } allowed_values { i: 5 }"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'cool' has_minimum: true "
+           "minimum: 2 default_value { i: 3 } allowed_values { i: 5 }"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'cool' has_minimum: true "
+           "minimum: 2 default_value { i: 2 } allowed_values { i: 6 }"));
+
+  // Same cases but where default_value and allowed_values are not set
+  a = ADef(
+      "name: 'foo' type: 'string' description: 'cool' has_minimum: true "
+      "minimum: 2");
+  EXPECT_TRUE(AttrDefEqual(a, a));
+  EXPECT_EQ(AttrDefHash(a), AttrDefHash(a));
+
+  ExpectDifferent(
+      a,
+      ADef("name: 'FOO' type: 'string' description: 'cool' has_minimum: true "
+           "minimum: 2"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'int32'  description: 'cool' has_minimum: true "
+           "minimum: 2"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'COOL' has_minimum: true "
+           "minimum: 2"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'cool' has_minimum: false "
+           "minimum: 2"));
+  ExpectDifferent(
+      a,
+      ADef("name: 'foo' type: 'string' description: 'cool' has_minimum: true "
+           "minimum: 3"));
+}
+
+protobuf::RepeatedPtrField<OpDef::AttrDef> Rep(
+    const std::vector<OpDef::AttrDef>& defs) {
+  protobuf::RepeatedPtrField<OpDef::AttrDef> rep;
+  for (const OpDef::AttrDef& def : defs) {
+    rep.Add()->MergeFrom(def);
+  }
+  return rep;
+}
+
+void ExpectEqual(const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
+                 const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2) {
+  EXPECT_TRUE(RepeatedAttrDefEqual(a1, a2));
+  EXPECT_TRUE(RepeatedAttrDefEqual(a2, a1));
+  EXPECT_EQ(RepeatedAttrDefHash(a1), RepeatedAttrDefHash(a2));
+}
+
+void ExpectDifferent(const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
+                     const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2) {
+  EXPECT_FALSE(RepeatedAttrDefEqual(a1, a2));
+  EXPECT_FALSE(RepeatedAttrDefEqual(a2, a1));
+  EXPECT_NE(RepeatedAttrDefHash(a1), RepeatedAttrDefHash(a2));
+}
+
+TEST(AttrDefUtilTest, EqualAndHash_Repeated) {
+  OpDef::AttrDef a1 = ADef(
+      "name: 'foo1' type: 'string' description: 'cool' has_minimum: true "
+      "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }");
+
+  // Different from a1 in name only.
+  // name is special because AttrDefs are matched by name.
+  OpDef::AttrDef a2 = ADef(
+      "name: 'foo2' type: 'string' description: 'cool' has_minimum: true "
+      "minimum: 2 default_value { i: 2 } allowed_values { i: 5 }");
+
+  // Different from a1 in "body" only.
+  OpDef::AttrDef a3 = ADef(
+      "name: 'foo1' type: 'string' description: 'cool' has_minimum: true "
+      "minimum: 3 default_value { i: 2 } allowed_values { i: 5 }");
+
+  // Different in name and "body".
+  OpDef::AttrDef a4 = ADef(
+      "name: 'foo3' type: 'string' description: 'cool' has_minimum: true "
+      "minimum: 3 default_value { i: 2 } allowed_values { i: 5 }");
+
+  ExpectEqual(Rep({}), Rep({}));
+  ExpectEqual(Rep({a1}), Rep({a1}));
+  ExpectEqual(Rep({a1, a2}), Rep({a1, a2}));
+  ExpectEqual(Rep({a1, a2}), Rep({a2, a1}));
+  ExpectEqual(Rep({a1, a4}), Rep({a4, a1}));
+
+  ExpectDifferent(Rep({a1}), Rep({}));
+  ExpectDifferent(Rep({a1}), Rep({a2}));
+  ExpectDifferent(Rep({a1}), Rep({a3}));
+  ExpectDifferent(Rep({a1}), Rep({a4}));
+  ExpectDifferent(Rep({a1}), Rep({a1, a2}));
+  ExpectDifferent(Rep({a1, a2}), Rep({a1, a4}));
+  ExpectDifferent(Rep({a1, a2}), Rep({a1, a2, a4}));
+}
+
+void ExpectEqual(const OpDef& o1, const OpDef& o2) {
+  EXPECT_TRUE(OpDefEqual(o1, o2));
+  EXPECT_TRUE(OpDefEqual(o2, o1));
+  EXPECT_EQ(OpDefHash(o1), OpDefHash(o2));
+}
+
+void ExpectDifferent(const OpDef& o1, const OpDef& o2) {
+  EXPECT_FALSE(OpDefEqual(o1, o2));
+  EXPECT_FALSE(OpDefEqual(o2, o1));
+  EXPECT_NE(OpDefHash(o1), OpDefHash(o2));
+}
+
+TEST(OpDefEqualityTest, EqualAndHash) {
+  string a1 = "attr { name: 'a' type: 'string' } ";
+  string a2 = "attr { name: 'b' type: 'string' } ";
+  string a3 = "attr { name: 'c' type: 'int32' } ";
+  OpDef o1 = FromText(strings::StrCat("name: 'MatMul' ", a1));
+  OpDef o2 = FromText(strings::StrCat("name: 'MatMul' ", a2));
+  OpDef o3 = FromText(strings::StrCat("name: 'MatMul' ", a1, a2));
+  OpDef o4 = FromText(strings::StrCat("name: 'MatMul' ", a2, a1));
+
+  ExpectEqual(o1, o1);
+  ExpectEqual(o3, o4);
+
+  ExpectDifferent(o1, o2);
+  ExpectDifferent(o1, o3);
 }
 
 }  // namespace

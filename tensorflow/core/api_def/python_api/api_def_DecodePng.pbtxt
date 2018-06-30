@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DecodePng"
+  endpoint {
+    name: "image.decode_png"
+  }
+}

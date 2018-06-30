@@ -123,6 +123,14 @@ func TestOutputDataTypeAndShape(t *testing.T) {
 			[]int64{2, 3},
 			Double,
 		},
+		{ // Matrix of Uint64
+			[][]uint64{
+				{1, 2, 3},
+				{4, 5, 6},
+			},
+			[]int64{2, 3},
+			Uint64,
+		},
 	}
 	for idx, test := range testdata {
 		t.Run(fmt.Sprintf("#%d Value %T", idx, test.Value), func(t *testing.T) {
@@ -155,6 +163,68 @@ func TestOutputDataTypeAndShape(t *testing.T) {
 	}
 	if shape := placeholder.Shape(); shape.NumDimensions() != -1 {
 		t.Errorf("Got shape %v, wanted an unknown number of dimensions", shape)
+	}
+}
+
+func TestOperationInputs(t *testing.T) {
+	g := NewGraph()
+	x, err := Placeholder(g, "x", Float)
+	if err != nil {
+		t.Fatal(err)
+	}
+	y, err := Placeholder(g, "y", Float)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add, err := Add(g, "add", x, y)
+	if err != nil {
+		t.Fatal(err)
+	}
+	addOp := add.Op
+
+	if out := addOp.NumInputs(); out != 2 {
+		t.Fatalf("Got %d inputs, wanted 2", out)
+	}
+}
+
+func TestOperationConsumers(t *testing.T) {
+	g := NewGraph()
+	x, err := Placeholder(g, "x", Float)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := Neg(g, "a", x)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Neg(g, "b", x)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	consumers := []*Operation{a.Op, b.Op}
+
+	xConsumers := x.Consumers()
+	if out := len(xConsumers); out != 2 {
+		t.Fatalf("Got %d consumers, wanted 2", out)
+	}
+
+	for i, consumer := range xConsumers {
+		got := consumer.Op.Name()
+		want := consumers[i].Name()
+		if got != want {
+			t.Fatalf("%d. Got op name %q, wanted %q", i, got, want)
+		}
+
+		got = consumer.Producer().Op.Name()
+		want = x.Op.Name()
+		if got != want {
+			t.Fatalf("%d. Got op name %q, wanted %q", i, got, want)
+		}
+	}
+
+	if len(b.Consumers()) != 0 {
+		t.Fatalf("expected %+v to have no consumers", b)
 	}
 }
 

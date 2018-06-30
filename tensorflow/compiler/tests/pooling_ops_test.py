@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -69,7 +69,7 @@ def GetTestConfigs():
   return test_configs
 
 
-class PoolingTest(XLATestCase):
+class PoolingTest(xla_test.XLATestCase):
 
   def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, expected):
@@ -288,12 +288,19 @@ class PoolingTest(XLATestCase):
         expected=expected_output)
 
 
-class PoolGradTest(XLATestCase):
+class PoolGradTest(xla_test.XLATestCase):
 
   CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
 
-  def _VerifyOneTest(self, pool_func, pool_grad_func, input_sizes, ksize,
-                     strides, padding, data_format):
+  def _VerifyOneTest(self,
+                     pool_func,
+                     pool_grad_func,
+                     input_sizes,
+                     ksize,
+                     strides,
+                     padding,
+                     data_format,
+                     pool_grad_grad_func=None):
     """Verifies the output values of the pooling gradient function.
 
     Args:
@@ -304,9 +311,19 @@ class PoolGradTest(XLATestCase):
       strides: The stride dimensions
       padding: Padding type.
       data_format: The data format we use to run the pooling operation.
+      pool_grad_grad_func: Second-order gradient function, if available.
     """
     total_size = np.prod(input_sizes)
-    x = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_sizes)
+    # TODO(b/73062247): MaxPoolGradGrad can confuse gradients when x is equally
+    # maximal at 16 bits. Switch to np.random.randn when resolved.
+    x = np.arange(1, total_size + 1, dtype=np.float32)
+    x *= (np.random.randint(2, size=total_size) * 2 - 1)  # Flip signs randomly
+    # Verify some specifically interesting values...
+    x[np.random.choice(total_size)] = np.inf
+    x[np.random.choice(total_size)] = -np.inf
+    # TODO(b/74222344): Fix nan handling for max pool grad.
+    # x[np.random.choice(total_size)] = np.nan
+    x = x.reshape(input_sizes)
     with self.test_session() as sess:
       # Use the forward pool function to compute some corresponding outputs
       # (needed for the CPU device, and we need the shape in both cases).
@@ -323,6 +340,8 @@ class PoolGradTest(XLATestCase):
       output_gradient_vals = np.arange(
           1, output_vals.size + 1, dtype=np.float32)
       output_gradient_vals = output_gradient_vals.reshape(output_vals.shape)
+      output_grad_grad_vals = np.arange(1, x.size + 1, dtype=np.float32)
+      output_grad_grad_vals = output_grad_grad_vals.reshape(x.shape)
 
       # Use the Tensorflow CPU pooling gradient to compute the expected input
       # gradients.
@@ -342,18 +361,36 @@ class PoolGradTest(XLATestCase):
             {inputs: x,
              output_gradients: output_gradient_vals})
 
+        output_grad_gradients = array_ops.placeholder(
+            dtypes.float32, shape=expected_input_gradient_vals.shape)
+        if pool_grad_grad_func is not None:
+          expected_grad_gradients = pool_grad_grad_func(
+              inputs,
+              outputs,
+              output_grad_gradients,
+              ksize=ksize,
+              strides=strides,
+              padding=padding,
+              data_format="NHWC")
+          expected_grad_gradients_vals = sess.run(expected_grad_gradients, {
+              inputs: x,
+              output_grad_gradients: output_grad_grad_vals
+          })
+
       # Run the gradient op on the XLA device
       with self.test_scope():
         outputs = array_ops.placeholder(dtypes.float32, shape=output_vals.shape)
         xla_inputs = inputs
         xla_outputs = outputs
         xla_output_gradients = output_gradients
+        xla_output_grad_gradients = output_grad_gradients
         xla_ksize = ksize
         xla_strides = strides
         if data_format == "NCHW":
           xla_inputs = NHWCToNCHW(inputs)
           xla_outputs = NHWCToNCHW(outputs)
           xla_output_gradients = NHWCToNCHW(output_gradients)
+          xla_output_grad_gradients = NHWCToNCHW(output_grad_gradients)
           xla_ksize = NHWCToNCHW(ksize)
           xla_strides = NHWCToNCHW(strides)
         actual_input_gradients = pool_grad_func(
@@ -366,22 +403,54 @@ class PoolGradTest(XLATestCase):
             data_format=data_format)
         if data_format == "NCHW":
           actual_input_gradients = NCHWToNHWC(actual_input_gradients)
-      actual = sess.run(actual_input_gradients, {
+        if pool_grad_grad_func is not None:
+          actual_grad_gradients = pool_grad_grad_func(
+              xla_inputs,
+              xla_outputs,
+              xla_output_grad_gradients,
+              ksize=xla_ksize,
+              strides=xla_strides,
+              padding=padding,
+              data_format=data_format)
+          if data_format == "NCHW":
+            actual_grad_gradients = NCHWToNHWC(actual_grad_gradients)
+      actual_input_gradients_vals = sess.run(actual_input_gradients, {
           inputs: x,
           outputs: output_vals,
           output_gradients: output_gradient_vals
       })
-
       # Compare the Tensorflow and XLA results.
       self.assertAllClose(
-          expected_input_gradient_vals.flatten(),
-          actual.flatten(),
+          expected_input_gradient_vals,
+          actual_input_gradients_vals,
           rtol=1e-4,
           atol=1e-6)
-      self.assertShapeEqual(actual, inputs)
+      self.assertShapeEqual(actual_input_gradients_vals, inputs)
 
-  def _VerifyValues(self, pool_func, pool_grad_func, input_sizes, ksize,
-                    strides, padding):
+      if pool_grad_grad_func is not None:
+        actual_grad_gradients_vals = sess.run(
+            actual_grad_gradients, {
+                inputs: x,
+                outputs: output_vals,
+                output_grad_gradients: output_grad_grad_vals
+            })
+
+        # Compare the Tensorflow and XLA results.
+        self.assertAllClose(
+            expected_grad_gradients_vals,
+            actual_grad_gradients_vals,
+            rtol=1e-4,
+            atol=1e-6)
+        self.assertShapeEqual(actual_grad_gradients_vals, outputs)
+
+  def _VerifyValues(self,
+                    pool_func,
+                    pool_grad_func,
+                    input_sizes,
+                    ksize,
+                    strides,
+                    padding,
+                    pool_grad_grad_func=None):
     """Verifies the output values of the pooling function.
 
     Args:
@@ -391,12 +460,20 @@ class PoolGradTest(XLATestCase):
       ksize: The kernel size dimensions
       strides: The stride dimensions
       padding: Padding type.
+      pool_grad_grad_func: Second-order gradient function, if available.
     """
     for data_format in GetTestConfigs():
-      self._VerifyOneTest(pool_func, pool_grad_func, input_sizes, ksize,
-                          strides, padding, data_format)
+      self._VerifyOneTest(
+          pool_func,
+          pool_grad_func,
+          input_sizes,
+          ksize,
+          strides,
+          padding,
+          data_format,
+          pool_grad_grad_func=pool_grad_grad_func)
 
-  def _TestPooling(self, forward_op, backward_op):
+  def _TestPooling(self, forward_op, backward_op, pool_grad_grad_func=None):
     # VALID padding
     self._VerifyValues(
         forward_op,
@@ -404,7 +481,8 @@ class PoolGradTest(XLATestCase):
         input_sizes=[1, 3, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
-        padding="VALID")
+        padding="VALID",
+        pool_grad_grad_func=pool_grad_grad_func)
 
     # SAME padding
     self._VerifyValues(
@@ -413,7 +491,8 @@ class PoolGradTest(XLATestCase):
         input_sizes=[1, 2, 3, 3],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=pool_grad_grad_func)
 
     # SAME padding, non square window
     self._VerifyValues(
@@ -422,7 +501,8 @@ class PoolGradTest(XLATestCase):
         input_sizes=[1, 2, 2, 1],
         ksize=[1, 1, 2, 1],
         strides=[1, 1, 1, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=pool_grad_grad_func)
 
     # VALID padding, uneven stride
     self._VerifyValues(
@@ -431,14 +511,16 @@ class PoolGradTest(XLATestCase):
         input_sizes=[1, 4, 4, 1],
         ksize=[1, 2, 2, 1],
         strides=[1, 1, 2, 1],
-        padding="VALID")
+        padding="VALID",
+        pool_grad_grad_func=pool_grad_grad_func)
     self._VerifyValues(
         forward_op,
         backward_op,
         input_sizes=[1, 4, 4, 1],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 1, 1],
-        padding="VALID")
+        padding="VALID",
+        pool_grad_grad_func=pool_grad_grad_func)
 
     # SAME padding, size 4 input
     self._VerifyValues(
@@ -447,7 +529,8 @@ class PoolGradTest(XLATestCase):
         input_sizes=[1, 4, 4, 4],
         ksize=[1, 2, 2, 1],
         strides=[1, 2, 2, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=pool_grad_grad_func)
 
     # SAME padding, size 8 input
     self._VerifyValues(
@@ -456,10 +539,14 @@ class PoolGradTest(XLATestCase):
         input_sizes=[1, 8, 8, 8],
         ksize=[1, 3, 3, 1],
         strides=[1, 2, 2, 1],
-        padding="SAME")
+        padding="SAME",
+        pool_grad_grad_func=pool_grad_grad_func)
 
   def testMaxPool(self):
-    self._TestPooling(nn_ops.max_pool, gen_nn_ops._max_pool_grad)
+    self._TestPooling(
+        nn_ops.max_pool,
+        gen_nn_ops.max_pool_grad,
+        pool_grad_grad_func=gen_nn_ops.max_pool_grad_grad)
 
   def testAvgPool(self):
     # Wrapper around AvgPoolGrad that ignores extra arguments needed by
@@ -467,7 +554,7 @@ class PoolGradTest(XLATestCase):
     def AvgPoolGrad(inputs, outputs, output_gradients, ksize, strides, padding,
                     data_format):
       del outputs  # Unused by average-pooling gradients.
-      return gen_nn_ops._avg_pool_grad(
+      return gen_nn_ops.avg_pool_grad(
           inputs.get_shape().as_list(),
           output_gradients,
           ksize=ksize,
@@ -483,7 +570,7 @@ class PoolGradTest(XLATestCase):
   def testMaxPoolKernelSmallerThanStrideValid(self):
     self._VerifyValues(
         nn_ops.max_pool,
-        gen_nn_ops._max_pool_grad,
+        gen_nn_ops.max_pool_grad,
         input_sizes=[1, 7, 7, 1],
         ksize=[1, 2, 2, 1],
         strides=[1, 3, 3, 1],
@@ -492,7 +579,7 @@ class PoolGradTest(XLATestCase):
   def testMaxPoolKernelSmallerThanStrideSame(self):
     self._VerifyValues(
         nn_ops.max_pool,
-        gen_nn_ops._max_pool_grad,
+        gen_nn_ops.max_pool_grad,
         input_sizes=[1, 3, 3, 1],
         ksize=[1, 1, 1, 1],
         strides=[1, 2, 2, 1],
@@ -500,7 +587,7 @@ class PoolGradTest(XLATestCase):
 
     self._VerifyValues(
         nn_ops.max_pool,
-        gen_nn_ops._max_pool_grad,
+        gen_nn_ops.max_pool_grad,
         input_sizes=[1, 4, 4, 1],
         ksize=[1, 1, 1, 1],
         strides=[1, 2, 2, 1],

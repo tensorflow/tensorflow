@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -46,7 +47,7 @@ def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
   Raises:
     ValueError: If `dtype` is not a floating point type.
 
-  [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_window
+  [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
   """
   return _raised_cosine_window(name, 'hann_window', window_length, periodic,
                                dtype, 0.5, 0.5)
@@ -71,7 +72,7 @@ def hamming_window(window_length, periodic=True, dtype=dtypes.float32,
   Raises:
     ValueError: If `dtype` is not a floating point type.
 
-  [hamming]: https://en.wikipedia.org/wiki/Window_function#Hamming_window
+  [hamming]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
   """
   return _raised_cosine_window(name, 'hamming_window', window_length, periodic,
                                dtype, 0.54, 0.46)
@@ -105,6 +106,9 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
     window_length = ops.convert_to_tensor(window_length, dtype=dtypes.int32,
                                           name='window_length')
     window_length.shape.assert_has_rank(0)
+    window_length_const = tensor_util.constant_value(window_length)
+    if window_length_const == 1:
+      return array_ops.ones([1], dtype=dtype)
     periodic = math_ops.cast(
         ops.convert_to_tensor(periodic, dtype=dtypes.bool, name='periodic'),
         dtypes.int32)
@@ -115,6 +119,8 @@ def _raised_cosine_window(name, default_name, window_length, periodic,
     count = math_ops.cast(math_ops.range(window_length), dtype)
     cos_arg = constant_op.constant(2 * np.pi, dtype=dtype) * count / n
 
+    if window_length_const is not None:
+      return math_ops.cast(a - b * math_ops.cos(cos_arg), dtype=dtype)
     return control_flow_ops.cond(
         math_ops.equal(window_length, 1),
         lambda: array_ops.ones([1], dtype=dtype),

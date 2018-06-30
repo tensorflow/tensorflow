@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Softplus"
+  summary: "Computes softplus: `log(exp(features) + 1)`."
+}

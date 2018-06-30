@@ -23,12 +23,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-
-namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 
@@ -36,11 +35,12 @@ namespace tensorflow {
 // algorithm.
 class GPUBFCAllocator : public BFCAllocator {
  public:
-  // 'device_id' refers to the StreamExecutor ID of the device within
+  // 'cuda_gpu_id' refers to the ID of the GPU device within
   // the process and must reference a valid ID in the process.
-  GPUBFCAllocator(int device_id, size_t total_memory);
-  GPUBFCAllocator(int device_id, size_t total_memory,
-                  const GPUOptions& gpu_options);
+  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+                  const string& name);
+  GPUBFCAllocator(CudaGpuId cuda_gpu_id, size_t total_memory,
+                  const GPUOptions& gpu_options, const string& name);
   virtual ~GPUBFCAllocator() {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
@@ -50,8 +50,9 @@ class GPUBFCAllocator : public BFCAllocator {
 class GPUMemAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(perftools::gputools::StreamExecutor* stream_exec)
-      : stream_exec_(stream_exec) {
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
+                           bool use_unified_memory)
+      : stream_exec_(stream_exec), use_unified_memory_(use_unified_memory) {
     CHECK(stream_exec_ != nullptr);
   }
   ~GPUMemAllocator() override {}
@@ -59,20 +60,29 @@ class GPUMemAllocator : public SubAllocator {
   void* Alloc(size_t alignment, size_t num_bytes) override {
     void* ptr = nullptr;
     if (num_bytes > 0) {
-      ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+      if (use_unified_memory_) {
+        ptr = stream_exec_->UnifiedMemoryAllocate(num_bytes);
+      } else {
+        ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+      }
     }
     return ptr;
   }
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
-      gpu::DeviceMemoryBase gpu_ptr(ptr);
-      stream_exec_->Deallocate(&gpu_ptr);
+      if (use_unified_memory_) {
+        stream_exec_->UnifiedMemoryDeallocate(ptr);
+      } else {
+        se::DeviceMemoryBase gpu_ptr(ptr);
+        stream_exec_->Deallocate(&gpu_ptr);
+      }
     }
   }
 
  private:
-  perftools::gputools::StreamExecutor* stream_exec_;  // not owned, non-null
+  se::StreamExecutor* stream_exec_;  // not owned, non-null
+  const bool use_unified_memory_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
 };

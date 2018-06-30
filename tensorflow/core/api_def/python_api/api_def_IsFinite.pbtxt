@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "IsFinite"
+  endpoint {
+    name: "debugging.is_finite"
+  }
+  endpoint {
+    name: "is_finite"
+    deprecation_message: "tf.is_finite is deprecated, please use tf.debugging.is_finite instead."
+  }
+}

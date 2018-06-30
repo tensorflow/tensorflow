@@ -39,10 +39,22 @@ namespace xla {
 class ReferenceUtil {
  public:
   // Returns the result of a transpose operation on the input matrix.
-  static std::unique_ptr<Array2D<float>> TransposeArray2D(
-      const Array2D<float>& operand);
+  template <typename T>
+  static std::unique_ptr<Array2D<T>> TransposeArray2D(
+      const Array2D<T>& operand) {
+    auto result = MakeUnique<Array2D<T>>(operand.width(), operand.height());
+    for (int64 w = 0; w < operand.width(); ++w) {
+      for (int64 h = 0; h < operand.height(); ++h) {
+        (*result)(w, h) = operand(h, w);
+      }
+    }
+
+    return result;
+  }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
+  static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
+      const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
   static std::unique_ptr<Array2D<float>> MatmulArray2D(
       const Array2D<float>& lhs, const Array2D<float>& rhs);
   static std::unique_ptr<Array2D<double>> MatmulArray2D(
@@ -70,7 +82,7 @@ class ReferenceUtil {
   // dilation factors.
   static std::unique_ptr<Array4D<float>> ConvArray4DGeneralDimensionsDilated(
       const Array4D<float>& lhs, const Array4D<float>& rhs,
-      std::pair<int64, int64> stride, Padding padding,
+      std::pair<int64, int64> kernel_stride, Padding padding,
       std::pair<int64, int64> lhs_dilation,
       std::pair<int64, int64> rhs_dilation, ConvolutionDimensionNumbers dnums);
 
@@ -173,6 +185,10 @@ class ReferenceUtil {
       const Array2D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
+      const Array3D<float>& operand, float init,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
       const Array4D<float>& operand, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
@@ -183,12 +199,20 @@ class ReferenceUtil {
       const tensorflow::gtl::ArraySlice<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
-      const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+      const tensorflow::gtl::ArraySlice<int64>& stride,
+      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
+  static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
+      const Array2D<float>& operand, float init,
+      const std::function<float(float, float)>& reduce_func,
+      const tensorflow::gtl::ArraySlice<int64>& window,
+      const tensorflow::gtl::ArraySlice<int64>& stride,
+      const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
       const tensorflow::gtl::ArraySlice<int64>& window,
       const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding);
+  // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
@@ -204,6 +228,7 @@ class ReferenceUtil {
 
   // Performs select and scatter with Greater Than or equal as the select, plus
   // as the scatter, and Same Padding.
+  // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
       const tensorflow::gtl::ArraySlice<int64>& window,
@@ -240,9 +265,9 @@ class ReferenceUtil {
                                               const Array3D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 3);
-    std::vector<int64> lhs_dims = {lhs.n1(), lhs.n2(), lhs.n3()};
-    std::vector<int64> rhs_dims = {rhs.n1(), rhs.n2(), rhs.n3()};
-    std::vector<int64> out_dims = {rhs.n1(), rhs.n2(), rhs.n3()};
+    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3()};
+    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
+    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3()};
     for (int i = 0; i < 3; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -274,9 +299,9 @@ class ReferenceUtil {
                                               const Array4D<T>& rhs,
                                               int concatenate_dimension) {
     CHECK(0 <= concatenate_dimension && concatenate_dimension < 4);
-    std::vector<int64> lhs_dims = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
-    std::vector<int64> rhs_dims = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
-    std::vector<int64> out_dims = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    const int64 lhs_dims[] = {lhs.n1(), lhs.n2(), lhs.n3(), lhs.n4()};
+    const int64 rhs_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
+    int64 out_dims[] = {rhs.n1(), rhs.n2(), rhs.n3(), rhs.n4()};
     for (int i = 0; i < 4; ++i) {
       if (i != concatenate_dimension) {
         out_dims[i] = lhs_dims[i];
@@ -305,13 +330,14 @@ class ReferenceUtil {
     return result;
   }
 
-  // Slices with modulo-wrapping.
+  // Slices with index clamping
   template <typename T>
-  static std::vector<T> ModSlice1D(const tensorflow::gtl::ArraySlice<T>& input,
-                                   int64 start, int64 size) {
+  static std::vector<T> ClampSlice1D(
+      const tensorflow::gtl::ArraySlice<T>& input, int64 start, int64 size) {
+    start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
     std::vector<T> result;
     for (int64 i = 0; i < size; ++i) {
-      result.push_back(input[(start + i) % input.size()]);
+      result.push_back(input[(start + i)]);
     }
     return result;
   }
@@ -486,19 +512,146 @@ class ReferenceUtil {
   }
 
   // Returns the result of a 2D pad on an input matrix.
-  static std::unique_ptr<Array2D<float>> PadArray2D(
-      const Array2D<float>& operand, const PaddingConfig& padding,
-      const float pad);
+  template <typename NativeT>
+  static std::unique_ptr<Array2D<NativeT>> PadArray2D(
+      const Array2D<NativeT>& operand, const PaddingConfig& padding,
+      const NativeT pad) {
+    int64 in0 = operand.n1();
+    int64 high_padding0 = padding.dimensions(0).edge_padding_high();
+    int64 low_padding0 = padding.dimensions(0).edge_padding_low();
+    int64 interior_padding0 = padding.dimensions(0).interior_padding();
+    int64 out0 =
+        in0 + low_padding0 + high_padding0 + (in0 - 1) * interior_padding0;
+
+    int64 in1 = operand.n2();
+    int64 high_padding1 = padding.dimensions(1).edge_padding_high();
+    int64 low_padding1 = padding.dimensions(1).edge_padding_low();
+    int64 interior_padding1 = padding.dimensions(1).interior_padding();
+    int64 out1 =
+        in1 + low_padding1 + high_padding1 + (in1 - 1) * interior_padding1;
+
+    auto result = MakeUnique<Array2D<NativeT>>(out0, out1);
+    result->Fill(pad);
+    int64 o0 = low_padding0;
+    for (int64 i0 = 0; i0 < in0; ++i0) {
+      int64 o1 = low_padding1;
+      for (int64 i1 = 0; i1 < in1; ++i1) {
+        if (o0 >= 0 && o1 >= 0 && o0 < out0 && o1 < out1) {
+          (*result)(o0, o1) = operand(i0, i1);
+        }
+        o1 += interior_padding1 + 1;
+      }
+      o0 += interior_padding0 + 1;
+    }
+    return result;
+  }
 
   // Returns the result of a 3D pad on an input matrix.
-  static Array3D<float> PadArray3D(const Array3D<float>& operand,
-                                   const PaddingConfig& padding,
-                                   const float pad);
+  template <typename NativeT>
+  static Array3D<NativeT> PadArray3D(const Array3D<NativeT>& operand,
+                                     const PaddingConfig& padding,
+                                     const NativeT pad) {
+    CHECK_EQ(padding.dimensions_size(), 3);
+
+    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3()};
+    int64 pad_low[3];
+    int64 pad_high[3];
+    int64 pad_interior[3];
+    int64 output_bounds[3];
+    for (int64 i = 0; i < 3; ++i) {
+      pad_low[i] = padding.dimensions(i).edge_padding_low();
+      pad_high[i] = padding.dimensions(i).edge_padding_high();
+      CHECK_LE(0, pad_low[i]);
+      CHECK_LE(0, pad_high[i]);
+      CHECK_LE(0, padding.dimensions(i).interior_padding())
+          << "not implemented";
+      pad_interior[i] = padding.dimensions(i).interior_padding();
+
+      output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
+                         (input_bounds[i] - 1) * pad_interior[i];
+    }
+
+    Array3D<NativeT> result(output_bounds[0], output_bounds[1],
+                            output_bounds[2]);
+    int indices[] = {0, 0, 0};
+    for (indices[0] = 0; indices[0] < output_bounds[0]; ++indices[0]) {
+      for (indices[1] = 0; indices[1] < output_bounds[1]; ++indices[1]) {
+        for (indices[2] = 0; indices[2] < output_bounds[2]; ++indices[2]) {
+          NativeT* value = &result(indices[0], indices[1], indices[2]);
+          bool value_padded = false;
+          for (int i = 0; i < 3; ++i) {
+            bool in_low_padding = indices[i] < pad_low[i];
+            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+            if (in_low_padding || in_high_padding) {
+              *value = pad;
+              value_padded = true;
+            }
+            if (pad_interior[i] &&
+                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+              *value = pad;
+              value_padded = true;
+            }
+          }
+          if (value_padded) {
+            continue;
+          }
+          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1));
+        }
+      }
+    }
+    return result;
+  }
 
   // Returns the result of a 4D pad on an input array.
-  static Array4D<float> PadArray4D(const Array4D<float>& operand,
-                                   const PaddingConfig& padding,
-                                   const float pad);
+  template <typename NativeT>
+  static Array4D<NativeT> PadArray4D(const Array4D<NativeT>& operand,
+                                     const PaddingConfig& padding,
+                                     const NativeT pad) {
+    CHECK_EQ(padding.dimensions_size(), 4);
+
+    const int64 input_bounds[] = {operand.n1(), operand.n2(), operand.n3(),
+                                  operand.n4()};
+    int64 pad_low[4];
+    int64 pad_high[4];
+    int64 pad_interior[4];
+    int64 output_bounds[4];
+    for (int64 i = 0; i < 4; ++i) {
+      pad_low[i] = padding.dimensions(i).edge_padding_low();
+      pad_high[i] = padding.dimensions(i).edge_padding_high();
+      CHECK_LE(0, padding.dimensions(i).interior_padding())
+          << "not implemented";
+      pad_interior[i] = padding.dimensions(i).interior_padding();
+
+      output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
+                         (input_bounds[i] - 1) * pad_interior[i];
+    }
+
+    Array4D<NativeT> result(output_bounds[0], output_bounds[1],
+                            output_bounds[2], output_bounds[3]);
+    result.Each(
+        [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT* value) {
+          for (int i = 0; i < 4; ++i) {
+            bool in_low_padding = indices[i] < pad_low[i];
+            bool in_high_padding = indices[i] >= output_bounds[i] - pad_high[i];
+            if (in_low_padding || in_high_padding) {
+              *value = pad;
+              return;
+            }
+            if (pad_interior[i] &&
+                (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+              *value = pad;
+              return;
+            }
+          }
+          *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                           (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                           (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
+                           (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
+        });
+    return result;
+  }
 
   // ApplyElementwise2D(f, x, y, ...) returns the Array2D formed by running
   // f(x[i], y[i], ...) for each array element in the Array2Ds x, y, ....

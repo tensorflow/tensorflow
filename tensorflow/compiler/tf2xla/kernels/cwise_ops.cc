@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/bcast.h"
@@ -75,7 +75,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   // Call virtual method to emit the computation.
-  xla::ComputationDataHandle output =
+  xla::XlaOp output =
       Computation(ctx, lhs_handle, lhs_shape.dim_sizes(), rhs_handle,
                   rhs_shape.dim_sizes(), bcast, extend_dimension);
 
@@ -85,11 +85,9 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   ctx->SetOutput(0, output);
 }
 
-/* static */ std::pair<xla::ComputationDataHandle, xla::ComputationDataHandle>
-XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
-                       const xla::ComputationDataHandle& lhs,
-                       const xla::ComputationDataHandle& rhs,
-                       const BCast& broadcast_helper) {
+/* static */ std::pair<xla::XlaOp, xla::XlaOp> XlaBinaryOp::Broadcast(
+    xla::XlaBuilder* builder, const xla::XlaOp& lhs, const xla::XlaOp& rhs,
+    const BCast& broadcast_helper) {
   // Manually construct the broadcasting since MapN does not do
   // automatic broadcasting. The bcast helper ensures that
   // lhs.reshape(bcast.x_reshape()).broadcast(bcast.x_bcast()) and
@@ -98,18 +96,16 @@ XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
 
   // First reshape the inputs, which should be a metadata-only
   // operation since we are flattening the dimensions in order.
-  auto lhs_shaped = builder->Reshape(lhs, broadcast_helper.x_reshape());
-  auto rhs_shaped = builder->Reshape(rhs, broadcast_helper.y_reshape());
+  auto lhs_shaped = xla::Reshape(lhs, broadcast_helper.x_reshape());
+  auto rhs_shaped = xla::Reshape(rhs, broadcast_helper.y_reshape());
 
   // Next broadcast the necessary input dimensions. We rely on the
   // XLA optimizer to be smart about the fact that we are asking
   // it to broadcast size 1 on some of these dimensions, to avoid
   // adding complexity to this code.
-  auto lhs_broadcast =
-      builder->Broadcast(lhs_shaped, broadcast_helper.x_bcast());
+  auto lhs_broadcast = xla::Broadcast(lhs_shaped, broadcast_helper.x_bcast());
   int lhs_size = broadcast_helper.x_bcast().size();
-  auto rhs_broadcast =
-      builder->Broadcast(rhs_shaped, broadcast_helper.y_bcast());
+  auto rhs_broadcast = xla::Broadcast(rhs_shaped, broadcast_helper.y_bcast());
   int rhs_size = broadcast_helper.y_bcast().size();
 
   // Now reshape them to the correct output shape. After the
@@ -124,15 +120,15 @@ XlaBinaryOp::Broadcast(xla::ComputationBuilder* builder,
     lhs_reorder.push_back(i);
     lhs_reorder.push_back(i + lhs_size);
   }
-  auto lhs_output = builder->Reshape(lhs_broadcast, lhs_reorder,
-                                     broadcast_helper.output_shape());
+  auto lhs_output =
+      xla::Reshape(lhs_broadcast, lhs_reorder, broadcast_helper.output_shape());
   std::vector<int64> rhs_reorder;
   for (int i = 0; i < rhs_size; ++i) {
     rhs_reorder.push_back(i);
     rhs_reorder.push_back(i + rhs_size);
   }
-  auto rhs_output = builder->Reshape(rhs_broadcast, rhs_reorder,
-                                     broadcast_helper.output_shape());
+  auto rhs_output =
+      xla::Reshape(rhs_broadcast, rhs_reorder, broadcast_helper.output_shape());
 
   return {lhs_output, rhs_output};
 }

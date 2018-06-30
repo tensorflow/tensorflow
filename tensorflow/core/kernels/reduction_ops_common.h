@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -42,7 +43,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 struct Constants {
@@ -68,11 +69,13 @@ struct ConstantsBase {
   const Eigen::IndexList<Eigen::type2index<1>> kOne;
   const Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<2>> kZeroTwo;
 };
-template<> struct Constants<CPUDevice> : ConstantsBase{};
+template <>
+struct Constants<CPUDevice> : ConstantsBase {};
 #ifdef TENSORFLOW_USE_SYCL
-template<> struct Constants<SYCLDevice> : ConstantsBase{};
-#endif // TENSORFLOW_USE_SYCL
-#endif // EIGEN_HAS_INDEX_LIST
+template <>
+struct Constants<SYCLDevice> : ConstantsBase {};
+#endif  // TENSORFLOW_USE_SYCL
+#endif  // EIGEN_HAS_INDEX_LIST
 
 class ReductionHelper {
  public:
@@ -131,12 +134,13 @@ class ReductionHelper {
 
 // For operations where the output is a reduction function along some
 // dimensions of the input.
-template <typename Device, class T, typename Reducer>
+template <typename Device, class T, typename Tperm, typename Reducer>
 class ReductionOp : public OpKernel {
  public:
   explicit ReductionOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     const DataType dt = DataTypeToEnum<T>::v();
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
+    const DataType pt = DataTypeToEnum<Tperm>::v();
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, pt}, {dt}));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
   }
@@ -190,24 +194,24 @@ class ReductionOp : public OpKernel {
       Functor::FillIdentity(d, tmp_out.flat<T>(), reducer);
     } else if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
       // Reduce to a scalar.
-      Functor::Reduce(d, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
+      Functor::Reduce(ctx, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
                       constants.kZero, reducer);
     } else if ((helper.ndims() == 2) && helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a matrix along 1st dimension.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
+      Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
                       constants.kZero, reducer);
     } else if ((helper.ndims() == 2) && !helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a matrix along 2nd dimension.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
+      Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
                       constants.kOne, reducer);
     } else if ((helper.ndims() == 3) && helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a 3D tensor along 1st and 3rd
       // dimensions.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 3>(data),
+      Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 3>(data),
                       constants.kZeroTwo, reducer);
     } else if ((helper.ndims() == 3) && !helper.reduce_first_axis()) {
       // Can be viewed as a reduction of a 3D tensor along 2nd dimension.
-      Functor::Reduce(d, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
+      Functor::Reduce(ctx, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
                       constants.kOne, reducer);
     } else {
       // If we don't hit one of the cases above, transpose the data so that
@@ -223,7 +227,7 @@ class ReductionOp : public OpKernel {
       const int64 unreduced = tmp_out.NumElements();
       const int64 reduced = shuffled.NumElements() / unreduced;
       const Tensor& const_shuffled = shuffled;
-      Functor::Reduce(d, tmp_out.flat<T>(),
+      Functor::Reduce(ctx, tmp_out.flat<T>(),
                       const_shuffled.shaped<T, 2>({unreduced, reduced}),
                       constants.kOne, reducer);
     }
@@ -234,16 +238,6 @@ class ReductionOp : public OpKernel {
     Tensor out;
     if (!out.CopyFrom(tmp_out, helper.out_shape())) {
       ctx->SetStatus(errors::Internal("Error during reduction copy."));
-    }
-    if (ctx->track_allocations()) {
-      // The temporary memory becomes the output memory.
-      if (ctx->allocate_on_host(alloc_attr)) {
-        ctx->record_host_temp_memory_size(
-            -static_cast<int64>(out.AllocatedBytes()));
-      } else {
-        ctx->record_device_temp_memory_size(
-            -static_cast<int64>(out.AllocatedBytes()));
-      }
     }
     ctx->set_output(0, out);
   }
@@ -258,27 +252,27 @@ namespace functor {
 template <typename Device, typename Reducer>
 struct ReduceFunctorBase {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const Device& d, OUT_T out, IN_T in,
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
+    const Device& d = ctx->eigen_device<Device>();
     ReduceEigenImpl(d, out, in, reduction_axes, reducer);
   }
 
   template <typename OUT_T>
-  static void FillIdentity(const Device& d, OUT_T out,
-                           const Reducer& reducer) {
+  static void FillIdentity(const Device& d, OUT_T out, const Reducer& reducer) {
     FillIdentityEigenImpl(d, out, reducer);
   }
 };
 
 template <typename Reducer>
 struct ReduceFunctor<CPUDevice, Reducer>
-        : ReduceFunctorBase<CPUDevice, Reducer>{};
+    : ReduceFunctorBase<CPUDevice, Reducer> {};
 #if TENSORFLOW_USE_SYCL
 template <typename Reducer>
 struct ReduceFunctor<SYCLDevice, Reducer>
-        : ReduceFunctorBase<SYCLDevice, Reducer>{};
-#endif // TENSORFLOW_USE_SYCL
+    : ReduceFunctorBase<SYCLDevice, Reducer> {};
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

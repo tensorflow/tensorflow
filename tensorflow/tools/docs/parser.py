@@ -21,20 +21,25 @@ from __future__ import print_function
 import ast
 import collections
 import functools
+import itertools
 import json
 import os
 import re
-import sys
 
-import codegen
+import astor
 import six
 
 from google.protobuf.message import Message as ProtoMessage
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
-# A regular expression capturing a python indentifier.
-IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
+# A regular expression capturing a python identifier.
+IDENTIFIER_RE = r'[a-zA-Z_]\w*'
+
+
+class TFDocsError(Exception):
+  pass
 
 
 class _Errors(object):
@@ -48,7 +53,7 @@ class _Errors(object):
     template = 'ERROR:\n    output file name: %s\n    %s\n\n'
 
     for full_name, message in self._errors:
-      print(template % (full_name, message), file=sys.stderr)
+      logging.warn(template, full_name, message)
 
   def append(self, full_name, message):
     """Add an error to the collection.
@@ -107,23 +112,42 @@ def _get_raw_docstring(py_object):
 
 
 # A regular expression for capturing a @{symbol} reference.
-SYMBOL_REFERENCE_RE = re.compile(r'@\{([^}]+)\}')
+SYMBOL_REFERENCE_RE = re.compile(
+    r"""
+    # Start with a literal "@{".
+    @\{
+      # Group at least 1 symbol, not "}".
+      ([^}]+)
+    # Followed by a closing "}"
+    \}
+    """,
+    flags=re.VERBOSE)
+
+AUTO_REFERENCE_RE = re.compile(r'`([a-zA-Z0-9_.]+?)`')
 
 
 class ReferenceResolver(object):
   """Class for replacing @{...} references with Markdown links.
 
-  Args:
-    duplicate_of: A map from duplicate names to preferred names of API
-      symbols.
-    doc_index: A `dict` mapping symbol name strings to objects with `url`
-      and `title` fields. Used to resolve @{$doc} references in docstrings.
-    index: A map from all full names to python objects.
-    py_module_names: A list of string names of Python modules.
+  Attributes:
+    current_doc_full_name: A string (or None) indicating the name of the
+      document currently being processed, so errors can reference the broken
+      doc.
   """
 
   def __init__(self, duplicate_of, doc_index, is_class, is_module,
                py_module_names):
+    """Initializes a Reference Resolver.
+
+    Args:
+      duplicate_of: A map from duplicate names to preferred names of API
+        symbols.
+      doc_index: A `dict` mapping symbol name strings to objects with `url`
+        and `title` fields. Used to resolve @{$doc} references in docstrings.
+      is_class: A map from full names to bool for each symbol.
+      is_module: A map from full names to bool for each symbol.
+      py_module_names: A list of string names of Python modules.
+    """
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
     self._is_class = is_class
@@ -223,10 +247,25 @@ class ReferenceResolver(object):
     Returns:
       `string`, with "@{symbol}" references replaced by Markdown links.
     """
-    def one_ref(match):
-      return self._one_ref(match, relative_path_to_root)
 
-    return re.sub(SYMBOL_REFERENCE_RE, one_ref, string)
+    def strict_one_ref(match):
+      try:
+        return self._one_ref(match, relative_path_to_root)
+      except TFDocsError as e:
+        self.add_error(e.message)
+        return 'BAD_LINK'
+
+    string = re.sub(SYMBOL_REFERENCE_RE, strict_one_ref, string)
+
+    def sloppy_one_ref(match):
+      try:
+        return self._one_ref(match, relative_path_to_root)
+      except TFDocsError:
+        return match.group(0)
+
+    string = re.sub(AUTO_REFERENCE_RE, sloppy_one_ref, string)
+
+    return string
 
   def python_link(self, link_text, ref_full_name, relative_path_to_root,
                   code_ref=True):
@@ -249,11 +288,19 @@ class ReferenceResolver(object):
     Returns:
       A markdown link to the documentation page of `ref_full_name`.
     """
-    link = self.reference_to_url(ref_full_name, relative_path_to_root)
+    url = self.reference_to_url(ref_full_name, relative_path_to_root)
+
     if code_ref:
-      return '[`%s`](%s)' % (link_text, link)
+      link_text = link_text.join(['<code>', '</code>'])
     else:
-      return '[%s](%s)' % (link_text, link)
+      link_text = self._link_text_to_html(link_text)
+
+    return '<a href="{}">{}</a>'.format(url, link_text)
+
+  @staticmethod
+  def _link_text_to_html(link_text):
+    code_re = '`(.*?)`'
+    return re.sub(code_re, r'<code>\1</code>', link_text)
 
   def py_master_name(self, full_name):
     """Return the master name for a Python symbol name."""
@@ -282,14 +329,14 @@ class ReferenceResolver(object):
 
     Raises:
       RuntimeError: If `ref_full_name` is not documented.
+      TFDocsError: If the @{} syntax cannot be decoded.
     """
     master_name = self._duplicate_of.get(ref_full_name, ref_full_name)
 
     # Check whether this link exists
     if master_name not in self._all_names:
-      message = 'Cannot make link to "%s": Not in index.' % master_name
-      self.add_error(message)
-      return 'BROKEN_LINK'
+      raise TFDocsError(
+          'Cannot make link to "%s": Not in index.' % master_name)
 
     # If this is a member of a class, link to the class page with an anchor.
     ref_path = None
@@ -322,13 +369,13 @@ class ReferenceResolver(object):
 
     # Handle different types of references.
     if string.startswith('$'):  # Doc reference
-      return self._doc_link(
-          string, link_text, manual_link_text, relative_path_to_root)
+      return self._doc_link(string, link_text, manual_link_text,
+                            relative_path_to_root)
 
     elif string.startswith('tensorflow::'):
       # C++ symbol
-      return self._cc_link(
-          string, link_text, manual_link_text, relative_path_to_root)
+      return self._cc_link(string, link_text, manual_link_text,
+                           relative_path_to_root)
 
     else:
       is_python = False
@@ -337,12 +384,15 @@ class ReferenceResolver(object):
           is_python = True
           break
       if is_python:  # Python symbol
-        return self.python_link(link_text, string, relative_path_to_root,
-                                code_ref=not manual_link_text)
+        return self.python_link(
+            link_text,
+            string,
+            relative_path_to_root,
+            code_ref=not manual_link_text)
 
     # Error!
-    self.add_error('Did not understand "%s"' % match.group(0))
-    return 'BROKEN_LINK'
+    raise TFDocsError('Did not understand "%s"' % match.group(0),
+                      'BROKEN_LINK')
 
   def _doc_link(self, string, link_text, manual_link_text,
                 relative_path_to_root):
@@ -361,15 +411,16 @@ class ReferenceResolver(object):
       if not manual_link_text: link_text = self._doc_index[string].title
       url = os.path.normpath(os.path.join(
           relative_path_to_root, '../..', self._doc_index[string].url))
-      return '[%s](%s%s)' % (link_text, url, hash_tag)
+      link_text = self._link_text_to_html(link_text)
+      return '<a href="{}{}">{}</a>'.format(url, hash_tag, link_text)
+
     return self._doc_missing(string, hash_tag, link_text, manual_link_text,
                              relative_path_to_root)
 
-  def _doc_missing(self, string, unused_hash_tag, link_text,
+  def _doc_missing(self, string, unused_hash_tag, unused_link_text,
                    unused_manual_link_text, unused_relative_path_to_root):
     """Generate an error for unrecognized @{$...} references."""
-    self.add_error('Unknown Document "%s"' % string)
-    return link_text
+    raise TFDocsError('Unknown Document "%s"' % string)
 
   def _cc_link(self, string, link_text, unused_manual_link_text,
                relative_path_to_root):
@@ -386,13 +437,15 @@ class ReferenceResolver(object):
     elif string == 'tensorflow::ops::Const':
       ret = 'namespace/tensorflow/ops.md#const'
     else:
-      self.add_error('C++ reference not understood: "%s"' % string)
-      return 'TODO_C++:%s' % string
+      raise TFDocsError('C++ reference not understood: "%s"' % string)
+
     # relative_path_to_root gets you to api_docs/python, we go from there
     # to api_docs/cc, and then add ret.
     cc_relative_path = os.path.normpath(os.path.join(
         relative_path_to_root, '../cc', ret))
-    return '[`%s`](%s)' % (link_text, cc_relative_path)
+
+    return '<a href="{}"><code>{}</code></a>'.format(cc_relative_path,
+                                                     link_text)
 
 
 # TODO(aselle): Collect these into a big list for all modules and functions
@@ -446,7 +499,7 @@ class _FunctionDetail(
     parts = [self.keyword + ':\n']
     parts.append(self.header)
     for key, value in self.items:
-      parts.append('  ' + key + ':')
+      parts.append('  ' + key + ': ')
       parts.append(value)
 
     return ''.join(parts)
@@ -507,7 +560,7 @@ def _parse_function_details(docstring):
   pairs = list(_gen_pairs(parts[1:]))
 
   function_details = []
-  item_re = re.compile(r'^  (\*?\*?\w+):', re.MULTILINE)
+  item_re = re.compile(r'^   ? ?(\*?\*?\w[\w.]*?\s*):\s', re.MULTILINE)
 
   for keyword, content in pairs:
     content = item_re.split(content)
@@ -562,6 +615,9 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
   docstring, compatibility = _handle_compatibility(raw_docstring)
   docstring, function_details = _parse_function_details(docstring)
 
+  if 'Generated by: tensorflow/tools/api/generator' in docstring:
+    docstring = ''
+
   return _DocstringInfo(
       docstring.split('\n')[0], docstring, function_details, compatibility)
 
@@ -569,20 +625,20 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
 def _get_arg_spec(func):
   """Extracts signature information from a function or functools.partial object.
 
-  For functions, uses `tf_inspect.getargspec`. For `functools.partial` objects,
-  corrects the signature of the underlying function to take into account the
-  removed arguments.
+  For functions, uses `tf_inspect.getfullargspec`. For `functools.partial`
+  objects, corrects the signature of the underlying function to take into
+  account the removed arguments.
 
   Args:
     func: A function whose signature to extract.
 
   Returns:
-    An `ArgSpec` namedtuple `(args, varargs, keywords, defaults)`, as returned
-    by `tf_inspect.getargspec`.
+    An `FullArgSpec` namedtuple `(args, varargs, varkw, defaults, etc.)`,
+    as returned by `tf_inspect.getfullargspec`.
   """
-  # getargspec does not work for functools.partial objects directly.
+  # getfullargspec does not work for functools.partial objects directly.
   if isinstance(func, functools.partial):
-    argspec = tf_inspect.getargspec(func.func)
+    argspec = tf_inspect.getfullargspec(func.func)
     # Remove the args from the original function that have been used up.
     first_default_arg = (
         len(argspec.args or []) - len(argspec.defaults or []))
@@ -605,12 +661,16 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    return tf_inspect.ArgSpec(args=argspec_args,
-                              varargs=argspec.varargs,
-                              keywords=argspec.keywords,
-                              defaults=tuple(argspec_defaults))
+    return tf_inspect.FullArgSpec(
+        args=argspec_args,
+        varargs=argspec.varargs,
+        varkw=argspec.varkw,
+        defaults=tuple(argspec_defaults),
+        kwonlyargs=[],
+        kwonlydefaults=None,
+        annotations={})
   else:  # Regular function or method, getargspec will work fine.
-    return tf_inspect.getargspec(func)
+    return tf_inspect.getfullargspec(func)
 
 
 def _remove_first_line_indent(string):
@@ -618,11 +678,14 @@ def _remove_first_line_indent(string):
   return '\n'.join([line[indent:] for line in string.split('\n')])
 
 
+PAREN_NUMBER_RE = re.compile(r'^\(([0-9.e-]+)\)')
+
+
 def _generate_signature(func, reverse_index):
   """Given a function, returns a list of strings representing its args.
 
   This function produces a list of strings representing the arguments to a
-  python function. It uses tf_inspect.getargspec, which
+  python function. It uses tf_inspect.getfullargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -673,7 +736,11 @@ def _generate_signature(func, reverse_index):
       if id(default) in reverse_index:
         default_text = reverse_index[id(default)]
       elif ast_default is not None:
-        default_text = codegen.to_source(ast_default)
+        default_text = (
+            astor.to_source(ast_default).rstrip('\n').replace('\t', '\\t')
+            .replace('\n', '\\n').replace('"""', "'"))
+        default_text = PAREN_NUMBER_RE.sub('\\1', default_text)
+
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
           # TODO(wicke): This should be replaced with a lookup in the index.
@@ -694,8 +761,9 @@ def _generate_signature(func, reverse_index):
                 lookup_text = public_name + default_text[len(internal_name):]
                 break
             if default_text is lookup_text:
-              print('WARNING: Using default arg, failed lookup: %s, repr: %r' %
-                    (default_text, default))
+              logging.warn(
+                  'WARNING: Using default arg, failed lookup: %s, repr: %r',
+                  default_text, default)
             else:
               default_text = lookup_text
       else:
@@ -706,8 +774,8 @@ def _generate_signature(func, reverse_index):
   # Add *args and *kwargs.
   if argspec.varargs:
     args_list.append('*' + argspec.varargs)
-  if argspec.keywords:
-    args_list.append('**' + argspec.keywords)
+  if argspec.varkw:
+    args_list.append('**' + argspec.varkw)
 
   return args_list
 
@@ -754,8 +822,9 @@ class _OtherMemberInfo(
 _PropertyInfo = collections.namedtuple(
     '_PropertyInfo', ['short_name', 'full_name', 'obj', 'doc'])
 
-_MethodInfo = collections.namedtuple(
-    '_MethodInfo', ['short_name', 'full_name', 'obj', 'doc', 'signature'])
+_MethodInfo = collections.namedtuple('_MethodInfo', [
+    'short_name', 'full_name', 'obj', 'doc', 'signature', 'decorators'
+])
 
 
 class _FunctionPageInfo(object):
@@ -769,6 +838,7 @@ class _FunctionPageInfo(object):
     self._guides = None
 
     self._signature = None
+    self._decorators = []
 
   def for_function(self):
     return True
@@ -833,6 +903,16 @@ class _FunctionPageInfo(object):
 
     assert self.signature is None
     self._signature = _generate_signature(function, reverse_index)
+
+  @property
+  def decorators(self):
+    return list(self._decorators)
+
+  def add_decorator(self, dec):
+    self._decorators.append(dec)
+
+  def get_metadata_html(self):
+    return _Metadata(self.full_name).build_html()
 
 
 class _ClassPageInfo(object):
@@ -914,7 +994,7 @@ class _ClassPageInfo(object):
     """Sets the `aliases` list.
 
     Args:
-      aliases: A list of strings. Containing all the obejct's full names.
+      aliases: A list of strings. Containing all the object's full names.
     """
     assert self.aliases is None
     self._aliases = aliases
@@ -1004,7 +1084,7 @@ class _ClassPageInfo(object):
     """Returns a list of `_MethodInfo` describing the class' methods."""
     return self._methods
 
-  def _add_method(self, short_name, full_name, obj, doc, signature):
+  def _add_method(self, short_name, full_name, obj, doc, signature, decorators):
     """Adds a `_MethodInfo` entry to the `methods` list.
 
     Args:
@@ -1013,14 +1093,27 @@ class _ClassPageInfo(object):
       obj: The method object itself
       doc: The method's parsed docstring, a `_DocstringInfo`
       signature: The method's parsed signature (see: `_generate_signature`)
+      decorators: A list of strings describing the decorators that should be
+        mentioned on the object's docs page.
     """
-    method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
+
+    method_info = _MethodInfo(short_name, full_name, obj, doc, signature,
+                              decorators)
+
     self._methods.append(method_info)
 
   @property
   def classes(self):
     """Returns a list of `_LinkInfo` pointing to any nested classes."""
     return self._classes
+
+  def get_metadata_html(self):
+    meta_data = _Metadata(self.full_name)
+    for item in itertools.chain(self.classes, self.properties, self.methods,
+                                self.other_members):
+      meta_data.append(item)
+
+    return meta_data.build_html()
 
   def _add_class(self, short_name, full_name, obj, doc, url):
     """Adds a `_LinkInfo` for a nested class to `classes` list.
@@ -1070,9 +1163,11 @@ class _ClassPageInfo(object):
 
     for short_name in parser_config.tree[self.full_name]:
       # Remove builtin members that we never want to document.
-      if short_name in ['__class__', '__base__', '__weakref__', '__doc__',
-                        '__module__', '__dict__', '__abstractmethods__',
-                        '__slots__', '__getnewargs__']:
+      if short_name in [
+          '__class__', '__base__', '__weakref__', '__doc__', '__module__',
+          '__dict__', '__abstractmethods__', '__slots__', '__getnewargs__',
+          '__str__', '__repr__', '__hash__', '__reduce__'
+      ]:
         continue
 
       child_name = '.'.join([self.full_name, short_name])
@@ -1117,9 +1212,8 @@ class _ClassPageInfo(object):
         # obvious what they do, don't include them in the docs if there's no
         # docstring.
         if not child_doc.brief.strip() and short_name in [
-            '__str__', '__repr__', '__hash__', '__del__', '__copy__']:
-          print('Skipping %s, defined in %s, no docstring.' % (child_name,
-                                                               defining_class))
+            '__del__', '__copy__'
+        ]:
           continue
 
         try:
@@ -1131,8 +1225,21 @@ class _ClassPageInfo(object):
           # functions.
           continue
 
+        child_decorators = []
+        try:
+          if isinstance(py_class.__dict__[short_name], classmethod):
+            child_decorators.append('classmethod')
+        except KeyError:
+          pass
+
+        try:
+          if isinstance(py_class.__dict__[short_name], staticmethod):
+            child_decorators.append('staticmethod')
+        except KeyError:
+          pass
+
         self._add_method(short_name, child_name, child, child_doc,
-                         child_signature)
+                         child_signature, child_decorators)
       else:
         # Exclude members defined by protobuf that are useless
         if issubclass(py_class, ProtoMessage):
@@ -1237,6 +1344,16 @@ class _ModulePageInfo(object):
     self._other_members.append(
         _OtherMemberInfo(short_name, full_name, obj, doc))
 
+  def get_metadata_html(self):
+    meta_data = _Metadata(self.full_name)
+
+    # Objects with their own pages are not added to the matadata list for the
+    # module, the module only has a link to the object page. No docs.
+    for item in self.other_members:
+      meta_data.append(item)
+
+    return meta_data.build_html()
+
   def collect_docs_for_module(self, parser_config):
     """Collect information necessary specifically for a module's doc page.
 
@@ -1253,7 +1370,8 @@ class _ModulePageInfo(object):
     for name in member_names:
 
       if name in ['__builtins__', '__doc__', '__file__',
-                  '__name__', '__path__', '__package__']:
+                  '__name__', '__path__', '__package__',
+                  '__cached__', '__loader__', '__spec__']:
         continue
 
       member_full_name = self.full_name + '.' + name if self.full_name else name
@@ -1411,7 +1529,7 @@ class _PythonBuiltin(object):
 class _PythonFile(object):
   """This class indicates that the object is defined in a regular python file.
 
-  This can be used for the `defined_in` slot of the `PageInfo` obejcts.
+  This can be used for the `defined_in` slot of the `PageInfo` objects.
   """
 
   def __init__(self, path, parser_config):
@@ -1482,13 +1600,14 @@ class _GeneratedFile(object):
     return True
 
   def __str__(self):
-    return 'Defined in `%s%s`.\n\n' % (self.path_prefix, self.path)
+    return 'Defined in generated file: `%s%s`.\n\n' % (self.path_prefix,
+                                                       self.path)
 
 
 def _get_defined_in(py_object, parser_config):
   """Returns a description of where the passed in python object was defined.
 
-  Arguments:
+  Args:
     py_object: The Python object.
     parser_config: A ParserConfig object.
 
@@ -1518,6 +1637,8 @@ def _get_defined_in(py_object, parser_config):
     return None
 
   if re.match(r'.*/gen_[^/]*\.py$', path):
+    return _GeneratedFile(path, parser_config)
+  if 'genfiles' in path or 'tools/api/generator' in path:
     return _GeneratedFile(path, parser_config)
   elif re.match(r'.*_pb2\.py$', path):
     # The _pb2.py files all appear right next to their defining .proto file.
@@ -1563,3 +1684,41 @@ def generate_global_index(library_name, index, reference_resolver):
 
   # TODO(markdaoust): use a _ModulePageInfo -> prety_docs.build_md_page()
   return '\n'.join(lines)
+
+
+class _Metadata(object):
+  """A class for building a page's Metadata block.
+
+  Attributes:
+    name: The name of the page being described by the Metadata block.
+  """
+
+  def __init__(self, name):
+    """Creates a Metadata builder.
+
+    Args:
+      name: The name of the page being described by the Metadata block.
+    """
+    self.name = name
+    self._content = []
+
+  def append(self, item):
+    """Adds an item from the page to the Metadata block.
+
+    Args:
+      item: The parsed page section to add.
+    """
+    self._content.append(item.short_name)
+
+  def build_html(self):
+    """Returns the Metadata block as an Html string."""
+    schema = 'http://developers.google.com/ReferenceObject'
+    parts = ['<div itemscope itemtype="%s">' % schema]
+
+    parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    for item in self._content:
+      parts.append('<meta itemprop="property" content="%s"/>' % item)
+
+    parts.extend(['</div>', ''])
+
+    return '\n'.join(parts)

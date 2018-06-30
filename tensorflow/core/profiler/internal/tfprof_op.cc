@@ -109,13 +109,13 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     fprintf(stderr, "Only 'code' view supports pprof output now.\n");
     return root_.get();
   }
-
   if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
     root_->formatted_str = FormatNode(root_.get(), root_.get(), opts);
   }
   if (timeline) {
-    fprintf(stderr, "op view doesn't support timeline yet. "
-                    "Consider graph/scope/code view.\n");
+    fprintf(stderr,
+            "op view doesn't support timeline yet. "
+            "Consider graph/scope/code view.\n");
     return root_.get();
   }
   if (cnodes_map_.empty()) {
@@ -130,7 +130,6 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     nodes.push_back(n.second.get());
   }
   nodes = SortNodes(nodes, opts);
-
   // pre keeps track of previous visited node.
   OpNode* pre = nullptr;
   std::vector<OpNode*> account_nodes;
@@ -166,10 +165,6 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
       (*it)->AddSelfToTotalStats();
       if (pre) (*it)->AggregateTotalStats(pre);
     }
-    if (pre) {
-      (*it)->mutable_proto()->add_children()->MergeFrom(pre->proto());
-      pre->mutable_proto()->clear_children();
-    }
     pre = *it;
   }
   if (opts.account_displayed_op_only) {
@@ -178,11 +173,6 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
       root_->AggregateTotalStats(pre);
     }
   }
-  if (pre) {
-    root_->mutable_proto()->add_children()->MergeFrom(pre->proto());
-    pre->mutable_proto()->clear_children();
-  }
-
   if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
     string display_str = FormatLegend(opts);
     for (OpNode* node : show_nodes) {
@@ -191,6 +181,13 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     // In op view, we don't show root (total). But it will still in proto.
     // TODO(xpan): Is it the right choice?
     root_->formatted_str = display_str;
+  }
+  // Populate the chidren field.
+  auto* pre_pb = root_->mutable_proto();
+  for (auto& show_node : show_nodes) {
+    pre_pb->clear_children();
+    pre_pb->add_children()->Swap(show_node->mutable_proto());
+    pre_pb = pre_pb->mutable_children(0);
   }
   return root_.get();
 }
@@ -211,24 +208,44 @@ int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
   return i;
 }
 
+string TFOp::FormatMemoryNode(int64 node_total_bytes, int64 root_total_bytes,
+                              int64 node_bytes) const {
+  double accu_pct = 0.0;
+  double pct = 0.0;
+  if (node_bytes > 0) {
+    accu_pct = 100.0 * node_total_bytes / root_total_bytes;
+    pct = 100.0 * node_bytes / root_total_bytes;
+  }
+  return strings::Printf(
+      "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
+                              FormatMemory(node_bytes).c_str(), accu_pct, pct)
+                  .c_str());
+}
+
 string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
   std::vector<string> attrs;
 
   if (opts.select.find(kShown[0]) != opts.select.end()) {
-    double accu_pct = 0.0;
-    double pct = 0.0;
-    if (node->proto().requested_bytes() > 0) {
-      accu_pct = 100.0 * node->proto().total_requested_bytes() /
-          root->proto().total_requested_bytes();
-      pct = 100.0 * node->proto().requested_bytes() /
-          root->proto().total_requested_bytes();
-    }
-    attrs.push_back(strings::Printf(
-        "%30s",
-        strings::Printf("%s (%.2f%%, %.2f%%)",
-                        FormatMemory(node->proto().requested_bytes()).c_str(),
-                        accu_pct, pct)
-            .c_str()));
+    attrs.push_back(FormatMemoryNode(node->proto().total_requested_bytes(),
+                                     root->proto().total_requested_bytes(),
+                                     node->proto().requested_bytes()));
+  }
+
+  if (opts.select.find(kShown[11]) != opts.select.end()) {
+    attrs.push_back(FormatMemoryNode(node->proto().total_peak_bytes(),
+                                     root->proto().total_peak_bytes(),
+                                     node->proto().peak_bytes()));
+  }
+
+  if (opts.select.find(kShown[12]) != opts.select.end()) {
+    attrs.push_back(FormatMemoryNode(node->proto().total_residual_bytes(),
+                                     root->proto().total_residual_bytes(),
+                                     node->proto().residual_bytes()));
+  }
+  if (opts.select.find(kShown[13]) != opts.select.end()) {
+    attrs.push_back(FormatMemoryNode(node->proto().total_output_bytes(),
+                                     root->proto().total_output_bytes(),
+                                     node->proto().output_bytes()));
   }
 
   if (opts.select.find(kShown[1]) != opts.select.end()) {
@@ -249,9 +266,9 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
     double pct = 0.0;
     if (node->proto().total_parameters() > 0) {
       accu_pct = 100.0 * node->proto().total_parameters() /
-          root->proto().total_parameters();
-      pct = 100.0 * node->proto().parameters() /
-          root->proto().total_parameters();
+                 root->proto().total_parameters();
+      pct =
+          100.0 * node->proto().parameters() / root->proto().total_parameters();
     }
     attrs.push_back(strings::Printf(
         "%30s",
@@ -266,9 +283,8 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
     double pct = 0.0;
     if (node->proto().total_float_ops() > 0) {
       accu_pct = 100.0 * node->proto().total_float_ops() /
-          root->proto().total_float_ops();
-      pct = 100.0 * node->proto().float_ops() /
-          root->proto().total_float_ops();
+                 root->proto().total_float_ops();
+      pct = 100.0 * node->proto().float_ops() / root->proto().total_float_ops();
     }
 
     attrs.push_back(strings::Printf(

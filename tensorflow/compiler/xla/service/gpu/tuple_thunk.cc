@@ -17,13 +17,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/util.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
-tensorflow::Status TupleThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                   se::Stream* stream) {
   std::vector<void*> tuple_element_buffer_addresses;
   for (BufferAllocation::Slice tuple_element_buffer : tuple_element_buffers_) {
     tuple_element_buffer_addresses.push_back(
@@ -42,7 +40,7 @@ tensorflow::Status TupleThunk::ExecuteOnStream(
         tuple_element_buffer_addresses.data(), dest_buffer_address.opaque(),
         sizeof(void*) * tuple_element_buffer_addresses.size());
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
@@ -215,7 +216,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {
   Node* found_node;
   Status s = FindNode(g, strings::StrCat(d->name(), "/QuantizeAndDequantizeV2"),
                       &found_node);
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("not found")) << s;
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
   TF_ASSERT_OK(
@@ -269,7 +270,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
   Node* found_node;
   Status s = FindNode(g, strings::StrCat(d->name(), "/FakeQuantWithMinMaxVars"),
                       &found_node);
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("not found")) << s;
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
   TF_ASSERT_OK(

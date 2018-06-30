@@ -5,6 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ErrorCodesProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/lib/core";
 
 // The canonical error codes for TensorFlow APIs.
 //
@@ -119,7 +120,7 @@ enum Code {
   // Operation is not implemented or not supported/enabled in this service.
   UNIMPLEMENTED = 12;
 
-  // Internal errors.  Means some invariants expected by underlying
+  // Internal errors.  Means some invariant expected by the underlying
   // system has been broken.  If you see one of these errors,
   // something is very broken.
   INTERNAL = 13;

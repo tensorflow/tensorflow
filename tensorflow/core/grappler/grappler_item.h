@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_
+#define TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_
 
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -32,10 +33,13 @@ namespace grappler {
 // A TensorFlow model to optimize.
 // Models are represented by the combination of a graph, one of more fetch
 // nodes, and potentially a set of nodes to feed.
-// TODO(volunteer_needed): turn this struct into a class.
 struct GrapplerItem {
-  GrapplerItem() {}
-  GrapplerItem(const GrapplerItem& other, GraphDef&& graphDef);
+  GrapplerItem() = default;
+  GrapplerItem(const GrapplerItem& other, GraphDef&& graph_def)
+      : GrapplerItem(other, &graph_def) {}
+  // Swaps *graph_def with an empty GraphDef.
+  GrapplerItem(const GrapplerItem& other, GraphDef* graph_def);
+  virtual ~GrapplerItem() = default;
 
   string id;  // A unique id for this item
 
@@ -49,8 +53,18 @@ struct GrapplerItem {
   // Expected initialization time in seconds, or 0 if unknown
   int64 expected_init_time = 0;
 
+  // Save/restore ops (if any)
+  string save_op;
+  string restore_op;
+  string save_restore_loc_tensor;
+
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
+
+  // List of op names to keep in the graph. This includes nodes that are
+  // referenced in various collections, and therefore must be preserved to
+  // ensure that the optimized metagraph can still be loaded.
+  std::vector<string> keep_ops;
 
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;
@@ -60,13 +74,23 @@ struct GrapplerItem {
   std::vector<const NodeDef*> InitOpsFanin() const;
   // Return the set of variables accessed during a regular train/inference step.
   std::vector<const NodeDef*> MainVariables() const;
+  // Return a set of node names that must be preserved. This includes feed and
+  // fetch nodes, keep_ops, init_ops.
+  std::unordered_set<string> NodesToPreserve() const;
 };
 
 // Return the transitive fanin of a set of terminal nodes.
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes);
 
+// Return the transitive fanin of a set of terminal nodes. Sets 'ill_formed' to
+// true if one of the node is missing in the graph, or some node inputs don't
+// exist.
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_

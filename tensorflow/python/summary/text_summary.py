@@ -14,29 +14,24 @@
 # ==============================================================================
 """Implements text_summary in TensorFlow, with TensorBoard support.
 
-The text_summary is basically a wrapper around the generic tensor_summary,
-and it uses a TextSummaryPluginAsset class to record which tensor_summaries
-are readable by the TensorBoard text plugin.
+The text_summary is a wrapper around the generic tensor_summary that takes a
+string-type tensor and emits a TensorSummary op with SummaryMetadata that
+notes that this summary is textual data for the TensorBoard text plugin.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
-import json
-
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.summary_ops import tensor_summary
-from tensorflow.python.summary import plugin_asset
+from tensorflow.python.util.tf_export import tf_export
 
 PLUGIN_NAME = "text"
 
-# Contains event-related data specific to the text plugin.
-_TextPluginData = namedtuple("_TextPluginData", [])
 
-
+@tf_export("summary.text")
 def text_summary(name, tensor, collections=None):
   """Summarizes textual data.
 
@@ -67,30 +62,12 @@ def text_summary(name, tensor, collections=None):
     raise ValueError("Expected tensor %s to have dtype string, got %s" %
                      (tensor.name, tensor.dtype))
 
-  summary_metadata = summary_pb2.SummaryMetadata()
-  text_plugin_data = _TextPluginData()
-  data_dict = text_plugin_data._asdict()  # pylint: disable=protected-access
-  summary_metadata.plugin_data.add(
-      plugin_name=PLUGIN_NAME, content=json.dumps(data_dict))
+  summary_metadata = summary_pb2.SummaryMetadata(
+      plugin_data=summary_pb2.SummaryMetadata.PluginData(
+          plugin_name=PLUGIN_NAME))
   t_summary = tensor_summary(
       name=name,
       tensor=tensor,
       summary_metadata=summary_metadata,
       collections=collections)
   return t_summary
-
-
-class TextSummaryPluginAsset(plugin_asset.PluginAsset):
-  """Provides a registry of text summaries for the TensorBoard text plugin."""
-  plugin_name = "tensorboard_text"
-
-  def __init__(self):
-    self._tensor_names = []
-
-  def register_tensor(self, name):
-    """Register a new Tensor Summary name as containing textual data."""
-    self._tensor_names.append(name)
-
-  def assets(self):
-    """Store the tensors registry in a file called tensors.json."""
-    return {"tensors.json": json.dumps(self._tensor_names)}

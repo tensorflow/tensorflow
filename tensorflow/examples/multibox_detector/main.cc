@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -84,10 +85,10 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   tensorflow::Output image_reader;
-  if (tensorflow::StringPiece(file_name).ends_with(".png")) {
+  if (tensorflow::str_util::EndsWith(file_name, ".png")) {
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
-  } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
+  } else if (tensorflow::str_util::EndsWith(file_name, ".gif")) {
     image_reader = DecodeGif(root.WithOpName("gif_reader"), file_reader);
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.
@@ -131,7 +132,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
 
 Status SaveImage(const Tensor& tensor, const string& file_path) {
   LOG(INFO) << "Saving image to " << file_path;
-  CHECK(tensorflow::StringPiece(file_path).ends_with(".png"))
+  CHECK(tensorflow::str_util::EndsWith(file_path, ".png"))
       << "Only saving of png files is supported.";
 
   auto root = tensorflow::Scope::NewRootScope();

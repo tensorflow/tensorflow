@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
 
 #include <tuple>
 
@@ -45,16 +45,16 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void Nudge(
   const float quant_max_float = static_cast<float>(quant_max);
   *scale = (max - min) / (quant_max_float - quant_min_float);
   const float zero_point_from_min = quant_min_float - min / *scale;
-  const uint8 nudged_zero_point = [zero_point_from_min, quant_min,
-                                   quant_min_float, quant_max,
-                                   quant_max_float] {
+  const uint16 nudged_zero_point = [zero_point_from_min, quant_min,
+                                    quant_min_float, quant_max,
+                                    quant_max_float] {
     if (zero_point_from_min < quant_min_float) {
-      return static_cast<uint8>(quant_min);
+      return static_cast<uint16>(quant_min);
     }
     if (zero_point_from_min > quant_max_float) {
-      return static_cast<uint8>(quant_max);
+      return static_cast<uint16>(quant_max);
     }
-    return static_cast<uint8>(StdRound(zero_point_from_min));
+    return static_cast<uint16>(StdRound(zero_point_from_min));
   }();
   *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
   *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
@@ -128,8 +128,15 @@ struct FakeQuantWithMinMaxVarsFunctor {
                   ConstScalar<float> min, ConstScalar<float> max,
                   const int quant_min, const int quant_max,
                   Flat<float> outputs) {
+    const float min_val = min();
+    const float max_val = max();
+    // If min and max are both zero, we should just return zero.
+    if (min_val == 0.0f && max_val == 0.0f) {
+      outputs.device(d) = outputs.constant(0.0f);
+      return;
+    }
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min(), max(), quant_min, quant_max, &nudged_min, &nudged_max,
+    Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
           &nudged_scale);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
 
@@ -151,8 +158,17 @@ struct FakeQuantWithMinMaxVarsGradientFunctor {
                   const int quant_max, Flat<float> backprops_wrt_input,
                   Scalar<float> backprop_wrt_min,
                   Scalar<float> backprop_wrt_max) {
+    const float min_val = min();
+    const float max_val = max();
+    // If min and max are both zero, we propagate everything to inputs.
+    if (min_val == 0.0f && max_val == 0.0f) {
+      backprops_wrt_input.device(d) = gradients;
+      backprop_wrt_min.device(d) = backprop_wrt_min.constant(0.0f);
+      backprop_wrt_max.device(d) = backprop_wrt_max.constant(0.0f);
+      return;
+    }
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min(), max(), quant_min, quant_max, &nudged_min, &nudged_max,
+    Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
           &nudged_scale);
 
     const auto between_min_max =
@@ -185,8 +201,16 @@ struct FakeQuantWithMinMaxVarsPerChannelFunctor {
                   ConstVec<float> min, ConstVec<float> max, const int quant_min,
                   const int quant_max, TTypes<float>::Matrix outputs) {
     for (Index i = 0; i < min.size(); ++i) {
+      const float min_val = min(i);
+      const float max_val = max(i);
+      // If min and max are both zero, we should just return zero.
+      if (min_val == 0.0f && max_val == 0.0f) {
+        auto chip = outputs.chip<1>(i);
+        chip.device(d) = chip.constant(0.0f);
+        continue;
+      }
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+      Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
             &nudged_scale);
       const auto clamped =
           inputs.chip<1>(i).cwiseMin(nudged_max).cwiseMax(nudged_min);
@@ -212,11 +236,22 @@ struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor {
                   TTypes<float>::Matrix backprops_wrt_input,
                   Vec<float> backprop_wrt_min, Vec<float> backprop_wrt_max) {
     for (Index i = 0; i < min.size(); ++i) {
-      float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
-            &nudged_scale);
+      const float min_val = min(i);
+      const float max_val = max(i);
       const auto gradients_chip = gradients.chip<1>(i);
       const auto inputs_chip = inputs.chip<1>(i);
+      // If min and max are both zero, we propagate everything to inputs.
+      if (min_val == 0.0f && max_val == 0.0f) {
+        backprops_wrt_input.chip<1>(i).device(d) = gradients_chip;
+        auto min_chip = backprop_wrt_min.chip<0>(i);
+        auto max_chip = backprop_wrt_max.chip<0>(i);
+        min_chip.device(d) = min_chip.constant(0.0f);
+        max_chip.device(d) = max_chip.constant(0.0f);
+        continue;
+      }
+      float nudged_min, nudged_max, nudged_scale;
+      Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
 
       const auto between_min_max =
           (inputs_chip >= nudged_min && inputs_chip <= nudged_max)
@@ -242,4 +277,4 @@ struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_

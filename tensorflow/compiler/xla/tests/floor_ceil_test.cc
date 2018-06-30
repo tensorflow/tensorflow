@@ -16,8 +16,8 @@ limitations under the License.
 #include <limits>
 #include <string>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -41,26 +41,26 @@ class FloorCeilTest : public ClientLibraryTestBase {
                  tensorflow::gtl::ArraySlice<float> expected, Function f) {
     LOG(INFO) << "input: {" << tensorflow::str_util::Join(expected, ", ")
               << "}";
-    ComputationBuilder builder(client_, TestName());
-    auto c = builder.ConstantR1<float>(input);
+    XlaBuilder builder(TestName());
+    auto c = ConstantR1<float>(&builder, input);
     if (f == kCeil) {
-      builder.Ceil(c);
+      Ceil(c);
     } else {
       ASSERT_EQ(kFloor, f);
-      builder.Floor(c);
+      Floor(c);
     }
     ComputeAndCompareR1<float>(&builder, expected, /*arguments=*/{});
   }
 
   void TestR0F32(float input, float expected, Function f) {
     LOG(INFO) << "input: " << expected;
-    ComputationBuilder builder(client_, TestName());
-    auto c = builder.ConstantR0<float>(input);
+    XlaBuilder builder(TestName());
+    auto c = ConstantR0<float>(&builder, input);
     if (f == kCeil) {
-      builder.Ceil(c);
+      Ceil(c);
     } else {
       ASSERT_EQ(kFloor, f);
-      builder.Floor(c);
+      Floor(c);
     }
     ComputeAndCompareR0<float>(&builder, expected, /*arguments=*/{});
   }

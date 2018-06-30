@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import re
 
 from tensorflow.python.framework import ops
@@ -136,11 +137,18 @@ def _subscribe_new(tensor, side_effects, control_cache):
     # are subscribed at the same time, we remove the control dependency from
     # the original op only once and we add the dependencies to all the
     # new identities.
+    if ops._USE_C_API:  # pylint: disable=protected-access
+      new_control_inputs = consumer_op.control_inputs
+    else:
+      # Make a copy so we don't modify the actual control inputs (this is fixed
+      # in the C API).
+      new_control_inputs = list(consumer_op.control_inputs)
+    if tensor.op in new_control_inputs:
+      new_control_inputs.remove(tensor.op)
+    new_control_inputs.append(out.op)
     # pylint: disable=protected-access
-    if tensor.op in consumer_op._control_inputs:
-      consumer_op._control_inputs.remove(tensor.op)
-    consumer_op._control_inputs.append(out.op)
-    consumer_op._recompute_node_def()
+    consumer_op._remove_all_control_inputs()
+    consumer_op._add_control_inputs(new_control_inputs)
     # pylint: enable=protected-access
   return out
 
@@ -166,12 +174,8 @@ def _subscribe_extend(tensor, side_effects):
     for s in side_effects:
       outs += s(source_tensor)
 
-  for out in outs:
-    out_type = type(out)
-    if out_type is ops.Tensor:
-      out = out.op
-    tensor.op._control_inputs.append(out)  # pylint: disable=protected-access
-  tensor.op._recompute_node_def()  # pylint: disable=protected-access
+  out_ops = [out.op if isinstance(out, ops.Tensor) else out for out in outs]
+  tensor.op._add_control_inputs(out_ops)  # pylint: disable=protected-access
 
   return tensor
 
@@ -250,6 +254,58 @@ def _subscribe(tensor, side_effects, control_cache):
   return _subscribe_new(tensor, side_effects, control_cache)
 
 
+@contextlib.contextmanager
+def _preserve_control_flow_context(tensor):
+  """Preserve the control flow context for the given tensor.
+
+  Sets the graph context to the tensor's context so that side effect ops are
+  added under the same context.
+
+  This is needed when subscribing to tensors defined within a conditional
+  block or a while loop. In these cases we need that the side-effect ops
+  are created within the same control flow context as that of the tensor
+  they are attached to.
+
+  Args:
+    tensor: tensor whose context should be preserved.
+
+  Yields:
+    None
+  """
+
+  # pylint: disable=protected-access
+  context = tensor.op._get_control_flow_context()
+  # pylint: enable=protected-access
+  if context:
+    context.Enter()
+  try:
+    yield
+  finally:
+    if context:
+      context.Exit()
+
+
+def _scoped_subscribe(tensor, side_effects, control_cache):
+  """Helper method that subscribes a single tensor to a list of side_effects.
+
+  This is a thin wrapper around `_subscribe` and ensures that the side effect
+  ops are added within the same device and control flow context of the
+  subscribed tensor.
+
+  Args:
+    tensor: The `tf.Tensor` to be subscribed.
+    side_effects: List of side_effect functions, see subscribe for details.
+    control_cache: `_ControlOutputCache` helper to get control_outputs faster.
+  Returns:
+    The modified replacement to the passed in tensor which triggers the side
+    effects or the given tensor, if it was already been subscribed.
+  """
+
+  with ops.device(tensor.device):
+    with _preserve_control_flow_context(tensor):
+      return _subscribe(tensor, side_effects, control_cache)
+
+
 def subscribe(tensors, side_effects):
   """Subscribe to a tensor.
 
@@ -290,5 +346,5 @@ def subscribe(tensors, side_effects):
 
   control_outputs = _ControlOutputCache()
   result = _recursive_apply(
-      tensors, lambda t: _subscribe(t, side_effects, control_outputs))
+      tensors, lambda t: _scoped_subscribe(t, side_effects, control_outputs))
   return result

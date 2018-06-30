@@ -18,6 +18,7 @@ tensorflow/core/protobuf/device_properties.proto
 tensorflow/core/protobuf/rewriter_config.proto
 tensorflow/core/protobuf/tensor_bundle.proto
 tensorflow/core/lib/core/error_codes.proto
+tensorflow/core/kernels/boosted_trees/boosted_trees.proto
 tensorflow/core/framework/versions.proto
 tensorflow/core/framework/variable.proto
 tensorflow/core/framework/types.proto
@@ -30,6 +31,7 @@ tensorflow/core/framework/step_stats.proto
 tensorflow/core/framework/resource_handle.proto
 tensorflow/core/framework/remote_fused_graph_execute_info.proto
 tensorflow/core/framework/reader_base.proto
+tensorflow/core/framework/api_def.proto
 tensorflow/core/framework/op_def.proto
 tensorflow/core/framework/node_def.proto
 tensorflow/core/framework/log_memory.proto

@@ -126,8 +126,8 @@ py_library(
 py_test(
     name = "sdca_estimator_test",
     srcs = ["python/sdca_estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
     deps = [
         ":sdca_estimator_py",
         "//tensorflow/contrib/layers:layers_py",
@@ -137,15 +137,4 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//third_party/py/numpy",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

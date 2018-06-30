@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -32,7 +33,8 @@ namespace {
 
 class TransposeOp : public XlaOpKernel {
  public:
-  explicit TransposeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit TransposeOp(OpKernelConstruction* ctx, bool conjugate = false)
+      : XlaOpKernel(ctx), conjugate_(conjugate) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
@@ -54,7 +56,8 @@ class TransposeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {dims}, &literal));
 
     std::vector<int32> perm(dims);
-    std::copy(literal.s32s().begin(), literal.s32s().end(), perm.begin());
+    std::copy(literal.data<int32>().begin(), literal.data<int32>().end(),
+              perm.begin());
 
     std::vector<int64> transposed_order;
     // Check whether permutation is a permutation of integers of [0 .. dims).
@@ -72,22 +75,41 @@ class TransposeOp : public XlaOpKernel {
       }
     }
     for (int i = 0; i < dims; ++i) {
-      OP_REQUIRES(ctx, bits[i], errors::InvalidArgument(
-                                    i, " is missing from 'perm' argument."));
+      OP_REQUIRES(
+          ctx, bits[i],
+          errors::InvalidArgument(i, " is missing from 'perm' argument."));
     }
 
+    xla::XlaOp transposed;
     // 0-D, 1-D, and identity transposes do nothing.
     if (dims <= 1 || is_identity) {
-      ctx->SetOutput(0, ctx->Input(0));
-      return;
+      transposed = ctx->Input(0);
+    } else {
+      transposed = xla::Transpose(ctx->Input(0), transposed_order);
     }
 
-    ctx->SetOutput(0,
-                   ctx->builder()->Transpose(ctx->Input(0), transposed_order));
+    // Conjugate the transposed result if this is ConjugateTransposeOp.
+    if (conjugate_) {
+      ctx->SetOutput(0, xla::Conj(transposed));
+    } else {
+      ctx->SetOutput(0, transposed);
+    }
   }
+
+ private:
+  const bool conjugate_;
 };
 
-REGISTER_XLA_OP(Name("Transpose"), TransposeOp);
+class ConjugateTransposeOp : public TransposeOp {
+ public:
+  explicit ConjugateTransposeOp(OpKernelConstruction* ctx)
+      : TransposeOp(ctx, /*conjugate=*/true) {}
+};
+
+REGISTER_XLA_OP(Name("Transpose").CompileTimeConstInput("perm"), TransposeOp);
+
+REGISTER_XLA_OP(Name("ConjugateTranspose").CompileTimeConstInput("perm"),
+                ConjugateTransposeOp);
 
 // InvertPermutation frequently forms part of the gradient of Transpose.
 //
@@ -103,8 +125,9 @@ class InvertPermutationOp : public XlaOpKernel {
   explicit InvertPermutationOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, FastBoundsCheck(ctx->InputShape(0).num_elements(),
-                                     std::numeric_limits<int32>::max()),
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(ctx->InputShape(0).num_elements(),
+                                std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("permutation of nonnegative int32s "
                                         "must have <= int32 max elements"));
 
@@ -124,11 +147,13 @@ class InvertPermutationOp : public XlaOpKernel {
       output[d] = i;
     }
 
-    ctx->SetOutput(0, ctx->builder()->ConstantR1<int32>(output));
+    ctx->SetOutput(0, xla::ConstantR1<int32>(ctx->builder(), output));
   }
 };
 
-REGISTER_XLA_OP(Name("InvertPermutation").TypeConstraint("T", DT_INT32),
+REGISTER_XLA_OP(Name("InvertPermutation")
+                    .TypeConstraint("T", DT_INT32)
+                    .CompileTimeConstInput("x"),
                 InvertPermutationOp);
 
 }  // namespace

@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "Digamma"
+  summary: "Computes Psi, the derivative of Lgamma (the log of the absolute value of"
+  description: <<END
+`Gamma(x)`), element-wise.
+END
+}

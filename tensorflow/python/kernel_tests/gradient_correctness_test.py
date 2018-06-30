@@ -40,6 +40,71 @@ class GradientCorrectnessTest(test.TestCase):
       # [dexp(x)/dx + d(log(exp(x)))/dx] @ x=1 == exp(1) + 1
       self.assertAllClose(grad_vals[0], exp1_plus_one)
 
+  def testIdentityGradient(self):
+    x = constant_op.constant(3.)
+    dx_dx, = gradients_impl.gradients(x, x)
+    with self.test_session() as sess:
+      self.assertAllClose(1., sess.run(dx_dx))
+
+  def testIntegerIdentityGradient(self):
+    x = constant_op.constant(3)
+    dx_dx, = gradients_impl.gradients(x, x)
+    with self.test_session() as sess:
+      self.assertAllClose(1, sess.run(dx_dx))
+
+  def testGradientWithIntegerPath(self):
+    x = constant_op.constant([3.9, 4.1])
+    k = math_ops.to_float(math_ops.to_int32(x))
+    y = x * k
+    dy_dx, = gradients_impl.gradients(y, x)
+    with self.test_session() as sess:
+      self.assertAllClose([3., 4.], sess.run(dy_dx))
+
+  def testNoIntegerGradient1(self):
+    x = constant_op.constant([3.9, 4.1])
+    k = math_ops.to_float(math_ops.to_int32(x))
+    y = k * k
+    dy_dx, = gradients_impl.gradients(y, x)
+    self.assertIsNone(dy_dx)
+
+  def testNoIntegerGradient2(self):
+    k = constant_op.constant([3, 4])
+    x = math_ops.to_float(k)
+    y = x * x
+    dy_dk, = gradients_impl.gradients(y, k)
+    self.assertIsNone(dy_dk)
+
+  def testNoIntegerGradient3(self):
+    k = constant_op.constant([3, 4])
+    m = k * k
+    dm_dk, = gradients_impl.gradients(m, k)
+    self.assertIsNone(dm_dk)
+
+  def testNoIntegerGradient4(self):
+    k = constant_op.constant([3, 4])
+    m = k * k * k
+    dm_dk, = gradients_impl.gradients(m, k)
+    self.assertIsNone(dm_dk)
+
+  def testNoIntegerGradient5(self):
+    k = constant_op.constant([3, 4])
+    m = k * k
+    n = m * m
+    dn_dk, = gradients_impl.gradients(n, k)
+    self.assertIsNone(dn_dk)
+
+  def testNoIntegerGradient6(self):
+    k = constant_op.constant(3)
+    x = math_ops.to_float(k)
+    grad_1, = gradients_impl.gradients(k * k, k)
+    grad_2, = gradients_impl.gradients(x * x, k)
+    grad_3, = gradients_impl.gradients(math_ops.square(k), k)
+    grad_4, = gradients_impl.gradients(math_ops.square(x), k)
+    self.assertIsNone(grad_1)
+    self.assertIsNone(grad_2)
+    self.assertIsNone(grad_3)
+    self.assertIsNone(grad_4)
+
 
 if __name__ == '__main__':
   test.main()

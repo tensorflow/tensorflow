@@ -200,7 +200,7 @@ class SparseCrossOpTest(test.TestCase):
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
 
   def test_large_batch(self):
-    """Tests with large batch size to force multithreding.
+    """Tests with large batch size to force multithreading.
     """
     batch_size = 5000
     col1 = []

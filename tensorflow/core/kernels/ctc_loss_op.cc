@@ -91,7 +91,14 @@ class CTCLossOp : public OpKernel {
     OP_REQUIRES(ctx, batch_size != 0,
                 errors::InvalidArgument("batch_size must not be 0"));
 
-    TensorShape labels_shape({batch_size, max_time});
+    // Figure out the maximum label length to use as sparse tensor dimension.
+    auto labels_indices_t = labels_indices->matrix<int64>();
+    int64 max_label_len = 0;
+    for (int i = 0; i < labels_indices->dim_size(0); i++) {
+      max_label_len = std::max(max_label_len, labels_indices_t(i, 1) + 1);
+    }
+
+    TensorShape labels_shape({batch_size, max_label_len});
     std::vector<int64> order{0, 1};
     sparse::SparseTensor labels_sp(*labels_indices, *labels_values,
                                    labels_shape, order);
@@ -106,8 +113,8 @@ class CTCLossOp : public OpKernel {
       const int64 batch_indices = g.group()[0];
       OP_REQUIRES(ctx, FastBoundsCheck(batch_indices, batch_size),
                   errors::InvalidArgument("labels batch index must be between ",
-                                          0, " and ", batch_size, " but saw: ",
-                                          batch_indices));
+                                          0, " and ", batch_size,
+                                          " but saw: ", batch_indices));
 
       auto values = g.values<int32>();
       std::vector<int>* b_values = &labels_t[batch_indices];

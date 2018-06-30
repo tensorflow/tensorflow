@@ -41,7 +41,7 @@ OPTIMIZER_CLS_NAMES = {
     "Adagrad": train.AdagradOptimizer,
     "Adam": train.AdamOptimizer,
     "Ftrl": train.FtrlOptimizer,
-    "Momentum": train.MomentumOptimizer,
+    "Momentum": lambda learning_rate: train.MomentumOptimizer(learning_rate, momentum=0.9),  # pylint: disable=line-too-long
     "RMSProp": train.RMSPropOptimizer,
     "SGD": train.GradientDescentOptimizer,
 }
@@ -129,8 +129,9 @@ def optimize_loss(loss,
                `None` to use all trainable variables.
     name: The name for this operation is used to scope operations and summaries.
     summaries: List of internal quantities to visualize on tensorboard. If not
-               set only the loss and the learning rate will be reported. The
-               complete list is in OPTIMIZER_SUMMARIES.
+               set, the loss, the learning rate, and the global norm of the
+               gradients will be reported. The complete list of possible values
+               is in OPTIMIZER_SUMMARIES.
     colocate_gradients_with_ops: If True, try colocating gradients with the
                                  corresponding op.
     increment_global_step: Whether to increment `global_step`. If your model
@@ -155,9 +156,9 @@ def optimize_loss(loss,
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
   if global_step is None:
-    global_step = contrib_framework.get_global_step()
+    global_step = train.get_global_step()
   else:
-    contrib_framework.assert_global_step(global_step)
+    train.assert_global_step(global_step)
   with vs.variable_scope(name, "OptimizeLoss", [loss, global_step]):
     # Update ops take UPDATE_OPS collection if not provided.
     if update_ops is None:

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 
 #include <map>
 #include <memory>
@@ -72,7 +72,7 @@ class MetricCollector {
         registration_time_millis_(registration_time_millis),
         collector_(collector),
         point_set_(point_set) {
-    point_set_->metric_name = metric_def->name().ToString();
+    point_set_->metric_name = std::string(metric_def->name());
   }
 
   const MetricDef<metric_kind, Value, NumLabels>* const metric_def_;
@@ -219,6 +219,18 @@ inline void CollectValue(const int64& value, Point* const point) {
 }
 
 template <>
+inline void CollectValue(const string& value, Point* const point) {
+  point->value_type = ValueType::kString;
+  point->string_value = value;
+}
+
+template <>
+inline void CollectValue(const bool& value, Point* const point) {
+  point->value_type = ValueType::kBool;
+  point->bool_value = value;
+}
+
+template <>
 inline void CollectValue(const HistogramProto& value, Point* const point) {
   point->value_type = ValueType::kHistogram;
   // This is inefficient. If and when we hit snags, we can change the API to do
@@ -249,7 +261,7 @@ class Collector {
     auto* const point_set = [&]() {
       mutex_lock l(mu_);
       return collected_metrics_->point_set_map
-          .insert(std::make_pair(metric_def->name().ToString(),
+          .insert(std::make_pair(std::string(metric_def->name()),
                                  std::unique_ptr<PointSet>(new PointSet())))
           .first->second.get();
     }();
@@ -315,13 +327,13 @@ void MetricCollector<metric_kind, Value, NumLabels>::CollectValue(
     const std::array<string, NumLabels>& labels, const Value& value) {
   point_set_->points.emplace_back(new Point());
   auto* const point = point_set_->points.back().get();
-  const std::vector<StringPiece> label_descriptions =
+  const std::vector<string> label_descriptions =
       metric_def_->label_descriptions();
   point->labels.reserve(NumLabels);
   for (int i = 0; i < NumLabels; ++i) {
     point->labels.push_back({});
     auto* const label = &point->labels.back();
-    label->name = label_descriptions[i].ToString();
+    label->name = label_descriptions[i];
     label->value = labels[i];
   }
   internal::CollectValue(value, point);
@@ -344,4 +356,4 @@ MetricCollector<metric_kind, Value, NumLabels> MetricCollectorGetter::Get(
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_

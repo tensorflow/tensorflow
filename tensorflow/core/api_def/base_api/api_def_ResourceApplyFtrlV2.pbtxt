@@ -1,0 +1,69 @@
+op {
+  graph_op_name: "ResourceApplyFtrlV2"
+  in_arg {
+    name: "var"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "accum"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "linear"
+    description: <<END
+Should be from a Variable().
+END
+  }
+  in_arg {
+    name: "grad"
+    description: <<END
+The gradient.
+END
+  }
+  in_arg {
+    name: "lr"
+    description: <<END
+Scaling factor. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "l1"
+    description: <<END
+L1 regulariation. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "l2"
+    description: <<END
+L2 shrinkage regulariation. Must be a scalar.
+END
+  }
+  in_arg {
+    name: "lr_power"
+    description: <<END
+Scaling factor. Must be a scalar.
+END
+  }
+  attr {
+    name: "use_locking"
+    description: <<END
+If `True`, updating of the var and accum tensors will be protected
+by a lock; otherwise the behavior is undefined, but may exhibit less
+contention.
+END
+  }
+  summary: "Update \'*var\' according to the Ftrl-proximal scheme."
+  description: <<END
+grad_with_shrinkage = grad + 2 * l2_shrinkage * var
+accum_new = accum + grad_with_shrinkage * grad_with_shrinkage
+linear += grad_with_shrinkage +
+    (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
+var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
+accum = accum_new
+END
+}

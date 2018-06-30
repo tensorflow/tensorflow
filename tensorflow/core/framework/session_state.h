@@ -74,6 +74,12 @@ class TensorStore {
   Status SaveTensors(const std::vector<string>& output_names,
                      SessionState* session_state);
 
+  // Returns true if no tensors have been added to this store.
+  bool empty() {
+    mutex_lock l(lock_);
+    return tensors_.empty();
+  }
+
  private:
   mutex lock_;
 

@@ -19,7 +19,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
 
 REGISTER_RESOURCE_HANDLE_OP(DecisionTreeEnsembleResource);
 
@@ -110,5 +110,32 @@ stamp_token: Token to use as the new value of the resource stamp.
 tree_ensemble_config: Serialized proto of the ensemble.
 )doc");
 
-}  // namespace gtflow
+REGISTER_OP("TreeEnsembleUsedHandlers")
+    .Attr("num_all_handlers: int >= 0")
+    .Input("tree_ensemble_handle: resource")
+    .Input("stamp_token: int64")
+    .Output("num_used_handlers: int64")
+    .Output("used_handlers_mask: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      c->set_output(0, c->Scalar());
+      int num_all_handlers;
+      c->GetAttr("num_all_handlers", &num_all_handlers).IgnoreError();
+      c->set_output(1, {c->Vector(num_all_handlers)});
+
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Returns the mask of used handlers along with the number of non-zero elements in 
+this mask. Used in feature selection.
+
+tree_ensemble_handle: Handle to the tree ensemble.
+stamp_token: Token to use as the new value of the resource stamp.
+num_used_handlers: number of feature column handlers used in the model.
+used_handlers_mask: A boolean vector of showing which handlers are used in the
+                    model.
+)doc");
+
+}  // namespace boosted_trees
 }  // namespace tensorflow

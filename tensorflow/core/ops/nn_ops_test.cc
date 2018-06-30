@@ -81,53 +81,27 @@ TEST(NNOpsTest, TopKV2_ShapeFn) {
       op, "[1,2,3,4];[]");
 }
 
-TEST(NNOpsTest, InputTensorShapeOrUnknown2D_ShapeFn) {
-  typedef std::pair<const char*, int> NameAndInputIndex;
-  for (const auto& p :
-       {NameAndInputIndex("AvgPoolGrad", 0),
-        NameAndInputIndex("Conv2DBackpropInput", 0),
-        NameAndInputIndex("Conv2DBackpropFilter", 1),
-        NameAndInputIndex("DepthwiseConv2dNativeBackpropInput", 0),
-        NameAndInputIndex("DepthwiseConv2dNativeBackpropFilter", 1)}) {
-    ShapeInferenceTestOp op(p.first);
-    op.input_tensors.resize(2);
+TEST(NNOpsTest, NthElement_ShapeFn) {
+  ShapeInferenceTestOp op("NthElement");
+  op.input_tensors.resize(2);
 
-    // Conv and Depthwise conv have three inputs.
-    string extra_shapes = (op.name == "AvgPoolGrad" ? "" : ";?");
+  Tensor n_t;
+  op.input_tensors[1] = &n_t;
+  n_t = test::AsScalar<int32>(20);
 
-    // When the input tensor is not known, the output is 4 unknown dims.
-    INFER_OK(op, "?;?" + extra_shapes, "[?,?,?,?]");
-    INFER_OK(op, "[4];?" + extra_shapes, "[?,?,?,?]");
+  INFER_OK(op, "?;[]", "?");
+  INFER_OK(op, "[21];[]", "[]");
+  INFER_OK(op, "[2,?,?];[]", "[d0_0,d0_1]");
+  INFER_OK(op, "[?,3,?,21];[]", "[d0_0,d0_1,d0_2]");
 
-    // When input tensor is known, its values determine output shape.
-    std::vector<int32> shape{1, 2, 3, 4};
-    Tensor shape_t = test::AsTensor<int32>(shape);
-    op.input_tensors[p.second] = &shape_t;
-    INFER_OK(op, "[4];?" + extra_shapes, "[1,2,3,4]");
-  }
-}
-
-TEST(NNOpsTest, InputTensorShapeOrUnknown3D_ShapeFn) {
-  typedef std::pair<const char*, int> NameAndInputIndex;
-  for (const auto& p : {NameAndInputIndex("AvgPool3DGrad", 0),
-                        NameAndInputIndex("Conv3DBackpropInputV2", 0),
-                        NameAndInputIndex("Conv3DBackpropFilterV2", 1)}) {
-    ShapeInferenceTestOp op(p.first);
-    op.input_tensors.resize(2);
-
-    // Conv3D has an extra shape.
-    string extra_shapes = (op.name == "AvgPool3DGrad" ? "" : ";?");
-
-    // When the input tensor is not known, the output is 4 unknown dims.
-    INFER_OK(op, "?;?" + extra_shapes, "[?,?,?,?,?]");
-    INFER_OK(op, "[5];?" + extra_shapes, "[?,?,?,?,?]");
-
-    // When input tensor is known, its values determine output shape.
-    std::vector<int32> shape{1, 2, 3, 4, 5};
-    Tensor shape_t = test::AsTensor<int32>(shape);
-    op.input_tensors[p.second] = &shape_t;
-    INFER_OK(op, "[5];?" + extra_shapes, "[1,2,3,4,5]");
-  }
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[]");
+  INFER_ERROR("Input must have last dimension > n = 20 but is 1", op, "[1];[]");
+  INFER_ERROR("Input must have last dimension > n = 20 but is 20", op,
+              "[1,2,3,20];[]");
+  n_t = test::AsScalar<int32>(-1);
+  INFER_ERROR(
+      "Dimension size, given by scalar input 1, must be non-negative but is -1",
+      op, "[1,2,3,4];[]");
 }
 
 TEST(NNOpsTest, BatchNormWithGlobalNormalization_ShapeFn) {
@@ -411,9 +385,8 @@ TEST(NNOpsTest, Dilation2DBackpropFilter_ShapeFn) {
 }
 
 TEST(NNOpsTest, MergeBothInputs_ShapeFn) {
-  for (const char* op_name :
-       {"ReluGrad", "Relu6Grad", "EluGrad", "SeluGrad", "SoftplusGrad",
-        "SoftsignGrad"}) {
+  for (const char* op_name : {"ReluGrad", "Relu6Grad", "EluGrad", "SeluGrad",
+                              "SoftplusGrad", "SoftsignGrad"}) {
     ShapeInferenceTestOp op(op_name);
 
     INFER_OK(op, "?;?", "in0|in1");
@@ -437,10 +410,18 @@ TEST(NNOpsTest, SoftmaxCrossEntropyWithLogits_ShapeFn) {
   INFER_OK(op, "[1,?];[?,2]", "[d0_0];[d0_0,d0_1|d1_1]");
   INFER_OK(op, "[?,2];[1,2]", "[d1_0];in1");
 
-  INFER_ERROR("Dimension 0 in both shapes must be equal, but are 1 and 2", op,
-              "[1,?];[2,?]");
-  INFER_ERROR("Shape must be rank 2 but is rank 3", op, "[1,2,3];?");
-  INFER_ERROR("Shapes must be equal rank, but are 2 and 3", op, "?;[1,2,3]");
+  INFER_ERROR("Shape must be broadcasted with rank 2", op, "[1,2,3];?");
+  INFER_ERROR("Shape must be broadcasted with rank 2", op, "?;[1,2,3]");
+
+  // Broadcast example
+  // [1,4] and [2,4] are broadcasted to [2,4]
+  INFER_OK(op, "[1,4];[2,4]", "[d1_0];[d1_0,d0_1|d1_1]");
+  // [2,4] and [2,1] are broadcasted to [2,4]
+  INFER_OK(op, "[2,4];[2,1]", "[d0_0];[d0_0|d1_0,d0_1]");
+  // [1,?] and [2,4] are broadcasted to [2,4]
+  INFER_OK(op, "[1,?];[2,4]", "[d1_0];[d1_0,d0_1|d1_1]");
+  // [2,4] and [?,1] are broadcasted to [2,4]
+  INFER_OK(op, "[2,4];[?,1]", "[d0_0];[d0_0|d1_0,d0_1]");
 }
 
 TEST(NNOpsTest, SparseSoftmaxCrossEntropyWithLogits_ShapeFn) {

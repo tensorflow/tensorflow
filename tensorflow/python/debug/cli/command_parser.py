@@ -24,7 +24,7 @@ import sys
 
 
 _BRACKETS_PATTERN = re.compile(r"\[[^\]]*\]")
-_QUOTES_PATTERN = re.compile(r"\"[^\"]*\"")
+_QUOTES_PATTERN = re.compile(r"(\"[^\"]*\"|\'[^\']*\')")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 
 _NUMBER_PATTERN = re.compile(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?")
@@ -92,7 +92,8 @@ def parse_command(command):
       argument = command[idx0:start]
 
       # Strip leading and trailing double quote if they are paired.
-      if argument.startswith("\"") and argument.endswith("\""):
+      if (argument.startswith("\"") and argument.endswith("\"") or
+          argument.startswith("'") and argument.endswith("'")):
         argument = argument[1:-1]
       arguments.append(argument)
       idx0 = end
@@ -539,4 +540,11 @@ def get_print_tensor_argparser(description):
       action="store_true",
       help="Include summary for non-empty tensors of numeric (int*, float*, "
       "complex*) and Boolean types.")
+  ap.add_argument(
+      "-w",
+      "--write_path",
+      type=str,
+      default="",
+      help="Path of the numpy file to write the tensor data to, using "
+      "numpy.save().")
   return ap

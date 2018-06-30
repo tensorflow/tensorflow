@@ -21,6 +21,8 @@ filegroup(
     ]),
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "global_data",
     srcs = ["global_data.cc"],
@@ -39,14 +41,15 @@ cc_library(
     srcs = ["padding.cc"],
     hdrs = ["padding.h"],
     deps = [
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "padding_test",
-    size = "small",
     srcs = ["padding_test.cc"],
     deps = [
         ":padding",
@@ -60,7 +63,6 @@ cc_library(
     srcs = ["client.cc"],
     hdrs = ["client.h"],
     deps = [
-        ":computation",
         ":global_data",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal_util",
@@ -71,8 +73,22 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
-        "//tensorflow/compiler/xla/service:session_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "executable_build_options",
+    srcs = ["executable_build_options.cc"],
+    hdrs = ["executable_build_options.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:lib",
     ],
 )
@@ -83,19 +99,21 @@ cc_library(
     hdrs = ["local_client.h"],
     deps = [
         ":client",
-        ":computation",
+        ":executable_build_options",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service:source_map_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
@@ -108,14 +126,13 @@ cc_library(
     hdrs = ["compile_only_client.h"],
     deps = [
         ":client",
-        ":computation",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/service:compile_only_service",
         "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
     ],
@@ -145,55 +162,15 @@ cc_library(
 )
 
 cc_library(
-    name = "computation",
-    srcs = ["computation.cc"],
-    hdrs = ["computation.h"],
+    name = "sharding_builder",
+    srcs = ["sharding_builder.cc"],
+    hdrs = ["sharding_builder.h"],
     deps = [
-        "//tensorflow/compiler/xla:service_interface",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/compiler/xla/service:session_proto",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "computation_builder",
-    srcs = ["computation_builder.cc"],
-    hdrs = ["computation_builder.h"],
-    deps = [
-        ":client",
-        ":computation",
-        ":global_data",
-        ":padding",
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:array3d",
-        "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:array",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/core:lib",
     ],
-)
-
-# -----------------------------------------------------------------------------
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

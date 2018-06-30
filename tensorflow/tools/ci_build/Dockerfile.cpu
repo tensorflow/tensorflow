@@ -1,6 +1,6 @@
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 
-MAINTAINER Jan Prach <jendap@google.com>
+LABEL maintainer="Jan Prach <jendap@google.com>"
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/

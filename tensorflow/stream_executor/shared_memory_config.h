@@ -19,8 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_SHARED_MEMORY_CONFIG_H_
 #define TENSORFLOW_STREAM_EXECUTOR_SHARED_MEMORY_CONFIG_H_
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // SharedMemoryConfig enum describes potential widths of shared memory banks for
 // a device or kernel.
@@ -30,7 +29,6 @@ enum class SharedMemoryConfig {
   kEightByte,  // Sets shared memory banks to be eight bytes wide.
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_SHARED_MEMORY_CONFIG_H_

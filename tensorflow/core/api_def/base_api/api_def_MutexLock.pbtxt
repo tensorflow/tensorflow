@@ -1,0 +1,58 @@
+op {
+  graph_op_name: "MutexLock"
+  in_arg {
+    name: "mutex"
+    description: <<END
+The mutex resource to lock.
+END
+  }
+  out_arg {
+    name: "mutex_lock"
+    description: <<END
+A tensor that keeps a shared pointer to a lock on the mutex;
+when the Tensor is destroyed, the use count on the shared pointer is decreased
+by 1.  When it reaches 0, the lock is released.
+END
+  }
+  summary: "Locks a mutex resource.  The output is the lock.  So long as the lock tensor"
+  description: <<END
+is alive, any other request to use `MutexLock` with this mutex will wait.
+
+This is particularly useful for creating a critical section when used in
+conjunction with `MutexLockIdentity`:
+
+```python
+
+mutex = mutex_v2(
+  shared_name=handle_name, container=container, name=name)
+
+def execute_in_critical_section(fn, *args, **kwargs):
+  lock = gen_resource_variable_ops.mutex_lock(mutex)
+
+  with ops.control_dependencies([lock]):
+    r = fn(*args, **kwargs)
+
+  with ops.control_dependencies(nest.flatten(r)):
+    with ops.colocate_with(mutex):
+      ensure_lock_exists = mutex_lock_identity(lock)
+
+    # Make sure that if any element of r is accessed, all of
+    # them are executed together.
+    r = nest.map_structure(tf.identity, r)
+
+  with ops.control_dependencies([ensure_lock_exists]):
+    return nest.map_structure(tf.identity, r)
+```
+
+While `fn` is running in the critical section, no other functions which wish to
+use this critical section may run.
+
+Often the use case is that two executions of the same graph, in parallel,
+wish to run `fn`; and we wish to ensure that only one of them executes
+at a time.  This is especially important if `fn` modifies one or more
+variables at a time.
+
+It is also useful if two separate functions must share a resource, but we
+wish to ensure the usage is exclusive.
+END
+}

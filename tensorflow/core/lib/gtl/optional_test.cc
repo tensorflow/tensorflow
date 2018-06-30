@@ -24,17 +24,29 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using tensorflow::gtl::optional;
-using tensorflow::gtl::nullopt;
-using tensorflow::gtl::nullopt_t;
 using tensorflow::gtl::in_place;
 using tensorflow::gtl::in_place_t;
 using tensorflow::gtl::make_optional;
+using tensorflow::gtl::nullopt;
+using tensorflow::gtl::nullopt_t;
+using tensorflow::gtl::optional;
 
-template <typename T> string TypeQuals(T&) { return "&"; }
-template <typename T> string TypeQuals(T&&) { return "&&"; }
-template <typename T> string TypeQuals(const T&) { return "c&"; }
-template <typename T> string TypeQuals(const T&&) { return "c&&"; }
+template <typename T>
+string TypeQuals(T&) {
+  return "&";
+}
+template <typename T>
+string TypeQuals(T&&) {
+  return "&&";
+}
+template <typename T>
+string TypeQuals(const T&) {
+  return "c&";
+}
+template <typename T>
+string TypeQuals(const T&&) {
+  return "c&&";
+}
 
 struct StructorListener {
   int construct0 = 0;

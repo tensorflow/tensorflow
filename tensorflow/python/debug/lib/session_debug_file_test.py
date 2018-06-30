@@ -22,7 +22,6 @@ import shutil
 import tempfile
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_utils
@@ -34,13 +33,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
-
-  def _no_rewrite_session_config(self):
-    rewriter_config = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=True)
-    graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
-    return config_pb2.ConfigProto(graph_options=graph_options)
+class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
 
   def _debug_urls(self, run_number=None):
     return ["file://%s" % self._debug_dump_dir(run_number=run_number)]
@@ -54,7 +47,8 @@ class SessionDebugTest(session_debug_testlib.SessionDebugTestBase):
   def testAllowsDifferentWatchesOnDifferentRuns(self):
     """Test watching different tensors on different runs of the same graph."""
 
-    with session.Session(config=self._no_rewrite_session_config()) as sess:
+    with session.Session(
+        config=session_debug_testlib.no_rewrite_session_config()) as sess:
       u_init_val = [[5.0, 3.0], [-1.0, 0.0]]
       v_init_val = [[2.0], [-1.0]]
 

@@ -22,7 +22,6 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_2d.h"
-#include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
@@ -34,12 +33,18 @@ PoolParameters::PoolParameters(OpKernelContext* context,
                                const std::vector<int32>& stride,
                                Padding padding, TensorFormat data_format,
                                const TensorShape& tensor_in_shape) {
-  // For maxpooling, tensor_in should have 4 dimensions.
-  OP_REQUIRES(context, tensor_in_shape.dims() == 4,
-              errors::InvalidArgument("tensor_in must be 4-dimensional"));
+  // For maxpooling, tensor_in should have 2 spatial dimensions.
+  // Note: the total number of dimensions could be 4 for NHWC, NCHW,
+  // or 5 for NCHW_VECT_C.
+  OP_REQUIRES(context,
+              GetTensorSpatialDims(tensor_in_shape.dims(), data_format) == 2,
+              errors::InvalidArgument(
+                  "tensor_in_shape must have 2 spatial dimensions. ",
+                  tensor_in_shape.dims(), " ", data_format));
 
   this->data_format = data_format;
-  depth = GetTensorDim(tensor_in_shape, data_format, 'C');
+  depth = GetTensorDim(tensor_in_shape, data_format, 'C') *
+          (data_format == FORMAT_NCHW_VECT_C ? 4 : 1);
   tensor_in_cols = GetTensorDim(tensor_in_shape, data_format, 'W');
   tensor_in_rows = GetTensorDim(tensor_in_shape, data_format, 'H');
   tensor_in_batch = GetTensorDim(tensor_in_shape, data_format, 'N');
@@ -109,11 +114,9 @@ TensorShape PoolParameters::forward_output_shape() {
 
 namespace {
 template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory,
-                                                    uint64 size) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory),
-                                                size * sizeof(T));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
+se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
+  se::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory), size * sizeof(T));
+  se::DeviceMemory<T> typed(wrapped);
   return typed;
 }
 }  // namespace
@@ -133,15 +136,19 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
 }  // namespace functor
 
 template <typename T>
-void DnnPoolingOp<T>::Compute(
-    OpKernelContext* context,
-    perftools::gputools::dnn::PoolingMode pooling_mode,
-    const std::vector<int32>& size, const std::vector<int32>& stride,
-    Padding padding, TensorFormat data_format, const Tensor& tensor_in,
-    const TensorShape& tensor_out_shape) {
+void DnnPoolingOp<T>::Compute(OpKernelContext* context,
+                              se::dnn::PoolingMode pooling_mode,
+                              const std::vector<int32>& size,
+                              const std::vector<int32>& stride, Padding padding,
+                              TensorFormat data_format, const Tensor& tensor_in,
+                              const TensorShape& tensor_out_shape,
+                              bool propagate_nans) {
   Tensor* tensor_out = nullptr;
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_out_shape, &tensor_out));
+  if (tensor_in.shape().num_elements() == 0) {
+    return;
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, data_format, tensor_in.shape()};
@@ -176,28 +183,29 @@ void DnnPoolingOp<T>::Compute(
   }
 
   /// Get ready to call cudnn
-  perftools::gputools::dnn::PoolingDescriptor pooling_desc;
+  se::dnn::PoolingDescriptor pooling_desc;
   pooling_desc.set_pooling_mode(pooling_mode)
       .set_window_height(params.window_rows)
       .set_window_width(params.window_cols)
       .set_vertical_stride(params.row_stride)
       .set_horizontal_stride(params.col_stride)
       .set_vertical_padding(params.pad_rows)
-      .set_horizontal_padding(params.pad_cols);
+      .set_horizontal_padding(params.pad_cols)
+      .set_propagate_nans(propagate_nans);
 
-  perftools::gputools::dnn::BatchDescriptor input_desc;
+  se::dnn::BatchDescriptor input_desc;
   input_desc.set_count(params.tensor_in_batch)
       .set_height(params.tensor_in_rows)
       .set_width(params.tensor_in_cols)
       .set_feature_map_count(params.depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-  perftools::gputools::dnn::BatchDescriptor output_desc;
+  se::dnn::BatchDescriptor output_desc;
   output_desc.set_count(params.tensor_in_batch)
       .set_height(params.out_height)
       .set_width(params.out_width)
       .set_feature_map_count(params.depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
   auto input_data = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                    transformed_input.template flat<T>().size());
@@ -213,7 +221,7 @@ void DnnPoolingOp<T>::Compute(
                                       output_desc, &output_data)
                     .ok();
   OP_REQUIRES(context, status,
-              errors::Internal("cudnn PoolBackward launch failed"));
+              errors::Internal("cudnn PoolForward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
@@ -227,13 +235,12 @@ void DnnPoolingOp<T>::Compute(
 
 template <typename T>
 void DnnPoolingGradOp<T>::Compute(
-    OpKernelContext* context,
-    perftools::gputools::dnn::PoolingMode pooling_mode,
+    OpKernelContext* context, se::dnn::PoolingMode pooling_mode,
     const std::vector<int32>& size, const std::vector<int32>& stride,
     Padding padding, TensorFormat data_format, const Tensor* tensor_in,
     const Tensor* tensor_out, const Tensor& out_backprop,
-    const TensorShape& tensor_in_shape) {
-  CHECK((pooling_mode != perftools::gputools::dnn::PoolingMode::kMaximum) ||
+    const TensorShape& tensor_in_shape, bool propagate_nans) {
+  CHECK((pooling_mode != se::dnn::PoolingMode::kMaximum) ||
         (tensor_in && tensor_out))
       << "For MaxPoolGrad, both tensor_in and tensor_out needs to be "
          "specified";
@@ -241,6 +248,9 @@ void DnnPoolingGradOp<T>::Compute(
   Tensor* input_backprop = nullptr;
   OP_REQUIRES_OK(context,
                  context->allocate_output(0, tensor_in_shape, &input_backprop));
+  if (tensor_in_shape.num_elements() == 0) {
+    return;
+  }
 
   PoolParameters params{context, size,        stride,
                         padding, data_format, tensor_in_shape};
@@ -315,28 +325,29 @@ void DnnPoolingGradOp<T>::Compute(
   }
 
   /// Get ready to call cudnn
-  perftools::gputools::dnn::PoolingDescriptor pooling_desc;
+  se::dnn::PoolingDescriptor pooling_desc;
   pooling_desc.set_pooling_mode(pooling_mode)
       .set_window_height(params.window_rows)
       .set_window_width(params.window_cols)
       .set_vertical_stride(params.row_stride)
       .set_horizontal_stride(params.col_stride)
       .set_vertical_padding(params.pad_rows)
-      .set_horizontal_padding(params.pad_cols);
+      .set_horizontal_padding(params.pad_cols)
+      .set_propagate_nans(propagate_nans);
 
-  perftools::gputools::dnn::BatchDescriptor orig_output_desc;
+  se::dnn::BatchDescriptor orig_output_desc;
   orig_output_desc.set_count(params.tensor_in_batch)
       .set_height(params.out_height)
       .set_width(params.out_width)
       .set_feature_map_count(params.depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
-  perftools::gputools::dnn::BatchDescriptor orig_input_desc;
+  se::dnn::BatchDescriptor orig_input_desc;
   orig_input_desc.set_count(params.tensor_in_batch)
       .set_height(params.tensor_in_rows)
       .set_width(params.tensor_in_cols)
       .set_feature_map_count(params.depth)
-      .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
 
   auto orig_output_data =
       AsDeviceMemory(transformed_output.template flat<T>().data(),

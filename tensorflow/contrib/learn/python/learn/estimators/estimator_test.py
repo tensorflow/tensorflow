@@ -32,7 +32,7 @@ from google.protobuf import text_format
 
 from tensorflow.contrib import learn
 from tensorflow.contrib import lookup
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import experiment
@@ -63,6 +63,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import input as input_lib
@@ -110,8 +111,8 @@ def boston_eval_fn():
       constant_op.constant(boston.data), [n_examples, _BOSTON_INPUT_DIM])
   labels = array_ops.reshape(
       constant_op.constant(boston.target), [n_examples, 1])
-  return array_ops.concat([features, features], 0), array_ops.concat(
-      [labels, labels], 0)
+  return array_ops.concat([features, features],
+                          0), array_ops.concat([labels, labels], 0)
 
 
 def extract(data, key):
@@ -131,7 +132,7 @@ def linear_model_params_fn(features, labels, mode, params):
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
       loss,
-      variables.get_global_step(),
+      training_util.get_global_step(),
       optimizer='Adagrad',
       learning_rate=params['learning_rate'])
   return prediction, loss, train_op
@@ -146,7 +147,10 @@ def linear_model_fn(features, labels, mode):
     (_, features), = features.items()
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return prediction, loss, train_op
 
 
@@ -156,7 +160,10 @@ def linear_model_fn_with_model_fn_ops(features, labels, mode):
                   model_fn.ModeKeys.INFER)
   prediction, loss = (models.linear_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return model_fn.ModelFnOps(
       mode=mode, predictions=prediction, loss=loss, train_op=train_op)
 
@@ -167,7 +174,10 @@ def logistic_model_no_mode_fn(features, labels):
   labels = array_ops.one_hot(labels, 3, 1, 0)
   prediction, loss = (models.logistic_regression_zero_init(features, labels))
   train_op = optimizers.optimize_loss(
-      loss, variables.get_global_step(), optimizer='Adagrad', learning_rate=0.1)
+      loss,
+      training_util.get_global_step(),
+      optimizer='Adagrad',
+      learning_rate=0.1)
   return {
       'class': math_ops.argmax(prediction, 1),
       'prob': prediction
@@ -183,14 +193,12 @@ def _build_estimator_for_export_tests(tmpdir):
   def _input_fn():
     iris = base.load_iris()
     return {
-        'feature': constant_op.constant(
-            iris.data, dtype=dtypes.float32)
+        'feature': constant_op.constant(iris.data, dtype=dtypes.float32)
     }, constant_op.constant(
         iris.target, shape=[150], dtype=dtypes.int32)
 
   feature_columns = [
-      feature_column_lib.real_valued_column(
-          'feature', dimension=4)
+      feature_column_lib.real_valued_column('feature', dimension=4)
   ]
 
   est = linear.LinearRegressor(feature_columns)
@@ -240,7 +248,7 @@ def _build_estimator_for_resource_export_test():
     const = constant_op.constant(-1, dtype=dtypes.int64)
     table = lookup.MutableHashTable(
         dtypes.string, dtypes.int64, const, name='LookupTableModel')
-    update_global_step = variables.get_global_step().assign_add(1)
+    update_global_step = training_util.get_global_step().assign_add(1)
     if mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL):
       key = constant_op.constant(['key'])
       value = constant_op.constant([42], dtype=dtypes.int64)
@@ -290,8 +298,8 @@ class CheckCallsMonitor(monitors_lib.BaseMonitor):
             self.begin_calls == self.expect_calls)
 
 
-def _model_fn_ops(
-    expected_features, expected_labels, actual_features, actual_labels, mode):
+def _model_fn_ops(expected_features, expected_labels, actual_features,
+                  actual_labels, mode):
   assert_ops = tuple([
       check_ops.assert_equal(
           expected_features[k], actual_features[k], name='assert_%s' % k)
@@ -305,15 +313,15 @@ def _model_fn_ops(
         mode=mode,
         predictions=constant_op.constant(0.),
         loss=constant_op.constant(0.),
-        train_op=variables.get_global_step().assign_add(1))
+        train_op=training_util.get_global_step().assign_add(1))
 
 
 def _make_input_fn(features, labels):
+
   def _input_fn():
-    return {
-        k: constant_op.constant(v)
-        for k, v in six.iteritems(features)
-    }, constant_op.constant(labels)
+    return {k: constant_op.constant(v)
+            for k, v in six.iteritems(features)}, constant_op.constant(labels)
+
   return _input_fn
 
 
@@ -368,11 +376,13 @@ class EstimatorModelFnTest(test.TestCase):
       self.assertEqual(expected_params, params)
       self.assertTrue(config.i_am_test)
       return _model_fn_ops(features, labels, arg0, arg1, mode)
+
     partial_model_fn = functools.partial(
         _model_fn, foo=expected_foo, bar=expected_bar)
 
     est = estimator.Estimator(
-        model_fn=partial_model_fn, params=expected_params,
+        model_fn=partial_model_fn,
+        params=expected_params,
         config=expected_config)
     self.assertEqual(0, model_fn_call_count[0])
     est.fit(input_fn=_make_input_fn(features, labels), steps=1)
@@ -381,17 +391,24 @@ class EstimatorModelFnTest(test.TestCase):
   def testModelFnWithModelDir(self):
     expected_param = {'some_param': 'some_value'}
     expected_model_dir = tempfile.mkdtemp()
-    def _argument_checker(features, labels, mode, params, config=None,
+
+    def _argument_checker(features,
+                          labels,
+                          mode,
+                          params,
+                          config=None,
                           model_dir=None):
       _, _, _ = features, labels, config
       self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
       self.assertEqual(expected_param, params)
       self.assertEqual(model_dir, expected_model_dir)
       return (constant_op.constant(0.), constant_op.constant(0.),
-              variables.get_global_step().assign_add(1))
-    est = estimator.Estimator(model_fn=_argument_checker,
-                              params=expected_param,
-                              model_dir=expected_model_dir)
+              training_util.get_global_step().assign_add(1))
+
+    est = estimator.Estimator(
+        model_fn=_argument_checker,
+        params=expected_param,
+        model_dir=expected_model_dir)
     est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_train_op(self):
@@ -399,7 +416,7 @@ class EstimatorModelFnTest(test.TestCase):
     def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       with ops.control_dependencies([update_global_step]):
         loss = 100.0 - w
       return None, loss, None
@@ -414,7 +431,7 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       with ops.control_dependencies([update_global_step]):
         train_op = w.assign_add(loss / 100.0)
       predictions = loss
@@ -433,7 +450,7 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      update_global_step = variables.get_global_step().assign_add(1)
+      update_global_step = training_util.get_global_step().assign_add(1)
       with ops.control_dependencies([update_global_step]):
         train_op = w.assign_add(loss / 100.0)
       return None, loss, train_op
@@ -446,8 +463,7 @@ class EstimatorModelFnTest(test.TestCase):
       est.predict(input_fn=boston_input_fn)
     with self.assertRaisesRegexp(ValueError, 'Missing prediction'):
       est.predict(
-          input_fn=functools.partial(
-              boston_input_fn, num_epochs=1),
+          input_fn=functools.partial(boston_input_fn, num_epochs=1),
           as_iterable=True)
 
   def testModelFnScaffoldInTraining(self):
@@ -463,7 +479,7 @@ class EstimatorModelFnTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant(0.),
           loss=constant_op.constant(0.),
-          train_op=variables.get_global_step().assign_add(1),
+          train_op=training_util.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
@@ -482,7 +498,7 @@ class EstimatorModelFnTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=variables.get_global_step().assign_add(1),
+          train_op=training_util.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(saver=self.mock_saver))
 
     def input_fn():
@@ -497,15 +513,17 @@ class EstimatorModelFnTest(test.TestCase):
     self.assertTrue(self.mock_saver.restore.called)
     est.predict(input_fn=input_fn)
     self.assertTrue(self.mock_saver.restore.called)
-    def serving_input_fn():
-      serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
-                                                    shape=[None],
-                                                    name='input_example_tensor')
-      features, labels = input_fn()
-      return input_fn_utils.InputFnOps(
-          features, labels, {'examples': serialized_tf_example})
 
-    est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+    def serving_input_fn():
+      serialized_tf_example = array_ops.placeholder(
+          dtype=dtypes.string, shape=[None], name='input_example_tensor')
+      features, labels = input_fn()
+      return input_fn_utils.InputFnOps(features, labels, {
+          'examples': serialized_tf_example
+      })
+
+    est.export_savedmodel(
+        os.path.join(est.model_dir, 'export'), serving_input_fn)
     self.assertTrue(self.mock_saver.restore.called)
 
 
@@ -549,33 +567,28 @@ class EstimatorTest(test.TestCase):
 
   def testRunConfigModelDir(self):
     config = run_config.RunConfig(model_dir='test_dir')
-    est = estimator.Estimator(model_fn=linear_model_fn,
-                              config=config)
+    est = estimator.Estimator(model_fn=linear_model_fn, config=config)
     self.assertEqual('test_dir', est.config.model_dir)
     self.assertEqual('test_dir', est.model_dir)
 
   def testModelDirAndRunConfigModelDir(self):
     config = run_config.RunConfig(model_dir='test_dir')
-    est = estimator.Estimator(model_fn=linear_model_fn,
-                              config=config,
-                              model_dir='test_dir')
+    est = estimator.Estimator(
+        model_fn=linear_model_fn, config=config, model_dir='test_dir')
     self.assertEqual('test_dir', est.config.model_dir)
 
     with self.assertRaisesRegexp(
-        ValueError,
-        'model_dir are set both in constructor and RunConfig, '
+        ValueError, 'model_dir are set both in constructor and RunConfig, '
         'but with different'):
-      estimator.Estimator(model_fn=linear_model_fn,
-                          config=config,
-                          model_dir='different_dir')
+      estimator.Estimator(
+          model_fn=linear_model_fn, config=config, model_dir='different_dir')
 
   def testModelDirIsCopiedToRunConfig(self):
     config = run_config.RunConfig()
     self.assertIsNone(config.model_dir)
 
-    est = estimator.Estimator(model_fn=linear_model_fn,
-                              model_dir='test_dir',
-                              config=config)
+    est = estimator.Estimator(
+        model_fn=linear_model_fn, model_dir='test_dir', config=config)
     self.assertEqual('test_dir', est.config.model_dir)
     self.assertEqual('test_dir', est.model_dir)
 
@@ -655,25 +668,27 @@ class EstimatorTest(test.TestCase):
     boston = base.load_boston()
     output_dir = tempfile.mkdtemp()
     est = estimator.SKCompat(
-        estimator.Estimator(
-            model_fn=linear_model_fn, model_dir=output_dir))
+        estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir))
     float64_labels = boston.target.astype(np.float64)
     est.fit(x=boston.data, y=float64_labels, steps=50)
     scores = est.score(
         x=boston.data,
         y=float64_labels,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     del est
     # Create another estimator object with the same output dir.
     est2 = estimator.SKCompat(
-        estimator.Estimator(
-            model_fn=linear_model_fn, model_dir=output_dir))
+        estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir))
 
     # Check we can evaluate and predict.
     scores2 = est2.score(
         x=boston.data,
         y=float64_labels,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     self.assertAllClose(scores['MSE'], scores2['MSE'])
     predictions = np.array(list(est2.predict(x=boston.data)))
     other_score = _sklearn.mean_squared_error(predictions, float64_labels)
@@ -684,14 +699,15 @@ class EstimatorTest(test.TestCase):
     scores3 = est2.score(
         x=boston.data,
         y=float64_labels,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+        metrics={
+            'MSE': metric_ops.streaming_mean_squared_error
+        })
     self.assertLess(scores3['MSE'], scores['MSE'])
 
   def test_checkpoint_contains_relative_paths(self):
     tmpdir = tempfile.mkdtemp()
     est = estimator.Estimator(
-        model_dir=tmpdir,
-        model_fn=linear_model_fn_with_model_fn_ops)
+        model_dir=tmpdir, model_fn=linear_model_fn_with_model_fn_ops)
     est.fit(input_fn=boston_input_fn, steps=5)
 
     checkpoint_file_content = file_io.read_file_to_string(
@@ -699,22 +715,22 @@ class EstimatorTest(test.TestCase):
     ckpt = checkpoint_state_pb2.CheckpointState()
     text_format.Merge(checkpoint_file_content, ckpt)
     self.assertEqual(ckpt.model_checkpoint_path, 'model.ckpt-5')
-    self.assertAllEqual(
-        ['model.ckpt-1', 'model.ckpt-5'], ckpt.all_model_checkpoint_paths)
+    # TODO(b/78461127): Please modify tests to not directly rely on names of
+    # checkpoints.
+    self.assertAllEqual(['model.ckpt-0', 'model.ckpt-5'],
+                        ckpt.all_model_checkpoint_paths)
 
   def test_train_save_copy_reload(self):
     tmpdir = tempfile.mkdtemp()
     model_dir1 = os.path.join(tmpdir, 'model_dir1')
     est1 = estimator.Estimator(
-        model_dir=model_dir1,
-        model_fn=linear_model_fn_with_model_fn_ops)
+        model_dir=model_dir1, model_fn=linear_model_fn_with_model_fn_ops)
     est1.fit(input_fn=boston_input_fn, steps=5)
 
     model_dir2 = os.path.join(tmpdir, 'model_dir2')
     os.renames(model_dir1, model_dir2)
     est2 = estimator.Estimator(
-        model_dir=model_dir2,
-        model_fn=linear_model_fn_with_model_fn_ops)
+        model_dir=model_dir2, model_fn=linear_model_fn_with_model_fn_ops)
     self.assertEqual(5, est2.get_variable_value('global_step'))
     est2.fit(input_fn=boston_input_fn, steps=5)
     self.assertEqual(10, est2.get_variable_value('global_step'))
@@ -723,7 +739,9 @@ class EstimatorTest(test.TestCase):
     boston = base.load_boston()
     est = estimator.SKCompat(
         estimator.Estimator(
-            model_fn=linear_model_params_fn, params={'learning_rate': 0.01}))
+            model_fn=linear_model_params_fn, params={
+                'learning_rate': 0.01
+            }))
     est.fit(x=boston.data, y=boston.target, steps=100)
 
   def testHooksNotChanged(self):
@@ -823,11 +841,13 @@ class EstimatorTest(test.TestCase):
 
   def testMonitorsForFit(self):
     est = estimator.Estimator(model_fn=linear_model_fn)
-    est.fit(input_fn=boston_input_fn,
-            steps=21,
-            monitors=[CheckCallsMonitor(expect_calls=21)])
+    est.fit(
+        input_fn=boston_input_fn,
+        steps=21,
+        monitors=[CheckCallsMonitor(expect_calls=21)])
 
   def testHooksForEvaluate(self):
+
     class CheckCallHook(session_run_hook.SessionRunHook):
 
       def __init__(self):
@@ -850,6 +870,71 @@ class EstimatorTest(test.TestCase):
     loss_summary = util_test.simple_values_from_events(
         util_test.latest_events(est.model_dir), ['OptimizeLoss/loss'])
     self.assertEqual(1, len(loss_summary))
+
+  def testSummaryWritingWithSummaryProto(self):
+
+    def _streaming_mean_squared_error_histogram(predictions,
+                                                labels,
+                                                weights=None,
+                                                metrics_collections=None,
+                                                updates_collections=None,
+                                                name=None):
+      metrics, update_ops = metric_ops.streaming_mean_squared_error(
+          predictions,
+          labels,
+          weights=weights,
+          metrics_collections=metrics_collections,
+          updates_collections=updates_collections,
+          name=name)
+      return summary.histogram('histogram', metrics), update_ops
+
+    est = estimator.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(
+        input_fn=boston_input_fn,
+        steps=200,
+        metrics={
+            'MSE': _streaming_mean_squared_error_histogram
+        })
+    events = util_test.latest_events(est.model_dir + '/eval')
+    output_values = {}
+    for e in events:
+      if e.HasField('summary'):
+        for v in e.summary.value:
+          output_values[v.tag] = v
+    self.assertTrue('MSE' in output_values)
+    self.assertTrue(output_values['MSE'].HasField('histo'))
+
+  def testSummaryWritingWithTensor(self):
+
+    def _streaming_precition_mean_tensor(predictions,
+                                         weights=None,
+                                         metrics_collections=None,
+                                         updates_collections=None,
+                                         name=None):
+      return metric_ops.streaming_mean_tensor(
+          predictions,
+          weights=weights,
+          metrics_collections=metrics_collections,
+          updates_collections=updates_collections,
+          name=name)
+
+    est = estimator.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(
+        input_fn=boston_input_fn,
+        steps=200,
+        metrics={
+            'PMT': _streaming_precition_mean_tensor
+        })
+    events = util_test.latest_events(est.model_dir + '/eval')
+    output_values = {}
+    for e in events:
+      if e.HasField('summary'):
+        for v in e.summary.value:
+          output_values[v.tag] = v
+    self.assertTrue('PMT' in output_values)
+    self.assertTrue(output_values['PMT'].HasField('tensor'))
 
   def testLossInGraphCollection(self):
 
@@ -894,8 +979,8 @@ class EstimatorTest(test.TestCase):
     self.assertTrue(
         gfile.Exists(
             os.path.join(
-                compat.as_bytes(export_dir), compat.as_bytes(
-                    'saved_model.pb'))))
+                compat.as_bytes(export_dir),
+                compat.as_bytes('saved_model.pb'))))
     self.assertTrue(
         gfile.Exists(
             os.path.join(
@@ -955,10 +1040,11 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
-        self.assertSameElements(
-            ['bogus_lookup', 'feature'],
-            graph.get_collection(
-                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS))
+        self.assertItemsEqual(['bogus_lookup', 'feature'], [
+            compat.as_str_any(x)
+            for x in graph.get_collection(
+                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS)
+        ])
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)
@@ -976,8 +1062,8 @@ class EstimatorTest(test.TestCase):
     self.assertTrue(
         gfile.Exists(
             os.path.join(
-                compat.as_bytes(export_dir), compat.as_bytes(
-                    'saved_model.pb'))))
+                compat.as_bytes(export_dir),
+                compat.as_bytes('saved_model.pb'))))
     self.assertTrue(
         gfile.Exists(
             os.path.join(
@@ -1020,19 +1106,22 @@ class EstimatorTest(test.TestCase):
     export_dir_base = os.path.join(
         compat.as_bytes(tmpdir), compat.as_bytes('export'))
     export_dir = est.export_savedmodel(
-        export_dir_base, serving_input_fn, assets_extra=assets_extra,
+        export_dir_base,
+        serving_input_fn,
+        assets_extra=assets_extra,
         graph_rewrite_specs=[
             estimator.GraphRewriteSpec(['tag_1'], []),
             estimator.GraphRewriteSpec(['tag_2', 'tag_3'],
-                                       ['strip_unused_nodes'])])
+                                       ['strip_unused_nodes'])
+        ])
 
     self.assertTrue(gfile.Exists(export_dir_base))
     self.assertTrue(gfile.Exists(export_dir))
     self.assertTrue(
         gfile.Exists(
             os.path.join(
-                compat.as_bytes(export_dir), compat.as_bytes(
-                    'saved_model.pb'))))
+                compat.as_bytes(export_dir),
+                compat.as_bytes('saved_model.pb'))))
     self.assertTrue(
         gfile.Exists(
             os.path.join(
@@ -1145,18 +1234,15 @@ class InferRealValuedColumnsTest(test.TestCase):
     self.assertEqual(1, len(feature_columns))
     feature_column = feature_columns[0]
     self.assertEqual('', feature_column.name)
-    self.assertEqual(
-        {
-            '':
-                parsing_ops.FixedLenFeature(
-                    shape=expected_shape, dtype=expected_dtype)
-        },
-        feature_column.config)
+    self.assertEqual({
+        '':
+            parsing_ops.FixedLenFeature(
+                shape=expected_shape, dtype=expected_dtype)
+    }, feature_column.config)
 
   def testInt32Input(self):
     feature_columns = estimator.infer_real_valued_columns_from_input(
-        np.ones(
-            shape=[7, 8], dtype=np.int32))
+        np.ones(shape=[7, 8], dtype=np.int32))
     self._assert_single_feature_column([8], dtypes.int32, feature_columns)
 
   def testInt32InputFn(self):
@@ -1166,8 +1252,7 @@ class InferRealValuedColumnsTest(test.TestCase):
 
   def testInt64Input(self):
     feature_columns = estimator.infer_real_valued_columns_from_input(
-        np.ones(
-            shape=[7, 8], dtype=np.int64))
+        np.ones(shape=[7, 8], dtype=np.int64))
     self._assert_single_feature_column([8], dtypes.int64, feature_columns)
 
   def testInt64InputFn(self):
@@ -1177,8 +1262,7 @@ class InferRealValuedColumnsTest(test.TestCase):
 
   def testFloat32Input(self):
     feature_columns = estimator.infer_real_valued_columns_from_input(
-        np.ones(
-            shape=[7, 8], dtype=np.float32))
+        np.ones(shape=[7, 8], dtype=np.float32))
     self._assert_single_feature_column([8], dtypes.float32, feature_columns)
 
   def testFloat32InputFn(self):
@@ -1188,8 +1272,7 @@ class InferRealValuedColumnsTest(test.TestCase):
 
   def testFloat64Input(self):
     feature_columns = estimator.infer_real_valued_columns_from_input(
-        np.ones(
-            shape=[7, 8], dtype=np.float64))
+        np.ones(shape=[7, 8], dtype=np.float64))
     self._assert_single_feature_column([8], dtypes.float64, feature_columns)
 
   def testFloat64InputFn(self):
@@ -1208,8 +1291,8 @@ class InferRealValuedColumnsTest(test.TestCase):
         ValueError, 'on integer or non floating types are not supported'):
       # pylint: disable=g-long-lambda
       estimator.infer_real_valued_columns_from_input_fn(
-          lambda: (constant_op.constant(False, shape=[7, 8], dtype=dtypes.bool),
-                   None))
+          lambda: (constant_op.constant(False, shape=[7, 8], dtype=dtypes.bool), None)
+      )
 
   def testStringInput(self):
     with self.assertRaisesRegexp(
@@ -1246,8 +1329,9 @@ class ReplicaDeviceSetterTest(test.TestCase):
 
   def testVariablesAreOnPs(self):
     tf_config = {'cluster': {run_config.TaskType.PS: ['fake_ps_0']}}
-    with test.mock.patch.dict('os.environ',
-                              {'TF_CONFIG': json.dumps(tf_config)}):
+    with test.mock.patch.dict('os.environ', {
+        'TF_CONFIG': json.dumps(tf_config)
+    }):
       config = run_config.RunConfig()
 
     with ops.device(estimator._get_replica_device_setter(config)):
@@ -1274,14 +1358,14 @@ class ReplicaDeviceSetterTest(test.TestCase):
 
   def testMutableHashTableIsOnPs(self):
     tf_config = {'cluster': {run_config.TaskType.PS: ['fake_ps_0']}}
-    with test.mock.patch.dict('os.environ',
-                              {'TF_CONFIG': json.dumps(tf_config)}):
+    with test.mock.patch.dict('os.environ', {
+        'TF_CONFIG': json.dumps(tf_config)
+    }):
       config = run_config.RunConfig()
 
     with ops.device(estimator._get_replica_device_setter(config)):
       default_val = constant_op.constant([-1, -1], dtypes.int64)
-      table = lookup.MutableHashTable(dtypes.string, dtypes.int64,
-                                      default_val)
+      table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
     self.assertDeviceEqual('/job:ps/task:0', table._table_ref.device)
@@ -1291,8 +1375,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
     with ops.device(
         estimator._get_replica_device_setter(run_config.RunConfig())):
       default_val = constant_op.constant([-1, -1], dtypes.int64)
-      table = lookup.MutableHashTable(dtypes.string, dtypes.int64,
-                                      default_val)
+      table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
     self.assertDeviceEqual('', table._table_ref.device)
@@ -1308,8 +1391,9 @@ class ReplicaDeviceSetterTest(test.TestCase):
             'index': 3
         }
     }
-    with test.mock.patch.dict('os.environ',
-                              {'TF_CONFIG': json.dumps(tf_config)}):
+    with test.mock.patch.dict('os.environ', {
+        'TF_CONFIG': json.dumps(tf_config)
+    }):
       config = run_config.RunConfig()
 
     with ops.device(estimator._get_replica_device_setter(config)):

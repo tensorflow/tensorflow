@@ -23,18 +23,23 @@ import timeit
 
 import numpy as np
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_lib
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -54,7 +59,7 @@ class Plus1RNNCell(rnn_cell_impl.RNNCell):
   def state_size(self):
     return 5
 
-  def __call__(self, input_, state, scope=None):
+  def call(self, input_, state, scope=None):
     return (input_ + 1, state + 1)
 
 
@@ -72,8 +77,48 @@ class ScalarStateRNNCell(rnn_cell_impl.RNNCell):
   def zero_state(self, batch_size, dtype):
     return array_ops.zeros([], dtype=dtypes.int32)
 
-  def __call__(self, input_, state, scope=None):
+  def call(self, input_, state, scope=None):
     return (input_, state + 1)
+
+
+class UnbalancedOutputRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
+
+  @property
+  def output_size(self):
+    return  tensor_shape.TensorShape(1), tensor_shape.TensorShape((2))
+
+  @property
+  def state_size(self):
+    return tensor_shape.TensorShape([])
+
+  def zero_state(self, batch_size, dtype):
+    return array_ops.zeros([], dtype=dtypes.int32)
+
+  def call(self, input_, state, scope=None):
+    concatenated = array_ops.concat((input_, input_), axis=-1)
+    return (input_, concatenated), state + 1
+
+
+class TensorArrayStateRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell its state as a TensorArray."""
+
+  @property
+  def output_size(self):
+    return 1
+
+  @property
+  def state_size(self):
+    return (tensor_shape.TensorShape([]), ())
+
+  def zero_state(self, batch_size, dtype):
+    return (array_ops.zeros([], dtype=dtypes.int32),
+            tensor_array_ops.TensorArray(
+                dtype=dtype, size=0, dynamic_size=True))
+
+  def call(self, input_, state, scope=None):
+    new_array = state[1].write(state[0], input_)
+    return (input_, (state[0] + 1, new_array))
 
 
 class RNNTest(test.TestCase):
@@ -82,9 +127,13 @@ class RNNTest(test.TestCase):
     self._seed = 23489
     np.random.seed(self._seed)
 
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidSequenceLengthShape(self):
     cell = Plus1RNNCell()
-    inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
+    if context.executing_eagerly():
+      inputs = [constant_op.constant(np.ones((3, 4)))]
+    else:
+      inputs = [array_ops.placeholder(dtypes.float32, shape=(3, 4))]
     with self.assertRaisesRegexp(ValueError, "must be a vector"):
       rnn.dynamic_rnn(
           cell,
@@ -92,45 +141,133 @@ class RNNTest(test.TestCase):
           dtype=dtypes.float32,
           sequence_length=[[4]])
 
+  @test_util.run_in_graph_and_eager_modes
   def testBatchSizeFromInput(self):
     cell = Plus1RNNCell()
+    in_eager_mode = context.executing_eagerly()
     # With static batch size
-    inputs = array_ops.placeholder(dtypes.float32, shape=(3, 4, 5))
-    # - Without initial_state
-    outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
-    self.assertEqual(3, outputs.shape[0].value)
-    self.assertEqual(3, state.shape[0].value)
-    # - With initial_state
-    outputs, state = rnn.dynamic_rnn(
-        cell,
-        inputs,
-        initial_state=array_ops.placeholder(dtypes.float32, shape=(3, 5)))
-    self.assertEqual(3, outputs.shape[0].value)
-    self.assertEqual(3, state.shape[0].value)
-    # Without static batch size
-    inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 5))
-    # - Without initial_state
-    outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
-    self.assertEqual(None, outputs.shape[0].value)
-    self.assertEqual(None, state.shape[0].value)
-    # - With initial_state
-    outputs, state = rnn.dynamic_rnn(
-        cell,
-        inputs,
-        initial_state=array_ops.placeholder(dtypes.float32, shape=(None, 5)))
-    self.assertEqual(None, outputs.shape[0].value)
-    self.assertEqual(None, state.shape[0].value)
+    if in_eager_mode:
+      inputs = np.zeros((3, 4, 5), dtype=np.float32)
+      initial_state = np.zeros((3, 5), dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(3, 4, 5))
+      initial_state = array_ops.placeholder(dtypes.float32, shape=(3, 5))
 
+    # - Without initial_state
+    outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
+    self.assertEqual(3, outputs.shape[0])
+    self.assertEqual(3, state.shape[0])
+
+    # - With initial_state
+    outputs, state = rnn.dynamic_rnn(
+        cell, inputs, initial_state=initial_state)
+    self.assertEqual(3, outputs.shape[0])
+    self.assertEqual(3, state.shape[0])
+
+    # Without static batch size
+    # Tensor shapes are fully determined with eager execution enabled,
+    # so only run this test for graph construction.
+    if not in_eager_mode:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 5))
+      # - Without initial_state
+      outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
+      self.assertEqual(None, outputs.shape[0].value)
+      self.assertEqual(None, state.shape[0].value)
+      # - With initial_state
+      outputs, state = rnn.dynamic_rnn(
+          cell,
+          inputs,
+          initial_state=array_ops.placeholder(dtypes.float32, shape=(None, 5)))
+      self.assertEqual(None, outputs.shape[0].value)
+      self.assertEqual(None, state.shape[0].value)
+
+  @test_util.run_in_graph_and_eager_modes
   def testScalarStateIsAccepted(self):
     cell = ScalarStateRNNCell()
-    inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+    in_eager_mode = context.executing_eagerly()
+
+    if in_eager_mode:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+
     with self.test_session() as sess:
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32, sequence_length=[4])
-      outputs, state = sess.run(
-          [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
-    self.assertAllEqual(outputs, [[[1], [2], [3], [4]]])
-    self.assertEqual(state, 4)
+      if not in_eager_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
+
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
+    self.assertAllEqual(4, state)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testUnbalancedOutputIsAccepted(self):
+    cell = UnbalancedOutputRNNCell()
+    in_eager_mode = context.executing_eagerly()
+
+    if in_eager_mode:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+
+    with self.test_session() as sess:
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+      if not in_eager_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={inputs: [[[1], [2], [3], [4]]]})
+
+    self.assertIsInstance(outputs, tuple)
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs[0])
+    self.assertAllEqual([[[1, 1], [2, 2], [3, 3], [4, 4]]], outputs[1])
+    self.assertAllEqual(4, state)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorArrayStateIsAccepted(self):
+    cell = TensorArrayStateRNNCell()
+    in_eager_mode = context.executing_eagerly()
+
+    if in_eager_mode:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+    else:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+
+    with self.test_session() as sess:
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+      state = (state[0], state[1].stack())
+      if not in_eager_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={
+                inputs: [[[1], [2], [3], [4]]]
+            })
+
+    self.assertAllEqual([[[1], [2], [3], [4]]], outputs)
+    self.assertAllEqual(4, state[0])
+    self.assertAllEqual([[[1]], [[2]], [[3]], [[4]]], state[1])
+
+  def _assert_cell_builds(self, cell_class, dtype, batch_size, in_size,
+                          out_size):
+    cell = cell_class(out_size, dtype=dtype)
+    in_shape = tensor_shape.TensorShape((batch_size, in_size))
+    cell.build(in_shape)
+    state_output = cell.zero_state(batch_size, dtype)
+    cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
+    self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCellsBuild(self):
+    f32 = dtypes.float32
+    f64 = dtypes.float64
+    self._assert_cell_builds(rnn_cell_impl.BasicRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.BasicRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.BasicLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.BasicLSTMCell, f64, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.GRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.GRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.LSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(rnn_cell_impl.LSTMCell, f64, 5, 7, 3)
 
 
 ######### Benchmarking RNN code

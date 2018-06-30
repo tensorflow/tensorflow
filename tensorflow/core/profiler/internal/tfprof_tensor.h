@@ -19,8 +19,8 @@ limitations under the License.
 //    is not supported by TensorFlow CheckPointReader library, though it is
 //    supported in current code.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
 
 #include <typeinfo>
 
@@ -51,6 +51,33 @@ class TFProfTensor {
 
   void Build();
 
+  template <typename T>
+  bool AddValue(const T& value, TFProfTensorProto* dim) {
+    std::ostringstream sstream;
+    sstream << value;
+    if (typeid(value) == typeid(double)) {
+      double double_val;
+      CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
+      dim->add_value_double(double_val);
+      formatted_str_ += strings::Printf(
+          "%.2f ", dim->value_double(dim->value_double_size() - 1));
+    } else if (typeid(value) == typeid(int64)) {
+      int64 int64_val;
+      CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
+      dim->add_value_int64(int64_val);
+      formatted_str_ += strings::Printf(
+          "%lld ",
+          static_cast<int64>(dim->value_int64(dim->value_int64_size() - 1)));
+    } else if (typeid(value) == typeid(string)) {
+      dim->add_value_str(sstream.str());
+      formatted_str_ =
+          strings::StrCat(formatted_str_, "'",
+                          dim->value_str(dim->value_str_size() - 1) + "' ");
+    } else {
+      CHECK(false) << "Unsupported type: " << typeid(value).name();
+    }
+  }
+
   // It assumes the flatten values are stored in row-major, which is mentioned
   // indirectly at various places:
   // TODO(xpan): Further verifying it.
@@ -59,37 +86,65 @@ class TFProfTensor {
                     TFProfTensorProto* dim) {
     formatted_str_ += "[";
     int64 nstart = start;
-    for (int i = 0; i < tensor_->dim_size(depth); i++) {
-      // Last dimension, pull the values.
-      if (depth == tensor_->dims() - 1) {
-        std::ostringstream sstream;
-        sstream << values[nstart];
+    if (tensor_->dims() == 0 && values.size() == 1) {
+      std::ostringstream sstream;
+      sstream << values[nstart];
 
-        if (typeid(values[nstart]) == typeid(double)) {
-          double double_val;
-          CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
-          dim->add_value_double(double_val);
-          formatted_str_ += strings::Printf(
-              "%.2f ", dim->value_double(dim->value_double_size() - 1));
-        } else if (typeid(values[nstart]) == typeid(int64)) {
-          int64 int64_val;
-          CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
-          dim->add_value_int64(int64_val);
-          formatted_str_ += strings::Printf(
-              "%lld ", static_cast<int64>(
-                           dim->value_int64(dim->value_int64_size() - 1)));
-        } else if (typeid(values[nstart]) == typeid(string)) {
-          dim->add_value_str(sstream.str());
-          formatted_str_ =
-              strings::StrCat(formatted_str_, "'",
-                              dim->value_str(dim->value_str_size() - 1) + "' ");
-        } else {
-          CHECK(false) << "Unsupported type: " << typeid(values[nstart]).name();
-        }
-        ++nstart;
+      if (typeid(values[nstart]) == typeid(double)) {
+        double double_val;
+        CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
+        dim->add_value_double(double_val);
+        formatted_str_ += strings::Printf(
+            "%.2f ", dim->value_double(dim->value_double_size() - 1));
+      } else if (typeid(values[nstart]) == typeid(int64)) {
+        int64 int64_val;
+        CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
+        dim->add_value_int64(int64_val);
+        formatted_str_ += strings::Printf(
+            "%lld ",
+            static_cast<int64>(dim->value_int64(dim->value_int64_size() - 1)));
+      } else if (typeid(values[nstart]) == typeid(string)) {
+        dim->add_value_str(sstream.str());
+        formatted_str_ =
+            strings::StrCat(formatted_str_, "'",
+                            dim->value_str(dim->value_str_size() - 1) + "' ");
       } else {
-        // Not-last dimension. Drill deeper.
-        nstart = BuildOutput<T>(nstart, depth + 1, values, dim);
+        CHECK(false) << "Unsupported type: " << typeid(values[nstart]).name();
+      }
+    } else {
+      for (int i = 0; i < tensor_->dim_size(depth); i++) {
+        // Last dimension, pull the values.
+        if (depth == tensor_->dims() - 1) {
+          std::ostringstream sstream;
+          sstream << values[nstart];
+
+          if (typeid(values[nstart]) == typeid(double)) {
+            double double_val;
+            CHECK(strings::safe_strtod(sstream.str().c_str(), &double_val));
+            dim->add_value_double(double_val);
+            formatted_str_ += strings::Printf(
+                "%.2f ", dim->value_double(dim->value_double_size() - 1));
+          } else if (typeid(values[nstart]) == typeid(int64)) {
+            int64 int64_val;
+            CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
+            dim->add_value_int64(int64_val);
+            formatted_str_ += strings::Printf(
+                "%lld ", static_cast<int64>(
+                             dim->value_int64(dim->value_int64_size() - 1)));
+          } else if (typeid(values[nstart]) == typeid(string)) {
+            dim->add_value_str(sstream.str());
+            formatted_str_ = strings::StrCat(
+                formatted_str_, "'",
+                dim->value_str(dim->value_str_size() - 1) + "' ");
+          } else {
+            CHECK(false) << "Unsupported type: "
+                         << typeid(values[nstart]).name();
+          }
+          ++nstart;
+        } else {
+          // Not-last dimension. Drill deeper.
+          nstart = BuildOutput<T>(nstart, depth + 1, values, dim);
+        }
       }
     }
     if (formatted_str_.length() > kTFProfTenosrMaxDisplayLen) {
@@ -118,4 +173,4 @@ class TFProfTensor {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TENSOR_H_

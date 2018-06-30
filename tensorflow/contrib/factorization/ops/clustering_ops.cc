@@ -44,6 +44,25 @@ num_retries_per_sample: Scalar. For each row that is sampled, this parameter
 samples: Matrix of shape (num_to_sample, d). The sampled rows.
 )");
 
+REGISTER_OP("KMC2ChainInitialization")
+    .Input("distances: float32")
+    .Input("seed: int64")
+    .Output("index: int64")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"(
+Returns the index of a data point that should be added to the seed set.
+
+Entries in distances are assumed to be squared distances of candidate points to
+the already sampled centers in the seed set. The op constructs one Markov chain
+of the k-MC^2 algorithm and returns the index of one candidate point to be added
+as an additional cluster center.
+
+distances: Vector with squared distances to the closest previously sampled
+  cluster center for each candidate point.
+seed: Scalar. Seed for initializing the random number generator.
+index: Scalar with the index of the sampled point.
+)");
+
 REGISTER_OP("NearestNeighbors")
     .Input("points: float32")
     .Input("centers: float32")

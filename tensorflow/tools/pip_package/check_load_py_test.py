@@ -22,6 +22,9 @@ import os
 import subprocess
 
 
+os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
+
 def check_output_despite_error(args):
   """Get output of args from command line, even if there are errors.
 
@@ -42,11 +45,11 @@ def main():
   # Get all py_test target, note bazel query result will also include
   # cuda_py_test etc.
   try:
-    targets = subprocess.check_output(
-        'bazel query "kind(py_test, //tensorflow/contrib/... + '
+    targets = subprocess.check_output([
+        'bazel', 'query',
+        'kind(py_test, //tensorflow/contrib/... + '
         '//tensorflow/python/... - '
-        '//tensorflow/contrib/tensorboard/...)"',
-        shell=True).strip()
+        '//tensorflow/contrib/tensorboard/...)']).strip()
   except subprocess.CalledProcessError as e:
     targets = e.output
 
@@ -68,9 +71,8 @@ def main():
   files_missing_load = []
   for build_file in build_files:
     updated_build_file = subprocess.check_output(
-        'buildozer -stdout "new_load //tensorflow:tensorflow.bzl py_test" ' +
-        build_file,
-        shell=True)
+        ['buildozer', '-stdout', 'new_load //tensorflow:tensorflow.bzl py_test',
+         build_file])
     with open(build_file, 'r') as f:
       if f.read() != updated_build_file:
         files_missing_load.append(build_file)

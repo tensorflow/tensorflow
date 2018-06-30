@@ -12,6 +12,15 @@ set(LIBLMDB_INCLUDES
     "libraries/liblmdb/midl.h"
 )
 
+if (WIN32)
+  # Suppress warnings to reduce build log size.
+  add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
+  add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
+  add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
+  add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  add_definitions(/wd8029)
+endif()
+
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}")
 
 add_library(lmdb ${LIBLMDB_SRCS})

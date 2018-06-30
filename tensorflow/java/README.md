@@ -1,7 +1,7 @@
 # TensorFlow for Java
 
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
-> [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
+> [API stability guarantees](https://www.tensorflow.org/guide/version_semantics).
 >
 > For using TensorFlow on Android refer instead to
 > [contrib/android](https://www.tensorflow.org/code/tensorflow/contrib/android),
@@ -22,9 +22,8 @@ native libraries will need to be built from source.
 1.  Install [bazel](https://www.bazel.build/versions/master/docs/install.html)
 
 2.  Setup the environment to build TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
-    or [Mac OS
-    X](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-mac-os-x)).
+    ([Linux](https://www.tensorflow.org/install/install_sources#PrepareLinux)
+    or [macOS](https://www.tensorflow.org/install/install_sources#PrepareMac)).
     If you'd like to skip reading those details and do not care about GPU
     support, try the following:
 

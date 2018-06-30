@@ -25,13 +25,192 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import spectral_ops
+from tensorflow.python.ops.distributions import util
 
 __all__ = [
+    "auto_correlation",
     "percentile",
 ]
+
+
+# TODO(langmore) Write separate versions of this for real/complex dtype, taking
+# advantage of optimized real-fft ops.
+def auto_correlation(
+    x,
+    axis=-1,
+    max_lags=None,
+    center=True,
+    normalize=True,
+    name="auto_correlation"):
+  """Auto correlation along one axis.
+
+  Given a `1-D` wide sense stationary (WSS) sequence `X`, the auto correlation
+  `RXX` may be defined as  (with `E` expectation and `Conj` complex conjugate)
+
+  ```
+  RXX[m] := E{ W[m] Conj(W[0]) } = E{ W[0] Conj(W[-m]) },
+  W[n]   := (X[n] - MU) / S,
+  MU     := E{ X[0] },
+  S**2   := E{ (X[0] - MU) Conj(X[0] - MU) }.
+  ```
+
+  This function takes the viewpoint that `x` is (along one axis) a finite
+  sub-sequence of a realization of (WSS) `X`, and then uses `x` to produce an
+  estimate of `RXX[m]` as follows:
+
+  After extending `x` from length `L` to `inf` by zero padding, the auto
+  correlation estimate `rxx[m]` is computed for `m = 0, 1, ..., max_lags` as
+
+  ```
+  rxx[m] := (L - m)**-1 sum_n w[n + m] Conj(w[n]),
+  w[n]   := (x[n] - mu) / s,
+  mu     := L**-1 sum_n x[n],
+  s**2   := L**-1 sum_n (x[n] - mu) Conj(x[n] - mu)
+  ```
+
+  The error in this estimate is proportional to `1 / sqrt(len(x) - m)`, so users
+  often set `max_lags` small enough so that the entire output is meaningful.
+
+  Note that since `mu` is an imperfect estimate of `E{ X[0] }`, and we divide by
+  `len(x) - m` rather than `len(x) - m - 1`, our estimate of auto correlation
+  contains a slight bias, which goes to zero as `len(x) - m --> infinity`.
+
+  Args:
+    x:  `float32` or `complex64` `Tensor`.
+    axis:  Python `int`. The axis number along which to compute correlation.
+      Other dimensions index different batch members.
+    max_lags:  Positive `int` tensor.  The maximum value of `m` to consider
+      (in equation above).  If `max_lags >= x.shape[axis]`, we effectively
+      re-set `max_lags` to `x.shape[axis] - 1`.
+    center:  Python `bool`.  If `False`, do not subtract the mean estimate `mu`
+      from `x[n]` when forming `w[n]`.
+    normalize:  Python `bool`.  If `False`, do not divide by the variance
+      estimate `s**2` when forming `w[n]`.
+    name:  `String` name to prepend to created ops.
+
+  Returns:
+    `rxx`: `Tensor` of same `dtype` as `x`.  `rxx.shape[i] = x.shape[i]` for
+      `i != axis`, and `rxx.shape[axis] = max_lags + 1`.
+
+  Raises:
+    TypeError:  If `x` is not a supported type.
+  """
+  # Implementation details:
+  # Extend length N / 2 1-D array x to length N by zero padding onto the end.
+  # Then, set
+  #   F[x]_k := sum_n x_n exp{-i 2 pi k n / N }.
+  # It is not hard to see that
+  #   F[x]_k Conj(F[x]_k) = F[R]_k, where
+  #   R_m := sum_n x_n Conj(x_{(n - m) mod N}).
+  # One can also check that R_m / (N / 2 - m) is an unbiased estimate of RXX[m].
+
+  # Since F[x] is the DFT of x, this leads us to a zero-padding and FFT/IFFT
+  # based version of estimating RXX.
+  # Note that this is a special case of the Wiener-Khinchin Theorem.
+  with ops.name_scope(name, values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
+
+    # Rotate dimensions of x in order to put axis at the rightmost dim.
+    # FFT op requires this.
+    rank = util.prefer_static_rank(x)
+    if axis < 0:
+      axis = rank + axis
+    shift = rank - 1 - axis
+    # Suppose x.shape[axis] = T, so there are T "time" steps.
+    #   ==> x_rotated.shape = B + [T],
+    # where B is x_rotated's batch shape.
+    x_rotated = util.rotate_transpose(x, shift)
+
+    if center:
+      x_rotated -= math_ops.reduce_mean(x_rotated, axis=-1, keepdims=True)
+
+    # x_len = N / 2 from above explanation.  The length of x along axis.
+    # Get a value for x_len that works in all cases.
+    x_len = util.prefer_static_shape(x_rotated)[-1]
+
+    # TODO(langmore) Investigate whether this zero padding helps or hurts.  At
+    # the moment is is necessary so that all FFT implementations work.
+    # Zero pad to the next power of 2 greater than 2 * x_len, which equals
+    # 2**(ceil(Log_2(2 * x_len))).  Note: Log_2(X) = Log_e(X) / Log_e(2).
+    x_len_float64 = math_ops.cast(x_len, np.float64)
+    target_length = math_ops.pow(
+        np.float64(2.),
+        math_ops.ceil(math_ops.log(x_len_float64 * 2) / np.log(2.)))
+    pad_length = math_ops.cast(target_length - x_len_float64, np.int32)
+
+    # We should have:
+    # x_rotated_pad.shape = x_rotated.shape[:-1] + [T + pad_length]
+    #                     = B + [T + pad_length]
+    x_rotated_pad = util.pad(x_rotated, axis=-1, back=True, count=pad_length)
+
+    dtype = x.dtype
+    if not dtype.is_complex:
+      if not dtype.is_floating:
+        raise TypeError("Argument x must have either float or complex dtype"
+                        " found: {}".format(dtype))
+      x_rotated_pad = math_ops.complex(x_rotated_pad,
+                                       dtype.real_dtype.as_numpy_dtype(0.))
+
+    # Autocorrelation is IFFT of power-spectral density (up to some scaling).
+    fft_x_rotated_pad = spectral_ops.fft(x_rotated_pad)
+    spectral_density = fft_x_rotated_pad * math_ops.conj(fft_x_rotated_pad)
+    # shifted_product is R[m] from above detailed explanation.
+    # It is the inner product sum_n X[n] * Conj(X[n - m]).
+    shifted_product = spectral_ops.ifft(spectral_density)
+
+    # Cast back to real-valued if x was real to begin with.
+    shifted_product = math_ops.cast(shifted_product, dtype)
+
+    # Figure out if we can deduce the final static shape, and set max_lags.
+    # Use x_rotated as a reference, because it has the time dimension in the far
+    # right, and was created before we performed all sorts of crazy shape
+    # manipulations.
+    know_static_shape = True
+    if not x_rotated.shape.is_fully_defined():
+      know_static_shape = False
+    if max_lags is None:
+      max_lags = x_len - 1
+    else:
+      max_lags = ops.convert_to_tensor(max_lags, name="max_lags")
+      max_lags_ = tensor_util.constant_value(max_lags)
+      if max_lags_ is None or not know_static_shape:
+        know_static_shape = False
+        max_lags = math_ops.minimum(x_len - 1, max_lags)
+      else:
+        max_lags = min(x_len - 1, max_lags_)
+
+    # Chop off the padding.
+    # We allow users to provide a huge max_lags, but cut it off here.
+    # shifted_product_chopped.shape = x_rotated.shape[:-1] + [max_lags]
+    shifted_product_chopped = shifted_product[..., :max_lags + 1]
+
+    # If possible, set shape.
+    if know_static_shape:
+      chopped_shape = x_rotated.shape.as_list()
+      chopped_shape[-1] = min(x_len, max_lags + 1)
+      shifted_product_chopped.set_shape(chopped_shape)
+
+    # Recall R[m] is a sum of N / 2 - m nonzero terms x[n] Conj(x[n - m]).  The
+    # other terms were zeros arising only due to zero padding.
+    # `denominator = (N / 2 - m)` (defined below) is the proper term to
+    # divide by by to make this an unbiased estimate of the expectation
+    # E[X[n] Conj(X[n - m])].
+    x_len = math_ops.cast(x_len, dtype.real_dtype)
+    max_lags = math_ops.cast(max_lags, dtype.real_dtype)
+    denominator = x_len - math_ops.range(0., max_lags + 1.)
+    denominator = math_ops.cast(denominator, dtype)
+    shifted_product_rotated = shifted_product_chopped / denominator
+
+    if normalize:
+      shifted_product_rotated /= shifted_product_rotated[..., :1]
+
+    # Transpose dimensions back to those of x.
+    return util.rotate_transpose(shifted_product_rotated, -shift)
 
 
 # TODO(langmore) To make equivalent to numpy.percentile:
@@ -123,13 +302,16 @@ def percentile(x,
 
   with ops.name_scope(name, [x, q]):
     x = ops.convert_to_tensor(x, name="x")
-    q = math_ops.to_float(q, name="q")
+    # Double is needed here and below, else we get the wrong index if the array
+    # is huge along axis.
+    q = math_ops.to_double(q, name="q")
     _get_static_ndims(q, expect_ndims=0)
 
     if validate_args:
       q = control_flow_ops.with_dependencies([
-          check_ops.assert_rank(q, 0), check_ops.assert_greater_equal(q, 0.),
-          check_ops.assert_less_equal(q, 100.)
+          check_ops.assert_rank(q, 0),
+          check_ops.assert_greater_equal(q, math_ops.to_double(0.)),
+          check_ops.assert_less_equal(q, math_ops.to_double(100.))
       ], q)
 
     if axis is None:
@@ -154,7 +336,7 @@ def percentile(x,
       y = _move_dims_to_flat_end(x, axis, x_ndims)
 
     frac_at_q_or_above = 1. - q / 100.
-    d = math_ops.to_float(array_ops.shape(y)[-1])
+    d = math_ops.to_double(array_ops.shape(y)[-1])
 
     if interpolation == "lower":
       index = math_ops.ceil((d - 1) * frac_at_q_or_above)
@@ -163,12 +345,18 @@ def percentile(x,
     elif interpolation == "nearest":
       index = math_ops.round((d - 1) * frac_at_q_or_above)
 
+    # If d is gigantic, then we would have d == d - 1, even in double... So
+    # let's use max/min to avoid out of bounds errors.
+    d = array_ops.shape(y)[-1]
+    # d - 1 will be distinct from d in int32.
+    index = clip_ops.clip_by_value(math_ops.to_int32(index), 0, d - 1)
+
     # Sort everything, not just the top 'k' entries, which allows multiple calls
     # to sort only once (under the hood) and use CSE.
     sorted_y = _sort_tensor(y)
 
     # result.shape = B
-    result = sorted_y[..., math_ops.to_int32(index)]
+    result = sorted_y[..., index]
     result.set_shape(y.get_shape()[:-1])
 
     if keep_dims:

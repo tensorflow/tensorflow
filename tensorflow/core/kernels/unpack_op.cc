@@ -34,7 +34,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
@@ -65,10 +65,13 @@ class UnpackOp : public OpKernel {
     output_shape.RemoveDim(axis);
     const int64 output_size = output_shape.num_elements();
     OP_REQUIRES(
-        context, FastBoundsCheck(output_size,
-                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        context,
+        FastBoundsCheck(output_size,
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("output size must fit in Eigen DenseIndex"));
 
+// This optimization is currently not applicable for SYCL devices
+#ifndef TENSORFLOW_USE_SYCL
     // Special case: Aligned, so we can share the underlying buffer.
     //
     // Apply this optimization conservatively: if input is aligned,
@@ -85,22 +88,23 @@ class UnpackOp : public OpKernel {
       }
       return;
     }
+#endif  // TENSORFLOW_USE_SYCL
 
-    int64 before_dim = 1;
+    Eigen::DenseIndex before_dim = 1;
     for (int i = 0; i < axis; ++i) {
       before_dim *= input_shape.dim_size(i);
     }
 
-    int64 after_dim = 1;
+    Eigen::DenseIndex after_dim = 1;
     for (int i = axis + 1; i < input_shape.dims(); ++i) {
       after_dim *= input_shape.dim_size(i);
     }
-    const int64 axis_dim = input_shape.dim_size(axis);
+    const Eigen::DenseIndex axis_dim = input_shape.dim_size(axis);
 
     // Except for shape, unpack is a special case of split, so we reuse the
     // same computational kernels.
     auto input_reshaped =
-        input.shaped<T, 3>({1, before_dim, axis_dim * after_dim});
+        input.shaped<T, 2>({before_dim, axis_dim * after_dim});
 
     for (int i = 0; i < num; ++i) {
       Tensor* output;
@@ -108,12 +112,12 @@ class UnpackOp : public OpKernel {
                      context->allocate_output(i, output_shape, &output));
 
       if (output_shape.num_elements() > 0) {
-        auto output_shaped = output->shaped<T, 3>({1, before_dim, after_dim});
-        Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, i * after_dim};
-        Eigen::DSizes<Eigen::DenseIndex, 3> sizes{1, before_dim, after_dim};
-        functor::Split<Device, T>()(context->eigen_device<Device>(),
-                                    output_shaped, input_reshaped, indices,
-                                    sizes);
+        auto output_shaped = output->shaped<T, 2>({before_dim, after_dim});
+        Eigen::DSizes<Eigen::DenseIndex, 2> indices{0, i * after_dim};
+        Eigen::DSizes<Eigen::DenseIndex, 2> sizes{before_dim, after_dim};
+        functor::Split<Device, T, 2>()(context->eigen_device<Device>(),
+                                       output_shaped, input_reshaped, indices,
+                                       sizes);
       }
     }
   }
@@ -139,6 +143,7 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
       UnpackOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -150,6 +155,12 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int64>("T"),
+                        UnpackOp<CPUDevice, int64>);
 
 #endif  // GOOGLE_CUDA
 
@@ -167,6 +178,13 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
+
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int64>("T"),
+                        UnpackOp<CPUDevice, int64>);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

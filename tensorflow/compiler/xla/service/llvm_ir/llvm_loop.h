@@ -27,11 +27,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace llvm_ir {
+
+enum class UnrollMode {
+  kDefaultUnroll,
+  kFullyUnroll,
+  kNoUnroll,
+};
 
 // A class for constructing a for-loop in LLVM IR.
 class ForLoop {
@@ -64,16 +71,17 @@ class ForLoop {
   //                                             |     ...      |
   //                                             +--------------+
   //
-  // `suffix` is a string used to disambiguate variable and basic block names
-  // emitted in LLVM IR. This string is appended to the name of the induction
-  // variable value and each basic block created for the loop. The builder
-  // insert point is set to the end of the exit block after the function
-  // returns.
-  static std::unique_ptr<ForLoop> EmitForLoop(tensorflow::StringPiece suffix,
-                                              llvm::Value* start_index,
-                                              llvm::Value* end_index,
-                                              llvm::Value* step,
-                                              llvm::IRBuilder<>* ir_builder);
+  // `prefix` is used to disambiguate variable and basic block names emitted in
+  // LLVM IR. If non-empty, it is prepended to the name of the induction
+  // variable value and each basic block created for the loop.
+  //
+  // `unroll_mode` specifies the desired LLVM unrolling behavior for generated
+  //  loop.
+  static std::unique_ptr<ForLoop> EmitForLoop(
+      tensorflow::StringPiece prefix, llvm::Value* start_index,
+      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* ir_builder,
+      UnrollMode unroll_mode = llvm_ir::UnrollMode::kDefaultUnroll,
+      bool prevent_vectorization = false);
 
   // The names of the blocks follow LLVM's conventions. Control flow amongst the
   // blocks for the example C code looks like:
@@ -122,19 +130,28 @@ class ForLoop {
   llvm::Value* GetIndVarValue() const { return indvar_; }
 
  private:
-  ForLoop(tensorflow::StringPiece suffix, llvm::Value* start_index,
-          llvm::Value* end_index, llvm::Value* step);
+  // Allow ForLoopNest to call this private constructor.
+  friend class ForLoopNest;
+
+  ForLoop(tensorflow::StringPiece prefix, tensorflow::StringPiece suffix,
+          llvm::Value* start_index, llvm::Value* end_index, llvm::Value* step,
+          UnrollMode unroll_mode, bool prevent_vectorization);
 
   // Emit the loop at the insert point of the builder.
   void Emit(llvm::IRBuilder<>* ir_builder);
 
-  llvm::BasicBlock* CreateBasicBlockWithSuffix(tensorflow::StringPiece name,
-                                               llvm::IRBuilder<>* ir_builder);
+  llvm::BasicBlock* CreateLoopBB(tensorflow::StringPiece name,
+                                 llvm::IRBuilder<>* ir_builder);
 
-  // Create a name for an LLVM construct appending the member suffix_ if it is
-  // set.
-  string GetNameWithSuffix(tensorflow::StringPiece name);
+  // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
+  // they are set.
+  string GetQualifiedName(tensorflow::StringPiece name);
 
+  // Return a list of metadata nodes that should be associated with the
+  // llvm::Loop for this `ForLoop`.
+  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* ir_builder);
+
+  string prefix_;
   string suffix_;
   llvm::Value* start_index_;
   llvm::Value* end_index_;
@@ -151,6 +168,8 @@ class ForLoop {
   llvm::BasicBlock* body_bb_;
   llvm::BasicBlock* exit_bb_;
   llvm::Value* indvar_;
+  UnrollMode unroll_mode_;
+  bool prevent_vectorization_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ForLoop);
 };
@@ -158,33 +177,52 @@ class ForLoop {
 // A simple class for constructing nested for-loops.
 class ForLoopNest {
  public:
-  explicit ForLoopNest(llvm::IRBuilder<>* ir_builder)
-      : outer_loop_preheader_bb_(nullptr),
+  explicit ForLoopNest(llvm::IRBuilder<>* ir_builder,
+                       llvm::Type* index_ty = nullptr)
+      : ForLoopNest(/*name=*/"", ir_builder) {
+    SetIndexType(index_ty);
+  }
+
+  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder,
+              llvm::Type* index_ty = nullptr)
+      : name_(std::string(name)),
+        outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),
-        ir_builder_(ir_builder) {}
+        ir_builder_(ir_builder) {
+    SetIndexType(index_ty);
+  }
 
   // Adds a loop to the nest. If no loop has been added yet then emit a loop at
   // the current insert point of the given builder. If one or more loops have
   // been added then emit loop inside the body of the last added loop.
-  std::unique_ptr<ForLoop> AddLoop(tensorflow::StringPiece suffix,
-                                   llvm::Value* start_index,
-                                   llvm::Value* end_index, llvm::Value* stride);
+  // unroll_mode is used to emit metadata that controls LLVM unrolling.
+  std::unique_ptr<ForLoop> AddLoop(
+      tensorflow::StringPiece suffix, llvm::Value* start_index,
+      llvm::Value* end_index, llvm::Value* stride,
+      UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
+      bool prevent_vectorization = false);
 
   // Like the above, except that it defaults to a stride of one.
-  std::unique_ptr<ForLoop> AddLoop(tensorflow::StringPiece suffix,
-                                   llvm::Value* start_index,
-                                   llvm::Value* end_index);
+  std::unique_ptr<ForLoop> AddLoop(
+      tensorflow::StringPiece suffix, llvm::Value* start_index,
+      llvm::Value* end_index,
+      UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
+      bool prevent_vectorization = false);
 
   // A convenient wrapper of the other flavor of AddLoop. The given start and
   // end index are constant.
-  std::unique_ptr<ForLoop> AddLoop(int64 start_index, int64 end_index,
-                                   int64 stride,
-                                   tensorflow::StringPiece suffix);
+  std::unique_ptr<ForLoop> AddLoop(
+      int64 start_index, int64 end_index, int64 stride,
+      tensorflow::StringPiece suffix,
+      UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
+      bool prevent_vectorization = false);
 
   // Like the above, except that it defaults to a stride of one.
-  std::unique_ptr<ForLoop> AddLoop(int64 start_index, int64 end_index,
-                                   tensorflow::StringPiece suffix);
+  std::unique_ptr<ForLoop> AddLoop(
+      int64 start_index, int64 end_index, tensorflow::StringPiece suffix,
+      UnrollMode unroll_mode = xla::llvm_ir::UnrollMode::kDefaultUnroll,
+      bool prevent_vectorization = false);
 
   // Add loops to iterate through the indices within the specified
   // shape. The returned index collects the induction variables of the
@@ -220,6 +258,17 @@ class ForLoopNest {
   llvm::BasicBlock* GetInnerLoopBodyBasicBlock() { return inner_loop_body_bb_; }
 
  private:
+  void SetIndexType(llvm::Type* index_ty) {
+    index_type_ = index_ty == nullptr ? ir_builder_->getInt64Ty() : index_ty;
+  }
+
+  llvm::Constant* GetConstantWithIndexType(int64 c) const {
+    return llvm::ConstantInt::get(index_type_, c);
+  }
+
+  // Human-friendly name of the loop nest.
+  string name_;
+
   // The preheader and exit basic block of the outermost loop, or nullptr if no
   // loop has been added yet.
   llvm::BasicBlock* outer_loop_preheader_bb_;
@@ -230,6 +279,8 @@ class ForLoopNest {
   llvm::BasicBlock* inner_loop_body_bb_;
 
   llvm::IRBuilder<>* ir_builder_;
+
+  llvm::Type* index_type_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ForLoopNest);
 };

@@ -46,17 +46,13 @@ TEST(AllocatorAttributesTest, AllCombos) {
   for (bool on_host : {false, true}) {
     for (bool nic_compatible : {false, true}) {
       for (bool gpu_compatible : {false, true}) {
-        for (bool track_sizes : {false, true}) {
-          AllocatorAttributes aa;
-          aa.set_on_host(on_host);
-          aa.set_nic_compatible(nic_compatible);
-          aa.set_gpu_compatible(gpu_compatible);
-          aa.set_track_sizes(track_sizes);
-          EXPECT_EQ(on_host, aa.on_host());
-          EXPECT_EQ(nic_compatible, aa.nic_compatible());
-          EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
-          EXPECT_EQ(track_sizes, aa.track_sizes());
-        }
+        AllocatorAttributes aa;
+        aa.set_on_host(on_host);
+        aa.set_nic_compatible(nic_compatible);
+        aa.set_gpu_compatible(gpu_compatible);
+        EXPECT_EQ(on_host, aa.on_host());
+        EXPECT_EQ(nic_compatible, aa.nic_compatible());
+        EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
       }
     }
   }
@@ -114,6 +110,8 @@ TEST(CPUAllocatorTest, Simple) {
 
   CheckStats(a, 1025, 0, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
+  a->ClearStats();
+  CheckStats(a, 0, 0, 0, 0);
   EnableCPUAllocatorStats(false);
 }
 

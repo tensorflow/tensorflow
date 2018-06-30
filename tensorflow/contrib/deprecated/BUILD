@@ -21,7 +21,6 @@ py_library(
 
 py_test(
     name = "summaries_test",
-    size = "small",
     srcs = ["summaries_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -30,16 +29,4 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:logging_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

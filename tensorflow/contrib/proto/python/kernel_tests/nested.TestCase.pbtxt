@@ -1,0 +1,16 @@
+primitive {
+  message_value {
+    double_value: 23.5
+  }
+}
+shape: 1
+sizes: 1
+field {
+  name: "message_value"
+  dtype: DT_STRING
+  expected {
+    message_value {
+      double_value: 23.5
+    }
+  }
+}

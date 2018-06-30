@@ -23,12 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
-namespace test_utils {
 
 // A class which generates pseudorandom numbers of a given type within a given
 // range. Not cryptographically secure and likely not perfectly evenly
@@ -53,63 +54,35 @@ class PseudorandomGenerator {
   std::mt19937 generator_;
 };
 
-// Convenience function for creating a rank-2 array with arbitrary layout.
-template <typename NativeT>
-std::unique_ptr<Literal> CreateR2LiteralWithLayout(
-    std::initializer_list<std::initializer_list<NativeT>> values,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  auto literal = MakeUnique<Literal>();
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  literal.get()->PopulateWithValue<NativeT>(0, {d0, d1});
-  *literal->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout(minor_to_major);
-  TF_CHECK_OK(ShapeUtil::ValidateShape(literal->shape()));
+// Generates fake data in a literal of the given shape, or returns an error
+// status if the element type is currently unhandled for fake data
+// generation. See below for documentation of pseudo_random.
+StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape,
+                                                   bool pseudo_random = true);
 
-  int64 dim0 = 0;
-  for (auto inner_list : values) {
-    int64 dim1 = 0;
-    for (auto value : inner_list) {
-      literal.get()->Set({dim0, dim1}, value);
-      ++dim1;
-    }
-    ++dim0;
-  }
-  return literal;
-}
+// Generates a vector of arguments containing fake data. The number, shape and
+// layout of the arguments is appropriate for given HLO module.
+//
+// Will handle special cases such as making sure that indices used for dynamic
+// slices are bounded, reduces that call adds use 0 as an init value, etc.
+//
+// If pseudo_random is true, the generated numbers will be generated
+// deterministically in a pseudo random way unless the values are constrated to
+// be e.g. init values as above. If pseudo_random is false, the returned values
+// will be generated in a faster way that yields less interesting data, e.g. the
+// values may all be just the same value.
+//
+// TODO(b/79942829): Make interesting argument generation fast enough that using
+// pseudo_random does not save any noticeable amount of time so that the
+// parameter can be removed.
+StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
+    HloModule* const module, bool pseudo_random = true);
 
-// Convenience function for creating a rank-3 array with arbitrary layout.
-template <typename NativeT>
-std::unique_ptr<Literal> CreateR3LiteralWithLayout(
-    std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
-        values,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  auto literal = MakeUnique<Literal>();
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  const int64 d2 = values.begin()->begin()->size();
-  literal.get()->PopulateWithValue<NativeT>(0, {d0, d1, d2});
-  *literal->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout(minor_to_major);
-  TF_CHECK_OK(ShapeUtil::ValidateShape(literal->shape()));
+// Check that a given module satisfies various constraints before trying to
+// execute it.
+Status VerifyHloModule(HloModule* const module,
+                       bool allow_mixed_precision = false);
 
-  int64 dim0 = 0;
-  for (auto inner_list : values) {
-    int64 dim1 = 0;
-    for (auto inner_inner_list : inner_list) {
-      int64 dim2 = 0;
-      for (auto value : inner_inner_list) {
-        literal.get()->Set({dim0, dim1, dim2}, value);
-        ++dim2;
-      }
-      ++dim1;
-    }
-    ++dim0;
-  }
-  return literal;
-}
-
-}  // namespace test_utils
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_UTILS_H_

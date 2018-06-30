@@ -19,6 +19,8 @@ See the @{$python/contrib.layers} guide.
 @@avg_pool2d
 @@avg_pool3d
 @@batch_norm
+@@convolution
+@@convolution1d
 @@convolution2d
 @@convolution3d
 @@conv2d_in_plane
@@ -27,6 +29,7 @@ See the @{$python/contrib.layers} guide.
 @@convolution2d_transpose
 @@conv3d_transpose
 @@convolution3d_transpose
+@@dense_to_sparse
 @@dropout
 @@elu
 @@embedding_lookup_unique
@@ -34,6 +37,7 @@ See the @{$python/contrib.layers} guide.
 @@fully_connected
 @@GDN
 @@gdn
+@@images_to_sequence
 @@layer_norm
 @@linear
 @@max_pool2d
@@ -42,15 +46,21 @@ See the @{$python/contrib.layers} guide.
 @@relu
 @@relu6
 @@repeat
+@@recompute_grad
+@@RevBlock
+@@rev_block
 @@safe_embedding_lookup_sparse
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
+@@sequence_to_images
 @@softmax
+@@spatial_softmax
 @@stack
 @@unit_norm
 @@bow_encoder
 @@embed_sequence
+@@maxout
 
 @@apply_regularization
 @@l1_l2_regularizer
@@ -90,10 +100,14 @@ See the @{$python/contrib.layers} guide.
 @@sparse_column_with_hash_bucket
 @@sparse_column_with_integerized_feature
 @@sparse_column_with_keys
+@@sparse_column_with_vocabulary_file
 @@weighted_sparse_column
 @@weighted_sum_from_feature_columns
 @@infer_real_valued_columns
 @@sequence_input_from_feature_columns
+
+@@group_norm
+@@instance_norm
 """
 
 from __future__ import absolute_import
@@ -111,10 +125,13 @@ _allowed_symbols = ['bias_add',
                     'conv3d',
                     'elu',
                     'feature_column',
+                    'group_norm',
+                    'instance_norm',
                     'legacy_fully_connected',
                     'legacy_linear',
                     'legacy_relu',
                     'OPTIMIZER_CLS_NAMES',
+                    'OPTIMIZER_SUMMARIES',
                     'regression_target',
                     'SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY',
                     'summaries']

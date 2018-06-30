@@ -29,44 +29,29 @@ from six.moves import queue
 
 from tensorflow.core.debug import debug_service_pb2
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_service_pb2_grpc
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 
 DebugWatch = collections.namedtuple("DebugWatch",
                                     ["node_name", "output_slot", "debug_op"])
 
 
-def _watch_key_event_reply(to_enable, node_name, output_slot, debug_op):
-  """Make EventReply proto to represent a request to watch/unwatch a debug op.
-
-  Args:
-    to_enable: (`bool`) whether the request is to enable the watch key.
-    node_name: (`str`) name of the node.
-    output_slot: (`int`) output slot of the tensor.
-    debug_op: (`str`) the debug op attached to node_name:output_slot tensor to
-      watch or unwatch.
-
-  Returns:
-    An EventReply proto.
-  """
-  event_reply = debug_service_pb2.EventReply()
-  state_change = event_reply.debug_op_state_changes.add()
-  state_change.change = (
-      debug_service_pb2.EventReply.DebugOpStateChange.ENABLE
-      if to_enable else debug_service_pb2.EventReply.DebugOpStateChange.DISABLE)
+def _state_change(new_state, node_name, output_slot, debug_op):
+  state_change = debug_service_pb2.EventReply.DebugOpStateChange()
+  state_change.state = new_state
   state_change.node_name = node_name
   state_change.output_slot = output_slot
   state_change.debug_op = debug_op
-  return event_reply
+  return state_change
 
 
 class EventListenerBaseStreamHandler(object):
   """Per-stream handler of EventListener gRPC streams."""
 
   def __init__(self):
-    """Constructor of EventListenerStreamHandler."""
-    raise NotImplementedError(
-        "__init__() is not implemented in the base stream handler class")
+    """Constructor of EventListenerBaseStreamHandler."""
 
   def on_core_metadata_event(self, event):
     """Callback for core metadata.
@@ -74,6 +59,11 @@ class EventListenerBaseStreamHandler(object):
     Args:
       event: The Event proto that carries a JSON string in its
         `log_message.message` field.
+
+    Returns:
+      `None` or an `EventReply` proto to be sent back to the client. If `None`,
+      an `EventReply` proto construct with the default no-arg constructor will
+      be sent back to the client.
     """
     raise NotImplementedError(
         "on_core_metadata_event() is not implemented in the base servicer "
@@ -89,6 +79,11 @@ class EventListenerBaseStreamHandler(object):
       graph_def: A GraphDef object.
       device_name: Name of the device on which the graph was created.
       wall_time: An epoch timestamp (in microseconds) for the graph.
+
+    Returns:
+      `None` or an `EventReply` proto to be sent back to the client. If `None`,
+      an `EventReply` proto construct with the default no-arg constructor will
+      be sent back to the client.
     """
     raise NotImplementedError(
         "on_graph_def() is not implemented in the base servicer class")
@@ -125,8 +120,9 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     self._server_started = False
     self._stop_requested = False
 
-    self._event_reply_queue = queue.Queue()
+    self._debug_ops_state_change_queue = queue.Queue()
     self._gated_grpc_debug_watches = set()
+    self._breakpoints = set()
 
   def SendEvents(self, request_iterator, context):
     """Implementation of the SendEvents service method.
@@ -157,27 +153,78 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
       if not stream_handler:
         stream_handler = self._stream_handler_class()
 
-      if event.graph_def:
-        maybe_graph_def, maybe_device_name, maybe_wall_time = (
-            self._process_encoded_graph_def_in_chunks(event, graph_def_chunks))
-        if maybe_graph_def:
-          stream_handler.on_graph_def(
-              maybe_graph_def, maybe_device_name, maybe_wall_time)
-      elif event.log_message.message:
-        core_metadata_count += 1
-        if core_metadata_count > 1:
-          raise ValueError(
-              "Expected one core metadata event; received multiple")
-        stream_handler.on_core_metadata_event(event)
-      elif event.summary and event.summary.value:
+      if event.summary and event.summary.value:
+        # An Event proto carrying a tensor value.
         maybe_tensor_event = self._process_tensor_event_in_chunks(
             event, tensor_chunks)
         if maybe_tensor_event:
-          stream_handler.on_value_event(maybe_tensor_event)
+          event_reply = stream_handler.on_value_event(maybe_tensor_event)
+          if event_reply is not None:
+            yield self._process_debug_op_state_changes(event_reply)
+      else:
+        # Non-tensor-value Event.
+        if event.graph_def:
+          # GraphDef-carrying Event.
+          maybe_graph_def, maybe_device_name, maybe_wall_time = (
+              self._process_encoded_graph_def_in_chunks(
+                  event, graph_def_chunks))
+          if maybe_graph_def:
+            reply = stream_handler.on_graph_def(
+                maybe_graph_def, maybe_device_name, maybe_wall_time)
+            yield self._process_debug_op_state_changes(reply)
+        elif event.log_message.message:
+          # Core metadata-carrying Event.
+          core_metadata_count += 1
+          if core_metadata_count > 1:
+            raise ValueError(
+                "Expected one core metadata event; received multiple")
+          reply = stream_handler.on_core_metadata_event(event)
+          yield self._process_debug_op_state_changes(reply)
 
-    # The server writes EventReply messages, if any.
-    while not self._event_reply_queue.empty():
-      yield self._event_reply_queue.get()
+  def _process_debug_op_state_changes(self, event_reply=None):
+    """Dequeue and process all the queued debug-op state change protos.
+
+    Include all the debug-op state change protos in a `EventReply` proto.
+
+    Args:
+      event_reply: An `EventReply` to add the `DebugOpStateChange` protos to,
+        or `None`.
+
+    Returns:
+      An `EventReply` proto with the dequeued `DebugOpStateChange` protos (if
+        any) added.
+    """
+    if event_reply is None:
+      event_reply = debug_service_pb2.EventReply()
+    while not self._debug_ops_state_change_queue.empty():
+      state_change = self._debug_ops_state_change_queue.get()
+      debug_node_key = (state_change.node_name, state_change.output_slot,
+                        state_change.debug_op)
+      if (state_change.state ==
+          debug_service_pb2.EventReply.DebugOpStateChange.READ_WRITE):
+        logging.info("Adding breakpoint %s:%d:%s", state_change.node_name,
+                     state_change.output_slot, state_change.debug_op)
+        self._breakpoints.add(debug_node_key)
+      elif (state_change.state ==
+            debug_service_pb2.EventReply.DebugOpStateChange.READ_ONLY):
+        logging.info("Adding watchpoint %s:%d:%s", state_change.node_name,
+                     state_change.output_slot, state_change.debug_op)
+        if debug_node_key in self._breakpoints:
+          self._breakpoints.discard(debug_node_key)
+      elif (state_change.state ==
+            debug_service_pb2.EventReply.DebugOpStateChange.DISABLED):
+        logging.info("Removing watchpoint or breakpoint: %s:%d:%s",
+                     state_change.node_name, state_change.output_slot,
+                     state_change.debug_op)
+        if debug_node_key in self._breakpoints:
+          self._breakpoints.discard(debug_node_key)
+        else:
+          logging.warn(
+              "Attempting to remove a non-existent debug node key: %s",
+              debug_node_key)
+      new_state_change = event_reply.debug_op_state_changes.add()
+      new_state_change.CopyFrom(state_change)
+    return event_reply
 
   def _process_tensor_event_in_chunks(self, event, tensor_chunks):
     """Possibly reassemble event chunks.
@@ -200,7 +247,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
 
     value = event.summary.value[0]
     debugger_plugin_metadata = json.loads(
-        value.metadata.plugin_data[0].content)
+        compat.as_text(value.metadata.plugin_data.content))
     device_name = debugger_plugin_metadata["device"]
     num_chunks = debugger_plugin_metadata["numChunks"]
     chunk_index = debugger_plugin_metadata["chunkIndex"]
@@ -275,17 +322,18 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
 
   def _process_graph_def(self, graph_def):
     for node_def in graph_def.node:
-      if (debug_data.is_debug_node(node_def.name) and
+      if (debug_graphs.is_debug_node(node_def.name) and
           node_def.attr["gated_grpc"].b):
         node_name, output_slot, _, debug_op = (
-            debug_data.parse_debug_node_name(node_def.name))
+            debug_graphs.parse_debug_node_name(node_def.name))
         self._gated_grpc_debug_watches.add(
             DebugWatch(node_name, output_slot, debug_op))
 
-  def run_server(self):
+  def run_server(self, blocking=True):
     """Start running the server.
 
-    Blocks until `stop_server` is invoked.
+    Args:
+      blocking: If `True`, block until `stop_server()` is invoked.
 
     Raises:
       ValueError: If server stop has already been requested, or if the server
@@ -307,8 +355,9 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     finally:
       self._server_lock.release()
 
-    while not self._stop_requested:
-      time.sleep(1.0)
+    if blocking:
+      while not self._stop_requested:
+        time.sleep(1.0)
 
   def stop_server(self, grace=1.0):
     """Request server stopping.
@@ -339,16 +388,14 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     finally:
       self._server_lock.release()
 
-  def request_watch(self, node_name, output_slot, debug_op):
-    """Request enabling a debug tensor watch.
+  def request_watch(self, node_name, output_slot, debug_op, breakpoint=False):
+    """Request enabling a debug tensor watchpoint or breakpoint.
 
     This will let the server send a EventReply to the client side
     (i.e., the debugged TensorFlow runtime process) to request adding a watch
     key (i.e., <node_name>:<output_slot>:<debug_op>) to the list of enabled
     watch keys. The list applies only to debug ops with the attribute
     gated_grpc=True.
-
-    The request will take effect on the next debugged `Session.run()` call.
 
     To disable the watch, use `request_unwatch()`.
 
@@ -358,14 +405,20 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
       output_slot: (`int`) output slot index of the tensor to watch.
       debug_op: (`str`) name of the debug op to enable. This should not include
         any attribute substrings.
+      breakpoint: (`bool`) Iff `True`, the debug op will block and wait until it
+        receives an `EventReply` response from the server. The `EventReply`
+        proto may carry a TensorProto that modifies the value of the debug op's
+        output tensor.
     """
-    self._event_reply_queue.put(
-        _watch_key_event_reply(True, node_name, output_slot, debug_op))
+    self._debug_ops_state_change_queue.put(
+        _state_change(
+            debug_service_pb2.EventReply.DebugOpStateChange.READ_WRITE
+            if breakpoint
+            else debug_service_pb2.EventReply.DebugOpStateChange.READ_ONLY,
+            node_name, output_slot, debug_op))
 
   def request_unwatch(self, node_name, output_slot, debug_op):
-    """Request disabling a debug tensor watch.
-
-    The request will take effect on the next debugged `Session.run()` call.
+    """Request disabling a debug tensor watchpoint or breakpoint.
 
     This is the opposite of `request_watch()`.
 
@@ -376,8 +429,20 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
       debug_op: (`str`) name of the debug op to enable. This should not include
         any attribute substrings.
     """
-    self._event_reply_queue.put(
-        _watch_key_event_reply(False, node_name, output_slot, debug_op))
+    self._debug_ops_state_change_queue.put(
+        _state_change(
+            debug_service_pb2.EventReply.DebugOpStateChange.DISABLED, node_name,
+            output_slot, debug_op))
+
+  @property
+  def breakpoints(self):
+    """Get a set of the currently-activated breakpoints.
+
+    Returns:
+      A `set` of 3-tuples: (node_name, output_slot, debug_op), e.g.,
+        {("MatMul", 0, "DebugIdentity")}.
+    """
+    return self._breakpoints
 
   def gated_grpc_debug_watches(self):
     """Get the list of debug watches with attribute gated_grpc=True.
@@ -393,3 +458,36 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
         `debug_op` as a `str`.
     """
     return list(self._gated_grpc_debug_watches)
+
+  def SendTracebacks(self, request, context):
+    """Base implementation of the handling of SendTracebacks calls.
+
+    The base implementation does nothing with the incoming request.
+    Override in an implementation of the server if necessary.
+
+    Args:
+      request: A `CallTraceback` proto, containing information about the
+        type (e.g., graph vs. eager execution) and source-code traceback of the
+        call and (any) associated `tf.Graph`s.
+      context: Server context.
+
+    Returns:
+      A `EventReply` proto.
+    """
+    return debug_service_pb2.EventReply()
+
+  def SendSourceFiles(self, request, context):
+    """Base implementation of the handling of SendSourceFiles calls.
+
+    The base implementation does nothing with the incoming request.
+    Override in an implementation of the server if necessary.
+
+    Args:
+      request: A `DebuggedSourceFiles` proto, containing the path, content, size
+        and last-modified timestamp of source files.
+      context: Server context.
+
+    Returns:
+      A `EventReply` proto.
+    """
+    return debug_service_pb2.EventReply()

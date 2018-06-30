@@ -31,6 +31,7 @@ from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -100,6 +101,16 @@ class FeatureColumnTest(test.TestCase):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     self.assertEqual(weighted_ids.name, "ids_weighted_by_weights")
+
+  def testWeightedSparseColumnWithVocabularyFile(self):
+    ids = fc.sparse_column_with_vocabulary_file(
+        "ids", "a_file", num_oov_buckets=7, vocab_size=3)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    self.assertEqual(weighted_ids.name, "ids_weighted_by_weights")
+    self.assertEqual(weighted_ids.lookup_config, ids.lookup_config)
+    self.assertEqual(weighted_ids.lookup_config.vocab_size, 3)
+    self.assertEqual(weighted_ids.lookup_config.num_oov_buckets, 7)
+    self.assertEqual(weighted_ids.lookup_config.vocabulary_file, "a_file")
 
   def testWeightedSparseColumnDeepCopy(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
@@ -203,6 +214,44 @@ class FeatureColumnTest(test.TestCase):
     for i in range(len(d1_value)):
       self.assertAllClose(d1_value[i], e1_value[i])
 
+  def testSharedEmbeddingColumnWithWeightedSparseColumn(self):
+    # Tests creation of shared embeddings containing weighted sparse columns.
+    sparse_col = fc.sparse_column_with_keys("a1", ["marlo", "omar", "stringer"])
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_sparse_col = fc.weighted_sparse_column(ids, "weights")
+    self.assertEqual(weighted_sparse_col.name, "ids_weighted_by_weights")
+
+    b = fc.shared_embedding_columns(
+        [sparse_col, weighted_sparse_col], dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+
+    # Tries reversing order to check compatibility condition.
+    b = fc.shared_embedding_columns(
+        [weighted_sparse_col, sparse_col], dimension=4, combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(b[0].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+    self.assertEqual(b[1].shared_embedding_name,
+                     "a1_ids_weighted_by_weights_shared_embedding")
+
+    # Tries adding two weighted columns to check compatibility between them.
+    weighted_sparse_col_2 = fc.weighted_sparse_column(ids, "weights_2")
+    b = fc.shared_embedding_columns(
+        [weighted_sparse_col, weighted_sparse_col_2],
+        dimension=4,
+        combiner="mean")
+    self.assertEqual(len(b), 2)
+    self.assertEqual(
+        b[0].shared_embedding_name,
+        "ids_weighted_by_weights_ids_weighted_by_weights_2_shared_embedding")
+    self.assertEqual(
+        b[1].shared_embedding_name,
+        "ids_weighted_by_weights_ids_weighted_by_weights_2_shared_embedding")
+
   def testSharedEmbeddingColumnDeterminism(self):
     # Tests determinism in auto-generated shared_embedding_name.
     sparse_id_columns = tuple([
@@ -236,10 +285,10 @@ class FeatureColumnTest(test.TestCase):
     columns = fc.shared_embedding_columns(
         [a1, a2], dimension=4, combiner="mean")
     columns_copy = copy.deepcopy(columns)
-    self.assertEqual(
-        columns_copy[0].shared_embedding_name, "a1_a2_shared_embedding")
-    self.assertEqual(
-        columns_copy[1].shared_embedding_name, "a1_a2_shared_embedding")
+    self.assertEqual(columns_copy[0].shared_embedding_name,
+                     "a1_a2_shared_embedding")
+    self.assertEqual(columns_copy[1].shared_embedding_name,
+                     "a1_a2_shared_embedding")
 
   def testOneHotColumn(self):
     a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
@@ -280,6 +329,82 @@ class FeatureColumnTest(test.TestCase):
     self.assertEqual(one_hot.sparse_id_column.name, "ids_weighted_by_weights")
     self.assertEqual(one_hot.length, 3)
 
+  def testOneHotColumnWithSparseColumnWithHashKeys(self):
+    input_values = ["marlo", "unknown", "omar"]
+    inputs = constant_op.constant(input_values)
+    hash_keys = [[10, 20], [20, 30]]
+    hash_column = fc.sparse_column_with_hash_bucket(
+        column_name="ids", hash_bucket_size=10, hash_keys=hash_keys)
+    columns_to_tensors = {}
+    columns_to_tensors["ids"] = inputs
+    hash_column.insert_transformed_feature(columns_to_tensors)
+    self.assertEqual(len(columns_to_tensors), 2)
+    self.assertTrue(hash_column in columns_to_tensors)
+
+    one_hot_column = fc.one_hot_column(hash_column)
+    one_hot_output = one_hot_column._to_dnn_input_layer(
+        columns_to_tensors[hash_column])
+
+    expected = np.array([[0., 1., 0., 0., 0., 0., 0., 1., 0.,
+                          0.], [0., 1., 0., 0., 0., 0., 0., 0., 0., 1.],
+                         [1., 0., 0., 0., 0., 0., 0., 0., 0., 1.]])
+    with self.test_session() as sess:
+      one_hot_value = sess.run(one_hot_output)
+    self.assertTrue(np.array_equal(one_hot_value, expected))
+
+  def testSparseColumnWithHashKeysWithUnexpectedHashKeys(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 "hash_keys must be a non-empty list."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=[])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "hash_keys must be a non-empty list."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=1)
+
+    with self.assertRaisesRegexp(
+        ValueError, "Each element of hash_keys must be a pair of integers."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=[1, 2])
+
+    with self.assertRaisesRegexp(
+        ValueError, "Each element of hash_keys must be a pair of integers."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=["key"])
+
+    with self.assertRaisesRegexp(
+        ValueError, "Each element of hash_keys must be a pair of integers."):
+      fc.sparse_column_with_hash_bucket(
+          column_name="ids", hash_bucket_size=100, hash_keys=[[1, 2.0]])
+
+  def testMissingValueInOneHotColumnForWeightedSparseColumn(self):
+    # Github issue 12583
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    one_hot = fc.one_hot_column(weighted_ids)
+    features = {
+        "ids": constant_op.constant([["marlo", "unknown", "omar"]]),
+        "weights": constant_op.constant([[2., 4., 6.]])
+    }
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+        features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[2., 6., 0.]], one_hot_tensor.eval())
+
+  def testMissingValueInOneHotColumnForSparseColumnWithKeys(self):
+    ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
+    one_hot = fc.one_hot_column(ids)
+    features = {"ids": constant_op.constant([["marlo", "unknown", "omar"]])}
+    one_hot_tensor = feature_column_ops.input_from_feature_columns(
+        features, [one_hot])
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(lookup_ops.tables_initializer())
+      self.assertAllEqual([[1., 1., 0.]], one_hot_tensor.eval())
+
   def testOneHotColumnDeepCopy(self):
     a = fc.sparse_column_with_keys("a", ["a", "b", "c", "d"])
     column = fc.one_hot_column(a)
@@ -300,8 +425,7 @@ class FeatureColumnTest(test.TestCase):
     self.assertEqual(d4.default_value, None)
     self.assertEqual(d4.is_sparse, True)
     # Default value is a list but dimension is None.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Only scalar default value.*"):
+    with self.assertRaisesRegexp(ValueError, "Only scalar default value.*"):
       fc._real_valued_var_len_column("g5", default_value=[2., 3.])
 
   def testRealValuedVarLenColumnDtypes(self):
@@ -311,18 +435,19 @@ class FeatureColumnTest(test.TestCase):
             "rvc": parsing_ops.VarLenFeature(dtype=dtypes.float32)
         }, rvc.config)
 
-    rvc = fc._real_valued_var_len_column("rvc", default_value=0,
-                                         is_sparse=False)
-    self.assertDictEqual(
-        {
-            "rvc": parsing_ops.FixedLenSequenceFeature(shape=[],
-                                                       dtype=dtypes.float32,
-                                                       allow_missing=True,
-                                                       default_value=0.0)
-        }, rvc.config)
+    rvc = fc._real_valued_var_len_column(
+        "rvc", default_value=0, is_sparse=False)
+    self.assertDictEqual({
+        "rvc":
+            parsing_ops.FixedLenSequenceFeature(
+                shape=[],
+                dtype=dtypes.float32,
+                allow_missing=True,
+                default_value=0.0)
+    }, rvc.config)
 
-    rvc = fc._real_valued_var_len_column("rvc", dtype=dtypes.int32,
-                                         default_value=0, is_sparse=True)
+    rvc = fc._real_valued_var_len_column(
+        "rvc", dtype=dtypes.int32, default_value=0, is_sparse=True)
     self.assertDictEqual(
         {
             "rvc": parsing_ops.VarLenFeature(dtype=dtypes.int32)
@@ -330,8 +455,8 @@ class FeatureColumnTest(test.TestCase):
 
     with self.assertRaisesRegexp(TypeError,
                                  "dtype must be convertible to float"):
-      fc._real_valued_var_len_column("rvc", dtype=dtypes.string,
-                                     default_value="", is_sparse=True)
+      fc._real_valued_var_len_column(
+          "rvc", dtype=dtypes.string, default_value="", is_sparse=True)
 
   def testRealValuedColumn(self):
     a = fc.real_valued_column("aaa")
@@ -425,13 +550,13 @@ class FeatureColumnTest(test.TestCase):
     for output_rank in range(1, 3 + len(dimensions)):
       with variable_scope.variable_scope("output_rank_{}".format(output_rank)):
         real_valued_output = real_valued_column._to_dnn_input_layer(
-            constant_op.constant(
-                real_valued_input, dtype=dtypes.float32),
+            constant_op.constant(real_valued_input, dtype=dtypes.float32),
             output_rank=output_rank)
       with self.test_session() as sess:
         real_valued_eval = sess.run(real_valued_output)
-      expected_shape = (input_shape[:output_rank - 1] +
-                        [np.prod(input_shape[output_rank - 1:])])
+      expected_shape = (
+          input_shape[:output_rank - 1] +
+          [np.prod(input_shape[output_rank - 1:])])
       self.assertEquals(expected_shape, list(real_valued_eval.shape))
 
   def testRealValuedColumnDensification(self):
@@ -441,8 +566,7 @@ class FeatureColumnTest(test.TestCase):
         "sparse_real_valued1", is_sparse=True)
     sparse_tensor = sparse_tensor_lib.SparseTensor(
         values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
-    with self.assertRaisesRegexp(
-        ValueError, "Set is_sparse to False"):
+    with self.assertRaisesRegexp(ValueError, "Set is_sparse to False"):
       real_valued_column._to_dnn_input_layer(sparse_tensor)
 
   def testRealValuedColumnDeepCopy(self):
@@ -470,9 +594,8 @@ class FeatureColumnTest(test.TestCase):
   def testBucketizedColumnRequiresRealValuedColumnDimension(self):
     with self.assertRaisesRegexp(
         TypeError, "source_column must be an instance of _RealValuedColumn.*"):
-      fc.bucketized_column(fc._real_valued_var_len_column("bbb",
-                                                          is_sparse=True),
-                           [0])
+      fc.bucketized_column(
+          fc._real_valued_var_len_column("bbb", is_sparse=True), [0])
 
   def testBucketizedColumnRequiresSortedBuckets(self):
     with self.assertRaisesRegexp(ValueError,
@@ -575,20 +698,14 @@ class FeatureColumnTest(test.TestCase):
 
   def testRealValuedColumnDtypes(self):
     rvc = fc.real_valued_column("rvc")
-    self.assertDictEqual(
-        {
-            "rvc": parsing_ops.FixedLenFeature(
-                [1], dtype=dtypes.float32)
-        },
-        rvc.config)
+    self.assertDictEqual({
+        "rvc": parsing_ops.FixedLenFeature([1], dtype=dtypes.float32)
+    }, rvc.config)
 
     rvc = fc.real_valued_column("rvc", dtype=dtypes.int32)
-    self.assertDictEqual(
-        {
-            "rvc": parsing_ops.FixedLenFeature(
-                [1], dtype=dtypes.int32)
-        },
-        rvc.config)
+    self.assertDictEqual({
+        "rvc": parsing_ops.FixedLenFeature([1], dtype=dtypes.int32)
+    }, rvc.config)
 
     with self.assertRaisesRegexp(ValueError,
                                  "dtype must be convertible to float"):
@@ -623,8 +740,9 @@ class FeatureColumnTest(test.TestCase):
     batch_size = 4
     dense_scalar_input = [1, 2, 3, 4]
     sparse_column = fc.sparse_column_with_integerized_feature("values", 10)
-    features = {"values":
-                constant_op.constant(dense_scalar_input, dtype=dtypes.int64)}
+    features = {
+        "values": constant_op.constant(dense_scalar_input, dtype=dtypes.int64)
+    }
     sparse_column.insert_transformed_feature(features)
     sparse_output = features[sparse_column]
     expected_shape = [batch_size, 1]
@@ -652,8 +770,7 @@ class FeatureColumnTest(test.TestCase):
 
   def testSparseColumnKeysDeepCopy(self):
     """Tests deepcopy of sparse_column_with_keys."""
-    column = fc.sparse_column_with_keys(
-        "a", keys=["key0", "key1", "key2"])
+    column = fc.sparse_column_with_keys("a", keys=["key0", "key1", "key2"])
     self.assertEqual("a", column.name)
     column_copy = copy.deepcopy(column)
     self.assertEqual("a", column_copy.name)
@@ -706,8 +823,9 @@ class FeatureColumnTest(test.TestCase):
     a = fc.sparse_column_with_hash_bucket("cross_aaa", hash_bucket_size=100)
     b = fc.sparse_column_with_hash_bucket("cross_bbb", hash_bucket_size=100)
     cross_col = fc.crossed_column(set([a, b]), hash_bucket_size=10000)
-    one_hot_col = fc.one_hot_column(fc.sparse_column_with_hash_bucket(
-        "sparse_column_for_one_hot", hash_bucket_size=100))
+    one_hot_col = fc.one_hot_column(
+        fc.sparse_column_with_hash_bucket(
+            "sparse_column_for_one_hot", hash_bucket_size=100))
     scattered_embedding_col = fc.scattered_embedding_column(
         "scattered_embedding_column", size=100, dimension=10, hash_key=1)
     feature_columns = set([
@@ -730,17 +848,13 @@ class FeatureColumnTest(test.TestCase):
         "str_id_weights_column":
             parsing_ops.VarLenFeature(dtypes.float32),
         "real_valued_column1":
-            parsing_ops.FixedLenFeature(
-                [1], dtype=dtypes.float32),
+            parsing_ops.FixedLenFeature([1], dtype=dtypes.float32),
         "real_valued_column2":
-            parsing_ops.FixedLenFeature(
-                [5], dtype=dtypes.float32),
+            parsing_ops.FixedLenFeature([5], dtype=dtypes.float32),
         "real_valued_column_for_bucketization1":
-            parsing_ops.FixedLenFeature(
-                [1], dtype=dtypes.float32),
+            parsing_ops.FixedLenFeature([1], dtype=dtypes.float32),
         "real_valued_column_for_bucketization2":
-            parsing_ops.FixedLenFeature(
-                [4], dtype=dtypes.float32),
+            parsing_ops.FixedLenFeature([4], dtype=dtypes.float32),
         "cross_aaa":
             parsing_ops.VarLenFeature(dtypes.string),
         "cross_bbb":
@@ -770,11 +884,14 @@ class FeatureColumnTest(test.TestCase):
     real_valued_col0 = fc._real_valued_var_len_column(
         "real_valued_column0", is_sparse=True)
     real_valued_col1 = fc._real_valued_var_len_column(
-        "real_valued_column1", dtype=dtypes.int64, default_value=0,
+        "real_valued_column1",
+        dtype=dtypes.int64,
+        default_value=0,
         is_sparse=False)
     feature_columns = set([real_valued_col0, real_valued_col1])
     expected_config = {
-        "real_valued_column0": parsing_ops.VarLenFeature(dtype=dtypes.float32),
+        "real_valued_column0":
+            parsing_ops.VarLenFeature(dtype=dtypes.float32),
         "real_valued_column1":
             parsing_ops.FixedLenSequenceFeature(
                 [], dtype=dtypes.int64, allow_missing=True, default_value=0),
@@ -795,7 +912,9 @@ class FeatureColumnTest(test.TestCase):
     real_valued_col5 = fc._real_valued_var_len_column(
         "real_valued_column5", default_value=2, is_sparse=True)
     real_valued_col6 = fc._real_valued_var_len_column(
-        "real_valued_column6", dtype=dtypes.int64, default_value=1,
+        "real_valued_column6",
+        dtype=dtypes.int64,
+        default_value=1,
         is_sparse=False)
     feature_columns = [
         real_valued_col1, real_valued_col2, real_valued_col3, real_valued_col4,
@@ -823,8 +942,7 @@ class FeatureColumnTest(test.TestCase):
                 parsing_ops.VarLenFeature(dtype=dtypes.float32),
             "real_valued_column6":
                 parsing_ops.FixedLenSequenceFeature(
-                    [], dtype=dtypes.int64, allow_missing=True,
-                    default_value=1)
+                    [], dtype=dtypes.int64, allow_missing=True, default_value=1)
         },
         config)
 
@@ -873,8 +991,7 @@ class FeatureColumnTest(test.TestCase):
             parsing_ops.VarLenFeature(dtype=dtypes.float32),
         "real_valued_var_len_dense_column":
             parsing_ops.FixedLenSequenceFeature(
-                shape=[], dtype=dtypes.float32, allow_missing=True,
-                default_value=4.0),
+                shape=[], dtype=dtypes.float32, allow_missing=True),
     }
 
     self.assertDictEqual(expected_feature_spec, feature_spec)
@@ -1026,8 +1143,8 @@ class FeatureColumnTest(test.TestCase):
       # This will initialize the crossed column weights from provided checkpoint
       # and return a [4, 1] tensor which is same as weights variable. Since we
       # won't modify weights, this should be same as 'saved_col_weights'.
-      _, col_weights, _ = (feature_column_ops.weighted_sum_from_feature_columns(
-          {
+      _, col_weights, _ = (
+          feature_column_ops.weighted_sum_from_feature_columns({
               sparse_col_1.name: input_tensor,
               sparse_col_2.name: input_tensor
           }, [crossed_col_initialized], 1))

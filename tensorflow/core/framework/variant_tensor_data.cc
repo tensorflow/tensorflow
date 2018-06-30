@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
@@ -27,13 +28,15 @@ VariantTensorData::VariantTensorData(const VariantTensorDataProto& proto) {
 
 VariantTensorData::~VariantTensorData() {}
 
-int VariantTensorData::tensors_size() { return tensors_.size(); }
+int VariantTensorData::tensors_size() const { return tensors_.size(); }
 
 const Tensor& VariantTensorData::tensors(int index) const {
   return tensors_[index];
 }
 
-std::vector<Tensor> VariantTensorData::tensors() { return tensors_; }
+const std::vector<Tensor>& VariantTensorData::tensors() const {
+  return tensors_;
+}
 
 Tensor* VariantTensorData::add_tensors() {
   tensors_.emplace_back();
@@ -42,7 +45,7 @@ Tensor* VariantTensorData::add_tensors() {
 
 void VariantTensorData::ToProto(VariantTensorDataProto* proto) const {
   proto->set_type_name(type_name());
-  proto->set_metadata(metadata());
+  proto->set_metadata(metadata_);
   proto->clear_tensors();
   for (const auto& tensor : tensors_) {
     tensor.AsProtoField(proto->mutable_tensors()->Add());
@@ -85,7 +88,7 @@ string VariantTensorData::DebugString() const {
     repeated_field =
         strings::StrCat(repeated_field, " tensors: ", t.DebugString());
   }
-  return strings::StrCat("type_name: ", type_name(), " metadata: ", metadata(),
+  return strings::StrCat("type_name: ", type_name(), " metadata: ", metadata_,
                          repeated_field);
 }
 

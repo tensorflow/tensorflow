@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_VARIANT_TENSOR_DATA_H
 #define TENSORFLOW_FRAMEWORK_VARIANT_TENSOR_DATA_H
 
+#include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -43,14 +45,25 @@ class VariantTensorData {
   const string& type_name() const { return type_name_; }
   void set_type_name(const string& type_name) { type_name_ = type_name; }
 
+  template <typename T, bool = std::is_pod<typename std::decay<T>::type>::value>
+  struct PODResolver {};
+
   // Portions of the object that are not Tensors.
-  const string& metadata() const { return metadata_; }
-  void set_metadata(const string& metadata) { metadata_ = metadata; }
+  // Directly supported types include string POD types.
+  template <typename T>
+  void set_metadata(const T& value) {
+    SetMetadata<T>(value, PODResolver<T>());
+  }
+
+  template <typename T>
+  bool get_metadata(T* value) const {
+    return GetMetadata<T>(value, PODResolver<T>());
+  }
 
   // Tensors contained within objects being serialized.
-  int tensors_size();
+  int tensors_size() const;
   const Tensor& tensors(int index) const;
-  std::vector<Tensor> tensors();
+  const std::vector<Tensor>& tensors() const;
   Tensor* add_tensors();
 
   // Conversion to and from VariantTensorDataProto
@@ -68,6 +81,30 @@ class VariantTensorData {
   string type_name_;
   string metadata_;
   std::vector<Tensor> tensors_;
+
+ private:
+  template <typename T>
+  void SetMetadata(const string& value, PODResolver<T, false /* is_pod */>) {
+    metadata_ = value;
+  }
+
+  template <typename T>
+  bool GetMetadata(string* value, PODResolver<T, false /* is_pod */>) const {
+    *value = metadata_;
+    return true;
+  }
+
+  template <typename T>
+  void SetMetadata(const T& value, PODResolver<T, true /* is_pod */>) {
+    metadata_.assign(reinterpret_cast<const char*>(&value), sizeof(T));
+  }
+
+  template <typename T>
+  bool GetMetadata(T* value, PODResolver<T, true /* is_pod */>) const {
+    if (metadata_.size() != sizeof(T)) return false;
+    std::copy_n(metadata_.data(), sizeof(T), reinterpret_cast<char*>(value));
+    return true;
+  }
 };
 
 // For backwards compatibility for when this was a proto

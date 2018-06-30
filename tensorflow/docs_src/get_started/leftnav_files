@@ -1,12 +1,10 @@
-index.md
-get_started.md
-mnist/beginners.md
-mnist/pros.md
-mnist/mechanics.md
-estimator.md
-input_fn.md
-monitors.md
-summaries_and_tensorboard.md
-embedding_viz.md
-graph_viz.md
-tensorboard_histograms.md
+### Learn and use ML
+basic_classification.md: Basic classification
+basic_text_classification.md: Text classification
+basic_regression.md: Regression
+overfit_and_underfit.md
+save_and_restore_models.md
+next_steps.md
+
+### Research and experimentation
+eager.md

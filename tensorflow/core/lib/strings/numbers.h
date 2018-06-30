@@ -60,19 +60,18 @@ static const int kFastToBufferSize = 32;
 // the output.  The buffer should typically be at least kFastToBufferSize
 // bytes.
 //
-// Returns a pointer to the end of the string (i.e. the null character
-// terminating the string).
+// Returns the number of characters written.
 // ----------------------------------------------------------------------
 
-char* FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
-char* FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
-char* FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
-char* FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
+size_t FastInt32ToBufferLeft(int32 i, char* buffer);    // at least 12 bytes
+size_t FastUInt32ToBufferLeft(uint32 i, char* buffer);  // at least 12 bytes
+size_t FastInt64ToBufferLeft(int64 i, char* buffer);    // at least 22 bytes
+size_t FastUInt64ToBufferLeft(uint64 i, char* buffer);  // at least 22 bytes
 
 // Required buffer size for DoubleToBuffer is kFastToBufferSize.
 // Required buffer size for FloatToBuffer is kFastToBufferSize.
-char* DoubleToBuffer(double i, char* buffer);
-char* FloatToBuffer(float i, char* buffer);
+size_t DoubleToBuffer(double value, char* buffer);
+size_t FloatToBuffer(float value, char* buffer);
 
 // Convert a 64-bit fingerprint value to an ASCII representation.
 string FpToString(Fprint fp);
@@ -115,12 +114,46 @@ bool safe_strtou64(StringPiece str, uint64* value);
 // Convert strings to floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strtof(const char* str, float* value);
+// Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
+bool safe_strtof(StringPiece str, float* value);
 
 // Convert strings to double precision floating point values.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
-bool safe_strtod(const char* str, double* value);
+// Returns false on invalid input or if `strlen(value) >= kFastToBufferSize`.
+bool safe_strtod(StringPiece str, double* value);
+
+inline bool ProtoParseNumeric(StringPiece s, int32* value) {
+  return safe_strto32(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
+  return safe_strtou32(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, int64* value) {
+  return safe_strto64(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
+  return safe_strtou64(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, float* value) {
+  return safe_strtof(std::string(s).c_str(), value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, double* value) {
+  return safe_strtod(std::string(s).c_str(), value);
+}
+
+// Convert strings to number of type T.
+// Leading and trailing spaces are allowed.
+// Values may be rounded on over- and underflow.
+template <typename T>
+bool SafeStringToNumeric(StringPiece s, T* value) {
+  return ProtoParseNumeric(s, value);
+}
 
 // Converts from an int64 to a human readable string representing the
 // same number, using decimal powers.  e.g. 1200000 -> "1.20M".

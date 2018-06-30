@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
 
 #include <array>
 #include <unordered_map>
@@ -22,8 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/shape_refiner.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/graph_transfer_info.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
@@ -33,6 +31,10 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
+
+class GraphTransferInfo;
+class GraphTransferNodeInfo;
+class GraphTransferNodeInputInfo;
 
 // GraphTransferer transfers graph definitions into SoC memory.
 // This functionality is effective if SoC is capable to run
@@ -47,7 +49,9 @@ class GraphTransferer {
   static constexpr int SHAPE_ARRAY_SIZE = MAX_SUPPORTED_RANK;
   using TensorShapeMap = RemoteFusedGraphExecuteUtils::TensorShapeMap;
 
-  GraphTransferer() = default;
+  GraphTransferer();
+
+  ~GraphTransferer();
 
   // Load graph structure into GraphTransferer
   // TODO(satok): Pass a pair of TensorShape and DataType instead of
@@ -96,8 +100,8 @@ class GraphTransferer {
    public:
     TransferParamsComparator(
         const std::unordered_map<int, std::unordered_set<int>>& dep_map);
-    bool operator()(const GraphTransferInfo::NodeInfo& obj0,
-                    const GraphTransferInfo::NodeInfo& obj1);
+    bool operator()(const GraphTransferNodeInfo& obj0,
+                    const GraphTransferNodeInfo& obj1);
     const std::unordered_map<int, std::unordered_set<int>>& dependency_map_;
   };
 
@@ -174,15 +178,14 @@ class GraphTransferer {
                         const std::vector<int>& extra_inputs,
                         const int outputs_size);
 
-  void AddNodeInputByInputIndex(
-      const Node& node, const int idx,
-      GraphTransferInfo::NodeInputInfo* node_input_info);
+  void AddNodeInputByInputIndex(const Node& node, const int idx,
+                                GraphTransferNodeInputInfo* node_input_info);
 
   void AppendNodeInputParams(const int id, const Node& node,
                              const std::vector<int>& extra_inputs);
 
-  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
-                              const int id, const Node& node);
+  void AppendNodeOutputParams(const ShapeRefiner& shape_refiner, const int id,
+                              const Node& node);
 
   static std::array<int64, SHAPE_ARRAY_SIZE> BuildShapeArray(
       const shape_inference::ShapeHandle& shape_handle,
@@ -211,7 +214,7 @@ class GraphTransferer {
   // Dump pretty print of parameters
   void DumpNodeTransferParams() const;
 
-  GraphTransferInfo graph_transfer_info_{};
+  GraphTransferInfo* graph_transfer_info_;
 
   std::vector<const Node*> node_name_cache_list_{};
   std::unordered_map<string, int> node_name_to_id_cache_map_{};
@@ -225,4 +228,4 @@ class GraphTransferer {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H

@@ -74,6 +74,28 @@ TF_EXPORT extern const char* const DEVICE_CPU;   // "CPU"
 TF_EXPORT extern const char* const DEVICE_GPU;   // "GPU"
 TF_EXPORT extern const char* const DEVICE_SYCL;  // "SYCL"
 
+template <typename Device>
+struct DeviceName {};
+
+template <>
+struct DeviceName<Eigen::ThreadPoolDevice> {
+  static const std::string value;
+};
+
+#if GOOGLE_CUDA
+template <>
+struct DeviceName<Eigen::GpuDevice> {
+  static const std::string value;
+};
+#endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+template <>
+struct DeviceName<Eigen::SyclDevice> {
+  static const std::string value;
+};
+#endif  // TENSORFLOW_USE_SYCL
+
 typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
 typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
 
@@ -90,9 +112,126 @@ inline string DataTypeVectorString(const DataTypeVector& dtypes) {
   return DataTypeSliceString(dtypes);
 }
 
+// DataTypeSet represents a set of DataType values as a simple and efficient
+// bit mask.  Note that DataTypeSet cannot represent all DataType values; it
+// cannot represent any of the DT_*_REF values.
+class DataTypeSet {
+ private:
+  const uint32 mask_;
+
+  static constexpr uint32 kNumBits = 32;
+
+ public:
+  constexpr DataTypeSet(const DataTypeSet& other) : mask_(other.mask_) {}
+  explicit constexpr DataTypeSet(uint32 mask) : mask_(mask) {}
+
+  constexpr bool Contains(DataType dt) const {
+    return (static_cast<uint32>(dt) < kNumBits) &&
+           ((mask_ >> static_cast<uint32>(dt)) & 1u) != 0u;
+  }
+
+  class Iterator {
+    const DataTypeSet& set_;
+    uint32 pos_;
+
+   public:
+    Iterator(const DataTypeSet& set, uint32 pos) : set_(set), pos_(pos) {
+      DCHECK_LE(pos, kNumBits);
+    }
+    DataType operator*() const { return static_cast<DataType>(pos_); }
+    Iterator& operator++() {
+      ++pos_;
+      DCHECK_LE(pos_, kNumBits);
+      if (pos_ < kNumBits) {
+        uint32 remaining_mask = set_.mask_ >> pos_;
+        if (remaining_mask != 0u) {
+          pos_ += ctz_uint32(remaining_mask);
+        }
+      }
+      DCHECK_LE(pos_, kNumBits);
+      return *this;
+    }
+    bool operator==(const Iterator& other) const { return pos_ == other.pos_; }
+    bool operator!=(const Iterator& other) const { return !(*this == other); }
+    size_t operator-(const Iterator& other) const {
+      return this->pos_ - other.pos_;
+    }
+  };
+
+  static uint32 ctz_uint32(uint32 x) {
+    DCHECK_NE(x, 0u);
+#ifdef __GNUC__
+    return __builtin_ctz(x);
+#else
+    uint32 n = 0u;
+    while ((x & 1u) == 0u) {
+      x >>= 1;
+      ++n;
+    }
+    return n;
+#endif
+  }
+
+  static uint32 clz_uint32(uint32 x) {
+    DCHECK_NE(x, 0u);
+#ifdef __GNUC__
+    return __builtin_clz(x);
+#else
+    uint32 n = 0u;
+    while ((x >> (kNumBits - 1u)) == 0u) {
+      x <<= 1;
+      ++n;
+    }
+    return n;
+#endif
+  }
+
+  Iterator begin() const {
+    // The begin position is the index of the first bit set to 1 in the entire
+    // bit mask. If there are no bits set to 1, then the index is 0.
+    if (mask_ != 0) {
+      return Iterator(*this, ctz_uint32(mask_));
+    }
+    // The set is empty.
+    return Iterator(*this, 0);
+  }
+
+  Iterator end() const {
+    // The end position is the index of the highest bit that is set, plus 1.
+    // If there are no bits set to 1, then the index is 0.
+    if (mask_ != 0) {
+      return Iterator(*this, kNumBits - clz_uint32(mask_));
+    }
+    // The set is empty.
+    return Iterator(*this, 0);
+  }
+
+  size_t size() const {
+#if defined(__GNUC__)
+    return __builtin_popcount(mask_);
+#else
+    size_t n = 0;
+    uint32 x = mask_;
+    while (x > 0) {
+      n += x & 1u;
+      x >>= 1;
+    }
+    return n;
+#endif
+  }
+
+  constexpr DataTypeSet operator|(const DataTypeSet& other) const {
+    return DataTypeSet(mask_ | other.mask_);
+  }
+};
+
 // If "sp" names a valid type, store it in "*dt" and return true.  Otherwise,
 // return false.
 bool DataTypeFromString(StringPiece sp, DataType* dt);
+
+constexpr inline DataTypeSet ToSet(DataType dt) {
+  return DataTypeSet(1u << static_cast<uint32>(dt));
+}
 
 // DT_FLOAT + kDataTypeRefOffset == DT_FLOAT_REF, etc.
 enum { kDataTypeRefOffset = 100 };
@@ -117,17 +256,94 @@ inline bool TypesCompatible(DataType expected, DataType actual) {
 }
 
 // Does not include _ref types.
-DataTypeVector AllTypes();
+constexpr DataTypeSet kAllTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_UINT8) |
+    ToSet(DT_INT16) | ToSet(DT_UINT16) | ToSet(DT_INT8) | ToSet(DT_STRING) |
+    ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_INT64) |
+    ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
+    ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
+    ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
+    ToSet(DT_BFLOAT16);
+inline const DataTypeSet& AllTypes() { return kAllTypes; }
+
+#if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
+
+// Types that support '<' and '>'.
+constexpr DataTypeSet kRealNumberTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
+    ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_INT8) | ToSet(DT_UINT16) |
+    ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+inline const DataTypeSet RealNumberTypes() { return kRealNumberTypes; }
 
 // Return the list of all numeric types.
+// Includes complex and quantized types.
 // NOTE: On Android, we only include the float and int32 types for now.
-DataTypeVector RealNumberTypes();  // Types that support '<' and '>'.
-DataTypeVector NumberTypes();      // Includes complex and quantized types.
+const DataTypeSet kNumberTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT64) | ToSet(DT_INT32) |
+    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
+    ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_QINT8) |
+    ToSet(DT_QUINT8) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_UINT32) |
+    ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
+inline const DataTypeSet& NumberTypes() { return kNumberTypes; }
 
-DataTypeVector QuantizedTypes();
-DataTypeVector RealAndQuantizedTypes();  // Types that support '<' and
-                                         // '>', including quantized
-                                         // types
+constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
+                                        ToSet(DT_QINT16) | ToSet(DT_QUINT16) |
+                                        ToSet(DT_QINT32);
+inline const DataTypeSet& QuantizedTypes() { return kQuantizedTypes; }
+
+// Types that support '<' and '>', including quantized types.
+const DataTypeSet kRealAndQuantizedTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
+    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT16) | ToSet(DT_INT8) |
+    ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) |
+    ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_BFLOAT16);
+inline const DataTypeSet& RealAndQuantizedTypes() {
+  return kRealAndQuantizedTypes;
+}
+
+#elif defined(__ANDROID_TYPES_FULL__)
+
+constexpr DataTypeSet kRealNumberTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_INT32) | ToSet(DT_INT64) | ToSet(DT_HALF);
+inline DataTypeSet RealNumberTypes() { return kRealNumberTypes; }
+
+constexpr DataTypeSet kNumberTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_INT32) | ToSet(DT_INT64) | ToSet(DT_QINT8) |
+    ToSet(DT_QUINT8) | ToSet(DT_QINT32) | ToSet(DT_HALF);
+inline DataTypeSet NumberTypes() { return kNumberTypes; }
+
+constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
+                                        ToSet(DT_QINT16) | ToSet(DT_QUINT16) |
+                                        ToSet(DT_QINT32);
+inline DataTypeSet QuantizedTypes() { return kQuantizedTypes; }
+
+constexpr DataTypeSet kRealAndQuantizedTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_INT32) | ToSet(DT_INT64) | ToSet(DT_QINT8) |
+    ToSet(DT_QUINT8) | ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
+    ToSet(DT_HALF);
+inline DataTypeSet RealAndQuantizedTypes() { return kRealAndQuantizedTypes; }
+
+#else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
+
+constexpr DataTypeSet kRealNumberTypes = ToSet(DT_FLOAT) | ToSet(DT_INT32);
+inline DataTypeSet RealNumberTypes() { return kRealNumberTypes; }
+
+constexpr DataTypeSet kNumberTypes = ToSet(DT_FLOAT) | ToSet(DT_INT32) |
+                                     ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
+                                     ToSet(DT_QINT32);
+inline DataTypeSet NumberTypes() { return kNumberTypes; }
+
+constexpr DataTypeSet kQuantizedTypes = ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
+                                        ToSet(DT_QINT16) | ToSet(DT_QUINT16) |
+                                        ToSet(DT_QINT32);
+inline DataTypeSet QuantizedTypes() { return kQuantizedTypes; }
+
+constexpr DataTypeSet kRealAndQuantizedTypes =
+    ToSet(DT_FLOAT) | ToSet(DT_INT32) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
+    ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32);
+inline DataTypeSet RealAndQuantizedTypes() { return kRealAndQuantizedTypes; }
+
+#endif  // defined(IS_MOBILE_PLATFORM)
 
 // Validates type T for whether it is a supported DataType.
 template <class T>
@@ -165,6 +381,7 @@ struct EnumToDataType {};  // Specializations below
 MATCH_TYPE_AND_ENUM(float, DT_FLOAT);
 MATCH_TYPE_AND_ENUM(double, DT_DOUBLE);
 MATCH_TYPE_AND_ENUM(int32, DT_INT32);
+MATCH_TYPE_AND_ENUM(uint32, DT_UINT32);
 MATCH_TYPE_AND_ENUM(uint16, DT_UINT16);
 MATCH_TYPE_AND_ENUM(uint8, DT_UINT8);
 MATCH_TYPE_AND_ENUM(int16, DT_INT16);
@@ -173,6 +390,7 @@ MATCH_TYPE_AND_ENUM(string, DT_STRING);
 MATCH_TYPE_AND_ENUM(complex64, DT_COMPLEX64);
 MATCH_TYPE_AND_ENUM(complex128, DT_COMPLEX128);
 MATCH_TYPE_AND_ENUM(int64, DT_INT64);
+MATCH_TYPE_AND_ENUM(uint64, DT_UINT64);
 MATCH_TYPE_AND_ENUM(bool, DT_BOOL);
 MATCH_TYPE_AND_ENUM(qint8, DT_QINT8);
 MATCH_TYPE_AND_ENUM(quint8, DT_QUINT8);
@@ -196,15 +414,66 @@ struct IsValidDataType {
 static_assert(IsValidDataType<int64>::value, "Incorrect impl for int64");
 static_assert(IsValidDataType<int32>::value, "Incorrect impl for int32");
 
-bool DataTypeCanUseMemcpy(DataType dt);
+// TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
+// is_simple<T> in tensor.cc (and possible choose a more general name?)
+constexpr DataTypeSet kDataTypesCanUseMemcpy =
+    ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_UINT32) |
+    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_INT16) | ToSet(DT_INT8) |
+    ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128) | ToSet(DT_INT64) |
+    ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
+    ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
+    ToSet(DT_BFLOAT16) | ToSet(DT_HALF);
+inline bool DataTypeCanUseMemcpy(DataType dt) {
+  return kDataTypesCanUseMemcpy.Contains(dt);
+}
 
-bool DataTypeIsQuantized(DataType dt);
+// Returns true iff 'dt' is a real, non-quantized floating point type.
+constexpr DataTypeSet kDataTypeIsFloating =
+    ToSet(DT_HALF) | ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE);
+inline bool DataTypeIsFloating(DataType dt) {
+  return kDataTypeIsFloating.Contains(dt);
+}
+
+// Returns true iff 'dt' is a complex type.
+constexpr DataTypeSet kDataTypeIsComplex =
+    ToSet(DT_COMPLEX64) | ToSet(DT_COMPLEX128);
+inline bool DataTypeIsComplex(DataType dt) {
+  return kDataTypeIsComplex.Contains(dt);
+}
+
+inline bool DataTypeIsQuantized(DataType dt) {
+  return kQuantizedTypes.Contains(dt);
+}
 
 // Is the dtype nonquantized integral?
-bool DataTypeIsInteger(DataType dt);
+constexpr DataTypeSet kDataTypeIsInteger =
+    ToSet(DT_INT8) | ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_UINT16) |
+    ToSet(DT_INT32) | ToSet(DT_UINT32) | ToSet(DT_INT64) | ToSet(DT_UINT64);
+inline bool DataTypeIsInteger(DataType dt) {
+  return kDataTypeIsInteger.Contains(dt);
+}
+
+// Is the dtype a signed integral type?
+constexpr DataTypeSet kDataTypeIsSigned =
+    ToSet(DT_INT8) | ToSet(DT_INT16) | ToSet(DT_INT32) | ToSet(DT_INT64);
+inline bool DataTypeIsSigned(DataType dt) {
+  return kDataTypeIsSigned.Contains(dt);
+}
+
+// Is the dtype an unsigned integral type?
+constexpr DataTypeSet kDataTypeIsUnsigned =
+    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT32) | ToSet(DT_UINT64);
+inline bool DataTypeIsUnsigned(DataType dt) {
+  return kDataTypeIsUnsigned.Contains(dt);
+}
 
 // Returns a 0 on failure
 int DataTypeSize(DataType dt);
+
+// Types that always sit on host: DT_STRING, DT_STRING_REF, DT_RESOURCE.
+// For DT_RESOURCE, the handle always sits on host (even if the underlying
+// object has device-allocated resources).
+bool DataTypeAlwaysOnHost(DataType dt);
 
 }  // namespace tensorflow
 

@@ -2,7 +2,7 @@
 
 TensorFlow Time Series (TFTS) is a collection of ready-to-use classic models
 (state space, autoregressive), and flexible infrastructure for building
-high-performance time series models whatever the architecture. It includes tools
+high-performance time series models with custom architectures. It includes tools
 for chunking and batching a series, and for saving model state across chunks,
 making use of parallel computation even when training sequential models on long
 series (using truncated backpropagation).

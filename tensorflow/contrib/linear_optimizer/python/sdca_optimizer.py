@@ -19,6 +19,7 @@ from __future__ import print_function
 from tensorflow.contrib import layers
 from tensorflow.contrib.linear_optimizer.python.ops import sdca_ops
 from tensorflow.contrib.linear_optimizer.python.ops.sparse_feature_column import SparseFeatureColumn
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -36,18 +37,18 @@ class SDCAOptimizer(object):
   Example usage:
 
   ```python
-    real_feature_column = real_valued_column(...)
-    sparse_feature_column = sparse_column_with_hash_bucket(...)
-    sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
-                                          num_loss_partitions=1,
-                                          num_table_shards=1,
-                                          symmetric_l2_regularization=2.0)
-    classifier = tf.contrib.learn.LinearClassifier(
-        feature_columns=[real_feature_column, sparse_feature_column],
-        weight_column_name=...,
-        optimizer=sdca_optimizer)
-    classifier.fit(input_fn_train, steps=50)
-    classifier.evaluate(input_fn=input_fn_eval)
+  real_feature_column = real_valued_column(...)
+  sparse_feature_column = sparse_column_with_hash_bucket(...)
+  sdca_optimizer = linear.SDCAOptimizer(example_id_column='example_id',
+                                        num_loss_partitions=1,
+                                        num_table_shards=1,
+                                        symmetric_l2_regularization=2.0)
+  classifier = tf.contrib.learn.LinearClassifier(
+      feature_columns=[real_feature_column, sparse_feature_column],
+      weight_column_name=...,
+      optimizer=sdca_optimizer)
+  classifier.fit(input_fn_train, steps=50)
+  classifier.evaluate(input_fn=input_fn_eval)
   ```
 
   Here the expectation is that the `input_fn_*` functions passed to train and
@@ -63,7 +64,8 @@ class SDCAOptimizer(object):
   of workers running the train steps. It defaults to 1 (single machine).
   `num_table_shards` defines the number of shards for the internal state
   table, typically set to match the number of parameter servers for large
-  data sets.
+  data sets. You can also specify a `partitioner` object to partition the primal
+  weights during training (`div` partitioning strategy will be used).
   """
 
   def __init__(self,
@@ -71,12 +73,16 @@ class SDCAOptimizer(object):
                num_loss_partitions=1,
                num_table_shards=None,
                symmetric_l1_regularization=0.0,
-               symmetric_l2_regularization=1.0):
+               symmetric_l2_regularization=1.0,
+               adaptive=True,
+               partitioner=None):
     self._example_id_column = example_id_column
     self._num_loss_partitions = num_loss_partitions
     self._num_table_shards = num_table_shards
     self._symmetric_l1_regularization = symmetric_l1_regularization
     self._symmetric_l2_regularization = symmetric_l2_regularization
+    self._adaptive = adaptive
+    self._partitioner = partitioner
 
   def get_name(self):
     return 'SDCAOptimizer'
@@ -100,6 +106,14 @@ class SDCAOptimizer(object):
   @property
   def symmetric_l2_regularization(self):
     return self._symmetric_l2_regularization
+
+  @property
+  def adaptive(self):
+    return self._adaptive
+
+  @property
+  def partitioner(self):
+    return self._partitioner
 
   def get_train_step(self, columns_to_variables, weight_column_name, loss_type,
                      features, targets, global_step):
@@ -168,37 +182,65 @@ class SDCAOptimizer(object):
           sparse_feature_column = _dense_tensor_to_sparse_feature_column(
               dense_bucket_tensor)
           sparse_feature_with_values.append(sparse_feature_column)
-          # For bucketized columns, the variables list contains exactly one
-          # element.
-          sparse_feature_with_values_weights.append(
-              columns_to_variables[column][0])
+          # If a partitioner was used during variable creation, we will have a
+          # list of Variables here larger than 1.
+          vars_to_append = columns_to_variables[column][0]
+          if len(columns_to_variables[column]) > 1:
+            vars_to_append = columns_to_variables[column]
+          sparse_feature_with_values_weights.append(vars_to_append)
         elif isinstance(
             column,
             (
+                layers.feature_column._WeightedSparseColumn,  # pylint: disable=protected-access
                 layers.feature_column._CrossedColumn,  # pylint: disable=protected-access
                 layers.feature_column._SparseColumn)):  # pylint: disable=protected-access
-          sparse_features.append(
-              SparseFeatureColumn(
-                  array_ops.reshape(
-                      array_ops.split(
-                          value=transformed_tensor.indices,
-                          num_or_size_splits=2,
-                          axis=1)[0], [-1]),
-                  array_ops.reshape(transformed_tensor.values, [-1]), None))
-          sparse_feature_weights.append(columns_to_variables[column][0])
-        elif isinstance(column, layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
-          id_tensor = column.id_tensor(transformed_tensor)
-          weight_tensor = column.weight_tensor(transformed_tensor)
+
+          if isinstance(column, layers.feature_column._WeightedSparseColumn):  # pylint: disable=protected-access
+            id_tensor = column.id_tensor(transformed_tensor)
+            weight_tensor = array_ops.reshape(
+                column.weight_tensor(transformed_tensor).values, [-1])
+          else:
+            id_tensor = transformed_tensor
+            weight_tensor = array_ops.ones(
+                [array_ops.shape(id_tensor.indices)[0]], dtypes.float32)
+
+          example_ids = array_ops.reshape(id_tensor.indices[:, 0], [-1])
+
+          flat_ids = array_ops.reshape(id_tensor.values, [-1])
+          # Prune invalid IDs (< 0) from the flat_ids, example_ids, and
+          # weight_tensor.  These can come from looking up an OOV entry in the
+          # vocabulary (default value being -1).
+          is_id_valid = math_ops.greater_equal(flat_ids, 0)
+          flat_ids = array_ops.boolean_mask(flat_ids, is_id_valid)
+          example_ids = array_ops.boolean_mask(example_ids, is_id_valid)
+          weight_tensor = array_ops.boolean_mask(weight_tensor, is_id_valid)
+
+          projection_length = math_ops.reduce_max(flat_ids) + 1
+          # project ids based on example ids so that we can dedup ids that
+          # occur multiple times for a single example.
+          projected_ids = projection_length * example_ids + flat_ids
+
+          # Remove any redudant ids.
+          ids, idx = array_ops.unique(projected_ids)
+          # Keep only one example id per duplicated ids.
+          example_ids_filtered = math_ops.unsorted_segment_min(
+              example_ids, idx,
+              array_ops.shape(ids)[0])
+
+          # reproject ids back feature id space.
+          reproject_ids = (ids - projection_length * example_ids_filtered)
+
+          weights = array_ops.reshape(
+              math_ops.unsorted_segment_sum(weight_tensor, idx,
+                                            array_ops.shape(ids)[0]), [-1])
           sparse_feature_with_values.append(
-              SparseFeatureColumn(
-                  array_ops.reshape(
-                      array_ops.split(
-                          value=id_tensor.indices, num_or_size_splits=2, axis=1)
-                      [0], [-1]),
-                  array_ops.reshape(id_tensor.values, [-1]),
-                  array_ops.reshape(weight_tensor.values, [-1])))
-          sparse_feature_with_values_weights.append(
-              columns_to_variables[column][0])
+              SparseFeatureColumn(example_ids_filtered, reproject_ids, weights))
+          # If a partitioner was used during variable creation, we will have a
+          # list of Variables here larger than 1.
+          vars_to_append = columns_to_variables[column][0]
+          if len(columns_to_variables[column]) > 1:
+            vars_to_append = columns_to_variables[column]
+          sparse_feature_with_values_weights.append(vars_to_append)
         else:
           raise ValueError('SDCAOptimizer does not support column type %s.' %
                            type(column).__name__)
@@ -228,6 +270,7 @@ class SDCAOptimizer(object):
         options=dict(
             symmetric_l1_regularization=self._symmetric_l1_regularization,
             symmetric_l2_regularization=self._symmetric_l2_regularization,
+            adaptive=self._adaptive,
             num_loss_partitions=self._num_loss_partitions,
             num_table_shards=self._num_table_shards,
             loss_type=loss_type))

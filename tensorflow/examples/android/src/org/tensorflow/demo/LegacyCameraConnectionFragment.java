@@ -1,7 +1,7 @@
 package org.tensorflow.demo;
 
 /*
- * Copyright 2014 The Android Open Source Project
+ * Copyright 2017 The TensorFlow Authors. All Rights Reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,31 +18,29 @@ package org.tensorflow.demo;
 
 import android.app.Fragment;
 import android.graphics.SurfaceTexture;
+import android.hardware.Camera;
+import android.hardware.Camera.CameraInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
-
 import java.io.IOException;
-
-import android.hardware.Camera;
-import android.hardware.Camera.CameraInfo;
-
+import java.util.List;
+import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
-
-// Explicit import needed for internal Google builds.
-import org.tensorflow.demo.R;
+import org.tensorflow.demo.R; // Explicit import needed for internal Google builds.
 
 public class LegacyCameraConnectionFragment extends Fragment {
-
   private Camera camera;
   private static final Logger LOGGER = new Logger();
   private Camera.PreviewCallback imageListener;
+  private Size desiredSize;
 
   /**
    * The layout identifier to inflate for this Fragment.
@@ -50,10 +48,10 @@ public class LegacyCameraConnectionFragment extends Fragment {
   private int layout;
 
   public LegacyCameraConnectionFragment(
-      final Camera.PreviewCallback imageListener,
-      final int layout) {
+      final Camera.PreviewCallback imageListener, final int layout, final Size desiredSize) {
     this.imageListener = imageListener;
     this.layout = layout;
+    this.desiredSize = desiredSize;
   }
 
   /**
@@ -83,8 +81,21 @@ public class LegacyCameraConnectionFragment extends Fragment {
 
           try {
             Camera.Parameters parameters = camera.getParameters();
-            parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
-
+            List<String> focusModes = parameters.getSupportedFocusModes();
+            if (focusModes != null
+                && focusModes.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
+              parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
+            }
+            List<Camera.Size> cameraSizes = parameters.getSupportedPreviewSizes();
+            Size[] sizes = new Size[cameraSizes.size()];
+            int i = 0;
+            for (Camera.Size size : cameraSizes) {
+              sizes[i++] = new Size(size.width, size.height);
+            }
+            Size previewSize =
+                CameraConnectionFragment.chooseOptimalSize(
+                    sizes, desiredSize.getWidth(), desiredSize.getHeight());
+            parameters.setPreviewSize(previewSize.getWidth(), previewSize.getHeight());
             camera.setDisplayOrientation(90);
             camera.setParameters(parameters);
             camera.setPreviewTexture(texture);
@@ -94,8 +105,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
 
           camera.setPreviewCallbackWithBuffer(imageListener);
           Camera.Size s = camera.getParameters().getPreviewSize();
-          int bufferSize = s.height * s.width * 3 / 2;
-          camera.addCallbackBuffer(new byte[bufferSize]);
+          camera.addCallbackBuffer(new byte[ImageUtils.getYUVByteSize(s.height, s.width)]);
 
           textureView.setAspectRatio(s.height, s.width);
 
@@ -104,8 +114,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
 
         @Override
         public void onSurfaceTextureSizeChanged(
-            final SurfaceTexture texture, final int width, final int height) {
-        }
+            final SurfaceTexture texture, final int width, final int height) {}
 
         @Override
         public boolean onSurfaceTextureDestroyed(final SurfaceTexture texture) {
@@ -113,8 +122,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
         }
 
         @Override
-        public void onSurfaceTextureUpdated(final SurfaceTexture texture) {
-        }
+        public void onSurfaceTextureUpdated(final SurfaceTexture texture) {}
       };
 
   /**

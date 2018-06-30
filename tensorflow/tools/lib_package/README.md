@@ -35,8 +35,8 @@ The following commands:
 bazel test --config opt //tensorflow/tools/lib_package:libtensorflow_test
 bazel build --config opt \
   //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz \
-  //tensorflow/tools/lib_package:libtensorflow.jar \
-  //tensorflow/tools/lib_package:libtensorflow-src.jar
+  //tensorflow/java:libtensorflow.jar \
+  //tensorflow/java:libtensorflow-src.jar
 ```
 
 test and produce the following:
@@ -44,9 +44,9 @@ test and produce the following:
 -   The native library (`libtensorflow_jni.so`) packaged in an archive at:
     `bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz`
 -   The Java archive at:
-    `bazel-bin/tensorflow/tools/lib_package/libtensorflow.jar`
+    `bazel-bin/tensorflow/java/libtensorflow.jar`
 -   The Java archive for Java sources at:
-    `bazel-bin/tensorflow/tools/lib_package/libtensorflow-src.jar`
+    `bazel-bin/tensorflow/java/libtensorflow-src.jar`
 
 ## Release
 

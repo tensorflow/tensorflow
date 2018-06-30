@@ -18,8 +18,17 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
+
+TensorId::TensorId(const SafeTensorId& id) : TensorId(id.first, id.second) {}
+
+SafeTensorId::SafeTensorId(StringPiece str, int idx)
+    : SafeTensorId(str.ToString(), idx) {}
+
+SafeTensorId::SafeTensorId(const TensorId& id)
+    : SafeTensorId(id.first.ToString(), id.second) {}
 
 TensorId ParseTensorName(const string& name) {
   return ParseTensorName(StringPiece(name.data(), name.size()));
@@ -34,8 +43,8 @@ TensorId ParseTensorName(StringPiece name) {
   // whole name string forms the first part of the tensor name.
   const char* base = name.data();
   const char* p = base + name.size() - 1;
-  int index = 0;
-  int mul = 1;
+  unsigned int index = 0;
+  unsigned int mul = 1;
   while (p > base && (*p >= '0' && *p <= '9')) {
     index += ((*p - '0') * mul);
     mul *= 10;
@@ -45,7 +54,7 @@ TensorId ParseTensorName(StringPiece name) {
   if (p > base && *p == ':' && mul > 1) {
     id.first = StringPiece(base, p - base);
     id.second = index;
-  } else if (name.starts_with("^")) {
+  } else if (str_util::StartsWith(name, "^")) {
     // Control edge
     id.first = StringPiece(base + 1);
     id.second = Graph::kControlSlot;

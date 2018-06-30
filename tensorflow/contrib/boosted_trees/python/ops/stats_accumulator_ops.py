@@ -18,13 +18,13 @@ from __future__ import division
 from __future__ import print_function
 import re
 from tensorflow.contrib.boosted_trees.python.ops import batch_ops_utils
+# pylint: disable=unused-import
+from tensorflow.contrib.boosted_trees.python.ops import boosted_trees_ops_loader
+# pylint: enable=unused-import
 from tensorflow.contrib.boosted_trees.python.ops import gen_stats_accumulator_ops
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import resources
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
 
 # Pattern to remove all non alpha numeric from a string.
@@ -205,11 +205,3 @@ class StatsAccumulator(saver.BaseSaverBuilder.SaveableObject):
 
   def resource(self):
     return self._resource_handle
-
-
-# Conditionally load ops, they might already be statically linked in.
-try:
-  _stats_accumulator_ops = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_stats_accumulator_ops.so"))
-except (errors.NotFoundError, IOError):
-  print("Error loading _stats_accumulator_ops.so")

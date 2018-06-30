@@ -17,22 +17,28 @@ limitations under the License.
 
 #include <array>
 
+#include <Python.h>
+
 #include "numpy/arrayobject.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include <Python.h>
+#include "tensorflow/python/lib/core/py_util.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
 namespace {
 
-static mutex mu;
+static mutex mu(LINKER_INITIALIZED);
 static PyObject* py_trampoline GUARDED_BY(mu) = nullptr;
 
 // Returns the py_trampoline that is used to pass the control to the
@@ -48,28 +54,50 @@ struct PyCall {
   // with this "token".
   string token;
 
+  // The device on which Tensors are stored; only used for EagerPyFunc.
+  Device* device = nullptr;
+
+  // True if the call is associated with an EagerPyFunc.
+  bool eager = false;
+
   // Inputs and outputs of this function invocation.
   std::vector<Tensor> ins;
   std::vector<Tensor> out;
 };
 
+bool IsCPUDevice(const Device* d) {
+  return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
+}
+
 // Givens the 'call', prepares the token and inputs as a python tuple
 // that is appropriate for calling the trampoline.
-Status MakeArgTuple(PyCall* call, PyObject** tuple) {
+Status MakeArgTuple(const PyCall* call, PyObject** tuple) {
   int64 n = call->ins.size();
   PyObject* lst = PyList_New(n);
   CHECK(lst);
+  // TFE_TensorHandle assumes that CPU is identified by nullptr.
+  Device* device = IsCPUDevice(call->device) ? nullptr : call->device;
   for (int64 i = 0; i < n; ++i) {
+    PyObject* arg = nullptr;
     const Tensor& t = call->ins[i];
-    PyObject* a = nullptr;
-    Status s = ConvertTensorToNdarray(t, &a);
-    if (!s.ok()) {
-      Py_DECREF(lst);
-      return s;
+    if (call->eager) {
+      arg = EagerTensorFromHandle(new TFE_TensorHandle(t, device, device));
+      if (arg == nullptr) {
+        Py_DECREF(lst);
+        return errors::Internal("Unable to procure EagerTensor from Tensor.");
+      }
+    } else {
+      Status s = ConvertTensorToNdarray(t, &arg);
+      if (!s.ok()) {
+        Py_DECREF(lst);
+        return s;
+      }
     }
-    PyList_SetItem(lst, i, a);
+    PyList_SetItem(lst, i, arg);
   }
-  *tuple = Py_BuildValue("(sN)", call->token.c_str(), lst);
+  const char* device_name =
+      device == nullptr ? nullptr : device->attributes().name().c_str();
+  *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
   CHECK(*tuple);
   return Status::OK();
 }
@@ -79,6 +107,9 @@ Status MakeArgTuple(PyCall* call, PyObject** tuple) {
 // module.
 Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
   switch (np) {
+    case NPY_FLOAT16:
+      *tf = DT_HALF;
+      break;
     case NPY_FLOAT32:
       *tf = DT_FLOAT;
       break;
@@ -93,6 +124,9 @@ Status NumericNpDTypeToTfDType(const int np, DataType* tf) {
       break;
     case NPY_INT8:
       *tf = DT_INT8;
+      break;
+    case NPY_UINT16:
+      *tf = DT_UINT16;
       break;
     case NPY_INT16:
       *tf = DT_INT16;
@@ -124,56 +158,53 @@ bool IsSingleNone(PyObject* obj) {
     return false;
   }
   std::array<npy_intp, 0> indices;
-  char* item_ptr = static_cast<char*>(PyArray_GetPtr(array_obj, indices.data()));
+  char* item_ptr =
+      static_cast<char*>(PyArray_GetPtr(array_obj, indices.data()));
   PyObject* item = PyArray_GETITEM(array_obj, item_ptr);
   CHECK(item);
   return item == Py_None;
 }
 
-// py.__class__.__name__
-const char* ClassName(PyObject* py) {
-/* PyPy doesn't have a separate C API for old-style classes. */
-#if PY_MAJOR_VERSION < 3 && !defined(PYPY_VERSION)
-  if (PyClass_Check(py))
-    return PyString_AS_STRING(
-        CHECK_NOTNULL(reinterpret_cast<PyClassObject*>(py)->cl_name));
-  if (PyInstance_Check(py))
-    return PyString_AS_STRING(CHECK_NOTNULL(
-        reinterpret_cast<PyInstanceObject*>(py)->in_class->cl_name));
-#endif
-  if (Py_TYPE(py) == &PyType_Type) {
-    return reinterpret_cast<PyTypeObject*>(py)->tp_name;
-  }
-  return Py_TYPE(py)->tp_name;
-}
-
-string PyExcFetch() {
-  CHECK(PyErr_Occurred()) << "Must only call PyExcFetch after an exception.";
-  PyObject* ptype;
-  PyObject* pvalue;
-  PyObject* ptraceback;
-  PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-  PyErr_NormalizeException(&ptype, &pvalue, &ptraceback);
-  string err = ClassName(ptype);
-  if (pvalue) {
-    PyObject* str = PyObject_Str(pvalue);
-    if (str) {
-#if PY_MAJOR_VERSION < 3
-      strings::StrAppend(&err, ": ", PyString_AS_STRING(str));
-#else
-      strings::StrAppend(&err, ": ", PyUnicode_AsUTF8(str));
-#endif
-      Py_DECREF(str);
+// Retrieves a Tensor from `eager_tensor` and stores it in `output_tensor`.
+// Validates that `output_tensor` is backed by memory in `expected_device`
+// (which is assumed to be a local device, one on which the kernel was
+// executed.)
+//
+// It may be nice to copy the tensor to the right device instead of failing if
+// it isn't already there. This is left as a future exercise.  The required
+// device-copying logic is implemented in Python at the moment.
+tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
+                                                const Device* expected_device,
+                                                const Tensor** output_tensor) {
+  auto handle = EagerTensor_Handle(eager_tensor)->handle;
+  Device* actual_device = nullptr;
+  TF_RETURN_IF_ERROR(handle->Device(&actual_device));
+  TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
+  // actual_device may be nullptr, which implies local CPU.
+  if (expected_device == actual_device) return Status::OK();
+  const string& expected_device_name = expected_device->attributes().name();
+  if (actual_device == nullptr) {
+    if (!IsCPUDevice(expected_device)) {
+      return errors::Internal(
+          "expected the py_func to return a Tensor backed by memory in ",
+          expected_device_name,
+          ", but is actually backed by local host memory. This is a bug.");
     }
-    Py_DECREF(pvalue);
+    return Status::OK();
   }
-  Py_DECREF(ptype);
-  Py_XDECREF(ptraceback);
-  return err;
+  const string& actual_device_name = actual_device->attributes().name();
+  if (actual_device_name != expected_device_name) {
+    return errors::Internal(
+        "expected the py_func to return a Tensor backed by memory in ",
+        expected_device_name, ", but is actually in ", actual_device_name,
+        ". This is a bug.");
+  }
+  return Status::OK();
 }
 
 // Calls the registered py function through the trampoline.
-Status DoCallPyFunc(PyCall* call) {
+Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
+  *out_log_on_error = true;
   PyObject* trampoline = GetPyTrampoline();
   if (trampoline == nullptr) {
     return errors::InvalidArgument(
@@ -191,17 +222,18 @@ Status DoCallPyFunc(PyCall* call) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||
           PyErr_ExceptionMatches(PyExc_TypeError)) {
-        return errors::InvalidArgument(PyExcFetch());
+        return errors::InvalidArgument(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
-        return errors::OutOfRange(PyExcFetch());
+        *out_log_on_error = false;
+        return errors::OutOfRange(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
-        return errors::ResourceExhausted(PyExcFetch());
+        return errors::ResourceExhausted(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
-        return errors::Unimplemented(PyExcFetch());
+        return errors::Unimplemented(PyExceptionFetch());
       } else {
         // TODO(ebrevdo): Check if exception is an OpError and use the
         // OpError.error_code property to map it back in the Status.
-        return errors::Unknown(PyExcFetch());
+        return errors::Unknown(PyExceptionFetch());
       }
     } else {
       return errors::Internal("Failed to run py callback ", call->token,
@@ -209,21 +241,46 @@ Status DoCallPyFunc(PyCall* call) {
     }
   }
 
-  // Process the return values and converts them to tf Tensors.
-  Status s;
+  // Process the return values and convert them to TF Tensors.
+  Status s = Status::OK();
   if (PyList_Check(result)) {
-    // 'result' is a list.
+    // `result` is a Python list; if this operation is an `EagerPyFunc`, then
+    // every item in the list must be an `EagerTensor`; otherwise, every element
+    // must be a NumPy array.
     call->out.clear();
     for (int i = 0; i < PyList_Size(result); ++i) {
       Tensor t;
-      s = ConvertNdarrayToTensor(PyList_GetItem(result, i), &t);
+      if (call->eager) {
+        const PyObject* item = PyList_GetItem(result, i);
+        if (EagerTensor_CheckExact(item)) {
+          const Tensor* tensor = nullptr;
+          s = ExtractTensorFromEagerTensor(item, call->device, &tensor);
+          if (s.ok()) t = *tensor;
+        } else {
+          s = errors::FailedPrecondition(
+              "Expected EagerTensor, found PyObject of type: ",
+              Py_TYPE(item)->tp_name);
+        }
+      } else {
+        s = ConvertNdarrayToTensor(PyList_GetItem(result, i), &t);
+      }
+
       if (!s.ok()) {
         break;
       }
       call->out.push_back(t);
     }
+  } else if (EagerTensor_CheckExact(result) || result == Py_None) {
+    // result is an `EagerTensor` or `None`.
+    DCHECK(call->eager);
+    if (result != Py_None) {
+      const Tensor* t = nullptr;
+      s = ExtractTensorFromEagerTensor(result, call->device, &t);
+      if (s.ok()) call->out.push_back(*t);
+    }
   } else if (PyArray_Check(result)) {
-    // 'result' is a single ndarray.
+    // `result` is a NumPy array.
+    DCHECK(!call->eager);
     if (!IsSingleNone(result)) {
       Tensor t;
       s = ConvertNdarrayToTensor(result, &t);
@@ -232,7 +289,7 @@ Status DoCallPyFunc(PyCall* call) {
       }
     }
   } else {
-    s = errors::Internal("Unexpected pyobject is returned: ",
+    s = errors::Internal("Unexpected PyObject was returned: ",
                          Py_TYPE(result)->tp_name);
   }
   Py_DECREF(result);
@@ -294,8 +351,24 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
         char* el;
         Py_ssize_t el_size;
         if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
-          return errors::Unimplemented("Unsupported object type ",
-                                       input_data[i]->ob_type->tp_name);
+#if PY_MAJOR_VERSION >= 3
+          el = PyUnicode_AsUTF8AndSize(input_data[i], &el_size);
+#else
+          el = nullptr;
+          if (PyUnicode_Check(input_data[i])) {
+            PyObject* unicode = PyUnicode_AsUTF8String(input_data[i]);
+            if (unicode) {
+              if (PyString_AsStringAndSize(unicode, &el, &el_size) == -1) {
+                Py_DECREF(unicode);
+                el = nullptr;
+              }
+            }
+          }
+#endif
+          if (!el) {
+            return errors::Unimplemented("Unsupported object type ",
+                                         input_data[i]->ob_type->tp_name);
+          }
         }
         tflat(i) = string(el, el_size);
       }
@@ -405,22 +478,46 @@ class PyFuncOp : public OpKernel {
  public:
   explicit PyFuncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("token", &token_));
+    eager_ = type_string() == "EagerPyFunc";
   }
 
   void Compute(OpKernelContext* ctx) override {
     PyCall call;
     call.token = token_;
+    call.eager = eager_;
+    if (call.eager) {
+      // Eager's C API uses `Device`, whereas `OpKernelContext` stores a
+      // `DeviceBase`; attempt to downcast.
+      call.device = dynamic_cast<Device*>(ctx->device());
+      if (call.device == nullptr) {
+        ctx->CtxFailureWithWarning(
+            errors::Internal("Unrecognized device class"));
+        return;
+      }
+    }
+
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       call.ins.push_back(ctx->input(i));
     }
 
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();
-    Status s = DoCallPyFunc(&call);
+    bool log_on_error;
+    Status s = DoCallPyFunc(&call, &log_on_error);
+    // Sometimes py_funcs can be called without a session and leak memory. This
+    // ensures we clear the decref cache so this doesn't happen.
+    ClearDecrefCache();
     PyGILState_Release(py_threadstate);
 
     // Ensures that GIL is released even when !s.ok().
-    OP_REQUIRES_OK(ctx, s);
+    if (!s.ok()) {
+      if (log_on_error) {
+        ctx->CtxFailureWithWarning(s);
+      } else {
+        ctx->CtxFailure(s);
+      }
+      return;
+    }
 
     OP_REQUIRES(ctx, static_cast<int32>(call.out.size()) == ctx->num_outputs(),
                 errors::InvalidArgument(token_, " returns ", call.out.size(),
@@ -440,9 +537,16 @@ class PyFuncOp : public OpKernel {
  private:
   string token_;
 
+  // True if and only if this op should execute the python function eagerly,
+  // i.e., if and only if the eager attribute is set.
+  bool eager_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(PyFuncOp);
 };
+
 REGISTER_KERNEL_BUILDER(Name("PyFunc").Device(DEVICE_CPU), PyFuncOp);
 REGISTER_KERNEL_BUILDER(Name("PyFuncStateless").Device(DEVICE_CPU), PyFuncOp);
+REGISTER_KERNEL_BUILDER(Name("EagerPyFunc").Device(DEVICE_CPU), PyFuncOp);
+REGISTER_KERNEL_BUILDER(Name("EagerPyFunc").Device(DEVICE_GPU), PyFuncOp);
 
 }  // end namespace tensorflow

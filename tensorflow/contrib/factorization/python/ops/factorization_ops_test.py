@@ -210,7 +210,7 @@ class WalsModelTest(test.TestCase):
 
       # Test row projection.
       # Using the specified projection weights for the 2 row feature vectors.
-      # This is expected to reprodue the same row factors in the model as the
+      # This is expected to reproduce the same row factors in the model as the
       # weights and feature vectors are identical to that used in model
       # training.
       projected_rows = wals_model.project_row_factors(
@@ -283,8 +283,8 @@ class WalsModelTest(test.TestCase):
 
       # Test column projection.
       # Using the specified projection weights for the 3 column feature vectors.
-      # This is expected to reprodue the same column factors in the model as the
-      # weights and feature vectors are identical to that used in model
+      # This is expected to reproduce the same column factors in the model as
+      # the weights and feature vectors are identical to that used in model
       # training.
       projected_cols = wals_model.project_col_factors(
           sp_input=sp_feeder,
@@ -385,7 +385,7 @@ class WalsModelTest(test.TestCase):
 
       # Test row projection.
       # Using the specified projection weights for the 2 row feature vectors.
-      # This is expected to reprodue the same row factors in the model as the
+      # This is expected to reproduce the same row factors in the model as the
       # weights and feature vectors are identical to that used in model
       # training.
       projected_rows = wals_model.project_row_factors(
@@ -462,8 +462,8 @@ class WalsModelTest(test.TestCase):
 
       # Test column projection.
       # Using the specified projection weights for the 2 column feature vectors.
-      # This is expected to reprodue the same column factors in the model as the
-      # weights and feature vectors are identical to that used in model
+      # This is expected to reproduce the same column factors in the model as
+      # the weights and feature vectors are identical to that used in model
       # training.
       projected_cols = wals_model.project_col_factors(
           sp_input=sp_feeder,

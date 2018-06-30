@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import vector_laplace_linear_operator as vector_laplace_linop
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -101,10 +102,10 @@ class VectorLaplaceDiag(
   #### Examples
 
   ```python
-  ds = tf.contrib.distributions
+  tfd = tf.contrib.distributions
 
   # Initialize a single 2-variate VectorLaplace.
-  vla = ds.VectorLaplaceDiag(
+  vla = tfd.VectorLaplaceDiag(
       loc=[1., -1],
       scale_diag=[1, 2.])
 
@@ -118,7 +119,7 @@ class VectorLaplaceDiag(
   vla.prob([-1., 0]).eval()  # shape: []
 
   # Initialize a 3-batch, 2-variate scaled-identity VectorLaplace.
-  vla = ds.VectorLaplaceDiag(
+  vla = tfd.VectorLaplaceDiag(
       loc=[1., -1],
       scale_identity_multiplier=[1, 2., 3])
 
@@ -136,7 +137,7 @@ class VectorLaplaceDiag(
   vla.prob([-1., 0]).eval()  # shape: [3]
 
   # Initialize a 2-batch of 3-variate VectorLaplace's.
-  vla = ds.VectorLaplaceDiag(
+  vla = tfd.VectorLaplaceDiag(
       loc=[[1., 2, 3],
            [11, 22, 33]]           # shape: [2, 3]
       scale_diag=[[1., 2, 3],
@@ -151,6 +152,14 @@ class VectorLaplaceDiag(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_diag=None,
@@ -210,7 +219,7 @@ class VectorLaplaceDiag(
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name):
       with ops.name_scope("init", values=[
           loc, scale_diag, scale_identity_multiplier]):

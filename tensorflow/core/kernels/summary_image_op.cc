@@ -54,18 +54,20 @@ class SummaryImageOp : public OpKernel {
     const Tensor& tensor = c->input(1);
     OP_REQUIRES(c, IsLegacyScalar(tags.shape()),
                 errors::InvalidArgument("Tags must be a scalar"));
-    OP_REQUIRES(c, tensor.dims() == 4 &&
-                       (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
-                        tensor.dim_size(3) == 4),
+    OP_REQUIRES(c,
+                tensor.dims() == 4 &&
+                    (tensor.dim_size(3) == 1 || tensor.dim_size(3) == 3 ||
+                     tensor.dim_size(3) == 4),
                 errors::InvalidArgument(
                     "Tensor must be 4-D with last dim 1, 3, or 4, not ",
                     tensor.shape().DebugString()));
     const string& base_tag = tags.scalar<string>()();
 
-    OP_REQUIRES(c, tensor.dim_size(0) < (1LL << 31) &&
-                       tensor.dim_size(1) < (1LL << 31) &&
-                       tensor.dim_size(2) < (1LL << 31) &&
-                       (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29),
+    OP_REQUIRES(c,
+                tensor.dim_size(0) < (1LL << 31) &&
+                    tensor.dim_size(1) < (1LL << 31) &&
+                    tensor.dim_size(2) < (1LL << 31) &&
+                    (tensor.dim_size(1) * tensor.dim_size(2)) < (1LL << 29),
                 errors::InvalidArgument("Tensor too large for summary ",
                                         tensor.shape().DebugString()));
 
@@ -89,9 +91,12 @@ class SummaryImageOp : public OpKernel {
     } else if (tensor.dtype() == DT_HALF) {
       NormalizeAndAddImages<Eigen::half>(c, tensor, h, w, hw, depth, batch_size,
                                          base_tag, &s);
-    } else {  // tensor.dtype() == DT_FLOAT
+    } else if (tensor.dtype() == DT_FLOAT) {
       NormalizeAndAddImages<float>(c, tensor, h, w, hw, depth, batch_size,
                                    base_tag, &s);
+    } else {  // tensor.dtype() = DT_DOUBLE
+      NormalizeAndAddImages<double>(c, tensor, h, w, hw, depth, batch_size,
+                                    base_tag, &s);
     }
 
     Tensor* summary_tensor = nullptr;

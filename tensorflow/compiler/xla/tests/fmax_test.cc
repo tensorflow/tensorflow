@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -27,12 +27,12 @@ namespace {
 class FmaxSimpleTest : public ClientLibraryTestBase {};
 
 TEST_F(FmaxSimpleTest, FmaxTenValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(
-      {-0.0, 1.0, 2.0, -3.0, -4.0, 5.0, 6.0, -7.0, -8.0, 9.0});
-  auto y = builder.ConstantR1<float>(
-      {-0.0, -1.0, -2.0, 3.0, 4.0, -5.0, -6.0, 7.0, 8.0, -9.0});
-  builder.Max(x, y);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {-0.0, 1.0, 2.0, -3.0, -4.0, 5.0, 6.0, -7.0, -8.0, 9.0});
+  auto y = ConstantR1<float>(
+      &builder, {-0.0, -1.0, -2.0, 3.0, 4.0, -5.0, -6.0, 7.0, 8.0, -9.0});
+  Max(x, y);
 
   std::vector<float> expected = {-0.0, 1.0, 2.0, 3.0, 4.0,
                                  5.0,  6.0, 7.0, 8.0, 9.0};

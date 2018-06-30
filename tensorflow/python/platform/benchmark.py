@@ -33,6 +33,7 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 # When a subclass of the Benchmark class is created, it is added to
@@ -42,8 +43,6 @@ GLOBAL_BENCHMARK_REGISTRY = set()
 # Environment variable that determines whether benchmarks are written.
 # See also tensorflow/core/util/reporter.h TestReporter::kTestReporterEnv.
 TEST_REPORTER_TEST_ENV = "TEST_REPORT_FILE_PREFIX"
-
-_benchmark_tests_can_log_memory = app._benchmark_tests_can_log_memory  # pylint: disable=protected-access
 
 
 def _global_report_benchmark(
@@ -169,8 +168,8 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
 
     Args:
       iters: (optional) How many iterations were run
-      cpu_time: (optional) Total cpu time in seconds
-      wall_time: (optional) Total wall time in seconds
+      cpu_time: (optional) median or mean cpu time in seconds.
+      wall_time: (optional) median or mean wall time in seconds.
       throughput: (optional) Throughput (in MB/s)
       extras: (optional) Dict mapping string keys to additional benchmark info.
         Values may be either floats or values that are convertible to strings.
@@ -183,6 +182,7 @@ class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
         throughput=throughput, extras=extras)
 
 
+@tf_export("test.Benchmark")
 class TensorFlowBenchmark(Benchmark):
   """Abstract class that provides helpers for TensorFlow benchmarks."""
 
@@ -213,12 +213,12 @@ class TensorFlowBenchmark(Benchmark):
       burn_iters: Number of burn-in iterations to run.
       min_iters: Minimum number of iterations to use for timing.
       store_trace: Boolean, whether to run an extra untimed iteration and
-        store the trace of iteration in the benchmark report.
+        store the trace of iteration in returned extras.
         The trace will be stored as a string in Google Chrome trace format
-        in the extras field "full_trace_chrome_format".
-      store_memory_usage: Boolean, whether to run an extra
-        untimed iteration, calculate memory usage, and store that in extras
-        fields.
+        in the extras field "full_trace_chrome_format". Note that trace
+        will not be stored in test_log_pb2.TestResults proto.
+      store_memory_usage: Boolean, whether to run an extra untimed iteration,
+        calculate memory usage, and store that in extras fields.
       name: (optional) Override the BenchmarkEntry name with `name`.
         Otherwise it is inferred from the top-level method name.
       extras: (optional) Dict mapping string keys to additional benchmark info.
@@ -228,10 +228,10 @@ class TensorFlowBenchmark(Benchmark):
 
     Returns:
       A `dict` containing the key-value pairs that were passed to
-      `report_benchmark`.
+      `report_benchmark`. If `store_trace` option is used, then
+      `full_chrome_trace_format` will be included in return dictionary even
+      though it is not passed to `report_benchmark` with `extras`.
     """
-    store_memory_usage &= _benchmark_tests_can_log_memory()
-
     for _ in range(burn_iters):
       sess.run(op_or_tensor, feed_dict=feed_dict)
 
@@ -245,6 +245,7 @@ class TensorFlowBenchmark(Benchmark):
       deltas[i] = delta
 
     extras = extras if extras is not None else {}
+    unreported_extras = {}
     if store_trace or store_memory_usage:
       run_options = config_pb2.RunOptions(
           trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -254,7 +255,8 @@ class TensorFlowBenchmark(Benchmark):
       tl = timeline.Timeline(run_metadata.step_stats)
 
       if store_trace:
-        extras["full_trace_chrome_format"] = tl.generate_chrome_trace_format()
+        unreported_extras["full_trace_chrome_format"] = (
+            tl.generate_chrome_trace_format())
 
       if store_memory_usage:
         step_stats_analysis = tl.analyze_step_stats(show_memory=True)
@@ -280,6 +282,7 @@ class TensorFlowBenchmark(Benchmark):
         "throughput": mbs / median_delta
     }
     self.report_benchmark(**benchmark_values)
+    benchmark_values["extras"].update(unreported_extras)
     return benchmark_values
 
 

@@ -15,16 +15,14 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/kernel_spec.h"
 
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 KernelLoaderSpec::KernelLoaderSpec(port::StringPiece kernelname)
-    : kernelname_(kernelname.ToString()) {}
+    : kernelname_(std::string(kernelname)) {}
 
 OnDiskKernelLoaderSpec::OnDiskKernelLoaderSpec(port::StringPiece filename,
                                                port::StringPiece kernelname)
-    : KernelLoaderSpec(kernelname), filename_(filename.ToString()) {}
+    : KernelLoaderSpec(kernelname), filename_(std::string(filename)) {}
 
 CudaPtxOnDisk::CudaPtxOnDisk(port::StringPiece filename,
                              port::StringPiece kernelname)
@@ -95,7 +93,7 @@ const char *CudaPtxInMemory::default_text() const {
     return nullptr;
   }
 
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
 
   auto ptx = ptx_by_compute_capability_.begin()->second;
   // Check if there is an entry in decompressed ptx table.
@@ -129,7 +127,7 @@ const char *CudaPtxInMemory::text(int compute_capability_major,
     return nullptr;
   }
 
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
 
   // Check if there is an entry in decompressed ptx table.
   auto decompressed_ptx_iter = decompressed_ptx_.find(ptx_iter->second);
@@ -163,7 +161,7 @@ OpenCLTextOnDisk::OpenCLTextOnDisk(port::StringPiece filename,
 
 OpenCLTextInMemory::OpenCLTextInMemory(port::StringPiece text,
                                        port::StringPiece kernelname)
-    : KernelLoaderSpec(kernelname), text_(text.ToString()) {}
+    : KernelLoaderSpec(kernelname), text_(std::string(text)) {}
 
 OpenCLBinaryOnDisk::OpenCLBinaryOnDisk(port::StringPiece filename,
                                        port::StringPiece kernelname)
@@ -247,5 +245,4 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCompressedPtxInMemory(
 
 MultiKernelLoaderSpec::MultiKernelLoaderSpec(size_t arity) : arity_(arity) {}
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

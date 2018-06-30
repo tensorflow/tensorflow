@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -25,29 +26,25 @@ using shape_inference::ShapeHandle;
 // Configuring a distributed TPU system is achieved by running
 // the following Ops:
 //
-// 1 Run _DisconnectHostFromDistributedTPUSystem on the CPU of each
-// host. This is needed in case the system had previously been
-// configured. It returns, for each host, the number of TPU chips on
-// the host.
+// 1 Run _DisconnectHostFromDistributedTPUSystem on the TPU_SYSTEM of each
+// host. This is needed in case the system had previously been configured. It
+// returns, for each host, the number of TPU chips on the host.
 //
-// 2 Run _ConfigureDistributedTPU on TPU_SYSTEM. Takes as input the
-// number of chips on each host. Validates that all hosts have the
-// same number of chips, and that the chips are consistent with the
-// topology set by flags. Has a single output which is a proto
-// describing the requested system configuration, which is sent to all
-// hosts.
+// 2 Run _ConfigureDistributedTPU on TPU_SYSTEM of worker 0. Takes as input the
+// number of chips on each host. Validates that all hosts have the same number
+// of chips, and that the chips are consistent with the topology set by
+// flags. Has a single output which is a proto describing the requested system
+// configuration, which is sent to all hosts.
 //
-// 3 Run _InitializeHostForDistributedTPU on the CPU of each host,
-// taking as input the output from ConfigureDistributedTPU. Has a
-// single Tensor output which is a vector of int32 indicating, for
-// each TPU on the host, what its global TPU system id is.
+// 3 Run _InitializeHostForDistributedTPU on the TPU_SYSTEM of each host, taking
+// as input the output from ConfigureDistributedTPU. Has a single Tensor output
+// which is a vector of int32 indicating, for each TPU on the host, what its
+// global TPU system id is.
 //
 // 4 Run _WaitForDistributedTPU on TPU_SYSTEM, taking as input the
 // outputs from all the _InitializeHostForDistributedTPU
-// Ops. _WaitForDistributedTPU has an attr host_specs which is a
-// vector<string> giving the partial device spec for each host. These
-// partial specs are combined in the Op with the outputs from the host
-// initialization Ops to construct a mapping from full TPU device
+// Ops. _These partial specs are combined in the Op with the outputs from
+// the host initialization Ops to construct a mapping from full TPU device
 // specs to global TPU ids. Has a single Tensor output which is a
 // matrix of int32 indicating, for each host (outer dimension) and for
 // each TPU on the host (inner dimension) what that TPU's global id
@@ -55,29 +52,28 @@ using shape_inference::ShapeHandle;
 // system to initialize fully, which may take several minutes for a
 // large system.
 //
-// 5 Run _SetGlobalTPUArray on the CPU of each host, taking as input
-// the output from _WaitForDistributedTPU. This Op tells each host the
-// global Id of every TPU on every host.
+// 5 Run _SetGlobalTPUArray on the TPU_SYSTEM of each host, taking as input the
+// output from _WaitForDistributedTPU. This Op tells each host the global Id of
+// every TPU on every host.
 //
-// Most user code works by placing the ConfigureDistributedTPU Op on
-// the desired TPU_SYSTEM device, and a graph rewrite replaces it by
-// the subgraph described above.
+// Most user code works by placing the ConfigureDistributedTPU Op on the desired
+// TPU_SYSTEM device, and a graph rewrite replaces it by the subgraph described
+// above.
 //
 //
-// A distributed TPU system can be cleanly shut down by running
-// the following Ops:
+// A distributed TPU system can be cleanly shut down by running the following
+// Ops:
 //
-// 1 Run _DisconnectHostFromDistributedTPUSystem on the CPU of each
-// host.
+// 1 Run _DisconnectHostFromDistributedTPUSystem on the TPU_SYSTEM of each host.
 //
 // 2 Run _ShutdownDistributedTPU on the TPU_SYSTEM where
-// _ConfigureDistributedTPU was run. The Op will return an error if no
-// system is configured.
+// _ConfigureDistributedTPU was run. The Op will return an error if no system is
+// configured.
 //
 //
-// Most user code works by placing the ShutdownDistributedTPU Op on
-// the desired TPU_SYSTEM device, and a graph rewrite replaces it by
-// the subgraph described above.
+// Most user code works by placing the ShutdownDistributedTPU Op on the desired
+// TPU_SYSTEM device, and a graph rewrite replaces it by the subgraph described
+// above.
 
 REGISTER_OP("_ConfigureDistributedTPU")
     .Input("inputs: N * int32")
@@ -106,8 +102,7 @@ in a host.
 
 REGISTER_OP("_WaitForDistributedTPU")
     .Input("inputs: N * int32")
-    .Output("global_tpu_array: int32")
-    .Attr("host_specs: list(string)")
+    .Output("topology: string")
     .Attr("startup_timeout_sec: int = 20")
     .Attr("N: int")
     .SetIsStateful()
@@ -117,7 +112,7 @@ REGISTER_OP("_WaitForDistributedTPU")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &input));
       }
-      c->set_output(0, c->UnknownShapeOfRank(2));
+      c->set_output(0, c->Scalar());
       return ::tensorflow::Status::OK();
     })
     .Doc(R"doc(
@@ -128,33 +123,32 @@ _InitializeHostForDistributedTPU Ops.
 
 inputs: For each initialized host, a vector giving the global TPU id
 of each TPU on the host.
-global_tpu_array: A two-dimensional array. For each host (the outer
-dimension) the array lists the global ids of the TPUs on that host.
-host_specs: For each initialized host, the partial device specification
-indicating job, replica, and task. Combining this spec with
-'/device:TPU:k' gives the full device name of the k'th TPU on the
-host.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
 startup_timeout_sec: The number of seconds to wait for the TPU system
 to stabilize.
 )doc");
 
 REGISTER_OP("_SetGlobalTPUArray")
-    .Input("global_tpu_array: int32")
+    .Input("topology: string")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
       return ::tensorflow::Status::OK();
     })
     .Doc(R"doc(
 An op that informs a host of the global ids of all the of TPUs in the
 system.
 
-global_tpu_array: A two-dimensional array. For each host (the outer
-dimension) the array lists the global ids of the TPUs on that host.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
 )doc");
 
-REGISTER_OP("_ShutdownDistributedTPU").SetIsStateful().Doc(R"doc(
+REGISTER_OP("_ShutdownDistributedTPU")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
 An op that shuts down a running distributed TPU system. The Op returns
 an error if no system is running. This Op must be run on the same
 TPU_SYSTEM device as the corresponding _ConfigureDistributedTPU was run
@@ -184,6 +178,7 @@ tpu_ids: A vector containing the global TPU id of each TPU on the host.
 REGISTER_OP("_DisconnectHostFromDistributedTPUSystem")
     .Output("number_of_tpu_chips: int32")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 An op that disconnects the TPUs on a host from a running distributed
 TPU system.
@@ -193,21 +188,30 @@ chips on the host.
 )doc");
 
 REGISTER_OP("ConfigureDistributedTPU")
-    .Output("global_tpu_array: int32")
+    .Output("topology: string")
     .Attr("embedding_config: string = ''")
+    .Attr("tpu_embedding_config: string = ''")
+    .Attr("is_global_init: bool = false")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 An op that sets up the centralized structures for a distributed TPU
 system.
 
-global_tpu_array: A two-dimensional array. For each host (the outer
-dimension) the array lists the global ids of the TPUs on that host.
-embedding_config: Internal use.
+topology: A serialized tensorflow.tpu.TopologyProto that describes the TPU
+topology.
+tpu_embedding_config: Serialized tensorflow.tpu.TPUEmbeddingConfiguration that
+describes the embedding lookups of the program.
+embedding_config: Reserved. Do not use.
+is_global_init: Reserved. Do not use.
 )doc");
 
-REGISTER_OP("ShutdownDistributedTPU").SetIsStateful().Doc(R"doc(
+REGISTER_OP("ShutdownDistributedTPU")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
 An op that shuts down a running distributed TPU system. The Op returns
 an error if no system is running.
 )doc");
 
-}  // namespace tensorflow
+}  // end namespace tensorflow

@@ -11,8 +11,8 @@ problem is to classify RGB 32x32 pixel images across 10 categories:
 airplane, automobile, bird, cat, deer, dog, frog, horse, ship, and truck.
 ```
 
-For more details refer to the [CIFAR-10 page](http://www.cs.toronto.edu/~kriz/cifar.html)
-and a [Tech Report](http://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
+For more details refer to the [CIFAR-10 page](https://www.cs.toronto.edu/~kriz/cifar.html)
+and a [Tech Report](https://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf)
 by Alex Krizhevsky.
 
 ### Goals
@@ -42,7 +42,7 @@ designing larger and more sophisticated models in TensorFlow:
 ([wiki](https://en.wikipedia.org/wiki/Convolutional_neural_network#Pooling_layer))
 and @{tf.nn.local_response_normalization$local response normalization}
 (Chapter 3.3 in
-[AlexNet paper](http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
+[AlexNet paper](https://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks.pdf)).
 * @{$summaries_and_tensorboard$Visualization}
 of network activities during training, including input images,
 losses and distributions of activations and gradients.
@@ -195,9 +195,8 @@ The usual method for training a network to perform N-way classification is
 aka. *softmax regression*. Softmax regression applies a
 @{tf.nn.softmax$softmax} nonlinearity to the
 output of the network and calculates the
-@{tf.nn.softmax_cross_entropy_with_logits$cross-entropy}
-between the normalized predictions and a
-@{tf.sparse_to_dense$1-hot encoding} of the label.
+@{tf.nn.sparse_softmax_cross_entropy_with_logits$cross-entropy}
+between the normalized predictions and the label index.
 For regularization, we also apply the usual
 @{tf.nn.l2_loss$weight decay} losses to all learned
 variables.  The objective function for the model is the sum of the cross entropy
@@ -269,7 +268,7 @@ in `cifar10_input.py`.
 
 `cifar10_train.py` periodically @{tf.train.Saver$saves}
 all model parameters in
-@{$variables#saving-and-restoring$checkpoint files}
+@{$guide/saved_model$checkpoint files}
 but it does *not* evaluate the model. The checkpoint file
 will be used by `cifar10_eval.py` to measure the predictive
 performance (see [Evaluating a Model](#evaluating-a-model) below).
@@ -411,7 +410,7 @@ the first tower are prepended with `tower_0`, e.g. `tower_0/conv1/Conv2D`.
 
 * A preferred hardware device to run the operation within a tower.
 @{tf.device} specifies this. For
-instance, all operations in the first tower reside within `device('/gpu:0')`
+instance, all operations in the first tower reside within `device('/device:GPU:0')`
 scope indicating that they should be run on the first GPU.
 
 All variables are pinned to the CPU and accessed via

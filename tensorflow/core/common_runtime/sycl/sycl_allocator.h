@@ -20,25 +20,32 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
 #define TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
  public:
-  SYCLAllocator(Eigen::QueueInterface *queue);
+  SYCLAllocator(Eigen::QueueInterface* queue);
   virtual ~SYCLAllocator() override;
   string Name() override;
-  void *AllocateRaw(size_t alignment, size_t num_bytes) override;
-  void DeallocateRaw(void *ptr) override;
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+  void DeallocateRaw(void* ptr) override;
 
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
-  void Synchronize() { sycl_device_->synchronize(); }
-  bool Ok() { return sycl_device_->ok(); }
+  void Synchronize() {
+    mutex_lock lock(mu_);
+    if (sycl_device_) {
+      sycl_device_->synchronize();
+    }
+  }
+  bool Ok() { return sycl_device_ && sycl_device_->ok(); }
   void GetStats(AllocatorStats* stats) override;
+  void ClearStats() override;
+
   // The SYCL buffers keep track of their size, so we already have tracking.
   bool TracksAllocationSizes() override { return true; }
   // Get the size of the corresponding SYCL buffer.
@@ -46,10 +53,18 @@ class SYCLAllocator : public Allocator {
   // AllocatedSize(void* ptr) by default.
   size_t RequestedSize(void* ptr) override;
   Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
- private:
-  Eigen::SyclDevice *sycl_device_;  // owned
+  // Clear the SYCL device used by the Allocator
+  void ClearSYCLDevice() {
+    mutex_lock lock(mu_);
+    if (sycl_device_) {
+      delete sycl_device_;
+      sycl_device_ = nullptr;
+    }
+  }
 
+ private:
   mutable mutex mu_;
+  Eigen::SyclDevice* sycl_device_ GUARDED_BY(mu_);  // owned
   AllocatorStats stats_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);

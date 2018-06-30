@@ -115,8 +115,8 @@ class ParallelReader(io_ops.ReaderBase):
     reader needs to start reading from a new file since it has finished with
     the previous file).
 
-    A queue runner for enqueing in the `common_queue` is automatically added to
-    the TF QueueRunners collection.
+    A queue runner for enqueuing in the `common_queue` is automatically added
+    to the TF QueueRunners collection.
 
     Args:
       queue: A Queue or a mutable string Tensor representing a handle
@@ -127,14 +127,42 @@ class ParallelReader(io_ops.ReaderBase):
       The next record (i.e. (key, value pair)) from the common_queue.
     """
 
+    self._configure_readers_by(queue)
+    return self._common_queue.dequeue(name=name)
+
+  def read_up_to(self, queue, num_records, name=None):
+    """Returns up to num_records (key, value pairs) produced by a reader.
+
+    Will dequeue a work unit from queue if necessary (e.g., when the
+    Reader needs to start reading from a new file since it has
+    finished with the previous file).
+    It may return less than num_records even before the last batch.
+
+    **Note** This operation is not supported by all types of `common_queue`s.
+    If a `common_queue` does not support `dequeue_up_to()`, then a
+    `tf.errors.UnimplementedError` is raised.
+
+    Args:
+      queue: A Queue or a mutable string Tensor representing a handle
+        to a Queue, with string work items.
+      num_records: Number of records to read.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tuple of Tensors (keys, values) from common_queue.
+      keys: A 1-D string Tensor.
+      values: A 1-D string Tensor.
+    """
+    self._configure_readers_by(queue)
+    return self._common_queue.dequeue_up_to(num_records, name)
+
+  def _configure_readers_by(self, queue):
     enqueue_ops = []
     for reader in self._readers:
       enqueue_ops.append(self._common_queue.enqueue(reader.read(queue)))
 
     queue_runner.add_queue_runner(
         queue_runner.QueueRunner(self._common_queue, enqueue_ops))
-
-    return self._common_queue.dequeue(name=name)
 
   def num_records_produced(self, name=None):
     """Returns the number of records this reader has produced.
@@ -193,7 +221,7 @@ def parallel_read(data_sources,
         the data will be cycled through indefinitely.
     num_readers: a integer, number of Readers to create.
     reader_kwargs: an optional dict, of kwargs for the reader.
-    shuffle: boolean, wether should shuffle the files and the records by using
+    shuffle: boolean, whether should shuffle the files and the records by using
       RandomShuffleQueue as common_queue.
     dtypes:  A list of types.  The length of dtypes must equal the number
         of elements in each record. If it is None it will default to

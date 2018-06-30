@@ -18,43 +18,57 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
 // Creates a scalar add computation and returns it.
-Computation CreateScalarAddComputation(PrimitiveType type,
-                                       ComputationBuilder* builder);
+XlaComputation CreateScalarAddComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
 
 // Creates a scalar multiply computation and returns it.
-Computation CreateScalarMultiplyComputation(PrimitiveType type,
-                                            ComputationBuilder* builder);
+XlaComputation CreateScalarMultiplyComputation(PrimitiveType type,
+                                               XlaBuilder* builder);
 
 // Creates a scalar ge computation and returns it.
-Computation CreateScalarGeComputation(PrimitiveType type,
-                                      ComputationBuilder* builder);
+XlaComputation CreateScalarGeComputation(PrimitiveType type,
+                                         XlaBuilder* builder);
 
 // Creates a scalar max computation and returns it.
-Computation CreateScalarMaxComputation(PrimitiveType type,
-                                       ComputationBuilder* builder);
+XlaComputation CreateScalarMaxComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
 
 // Creates a scalar min computation and returns it.
-Computation CreateScalarMinComputation(PrimitiveType type,
-                                       ComputationBuilder* builder);
+XlaComputation CreateScalarMinComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
 
 // Creates a scalar logical AND computation and returns it.
-Computation CreateScalarLogicalAndComputation(ComputationBuilder* builder);
+XlaComputation CreateScalarAndComputation(XlaBuilder* builder);
 
 // Creates a scalar logical OR computation and returns it.
-Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder);
+XlaComputation CreateScalarOrComputation(XlaBuilder* builder);
 
 // Returns whether any predicate in "predicates" is set.
 //
 // Note: if predicates is zero-sized, Any() vacuously returns false.
-StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
-                                    ComputationBuilder* builder);
+XlaOp Any(XlaOp predicates);
+
+// Evaluate the polynomial given coefficients and `x`.
+// N.B. Coefficients should be supplied in decreasing order.
+XlaOp EvaluatePolynomial(XlaOp x,
+                         tensorflow::gtl::ArraySlice<float> coefficients,
+                         PrimitiveType data_type);
+
+// Compute an approximation of the error function complement (1 - erf(x)).
+XlaOp Erfc(XlaOp x, PrimitiveType data_type);
+
+// Compute an approximation of the error function.
+XlaOp Erf(XlaOp x, PrimitiveType data_type);
+
+// Compute an approximation of the inverse of the error function.
+XlaOp ErfInv(XlaOp x);
 
 }  // namespace xla
 

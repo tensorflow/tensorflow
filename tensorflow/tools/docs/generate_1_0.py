@@ -53,7 +53,6 @@ if __name__ == '__main__':
           'factorization',
           'grid_rnn',
           'labeled_tensor',
-          'ndlstm',
           'quantization',
           'session_bundle',
           'slim',

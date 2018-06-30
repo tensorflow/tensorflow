@@ -1,0 +1,50 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxVarsGradient"
+  in_arg {
+    name: "gradients"
+    description: <<END
+Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
+END
+  }
+  in_arg {
+    name: "inputs"
+    description: <<END
+Values passed as inputs to the FakeQuantWithMinMaxVars operation.
+min, max: Quantization interval, scalar floats.
+END
+  }
+  out_arg {
+    name: "backprops_wrt_input"
+    description: <<END
+Backpropagated gradients w.r.t. inputs:
+`gradients * (inputs >= min && inputs <= max)`.
+END
+  }
+  out_arg {
+    name: "backprop_wrt_min"
+    description: <<END
+Backpropagated gradients w.r.t. min parameter:
+`sum(gradients * (inputs < min))`.
+END
+  }
+  out_arg {
+    name: "backprop_wrt_max"
+    description: <<END
+Backpropagated gradients w.r.t. max parameter:
+`sum(gradients * (inputs > max))`.
+END
+  }
+  attr {
+    name: "num_bits"
+    description: <<END
+The bitwidth of the quantization; between 2 and 8, inclusive.
+END
+  }
+  attr {
+    name: "narrow_range"
+    description: <<END
+Whether to quantize into 2^num_bits - 1 distinct values.
+END
+  }
+  summary: "Compute gradients for a FakeQuantWithMinMaxVars operation."
+}

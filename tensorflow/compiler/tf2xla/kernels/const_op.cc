@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 
@@ -40,7 +41,12 @@ class ConstOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape shape(proto_.tensor_shape());
 
-    xla::ComputationBuilder* b = ctx->builder();
+    if (proto_.dtype() == DT_STRING) {
+      LOG(WARNING) << "Not computing Const of type DT_STRING";
+      ctx->SetInvalidOutput(0);
+      return;
+    }
+    xla::XlaBuilder* b = ctx->builder();
 
     // To avoid blowups for large constants filled with the same value,
     // recognize that case and emit a scalar broadcast instead.
@@ -48,41 +54,41 @@ class ConstOp : public XlaOpKernel {
       switch (proto_.dtype()) {
         case DT_BOOL:
           if (proto_.bool_val_size() == 1) {
-            ctx->SetOutput(0,
-                           b->Broadcast(b->ConstantR0<bool>(proto_.bool_val(0)),
-                                        shape.dim_sizes()));
+            ctx->SetOutput(
+                0, xla::Broadcast(xla::ConstantR0<bool>(b, proto_.bool_val(0)),
+                                  shape.dim_sizes()));
             return;
           }
           break;
         case DT_FLOAT:
           if (proto_.float_val_size() == 1) {
-            ctx->SetOutput(
-                0, b->Broadcast(b->ConstantR0<float>(proto_.float_val(0)),
-                                shape.dim_sizes()));
+            ctx->SetOutput(0, xla::Broadcast(xla::ConstantR0<float>(
+                                                 b, proto_.float_val(0)),
+                                             shape.dim_sizes()));
             return;
           }
           break;
         case DT_DOUBLE:
           if (proto_.double_val_size() == 1) {
-            ctx->SetOutput(
-                0, b->Broadcast(b->ConstantR0<double>(proto_.double_val(0)),
-                                shape.dim_sizes()));
+            ctx->SetOutput(0, xla::Broadcast(xla::ConstantR0<double>(
+                                                 b, proto_.double_val(0)),
+                                             shape.dim_sizes()));
             return;
           }
           break;
         case DT_INT32:
           if (proto_.int_val_size() == 1) {
-            ctx->SetOutput(0,
-                           b->Broadcast(b->ConstantR0<int32>(proto_.int_val(0)),
-                                        shape.dim_sizes()));
+            ctx->SetOutput(
+                0, xla::Broadcast(xla::ConstantR0<int32>(b, proto_.int_val(0)),
+                                  shape.dim_sizes()));
             return;
           }
           break;
         case DT_INT64:
           if (proto_.int64_val_size() == 1) {
-            ctx->SetOutput(
-                0, b->Broadcast(b->ConstantR0<int64>(proto_.int64_val(0)),
-                                shape.dim_sizes()));
+            ctx->SetOutput(0, xla::Broadcast(xla::ConstantR0<int64>(
+                                                 b, proto_.int64_val(0)),
+                                             shape.dim_sizes()));
             return;
           }
           break;

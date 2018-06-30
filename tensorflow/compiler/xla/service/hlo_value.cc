@@ -29,9 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -69,9 +71,9 @@ std::ostream& operator<<(std::ostream& out, const HloUse& use) {
 
 HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
                    const ShapeIndex& index, bool is_phi)
-    : id_(id), is_phi_(is_phi) {
+    : BufferValue(instruction, index, id), is_phi_(is_phi) {
   // The defining position is always the first element in the positions_ vector.
-  AddPosition(instruction, index);
+  positions_.push_back(HloPosition{instruction, index});
 }
 
 bool HloValue::operator==(const HloValue& other) const {
@@ -90,8 +92,8 @@ string HloValue::ToShortString() const {
   string index_str = ShapeUtil::IsTuple(defining_instruction()->shape())
                          ? defining_index().ToString()
                          : "";
-  return StrCat(id_, " ", is_phi_ ? "PHI " : "", defining_instruction()->name(),
-                index_str);
+  return StrCat(id(), " ", is_phi_ ? "PHI " : "",
+                defining_instruction()->name(), index_str);
 }
 
 string HloValue::ToString(int indent) const {
@@ -130,18 +132,14 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
       CHECK_LE(operand_number, 2);
       return operand_number == 0 || index.empty();
 
-    case HloOpcode::kCall:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
       return false;
 
+    case HloOpcode::kCall:
     case HloOpcode::kWhile:
-      // Though the while instructions passes through its operands, we return
-      // true because in SSA form there may be a Phi at the parameter of the
-      // while which is considered a use of its incoming value because the Phi
-      // input values are not passed through into the body computation. Because
-      // this function is used in both SSA and non-SSA forms of the analysis
-      // conservatively return true.
+      // Although call and while instructions pass through their operands, they
+      // are considered uses.
       return true;
 
     default:
@@ -151,96 +149,58 @@ bool MayUseOperandValue(int64 operand_number, const ShapeIndex& index,
 
 }  // namespace
 
-void HloValue::AddPosition(HloInstruction* instruction,
-                           const ShapeIndex& index) {
-  HloPosition new_position{instruction, index};
+void HloValue::SetPositionsAndComputeUses(
+    tensorflow::gtl::ArraySlice<HloPosition> positions) {
+  CHECK_EQ(positions_.size(), 1) << "SetPositions should only be called once.";
 
-  // The new position must not already exist in positions_.
+  // The positions must be unique and should not contain the defining position
+  // as this is added at construction time.
+  for (const HloPosition& position_a : positions) {
+    DCHECK_NE(position_a, defining_position());
+    for (const HloPosition& position_b : positions) {
+      if (&position_a != &position_b) {
+        DCHECK_NE(position_a, position_b);
+      }
+    }
+  }
+
+  positions_.insert(positions_.end(), positions.begin(), positions.end());
+
+  // Gather the computation roots at which this value appears.
+  tensorflow::gtl::FlatSet<HloInstruction*> root_positions;
   for (const HloPosition& position : positions_) {
-    DCHECK_NE(position, new_position);
-  }
-  // The shape of the new position must match existing positions.
-  if (!positions_.empty()) {
-    CHECK(
-        ShapeUtil::Compatible(positions_.front().shape(), new_position.shape()))
-        << "front: " << positions_.front() << " new: " << new_position;
+    if (position.instruction ==
+        position.instruction->parent()->root_instruction()) {
+      root_positions.insert(position.instruction);
+    }
   }
 
-  positions_.push_back(std::move(new_position));
+  // Build vector of HloUses for the value.
+  for (const HloPosition& position : positions_) {
+    for (HloInstruction* user : position.instruction->users()) {
+      for (int64 operand_number : user->OperandIndices(position.instruction)) {
+        // Root instructions of computations are considered to be uses whether
+        // or not the root instruction itself actually uses the value.
+        if (MayUseOperandValue(operand_number, position.index, user) ||
+            ContainsKey(root_positions, user)) {
+          HloUse new_use{user, operand_number, position.index};
 
-  // Update uses.
-  for (HloInstruction* user : instruction->users()) {
-    for (int64 operand_number : user->OperandIndices(instruction)) {
-      if (MayUseOperandValue(operand_number, index, user)) {
-        HloUse new_use{user, operand_number, index};
+          // The new use must not already exist in uses_.
+          for (const HloUse& use : uses_) {
+            DCHECK_NE(use, new_use);
+          }
 
-        // The new use must not already exist in uses_.
-        for (const HloUse& use : uses_) {
-          DCHECK_NE(use, new_use);
+          uses_.push_back(std::move(new_use));
         }
-
-        uses_.push_back(std::move(new_use));
       }
     }
-  }
 
-  // Update liveout status of this HloValue.
-  const HloModule& module = *instruction->parent()->parent();
-  if (instruction == module.entry_computation()->root_instruction()) {
-    live_out_of_module_ = true;
-  }
-
-  if (instruction == instruction->parent()->root_instruction()) {
-    live_out_of_computation_ = true;
-  }
-}
-
-void HloValue::RemovePosition(HloInstruction* instruction,
-                              const ShapeIndex& index) {
-  // The defining position cannot be removed.
-  CHECK(!(instruction == defining_instruction() && index == defining_index()));
-
-  int64 size_before = positions_.size();
-  positions_.erase(
-      std::remove_if(positions_.begin(), positions_.end(),
-                     [instruction, &index](const HloPosition& position) {
-                       return position.instruction == instruction &&
-                              position.index == index;
-                     }),
-      positions_.end());
-  // Only a single position should have been removed.
-  CHECK_EQ(positions_.size(), size_before - 1);
-
-  //  Update uses which referred to this position.
-  uses_.erase(std::remove_if(uses_.begin(), uses_.end(),
-                             [instruction, &index](const HloUse& use) {
-                               return use.instruction->operand(
-                                          use.operand_number) == instruction &&
-                                      use.operand_index == index;
-                             }),
-              uses_.end());
-
-  // Returns whether this value is contained in the given instruction's output.
-  auto is_contained_in = [this](const HloInstruction* instruction) {
-    for (const HloPosition& position : positions()) {
-      if (position.instruction == instruction) {
-        return true;
-      }
+    // Update liveout status of this HloValue.
+    const HloModule& module = *position.instruction->parent()->parent();
+    if (position.instruction ==
+        module.entry_computation()->root_instruction()) {
+      live_out_of_module_ = true;
     }
-    return false;
-  };
-
-  const HloModule& module = *instruction->parent()->parent();
-  if (instruction == module.entry_computation()->root_instruction()) {
-    // Value has been removed from a position in the entry root instruction.
-    live_out_of_module_ =
-        is_contained_in(module.entry_computation()->root_instruction());
-  }
-  if (instruction == defining_instruction()->parent()->root_instruction()) {
-    // Value has been removed from the root of the computation the value has
-    // been defined in.
-    live_out_of_computation_ =
-        is_contained_in(defining_instruction()->parent()->root_instruction());
   }
 }
 
@@ -262,8 +222,7 @@ string HloValueSet::ToString() const {
                 }));
 }
 
-/*static */
-HloValueSet HloValueSet::Union(
+bool HloValueSet::AssignUnionOf(
     tensorflow::gtl::ArraySlice<const HloValueSet*> inputs) {
   HloValueSet union_set;
   for (const HloValueSet* input : inputs) {
@@ -272,7 +231,11 @@ HloValueSet HloValueSet::Union(
     }
   }
   union_set.SortAndUniquifyValues();
-  return union_set;
+  if (*this != union_set) {
+    *this = union_set;
+    return true;
+  }
+  return false;
 }
 
 bool HloValueSet::AddValue(const HloValue* value) {
@@ -290,22 +253,25 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   return out;
 }
 
-InstructionValueSet InstructionValueSet::Union(
+bool InstructionValueSet::AssignUnionOf(
     tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
   CHECK_GT(inputs.size(), 0);
   for (int i = 1; i < inputs.size(); ++i) {
-    CHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
+    DCHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
   }
-  InstructionValueSet union_set(inputs[0]->shape());
-  union_set.ForEachMutableElement(
-      [&inputs](const ShapeIndex& index, HloValueSet* value_set) {
-        std::vector<const HloValueSet*> input_sets;
-        for (const InstructionValueSet* input : inputs) {
-          input_sets.push_back(&input->element(index));
-        }
-        *value_set = HloValueSet::Union(input_sets);
-      });
-  return union_set;
+  bool changed = false;
+  for (auto& pair : *this) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+
+    std::vector<const HloValueSet*> input_value_sets;
+    for (const InstructionValueSet* input : inputs) {
+      input_value_sets.push_back(&input->element(index));
+    }
+    changed |= value_set.AssignUnionOf(input_value_sets);
+  }
+
+  return changed;
 }
 
 std::ostream& operator<<(std::ostream& out,
