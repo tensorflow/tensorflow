@@ -22,10 +22,13 @@
 #ifndef MLIR_IR_MODULE_H
 #define MLIR_IR_MODULE_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Function.h"
-#include <vector>
 
 namespace mlir {
+
+class AffineMap;
+
 class Module {
 public:
   explicit Module();
@@ -33,6 +36,9 @@ public:
   // FIXME: wrong representation and API.
   std::vector<Function*> functionList;
 
+  // FIXME: wrong representation and API.
+  // These affine maps are immutable
+  std::vector<const AffineMap *> affineMapList;
 
   void print(raw_ostream &os) const;
   void dump() const;

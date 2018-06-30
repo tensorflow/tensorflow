@@ -17,15 +17,13 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
-AffineMap::AffineMap(unsigned dimCount, unsigned symbolCount)
-    : dimCount(dimCount), symbolCount(symbolCount) {
-}
-
-void AffineMap::print(raw_ostream &os) const {
-  // TODO(andydavis) Print out affine map based on dimensionCount and
-  // symbolCount: (d0, d1) [S0, S1] -> (d0 + S0, d1 + S1)
+// TODO(clattner):  make this ctor take an LLVMContext.  This will eventually
+// copy the elements into the context.
+AffineMap::AffineMap(unsigned dimCount, unsigned symbolCount,
+                     ArrayRef<AffineExpr *> exprs)
+  : numDims(dimCount), numSymbols(symbolCount), exprs(exprs) {
+    // TODO(bondhugula)
 }

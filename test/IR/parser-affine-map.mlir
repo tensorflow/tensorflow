@@ -1,0 +1,7 @@
+#hello_world0 = (i, j) [s0] -> (i, j)
+#hello_world1 = (i, j) -> (i, j)
+#hello_world2 = () -> (0)
+#hello_world3 = (i, j) [s0] -> (i + s0, j)
+#hello_world4 = (i, j) [s0] -> (i + s0, j + 5)
+#hello_world5 (i, j) [s0] -> i + s0, j)
+#hello_world5 = (i, j) [s0] -> i + s0, j)

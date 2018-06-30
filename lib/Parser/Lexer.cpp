@@ -78,9 +78,14 @@ Token Lexer::lexToken() {
   case ')': return formToken(Token::r_paren, tokStart);
   case '{': return formToken(Token::l_brace, tokStart);
   case '}': return formToken(Token::r_brace, tokStart);
+  case '[': return formToken(Token::l_bracket, tokStart);
+  case ']': return formToken(Token::r_bracket, tokStart);
   case '<': return formToken(Token::less, tokStart);
   case '>': return formToken(Token::greater, tokStart);
+  case '=': return formToken(Token::equal, tokStart);
 
+  case '+': return formToken(Token::plus, tokStart);
+  case '*': return formToken(Token::star, tokStart);
   case '-':
     if (*curPtr == '>') {
       ++curPtr;
@@ -246,3 +251,4 @@ Token Lexer::lexString(const char *tokStart) {
     }
   }
 }
+

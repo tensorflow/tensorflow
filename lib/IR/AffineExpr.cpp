@@ -18,6 +18,3 @@
 #include "mlir/IR/AffineExpr.h"
 
 using namespace mlir;
-
-AffineExpr::AffineExpr() {
-}

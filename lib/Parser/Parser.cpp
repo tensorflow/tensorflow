@@ -18,12 +18,14 @@
 // This file implements the parser for the MLIR textual form.
 //
 //===----------------------------------------------------------------------===//
+#include <stack>
 
 #include "mlir/Parser.h"
 #include "Lexer.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Module.h"
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Types.h"
 #include "llvm/Support/SourceMgr.h"
@@ -33,6 +35,7 @@ using llvm::SMLoc;
 
 namespace {
 class CFGFunctionParserState;
+class AffineMapParserState;
 
 /// Simple enum to make code read better in cases that would otherwise return a
 /// bool value.  Failure is "true" in a boolean context.
@@ -128,8 +131,19 @@ private:
   Type *parseType();
   ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
 
+  // Identifiers
+  ParseResult parseDimIdList(SmallVectorImpl<StringRef> &dims,
+                             SmallVectorImpl<StringRef> &symbols);
+  ParseResult parseSymbolIdList(SmallVectorImpl<StringRef> &dims,
+                                SmallVectorImpl<StringRef> &symbols);
+  StringRef parseDimOrSymbolId(SmallVectorImpl<StringRef> &dims,
+                               SmallVectorImpl<StringRef> &symbols,
+                               bool symbol);
+
   // Polyhedral structures
   ParseResult parseAffineMapDef();
+  AffineMap *parseAffineMapInline(StringRef mapId);
+  AffineExpr *parseAffineExpr(AffineMapParserState &state);
 
   // Functions.
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
@@ -476,6 +490,40 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
   return ParseSuccess;
 }
 
+namespace {
+/// This class represents the transient parser state while parsing an affine
+/// expression.
+class AffineMapParserState {
+ public:
+  explicit AffineMapParserState(ArrayRef<StringRef> dims,
+                                ArrayRef<StringRef> symbols) :
+    dims_(dims), symbols_(symbols) {}
+
+  unsigned dimCount() const { return dims_.size(); }
+  unsigned symbolCount() const { return symbols_.size(); }
+
+  // Stack operations for affine expression parsing
+  // TODO(bondhugula): all of this will be improved/made more principled
+  void pushAffineExpr(AffineExpr *expr) { exprStack.push(expr); }
+  AffineExpr *popAffineExpr() {
+    auto *t = exprStack.top();
+    exprStack.pop();
+    return t;
+  }
+  AffineExpr *topAffineExpr() { return exprStack.top(); }
+
+  ArrayRef<StringRef> getDims() const { return dims_; }
+  ArrayRef<StringRef> getSymbols() const { return symbols_; }
+
+ private:
+  const ArrayRef<StringRef> dims_;
+  const ArrayRef<StringRef> symbols_;
+
+  // TEMP: stack to hold affine expressions
+  std::stack<AffineExpr *> exprStack;
+};
+}  // end anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // Polyhedral structures.
 //===----------------------------------------------------------------------===//
@@ -483,24 +531,205 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
 /// Affine map declaration.
 ///
 ///  affine-map-def ::= affine-map-id `=` affine-map-inline
-///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
-///                        ( `size` `(` dim-size (`,` dim-size)* `)` )?
-///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ParseResult Parser::parseAffineMapDef() {
   assert(curToken.is(Token::affine_map_identifier));
 
   StringRef affineMapId = curToken.getSpelling().drop_front();
+  consumeToken(Token::affine_map_identifier);
+
   // Check that 'affineMapId' is unique.
   // TODO(andydavis) Add a unit test for this case.
   if (affineMaps.count(affineMapId) > 0)
     return emitError("redefinition of affine map id '" + affineMapId + "'");
+  // Parse the '='
+  if (!consumeIf(Token::equal))
+    return emitError("expected '=' in affine map outlined definition");
 
-  consumeToken(Token::affine_map_identifier);
+  auto *affineMap = parseAffineMapInline(affineMapId);
+  affineMaps[affineMapId].reset(affineMap);
+  if (!affineMap) return ParseFailure;
 
-  // TODO(andydavis,bondhugula) Parse affine map definition.
-  affineMaps[affineMapId].reset(new AffineMap(1, 0));
-  return ParseSuccess;
+  module->affineMapList.push_back(affineMap);
+  return affineMap ? ParseSuccess : ParseFailure;
+}
+
+///
+/// Parse a multi-dimensional affine expression
+/// affine-expr ::= `(` affine-expr `)`
+///              | affine-expr `+` affine-expr
+///              | affine-expr `-` affine-expr
+///              | `-`? integer-literal `*` affine-expr
+///              | `ceildiv` `(` affine-expr `,` integer-literal `)`
+///              | `floordiv` `(` affine-expr `,` integer-literal `)`
+///              | affine-expr `mod` integer-literal
+///              | bare-id
+///              | `-`? integer-literal
+/// multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+///
+/// Use 'state' to check if valid identifiers appear.
+///
+AffineExpr *Parser::parseAffineExpr(AffineMapParserState &state) {
+  // TODO(bondhugula): complete support for this
+  // The code below is all placeholder / it is wrong / not complete
+  // Operator precedence not considered; pure left to right associativity
+  if (curToken.is(Token::comma)) {
+    emitError("expecting affine expression");
+    return nullptr;
+  }
+
+  while (curToken.isNot(Token::comma, Token::r_paren,
+                        Token::eof, Token::error)) {
+    switch (curToken.getKind()) {
+      case Token::bare_identifier: {
+        // TODO(bondhugula): look up state to see if it's a symbol or dim_id and
+        // get its position
+        AffineExpr *expr = AffineDimExpr::get(0, context);
+        state.pushAffineExpr(expr);
+        consumeToken(Token::bare_identifier);
+        break;
+      }
+      case Token::plus: {
+        consumeToken(Token::plus);
+        if (state.topAffineExpr()) {
+          auto lChild = state.popAffineExpr();
+          auto rChild = parseAffineExpr(state);
+          if (rChild) {
+            auto binaryOpExpr = AffineAddExpr::get(lChild, rChild, context);
+            state.popAffineExpr();
+            state.pushAffineExpr(binaryOpExpr);
+          } else {
+            emitError("right operand of + missing");
+          }
+        } else {
+          emitError("left operand of + missing");
+        }
+        break;
+      }
+      case Token::integer: {
+        AffineExpr *expr = AffineConstantExpr::get(
+            curToken.getUnsignedIntegerValue().getValue(), context);
+        state.pushAffineExpr(expr);
+        consumeToken(Token::integer);
+        break;
+      }
+      case Token::l_paren: {
+        consumeToken(Token::l_paren);
+        break;
+      }
+      case Token::r_paren: {
+        consumeToken(Token::r_paren);
+        break;
+      }
+      default: {
+        emitError("affine map expr parse impl incomplete/unexpected token");
+        return nullptr;
+      }
+    }
+  }
+  if (!state.topAffineExpr()) {
+    // An error will be emitted by parse comma separated list on an empty list
+    return nullptr;
+  }
+  return state.topAffineExpr();
+}
+
+// Return empty string if no bare id was found
+StringRef Parser::parseDimOrSymbolId(SmallVectorImpl<StringRef> &dims,
+                                     SmallVectorImpl<StringRef> &symbols,
+                                     bool symbol = false) {
+  if (curToken.isNot(Token::bare_identifier)) {
+    emitError("expected bare identifier");
+    return StringRef();
+  }
+  // TODO(bondhugula): check whether the id already exists in either
+  // state.symbols or state.dims; report error if it does; otherwise create a
+  // new one.
+  StringRef ref = curToken.getSpelling();
+  consumeToken(Token::bare_identifier);
+  return ref;
+}
+
+ParseResult Parser::parseSymbolIdList(SmallVectorImpl<StringRef> &dims,
+                                      SmallVectorImpl<StringRef> &symbols) {
+  if (!consumeIf(Token::l_bracket)) return emitError("expected '['");
+
+  auto parseElt = [&]() -> ParseResult {
+    auto elt = parseDimOrSymbolId(dims, symbols, true);
+    // FIXME(bondhugula): assuming dim arg for now
+    if (!elt.empty()) {
+      symbols.push_back(elt);
+      return ParseSuccess;
+    }
+    return ParseFailure;
+  };
+  return parseCommaSeparatedList(Token::r_bracket, parseElt);
+}
+
+// TODO(andy,bondhugula)
+ParseResult Parser::parseDimIdList(SmallVectorImpl<StringRef> &dims,
+                                   SmallVectorImpl<StringRef> &symbols) {
+  if (!consumeIf(Token::l_paren))
+    return emitError("expected '(' at start of dimensional identifiers list");
+
+  auto parseElt = [&]() -> ParseResult {
+    auto elt = parseDimOrSymbolId(dims, symbols, false);
+    if (!elt.empty()) {
+      dims.push_back(elt);
+      return ParseSuccess;
+    }
+    return ParseFailure;
+  };
+
+  return parseCommaSeparatedList(Token::r_paren, parseElt);
+}
+
+/// Affine map definition.
+///
+///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
+///                        ( `size` `(` dim-size (`,` dim-size)* `)` )?
+///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
+///
+AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
+  SmallVector<StringRef, 4> dims;
+  SmallVector<StringRef, 4> symbols;
+
+  // List of dimensional identifiers.
+  if (parseDimIdList(dims, symbols)) return nullptr;
+
+  // Symbols are optional.
+  if (curToken.is(Token::l_bracket)) {
+    if (parseSymbolIdList(dims, symbols)) return nullptr;
+  }
+  if (!consumeIf(Token::arrow)) {
+    emitError("expected '->' or '['");
+    return nullptr;
+  }
+  if (!consumeIf(Token::l_paren)) {
+    emitError("expected '(' at start of affine map range");
+    return nullptr;
+  }
+
+  AffineMapParserState affState(dims, symbols);
+
+  SmallVector<AffineExpr *, 4> exprs;
+  auto parseElt = [&]() -> ParseResult {
+    auto elt = parseAffineExpr(affState);
+    ParseResult res = elt ? ParseSuccess : ParseFailure;
+    exprs.push_back(elt);
+    return res;
+  };
+
+  // Parse a multi-dimensional affine expression (a comma-separated list of 1-d
+  // affine expressions)
+  if (parseCommaSeparatedList(Token::r_paren, parseElt, false)) return nullptr;
+
+  // Parsed a valid affine map
+  auto *affineMap =
+      AffineMap::get(affState.dimCount(), affState.symbolCount(), exprs,
+                     context);
+
+  return affineMap;
 }
 
 //===----------------------------------------------------------------------===//
@@ -525,8 +754,8 @@ ParseResult Parser::parseFunctionSignature(StringRef &name,
   if (curToken.isNot(Token::l_paren))
     return emitError("expected '(' in function signature");
 
-   SmallVector<Type*, 4> arguments;
-   if (parseTypeList(arguments))
+  SmallVector<Type*, 4> arguments;
+  if (parseTypeList(arguments))
     return ParseFailure;
 
   // Parse the return type if present.
@@ -563,7 +792,7 @@ namespace {
 /// function as we are parsing it, e.g. the names for basic blocks.  It handles
 /// forward references.
 class CFGFunctionParserState {
-public:
+ public:
   CFGFunction *function;
   llvm::StringMap<std::pair<BasicBlock*, SMLoc>> blocksByName;
 
@@ -851,3 +1080,4 @@ Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
                               const SMDiagnosticHandlerTy &errorReporter) {
   return Parser(sourceMgr, context, errorReporter).parseModule();
 }
+

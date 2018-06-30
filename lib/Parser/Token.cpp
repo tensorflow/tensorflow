@@ -65,6 +65,7 @@ StringRef Token::getTokenSpelling(Kind kind) {
    switch (kind) {
    default: assert(0 && "This token kind has no fixed spelling");
 #define TOK_PUNCTUATION(NAME, SPELLING) case NAME: return SPELLING;
+#define TOK_OPERATOR(NAME, SPELLING) case NAME: return SPELLING;
 #define TOK_KEYWORD(SPELLING) case kw_##SPELLING: return #SPELLING;
 #include "TokenKinds.def"
    }

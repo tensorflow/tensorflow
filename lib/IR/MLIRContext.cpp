@@ -17,6 +17,8 @@
 
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseSet.h"
@@ -44,6 +46,23 @@ struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType*> {
     return lhs == KeyTy(rhs->getInputs(), rhs->getResults());
   }
 };
+struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
+  // Affine maps are uniqued based on their arguments and affine expressions
+  using KeyTy = std::pair<unsigned, unsigned>;
+  using DenseMapInfo<AffineMap *>::getHashValue;
+  using DenseMapInfo<AffineMap *>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) {
+    // FIXME(bondhugula): placeholder for now
+    return hash_combine(key.first, key.second);
+  }
+
+  static bool isEqual(const KeyTy &lhs, const FunctionType *rhs) {
+    // TODO(bondhugula)
+    return false;
+  }
+};
+
 struct VectorTypeKeyInfo : DenseMapInfo<VectorType*> {
   // Vectors are uniqued based on their element type and shape.
   using KeyTy = std::pair<Type*, ArrayRef<unsigned>>;
@@ -96,6 +115,10 @@ public:
 
   // Primitive type uniquing.
   PrimitiveType *primitives[int(TypeKind::LAST_PRIMITIVE_TYPE)+1] = { nullptr };
+
+  // Affine map uniquing.
+  using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
+  AffineMapSet affineMaps;
 
   /// Function type uniquing.
   using FunctionTypeSet = DenseSet<FunctionType*, FunctionTypeKeyInfo>;
@@ -315,4 +338,53 @@ UnrankedTensorType *UnrankedTensorType::get(Type *elementType) {
 
   // Cache and return it.
   return existing.first->second = result;
+}
+
+// TODO(bondhugula,andydavis): unique affine maps based on dim list,
+// symbol list and all affine expressions contained
+AffineMap *AffineMap::get(unsigned dimCount,
+                          unsigned symbolCount,
+                          ArrayRef<AffineExpr *> exprs,
+                          MLIRContext *context) {
+  // TODO(bondhugula)
+  return new AffineMap(dimCount, symbolCount, exprs);
+}
+
+AffineBinaryOpExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind,
+                                            AffineExpr *lhsOperand,
+                                            AffineExpr *rhsOperand,
+                                            MLIRContext *context) {
+  // TODO(bondhugula): allocate this through context
+  // FIXME
+  return new AffineBinaryOpExpr(kind, lhsOperand, rhsOperand);
+}
+
+AffineAddExpr *AffineAddExpr::get(AffineExpr *lhsOperand,
+                                  AffineExpr *rhsOperand,
+                                  MLIRContext *context) {
+  // TODO(bondhugula): allocate this through context
+  // FIXME
+  return new AffineAddExpr(lhsOperand, rhsOperand);
+}
+
+// TODO(bondhugula): add functions for AffineMulExpr, mod, floordiv, ceildiv
+
+AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
+  // TODO(bondhugula): complete this
+  // FIXME: this should be POD
+  return new AffineDimExpr(position);
+}
+
+AffineSymbolExpr *AffineSymbolExpr::get(unsigned position,
+                                        MLIRContext *context) {
+  // TODO(bondhugula): complete this
+  // FIXME: this should be POD
+  return new AffineSymbolExpr(position);
+}
+
+AffineConstantExpr *AffineConstantExpr::get(int64_t constant,
+                                            MLIRContext *context) {
+  // TODO(bondhugula): complete this
+  // FIXME: this should be POD
+  return new AffineConstantExpr(constant);
 }

@@ -32,6 +32,7 @@ public:
 #define TOK_IDENTIFIER(NAME) NAME,
 #define TOK_LITERAL(NAME) NAME,
 #define TOK_PUNCTUATION(NAME, SPELLING) NAME,
+#define TOK_OPERATOR(NAME, SPELLING) NAME,
 #define TOK_KEYWORD(SPELLING) kw_##SPELLING,
 #include "TokenKinds.def"
   };
@@ -99,3 +100,4 @@ private:
 } // end namespace mlir
 
 #endif  // MLIR_LIB_PARSER_TOKEN_H
+

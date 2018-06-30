@@ -20,13 +20,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
 
@@ -162,6 +164,15 @@ void Instruction::dump() const {
   print(llvm::errs());
 }
 
+void AffineExpr::print(raw_ostream &os) const {
+  // TODO(bondhugula): print out affine expression
+}
+
+void AffineMap::print(raw_ostream &os) const {
+  // TODO(andydavis) Print out affine map based on dimensionCount and
+  // symbolCount: (d0, d1) [S0, S1] -> (d0 + S0, d1 + S1)
+}
+
 void BasicBlock::print(raw_ostream &os) const {
   CFGFunctionState state(getFunction(), os);
   state.print();
@@ -208,6 +219,8 @@ void MLFunction::print(raw_ostream &os) const {
 }
 
 void Module::print(raw_ostream &os) const {
+  for (auto *map : affineMapList)
+    map->print(os);
   for (auto *fn : functionList)
     fn->print(os);
 }

@@ -26,30 +26,43 @@
 #include <vector>
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
 
+class MLIRContext;
 class AffineExpr;
 
-class AffineMap  {
+/// A multi-dimensional affine map
+/// Affine map's are immutable like Type's, and they are uniqued.
+/// Eg: (d0, d1) -> (d0/128, d0 mod 128, d1)
+/// The names used (d0, d1) don't matter - it's the mathematical function that
+/// is unique to this affine map.
+class AffineMap {
  public:
-  // Constructs an AffineMap with 'dimCount' dimension identifiers, and
-  // 'symbolCount' symbols.
-  // TODO(andydavis) Pass in ArrayRef<AffineExpr*> to populate list of exprs.
-  AffineMap(unsigned dimCount, unsigned symbolCount);
+  static AffineMap *get(unsigned dimCount, unsigned symbolCount,
+                        ArrayRef<AffineExpr *> exprs,
+                        MLIRContext *context);
 
   // Prints affine map to 'os'.
   void print(raw_ostream &os) const;
+  void dump() const;
+
+  unsigned dimCount() const { return numDims; }
+  unsigned symbolCount() const { return numSymbols; }
 
  private:
-  // Number of dimensional indentifiers.
-  const unsigned dimCount;
-  // Number of symbols.
-  const unsigned symbolCount;
-  // TODO(andydavis) Do not use std::vector here (array size is not dynamic).
-  std::vector<AffineExpr*> exprs;
+  AffineMap(unsigned dimCount, unsigned symbolCount,
+            ArrayRef<AffineExpr *> exprs);
+
+  const unsigned numDims;
+  const unsigned numSymbols;
+
+  /// The affine expressions for this (multi-dimensional) map.
+  /// TODO: use trailing objects for these
+  ArrayRef<AffineExpr *> exprs;
 };
 
-} // end namespace mlir
+}  // end namespace mlir
 
 #endif  // MLIR_IR_AFFINE_MAP_H

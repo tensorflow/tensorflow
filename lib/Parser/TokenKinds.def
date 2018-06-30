@@ -21,7 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #if !defined(TOK_MARKER) && !defined(TOK_IDENTIFIER) && !defined(TOK_LITERAL)&&\
-    !defined(TOK_PUNCTUATION) && !defined(TOK_KEYWORD)
+    !defined(TOK_PUNCTUATION) && !defined(TOK_OPERATOR) && !defined(TOK_KEYWORD)
 #  error Must define one of the TOK_ macros.
 #endif
 
@@ -36,6 +36,9 @@
 #endif
 #ifndef TOK_PUNCTUATION
 #define TOK_PUNCTUATION(NAME, SPELLING)
+#endif
+#ifndef TOK_OPERATOR
+#define TOK_OPERATOR(NAME, SPELLING)
 #endif
 #ifndef TOK_KEYWORD
 #define TOK_KEYWORD(SPELLING)
@@ -66,9 +69,19 @@ TOK_PUNCTUATION(l_paren,          "(")
 TOK_PUNCTUATION(r_paren,          ")")
 TOK_PUNCTUATION(l_brace,          "{")
 TOK_PUNCTUATION(r_brace,          "}")
+TOK_PUNCTUATION(l_bracket,        "[")
+TOK_PUNCTUATION(r_bracket,        "]")
 TOK_PUNCTUATION(less,             "<")
 TOK_PUNCTUATION(greater,          ">")
+TOK_PUNCTUATION(equal,            "=")
 // TODO: More punctuation.
+
+// Operators.
+TOK_OPERATOR(plus,               "+")
+TOK_OPERATOR(star,               "*")
+TOK_OPERATOR(ceildiv,            "ceildiv")
+TOK_OPERATOR(floordiv,           "floordiv")
+// TODO: More operator tokens
 
 // Keywords.  These turn "foo" into Token::kw_foo enums.
 TOK_KEYWORD(bf16)
@@ -94,4 +107,5 @@ TOK_KEYWORD(vector)
 #undef TOK_IDENTIFIER
 #undef TOK_LITERAL
 #undef TOK_PUNCTUATION
+#undef TOK_OPERATOR
 #undef TOK_KEYWORD
