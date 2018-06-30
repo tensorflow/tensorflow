@@ -21,6 +21,8 @@ toc:
 - title: Research and experimentation
   style: accordion
   section:
+  - title: Overview
+    path: /tutorials/eager/
   - title: Eager execution
     path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_intro.ipynb
     status: external
