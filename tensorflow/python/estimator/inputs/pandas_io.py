@@ -111,7 +111,8 @@ def pandas_input_fn(x,
       raise ValueError('Index for x and y are mismatched.\nIndex for x: %s\n'
                        'Index for y: %s\n' % (x.index, y.index))
     if isinstance(y, pd.DataFrame):
-      y_columns = [(column, _get_unique_target_key(x, column)) for column in list(y)]
+      y_columns = [(column, _get_unique_target_key(x, column)) 
+                    for column in list(y)]
       target_column = [v for _, v in y_columns]
       x[target_column] = y
     else:
