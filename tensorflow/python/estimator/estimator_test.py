@@ -38,6 +38,7 @@ from tensorflow.python.estimator.export import export_output
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -61,6 +62,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
@@ -1294,6 +1296,31 @@ class EstimatorEvaluateTest(test.TestCase):
     scores = est2.evaluate(
         dummy_input_fn, steps=1, checkpoint_path=est1.latest_checkpoint())
     self.assertEqual(5, scores['global_step'])
+
+  def test_wrong_shape_throws_reasonable_error(self):
+    """Make sure we are helpful when model_fns change. See b/110263146."""
+    def _get_model_fn(val=1):
+      def _model_fn(features, labels, mode):
+        del features, labels  # unused
+        variables.Variable(val, name='weight')
+        return model_fn_lib.EstimatorSpec(
+            mode=mode,
+            predictions=constant_op.constant([[1.]]),
+            loss=constant_op.constant(0.),
+            train_op=state_ops.assign_add(training.get_global_step(), 1))
+      return _model_fn
+
+    model_fn_1 = _get_model_fn()
+    model_fn_2 = _get_model_fn(val=[1])
+
+    est1 = estimator.Estimator(model_fn=model_fn_1)
+    est1.train(dummy_input_fn, steps=5)
+    est2 = estimator.Estimator(
+        model_fn=model_fn_2, model_dir=est1.model_dir)
+
+    expected_msg = 'Restoring from checkpoint failed.*a mismatch between'
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, expected_msg):
+      est2.train(dummy_input_fn, steps=1,)
 
   def test_scaffold_is_used(self):
 
@@ -2829,6 +2856,45 @@ class EstimatorExportTest(test.TestCase):
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
 
+  def test_export_savedmodel_no_export_outputs(self):
+    """Ensure that an EstimatorSpec without outputs defined can be exported."""
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      variables.Variable(1., name='weight')
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          predictions=constant_op.constant(10.),
+          loss=constant_op.constant(1.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
+
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(input_fn=dummy_input_fn, steps=1)
+
+    # Perform the export.
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('no_export_outputs'))
+    export_dir = est.export_savedmodel(
+        export_dir_base, _get_serving_input_receiver_fn())
+
+    # Check that all the files are in the right places.
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self._validate_exported_files(export_dir)
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session.Session(graph=graph) as sess:
+        meta_graph = loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('weight' in graph_ops)
+
+        sig_def = meta_graph.signature_def
+        self.assertEqual(len(sig_def), 1)
+        sig_outputs = sig_def[
+            signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY].outputs
+        self.assertEqual(sig_outputs['output'].name, 'Const:0')
+
 
 class EstimatorHookOrderingTest(test.TestCase):
 
@@ -2873,7 +2939,7 @@ class EstimatorHookOrderingTest(test.TestCase):
 
 class EstimatorIntegrationTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_complete_flow_with_a_simple_linear_model(self):
 
     def _model_fn(features, labels, mode):

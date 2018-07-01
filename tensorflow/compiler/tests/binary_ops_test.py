@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
@@ -32,7 +32,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
 
-class BinaryOpsTest(XLATestCase):
+class BinaryOpsTest(xla_test.XLATestCase):
   """Test cases for binary operators."""
 
   def _testBinary(self, op, a, b, expected, equality_test=None):
@@ -226,6 +226,11 @@ class BinaryOpsTest(XLATestCase):
           np.array([0b1, 0b101, 0b1000], dtype=dtype),
           np.array([0b0, 0b101, 0b1001], dtype=dtype),
           expected=np.array([0b1, 0b101, 0b1001], dtype=dtype))
+      self._testSymmetricBinary(
+          bitwise_ops.bitwise_xor,
+          np.array([0b1, 0b111, 0b1100], dtype=dtype),
+          np.array([0b0, 0b101, 0b1001], dtype=dtype),
+          expected=np.array([0b1, 0b010, 0b0101], dtype=dtype))
 
       lhs = np.array([0, 5, 3, 14], dtype=dtype)
       rhs = np.array([5, 0, 7, 11], dtype=dtype)
@@ -1216,6 +1221,24 @@ class BinaryOpsTest(XLATestCase):
           np.array([[1, 2], [3, 4]], dtype=dtype),
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1, 3], [2, 4]], dtype=dtype))
+
+  def testConjugateTranspose(self):
+    for dtype in self.complex_types:
+      self._testBinary(
+          array_ops.conjugate_transpose,
+          np.zeros(shape=[1, 0, 4], dtype=dtype),
+          np.array([1, 2, 0], dtype=np.int32),
+          expected=np.zeros(shape=[0, 4, 1], dtype=dtype))
+      self._testBinary(
+          array_ops.conjugate_transpose,
+          np.array([[1 - 1j, 2 + 2j], [3 - 3j, 4 + 4j]], dtype=dtype),
+          np.array([0, 1], dtype=np.int32),
+          expected=np.array([[1 + 1j, 2 - 2j], [3 + 3j, 4 - 4j]], dtype=dtype))
+      self._testBinary(
+          array_ops.conjugate_transpose,
+          np.array([[1 - 1j, 2 + 2j], [3 - 3j, 4 + 4j]], dtype=dtype),
+          np.array([1, 0], dtype=np.int32),
+          expected=np.array([[1 + 1j, 3 + 3j], [2 - 2j, 4 - 4j]], dtype=dtype))
 
   def testCross(self):
     for dtype in self.float_types:

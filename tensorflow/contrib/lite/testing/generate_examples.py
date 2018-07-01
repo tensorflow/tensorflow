@@ -137,7 +137,7 @@ def toco_options(data_types,
   Returns:
     the options in a string.
   """
-  shape_str = ":".join([",".join(str(y) for y in x) for x in shapes])
+  shape_str = ":".join([",".join(str(y) for y in x) for x in shapes if x])
   inference_type = "FLOAT"
   # TODO(ahentz): if we get multi-input quantization to work we need this
   # to change
@@ -705,7 +705,7 @@ def make_constant_tests(zip_path):
 
 
 def make_binary_op_tests(zip_path, binary_operator):
-  """Make a set of tests to do add with and without broadcast."""
+  """Make a set of tests to do binary ops with and without broadcast."""
 
   # These parameters are split because we don't support broadcasting.
   test_parameters = [{
@@ -832,6 +832,12 @@ def make_mean_tests(zip_path):
   """Make a set of tests to do mean."""
 
   return make_reduce_tests(tf.reduce_mean)(zip_path)
+
+
+def make_sum_tests(zip_path):
+  """Make a set of tests to do sum."""
+
+  return make_reduce_tests(tf.reduce_sum)(zip_path)
 
 
 def make_exp_tests(zip_path):
@@ -982,6 +988,10 @@ def make_sub_tests(zip_path):
 
 def make_mul_tests(zip_path):
   make_binary_op_tests(zip_path, tf.multiply)
+
+
+def make_pow_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.pow)
 
 
 def make_gather_tests(zip_path):
@@ -1535,6 +1545,32 @@ def make_reshape_tests(zip_path):
                                       parameters["input_shape"])
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_shape_tests(zip_path):
+  """Make a set of tests to do shape."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[], [0], [1, 1, 1, 3], [2, 3, 4, 5], [5, 5], [10]],
+      "out_type": [tf.int32, tf.int64],
+  }]
+
+  def build_graph(parameters):
+    """Build the topk op testing graph."""
+    # Note that we intentionally leave out the shape from the input placeholder
+    # to prevent the Shape operation from being optimized out during conversion.
+    input_value = tf.placeholder(dtype=parameters["input_dtype"], name="input")
+    out = tf.shape(input_value, out_type=parameters["out_type"])
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -2431,7 +2467,7 @@ def _make_elementwise_tests(op):
     }]
 
     def build_graph(parameters):
-      """Build the sin op testing graph."""
+      """Build the unary op testing graph."""
       input_value = tf.placeholder(
           dtype=parameters["input_dtype"],
           name="input1",
@@ -2458,6 +2494,16 @@ def make_sin_tests(zip_path):
 def make_log_tests(zip_path):
   """Make a set of tests to do log."""
   return _make_elementwise_tests(tf.log)(zip_path)
+
+
+def make_sqrt_tests(zip_path):
+  """Make a set of tests to do sqrt."""
+  return _make_elementwise_tests(tf.sqrt)(zip_path)
+
+
+def make_rsqrt_tests(zip_path):
+  """Make a set of tests to do 1/sqrt."""
+  return _make_elementwise_tests(tf.rsqrt)(zip_path)
 
 
 def make_where_tests(zip_path):

@@ -47,6 +47,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import tracking as checkpointable_tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1331,7 +1332,7 @@ class MultiRNNCell(RNNCell):
     return cur_inp, new_states
 
 
-class _SlimRNNCell(RNNCell, checkpointable.NotCheckpointable):
+class _SlimRNNCell(RNNCell, checkpointable_tracking.NotCheckpointable):
   """A simple wrapper for slim.rnn_cells."""
 
   def __init__(self, cell_fn):

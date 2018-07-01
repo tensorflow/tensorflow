@@ -32,6 +32,7 @@ tf_proto_library_py(
     name = "hlo_proto",  # bzl adds a _py suffix only to the OSS target.
     srcs = ["hlo.proto"],
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/xla:xla_data_proto_py"],
 )
 
 xla_proto_library(
@@ -1951,6 +1952,7 @@ cc_library(
     hdrs = ["tuple_points_to_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_dataflow_analysis",
         ":logical_buffer",
         ":logical_buffer_analysis",
         "//tensorflow/compiler/xla:shape_tree",
@@ -2093,6 +2095,7 @@ cc_library(
     hdrs = ["hlo_verifier.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_pass",
         ":shape_inference",
         "//tensorflow/compiler/xla:status_macros",
@@ -2399,6 +2402,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],

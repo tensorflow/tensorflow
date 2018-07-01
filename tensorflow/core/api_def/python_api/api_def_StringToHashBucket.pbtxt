@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "StringToHashBucket"
+  endpoint {
+    name: "strings.to_hash_bucket"
+  }
+  endpoint {
+    name: "string_to_hash_bucket"
+    deprecation_message: "tf.string_to_hash_bucket is deprecated, please use tf.strings.to_hash_bucket instead."
+  }
+}

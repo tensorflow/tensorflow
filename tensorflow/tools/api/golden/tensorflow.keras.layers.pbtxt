@@ -301,6 +301,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ReLU"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RepeatVector"
     mtype: "<type \'type\'>"
   }

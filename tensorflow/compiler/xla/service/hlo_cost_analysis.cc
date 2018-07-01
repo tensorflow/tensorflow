@@ -393,7 +393,7 @@ Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleGenerateToken(const HloInstruction*) {
+Status HloCostAnalysis::HandleAfterAll(const HloInstruction*) {
   return Status::OK();
 }
 

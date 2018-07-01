@@ -49,9 +49,9 @@ int main(int argc, char** argv) {
 
   // Build computation.
   xla::XlaBuilder builder("");
-  auto p0 = builder.Parameter(0, param0_literal->shape(), "param0");
-  auto p1 = builder.Parameter(1, param1_literal->shape(), "param1");
-  auto add = builder.Add(p1, p0, {0});
+  auto p0 = Parameter(&builder, 0, param0_literal->shape(), "param0");
+  auto p1 = Parameter(&builder, 1, param1_literal->shape(), "param1");
+  Add(p1, p0, {0});
 
   xla::StatusOr<xla::XlaComputation> computation_status = builder.Build();
   xla::XlaComputation computation = computation_status.ConsumeValueOrDie();

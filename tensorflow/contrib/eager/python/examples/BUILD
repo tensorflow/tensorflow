@@ -15,6 +15,8 @@ py_library(
         "//tensorflow/contrib/eager/python/examples/revnet:config",
         "//tensorflow/contrib/eager/python/examples/rnn_colorbot",
         "//tensorflow/contrib/eager/python/examples/rnn_ptb",
+        "//tensorflow/contrib/eager/python/examples/sagan",
+        "//tensorflow/contrib/eager/python/examples/sagan:config",
         "//tensorflow/contrib/eager/python/examples/spinn:data",
     ],
 )

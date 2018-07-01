@@ -1304,8 +1304,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 // missing kernel errors.
 void LogAllRegisteredKernels();
 
-// Gets a vector of all registered kernels.
-std::vector<KernelDef> GetAllRegisteredKernels();
+// Gets a list of all registered kernels.
+KernelList GetAllRegisteredKernels();
 
 namespace kernel_factory {
 

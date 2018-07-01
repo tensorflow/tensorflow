@@ -26,7 +26,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import training
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 def dummy_loss(gan_model, add_summaries=True):  # pylint:disable=unused-argument
@@ -71,13 +74,15 @@ class GANHeadTest(test.TestCase):
     return {}
 
   def _test_modes_helper(self, mode):
-    self.gan_head.create_estimator_spec(
+    return self.gan_head.create_estimator_spec(
         features=None,
         mode=mode,
         logits=get_gan_model())
 
   def test_modes_predict(self):
-    self._test_modes_helper(model_fn_lib.ModeKeys.PREDICT)
+    spec = self._test_modes_helper(model_fn_lib.ModeKeys.PREDICT)
+    self.assertItemsEqual((_DEFAULT_SERVING_KEY, 'predict'),
+                          spec.export_outputs.keys())
 
   def test_modes_eval(self):
     self._test_modes_helper(model_fn_lib.ModeKeys.EVAL)

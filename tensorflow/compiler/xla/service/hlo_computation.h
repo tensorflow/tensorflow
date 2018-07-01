@@ -113,6 +113,11 @@ class HloComputation {
   // instruction.
   Status RemoveParameter(int64 param_no);
 
+  // Remove unused parameters from the computation.
+  // Note this is only applicatable to the computation for the fusion
+  // instruction.
+  Status RemoveUnusedParameters();
+
   // Add new parameter instruction to the computation.
   // This should be a new parameter. Instruction will be appended to parameters
   // and inserted to the instruction list.
@@ -199,7 +204,7 @@ class HloComputation {
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
-  std::list<HloInstruction*> MakeInstructionPostOrder() const;
+  std::vector<HloInstruction*> MakeInstructionPostOrder() const;
 
   // Computes and returns the reachability between HLO instructions in the
   // computation. The returned HloReachabilityMap is constructed such that
@@ -221,7 +226,7 @@ class HloComputation {
   // transitively. The embedded computations are sorted such that if computation
   // A calls computation B (eg, via a map instruction) then A will appear after
   // B in the list.
-  std::list<HloComputation*> MakeEmbeddedComputationsList() const;
+  std::vector<HloComputation*> MakeEmbeddedComputationsList() const;
 
   // Creates a fusion instruction containing the given instructions.
   // `fusion_kind` indicates the type of the fusion, e.g., loop fusion or fusion

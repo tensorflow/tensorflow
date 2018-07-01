@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 
 namespace tensorflow {
@@ -27,21 +28,21 @@ class MirrorPadOp : public XlaOpKernel {
 
   xla::StatusOr<xla::XlaOp> DoMirrorPad(const xla::XlaOp& t,
                                         const xla::Shape& original_shape,
-                                        const xla::Literal& pad_literal,
+                                        const xla::LiteralSlice& pad_literal,
                                         xla::XlaBuilder* b) {
     xla::XlaOp accum = t;
     for (int64 dimno = xla::ShapeUtil::Rank(original_shape) - 1; dimno >= 0;
          --dimno) {
-      auto t_rev = b->Rev(accum, {dimno});
+      auto t_rev = xla::Rev(accum, {dimno});
       TF_ASSIGN_OR_RETURN(int64 lhs_padding,
                           pad_literal.GetIntegralAsS64({dimno, 0}));
       TF_ASSIGN_OR_RETURN(int64 rhs_padding,
                           pad_literal.GetIntegralAsS64({dimno, 1}));
       int64 dim_size = original_shape.dimensions(dimno);
-      auto lhs_pad = b->SliceInDim(t_rev, dim_size - 1 - lhs_padding,
-                                   dim_size - 1, 1, dimno);
-      auto rhs_pad = b->SliceInDim(t_rev, 1, 1 + rhs_padding, 1, dimno);
-      accum = b->ConcatInDim({lhs_pad, accum, rhs_pad}, dimno);
+      auto lhs_pad = xla::SliceInDim(t_rev, dim_size - 1 - lhs_padding,
+                                     dim_size - 1, 1, dimno);
+      auto rhs_pad = xla::SliceInDim(t_rev, 1, 1 + rhs_padding, 1, dimno);
+      accum = xla::ConcatInDim(b, {lhs_pad, accum, rhs_pad}, dimno);
     }
     return accum;
   }

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "CheckNumerics"
+  endpoint {
+    name: "debugging.check_numerics"
+  }
+  endpoint {
+    name: "check_numerics"
+    deprecation_message: "tf.check_numerics is deprecated, please use tf.debugging.check_numerics instead."
+  }
+}

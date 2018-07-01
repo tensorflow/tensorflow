@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import optimization
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -71,18 +70,6 @@ class OptimizeDatasetTest(test.TestCase):
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-
-
-class OptimizeDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def testCore(self):
-
-    def build_dataset(num_elements, batch_size):
-      return dataset_ops.Dataset.range(num_elements).map(lambda x: x * x).batch(
-          batch_size).apply(optimization.optimize(["map_and_batch_fusion"]))
-
-    self.run_core_tests(lambda: build_dataset(200, 10), None, 20)
 
 
 if __name__ == "__main__":

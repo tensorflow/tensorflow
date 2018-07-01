@@ -29,7 +29,7 @@ from tensorflow.python.platform import test
 class MatrixInverseTriLBijectorTest(test.TestCase):
   """Tests the correctness of the Y = inv(tril) transformation."""
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testComputesCorrectValues(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
     self.assertEqual("matrix_inverse_tril", inv.name)
@@ -51,7 +51,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
     self.assertNear(expected_fldj_, fldj_, err=1e-3)
     self.assertNear(-expected_fldj_, ildj_, err=1e-3)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testOneByOneMatrix(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
     x_ = np.array([[5.]], dtype=np.float32)
@@ -70,7 +70,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
     self.assertNear(expected_fldj_, fldj_, err=1e-3)
     self.assertNear(-expected_fldj_, ildj_, err=1e-3)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testZeroByZeroMatrix(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
     x_ = np.eye(0, dtype=np.float32)
@@ -89,7 +89,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
     self.assertNear(expected_fldj_, fldj_, err=1e-3)
     self.assertNear(-expected_fldj_, ildj_, err=1e-3)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBatch(self):
     # Test batch computation with input shape (2, 1, 2, 2), i.e. batch shape
     # (2, 1).
@@ -114,7 +114,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
     self.assertAllClose(expected_fldj_, fldj_, atol=0., rtol=1e-3)
     self.assertAllClose(-expected_fldj_, ildj_, atol=0., rtol=1e-3)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testErrorOnInputRankTooLow(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
     x_ = np.array([0.1], dtype=np.float32)
@@ -149,7 +149,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
   ##                                              square_error_msg):
   ##       inv.inverse_log_det_jacobian(x_, event_ndims=2).eval()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testErrorOnInputNotLowerTriangular(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
     x_ = np.array([[1., 2.],
@@ -169,7 +169,7 @@ class MatrixInverseTriLBijectorTest(test.TestCase):
                                                triangular_error_msg):
         inv.inverse_log_det_jacobian(x_, event_ndims=2).eval()
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testErrorOnInputSingular(self):
     inv = bijectors.MatrixInverseTriL(validate_args=True)
     x_ = np.array([[1., 0.],

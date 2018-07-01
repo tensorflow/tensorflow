@@ -102,6 +102,7 @@ class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
       with ops.device(self._device):
         self._buffer_resource_handle = prefetching_ops.function_buffering_resource(  # pylint: disable=line-too-long
             string_arg=iter_string_handle,
+            output_types=self._flat_output_types,
             f=remote_fn,
             target_device=target,
             buffer_size=10,

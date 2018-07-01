@@ -32,11 +32,13 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
+
 
 GPU_TEST = "test_gpu" in sys.argv[0]
 
@@ -83,13 +85,13 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.skipTest("Not GPU test")
     self.assertEqual(2, self._get_distribution_strategy().num_towers)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
     if not GPU_TEST:
       self.skipTest("Not GPU test")
     self._test_call_and_merge_exceptions(self._get_distribution_strategy())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRunRegroupError(self):
 
     def run_fn(device_id):
@@ -101,7 +103,7 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     with dist.scope(), self.assertRaises(AssertionError):
       dist.call_for_each_tower(run_fn, dist.worker_device_index)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testReduceToCpu(self):
     if not GPU_TEST:
       self.skipTest("Not GPU test")
@@ -117,6 +119,24 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.assertEqual(1, len(unwrapped))
       expected = sum(range(len(dist.worker_devices)))
       self.assertEqual(expected, self.evaluate(unwrapped[0]))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testReduceToMultipleDestinations(self):
+    if not GPU_TEST:
+      self.skipTest("Not GPU test")
+
+    devices = ["/device:GPU:0"]
+    if GPU_TEST:
+      self.assertGreater(context.num_gpus(), 0)
+    print(self.id().split(".")[-1], "devices:", ", ".join(devices))
+
+    dist = mirrored_strategy.MirroredStrategy(devices)
+    with dist.scope():
+      reduced = dist.reduce("sum", 1.0, destinations=["/device:CPU:0",
+                                                      "/device:GPU:0"])
+      unwrapped = dist.unwrap(reduced)
+      self.assertEqual(2, len(unwrapped))
+      self.assertEqual(1.0, self.evaluate(unwrapped[0]))
 
 
 class MirroredStrategyVariableCreationTest(test.TestCase):
@@ -337,6 +357,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     all_v_sum = {}
     all_v_mean = {}
+    components_sum = {}
+    components_mean = {}
 
     def model_fn(device_id):
       tower_context = distribute_lib.get_tower_context()
@@ -350,21 +372,33 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                  v_mean.assign(6.0 * device_id)]
       all_v_sum[device_id] = v_sum
       all_v_mean[device_id] = v_mean
-      return updates, v_sum, v_mean
+      c_sum = v_sum.get()
+      c_mean = v_mean.get()
+      components_sum[device_id] = c_sum
+      components_mean[device_id] = c_mean
+      self.assertIsNot(v_sum, c_sum)
+      self.assertIsNot(v_mean, c_mean)
+      return updates, v_sum, v_mean, c_sum, c_mean
 
     dist = mirrored_strategy.MirroredStrategy(
         ["/device:GPU:0", "/device:CPU:0"])
 
     with dist.scope():
       # Create "sum" and "mean" versions of TowerLocalVariables.
-      ret_ops, ret_v_sum, ret_v_mean = dist.call_for_each_tower(
-          model_fn, dist.worker_device_index, run_concurrently=False)
+      ret_ops, ret_v_sum, ret_v_mean, regrouped_sum, regrouped_mean = (
+          dist.call_for_each_tower(
+              model_fn, dist.worker_device_index, run_concurrently=False))
       # Should see the same wrapping instance in all towers.
       self.assertIs(all_v_sum[0], ret_v_sum)
       self.assertIs(all_v_mean[0], ret_v_mean)
-      for i in range(1, dist.num_towers):
-        self.assertIs(all_v_sum[0], all_v_sum[1])
-        self.assertIs(all_v_mean[0], all_v_mean[1])
+      self.assertIs(all_v_sum[0], all_v_sum[1])
+      self.assertIs(all_v_mean[0], all_v_mean[1])
+
+      # Regroup should recover the same wrapper.
+      self.assertIs(ret_v_sum, regrouped_sum)
+      self.assertIs(ret_v_mean, regrouped_mean)
+      self.assertIsNot(components_sum[0], components_sum[1])
+      self.assertIsNot(components_mean[0], components_mean[1])
 
       # Apply updates
       self.evaluate(variables.global_variables_initializer())
@@ -385,14 +419,13 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       # Without get(device), should return the value you get by
       # applying the reduction across all towers (whether you use
-      # fetch(), get(), or nothing).
-      self.assertEqual(expected_sum, self.evaluate(dist.fetch(ret_v_sum)))
-      self.assertEqual(expected_mean, self.evaluate(dist.fetch(ret_v_mean)))
+      # read_var(), get(), or nothing).
+      self.assertEqual(expected_sum, self.evaluate(dist.read_var(ret_v_sum)))
+      self.assertEqual(expected_mean, self.evaluate(dist.read_var(ret_v_mean)))
       self.assertEqual(expected_sum, self.evaluate(ret_v_sum.get()))
       self.assertEqual(expected_mean, self.evaluate(ret_v_mean.get()))
-      if not context.executing_eagerly():
-        self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
-        self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
+      self.assertEqual(expected_sum, self.evaluate(ret_v_sum))
+      self.assertEqual(expected_mean, self.evaluate(ret_v_mean))
 
   # NOTE(priyag): Names and name scopes are ignored in eager, hence we are not
   # testing this in eager mode.
@@ -529,6 +562,239 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         self.assertIsInstance(v, values.DistributedValues)
         _, v1 = dist.unwrap(v)
         self.assertStartsWith(v1.name, "tower_1/")
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testTowerLocalVariableUpdate(self):
+    with context.graph_mode():
+
+      def model_fn():
+        tower_context = distribute_lib.get_tower_context()
+        with tower_context.tower_local_var_scope("sum"):
+          v_sum = variable_scope.variable(1.0)
+        self.assertTrue(isinstance(v_sum, values.TowerLocalVariable))
+        return v_sum
+
+      dist = mirrored_strategy.MirroredStrategy(
+          ["/device:GPU:0", "/device:GPU:1"])
+
+      def update(var, value):
+        return var.assign(value)
+
+      with dist.scope():
+        ret_v_sum = dist.call_for_each_tower(model_fn, run_concurrently=False)
+        update_ops = dist.unwrap(dist.update(ret_v_sum, update, 5.0))
+
+        # Initialize variables.
+        self.evaluate(variables.global_variables_initializer())
+        # Assert that the aggregated value of the tower local vars is the sum of
+        # the individual values before running the update ops.
+        self.assertEquals(1.0, self.evaluate(
+            ret_v_sum.get(dist._devices[0]).read_value()))
+        self.assertEquals(2.0, self.evaluate(ret_v_sum))
+
+        # Apply updates.
+        self.evaluate(update_ops)
+        # Assert that the aggregated value of the tower local vars is the sum of
+        # the individual values after running the update ops.
+        self.assertEquals(5.0, self.evaluate(
+            ret_v_sum.get(dist._devices[0]).read_value()))
+        self.assertEquals(10.0, self.evaluate(ret_v_sum))
+
+
+class MirroredVariableUpdateTest(test.TestCase):
+  # The following tests check assign, assign_add and assign_sub on Mirrored
+  # variables in tower and cross tower context.
+  config = config_pb2.ConfigProto()
+  config.allow_soft_placement = True
+
+  def _skip_eager_if_gpus_less_than(self, num_gpus):
+    if context.num_gpus() < num_gpus and context.executing_eagerly():
+      self.skipTest("Enough GPUs not available for this test in eager mode.")
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignMirroredVarTowerContextWithoutAggregationType(self):
+    # Test that we always have an aggregation type set on the mirrored variable
+    # if we assign to it in tower mode.
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      v = variable_scope.variable(1.0, name="foo")
+      return v
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+
+      def model_fn():
+        return mirrored_var.assign(5.0)
+
+      with self.assertRaisesRegexp(
+          ValueError, "You must specify an aggregation method to update a "
+                      "MirroredVariable in Tower Context."):
+        self.evaluate(dist.unwrap(dist.call_for_each_tower(model_fn)))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignMirroredVarTowerContextWithSum(self):
+    # Test that we don't reduce a non-per-device value with the "sum"
+    # aggregation type.
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      v = variable_scope.variable(1.0, name="foo")
+      return v
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      # TODO(anjalisridhar): Use API introduced in cr/201463945 to set the
+      # aggregation method.
+      mirrored_var._aggregation_method = "sum"
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+
+      def model_fn():
+        return mirrored_var.assign(5.0)
+
+      with self.assertRaisesRegexp(
+          ValueError, "A non PerDevice value cannot be reduced with the given "
+                      "method_string."):
+        self.evaluate(dist.unwrap(dist.call_for_each_tower(model_fn)))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignMirroredVarCrossTowerContext(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(1.0, name="foo")
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(1.0, self.evaluate(mirrored_var))
+      mirrored_var_result = self.evaluate(mirrored_var.assign(6.0))
+      self.assertEquals(6.0, mirrored_var_result)
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignMirroredVarTowerContext(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(1.0, name="foo")
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      # TODO(anjalisridhar): Use API introduced in cr/201463945 to set the
+      # aggregation method.
+      mirrored_var._aggregation_method = "mean"
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(1.0, self.evaluate(mirrored_var))
+
+      def model_fn():
+        value = math_ops.cast(distribute_lib.get_tower_context().tower_id,
+                              mirrored_var.dtype)
+        return mirrored_var.assign(value)
+
+      self.evaluate(dist.unwrap(dist.call_for_each_tower(
+          model_fn, run_concurrently=False)))
+      self.assertEquals(0.5, self.evaluate(mirrored_var))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignAddMirroredVarCrossTowerContext(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(1.0, name="foo")
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(1.0, self.evaluate(mirrored_var))
+      mirrored_var_result = self.evaluate(mirrored_var.assign_add(6.0))
+      self.assertEquals(7.0, mirrored_var_result)
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignAddMirroredVarTowerContext(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(1.0, name="foo")
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      # TODO(anjalisridhar): Use API introduced in cr/201463945 to set the
+      # aggregation method.
+      mirrored_var._aggregation_method = "mean"
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(1.0, self.evaluate(mirrored_var))
+
+      def model_fn():
+        value = math_ops.cast(distribute_lib.get_tower_context().tower_id,
+                              mirrored_var.dtype)
+        return mirrored_var.assign_add(value)
+
+      self.evaluate(dist.unwrap(dist.call_for_each_tower(
+          model_fn, run_concurrently=False)))
+      self.assertEquals(1.5, self.evaluate(mirrored_var))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignSubMirroredVarCrossTowerContext(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(5.0, name="foo")
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(5.0, self.evaluate(mirrored_var))
+      mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
+      self.assertEquals(3.0, mirrored_var_result)
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignSubMirroredVarTowerContext(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def var_fn():
+      return variable_scope.variable(5.0, name="foo")
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      mirrored_var = dist.call_for_each_tower(var_fn, run_concurrently=False)
+      # TODO(anjalisridhar): Use API introduced in cr/201463945 to set the
+      # aggregation method.
+      mirrored_var._aggregation_method = "mean"
+      self.assertIsInstance(mirrored_var, values.MirroredVariable)
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEquals(5.0, self.evaluate(mirrored_var))
+
+      def model_fn():
+        value = math_ops.cast(distribute_lib.get_tower_context().tower_id,
+                              mirrored_var.dtype)
+        return mirrored_var.assign_sub(value)
+
+      self.evaluate(dist.unwrap(dist.call_for_each_tower(
+          model_fn, run_concurrently=False)))
+      self.assertEquals(4.5, self.evaluate(mirrored_var))
 
 
 if __name__ == "__main__":

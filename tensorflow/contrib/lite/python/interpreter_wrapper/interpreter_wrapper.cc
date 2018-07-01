@@ -30,7 +30,14 @@ limitations under the License.
 #undef isalnum
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/python/lib/core/numpy.h"
+
+// Disallow Numpy 1.7 deprecated symbols.
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
+#include <Python.h>
+
+#include "numpy/arrayobject.h"
+#include "numpy/ufuncobject.h"
 
 #if PY_MAJOR_VERSION >= 3
 #define PY_TO_CPPSTRING PyBytes_AsStringAndSize
@@ -44,6 +51,13 @@ namespace tflite {
 namespace interpreter_wrapper {
 
 namespace {
+
+// Calls PyArray's initialization to initialize all the API pointers. Note that
+// this usage implies only this translation unit can use the pointers. See
+// tensorflow/python/core/numpy.cc for a strategy if we ever need to extend
+// this further.
+void ImportNumpy() { import_array1(); }
+
 std::unique_ptr<tflite::Interpreter> CreateInterpreter(
     const tflite::FlatBufferModel* model,
     const tflite::ops::builtin::BuiltinOpResolver& resolver) {
@@ -51,7 +65,7 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
     return nullptr;
   }
 
-  tensorflow::ImportNumpy();
+  ImportNumpy();
 
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
@@ -87,6 +101,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_OBJECT;
     case kTfLiteBool:
       return NPY_BOOL;
+    case kTfLiteComplex64:
+      return NPY_COMPLEX64;
     case kTfLiteNoType:
       return -1;
   }
@@ -113,6 +129,8 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
     case NPY_STRING:
     case NPY_UNICODE:
       return kTfLiteString;
+    case NPY_COMPLEX64:
+      return kTfLiteComplex64;
   }
   LOG(ERROR) << "Unknown PyArray dtype " << pyarray_type;
   return kTfLiteNoType;
@@ -297,45 +315,91 @@ bool InterpreterWrapper::SetTensor(int i, PyObject* value) {
   return true;
 }
 
-PyObject* InterpreterWrapper::GetTensor(int i) const {
-  if (!interpreter_) {
+namespace {
+
+PyObject* CheckGetTensorArgs(Interpreter* interpreter, int tensor_index,
+                             TfLiteTensor** tensor, int* type_num) {
+  if (!interpreter) {
     LOG(ERROR) << "Invalid interpreter.";
     Py_INCREF(Py_None);
     return Py_None;
   }
 
-  if (i >= interpreter_->tensors_size()) {
-    LOG(ERROR) << "Invalid tensor index: " << i << " exceeds max tensor index "
-               << interpreter_->inputs().size();
+  if (tensor_index >= interpreter->tensors_size() || tensor_index < 0) {
+    LOG(ERROR) << "Invalid tensor index: " << tensor_index
+               << " exceeds max tensor index " << interpreter->inputs().size();
     Py_INCREF(Py_None);
     return Py_None;
   }
 
-  const TfLiteTensor* output_tensor = interpreter_->tensor(i);
-  const int tensor_size = output_tensor->bytes;
-  if (tensor_size <= 0) {
+  *tensor = interpreter->tensor(tensor_index);
+  if ((*tensor)->bytes == 0) {
     LOG(ERROR) << "Invalid tensor size";
     Py_INCREF(Py_None);
     return Py_None;
   }
 
-  int type_num = TfLiteTypeToPyArrayType(output_tensor->type);
-  if (type_num == -1) {
-    LOG(ERROR) << "Unknown tensor type " << output_tensor->type;
+  *type_num = TfLiteTypeToPyArrayType((*tensor)->type);
+  if (*type_num == -1) {
+    LOG(ERROR) << "Unknown tensor type " << (*tensor)->type;
     Py_INCREF(Py_None);
     return Py_None;
   }
 
-  void* data = malloc(tensor_size);
-  memcpy(data, output_tensor->data.raw, tensor_size);
+  if (!(*tensor)->data.raw) {
+    LOG(ERROR) << "Tensor data is null.";
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
 
-  const TfLiteIntArray* output_dims = output_tensor->dims;
-  std::vector<npy_intp> dims(output_dims->data,
-                             output_dims->data + output_dims->size);
+  return nullptr;
+}
+
+}  // namespace
+
+PyObject* InterpreterWrapper::GetTensor(int i) const {
+  // Sanity check accessor
+  TfLiteTensor* tensor = nullptr;
+  int type_num = 0;
+  if (PyObject* pynone_or_nullptr =
+          CheckGetTensorArgs(interpreter_.get(), i, &tensor, &type_num)) {
+    return pynone_or_nullptr;
+  }
+  std::vector<npy_intp> dims(tensor->dims->data,
+                             tensor->dims->data + tensor->dims->size);
+  // Make a buffer copy but we must tell Numpy It owns that data or else
+  // it will leak.
+  void* data = malloc(tensor->bytes);
+  if (!data) {
+    LOG(ERROR) << "Malloc to copy tensor failed.";
+    Py_INCREF(Py_None);
+    return Py_None;
+  }
+  memcpy(data, tensor->data.raw, tensor->bytes);
   PyObject* np_array =
       PyArray_SimpleNewFromData(dims.size(), dims.data(), type_num, data);
-
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(np_array),
+                      NPY_ARRAY_OWNDATA);
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+}
+
+PyObject* InterpreterWrapper::tensor(PyObject* base_object, int i) {
+  // Sanity check accessor
+  TfLiteTensor* tensor = nullptr;
+  int type_num = 0;
+  if (PyObject* pynone_or_nullptr =
+          CheckGetTensorArgs(interpreter_.get(), i, &tensor, &type_num)) {
+    return pynone_or_nullptr;
+  }
+
+  std::vector<npy_intp> dims(tensor->dims->data,
+                             tensor->dims->data + tensor->dims->size);
+  PyArrayObject* np_array =
+      reinterpret_cast<PyArrayObject*>(PyArray_SimpleNewFromData(
+          dims.size(), dims.data(), type_num, tensor->data.raw));
+  Py_INCREF(base_object);  // SetBaseObject steals, so we need to add.
+  PyArray_SetBaseObject(np_array, base_object);
+  return PyArray_Return(np_array);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(

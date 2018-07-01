@@ -123,6 +123,7 @@ _BINARY_OPS = [
     'Min',
     'And',
     'Or',
+    'Xor',
     'Pow',
 ]
 
@@ -257,9 +258,12 @@ class Shape(object):
             self._dimensions == other._dimensions and
             self._minor_to_major == other._minor_to_major)
 
+  def __ne__(self, other):
+    return not self == other
+
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
-            '_is_tuple={!r}), _minor_to_major={!r}').format(
+            '_is_tuple={!r}, _minor_to_major={!r})').format(
                 self._dtype, self._dimensions, self._is_tuple,
                 self._minor_to_major)
 
@@ -905,20 +909,19 @@ class ComputationBuilder(object):
     """
     return self._client.Call(computation_to_apply.c_local_computation, operands)
 
-  def Map(self, operands, computation_to_apply, dimensions, static_operands=()):
+  def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
 
     Args:
       operands: an iterable of LocalOp.
       computation_to_apply: a Computation object.
       dimensions: dimensions over which to apply map the function.
-      static_operands: auxiliary arguments passed to the applied computation.
 
     Returns:
       A LocalOp representing the added Map op.
     """
     return self._client.Map(operands, computation_to_apply.c_local_computation,
-                            dimensions, static_operands)
+                            dimensions)
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
     """Enqueues a reduction operation onto the computation.

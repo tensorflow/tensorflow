@@ -60,6 +60,24 @@ TEST(ElementWise, Log) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, Sqrt) {
+  ElementWiseOpModel m(BuiltinOperator_SQRT, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 1, 2, 4});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({0, 1, 1.41421, 2})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, Rsqrt) {
+  ElementWiseOpModel m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {1, 2, 4, 9});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1, 0.7071, 0.5, 0.33333})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
 }  // namespace
 }  // namespace tflite
 

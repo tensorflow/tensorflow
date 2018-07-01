@@ -534,7 +534,8 @@ def multi_label_head(n_classes,
   * An integer `SparseTensor` of class indices. The `dense_shape` must be
     `[D0, D1, ... DN, ?]` and the values within `[0, n_classes)`.
   * If `label_vocabulary` is given, a string `SparseTensor`. The `dense_shape`
-    must be `[D0, D1, ... DN, ?]` and the values within `label_vocabulary`.
+    must be `[D0, D1, ... DN, ?]` and the values within `label_vocabulary` or a
+    multi-hot tensor of shape `[D0, D1, ... DN, n_classes]`.
 
   If `weight_column` is specified, weights must be of shape
   `[D0, D1, ... DN]`, or `[D0, D1, ... DN, 1]`.
