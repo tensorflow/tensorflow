@@ -1,6 +1,6 @@
 # Convolutional Neural Networks
 
-> **NOTE:** This tutorial is intended for *advanced* users of TensorFlow
+Note: This tutorial is intended for *advanced* users of TensorFlow
 and assumes expertise and experience in machine learning.
 
 ## Overview
@@ -437,9 +437,6 @@ run on a batch size of 128. Try running `cifar10_multi_gpu_train.py` on 2 GPUs
 with a batch size of 64 and compare the training speed.
 
 ## Next Steps
-
-[Congratulations!](https://www.youtube.com/watch?v=9bZkp7q19f0) You have
-completed the CIFAR-10 tutorial.
 
 If you are now interested in developing and training your own image
 classification system, we recommend forking this tutorial and replacing
