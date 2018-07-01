@@ -6,17 +6,17 @@ toc:
   style: accordion
   section:
   - title: Overview
-    path: /tutorials/get_started/
+    path: /tutorials/keras/
   - title: Basic classification
-    path: /tutorials/get_started/basic_classification
+    path: /tutorials/keras/basic_classification
   - title: Text classification
-    path: /tutorials/get_started/basic_text_classification
+    path: /tutorials/keras/basic_text_classification
   - title: Regression
-    path: /tutorials/get_started/basic_regression
+    path: /tutorials/keras/basic_regression
   - title: Overfitting and underfitting
-    path: /tutorials/get_started/overfit_and_underfit
+    path: /tutorials/keras/overfit_and_underfit
   - title: Save and restore models
-    path: /tutorials/get_started/save_and_restore_models
+    path: /tutorials/keras/save_and_restore_models
 
 - title: Research and experimentation
   style: accordion
