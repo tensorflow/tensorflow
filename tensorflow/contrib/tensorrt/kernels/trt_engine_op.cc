@@ -318,7 +318,7 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
         return;
 #if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
-        buffers[binding_index] = (void*)(input_tensor.flat<int>().data());
+        buffers[binding_index] = (void*)(input_tensor.flat<int32>().data());
         break;
 #endif
       default:
@@ -376,7 +376,7 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
 #if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] =
-            reinterpret_cast<void*>(output_tensor->flat<int>().data());
+            reinterpret_cast<void*>(output_tensor->flat<int32>().data());
         break;
 #endif
       default:
