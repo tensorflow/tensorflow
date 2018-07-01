@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
+
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -31,13 +32,6 @@ limitations under the License.
 namespace xp = ::xla::poplarplugin;
 
 namespace tensorflow {
-
-const char* const DEVICE_XLA_IPU = "IPU";
-const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
-const char* const PLATFORM_NAME = "Poplar";
-
-constexpr std::array<DataType, 6> kIpuAllTypes = {
-    {DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL, DT_RESOURCE}};
 
 namespace {
 
@@ -146,42 +140,20 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory);
 
-// Kernel registrations
-
-static bool OpFilter(KernelDef* kdef) {
-
-  if (kdef->op() == "Angle") return false;
-  if (kdef->op() == "Complex") return false;
-  if (kdef->op() == "ComplexAbs") return false;
-  if (kdef->op() == "Conj") return false;
-  if (kdef->op() == "FFT") return false;
-  if (kdef->op() == "FFT2D") return false;
-  if (kdef->op() == "FFT3D") return false;
-  if (kdef->op() == "IFFT") return false;
-  if (kdef->op() == "IFFT2D") return false;
-  if (kdef->op() == "IFFT3D") return false;
-  if (kdef->op() == "Imag") return false;
-  if (kdef->op() == "MaxPoolGradGrad") return false;
-  if (kdef->op() == "Real") return false;
-
-  return true;
-}
-
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU, XlaLocalLaunchOp, kIpuAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
-REGISTER_XLA_BACKEND(DEVICE_IPU_XLA_JIT, kIpuAllTypes, OpFilter);
 
 // Additional ops not explicitly defined by standard JIT
 REGISTER_XLA_OP(Name("ArgMax")
-                    .Device(DEVICE_IPU_XLA_JIT)
-                    .CompileTimeConstInput("dimension"),
-                XlaArgMaxOp);
+.Device(DEVICE_IPU_XLA_JIT)
+.CompileTimeConstInput("dimension"),
+XlaArgMaxOp);
 
 REGISTER_KERNEL_BUILDER(Name("RefEnter").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefExit").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefMerge").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_IPU_XLA_JIT),
-                        NoOp);
+    NoOp);
 REGISTER_KERNEL_BUILDER(Name("RefSwitch").Device(DEVICE_IPU_XLA_JIT), NoOp);
 
 REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE_IPU_XLA_JIT), NoOp);

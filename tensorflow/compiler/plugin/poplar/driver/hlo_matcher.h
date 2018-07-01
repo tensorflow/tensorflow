@@ -24,8 +24,6 @@ class HloModule;
 
 namespace poplarplugin {
 
-struct CompilerAnnotations;
-
 struct HloMatcherNode {
   // The opcode of the instruction to match
   HloOpcode opcode;
@@ -42,8 +40,7 @@ struct HloMatcherNode {
 
   // If not null, this function will be called with the instruction. Only if
   // it returns true does the matching proceed.
-  std::function<bool(HloInstruction*, const CompilerAnnotations&)>
-      verification_fn;
+  std::function<bool(HloInstruction*)> verification_fn;
 
   // A list of operands of this instruction. A positive number refers to one of
   // the other entries in the match pattern. A negative number indicates that
@@ -75,8 +72,7 @@ using ReplacedInstructions = std::vector<HloInstruction*>;
 
 class HloMatcher : public HloPassInterface {
  public:
-  HloMatcher(const std::vector<HloMatcherPattern>& patterns,
-             const CompilerAnnotations& annotations, bool root_only);
+  HloMatcher(const std::vector<HloMatcherPattern>& patterns, bool root_only);
 
   ~HloMatcher() override = default;
 
@@ -103,9 +99,6 @@ class HloMatcher : public HloPassInterface {
   // The list of patterns to try to find in the computations
   std::vector<HloMatcherPattern> patterns_;
 
-  // The list of instructions visited while searching for each pattern
-  std::set<HloInstruction*> visited_;
-
   // A vector of lists of matches found. One vector entry per pattern, one list
   // entry per match in the computation
   std::vector<std::list<HloMatcherMatched>> matches_;
@@ -114,9 +107,6 @@ class HloMatcher : public HloPassInterface {
   // instructions due to one match, other matches which contain the instruction
   // cannot also be applied
   std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
-
-  // A constant reference to any stored information about the HloInstructions
-  const CompilerAnnotations& annotations;
 };
 
 }  // namespace poplarplugin

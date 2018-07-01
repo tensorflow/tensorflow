@@ -13,25 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_EARLY_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_EARLY_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 
 namespace xla {
 
-class HloModule;
-
 namespace poplarplugin {
 
-class Outliner : public HloMatcher {
+// The purpose of this pass is to extract patterns created by tf2xla *before*
+// other passes attempt to optimize the graph and hence making the pattern
+// matching more difficult
+class FuseOpsEarly : public HloMatcher {
  public:
-  Outliner();
+  FuseOpsEarly();
 
-  ~Outliner() override = default;
+  ~FuseOpsEarly() override = default;
 
-  tensorflow::StringPiece name() const override { return "outline"; }
+  tensorflow::StringPiece name() const override { return "poplar-fuse-early"; }
 
+ private:
   ReplacedInstructions ReplaceNodes(int pattern,
                                     const HloMatcherMatched& match) override;
 };

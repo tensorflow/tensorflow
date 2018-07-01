@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_UPDATE_OP_DEPENDENCIES_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_UPDATE_OP_DEPENDENCIES_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -24,16 +24,26 @@ class HloModule;
 
 namespace poplarplugin {
 
-class Outliner : public HloMatcher {
+struct CompilerAnnotations;
+
+// Add control dependencies between in-place updates and readers of the updates
+// (must come after any outliners, eg ExpressionOutliner, FuseOps, Outliner)
+
+class UpdateOpDependenctOrdering : public HloPassInterface {
  public:
-  Outliner();
+  UpdateOpDependenctOrdering(CompilerAnnotations& annotations) :
+      annotations_(annotations) {}
 
-  ~Outliner() override = default;
+  ~UpdateOpDependenctOrdering() override = default;
 
-  tensorflow::StringPiece name() const override { return "outline"; }
+  tensorflow::StringPiece name() const override {
+    return "update-op-dependencies";
+  }
 
-  ReplacedInstructions ReplaceNodes(int pattern,
-                                    const HloMatcherMatched& match) override;
+  StatusOr<bool> Run(HloModule *module) override;
+
+ private:
+  CompilerAnnotations& annotations_;
 };
 
 }  // namespace poplarplugin

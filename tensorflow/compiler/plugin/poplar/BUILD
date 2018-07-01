@@ -33,16 +33,19 @@ cc_library(
     name = "optimizers",
     srcs = [
         "driver/allocation_finder.cc",
+        "driver/classification_predicates.cc",
         "driver/computation_flattener.cc",
         "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
-        "driver/fuse_ops.cc",
+        "driver/fuse_ops_early.cc",
+        "driver/fuse_ops_late.cc",
         "driver/hlo_hash.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
         "driver/matcher_predicates.cc",
         "driver/outliner.cc",
         "driver/scheduler.cc",
+        "driver/update_op_dependencies.cc",
         "driver/util.cc",
         "driver/while_loop_condition_simplify.cc",
         "driver/while_loop_util.cc",
@@ -50,17 +53,20 @@ cc_library(
     ],
     hdrs = [
         "driver/allocation_finder.h",
+        "driver/classification_predicates.h",
         "driver/compiler_annotations.h",
         "driver/computation_flattener.h",
         "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
-        "driver/fuse_ops.h",
+        "driver/fuse_ops_early.h",
+        "driver/fuse_ops_late.h",
         "driver/hlo_hash.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
         "driver/matcher_predicates.h",
         "driver/outliner.h",
         "driver/scheduler.h",
+        "driver/update_op_dependencies.h",
         "driver/util.h",
         "driver/while_loop_condition_simplify.h",
         "driver/while_loop_util.h",
@@ -201,6 +207,7 @@ cc_library(
         ":driver",
         ":ops",
         ":kernels",
+        ":poplar_backend",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -215,6 +222,24 @@ cc_library(
         ":tf_graph_program",
         ":protos_py",
         "@local_config_poplar//poplar:poplar_lib",
+    ],
+    linkstatic=1,
+    alwayslink = True,
+)
+
+cc_library(
+    name = "poplar_backend",
+    srcs = [
+        "driver/xla_ipu_backend.cc",
+    ],
+    hdrs = [
+        "driver/xla_ipu_common.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
     ],
     linkstatic=1,
     alwayslink = True,
@@ -249,6 +274,17 @@ tf_cc_test(
 tf_cc_test(
     name = "convolution_classifier_test",
     srcs = ["tests/convolution_classifier_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "inplace_test",
+    srcs = ["tests/inplace_test.cc"],
     size = "small",
     deps = [
         ":optimizers",
@@ -652,6 +688,7 @@ test_suite(
         "while_loop_condition_simplify_test",
         "conv3d_test",
         "ipu_engine_cache_test",
+        "inplace_test",
     ],
 )
 
@@ -682,6 +719,7 @@ test_suite(
         "while_loop_condition_simplify_test",
         "conv3d_test",
         "ipu_engine_cache_test",
+        "inplace_test",
     ],
 )
 

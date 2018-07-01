@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
+#include <stack>
+
 using ::tensorflow::strings::StrCat;
 
 namespace xla {
@@ -31,13 +33,13 @@ void CopyConvolutionData(HloInstruction* inst, const HloInstruction* old) {
   inst->set_convolution_dimension_numbers(old->convolution_dimension_numbers());
 }
 
-void CopyMetadataToInstruction(HloInstruction* inst, const HloInstruction* old,
-                               const CompilerAnnotations& annotations) {
+void CopyMetadataToInstruction(HloInstruction* inst,
+                               const HloInstruction* old) {
   // Copy instruction data
   // Note that some data is protected by opcode and can't be copied
   switch (old->opcode()) {
     case HloOpcode::kCall:
-      if (IsPopOpsConvolution(old, annotations)) {
+      if (IsPopOpsConvolution(old)) {
         CopyConvolutionData(inst, old);
       }
       break;
@@ -53,11 +55,9 @@ void CopyMetadataToInstruction(HloInstruction* inst, const HloInstruction* old,
 }  // namespace
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
-                       const CompilerAnnotations& annotations,
                        bool root_computation_only)
     : root_computation_only_(root_computation_only),
-      patterns_(std::move(patterns)),
-      annotations(annotations) {
+      patterns_(std::move(patterns)) {
   matches_.resize(patterns.size());
 }
 
@@ -84,7 +84,7 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       }
     }
 
-    if (node.verification_fn && !node.verification_fn(inst, annotations)) {
+    if (node.verification_fn && !node.verification_fn(inst)) {
       return false;
     }
 
@@ -160,28 +160,38 @@ void HloMatcher::AddMatch(unsigned pattern, const HloMatcherMatched& match) {
   }
 }
 
-// TODO - make this non-recursive
 void HloMatcher::MatchPatternStart(HloComputation* computation,
-                                   HloInstruction* instruction) {
-  visited_.insert(instruction);
+                                   HloInstruction* root) {
+  // Non recursive depth first DAG traversal to match the patterns
+  std::stack<HloInstruction*> to_visit;
+  // The list of instructions visited while searching for each pattern
+  std::set<HloInstruction*> visited;
 
-  for (unsigned i = 0; i < patterns_.size(); i++) {
-    if (instruction->opcode() == patterns_[i][0].opcode) {
-      // Try matching the whole pattern
-      HloMatcherMatched match;
-      match.ok = true;
-      match.computation = computation;
-      match.instructions.resize(patterns_[i].size());
+  // Traverse from root
+  to_visit.push(root);
+  while (!to_visit.empty()) {
+    HloInstruction* instruction = to_visit.top();
+    to_visit.pop();
+    visited.insert(instruction);
 
-      if (MatchPattern(instruction, patterns_[i], match)) {
-        AddMatch(i, match);
+    for (unsigned i = 0; i < patterns_.size(); i++) {
+      if (instruction->opcode() == patterns_[i][0].opcode) {
+        // Try matching the whole pattern
+        HloMatcherMatched match;
+        match.ok = true;
+        match.computation = computation;
+        match.instructions.resize(patterns_[i].size());
+
+        if (MatchPattern(instruction, patterns_[i], match)) {
+          AddMatch(i, match);
+        }
       }
     }
-  }
 
-  for (HloInstruction* operand : instruction->operands()) {
-    if (visited_.count(operand) == 0) {
-      MatchPatternStart(computation, operand);
+    for (HloInstruction* operand : instruction->operands()) {
+      if (visited.count(operand) == 0) {
+        to_visit.push(operand);
+      }
     }
   }
 }
@@ -189,7 +199,6 @@ void HloMatcher::MatchPatternStart(HloComputation* computation,
 StatusOr<bool> HloMatcher::Run(HloModule* module) {
   if (root_computation_only_) {
     HloComputation* comp = module->entry_computation();
-    visited_.clear();
     MatchPatternStart(comp, comp->root_instruction());
 
   } else {
@@ -199,7 +208,6 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
 
     for (auto* comp : comps) {
       if (!comp->IsFusionComputation()) {
-        visited_.clear();
         MatchPatternStart(comp, comp->root_instruction());
       }
     }
@@ -223,7 +231,6 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
   }
 
   patterns_.clear();
-  visited_.clear();
   matches_.clear();
   match_map_.clear();
 
@@ -305,8 +312,7 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   HloInstruction* call = matched.computation->AddInstruction(
       HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
 
-  CopyMetadataToInstruction(call, instructions_to_outline[metadata_index],
-                            annotations);
+  CopyMetadataToInstruction(call, instructions_to_outline[metadata_index]);
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
 #include "tensorflow/core/lib/core/errors.h"
@@ -24,9 +24,7 @@ namespace xla {
 namespace poplarplugin {
 
 static const FusedGraphInfo fuse_info[] = {
-    {"pop_backprop_conv", 0},
-    {"pop_depth_conv", 0},
-    {"pop_convolution", 0},
+    {"pop_backprop_conv", 0}, {"pop_depth_conv", 0}, {"pop_convolution", 0},
 };
 
 static const std::vector<HloMatcherPattern> patterns = {
@@ -48,8 +46,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 
 };
 
-Outliner::Outliner(const CompilerAnnotations& annotations)
-    : HloMatcher(patterns, annotations, true) {}
+Outliner::Outliner() : HloMatcher(patterns, true) {}
 
 ReplacedInstructions Outliner::ReplaceNodes(int pattern,
                                             const HloMatcherMatched& match) {

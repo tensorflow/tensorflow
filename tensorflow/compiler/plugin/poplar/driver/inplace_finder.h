@@ -35,6 +35,9 @@ using InplaceRoute = std::vector<HloInstruction*>;
  *
  * Care is taken to track tensors through tuples, as they should still be
  * updated in place even when they have been made part of a tuple.
+ *
+ * Operations which lower to poplibs vertices that contains InOut edges should
+ * be processed by this finder
  */
 class InplaceFinder : public HloPassInterface {
  public:
@@ -47,11 +50,9 @@ class InplaceFinder : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  void RouteFinder(HloInstruction* inst);
+  void RouteFinder(HloInstruction* inst, const std::vector<int64>&);
 
   std::multimap<HloInstruction*, InplaceRoute> routes;
-
-  std::vector<int64> tuple_stack;
 
   InplaceRoute current_route;
 

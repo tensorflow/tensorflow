@@ -1,3 +1,6 @@
+/* Copyright 2017 Graphcore Ltd
+ */
+
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,30 +16,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
+#include "tensorflow/core/framework/types.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+namespace tensorflow {
 
-namespace xla {
+const char* const DEVICE_XLA_IPU = "IPU";
+const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
+const char* const PLATFORM_NAME = "Poplar";
 
-class HloModule;
+constexpr std::array<DataType, 6> kIpuAllTypes = {
+    {DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL, DT_RESOURCE}};
 
-namespace poplarplugin {
-
-class Outliner : public HloMatcher {
- public:
-  Outliner();
-
-  ~Outliner() override = default;
-
-  tensorflow::StringPiece name() const override { return "outline"; }
-
-  ReplacedInstructions ReplaceNodes(int pattern,
-                                    const HloMatcherMatched& match) override;
-};
-
-}  // namespace poplarplugin
-}  // namespace xla
-
-#endif
+}  // namespace tensorflow
