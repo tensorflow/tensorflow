@@ -53,25 +53,27 @@ limitations under the License.
 //  would work!
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
-#define TFTRT_RETURN_ERROR_IF_FALSE(ptr, node)                               \
-  do {                                                                       \
-    if (ptr == false) {                                                      \
-      return tensorflow::errors::Internal(string("TFTRT::") + __FUNCTION__ + \
-                                          "failed to add TRT layer, at: " +  \
-                                          node);                             \
-    }                                                                        \
+#define TFTRT_RETURN_ERROR_IF_FALSE(ptr, node)                             \
+  do {                                                                     \
+    if (ptr == false) {                                                    \
+      return tensorflow::errors::Internal(                                 \
+                                          string("TFTRT::"), __FUNCTION__, \
+                                          "failed to add TRT layer, at: ", \
+                                          node);                           \
+    }                                                                      \
   } while (0)
 
-#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node)                             \
-  do {                                                                       \
-    if (ptr == nullptr) {                                                    \
-      return tensorflow::errors::Internal(string("TFTRT::") + __FUNCTION__ + \
-                                          "failed to add TRT layer, at: " +  \
-                                          node);                             \
-    }                                                                        \
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node)                           \
+  do {                                                                     \
+    if (ptr == nullptr) {                                                  \
+      return tensorflow::errors::Internal(                                 \
+                                          string("TFTRT::"), __FUNCTION__, \
+                                          "failed to add TRT layer, at: ", \
+                                          node);                           \
+    }                                                                      \
   } while (0)
 
-#define TF_RETURN_IF_OK(status)        \
+#define TFTRT_RETURN_IF_OK(status)     \
   do {                                 \
     if (status.ok()) {                 \
       return tensorflow::Status::OK(); \
@@ -510,6 +512,8 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   VLOG(2) << "c" << iweights.shape_.d[2] << " then " << c;
   int k = iweights.shape_.d[3] * num_groups;
   VLOG(2) << "k" << iweights.shape_.d[3] << " then " << k;
+  VLOG(2) << "r" << iweights.shape_.d[0] << " then " << r;
+  VLOG(2) << "s" << iweights.shape_.d[1] << " then " << s;
   oweights->shape_.d[0] = k / num_groups;
   oweights->shape_.d[1] = c * num_groups;
   oweights->shape_.d[2] = r;
@@ -1119,6 +1123,17 @@ tensorflow::Status ConvertConv2DHelper(
   VLOG(2) << "groups count: " << num_groups;
 
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
+
+  VLOG(2) << "weight shape: " << weights_rsck.shape_.nbDims;
+  for (int i = 0; i < weights_rsck.shape_.nbDims; i++) {
+    VLOG(2) << weights_rsck.shape_.d[i];
+  }
+
+  if (weights_rsck.shape_.nbDims != 4) {
+    return tensorflow::errors::Internal(
+        "Conv2D expects kernel of dimension 4, at: " + node_def.name());
+  }
+
   if (ctx.isFP16()) {
     weights_rsck = ConvertFP32ToFP16(ctx, inputs.at(1).weights());
   }
@@ -1130,6 +1145,10 @@ tensorflow::Status ConvertConv2DHelper(
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
+  VLOG(2) << "RSCK: ";
+  for (int i = 0; i < 4; i++) {
+    VLOG(2) << "     " << weights.shape_.d[i];
+  }
   VLOG(2) << "kernel size: " << kernel_size.h() << ", " << kernel_size.w();
 
   // TODO(jie): stride. (NHWC/NCHW)
@@ -1570,22 +1589,16 @@ tensorflow::Status ConvertConst(Converter& ctx,
       VLOG(2) << "dimensions: " << tensor.dims();
       VLOG(2) << "size: " << weights_tensor.float_val_size();
       scalar_shape = GetTensorShape(tensor);
+      VLOG(2) << "details: ";
       for (int i = 0; i < scalar_shape.nbDims; i++)
         VLOG(2) << scalar_shape.d[i];
-      if (GetShapeSize(scalar_shape) != weights_tensor.float_val_size()) {
-        if (weights_tensor.float_val_size() == 1 ||
-            scalar_shape.d[0] == weights_tensor.float_val_size()) {
-          scalar_shape.nbDims = 1;
-          // no dimension provided. flatten it
-          scalar_shape.d[0] = weights_tensor.float_val_size();
-          scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
-        } else {
-          LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
-                       << " kUNIFORM, at: " << node_def.name();
-          string err_str("Broadcast method is not supported for '");
-          StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
-          return tensorflow::errors::InvalidArgument(err_str);
-        }
+      if (GetShapeSize(scalar_shape) != weights_tensor.float_val_size() &&
+          weights_tensor.float_val_size() != 1) {
+        LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
+                     << " kUNIFORM, at: " << node_def.name();
+        string err_str("Broadcast method is not supported for '");
+        StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
+        return tensorflow::errors::InvalidArgument(err_str);
       }
     } else {
       VLOG(2) << "Dimensions: " << tensor.dims();
@@ -1595,18 +1608,25 @@ tensorflow::Status ConvertConst(Converter& ctx,
       scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
       for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; i++) {
         scalar_shape.d[i] = 0;
-        scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
     size_t len_data = tensorflow::DataTypeSize(dtype);
     for (int i = 0; i < scalar_shape.nbDims; i++) len_data *= scalar_shape.d[i];
     ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
     void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-    std::vector<float> tensor_data(
-        weights_tensor.float_val().begin(),
-        weights_tensor.float_val()
-            .end());  //  make a local copy first to flatten
-    memcpy(dst, tensor_data.data(), len_data);  // store into weight store
+    if (weights_tensor.float_val_size() == 1) {
+      std::fill_n((float*)dst, GetShapeSize(scalar_shape),
+                  *weights_tensor.float_val().begin());
+    } else {
+      std::vector<float> tensor_data(
+          weights_tensor.float_val().begin(),
+          weights_tensor.float_val()
+              .end());  //  make a local copy first to flatten
+                        //  doesn't have to be contigous
+      memcpy(dst, tensor_data.data(), len_data);  // store into weight store
+    }
+    VLOG(2) << "create shape details: ";
+    for (int i = 0; i < scalar_shape.nbDims; i++) VLOG(2) << scalar_shape.d[i];
     weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
   } else if (!weights_tensor.int_val().empty()) {
     VLOG(2) << "int!!!" << node_def.name();
@@ -1614,20 +1634,13 @@ tensorflow::Status ConvertConst(Converter& ctx,
     if (tensor.dims() > 0) {
       VLOG(2) << "dimensions: " << tensor.dims();
       scalar_shape = GetTensorShape(tensor);
-      if (GetShapeSize(scalar_shape) != weights_tensor.int_val_size()) {
-        if (weights_tensor.int_val_size() == 1 ||
-            scalar_shape.d[0] == weights_tensor.int_val_size()) {
-          scalar_shape.nbDims = 1;
-          // no dimension provided. flatten it
-          scalar_shape.d[0] = weights_tensor.int_val_size();
-          scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
-        } else {
-          LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
-                       << " kUNIFORM, at: " << node_def.name();
-          string err_str("Broadcast method is not supported for '");
-          StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
-          return tensorflow::errors::InvalidArgument(err_str);
-        }
+      if (GetShapeSize(scalar_shape) != weights_tensor.int_val_size() &&
+          weights_tensor.int_val_size() != 1) {
+        LOG(WARNING) << "Broadcast on weights only supports kCHANNEL and"
+                     << " kUNIFORM, at: " << node_def.name();
+        string err_str("Broadcast method is not supported for '");
+        StrAppend(&err_str, node_def.name(), "' of type ", node_def.op());
+        return tensorflow::errors::InvalidArgument(err_str);
       }
     } else {
       VLOG(2) << "dimensions: " << tensor.dims();
@@ -1647,11 +1660,17 @@ tensorflow::Status ConvertConst(Converter& ctx,
     len_data = std::max(len_data, len_tensor);
     ctx.weight_store()->store_.push_back(std::vector<uint8_t>(len_data));
     void* dst = static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
-    std::vector<int32> tensor_data(
-        weights_tensor.int_val().begin(),
-        weights_tensor.int_val().end());  //  make a local copy first to flatten
-                                          //  doesn't have to be contigous
-    memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
+    if (weights_tensor.int_val_size() == 1) {
+      std::fill_n((int*)dst, GetShapeSize(scalar_shape),
+                  *weights_tensor.int_val().begin());
+    } else {
+      std::vector<int32> tensor_data(
+          weights_tensor.int_val().begin(),
+          weights_tensor.int_val()
+              .end());  //  make a local copy first to flatten
+                        //  doesn't have to be contigous
+      memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
+    }
     weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
   } else if (!weights_tensor.tensor_content().empty()) {
     //  obsolete method.
@@ -1712,7 +1731,7 @@ tensorflow::Status ConvertBinary(Converter& ctx,
 #if NV_TENSORRT_MAJOR == 3
     TF_RETURN_IF_ERROR(status);
 #else
-    TF_RETURN_IF_OK(status);
+    TFTRT_RETURN_IF_OK(status);
 #endif
   }
 
@@ -1722,7 +1741,7 @@ tensorflow::Status ConvertBinary(Converter& ctx,
 #if NV_TENSORRT_MAJOR == 3
     TF_RETURN_IF_ERROR(status);
 #else
-    TF_RETURN_IF_OK(status);
+    TFTRT_RETURN_IF_OK(status);
 #endif
   }
 
