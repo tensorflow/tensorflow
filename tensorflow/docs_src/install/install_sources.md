@@ -372,7 +372,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](./tutorials/).
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
