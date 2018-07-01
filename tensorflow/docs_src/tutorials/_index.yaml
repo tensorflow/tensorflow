@@ -174,7 +174,7 @@ landing_page:
               <a href="/guide/estimators">Estimators guide</a>.
             </p>
             <ol style="padding-left: 20px;">
-              <li><a href="/tutorialstext_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
+              <li><a href="/hub/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
               <li><a href="https://github.com/tensorflow/models/tree/master/official/boosted_trees">Classifying Higgs boson processes</a></li>
               <li><a href="/tutorials/representation/wide_and_deep">Wide and deep learning using estimators</a></li>
             </ol>

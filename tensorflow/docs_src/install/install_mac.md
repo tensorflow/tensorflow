@@ -403,7 +403,7 @@ writing TensorFlow programs:
 If the system outputs an error message instead of a greeting, see
 [Common installation problems](#common_installation_problems).
 
-To learn more, see the [TensorFlow tutorials](./tutorials/).
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 ## Common installation problems
 
