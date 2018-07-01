@@ -3117,7 +3117,7 @@ def maxout(inputs, num_units, axis=-1, scope=None):
       raise ValueError('number of features({}) is not '
                        'a multiple of num_units({})'.format(
                            num_channels, num_units))
-    shape[axis] = -1
+    shape[axis] = num_units
     shape += [num_channels // num_units]
 
     # Dealing with batches with arbitrary sizes
