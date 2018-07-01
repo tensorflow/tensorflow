@@ -142,7 +142,7 @@ class EntryVisitor : public FullVisitor {
     std::vector<Shape> module_shapes;
 
     HloModule* module = inst->parent()->parent();
-    ComputationLayout* layout = module->mutable_host_entry_computation_layout();
+    ComputationLayout* layout = module->mutable_entry_computation_layout();
     if (layout->parameter_count() > inst->parameter_number()) {
       const Shape& mod_shape =
           layout->parameter_shape(inst->parameter_number());
@@ -183,7 +183,7 @@ class EntryVisitor : public FullVisitor {
 
     auto outputs = FindInstructionOutputs(tensor_map, inst);
 
-    auto* layout = comp->parent()->mutable_host_entry_computation_layout();
+    auto* layout = comp->parent()->mutable_entry_computation_layout();
     std::vector<Shape> shapes = FlattenedXlaShape(layout->result_shape());
 
     for (size_t o = 0; o < outputs.size(); o++) {
@@ -242,7 +242,7 @@ class EntryVisitor : public FullVisitor {
 
                   HloComputation* comp = inst->parent();
                   HloModule* mod = comp->parent();
-                  auto* layout = mod->mutable_host_entry_computation_layout();
+                  auto* layout = mod->mutable_entry_computation_layout();
                   auto shapes = FlattenedXlaShape(layout->result_shape());
 
                   poplar::Tensor out =
@@ -400,7 +400,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   // Set layout if there isn't one
   auto comp_layout =
-      module->mutable_host_entry_computation_layout()->mutable_result_layout();
+      module->mutable_entry_computation_layout()->mutable_result_layout();
   if (!comp_layout->LayoutIsSet()) {
     auto shape = entry->root_instruction()->shape();
     TF_CHECK_OK(comp_layout->CopyLayoutFromShape(shape));

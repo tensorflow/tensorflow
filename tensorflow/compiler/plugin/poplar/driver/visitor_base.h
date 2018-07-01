@@ -133,7 +133,7 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleGather(HloInstruction* inst) override;
 
-  Status HandleGenerateToken(HloInstruction* inst) override;
+  Status HandleAfterAll(HloInstruction* inst) override;
 
   TensorMap tensor_map;
 

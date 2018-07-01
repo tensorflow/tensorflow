@@ -24,7 +24,6 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/stream_executor/executor_cache.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
@@ -34,6 +33,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/trace_listener.h"
 
 #include "tensorflow/core/platform/mutex.h"
+
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace se = stream_executor;

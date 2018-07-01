@@ -82,7 +82,7 @@ StatusOr<ScopedShapedBuffer> PoplarExecutable::ExecuteOnStream(
     execution_profile_.set_compute_cycle_count(1);
   }
 
-  ScopedShapedBuffer result_buffer(host_result_shape(), host_result_shape(),
+  ScopedShapedBuffer result_buffer(result_shape(), result_shape(),
                                    run_options->allocator(),
                                    stream->parent()->device_ordinal());
 

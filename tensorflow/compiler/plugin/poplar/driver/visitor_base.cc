@@ -388,7 +388,7 @@ Status BaseVisitor::HandleGather(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleGenerateToken(HloInstruction* inst) {
+Status BaseVisitor::HandleAfterAll(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 

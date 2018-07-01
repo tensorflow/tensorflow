@@ -27,7 +27,7 @@ namespace {
 
 class DepthFinder {
  public:
-  DepthFinder(const std::list<HloInstruction*> insts) {
+  DepthFinder(const std::vector<HloInstruction*> insts) {
     for (auto i : insts) {
       distance[i] = 0;
     }
