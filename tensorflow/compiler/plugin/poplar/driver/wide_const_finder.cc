@@ -32,21 +32,23 @@ StatusOr<bool> WideConstFinder::Run(HloModule* module) {
   for (auto* comp : comps) {
     if (!comp->IsFusionComputation()) {
       for (HloInstruction* inst : comp->instructions()) {
-        if (inst->IsConstant() && ShapeUtil::ElementsIn(inst->shape()) > 1) {
-          const Literal& literal = inst->literal();
-          if (literal.IsAll(0)) {
-            auto zero =
-                Literal::Zero(inst->shape().element_type()).CloneToUnique();
-            HloInstruction* c = comp->AddInstruction(
-                HloInstruction::CreateConstant(std::move(zero)));
+        if (!ShapeUtil::IsToken(inst->shape())) {
+          if (inst->IsConstant() && ShapeUtil::ElementsIn(inst->shape()) > 1) {
+            const Literal& literal = inst->literal();
+            if (literal.IsAll(0)) {
+              auto zero =
+                  Literal::Zero(inst->shape().element_type()).CloneToUnique();
+              HloInstruction* c = comp->AddInstruction(
+                  HloInstruction::CreateConstant(std::move(zero)));
 
-            std::vector<int64> dims(ShapeUtil::Rank(inst->shape()));
-            std::iota(dims.begin(), dims.end(), 0);
-            HloInstruction* b = comp->AddInstruction(
-                HloInstruction::CreateBroadcast(inst->shape(), c, dims));
+              std::vector<int64> dims(ShapeUtil::Rank(inst->shape()));
+              std::iota(dims.begin(), dims.end(), 0);
+              HloInstruction* b = comp->AddInstruction(
+                  HloInstruction::CreateBroadcast(inst->shape(), c, dims));
 
-            if (!inst->ReplaceAllUsesWith(b).ok()) {
-              return false;
+              if (!inst->ReplaceAllUsesWith(b).ok()) {
+                return false;
+              }
             }
           }
         }

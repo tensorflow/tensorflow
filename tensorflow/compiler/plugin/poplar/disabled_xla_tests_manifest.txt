@@ -185,6 +185,7 @@ LocalClientExecuteTest.NestedTupleResult POPLAR
 LocalClientExecuteTest.TupleResultWithLayout POPLAR
 
 LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
+LocalClientExecuteTest.InfeedTest POPLAR
 
 DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
 
@@ -249,3 +250,6 @@ ReduceTest.ReduceR2_1024x1024_To_R0 POPLAR
 ReduceR3ToR2Test.ReduceR3ToR2 POPLAR
 
 TokenHloTest.TokenInWhileLoop POPLAR // Don't do tokens
+TokenHloTest.SingleTokenInstruction POPLAR
+TokenHloTest.TokenTree POPLAR
+TokenHloTest.TokenInConditional POPLAR

@@ -17,3 +17,4 @@ EagerFunctionTest # Eager function test crashing
 ExcessivePaddingTest # Eager test crashing
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
 DepthwiseConv2DTest # Failing due to input size to poplibs convolution
+XlaSortOpTest # No Sort op
