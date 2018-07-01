@@ -230,7 +230,7 @@ problems, despite the log message.
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](./tutorials/).
 
 ## Common installation problems
 
