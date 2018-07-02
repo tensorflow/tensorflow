@@ -34,7 +34,7 @@ namespace rocm {
 class ROCMExecutor;
 class ScopedActivateContext;
 
-// Activates a ROCM context within an enclosing scope.
+// Activates a ROCM device within an enclosing scope.
 class ScopedActivateExecutorContext {
  public:
   // Form that takes a ROCM executor implementation.
