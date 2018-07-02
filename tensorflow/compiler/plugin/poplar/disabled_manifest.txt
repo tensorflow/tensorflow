@@ -18,3 +18,12 @@ ExcessivePaddingTest # Eager test crashing
 CategoricalTest.testSamplingCorrectness # Failing due to input size to poplibs reduction
 DepthwiseConv2DTest # Failing due to input size to poplibs convolution
 XlaSortOpTest # No Sort op
+Pooling3DTest.testMaxPoolGradValidPadding1_1_3d  # 3D grad_grad
+Pooling3DTest.testMaxPoolGradValidPadding2_1_6_3d  # 3D grad_grad
+Pooling3DTest.testMaxPoolGradValidPadding2_2_3d  # 3D grad_grad
+Pooling3DTest.testMaxPoolGradSamePadding1_1_3d  # 3D grad_grad
+Pooling3DTest.testMaxPoolGradSamePadding2_1_3d  # 3D grad_grad
+Pooling3DTest.testMaxPoolGradSamePadding2_2_3d  # 3D grad_grad
+Pooling3DTest.testMaxPoolGradSamePadding3_1_3d  # 3D grad_grad
+StatelessRandomOpsTest.testTruncatedNormalIsInRange  # Too slow
+RandomOpsTest.testTruncatedNormalIsInRange  # Too slow
