@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Greater"
+  endpoint {
+    name: "math.greater"
+  }
+  endpoint {
+    name: "greater"
+    deprecation_message: "tf.greater is deprecated, please use tf.math.greater instead."
+  }
+}

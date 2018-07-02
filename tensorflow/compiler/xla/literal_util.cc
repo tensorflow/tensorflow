@@ -2142,6 +2142,7 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       }
       break;
     case TUPLE:
+    case TOKEN:
       // Nothing to do but assign the shape which is done above.
       return;
     default:
@@ -2294,6 +2295,9 @@ StatusOr<std::unique_ptr<Literal>> Literal::CreateFromProto(
           }
           return Status::OK();
         }
+        if (piece->subshape().element_type() == TOKEN) {
+          return Status::OK();
+        }
 
         CHECK(ShapeUtil::IsArray(piece->subshape()));
         TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
@@ -2355,7 +2359,6 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal,
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
     : LiteralBase(), shape_(MakeUnique<Shape>(shape)) {
   CHECK(ShapeUtil::IsArray(*shape_));
-  CHECK_NE(src_buf_ptr, nullptr);
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = Piece();

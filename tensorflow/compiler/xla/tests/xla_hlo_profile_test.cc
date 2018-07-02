@@ -128,20 +128,23 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   se::StreamExecutor* executor = backend->default_stream_executor();
   DeviceMemoryAllocator* allocator = backend->memory_allocator();
   auto* transfer_manager = backend->transfer_manager();
+  TF_ASSERT_OK_AND_ASSIGN(
+      Backend::StreamPtr stream_ptr,
+      backend->BorrowStream(backend->default_device_ordinal()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer lhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
+      stream_ptr.get(), *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      executor, *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
+      stream_ptr.get(), *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
@@ -153,9 +156,6 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       &executable->hlo_profile_printer_data(),
       &executable->hlo_profile_index_map());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Backend::StreamPtr stream_ptr,
-      backend->BorrowStream(backend->default_device_ordinal()));
   ExecutableRunOptions exec_run_options;
   exec_run_options.set_stream(stream_ptr.get());
   exec_run_options.set_allocator(backend->memory_allocator());
@@ -168,6 +168,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       auto execution_result,
       executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
                                   &hlo_execution_profile));
+  TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
   *profile_output =
@@ -187,9 +188,9 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                           ClientLibrary::GetOrCreateLocalClient(platform));
 
   XlaBuilder builder(TestName());
-  auto result = builder.Tanh(builder.Add(
-      builder.Parameter(0, ShapeUtil::MakeShape(F32, {m, k}), "dot_lhs"),
-      builder.Parameter(1, ShapeUtil::MakeShape(F32, {k, n}), "dot_rhs")));
+  Tanh(Add(
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {m, k}), "dot_lhs"),
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {k, n}), "dot_rhs")));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 
@@ -255,30 +256,30 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
   XlaComputation condition;
   {
     XlaBuilder builder("condition");
-    auto state = builder.Parameter(0, while_result_shape, "state");
-    auto iteration = builder.GetTupleElement(state, 0);
-    builder.Gt(builder.ConstantR0<int32>(5), iteration);
+    auto state = Parameter(&builder, 0, while_result_shape, "state");
+    auto iteration = GetTupleElement(state, 0);
+    Gt(ConstantR0<int32>(&builder, 5), iteration);
     TF_ASSERT_OK_AND_ASSIGN(condition, builder.Build());
   }
 
   XlaComputation body;
   {
     XlaBuilder builder("body");
-    auto state = builder.Parameter(0, while_result_shape, "state");
-    auto matrix = builder.GetTupleElement(state, 1);
-    auto next_iteration = builder.Add(builder.GetTupleElement(state, 0),
-                                      builder.ConstantR0<int32>(1));
-    builder.Tuple({next_iteration, builder.Add(matrix, matrix)});
+    auto state = Parameter(&builder, 0, while_result_shape, "state");
+    auto matrix = GetTupleElement(state, 1);
+    auto next_iteration =
+        Add(GetTupleElement(state, 0), ConstantR0<int32>(&builder, 1));
+    Tuple(&builder, {next_iteration, Add(matrix, matrix)});
     TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
   XlaBuilder builder(TestName());
   auto initial_while_state =
-      builder.Tuple({builder.ConstantR0<int32>(0),
-                     builder.Parameter(0, matrix_shape, "initial_value")});
-  auto while_result = builder.While(condition, body, initial_while_state);
-  builder.Add(builder.GetTupleElement(while_result, 1),
-              builder.Parameter(1, matrix_shape, "other_value"));
+      Tuple(&builder, {ConstantR0<int32>(&builder, 0),
+                       Parameter(&builder, 0, matrix_shape, "initial_value")});
+  auto while_result = While(condition, body, initial_while_state);
+  Add(GetTupleElement(while_result, 1),
+      Parameter(&builder, 1, matrix_shape, "other_value"));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
 

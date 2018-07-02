@@ -295,7 +295,7 @@ __global__ void ColumnReduceMax16ColumnsKernel(
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
-  // This is the mimic the following, but without any constructors:
+  // This is to mimic the following, but without any constructors:
   //   __shared__ storage_type<value_type> partial_sums[32 * 33];
   __shared__ __align__(
       alignof(value_type)) char partial_sums_raw[32 * 33 * sizeof(value_type)];

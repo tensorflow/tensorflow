@@ -268,7 +268,7 @@ in `cifar10_input.py`.
 
 `cifar10_train.py` periodically @{tf.train.Saver$saves}
 all model parameters in
-@{$programmers_guide/saved_model$checkpoint files}
+@{$guide/saved_model$checkpoint files}
 but it does *not* evaluate the model. The checkpoint file
 will be used by `cifar10_eval.py` to measure the predictive
 performance (see [Evaluating a Model](#evaluating-a-model) below).

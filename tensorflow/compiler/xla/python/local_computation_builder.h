@@ -187,7 +187,7 @@ class LocalComputationBuilder {
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
 
-  std::unique_ptr<Shape> GetShape(const LocalOp& operand);
+  StatusOr<Shape> GetShape(const LocalOp& operand);
 
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();
@@ -270,8 +270,7 @@ class LocalComputationBuilder {
 
   LocalOp Map(tensorflow::gtl::ArraySlice<LocalOp> operands,
               const LocalComputation& local_computation,
-              tensorflow::gtl::ArraySlice<int64> dimensions,
-              tensorflow::gtl::ArraySlice<LocalOp> static_operands);
+              tensorflow::gtl::ArraySlice<int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
                  const LocalComputation& local_computation,
@@ -333,6 +332,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(Min)
   _FORWARD_BINOP(And)
   _FORWARD_BINOP(Or)
+  _FORWARD_BINOP(Xor)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)

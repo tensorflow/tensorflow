@@ -338,23 +338,23 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
     HANDLE_OPERATORTYPENAME_CASE(Sin)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowAssert)
+    HANDLE_OPERATORTYPENAME_CASE(All)
+    HANDLE_OPERATORTYPENAME_CASE(Assert)
     HANDLE_OPERATORTYPENAME_CASE(ExpandDims)
     HANDLE_OPERATORTYPENAME_CASE(Fill)
     HANDLE_OPERATORTYPENAME_CASE(FloorMod)
     HANDLE_OPERATORTYPENAME_CASE(FloorDiv)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowGreater)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowGreaterEqual)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowIdentity)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowLess)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowLessEqual)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMatMul)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMax)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMaximum)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMerge)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMin)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
+    HANDLE_OPERATORTYPENAME_CASE(Greater)
+    HANDLE_OPERATORTYPENAME_CASE(GreaterEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Identity)
+    HANDLE_OPERATORTYPENAME_CASE(Less)
+    HANDLE_OPERATORTYPENAME_CASE(LessEqual)
+    HANDLE_OPERATORTYPENAME_CASE(MatMul)
+    HANDLE_OPERATORTYPENAME_CASE(Max)      //  Reduction Max
+    HANDLE_OPERATORTYPENAME_CASE(Maximum)  //  Element-wise Maximum
+    HANDLE_OPERATORTYPENAME_CASE(Merge)
+    HANDLE_OPERATORTYPENAME_CASE(Min)      //  Reduction Min
+    HANDLE_OPERATORTYPENAME_CASE(Minimum)  //  Element-wise Minimum
     HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(PadV2)
@@ -362,22 +362,22 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Stack)
     HANDLE_OPERATORTYPENAME_CASE(Range)
     HANDLE_OPERATORTYPENAME_CASE(Rank)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowReshape)
+    HANDLE_OPERATORTYPENAME_CASE(Reshape)
     HANDLE_OPERATORTYPENAME_CASE(Squeeze)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowRsqrt)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowShape)
+    HANDLE_OPERATORTYPENAME_CASE(Rsqrt)
+    HANDLE_OPERATORTYPENAME_CASE(Shape)
     HANDLE_OPERATORTYPENAME_CASE(Slice)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSplit)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSqrt)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSquare)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSwitch)
+    HANDLE_OPERATORTYPENAME_CASE(Split)
+    HANDLE_OPERATORTYPENAME_CASE(Sqrt)
+    HANDLE_OPERATORTYPENAME_CASE(Square)
+    HANDLE_OPERATORTYPENAME_CASE(Switch)
     HANDLE_OPERATORTYPENAME_CASE(Sub)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowSum)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowTile)
+    HANDLE_OPERATORTYPENAME_CASE(Sum)
+    HANDLE_OPERATORTYPENAME_CASE(Tile)
     HANDLE_OPERATORTYPENAME_CASE(Transpose)
     HANDLE_OPERATORTYPENAME_CASE(TransposeConv)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowConcat)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowConcatV2)
+    HANDLE_OPERATORTYPENAME_CASE(Concat)
+    HANDLE_OPERATORTYPENAME_CASE(ConcatV2)
     HANDLE_OPERATORTYPENAME_CASE(Cast)
     HANDLE_OPERATORTYPENAME_CASE(Floor)
     HANDLE_OPERATORTYPENAME_CASE(Gather)
@@ -388,14 +388,15 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
     HANDLE_OPERATORTYPENAME_CASE(ArgMax)
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
+    HANDLE_OPERATORTYPENAME_CASE(Unsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
     HANDLE_OPERATORTYPENAME_CASE(DynamicPartition)
     HANDLE_OPERATORTYPENAME_CASE(DynamicStitch)
     HANDLE_OPERATORTYPENAME_CASE(Select)
     HANDLE_OPERATORTYPENAME_CASE(SparseToDense)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowEqual)
-    HANDLE_OPERATORTYPENAME_CASE(TensorFlowNotEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Equal)
+    HANDLE_OPERATORTYPENAME_CASE(NotEqual)
+    HANDLE_OPERATORTYPENAME_CASE(Pow)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -403,7 +404,7 @@ const char* OperatorTypeName(OperatorType type) {
 }
 
 string HelpfulOperatorTypeName(const Operator& op) {
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     return toco::port::StringF(
         "(Unsupported TensorFlow op: %s)",
         static_cast<const TensorFlowUnsupportedOperator&>(op).tensorflow_op);
@@ -413,16 +414,20 @@ string HelpfulOperatorTypeName(const Operator& op) {
 
 bool OperatorSupportsFusedActivation(OperatorType type) {
   switch (type) {
-    case OperatorType::kConcatenation:
-    case OperatorType::kFakeQuant:
-    case OperatorType::kGather:
-    case OperatorType::kSlice:
-    case OperatorType::kSqueeze:
-    case OperatorType::kTensorFlowReshape:
-    case OperatorType::kTensorFlowSplit:
-      return false;
-    default:
+    case OperatorType::kAdd:
+    case OperatorType::kAveragePool:
+    case OperatorType::kBatchNormalization:
+    case OperatorType::kConv:
+    case OperatorType::kDepthwiseConv:
+    case OperatorType::kDiv:
+    case OperatorType::kFullyConnected:
+    case OperatorType::kL2Pool:
+    case OperatorType::kMaxPool:
+    case OperatorType::kMul:
+    case OperatorType::kSub:
       return true;
+    default:
+      return false;
   }
 }
 
@@ -2193,6 +2198,53 @@ void UseArraysExtraInfo(Model* model, bool quantize_output) {
         }
       }
     }
+  }
+}
+
+void UndoWeightsShuffling(Model* model) {
+  for (const auto& op : model->operators) {
+    if (op->type != toco::OperatorType::kFullyConnected) {
+      continue;
+    }
+    const auto& fc_op = static_cast<toco::FullyConnectedOperator&>(*op);
+    if (fc_op.weights_format == FullyConnectedWeightsFormat::kDefault) {
+      continue;
+    }
+    const string& weights_name = fc_op.inputs[1];
+    QCHECK_EQ(CountOpsWithInput(*model, weights_name), 1);
+    auto& weights_array = model->GetArray(weights_name);
+    QCHECK(weights_array.data_type == ArrayDataType::kUint8);
+    auto& weights_data =
+        weights_array.GetMutableBuffer<toco::ArrayDataType::kUint8>().data;
+    const auto& weights_shape = weights_array.shape();
+    QCHECK_EQ(weights_shape.dimensions_count(), 2);
+    const int rows = weights_shape.dims(0);
+    const int cols = weights_shape.dims(1);
+    QCHECK_EQ(rows % 4, 0);
+    QCHECK_EQ(cols % 16, 0);
+    CHECK_EQ(rows * cols, weights_data.size());
+    // Compute the de-shuffled weights
+    std::vector<uint8> deshuffled_data(weights_data.size());
+    uint8* shuffled_data_ptr = weights_data.data();
+    for (int r = 0; r < rows; r += 4) {
+      for (int c = 0; c < cols; c += 16) {
+        for (int i = 0; i < 4; i++) {
+          uint8* deshuffled_data_ptr =
+              deshuffled_data.data() + (r + i) * cols + c;
+          for (int j = 0; j < 16; j++) {
+            uint8 shuffled_val = *shuffled_data_ptr++;
+            // Deshuffling isn't only about deshuffling the storage layout,
+            // it's also about undoing the flipping of the sign bit, which is
+            // performed on the shuffled weights.
+            uint8 deshuffled_val = shuffled_val ^ 0x80;
+            *deshuffled_data_ptr++ = deshuffled_val;
+          }
+        }
+      }
+    }
+    CHECK_EQ(shuffled_data_ptr, weights_data.data() + rows * cols);
+    // Switch this FC op to using the deshuffled weights.
+    weights_data = std::move(deshuffled_data);
   }
 }
 

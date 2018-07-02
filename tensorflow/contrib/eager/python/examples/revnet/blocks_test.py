@@ -240,13 +240,12 @@ class _ResidualTest(tf.test.TestCase):
       x = tf.random_normal(shape=data_shape)
       residual = blocks._Residual(
           filters=16, strides=(1, 1), input_shape=input_shape)
+
       y_tr, y_ev = residual(x, training=True), residual(x, training=False)
-      x_ = residual.backward(y_tr, training=True)
-      # The numerical loss is alarming; reconstructed inputs could differ from
-      # the original inputs often by more than 1e-3
-      self.assertAllClose(x, x_, rtol=1e-01, atol=1e-01)
       x_ = residual.backward(y_ev, training=False)
-      self.assertAllClose(x, x_, rtol=1e-01, atol=1e-01)
+      self.assertAllClose(x, x_, rtol=1e-1, atol=1e-1)
+      x_ = residual.backward(y_tr, training=True)  # This updates moving avg
+      self.assertAllClose(x, x_, rtol=1e-1, atol=1e-1)
 
   def test_backward_channels_last(self):
     """Test `backward` function with `channels_last` data format."""
@@ -259,12 +258,12 @@ class _ResidualTest(tf.test.TestCase):
           strides=(1, 1),
           input_shape=input_shape,
           data_format="channels_last")
+
       y_tr, y_ev = residual(x, training=True), residual(x, training=False)
-      x_ = residual.backward(y_tr, training=True)
-      # Egregious numerical error
-      self.assertAllClose(x, x_, rtol=1e-01, atol=1e-01)
       x_ = residual.backward(y_ev, training=False)
-      self.assertAllClose(x, x_, rtol=1e-01, atol=1e-01)
+      self.assertAllClose(x, x_, rtol=1e-1, atol=1e-1)
+      x_ = residual.backward(y_tr, training=True)  # This updates moving avg
+      self.assertAllClose(x, x_, rtol=1e-1, atol=1e-1)
 
   def test_backward_grads_and_vars_channels_first(self):
     """Test `backward_grads` function with `channels_first` data format."""
@@ -278,6 +277,8 @@ class _ResidualTest(tf.test.TestCase):
       dy = tf.random_normal(shape=data_shape)
       residual = blocks._Residual(
           filters=16, strides=(1, 1), input_shape=input_shape)
+
+      vars_and_vals = residual.get_moving_stats()
       dx_tr, grads_tr, vars_tr = residual.backward_grads_and_vars(
           x, dy=dy, training=True)
       dx_ev, grads_ev, vars_ev = residual.backward_grads_and_vars(
@@ -289,10 +290,23 @@ class _ResidualTest(tf.test.TestCase):
       self.assertTrue(isinstance(vars_ev, list))
       for grad_tr, var_tr, grad_ev, var_ev in zip(grads_tr, vars_tr, grads_ev,
                                                   vars_ev):
-        if grad_tr is not None:  # Batch norm moving mean, var gives None grad
-          self.assertEqual(grad_tr.shape, grad_ev.shape)
-          self.assertEqual(var_tr.shape, var_ev.shape)
-          self.assertEqual(grad_tr.shape, var_tr.shape)
+        self.assertEqual(grad_tr.shape, grad_ev.shape)
+        self.assertEqual(var_tr.shape, var_ev.shape)
+        self.assertEqual(grad_tr.shape, var_tr.shape)
+
+      # Compare against the true gradient computed by the tape
+      residual.restore_moving_stats(vars_and_vals)
+      with tf.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        y = residual(x, training=True)
+      grads = tape.gradient(
+          y, [x] + residual.trainable_variables, output_gradients=[dy])
+      dx_tr_true, grads_tr_true = grads[0], grads[1:]
+
+      del tape
+
+      self.assertAllClose(dx_tr, dx_tr_true, rtol=1e-1, atol=1e-1)
+      self.assertAllClose(grads_tr, grads_tr_true, rtol=1e-1, atol=1e-1)
 
   def test_backward_grads_and_vars_channels_last(self):
     """Test `backward_grads` function with `channels_last` data format."""
@@ -306,6 +320,7 @@ class _ResidualTest(tf.test.TestCase):
           strides=(1, 1),
           input_shape=input_shape,
           data_format="channels_last")
+
       dx_tr, grads_tr, vars_tr = residual.backward_grads_and_vars(
           x, dy=dy, training=True)
       dx_ev, grads_ev, vars_ev = residual.backward_grads_and_vars(
@@ -317,10 +332,9 @@ class _ResidualTest(tf.test.TestCase):
       self.assertTrue(isinstance(vars_ev, list))
       for grad_tr, var_tr, grad_ev, var_ev in zip(grads_tr, vars_tr, grads_ev,
                                                   vars_ev):
-        if grad_tr is not None:  # Batch norm moving mean, var gives None grad
-          self.assertEqual(grad_tr.shape, grad_ev.shape)
-          self.assertEqual(var_tr.shape, var_ev.shape)
-          self.assertEqual(grad_tr.shape, var_tr.shape)
+        self.assertEqual(grad_tr.shape, grad_ev.shape)
+        self.assertEqual(var_tr.shape, var_ev.shape)
+        self.assertEqual(grad_tr.shape, var_tr.shape)
 
 
 class _ResidualInnerTest(tf.test.TestCase):

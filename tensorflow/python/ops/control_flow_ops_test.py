@@ -939,7 +939,7 @@ class CaseTest(test_util.TensorFlowTestCase):
 
 class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testWhileLoopWithSingleVariable(self):
     i = constant_op.constant(0)
     c = lambda i: math_ops.less(i, 10)
@@ -948,7 +948,7 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
 
     self.assertEqual(self.evaluate(r), 10)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerWhileLoopWithSingleVariable_bodyReturnsTuple(self):
     i = constant_op.constant(0)
     c = lambda i: math_ops.less(i, 10)

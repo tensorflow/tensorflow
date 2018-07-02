@@ -26,10 +26,10 @@ limitations under the License.
 namespace xla {
 
 // Domain isolation is the task of placing kDomain instructions between HLO
-// instructions having different shrading. A kDomain instruction is essentially
+// instructions having different sharding. A kDomain instruction is essentially
 // used to break an HLO graph edge connecting two instructions with different
 // sharding. If a set of connected instructions have all the same sharding, no
-// kDomain instruciton will be placed.
+// kDomain instruction will be placed.
 class HloDomainIsolator : public HloPassInterface {
  public:
   // Creates a new kDomain instruction for the edge between the use instruction

@@ -359,10 +359,13 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteBool:
       *bytes = sizeof(bool) * count;
       break;
+    case kTfLiteComplex64:
+      *bytes = sizeof(std::complex<float>) * count;
+      break;
     default:
       ReportError(&context_,
-                  "Only float32, int16, int32, int64, uint8, bool supported "
-                  "currently.");
+                  "Only float32, int16, int32, int64, uint8, bool, complex64 "
+                  "supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -605,8 +608,16 @@ TfLiteStatus Interpreter::Invoke() {
     }
 
     EnsureTensorsVectorCapacity();
+    tensor_resized_since_op_invoke_ = false;
     if (OpInvoke(registration, &node) == kTfLiteError) {
       status = kTfLiteError;
+    }
+
+    // Force execution prep for downstream ops if the latest op triggered the
+    // resize of a dynamic tensor.
+    if (tensor_resized_since_op_invoke_ &&
+        HasDynamicTensor(context_, node.outputs)) {
+      next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
     }
   }
 
@@ -783,6 +794,8 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
   if (tensor->allocation_type == kTfLiteArenaRw ||
       tensor->allocation_type == kTfLiteDynamic ||
       tensor->allocation_type == kTfLiteArenaRwPersistent) {
+    tensor_resized_since_op_invoke_ |=
+        TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
       size_t bytesRequired;
       TfLiteStatus status = BytesRequired(tensor->type, new_size->data,

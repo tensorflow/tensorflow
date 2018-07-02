@@ -21,7 +21,6 @@ import random
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import grouping
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -176,37 +175,27 @@ class GroupByReducerTest(test.TestCase):
       dataset.apply(
           grouping.group_by_reducer(lambda _: "wrong", reducer))
 
+  def testTuple(self):
+    def init_fn(_):
+      return np.array([], dtype=np.int64), np.int64(0)
 
-class GroupByReducerSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    def reduce_fn(state, value):
+      s1, s2 = state
+      v1, v2 = value
+      return array_ops.concat([s1, [v1]], 0), s2 + v2
 
-  def _build_dataset(self, components):
-    reducer = grouping.Reducer(
-        init_func=lambda _: np.int64(0),
-        reduce_func=lambda x, y: x + y,
-        finalize_func=lambda x: x)
+    def finalize_fn(s1, s2):
+      return s1, s2
 
-    return dataset_ops.Dataset.from_tensor_slices(components).apply(
-        grouping.group_by_reducer(lambda x: x % 5, reducer))
-
-  def testCoreGroupByReducer(self):
-    components = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], dtype=np.int64)
-    self.verify_unused_iterator(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_init_before_restore(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_multiple_breaks(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_reset_restored_iterator(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    self.verify_restore_in_empty_graph(
-        lambda: self._build_dataset(components), 5, verify_exhausted=True)
-    diff_components = np.array([5, 4, 3, 2, 1, 0], dtype=np.int64)
-    self.verify_restore_in_modified_graph(
-        lambda: self._build_dataset(components),
-        lambda: self._build_dataset(diff_components),
-        5,
-        verify_exhausted=True)
+    reducer = grouping.Reducer(init_fn, reduce_fn, finalize_fn)
+    dataset = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(10), dataset_ops.Dataset.range(10))).apply(
+            grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
+    get_next = dataset.make_one_shot_iterator().get_next()
+    with self.test_session() as sess:
+      x, y = sess.run(get_next)
+      self.assertAllEqual(x, np.asarray([x for x in range(10)]))
+      self.assertEqual(y, 45)
 
 
 class GroupByWindowTest(test.TestCase):
@@ -351,34 +340,6 @@ class GroupByWindowTest(test.TestCase):
                               multiple_of_10_result[:, :tight_result.shape[1]])
           counts.append(tight_result.shape[0])
       self.assertEqual(len(components), sum(counts))
-
-
-class GroupByWindowSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_dataset(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
-        grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4), 4))
-
-  def testCoreGroupByWindow(self):
-    components = np.array(
-        [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
-    self.verify_unused_iterator(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_init_before_restore(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_multiple_breaks(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_reset_restored_iterator(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    self.verify_restore_in_empty_graph(
-        lambda: self._build_dataset(components), 12, verify_exhausted=False)
-    diff_components = np.array([0, 0, 0, 1, 1, 1], dtype=np.int64)
-    self.verify_restore_in_modified_graph(
-        lambda: self._build_dataset(components),
-        lambda: self._build_dataset(diff_components),
-        12,
-        verify_exhausted=False)
 
 
 # NOTE(mrry): These tests are based on the tests in bucket_ops_test.py.

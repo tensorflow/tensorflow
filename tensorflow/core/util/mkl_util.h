@@ -1914,7 +1914,7 @@ class MklPrimitiveFactory {
   }
 
  private:
-  static inline std::unordered_map<std::string, MklPrimitive*> &GetHashMap() {
+  static inline std::unordered_map<std::string, MklPrimitive*>& GetHashMap() {
     static thread_local std::unordered_map<std::string, MklPrimitive*> map_;
     return map_;
   }

@@ -659,6 +659,13 @@ class MapDatasetTest(test.TestCase):
         break
     self.assertTrue(found_warning)
 
+  def testNestedDatasetError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        NotImplementedError, r"The Dataset.map\(\) transformation does not "
+        "currently support nested datasets as outputs."):
+      _ = dataset.map(dataset_ops.Dataset.from_tensor_slices)
+
 
 class MapDatasetBenchmark(test.Benchmark):
 

@@ -258,6 +258,13 @@ config_setting(
 )
 
 config_setting(
+    name = "with_cuda_support_windows_override",
+    define_values = {"using_cuda_nvcc": "true"},
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "with_gcp_support_android_override",
     define_values = {"with_gcp_support": "true"},
     values = {"crosstool_top": "//external:android/crosstool"},
@@ -404,6 +411,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "-//third_party/tensorflow/python/estimator",
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
@@ -578,11 +586,20 @@ gen_api_init_files(
 
 py_library(
     name = "tensorflow_py",
-    srcs = [
-        ":tensorflow_python_api_gen",
-        "//tensorflow/python/estimator/api:estimator_python_api_gen",
-    ],
+    srcs = ["//tensorflow/python/estimator/api:estimator_python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python"],
+    deps = [
+        ":tensorflow_py_no_contrib",
+        "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_library(
+    name = "tensorflow_py_no_contrib",
+    srcs = [":tensorflow_python_api_gen"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:no_contrib"],
 )

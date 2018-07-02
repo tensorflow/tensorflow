@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client/lib:numeric",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/core:core_cpu",
@@ -460,5 +461,15 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_op_registry_test",
+    srcs = ["xla_op_registry_test.cc"],
+    deps = [
+        ":xla_compiler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

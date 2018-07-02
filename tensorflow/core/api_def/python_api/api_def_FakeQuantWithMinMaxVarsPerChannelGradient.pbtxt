@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxVarsPerChannelGradient"
+  endpoint {
+    name: "quantization.fake_quant_with_min_max_vars_per_channel_gradient"
+  }
+  endpoint {
+    name: "fake_quant_with_min_max_vars_per_channel_gradient"
+    deprecation_message: "tf.fake_quant_with_min_max_vars_per_channel_gradient is deprecated, please use tf.quantization.fake_quant_with_min_max_vars_per_channel_gradient instead."
+  }
+}

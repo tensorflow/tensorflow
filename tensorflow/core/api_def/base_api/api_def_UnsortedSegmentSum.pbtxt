@@ -20,7 +20,7 @@ Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
 segments.
 
 Computes a tensor such that
-`(output[i] = sum_{j...} data[j...]` where the sum is over tuples `j...` such
+\\(output[i] = sum_{j...} data[j...]\\) where the sum is over tuples `j...` such
 that `segment_ids[j...] == i`.  Unlike `SegmentSum`, `segment_ids`
 need not be sorted and need not cover all values in the full
 range of valid values.

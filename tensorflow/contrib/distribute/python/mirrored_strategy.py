@@ -31,7 +31,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import device_util
@@ -108,6 +107,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     tower_local = kwargs.pop("tower_local_reduce_method", None)
     if tower_local is not None:
       kwargs["trainable"] = False
+
+    # Ignore user-specified caching device, not needed for mirrored variables.
+    kwargs.pop("caching_device", None)
 
     # TODO(josh11b,apassos): It would be better if variable initialization
     # was never recorded on the tape instead of having to do this manually
@@ -283,8 +285,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def map(self, map_over, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
     index = {}
-    i = 0
-    for m in map_over:
+    for i, m in enumerate(map_over):
       d = self._devices[i % len(self._devices)]
       with ops.device(d):
         l = index.get(d, [])
@@ -308,9 +309,29 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._cross_tower_ops
 
   def _reduce(self, method_string, value, destinations):
-    if len(self._devices) == 1 and not isinstance(value, values.PerDevice):
-      value = values.PerDevice({self._devices[0]: value})
-    assert isinstance(value, values.PerDevice)
+    assert not isinstance(value, values.Mirrored)
+    if not isinstance(value, values.PerDevice):
+      if value == 0:
+        return 0
+      if method_string == "mean":
+        return self._broadcast(value, destinations)
+
+      cross_tower_ops_lib.validate_destinations(destinations)
+      if len(self._devices) == 1:
+        if destinations:
+          # TODO(anjalisridhar): Moves these methods to a device utility file?
+          devices = cross_tower_ops_lib.get_devices_from(destinations)
+          if len(devices) == 1:
+            with ops.device(devices[0]):
+              return array_ops.identity(value)
+          else:
+            value_updates = {}
+            for d in devices:
+              with ops.device(d):
+                value_updates[d] = array_ops.identity(value)
+            return values.Mirrored(value_updates)
+      raise ValueError("A non PerDevice value cannot be reduced with the given "
+                       "method_string.")
 
     return self._get_cross_tower_ops().reduce(
         method_string, value, destinations=destinations)
@@ -320,14 +341,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                                                     value_destination_pairs)
 
   def _update(self, var, fn, *args, **kwargs):
-    # TODO(josh11b): Also support TowerLocalVariables here? If so, args and
-    # kwargs don't need to be mirrored.
-    assert isinstance(var, values.MirroredVariable)
     # TODO(josh11b): In eager mode, use one thread per device.
+    assert isinstance(var, values.DistributedVariable)
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+        # If args and kwargs are not mirrored, the value is returned as is.
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
@@ -347,36 +367,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def read_var(self, tower_local_var):
     """Read the aggregate value of a tower-local variable."""
     if isinstance(tower_local_var, values.TowerLocalVariable):
-      return math_ops.add_n(self.unwrap(tower_local_var))
+      return tower_local_var._get_cross_tower()  # pylint: disable=protected-access
     assert isinstance(tower_local_var, values.Mirrored)
     return array_ops.identity(tower_local_var.get())
-
-  def _fetch(self, val, destination, fn):
-    """Return a copy of `val` or `fn(val)` on `destination`."""
-    if isinstance(val, values.TowerLocalVariable):
-      val = self.reduce(val.reduce_method, val, destinations=destination)
-      with ops.device(destination):
-        return fn(self.unwrap(val)[0])
-
-    assert isinstance(val, values.Mirrored), (
-        "val = %s (type %s)" % (val, val.__class__.__name__))
-    if val.on_device(destination):
-      with ops.device(destination):
-        # Use an identity here to make sure we are returning a tensor
-        # instead of e.g. a variable object.
-        return array_ops.identity(fn(val.get(destination)))
-    device = None
-    for d in self._devices:
-      if val.on_device(d):
-        device = d
-        break
-    assert device is not None, (
-        "Could not find destination %s in list of devices %s." %
-        (destination, val.devices))
-    with ops.device(device):
-      v = fn(val.get(device))
-    with ops.device(destination):
-      return array_ops.identity(v)
 
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):

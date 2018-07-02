@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -80,8 +81,8 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
-  tensorflow::RemoteRendezvous* r = env_->rendezvous_mgr->Find(0);
   std::vector<tensorflow::Device*> devices;
+
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       // TODO(nareshmodi): Correctly set the SessionOptions.
       SessionOptions(),
@@ -89,7 +90,6 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                       request->server_def().job_name().data(),
                       request->server_def().task_index()),
       &devices));
-
   response->mutable_device_attributes()->Reserve(devices.size());
   for (auto& d : devices) {
     *response->add_device_attributes() = d->attributes();
@@ -97,6 +97,19 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
 
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
       new tensorflow::DeviceMgr(devices));
+
+  auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
+  auto session_name = strings::StrCat("eager_", request->rendezvous_id());
+  TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
+      session_name, request->server_def(), true));
+
+  std::shared_ptr<WorkerSession> worker_session;
+  TF_RETURN_IF_ERROR(env_->session_mgr->WorkerSessionForSession(
+      session_name, &worker_session));
+
+  // Initialize remote tensor communication based on worker session.
+  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
   std::unique_ptr<tensorflow::EagerContext> ctx(new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
@@ -115,8 +128,20 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   return Status::OK();
 }
 
+Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
+  const tensorflow::Tensor* t = nullptr;
+
+  // TODO(nareshmodi): This call makes async calls sync calls. Fix this.
+  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+
+  t->shape().AsProto(proto);
+
+  return Status::OK();
+}
+
 Status EagerServiceImpl::ExecuteOp(const Operation& operation,
-                                   ServerContext* server_context) {
+                                   ServerContext* server_context,
+                                   QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
   const tensorflow::AttrTypeMap* types;
@@ -159,6 +184,10 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   server_context->AddOperationOutputs(retvals, operation.id());
 
+  for (auto* handle : retvals) {
+    TF_RETURN_IF_ERROR(TensorHandleShape(handle, queue_response->add_shape()));
+  }
+
   return Status::OK();
 }
 
@@ -169,8 +198,9 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   core::ScopedUnref context_unref(context);
 
   for (const auto& item : request->queue()) {
+    auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      TF_RETURN_IF_ERROR(ExecuteOp(item.operation(), context));
+      TF_RETURN_IF_ERROR(ExecuteOp(item.operation(), context, queue_response));
     } else {
       TF_RETURN_IF_ERROR(context->DeleteTensorHandle(
           RemoteTensorHandleInternal(item.handle_to_decref())));

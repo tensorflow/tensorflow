@@ -345,7 +345,7 @@ class Conv2DTest(test.TestCase):
         self.assertAllClose(expected, np.ravel(value), atol=tol, rtol=tol)
         self.assertShapeEqual(value, conv)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D1x1Filter(self):
     expected_output = [
         30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
@@ -358,7 +358,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter2x1Dilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[1, 4, 4, 1],
@@ -367,7 +367,7 @@ class Conv2DTest(test.TestCase):
         dilations=[2, 1],
         padding="VALID")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DEmpty(self):
     expected_output = []
     self._VerifyValues(
@@ -377,7 +377,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DEmptyDilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[0, 2, 3, 3],
@@ -386,7 +386,7 @@ class Conv2DTest(test.TestCase):
         dilations=[2, 1],
         padding="VALID")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Filter(self):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0]
@@ -397,7 +397,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2FilterDilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[1, 2, 3, 3],
@@ -406,7 +406,7 @@ class Conv2DTest(test.TestCase):
         dilations=[1, 2],
         padding="VALID")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D1x2Filter(self):
     # The outputs are computed using third_party/py/IPython/notebook.
     expected_output = [
@@ -420,7 +420,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D1x2FilterDilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[1, 2, 3, 3],
@@ -429,7 +429,7 @@ class Conv2DTest(test.TestCase):
         dilations=[2, 1],
         padding="VALID")
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2FilterStride2(self):
     expected_output = [2271.0, 2367.0, 2463.0]
     self._VerifyValues(
@@ -439,7 +439,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2FilterStride2Same(self):
     expected_output = [2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0]
     self._VerifyValues(
@@ -449,7 +449,7 @@ class Conv2DTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2FilterStride1x2(self):
     expected_output = [58.0, 78.0, 98.0, 118.0, 138.0, 158.0]
     self._VerifyValues(
@@ -459,7 +459,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DKernelSmallerThanStrideValid(self):
     expected_output = [65, 95, 275, 305]
     self._VerifyValues(
@@ -469,7 +469,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DKernelSmallerThanStrideSame(self):
     self._VerifyValues(
         tensor_in_sizes=[1, 3, 3, 1],
@@ -492,7 +492,7 @@ class Conv2DTest(test.TestCase):
         padding="SAME",
         expected=[44, 28, 41, 16])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DKernelSizeMatchesInputSize(self):
     self._VerifyValues(
         tensor_in_sizes=[1, 2, 2, 1],
@@ -501,7 +501,7 @@ class Conv2DTest(test.TestCase):
         padding="VALID",
         expected=[50, 60])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DKernelSizeMatchesInputSizeDilation(self):
     self._VerifyDilatedConvValues(
         tensor_in_sizes=[1, 3, 3, 1],
@@ -589,7 +589,7 @@ class Conv2DTest(test.TestCase):
     for i in range(1, len(values)):
       self.assertAllClose(values[0], values[i], rtol=1e-2, atol=1e-2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth1ValidBackpropInput(self):
     expected_output = [1.0, 4.0, 4.0, 3.0, 10.0, 8.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -604,7 +604,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DEmptyBackpropInput(self):
     expected_output = []
     for (data_format, use_gpu) in GetTestConfigs():
@@ -619,7 +619,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth3ValidBackpropInput(self):
     expected_output = [
         14.0, 32.0, 50.0, 100.0, 163.0, 226.0, 167.0, 212.0, 257.0, 122.0,
@@ -639,7 +639,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-4)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth3ValidBackpropInputStride1x2(self):
     expected_output = [
         1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 7.0, 12.0, 11.0, 18.0, 15.0, 24.0, 12.0,
@@ -657,7 +657,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DStrideTwoFilterOneSameBackpropInput(self):
     expected_output = [
         1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 3.0, 0.0, 4.0, 0.0, 0.0, 0.0,
@@ -675,7 +675,7 @@ class Conv2DTest(test.TestCase):
           use_gpu=use_gpu,
           err=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DKernelSizeMatchesInputSizeBackpropInput(self):
     expected_output = [5.0, 11.0, 17.0, 23.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -759,7 +759,7 @@ class Conv2DTest(test.TestCase):
     for i in range(1, len(values)):
       self.assertAllClose(values[0], values[i], rtol=1e-4, atol=1e-4)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth1ValidBackpropFilter(self):
     expected = [5.0, 8.0, 14.0, 17.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -773,7 +773,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DEmptyBackpropFilter(self):
     expected = []
     for (data_format, use_gpu) in GetTestConfigs():
@@ -787,7 +787,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DBackpropFilterWithEmptyInput(self):
     expected = [0, 0, 0, 0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -801,7 +801,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth3ValidBackpropFilter(self):
     expected = [
         17.0, 22.0, 27.0, 22.0, 29.0, 36.0, 27.0, 36.0, 45.0, 32.0, 43.0, 54.0,
@@ -820,7 +820,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2D2x2Depth3ValidBackpropFilterStride1x2(self):
     expected = [161.0, 182.0, 287.0, 308.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -834,7 +834,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DStrideTwoFilterOneSameBackpropFilter(self):
     expected_output = [78.]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -848,7 +848,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConv2DKernelSizeMatchesInputSizeBackpropFilter(self):
     expected_output = [1.0, 2.0, 2.0, 4.0, 3.0, 6.0, 4.0, 8.0]
     for (data_format, use_gpu) in GetTestConfigs():
@@ -1897,19 +1897,19 @@ if __name__ == "__main__":
   for index, (input_size_, filter_size_, output_size_, stride_,
               padding_) in enumerate(GetShrunkInceptionShapes()):
     setattr(Conv2DTest, "testInceptionFwd_" + str(index),
-            test_util.run_in_graph_and_eager_modes()(
+            test_util.run_in_graph_and_eager_modes(
                 GetInceptionFwdTest(input_size_, filter_size_, stride_,
                                     padding_)))
     setattr(
         Conv2DTest, "testInceptionFwdDilatedConv_" + str(index),
-        test_util.run_in_graph_and_eager_modes()(GetInceptionFwdDilatedConvTest(
+        test_util.run_in_graph_and_eager_modes(GetInceptionFwdDilatedConvTest(
             input_size_, filter_size_, stride_, padding_)))
     setattr(Conv2DTest, "testInceptionBackInput_" + str(index),
-            test_util.run_in_graph_and_eager_modes()(
+            test_util.run_in_graph_and_eager_modes(
                 GetInceptionBackInputTest(input_size_, filter_size_,
                                           output_size_, stride_, padding_)))
     setattr(Conv2DTest, "testInceptionBackFilter_" + str(index),
-            test_util.run_in_graph_and_eager_modes()(
+            test_util.run_in_graph_and_eager_modes(
                 GetInceptionBackFilterTest(input_size_, filter_size_,
                                            output_size_, [stride_, stride_],
                                            padding_)))
@@ -1924,17 +1924,17 @@ if __name__ == "__main__":
   fshape = [1, 1, 1, 256]
   oshape = [1, 400, 400, 256]
   setattr(Conv2DTest, "testInceptionFwd_No_Winograd_Nonfused",
-          test_util.run_in_graph_and_eager_modes()(
+          test_util.run_in_graph_and_eager_modes(
               GetInceptionFwdTest(ishape, fshape, 1, "SAME", gpu_only=True)))
   setattr(Conv2DTest, "testInceptionFwdDilatedConv_No_Winograd_Nonfused",
-          test_util.run_in_graph_and_eager_modes()(
+          test_util.run_in_graph_and_eager_modes(
               GetInceptionFwdDilatedConvTest(ishape, fshape, 1, "SAME")))
   setattr(Conv2DTest, "testInceptionBackInput_No_Winograd_Nonfused",
-          test_util.run_in_graph_and_eager_modes()(
+          test_util.run_in_graph_and_eager_modes(
               GetInceptionBackInputTest(ishape, fshape, oshape, 1, "SAME",
                                         gpu_only=True)))
   setattr(Conv2DTest, "testInceptionBackFilter_No_Winograd_Nonfused",
-          test_util.run_in_graph_and_eager_modes()(
+          test_util.run_in_graph_and_eager_modes(
               GetInceptionBackFilterTest(ishape, fshape, oshape, [1, 1], "SAME",
                                          gpu_only=True)))
   test.main()

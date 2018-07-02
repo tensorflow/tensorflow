@@ -377,7 +377,7 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
 }
 
 string ShardingMetadata::ToString() const {
-  return sharding_ != nullptr ? sharding_->ToString() : "None";
+  return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 
 Status ShardingMetadata::NormalizeInstructions(

@@ -143,7 +143,6 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
-        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -170,41 +169,6 @@ cc_library(
 )
 
 cc_library(
-    name = "toco_saved_model",
-    srcs = [
-        "toco_saved_model.cc",
-    ],
-    hdrs = [
-        "toco_saved_model.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":model_cmdline_flags",
-        ":model_flags_proto_cc",
-        ":toco_flags_proto_cc",
-        ":types_proto_cc",
-        "//tensorflow/cc/tools:freeze_saved_model",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "toco_saved_model_test",
-    srcs = ["toco_saved_model_test.cc"],
-    deps = [
-        ":model_cmdline_flags",
-        ":toco_cmdline_flags",
-        ":toco_saved_model",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "graph_transformations",
     srcs = [
         "graph_transformations/convert_expanddims_to_reshape.cc",
@@ -221,7 +185,6 @@ cc_library(
         "graph_transformations/drop_im2col_arrays.cc",
         "graph_transformations/ensure_bias_vectors.cc",
         "graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc",
-        "graph_transformations/experimental_shuffle_fc_weights.cc",
         "graph_transformations/fuse_activation_functions.cc",
         "graph_transformations/fuse_binary_into_following_affine.cc",
         "graph_transformations/fuse_binary_into_preceding_affine.cc",
@@ -296,6 +259,7 @@ cc_library(
         "graph_transformations/resolve_tensorflow_merge.cc",
         "graph_transformations/resolve_tensorflow_switch.cc",
         "graph_transformations/resolve_transpose_attributes.cc",
+        "graph_transformations/shuffle_fc_weights.cc",
         "graph_transformations/unfuse_activation_functions.cc",
         "graph_transformations/unpartition_embedding_lookup.cc",
         "graph_transformations/unroll_batch_matmul.cc",
@@ -431,7 +395,6 @@ tf_cc_binary(
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
-        ":toco_saved_model",
         ":toco_tooling",
         ":types_proto_cc",
         "//tensorflow/core:lib",

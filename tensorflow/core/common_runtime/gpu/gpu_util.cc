@@ -185,13 +185,11 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
 }
 
 // static
-void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
-                                 DeviceContext* recv_dev_context, Device* src,
-                                 Device* dst,
-                                 AllocatorAttributes src_alloc_attr,
-                                 AllocatorAttributes dst_alloc_attr,
-                                 const Tensor* input, Tensor* output,
-                                 StatusCallback done) {
+void GPUUtil::DeviceToDeviceCopy(
+    DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
+    Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
+    AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
+    int dev_to_dev_stream_index, StatusCallback done) {
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
@@ -202,7 +200,7 @@ void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
   }
   auto send_device_to_device_stream =
       static_cast<const GPUDeviceContext*>(send_dev_context)
-          ->device_to_device_stream();
+          ->device_to_device_stream(dev_to_dev_stream_index);
   if (send_device_to_device_stream == nullptr) {
     done(errors::Internal("No send gpu copy-out-stream is available."));
     return;

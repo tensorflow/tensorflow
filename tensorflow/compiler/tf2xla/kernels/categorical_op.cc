@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -65,17 +66,17 @@ class CategoricalOp : public XlaOpKernel {
                    DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
     xla::Shape uniform_shape =
         xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
-    auto uniforms = builder->RngUniform(
-        XlaHelpers::Zero(builder, input_type(0)),
-        XlaHelpers::One(builder, input_type(0)), uniform_shape);
+    auto uniforms =
+        xla::RngUniform(XlaHelpers::Zero(builder, input_type(0)),
+                        XlaHelpers::One(builder, input_type(0)), uniform_shape);
 
     // Use Gumbel softmax trick to generate categorical samples.
     // See:
     // https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/
     // TODO(b/68769470): Switch to using a cumulative sum approach.
     auto softmax_entries =
-        builder->Sub(logits, builder->Log(builder->Neg(builder->Log(uniforms))),
-                     /*broadcast_dimensions=*/{0, 2});
+        xla::Sub(logits, xla::Log(xla::Neg(xla::Log(uniforms))),
+                 /*broadcast_dimensions=*/{0, 2});
 
     TensorShape softmax_shape(uniform_shape_array);
     xla::XlaOp argmax;

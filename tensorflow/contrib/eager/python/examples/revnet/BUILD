@@ -62,6 +62,9 @@ cuda_py_test(
         ":blocks",
         "//tensorflow:tensorflow_py",
     ],
+    tags = [
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -69,6 +72,41 @@ cuda_py_test(
     size = "large",
     srcs = ["revnet_test.py"],
     additional_deps = [
+        ":config",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+    tags = [
+        "optonly",
+    ],
+)
+
+# Training
+py_library(
+    name = "cifar_input",
+    srcs = ["cifar_input.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "cifar_tfrecords",
+    srcs = ["cifar_tfrecords.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "main",
+    srcs = ["main.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
         ":config",
         ":revnet",
         "//tensorflow:tensorflow_py",
