@@ -26,11 +26,7 @@ limitations under the License.
 
 #include <iostream>
 
-// #include "ignite_binary_object_parser.h"
-
 namespace ignite {
-
-// std::map<int, BinaryType*>* cache = new std::map<int, BinaryType*>();
 
 Client::Client(std::string host, int port) {
   this->host = host;

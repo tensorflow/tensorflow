@@ -559,29 +559,29 @@ class KafkaDataset(Dataset):
 
     with IgniteClient(host, port) as client:
       client.handshake()
-      self._cache_type = client.get_cache_type(cache_name)
+      self.cache_type = client.get_cache_type(cache_name)
 
-    self._cache_name = ops.convert_to_tensor(cache_name, dtype=dtypes.string, name="cache_name")
-    self._host = ops.convert_to_tensor(host, dtype=dtypes.string, name="host")
-    self._port = ops.convert_to_tensor(port, dtype=dtypes.int32, name="port")
-    self._local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
-    self._part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
-    self._partitioned = ops.convert_to_tensor(partitioned, dtype=dtypes.bool, name="partitioned")
-    self._page_size = ops.convert_to_tensor(page_size, dtype=dtypes.int32, name="page_size")
-    self._schema = ops.convert_to_tensor(self._cache_type.to_flat(), dtype=dtypes.int32, name="schema")
-    self._permutation = ops.convert_to_tensor(self._cache_type.to_permutation(), dtype=dtypes.int32, name="permutation")
+    self.cache_name = ops.convert_to_tensor(cache_name, dtype=dtypes.string, name="cache_name")
+    self.host = ops.convert_to_tensor(host, dtype=dtypes.string, name="host")
+    self.port = ops.convert_to_tensor(port, dtype=dtypes.int32, name="port")
+    self.local = ops.convert_to_tensor(local, dtype=dtypes.bool, name="local")
+    self.part = ops.convert_to_tensor(part, dtype=dtypes.int32, name="part")
+    self.partitioned = ops.convert_to_tensor(partitioned, dtype=dtypes.bool, name="partitioned")
+    self.page_size = ops.convert_to_tensor(page_size, dtype=dtypes.int32, name="page_size")
+    self.schema = ops.convert_to_tensor(self.cache_type.to_flat(), dtype=dtypes.int32, name="schema")
+    self.permutation = ops.convert_to_tensor(self.cache_type.to_permutation(), dtype=dtypes.int32, name="permutation")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.kafka_dataset(self._cache_name, self._host, self._port, self._local, self._part, self._partitioned, self._page_size, self._schema, self._permutation)
+    return gen_dataset_ops.kafka_dataset(self.cache_name, self.host, self.port, self.local, self.part, self.partitioned, self.page_size, self.schema, self.permutation)
 
   @property
   def output_classes(self):
-    return self._cache_type.to_output_classes()
+    return self.cache_type.to_output_classes()
 
   @property
   def output_shapes(self):
-    return self._cache_type.to_output_shapes()
+    return self.cache_type.to_output_shapes()
 
   @property
   def output_types(self):
-    return self._cache_type.to_output_types()
+    return self.cache_type.to_output_types()

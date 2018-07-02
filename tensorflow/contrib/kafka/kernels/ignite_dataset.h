@@ -37,17 +37,20 @@ class IgniteDataset : public tensorflow::GraphDatasetBase {
       DatasetGraphDefBuilder* b, tensorflow::Node** output) const override;
 
  private:
-  const std::string cache_name_;
-  const std::string host_;
-  const tensorflow::int32 port_;
-  const bool local_;
-  const tensorflow::int32 part_;
-  const tensorflow::int32 page_size_;
-  const std::vector<tensorflow::int32> schema_;
-  const std::vector<tensorflow::int32> permutation_;
+  const std::string cache_name;
+  const std::string host;
+  const tensorflow::int32 port;
+  const bool local;
+  const tensorflow::int32 part;
+  const tensorflow::int32 page_size;
+  const std::vector<tensorflow::int32> schema;
+  const std::vector<tensorflow::int32> permutation;
 
   tensorflow::DataTypeVector dtypes;
   std::vector<tensorflow::PartialTensorShape> shapes;
+
+  void SchemaToTypes();
+  void SchemaToShapes();
 };
 
 }  // namespace ignite

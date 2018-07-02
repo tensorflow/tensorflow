@@ -26,13 +26,13 @@ IgniteDatasetIterator::IgniteDatasetIterator(
     tensorflow::int32 page_size, std::vector<tensorflow::int32> schema,
     std::vector<tensorflow::int32> permutation)
     : tensorflow::DatasetIterator<IgniteDataset>(params),
-      client_(Client(host, port)),
-      cache_name_(cache_name),
-      local_(local),
-      part_(part),
-      page_size_(page_size),
-      schema_(schema),
-      permutation_(permutation),
+      client(Client(host, port)),
+      cache_name(cache_name),
+      local(local),
+      part(part),
+      page_size(page_size),
+      schema(schema),
+      permutation(permutation),
       remainder(-1),
       last_page(false) {
   LOG(INFO) << "Ignite Dataset Iterator created";
@@ -65,7 +65,7 @@ tensorflow::Status IgniteDatasetIterator::GetNextInternal(
 
     out_tensors->resize(tensors.size());
     for (int i = 0; i < tensors.size(); i++)
-      (*out_tensors)[permutation_[i]] = std::move(tensors[i]);
+      (*out_tensors)[permutation[i]] = std::move(tensors[i]);
 
     *end_of_sequence = false;
     return tensorflow::Status::OK();
@@ -86,15 +86,15 @@ tensorflow::Status IgniteDatasetIterator::RestoreInternal(
 }
 
 void IgniteDatasetIterator::Handshake() {
-  client_.WriteInt(8);
-  client_.WriteByte(1);
-  client_.WriteShort(1);
-  client_.WriteShort(0);
-  client_.WriteShort(0);
-  client_.WriteByte(2);
+  client.WriteInt(8);
+  client.WriteByte(1);
+  client.WriteShort(1);
+  client.WriteShort(0);
+  client.WriteShort(0);
+  client.WriteByte(2);
 
-  int handshake_res_len = client_.ReadInt();
-  char handshake_res = client_.ReadByte();
+  int handshake_res_len = client.ReadInt();
+  char handshake_res = client.ReadByte();
 
   if (handshake_res != 1) {
     LOG(ERROR) << "Handshake error (status " << handshake_res << ")";
@@ -102,32 +102,32 @@ void IgniteDatasetIterator::Handshake() {
 }
 
 void IgniteDatasetIterator::ScanQuery() {
-  client_.WriteInt(25);                         // Message length
-  client_.WriteShort(2000);                     // Operation code
-  client_.WriteLong(0);                         // Request ID
-  client_.WriteInt(JavaHashCode(cache_name_));  // Cache name
-  client_.WriteByte(0);                         // Flags
-  client_.WriteByte(101);                       // Filter object
-  client_.WriteInt(page_size_);                 // Cursor page size
-  client_.WriteInt(part_);                      // Partition to query
-  client_.WriteByte(local_);                    // Local flag
+  client.WriteInt(25);                         // Message length
+  client.WriteShort(2000);                     // Operation code
+  client.WriteLong(0);                         // Request ID
+  client.WriteInt(JavaHashCode(cache_name));   // Cache name
+  client.WriteByte(0);                         // Flags
+  client.WriteByte(101);                       // Filter object
+  client.WriteInt(page_size);                  // Cursor page size
+  client.WriteInt(part);                       // Partition to query
+  client.WriteByte(local);                     // Local flag
 
-  int res_len = client_.ReadInt();
-  long req_id = client_.ReadLong();
-  int status = client_.ReadInt();
+  int res_len = client.ReadInt();
+  long req_id = client.ReadLong();
+  int status = client.ReadInt();
 
   if (status != 0) {
     LOG(ERROR) << "Scan Query error (status " << status << ")";
   }
 
-  cursor_id = client_.ReadLong();
-  int row_cnt = client_.ReadInt();
+  cursor_id = client.ReadLong();
+  int row_cnt = client.ReadInt();
 
   remainder = res_len - 25;
   page = std::unique_ptr<char>(new char[remainder]);
   ptr = page.get();
   clock_t start = clock();
-  client_.ReadData(ptr, remainder);
+  client.ReadData(ptr, remainder);
   clock_t stop = clock();
 
   double size_in_mb = 1.0 * remainder / 1024 / 1024;
@@ -135,30 +135,30 @@ void IgniteDatasetIterator::ScanQuery() {
   LOG(INFO) << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
   <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
 
-  last_page = !client_.ReadByte();
+  last_page = !client.ReadByte();
 }
 
 void IgniteDatasetIterator::LoadNextPage() {
-  client_.WriteInt(18);          // Message length
-  client_.WriteShort(2001);      // Operation code
-  client_.WriteLong(0);          // Request ID
-  client_.WriteLong(cursor_id);  // Cursor ID
+  client.WriteInt(18);          // Message length
+  client.WriteShort(2001);      // Operation code
+  client.WriteLong(0);          // Request ID
+  client.WriteLong(cursor_id);  // Cursor ID
 
-  int res_len = client_.ReadInt();
-  long req_id = client_.ReadLong();
-  int status = client_.ReadInt();
+  int res_len = client.ReadInt();
+  long req_id = client.ReadLong();
+  int status = client.ReadInt();
 
   if (status != 0) {
     LOG(ERROR) << "Query Next Page error (status " << status << ")";
   }
 
-  int row_cnt = client_.ReadInt();
+  int row_cnt = client.ReadInt();
 
   remainder = res_len - 17;
   page = std::unique_ptr<char>(new char[remainder]);
   ptr = page.get();
   clock_t start = clock();
-  client_.ReadData(ptr, remainder);
+  client.ReadData(ptr, remainder);
   clock_t stop = clock();
 
   double size_in_mb = 1.0 * remainder / 1024 / 1024;
@@ -166,7 +166,7 @@ void IgniteDatasetIterator::LoadNextPage() {
   LOG(INFO) << "Page size " << size_in_mb << " Mb, time " << time_in_s * 1000
   <<  " ms download speed " << size_in_mb / time_in_s << " Mb/sec";
 
-  last_page = !client_.ReadByte();
+  last_page = !client.ReadByte();
 }
 
 int IgniteDatasetIterator::JavaHashCode(std::string str) {

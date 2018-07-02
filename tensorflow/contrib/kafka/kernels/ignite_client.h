@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-// #include <map>
 #include <netinet/in.h>
 
 namespace ignite {
