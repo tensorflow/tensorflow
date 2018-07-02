@@ -24,14 +24,14 @@ limitations under the License.
 
 namespace {
 
-typedef std::vector<std::vector<std::vector<float>>> TestData;
-using tensorflow::ctc::CTCBeamSearchDecoder;
-using tensorflow::ctc::CTCDecoder;
+typedef std::vector<std::vector<std::vector<double>>> TestData;
+typedef tensorflow::ctc::CTCBeamSearchDecoder<double> CTCBeamSearchDecoder
+typedef tensorflow::ctc::CTCDecoder<double> CTCDecoder;
 
 // The HistoryBeamState is used to keep track of the current candidate and
 // caches the expansion score (needed by the scorer).
 struct HistoryBeamState {
-  float score;
+  double score;
   std::vector<int> labels;
 };
 
@@ -59,12 +59,12 @@ class DictionaryBeamScorer
     SetStateScoreAccordingToDict(state);
   }
 
-  float GetStateExpansionScore(const HistoryBeamState& state,
-                               float previous_score) const override {
+  double GetStateExpansionScore(const HistoryBeamState& state,
+                               double previous_score) const override {
     return previous_score + state.score;
   }
 
-  float GetStateEndExpansionScore(
+  double GetStateEndExpansionScore(
       const HistoryBeamState& state) const override {
     return state.score;
   }
@@ -115,9 +115,9 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   CTCBeamSearchDecoder<HistoryBeamState> dictionary_decoder(
       num_classes, top_paths, &dictionary_scorer);
 
-  // Raw data containers (arrays of floats, ints, etc.).
+  // Raw data containers (arrays of floats64, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
-  float input_data_mat[timesteps][batch_size][num_classes] = {
+  double input_data_mat[timesteps][batch_size][num_classes] = {
       {{0, 0.6, 0, 0.4, 0, 0}},
       {{0, 0.5, 0, 0.5, 0, 0}},
       {{0, 0.4, 0, 0.6, 0, 0}},
@@ -149,7 +149,7 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
-  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  std::vector<Eigen::Map<const Eigen::MatrixXd>> inputs;
   inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
@@ -160,8 +160,8 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   for (CTCDecoder::Output& output : outputs) {
     output.resize(batch_size);
   }
-  float score[batch_size][top_paths] = {{0.0}};
-  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+  double score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::MatrixXd> scores(&score[0][0], batch_size, top_paths);
 
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
@@ -190,16 +190,16 @@ TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
   CTCBeamSearchDecoder<>::DefaultBeamScorer default_scorer;
   CTCBeamSearchDecoder<> decoder(num_classes, top_paths, &default_scorer);
 
-  // Raw data containers (arrays of floats, ints, etc.).
+  // Raw data containers (arrays of floats64, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
-  float input_data_mat[timesteps][batch_size][num_classes] = {
+  double input_data_mat[timesteps][batch_size][num_classes] = {
       {{0.4, 0.3, 0, 0, 0, 0.5}}};
 
   // Convert data containers to the format accepted by the decoder, simply
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
-  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  std::vector<Eigen::Map<const Eigen::MatrixXd>> inputs;
   inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
@@ -210,8 +210,8 @@ TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
   for (CTCDecoder::Output& output : outputs) {
     output.resize(batch_size);
   }
-  float score[batch_size][top_paths] = {{0.0}};
-  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+  double score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::MatrixXd> scores(&score[0][0], batch_size, top_paths);
 
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   // Make sure all scores are finite.
@@ -238,14 +238,14 @@ class RapidlyDroppingLabelScorer
 
   void ExpandStateEnd(LabelState* state) const override {}
 
-  float GetStateExpansionScore(const LabelState& state,
-                               float previous_score) const override {
+  double GetStateExpansionScore(const LabelState& state,
+                               double previous_score) const override {
     // Drop off rapidly for later labels.
-    const float kRapidly = 100;
+    const double kRapidly = 100;
     return previous_score - kRapidly * state;
   }
 
-  float GetStateEndExpansionScore(const LabelState& state) const override {
+  double GetStateEndExpansionScore(const LabelState& state) const override {
     return 0;
   }
 };
@@ -260,14 +260,14 @@ TEST(CtcBeamSearch, LabelSelection) {
   RapidlyDroppingLabelScorer scorer;
   CTCBeamSearchDecoder<LabelState> decoder(num_classes, top_paths, &scorer);
 
-  // Raw data containers (arrays of floats, ints, etc.).
+  // Raw data containers (arrays of floats64, ints, etc.).
   int sequence_lengths[batch_size] = {timesteps};
   // Log probabilities, slightly preferring later labels, this decision
   // should be overridden by the scorer which strongly prefers earlier labels.
   // The last one is empty label, and for simplicity  we give it an extremely
   // high cost to ignore it. We also use the first label to break up the
   // repeated label sequence.
-  float input_data_mat[timesteps][batch_size][num_classes] = {
+  double input_data_mat[timesteps][batch_size][num_classes] = {
       {{-1e6, 1, 2, 3, 4, -1e6}},
       {{1e6, 0, 0, 0, 0, -1e6}},  // force label 0 to break up repeated
       {{-1e6, 1.1, 2.2, 3.3, 4.4, -1e6}},
@@ -294,7 +294,7 @@ TEST(CtcBeamSearch, LabelSelection) {
   // mapping the memory from the container to an Eigen::ArrayXi,::MatrixXf,
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
-  std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  std::vector<Eigen::Map<const Eigen::MatrixXd>> inputs;
   inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
@@ -305,8 +305,8 @@ TEST(CtcBeamSearch, LabelSelection) {
   for (CTCDecoder::Output& output : outputs) {
     output.resize(batch_size);
   }
-  float score[batch_size][top_paths] = {{0.0}};
-  Eigen::Map<Eigen::MatrixXf> scores(&score[0][0], batch_size, top_paths);
+  double score[batch_size][top_paths] = {{0.0}};
+  Eigen::Map<Eigen::MatrixXd> scores(&score[0][0], batch_size, top_paths);
 
   EXPECT_TRUE(decoder.Decode(seq_len, inputs, &outputs, &scores).ok());
   for (int path = 0; path < top_paths; ++path) {
