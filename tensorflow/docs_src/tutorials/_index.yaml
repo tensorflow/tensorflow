@@ -170,13 +170,14 @@ landing_page:
           <div class="devsite-landing-row-item-description-content">
             <p>
               Estimators can train large models on multiple machines in a
-              production environment. Try the examples below and read the
-              <a href="/guide/estimators">Estimators guide</a>.
+              production environment. Read the
+              <a href="/guide/estimators">Estimators guide</a> for details.
             </p>
             <ol style="padding-left: 20px;">
               <li><a href="/hub/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
               <li><a href="https://github.com/tensorflow/models/tree/master/official/boosted_trees">Classifying Higgs boson processes</a></li>
               <li><a href="/tutorials/representation/wide_and_deep">Wide and deep learning using estimators</a></li>
+              <li><a href="/tutorials/representation/linear">Large-scale linear models</a></li>
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons">
