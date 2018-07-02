@@ -36,12 +36,12 @@ IgniteDatasetIterator::IgniteDatasetIterator(
       remainder(-1),
       last_page(false) {
   LOG(INFO) << "Ignite Dataset Iterator created";
-  client_.Connect();
+  client.Connect();
   Handshake();
 }
 
 IgniteDatasetIterator::~IgniteDatasetIterator() { 
-  client_.Disconnect(); 
+  client.Disconnect(); 
   LOG(INFO) << "Ignite Dataset Iterator destroyed";
 }
 

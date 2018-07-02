@@ -89,9 +89,7 @@ void IgniteDataset::SchemaToTypes() {
       dtypes.push_back(tensorflow::DT_BOOL);
     } else if (e == 9 || e == 20) {
       dtypes.push_back(tensorflow::DT_STRING);
-    } else {
-      // skip.
-    }
+    } 
   }
 }
 
@@ -101,8 +99,6 @@ void IgniteDataset::SchemaToShapes() {
       shapes.push_back(tensorflow::PartialTensorShape({}));
     } else if (e >= 12 && e < 21) {
       shapes.push_back(tensorflow::PartialTensorShape({-1}));
-    } else {
-      // skip.
     }
   }
 }

@@ -22,7 +22,7 @@ namespace ignite {
 class IgniteDatasetIterator
     : public tensorflow::DatasetIterator<IgniteDataset> {
  public:
-  explicit IgniteDatasetIterator(const Params& params, std::string host,
+  IgniteDatasetIterator(const Params& params, std::string host,
                                  tensorflow::int32 port, std::string cache_name,
                                  bool local, tensorflow::int32 part,
                                  tensorflow::int32 page_size,
