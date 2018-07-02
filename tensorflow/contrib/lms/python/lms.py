@@ -483,6 +483,7 @@ class LMS(object):
                 src_op.type), 1)
 
             # create a swap_out node only if there exists a real destination op
+            swapout_op = None
             for op in bw_frontier_ops:
                 if self._topo_sort.get_order(op) >= 0:
                     swapout_op = self._add_swapout(src_op, t)
@@ -490,7 +491,7 @@ class LMS(object):
                     break
 
             # create swap_in nodes
-            if self._fuse_swapins:
+            if self._fuse_swapins and swapout_op:
                 bw_frontier_ops = self._fuse_swapin_ops(
                     src_op, swapout_op, bw_frontier_ops, t)
             for dest_op in bw_frontier_ops:
