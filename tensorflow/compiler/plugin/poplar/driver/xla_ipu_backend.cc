@@ -37,6 +37,7 @@ static bool OpFilter(KernelDef* kdef) {
   if (kdef->op() == "IFFT3D") return false;
   if (kdef->op() == "Imag") return false;
   if (kdef->op() == "MaxPoolGradGrad") return false;
+  if (kdef->op() == "MaxPool3DGradGrad") return false;
   if (kdef->op() == "Real") return false;
 
   return true;
