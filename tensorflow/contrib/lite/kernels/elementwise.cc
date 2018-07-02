@@ -64,6 +64,14 @@ TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
   return Eval(context, node, std::log);
 }
 
+TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, std::sqrt);
+}
+
+TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, [](float f) { return 1.f / std::sqrt(f); });
+}
+
 }  // namespace elementwise
 
 TfLiteRegistration* Register_SIN() {
@@ -75,6 +83,18 @@ TfLiteRegistration* Register_SIN() {
 TfLiteRegistration* Register_LOG() {
   static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
                                  elementwise::LogEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_SQRT() {
+  static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
+                                 elementwise::SqrtEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_RSQRT() {
+  static TfLiteRegistration r = {nullptr, nullptr, elementwise::GenericPrepare,
+                                 elementwise::RsqrtEval};
   return &r;
 }
 

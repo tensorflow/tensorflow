@@ -150,11 +150,11 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      dot->operand(0)->literal(),
-      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_a))));
+      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_a)),
+      dot->operand(0)->literal()));
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      dot->operand(1)->literal(),
-      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_b))));
+      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_b)),
+      dot->operand(1)->literal()));
 }
 
 // Tests that BF16 can be propagated through nested tuples.
@@ -740,6 +740,91 @@ TEST_F(BFloat16PropagationTest, NoopConversionRemoved) {
   EXPECT_EQ(gte1->shape().element_type(), BF16);
   EXPECT_EQ(add0->shape().element_type(), BF16);
   EXPECT_EQ(add1->shape().element_type(), BF16);
+}
+
+TEST_F(BFloat16PropagationTest, TupleDomain) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* a_trans =
+      builder.AddInstruction(HloInstruction::CreateTranspose(shape, a, {0, 1}));
+  HloInstruction* b_trans =
+      builder.AddInstruction(HloInstruction::CreateTranspose(shape, b, {0, 1}));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({a_trans, b_trans}));
+  HloInstruction* domain = builder.AddInstruction(
+      HloInstruction::CreateDomain(tuple->shape(), tuple, nullptr, nullptr));
+  HloInstruction* a_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 0));
+  HloInstruction* b_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 1));
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, a_gte, b_gte));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+  EXPECT_EQ(computation->root_instruction(), root);
+
+  // test BF16 propagated through domain
+  EXPECT_EQ(ShapeUtil::GetTupleElementShape(domain->shape(), 0).element_type(),
+            BF16);
+  EXPECT_EQ(ShapeUtil::GetTupleElementShape(domain->shape(), 1).element_type(),
+            BF16);
+
+  EXPECT_TRUE(OutputsBF16(a_trans));
+  EXPECT_TRUE(OutputsBF16(b_trans));
+  EXPECT_TRUE(OutputsBF16(a_gte));
+  EXPECT_TRUE(OutputsBF16(b_gte));
+  EXPECT_FALSE(OutputsBF16(a));
+  EXPECT_FALSE(OutputsBF16(b));
+}
+
+// Tests that bf16 is not propagated through a domain in case its input cannot
+// be propagated. In the case below the input of the domain is the parameter
+// tuple which cannot be propagated, so the domain instruction is not propagated
+// either.
+TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "param"));
+  HloInstruction* domain = builder.AddInstruction(
+      HloInstruction::CreateDomain(param->shape(), param, nullptr, nullptr));
+  HloInstruction* a_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 0));
+  HloInstruction* b_gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, domain, 1));
+  HloInstruction* a_trans = builder.AddInstruction(
+      HloInstruction::CreateTranspose(shape, a_gte, {0, 1}));
+  HloInstruction* b_trans = builder.AddInstruction(
+      HloInstruction::CreateTranspose(shape, b_gte, {0, 1}));
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kDot, a_trans, b_trans));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), root);
+  EXPECT_TRUE(OutputsBF16(a_trans));
+  EXPECT_TRUE(OutputsBF16(b_trans));
+  EXPECT_FALSE(OutputsBF16(a_gte));
+  EXPECT_FALSE(OutputsBF16(b_gte));
+  EXPECT_FALSE(OutputsBF16(domain));
+  EXPECT_FALSE(OutputsBF16(param));
 }
 
 }  // namespace xla

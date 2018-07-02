@@ -5,5 +5,6 @@ op {
   }
   endpoint {
     name: "matrix_band_part"
+    deprecation_message: "tf.matrix_band_part is deprecated, please use tf.linalg.band_part instead."
   }
 }

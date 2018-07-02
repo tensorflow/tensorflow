@@ -242,6 +242,24 @@ TEST(ShapeUtilTest, IncompatibleDifferentElementShapes) {
   EXPECT_FALSE(ShapeUtil::Compatible(shape_1, shape_2));
 }
 
+TEST(ShapeUtilTest, EqualIgnoringFpPrecision) {
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {3, 4}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {1, 0})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
+}
+
 TEST(ShapeUtilTest, CompatibleTuples) {
   Shape tuple1 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(PRED, {4, 5})});
@@ -790,6 +808,17 @@ TEST(ShapeUtilTest, ReshapeIsBitcast_3x2x2_6x2_Dim1IsMostMinor) {
   EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {1, 0, 2}),
       ShapeUtil::MakeShapeWithLayout(F32, {6, 2}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, HasDegenerateDimensions) {
+  EXPECT_TRUE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 1, 2})));
+  EXPECT_TRUE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 1, 1})));
+  EXPECT_FALSE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 3, 5})));
+  EXPECT_FALSE(
+      ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 0, 5})));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

@@ -34,11 +34,11 @@ limitations under the License.
 
 namespace toco {
 namespace {
-// CHECK-fails if the model contains a kTensorFlowUnsupported operation.
+// CHECK-fails if the model contains a kUnsupported operation.
 void CheckUnsupportedOperations(const Model& model) {
   std::set<string> unsupported_ops;
   for (auto& op : model.operators) {
-    if (op->type == OperatorType::kTensorFlowUnsupported) {
+    if (op->type == OperatorType::kUnsupported) {
       unsupported_ops.insert(
           static_cast<const TensorFlowUnsupportedOperator*>(op.get())
               ->tensorflow_op);
@@ -133,6 +133,8 @@ bool SupportsLstmCell(FileFormat format) {
 bool SupportsPreallocatedWorkspace(FileFormat format) {
   return (format == TFLITE);
 }
+
+bool SupportsShuffledFCWeights(FileFormat format) { return format == TFLITE; }
 
 bool IsRealValued(toco::ArrayDataType type) {
   // TODO(benoitjacob) - this is hardcoding that uint8 and int16 are only used
@@ -335,6 +337,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                                 new RemoveFinalDequantizeOp,
                                 ensure_safe_for_int8_kernels,
                             });
+    if (SupportsShuffledFCWeights(output_format)) {
+      RunGraphTransformations(model, "shuffling of FC weights",
+                              {new ShuffleFCWeights});
+    }
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard

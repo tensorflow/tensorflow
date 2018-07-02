@@ -27,14 +27,11 @@ from __future__ import print_function
 import functools
 import operator
 
+import six
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
 
 
-# Global Conventions:
-# 1) Default data format is NCWH, targeting GPU
-# 2) Each block has attribute axis, inferred from data_format
-# 3) Default training option to True for batch normalization
 class RevNet(tf.keras.Model):
   """RevNet that depends on all the blocks."""
 
@@ -51,6 +48,7 @@ class RevNet(tf.keras.Model):
     self._init_block = self._construct_init_block()
     self._block_list = self._construct_intermediate_blocks()
     self._final_block = self._construct_final_block()
+    self._moving_stats_vars = None
 
   def _construct_init_block(self):
     init_block = tf.keras.Sequential(
@@ -65,7 +63,7 @@ class RevNet(tf.keras.Model):
                 input_shape=self.config.input_shape),
             tf.keras.layers.BatchNormalization(
                 axis=self.axis, fused=self.config.fused),
-            tf.keras.layers.LeakyReLU(alpha=0.)
+            tf.keras.layers.Activation("relu"),
         ],
         name="init")
     if self.config.init_max_pool:
@@ -100,7 +98,7 @@ class RevNet(tf.keras.Model):
                 axis=self.axis,
                 input_shape=input_shape,
                 fused=self.config.fused),
-            tf.keras.layers.LeakyReLU(alpha=0.),  # Vanilla ReLU
+            tf.keras.layers.Activation("relu"),
             tf.keras.layers.GlobalAveragePooling2D(
                 data_format=self.config.data_format),
             tf.keras.layers.Dense(self.config.n_classes)
@@ -157,7 +155,6 @@ class RevNet(tf.keras.Model):
   def call(self, inputs, training=True):
     """Forward pass."""
 
-    # Only store hidden states during training
     if training:
       saved_hidden = [inputs]
 
@@ -185,17 +182,22 @@ class RevNet(tf.keras.Model):
   def compute_gradients(self, inputs, labels, training=True):
     """Manually computes gradients.
 
+    This method also SILENTLY updates the running averages of batch
+    normalization when `training` is set to True.
+
     Args:
       inputs: Image tensor, either NHWC or NCHW, conforming to `data_format`
       labels: One-hot labels for classification
-      training: for batch normalization
+      training: Use the mini-batch stats in batch norm if set to True
 
     Returns:
-      list of tuple each being (grad, var) for optimizer use
+      list of tuples each being (grad, var) for optimizer to use
     """
 
-    # Forward pass record hidden states before downsampling
+    # Run forward pass to record hidden states; avoid updating running averages
+    vars_and_vals = self.get_moving_stats()
     _, saved_hidden = self.call(inputs, training=training)
+    self.restore_moving_stats(vars_and_vals)
 
     grads_all = []
     vars_all = []
@@ -203,14 +205,17 @@ class RevNet(tf.keras.Model):
     # Manually backprop through last block
     x = saved_hidden[-1]
     with tf.GradientTape() as tape:
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
       tape.watch(x)
+      # Running stats updated below
       logits = self._final_block(x, training=training)
-      cost = self.compute_loss(logits, labels)
+      loss = self.compute_loss(logits, labels)
 
-    grads_combined = tape.gradient(cost, [x] + self._final_block.variables)
+    grads_combined = tape.gradient(loss,
+                                   [x] + self._final_block.trainable_variables)
     dy, grads_ = grads_combined[0], grads_combined[1:]
     grads_all += grads_
-    vars_all += self._final_block.variables
+    vars_all += self._final_block.trainable_variables
 
     # Manually backprop through intermediate blocks
     for block in reversed(self._block_list):
@@ -227,37 +232,39 @@ class RevNet(tf.keras.Model):
     assert not saved_hidden  # Cleared after backprop
 
     with tf.GradientTape() as tape:
-      y = self._init_block(x, training=training)  # Recomputing
+      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
+      # Running stats updated below
+      y = self._init_block(x, training=training)
 
     grads_all += tape.gradient(
-        y, self._init_block.variables, output_gradients=[dy])
-    vars_all += self._init_block.variables
+        y, self._init_block.trainable_variables, output_gradients=[dy])
+    vars_all += self._init_block.trainable_variables
 
-    return grads_all, vars_all
+    # Apply weight decay
+    grads_all = self._apply_weight_decay(grads_all, vars_all)
 
-  def train_step(self,
-                 inputs,
-                 labels,
-                 optimizer,
-                 global_step=None,
-                 report=False):
-    """Train for one iteration."""
+    return grads_all, vars_all, loss
 
-    grads_all, vars_all = self.compute_gradients(inputs, labels, training=True)
-    optimizer.apply_gradients(zip(grads_all, vars_all), global_step=global_step)
+  def _apply_weight_decay(self, grads, vars_):
+    """Update gradients to reflect weight decay."""
+    # Don't decay bias
+    return [
+        g + self.config.weight_decay * v if v.name.endswith("kernel:0") else g
+        for g, v in zip(grads, vars_)
+    ]
 
-    if report:
-      logits, _ = self.call(inputs, training=True)
-      loss = self.compute_loss(logits, labels)
+  def get_moving_stats(self):
+    vars_and_vals = {}
 
-      return loss
+    def _is_moving_var(v):
+      n = v.name
+      return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
 
-  def eval_step(self, inputs, labels):
-    """Evaluate."""
+    for v in filter(_is_moving_var, self.variables):
+      vars_and_vals[v] = v.read_value()
 
-    logits, _ = self.call(inputs, training=False)
-    preds = tf.cast(tf.argmax(logits, axis=1), tf.int32)
-    corrects = tf.cast(tf.equal(preds, labels), tf.float32)
-    accuracy = tf.reduce_mean(corrects)
+    return vars_and_vals
 
-    return accuracy
+  def restore_moving_stats(self, vars_and_vals):
+    for var_, val in six.iteritems(vars_and_vals):
+      var_.assign(val)

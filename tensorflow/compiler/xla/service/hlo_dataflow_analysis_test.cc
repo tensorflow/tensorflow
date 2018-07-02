@@ -1880,9 +1880,14 @@ class HloDataflowAnalysisTestBase : public HloTestBase {
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
-  void RunAnalysis() {
+  void RunAnalysis(const HloDataflowAnalysis::FusionCanShareBufferFunction&
+                       fusion_can_share_buffer = nullptr) {
     CHECK_NOTNULL(module_.get());
-    dataflow_analysis_ = HloDataflowAnalysis::Run(*module_).ConsumeValueOrDie();
+    dataflow_analysis_ =
+        HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
+                                 /*bitcast_defines_value=*/false,
+                                 fusion_can_share_buffer)
+            .ConsumeValueOrDie();
   }
 
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
@@ -1998,7 +2003,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
-       MultiOutputFusionCantAliasOperandBuffer) {
+       MultiOutputFusionCanAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
@@ -2022,14 +2027,14 @@ TEST_F(CanShareOperandBufferWithUserTest,
       {tuple, copy1, copy0}, HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
-                                                                 fusion, {0}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
-                                                                 fusion, {1}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
-                                                                 fusion, {0}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
-                                                                 fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {1}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
@@ -2055,6 +2060,31 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
                                                                 fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       CanShareOperandWhenDynamicUpdateSliceIsFedByDynamicSliceWithSameIndex) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {1, 2});
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "param0"));
+  auto index = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<int64>({0, 0})));
+  auto ds = builder.AddInstruction(
+      HloInstruction::CreateDynamicSlice(slice_shape, param, index, {1, 2, 2}));
+
+  auto dus = builder.AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(data_shape, param, ds, index));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dus, ds, index}, HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
@@ -2132,7 +2162,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
-       FusedDynamicUpdateSliceWithConvertCantShare) {
+       FusedDynamicUpdateSliceWithConvertCanShare) {
   auto builder = HloComputation::Builder(TestName());
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
@@ -2166,8 +2196,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
       HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
-  // The fusion instruction can't share with tuple element 1.
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       dataflow_analysis_->CanShareOperandBufferWithUser(gte1, {}, fusion, {}));
 }
 
@@ -2255,6 +2284,33 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   RunAnalysis();
 
   // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
+                                                                 fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kMultiply, operand, operand));
+  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, mul, two));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, two, mul}, HloInstruction::FusionKind::kInput);
+  RunAnalysis(/*fusion_can_share_buffer=*/[](const HloInstruction* fusion,
+                                             const HloInstruction*) {
+    return fusion->fusion_kind() == HloInstruction::FusionKind::kLoop;
+  });
+
   EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
                                                                  fusion, {}));
 }

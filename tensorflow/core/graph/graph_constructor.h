@@ -81,14 +81,14 @@ struct ImportGraphDefOptions {
   // corresponding to `input_map` keys will be remapped to the nodes in `g`
   // corresponding to the values.
   //
-  // Keys should not include `prefix`, i.e., a key TensorId's name should be the
-  // name as it originally appears in `gdef`.
+  // Keys should not include `prefix`, i.e., a key ID's name should be the name
+  // as it originally appears in `gdef`.
   //
   // If this is non-empty, ImportGraphDef must be called with the shape refiner
   // used to create the existing nodes referenced in `input_map`.
   // TODO(skyewm): can we remove this requirement? How do we access the original
   // shape refiner?
-  std::map<TensorId, TensorId> input_map;
+  std::map<SafeTensorId, SafeTensorId> input_map;
 
   // If true, nodes that will have all output edges removed because of
   // overrides in `input_map` will not be imported.
@@ -107,12 +107,12 @@ struct ImportGraphDefOptions {
   // caller must pass a results object to `ImportGraphDef()`. The
   // `return_tensors` field will be populated with the imported nodes in `g`.
   //
-  // Entries should not include `prefix`, i.e., each TensorId's name should be
-  // the name as it originally appears in `gdef`.
+  // Entries should not include `prefix`, i.e., each ID's name should be the
+  // name as it originally appears in `gdef`.
   //
   // If this contains a tensor that's also being remapped via `input_map`, the
   // corresponding existing tensor in `g` will be returned.
-  std::vector<TensorId> return_tensors;
+  std::vector<SafeTensorId> return_tensors;
 
   // The names of nodes in `gdef` that will be returned via the
   // ImportGraphDefResults output parameter of `ImportGraphDef()`. If this list
@@ -155,7 +155,7 @@ struct ImportGraphDefResults {
   // Keys in ImportGraphDefOptions::input_map that don't appear in `gdef` and
   // weren't used as an input to any node in `gdef`. These keys are likely due
   // to typos, and callers may wish to treat their existence as an error.
-  std::vector<TensorId> missing_unused_input_map_keys;
+  std::vector<SafeTensorId> missing_unused_input_map_keys;
 };
 
 // Adds the graph in GraphDef `gdef` into an existing Graph `*g`.

@@ -243,6 +243,17 @@ REGISTER_OP("BesselI0e").UNARY_REAL();
 
 REGISTER_OP("BesselI1e").UNARY_REAL();
 
+REGISTER_OP("_UnaryOpsComposition")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, half, double}")
+    .Attr("op_names: list(string)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to create these operators.
+)doc");
+
 #undef UNARY
 #undef UNARY_REAL
 #undef UNARY_COMPLEX
@@ -483,6 +494,13 @@ REGISTER_OP("Igammac")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Igamma")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("IgammaGradA")
     .Input("a: T")
     .Input("x: T")
     .Output("z: T")

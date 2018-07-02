@@ -716,10 +716,11 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
       })));
   auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
   auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto outfeed10 = builder.AddInstruction(
-      HloInstruction::CreateOutfeed(shape10, constant, ""));
+      HloInstruction::CreateOutfeed(shape10, constant, token, ""));
   auto outfeed01 = builder.AddInstruction(
-      HloInstruction::CreateOutfeed(shape01, constant, ""));
+      HloInstruction::CreateOutfeed(shape01, constant, token, ""));
 
   auto clone01 = builder.AddInstruction(outfeed01->Clone());
   auto clone10 = builder.AddInstruction(outfeed10->Clone());
@@ -763,12 +764,12 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   HloComputation::Builder builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
-  auto map_1_x = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {constant}, computation_x, /*static_operands=*/{}));
-  auto map_2_x = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {map_1_x}, computation_x, /*static_operands=*/{}));
-  auto map_3_y = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {map_2_x}, computation_y, /*static_operands=*/{}));
+  auto map_1_x = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {constant}, computation_x));
+  auto map_2_x = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {map_1_x}, computation_x));
+  auto map_3_y = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {map_2_x}, computation_y));
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto* fusion = computation->CreateFusionInstruction(
@@ -1168,6 +1169,40 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   EXPECT_TRUE(ShapeUtil::Equal(root->operand(1)->operand(0)->shape(),
                                root2->operand(1)->operand(0)->shape()));
   EXPECT_TRUE(StructuralEqual(*fusion, *fusion2));
+}
+
+TEST_F(HloInstructionTest, NoRedundantFusionOperandsAfterReplacingUse) {
+  // Fused expression:
+  //
+  // x     y
+  // |     |
+  // |  transpose
+  //  \   /
+  //   dot
+  const Shape s = ShapeUtil::MakeShape(F32, {10, 10});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateDot(s, x, reshape, dot_dnums));
+
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* fusion = computation->CreateFusionInstruction(
+      {dot, reshape}, HloInstruction::FusionKind::kLoop);
+
+  EXPECT_TRUE(x->ReplaceAllUsesWith(y).ok());
+
+  EXPECT_THAT(fusion->operands(), UnorderedElementsAre(y));
+  EXPECT_EQ(fusion->fused_instructions_computation()->num_parameters(), 1);
 }
 
 TEST_F(HloInstructionTest, FusionEquality) {

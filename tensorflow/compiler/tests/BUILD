@@ -51,6 +51,16 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_utils",
+    testonly = 1,
+    srcs = ["test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "xla_test_test",
     size = "small",
@@ -247,6 +257,7 @@ tf_xla_py_test(
     srcs = ["conv2d_test.py"],
     shard_count = 10,
     deps = [
+        ":test_utils",
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -254,6 +265,7 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -356,6 +368,20 @@ tf_xla_py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:function",
+    ],
+)
+
+tf_xla_py_test(
+    name = "fifo_queue_test",
+    size = "medium",
+    srcs = ["fifo_queue_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -548,8 +574,11 @@ tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
-    # TODO(b/31361304): enable RNG ops on GPU when parallelized.
     disabled_backends = [
+        # TODO(b/110300529): RngNormal doesn't return values with the expected variance
+        "cpu",
+        "cpu_ondemand",
+        # TODO(b/31361304): enable RNG ops on GPU when parallelized.
         "gpu",
     ],
     deps = [
@@ -674,6 +703,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "sparse_to_dense_op_test",
+    size = "small",
+    srcs = ["sparse_to_dense_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "stack_ops_test",
     size = "small",
     srcs = ["stack_ops_test.py"],
@@ -752,9 +794,10 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "fused_batchnorm_test",
-    size = "small",
+    size = "medium",
     srcs = ["fused_batchnorm_test.py"],
     deps = [
+        ":test_utils",
         ":xla_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
@@ -764,6 +807,7 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -836,6 +880,18 @@ tf_xla_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "sort_ops_test",
+    size = "small",
+    srcs = ["sort_ops_test.py"],
+    deps = [
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
     ],
 )
 

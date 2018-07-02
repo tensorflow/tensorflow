@@ -38,10 +38,11 @@ EagerContext::EagerContext(const SessionOptions& opts,
   InitDeviceMapAndAsync();
 }
 
+#ifndef __ANDROID__
 EagerContext::EagerContext(
     const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
     bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
-    std::unique_ptr<GrpcServer> server,
+    std::unique_ptr<ServerInterface> server,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
     const gtl::FlatMap<string, uint64>& remote_contexts)
@@ -55,12 +56,13 @@ EagerContext::EagerContext(
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async),
+      remote_device_manager_(std::move(remote_device_manager)),
       server_(std::move(server)),
       remote_eager_workers_(std::move(remote_eager_workers)),
-      remote_device_manager_(std::move(remote_device_manager)),
       remote_contexts_(remote_contexts) {
   InitDeviceMapAndAsync();
 }
+#endif
 
 void EagerContext::InitDeviceMapAndAsync() {
   if (async_default_) {
@@ -125,10 +127,11 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() {
 }
 
 EagerContext::~EagerContext() {
+#ifndef __ANDROID__
   if (server_) {
     // TODO(nareshmodi): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
-                    "GrpcServer doesn't support clean shutdown.";
+                    "Servers don't support clean shutdown.";
     server_.release();
   }
 
@@ -158,6 +161,7 @@ EagerContext::~EagerContext() {
   }
 
   counter.Wait();
+#endif
 
   executor_.WaitForAllPendingNodes().IgnoreError();
   ClearCaches();
@@ -189,9 +193,46 @@ Status EagerContext::FindDeviceByName(const string& name, Device** result) {
   return Status::OK();
 }
 
+Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
+  if (remote_device_manager_ == nullptr) return Status::OK();
+
+  BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
+
+  std::vector<eager::RegisterFunctionRequest> requests(remote_contexts_.size());
+  std::vector<eager::RegisterFunctionResponse> responses(
+      remote_contexts_.size());
+  std::vector<Status> statuses(remote_contexts_.size());
+
+  int i = 0;
+  for (const auto& target_and_context_id : remote_contexts_) {
+    requests[i].set_context_id(target_and_context_id.second);
+    *requests[i].mutable_function_def() = fdef;
+
+    auto* eager_client =
+        remote_eager_workers_->GetClient(target_and_context_id.first);
+
+    eager_client->RegisterFunctionAsync(
+        &requests[i], &responses[i],
+        [i, &statuses, &blocking_counter](const Status& status) {
+          statuses[i] = status;
+          blocking_counter.DecrementCount();
+        });
+
+    i++;
+  }
+  blocking_counter.Wait();
+
+  for (int i = 0; i < remote_contexts_.size(); i++) {
+    TF_RETURN_IF_ERROR(statuses[i]);
+  }
+  return Status::OK();
+}
+
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
   mutex_lock l(functions_mu_);
-  return func_lib_def_.AddFunctionDef(fdef);
+  TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
+
+  return MaybeRegisterFunctionRemotely(fdef);
 }
 
 KernelAndDevice* EagerContext::GetCachedKernel(Fprint128 cache_key) {
@@ -224,6 +265,7 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
+#ifndef __ANDROID__
 Status EagerContext::GetClientAndContextID(Device* device,
                                            eager::EagerClient** client,
                                            uint64* context_id) {
@@ -253,5 +295,6 @@ Status EagerContext::GetClientAndContextID(Device* device,
 
   return Status::OK();
 }
+#endif
 
 }  // namespace tensorflow

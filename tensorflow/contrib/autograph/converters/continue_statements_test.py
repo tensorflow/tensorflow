@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import continue_statements
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.platform import test
 
 
-class ContinueCanonicalizationTest(converter_test_base.TestCase):
+class ContinueCanonicalizationTest(converter_testing.TestCase):
 
   def test_basic_continue(self):
 

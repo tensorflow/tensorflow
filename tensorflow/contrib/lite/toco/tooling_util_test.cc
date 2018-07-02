@@ -175,4 +175,10 @@ TEST(NumElementsTest, UnsignedInt64) {
   EXPECT_EQ(status.error_message(), kLargeTensorMessage);
 }
 
+TEST(FusedActivationTest, DefaultsToUnfused) {
+  EXPECT_TRUE(OperatorSupportsFusedActivation(OperatorType::kAdd));
+  EXPECT_FALSE(OperatorSupportsFusedActivation(OperatorType::kNone));
+  EXPECT_FALSE(OperatorSupportsFusedActivation(static_cast<OperatorType>(255)));
+}
+
 }  // namespace toco

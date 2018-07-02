@@ -35,6 +35,13 @@ Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
   return {};
 }
 
+std::unique_ptr<tensorflow::protobuf::Message>
+Compiler::ComputeDefaultBackendConfig(const HloInstruction& hlo,
+                                      se::StreamExecutor* executor) const {
+  CHECK(executor != nullptr);
+  return nullptr;
+}
+
 // Define a default version where metadata is not used.
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(

@@ -34,16 +34,86 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace {
+
+// We have this pattern in dynamaic update slice fusion, which should be
+// supported:
+//
+// Parameters: p0, p1
+// Fusion
+//   ds = DynamicSlice(p0, p1)
+//   ROOT DynamicUpdateslice(p0, ds, p1)
+//
+// In this case, we should be able to reuse p0 and output, although p0 has
+// multiple uses.
+bool MultiDynamicSliceUseShareSameIndices(
+    tensorflow::gtl::ArraySlice<HloUse> uses) {
+  if (uses.empty()) {
+    return false;
+  }
+  const HloInstruction* indices = nullptr;
+  for (HloUse use : uses) {
+    auto user = use.instruction;
+    if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      if (indices == nullptr) {
+        indices = user->operand(2);
+      } else if (indices != user->operand(2)) {
+        return false;
+      }
+      if (use.operand_number != 0) {
+        return false;
+      }
+    } else if (user->opcode() == HloOpcode::kDynamicSlice) {
+      if (indices == nullptr) {
+        indices = user->operand(1);
+      } else if (indices != user->operand(1)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
 
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-HloDataflowAnalysis::HloDataflowAnalysis(const HloModule& module, bool ssa_form,
-                                         bool bitcast_defines_value)
+HloDataflowAnalysis::HloDataflowAnalysis(
+    const HloModule& module, bool ssa_form, bool bitcast_defines_value,
+    const FusionCanShareBufferFunction& fusion_can_share_buffer)
     : module_(module),
       ssa_form_(ssa_form),
       bitcast_defines_value_(bitcast_defines_value),
-      call_graph_(CallGraph::Build(&module)) {}
+      call_graph_(CallGraph::Build(&module)),
+      fusion_can_share_buffer_(fusion_can_share_buffer) {}
+
+bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
+    const HloInstruction* inst) {
+  tensorflow::gtl::FlatSet<const HloInstruction*> visited;
+  tensorflow::gtl::InlinedVector<const HloInstruction*, 4> stack;
+  stack.push_back(inst);
+  while (!stack.empty()) {
+    const HloInstruction* current = stack.back();
+    stack.pop_back();
+    visited.insert(current);
+    for (const HloInstruction* user : current->users()) {
+      // Found a user that is non-elementwise on current instruction.
+      for (const int64 use_index : user->OperandIndices(current)) {
+        if (!user->IsElementwiseOnOperand(use_index) &&
+            user->opcode() != HloOpcode::kTuple) {
+          return false;
+        }
+      }
+      if (!visited.count(user)) {
+        stack.push_back(user);
+      }
+    }
+  }
+  return true;
+}
 
 bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
                                            const ShapeIndex& index) const {
@@ -396,6 +466,24 @@ bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
+  // Domain instructions just forward their operand. Given that domains can have
+  // a tuple operand, we iterate through its indexes, like for copies.
+  // Unlike copies though we also propagate the top-level value.
+  CHECK_EQ(domain->opcode(), HloOpcode::kDomain);
+  bool changed = false;
+  for (auto& pair : GetInstructionValueSet(domain)) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+    HloValueSet& operand_value_set = GetValueSet(domain->operand(0), index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
   CHECK_EQ(gte->opcode(), HloOpcode::kGetTupleElement);
   bool changed = false;
@@ -556,6 +644,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kSlice:
       return UpdateSliceValueSet(instruction);
+    case HloOpcode::kDomain:
+      return UpdateDomainValueSet(instruction);
     case HloOpcode::kCopy:
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
@@ -734,6 +824,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kCall:
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
+        case HloOpcode::kDomain:
           // These instructions define no values. The values in their output
           // flow from their operands or from cross computation dataflow.
           break;
@@ -787,12 +878,13 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
 
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
-    const HloModule& module, bool ssa_form, bool bitcast_defines_value) {
+    const HloModule& module, bool ssa_form, bool bitcast_defines_value,
+    const FusionCanShareBufferFunction& fusion_can_share_buffer) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
-  auto dataflow_analysis = WrapUnique(
-      new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value));
+  auto dataflow_analysis = WrapUnique(new HloDataflowAnalysis(
+      module, ssa_form, bitcast_defines_value, fusion_can_share_buffer));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
@@ -915,6 +1007,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
   const Shape& user_subshape =
       ShapeUtil::GetSubshape(user->shape(), user_index);
+
   // Check that operand and user emit the same shape and layout.
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
     return false;
@@ -927,11 +1020,15 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
 
     const HloValue& value = GetValueDefinedAt(fusion_param, operand_index);
     if (value.uses().size() != 1) {
+      if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
+        return true;
+      }
       return false;
     }
     const HloUse& use = value.uses()[0];
 
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
       if (user->fused_expression_root()->opcode() ==
           HloOpcode::kDynamicUpdateSlice) {
         // Loop fusion with kDynamicUpdateSlice fused root.
@@ -941,6 +1038,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
         // index 0.
         return use.instruction == user->fused_expression_root() &&
                use.operand_number == 0;
+      } else {
+        return AreTransitiveUsesElementwiseOrTuple(fusion_param);
       }
     } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
                user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
@@ -966,6 +1065,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // index 'other_add_operand_index').
       return use.instruction == user->fused_expression_root() &&
              use.operand_number == other_add_operand_index;
+    } else if (fusion_can_share_buffer_ != nullptr &&
+               fusion_can_share_buffer_(user, operand)) {
+      return true;
     }
   }
 
@@ -1003,9 +1105,6 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
 
   // Loop fusions that contain transposing copies won't reach here as they have
   // different layouts, which fails the check in the beginning of this function.
-  //
-  // Multi-output fusion will fail the check here as tuples are not considered
-  // an elementwise operation.
   return user->IsElementwiseOnOperand(user->operand_index(operand));
 }
 

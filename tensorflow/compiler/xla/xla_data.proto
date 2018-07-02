@@ -274,6 +274,9 @@ message ExecutionProfile {
   // for the input data transfer since the memory is initialized with the proper
   // values before the execution.
   int64 compute_and_transfer_time_ns = 5;
+
+  // The size of the binary code in the executable.
+  int64 executable_size_in_bytes = 6;
 }
 
 // Handle given to a user that represents an execution that the user launched

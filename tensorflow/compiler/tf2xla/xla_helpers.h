@@ -29,12 +29,20 @@ namespace tensorflow {
 class XlaHelpers {
  public:
   // Returns a handle representing the minimum value of a scalar
-  // element of data_type.
+  // element of data_type. -inf for floating-point types.
   static xla::XlaOp MinValue(xla::XlaBuilder* b, DataType data_type);
 
-  // Returns a handle representing the maximum value of a scalar
+  // Returns a handle representing the minimum finite value of a scalar
   // element of data_type.
+  static xla::XlaOp MinFiniteValue(xla::XlaBuilder* b, DataType data_type);
+
+  // Returns a handle representing the maximum value of a scalar
+  // element of data_type. inf for floating point types.
   static xla::XlaOp MaxValue(xla::XlaBuilder* b, DataType data_type);
+
+  // Returns a handle representing the maximum finite value of a scalar
+  // element of data_type.
+  static xla::XlaOp MaxFiniteValue(xla::XlaBuilder* b, DataType data_type);
 
   // Returns a handle representing the zero value of a scalar
   // element of data_type.
@@ -80,10 +88,6 @@ class XlaHelpers {
                        const xla::XlaOp& input, const TensorShape& input_shape,
                        DataType input_type, DataType output_type, int axis,
                        xla::XlaOp* argmin);
-
-  // Sets *iota to a rank 1 tensor with values [0, 1, 2, ...] of `dtype`.
-  static Status Iota(xla::XlaBuilder* builder, DataType dtype, int64 size,
-                     xla::XlaOp* iota);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new

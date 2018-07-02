@@ -373,6 +373,13 @@ class ClientLibraryTestBase : public ::testing::Test {
   // The float type used in this test, BF16 or F32 according to use_bfloat16.
   PrimitiveType FloatType() const { return use_bfloat16_ ? BF16 : F32; }
 
+  // Executes the computation and calculates the expected reference value using
+  // the reference client. Returns two literals in the order of (expected,
+  // actual).
+  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
+  ComputeValueAndReference(XlaBuilder* builder,
+                           tensorflow::gtl::ArraySlice<Literal> arguments);
+
   Client* client_;
   Client* ref_client_;  // To compute reference result.
   ExecutionOptions execution_options_;
@@ -389,13 +396,6 @@ class ClientLibraryTestBase : public ::testing::Test {
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output,
       const Shape* output_with_layout = nullptr);
-
-  // Executes the computation and calculates the expected reference value using
-  // the reference client. Returns two literals in the order of (expected,
-  // actual).
-  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
-  ComputeValueAndReference(XlaBuilder* builder,
-                           tensorflow::gtl::ArraySlice<Literal> arguments);
 
   // Whether to run tests with all float-type input/output converted to
   // bfloat16.
@@ -545,7 +545,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 
@@ -559,7 +559,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 
@@ -573,7 +573,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 
@@ -587,7 +587,7 @@ std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
   }
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
   return data;
 }
 

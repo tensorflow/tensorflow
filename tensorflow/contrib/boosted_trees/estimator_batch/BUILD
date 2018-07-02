@@ -15,8 +15,9 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "custom_export_strategy",
+        ":custom_export_strategy",
         ":custom_loss_head",
+        ":distillation_loss",
         ":estimator",
         ":model",
         ":trainer_hooks",
@@ -144,6 +145,7 @@ py_library(
     srcs = ["dnn_tree_combined_estimator.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":distillation_loss",
         ":estimator_utils",
         ":trainer_hooks",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
@@ -153,6 +155,17 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "distillation_loss",
+    srcs = ["distillation_loss.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
     ],
 )
 

@@ -24,9 +24,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/overflow_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
@@ -93,8 +95,11 @@ bool IsArrayPrimitiveType(PrimitiveType primitive_type) {
 // Recursive helper for comparing the equality of two shapes. Returns true if
 // the shapes are the same. If compare_layouts is true, then layouts must also
 // match.
-bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
-  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
+                   bool ignore_fp_precision) {
+  if ((ignore_fp_precision &&
+       !ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) ||
+      (!ignore_fp_precision && !ShapeUtil::SameElementType(lhs, rhs))) {
     VLOG(3) << "CompareShapes: lhs element type != rhs element type";
     return false;
   }
@@ -102,7 +107,8 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   if (ShapeUtil::IsTuple(lhs)) {
     return ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
                            [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts);
+                             return CompareShapes(l, r, compare_layouts,
+                                                  ignore_fp_precision);
                            });
   } else if (!ShapeUtil::IsArray(lhs)) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
@@ -169,10 +175,23 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }  // namespace
 
 /* static */ bool ShapeUtil::Equal(const Shape& lhs, const Shape& rhs) {
-  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true);
+  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
+                             /*ignore_fp_precision=*/false);
   if (!equal && VLOG_IS_ON(3)) {
     VLOG(3) << "ShapeUtil::Equal differ: lhs = " << lhs.ShortDebugString()
             << ", rhs = " << rhs.ShortDebugString();
+  }
+
+  return equal;
+}
+
+/* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
+                                                      const Shape& rhs) {
+  bool equal = CompareShapes(lhs, rhs, /*compare_layouts=*/true,
+                             /*ignore_fp_precision=*/true);
+  if (!equal && VLOG_IS_ON(3)) {
+    VLOG(3) << "ShapeUtil::EqualIgnoringFpPrecision differ: lhs = "
+            << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
   }
 
   return equal;
@@ -263,6 +282,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     tensorflow::gtl::ArraySlice<Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
+  result.mutable_tuple_shapes()->Reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
@@ -379,6 +399,13 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return shape.tuple_shapes(index);
 }
 
+/* static */ int64 ShapeUtil::SubshapeCount(const Shape& shape) {
+  int64 n = 0;
+  ForEachSubshape(shape, [&](const Shape& literal_subshape,
+                             const ShapeIndex& index) { ++n; });
+  return n;
+}
+
 /* static */ Shape ShapeUtil::SliceTuple(const Shape& tuple, int64 start,
                                          int64 limit) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(tuple));
@@ -413,6 +440,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       std::multiplies<int64>());
 }
 
+/* static */ int64 ShapeUtil::ElementsInRecursive(const Shape& shape) {
+  CHECK(IsArray(shape) || IsTuple(shape));
+  if (IsArray(shape)) {
+    return ElementsIn(shape);
+  }
+  int64 count = 0;
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    count += ElementsInRecursive(element_shape);
+  }
+  return count;
+}
+
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
@@ -420,7 +459,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
   return shape.element_type() == F32 && Rank(shape) == 0;
 }
-
 
 namespace {
 
@@ -554,12 +592,11 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   // tensorflow::StringPiece is not compatible with internal RE2 StringPiece, so
   // we convert in to the RE2-consumable type and then consume the corresponding
   // amount from our StringPiece type.
+  static LazyRE2 shape_pattern = {
+      "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
-  if (RE2::Consume(
-          &s_consumable,
-          "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?",
-          &element_type_string, &dimensions_string, &format_string,
-          &layout_string)) {
+  if (RE2::Consume(&s_consumable, *shape_pattern, &element_type_string,
+                   &dimensions_string, &format_string, &layout_string)) {
     size_t consumed = s->size() - s_consumable.size();
     s->remove_prefix(consumed);
     auto string_to_int64 = [&s](const string& input) -> StatusOr<int64> {
@@ -645,7 +682,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return CompareShapes(lhs, rhs, /*compare_layouts=*/false);
+  return CompareShapes(lhs, rhs, /*compare_layouts=*/false,
+                       /*ignore_fp_precision=*/false);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,
@@ -847,6 +885,53 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     }
   }
 
+  TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
+  return Status::OK();
+}
+
+/* static */ Status ShapeUtil::ValidateShapeSize(const Shape& shape) {
+  VLOG(3) << "Validating shape size: " << ShapeUtil::HumanString(shape);
+  auto invalid_argument =
+      InvalidArgument("Shape %s size may overflow int64.",
+                      ShapeUtil::HumanString(shape).c_str());
+  if (!IsArray(shape)) {
+    return Status::OK();
+  }
+  int64 shape_size;
+  if (LayoutUtil::IsSparseArray(shape)) {
+    shape_size = LayoutUtil::MaxSparseElements(shape.layout());
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+    shape_size = MultiplyWithoutOverflow(shape_size, ShapeUtil::Rank(shape));
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+    shape_size = MultiplyWithoutOverflow(shape_size, sizeof(int64));
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+  }
+
+  // This is intentionally unconditional: even if the shape is sparse, we want
+  // to verify the densified version has a reasonable size.
+  if (shape.dimensions().empty()) {
+    return Status::OK();
+  }
+  shape_size = 1;
+  for (int64 dim : shape.dimensions()) {
+    shape_size = MultiplyWithoutOverflow(shape_size, dim);
+    if (shape_size < 0) {
+      return invalid_argument;
+    }
+  }
+  shape_size = MultiplyWithoutOverflow(
+      shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
+  if (shape_size < 0) {
+    return invalid_argument;
+  }
+
+  VLOG(3) << "Shape size is valid: " << shape_size;
   return Status::OK();
 }
 
@@ -944,6 +1029,11 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
     }
   });
   return leaves;
+}
+
+/* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
+  CHECK(ShapeUtil::IsArray(shape));
+  return ArrayContains<int64>(AsInt64Slice(shape.dimensions()), 1);
 }
 
 namespace {

@@ -175,6 +175,9 @@ class ShapeUtil {
   // Precondition: IsArray(shape)
   static int64 ElementsIn(const Shape& shape);
 
+  // As ElementsIn(), but recurses through tuples.
+  static int64 ElementsInRecursive(const Shape& shape);
+
   // Returns true if 'shape' is an array with zero elements.
   static bool IsZeroElementArray(const Shape& shape);
 
@@ -276,6 +279,9 @@ class ShapeUtil {
 
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
+
+  // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
+  static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
   // Returns the rank (number of dimensions) of the given shape.
   // Precondition: !IsTuple(shape)
@@ -457,6 +463,9 @@ class ShapeUtil {
   // Precondition: IsTuple(shape) && TupleElementCount(shape) > index
   static const Shape& GetTupleElementShape(const Shape& shape, int64 index);
 
+  // Returns the number of elements, recursively, in the given shape.
+  static int64 SubshapeCount(const Shape& shape);
+
   // Slices tuple elements in the range [start, limit) and returns a new tuple
   // shape. E.g. a tuple like (f32, s32, u32) would slice via 1,3 to (s32, u32).
   static Shape SliceTuple(const Shape& tuple, int64 start, int64 limit);
@@ -515,6 +524,10 @@ class ShapeUtil {
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshapeWithStatus(
       Shape* shape, const MutatingStatusVisitorFunction& func);
+
+  // Returns true if `shape` (which must be an array) with degenerate dimensions
+  // (dimensions with bound 1).
+  static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i]
@@ -689,6 +702,10 @@ class ShapeUtil {
   static size_t Hash(const Shape& shape);
 
  private:
+  // Validates the shape size is sane. This makes sure it's safe to do
+  // calculations in int64 without overflowing.
+  static Status ValidateShapeSize(const Shape& shape);
+
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);

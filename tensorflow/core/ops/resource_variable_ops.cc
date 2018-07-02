@@ -14,6 +14,7 @@
 // ============================================================================
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -83,6 +84,22 @@ REGISTER_OP("ReadVariableOp")
     .Output("value: dtype")
     .Attr("dtype: type")
     .SetShapeFn(ReadVariableShapeFn);
+
+Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FunctionDefHelper::Define(
+      // Arg defs
+      {"x: resource", "dy: float"},
+      // Ret val defs
+      {"dy: float"},
+      // Attr defs
+      {},
+      // Nodes
+      {});
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("ReadVariableOp", ReadGrad);
 
 REGISTER_OP("DestroyResourceOp")
     .Input("resource: resource")
