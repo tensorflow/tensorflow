@@ -112,6 +112,27 @@ public final class NativeInterpreterWrapperTest {
   }
 
   @Test
+  public void testRunWithBufferOutput() {
+    try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH)) {
+      float[] oneD = {1.23f, -6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      Object[] inputs = {fourD};
+      Tensor[] outputs = wrapper.run(inputs);
+      assertThat(outputs).hasLength(1);
+      ByteBuffer parsedOutput =
+          ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
+      outputs[0].copyTo(parsedOutput);
+      float[] outputOneD = {
+        parsedOutput.getFloat(0), parsedOutput.getFloat(4), parsedOutput.getFloat(8)
+      };
+      float[] expected = {3.69f, -19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
+  }
+
+  @Test
   public void testRunWithInputsOfSameDims() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
     float[] oneD = {1.23f, -6.54f, 7.81f};
