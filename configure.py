@@ -1463,6 +1463,8 @@ def main():
                 'with_s3_support', True, 's3')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
+  set_build_var(environ_cp, 'TF_NEED_IGNITE', 'Apache Ignite',
+                'with_ignite_support', True, 'ignite')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',

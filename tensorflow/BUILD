@@ -227,6 +227,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_ignite_support",
+    define_values = {"with_ignite_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
 config_setting(
