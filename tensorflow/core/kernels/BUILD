@@ -2632,6 +2632,7 @@ cc_library(
         ":matrix_logarithm_op",
         ":matrix_solve_ls_op",
         ":matrix_solve_op",
+        ":matrix_square_root_op",
         ":matrix_triangular_solve_op",
         ":qr_op",
         ":self_adjoint_eig_op",
@@ -2738,6 +2739,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_solve_op",
     prefix = "matrix_solve_op",
+    deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "matrix_square_root_op",
+    prefix = "matrix_square_root_op",
     deps = LINALG_DEPS,
 )
 
