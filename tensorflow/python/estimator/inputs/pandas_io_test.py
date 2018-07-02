@@ -84,9 +84,9 @@ class PandasIoTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError,
                                  'target_column must be a string type'):
       pandas_io.pandas_input_fn(x, y, batch_size=2,
-        shuffle=False,
-        num_epochs=1,
-        target_column=['one', 'two'])
+                                shuffle=False,
+                                num_epochs=1,
+                                target_column=['one', 'two'])
 
   def testPandasInputFn_NonBoolShuffle(self):
     if not HAS_PANDAS:
@@ -119,7 +119,7 @@ class PandasIoTest(test.TestCase):
     with self.test_session() as session:
       x, y = self.makeTestDataFrameWithYAsDataFrame()
       input_fn = pandas_io.pandas_input_fn(
-        x, y, batch_size=2, shuffle=False, num_epochs=1)
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
 
       features, targets = self.callInputFnOnce(input_fn, session)
 
@@ -128,14 +128,14 @@ class PandasIoTest(test.TestCase):
       self.assertAllEqual(targets['a_target'], [10, 11])
       self.assertAllEqual(targets['b_target'], [50, 51])
 
-  def testPandasInputFnWhenYIsDataFrame_HandlesOverlappingColumnNames(self):
+  def testPandasInputFnYIsDataFrame_HandlesOverlappingColumns(self):
     if not HAS_PANDAS:
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrameWithYAsDataFrame()
       y = y.rename(columns={'a_target': 'a', 'b_target': 'b'})
       input_fn = pandas_io.pandas_input_fn(
-        x, y, batch_size=2, shuffle=False, num_epochs=1)
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
 
       features, targets = self.callInputFnOnce(input_fn, session)
 
@@ -144,14 +144,14 @@ class PandasIoTest(test.TestCase):
       self.assertAllEqual(targets['a'], [10, 11])
       self.assertAllEqual(targets['b'], [50, 51])
 
-  def testPandasInputFnWhenYIsDataFrame_HandlesOverlappingColumnNamesInTargets(self):
+  def testPandasInputFnYIsDataFrame_HandlesOverlappingColumnsInTargets(self):
     if not HAS_PANDAS:
       return
     with self.test_session() as session:
       x, y = self.makeTestDataFrameWithYAsDataFrame()
       y = y.rename(columns={'a_target': 'a', 'b_target': 'a_n'})
       input_fn = pandas_io.pandas_input_fn(
-        x, y, batch_size=2, shuffle=False, num_epochs=1)
+          x, y, batch_size=2, shuffle=False, num_epochs=1)
 
       features, targets = self.callInputFnOnce(input_fn, session)
 
