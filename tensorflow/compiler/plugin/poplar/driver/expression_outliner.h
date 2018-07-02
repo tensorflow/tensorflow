@@ -31,8 +31,7 @@ namespace poplarplugin {
 
 class ExpressionOutliner : public HloMatcher {
  public:
-  ExpressionOutliner(
-      const std::set<const HloInstruction*>& inplace_instructions);
+  ExpressionOutliner(struct CompilerAnnotations& annotations);
 
   ~ExpressionOutliner() override = default;
 

@@ -110,6 +110,16 @@ StatusOr<popconv::ConvParams> GetConvolutionParameters(
   return params;
 }
 
+static const HloInstruction*
+FindConvolutionOp(const HloInstruction* root,
+                  const CompilerAnnotations& annotations) {
+  const HloInstruction* inst = root;
+  while (inst->opcode() == HloOpcode::kCall) {
+    inst = annotations.fusion_map.at(inst->to_apply());
+  }
+  return inst;
+}
+
 static std::string GetConvolutionPass(const HloInstruction* inst,
                                       const CompilerAnnotations& annotations) {
   if (IsForward(inst, annotations)) {
@@ -266,10 +276,7 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output_shape,
                                                 TensorMap& tensor_map) {
-  const HloInstruction* conv = inst;
-  if (conv->opcode() == HloOpcode::kCall) {
-    conv = inst->to_apply()->root_instruction();
-  }
+  const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   // Find the input tensor
   poplar::Tensor in;
@@ -308,7 +315,7 @@ StatusOr<poplar::program::Program> CreateConv2D(poplar::Graph& graph,
 StatusOr<poplar::program::Program> Create2DConvWithReverse(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
-  const HloInstruction* conv = inst->to_apply()->root_instruction();
+  const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   // Find the input tensor
   poplar::Tensor in;
@@ -347,8 +354,7 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {
-  const HloInstruction* conv =
-      inst->to_apply()->root_instruction()->operand(0)->operand(0)->operand(1);
+  const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   // Find the input tensor
   poplar::Tensor in;
@@ -399,9 +405,11 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
   poplar::Tensor bias;
   TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1));
 
+  const auto* conv_op = FindConvolutionOp(inst->operand(0), res.annotations);
+
   poplar::Tensor shuffled_in;
   TF_ASSIGN_OR_RETURN(shuffled_in,
-                      ShuffleConvolutionOutputToPoplar(inst->operand(0), in));
+                      ShuffleConvolutionOutputToPoplar(conv_op, in));
 
   poplar::program::Sequence prog;
   popconv::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));

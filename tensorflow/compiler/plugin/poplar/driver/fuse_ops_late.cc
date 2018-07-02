@@ -350,7 +350,8 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
 };
 
-FuseOpsLate::FuseOpsLate() : HloMatcher(patterns, false) {}
+FuseOpsLate::FuseOpsLate(struct CompilerAnnotations& annotations) :
+    HloMatcher(patterns, annotations, false) {}
 
 ReplacedInstructions FuseOpsLate::ReplaceNodes(int pattern,
                                                const HloMatcherMatched& match) {

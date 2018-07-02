@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 
 #include "tensorflow/compiler/xla/test.h"
@@ -96,7 +97,8 @@ TEST_F(OutlinerTest, Convolution) {
   EXPECT_THAT(hlo_module->computation_count(), 1);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
 
-  Outliner outliner;
+  CompilerAnnotations annotations;
+  Outliner outliner(annotations);
   EXPECT_TRUE(outliner.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->computation_count(), 3);
   EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);

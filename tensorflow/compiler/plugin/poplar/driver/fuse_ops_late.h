@@ -24,7 +24,7 @@ namespace poplarplugin {
 
 class FuseOpsLate : public HloMatcher {
  public:
-  FuseOpsLate();
+  FuseOpsLate(struct CompilerAnnotations& annotations);
 
   ~FuseOpsLate() override = default;
 

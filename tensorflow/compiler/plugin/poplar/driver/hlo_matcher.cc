@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
@@ -26,37 +27,12 @@ using ::tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
-namespace {
-
-void CopyConvolutionData(HloInstruction* inst, const HloInstruction* old) {
-  inst->set_window(old->window());
-  inst->set_convolution_dimension_numbers(old->convolution_dimension_numbers());
-}
-
-void CopyMetadataToInstruction(HloInstruction* inst,
-                               const HloInstruction* old) {
-  // Copy instruction data
-  // Note that some data is protected by opcode and can't be copied
-  switch (old->opcode()) {
-    case HloOpcode::kCall:
-      if (IsPopOpsConvolution(old)) {
-        CopyConvolutionData(inst, old);
-      }
-      break;
-    case HloOpcode::kConvolution:
-      CopyConvolutionData(inst, old);
-      break;
-    default:
-      break;
-  }
-
-  inst->set_metadata(old->metadata());
-}
-}  // namespace
 
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
+                       struct CompilerAnnotations& annotations,
                        bool root_computation_only)
     : root_computation_only_(root_computation_only),
+      annotations_(annotations),
       patterns_(std::move(patterns)) {
   matches_.resize(patterns.size());
 }
@@ -312,7 +288,11 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
   HloInstruction* call = matched.computation->AddInstruction(
       HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
 
-  CopyMetadataToInstruction(call, instructions_to_outline[metadata_index]);
+  auto* old = instructions_to_outline[metadata_index];
+  annotations_.fusion_map[nested_computation] = outlined.at(old);
+
+  call->set_metadata(old->metadata());
+
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
   ReplacedInstructions replaced;

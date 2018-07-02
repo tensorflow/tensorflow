@@ -72,7 +72,8 @@ using ReplacedInstructions = std::vector<HloInstruction*>;
 
 class HloMatcher : public HloPassInterface {
  public:
-  HloMatcher(const std::vector<HloMatcherPattern>& patterns, bool root_only);
+  HloMatcher(const std::vector<HloMatcherPattern>& patterns,
+             struct CompilerAnnotations& annotations, bool root_only);
 
   ~HloMatcher() override = default;
 
@@ -107,6 +108,9 @@ class HloMatcher : public HloPassInterface {
   // instructions due to one match, other matches which contain the instruction
   // cannot also be applied
   std::multimap<const HloInstruction*, HloMatcherMatched*> match_map_;
+
+  // The instruction annotations from the compiler
+  struct CompilerAnnotations& annotations_;
 };
 
 }  // namespace poplarplugin

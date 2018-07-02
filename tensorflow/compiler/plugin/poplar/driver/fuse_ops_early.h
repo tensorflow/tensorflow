@@ -27,7 +27,7 @@ namespace poplarplugin {
 // matching more difficult
 class FuseOpsEarly : public HloMatcher {
  public:
-  FuseOpsEarly();
+  FuseOpsEarly(struct CompilerAnnotations& annotations);
 
   ~FuseOpsEarly() override = default;
 

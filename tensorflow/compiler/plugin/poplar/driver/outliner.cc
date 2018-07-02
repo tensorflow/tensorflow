@@ -46,7 +46,8 @@ static const std::vector<HloMatcherPattern> patterns = {
 
 };
 
-Outliner::Outliner() : HloMatcher(patterns, true) {}
+Outliner::Outliner(struct CompilerAnnotations& annotations) :
+    HloMatcher(patterns, annotations, true) {}
 
 ReplacedInstructions Outliner::ReplaceNodes(int pattern,
                                             const HloMatcherMatched& match) {

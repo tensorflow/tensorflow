@@ -37,6 +37,8 @@ struct CompilerAnnotations {
   ConvClassification classification_map;
 
   InplaceInstructions inplace_instructions;
+
+  std::map<const HloComputation*, const HloInstruction*> fusion_map;
 };
 
 }  // namespace poplarplugin

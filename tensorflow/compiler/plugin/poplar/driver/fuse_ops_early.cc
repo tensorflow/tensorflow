@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_early.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 
@@ -34,7 +35,8 @@ static FusedGraphInfo fuse_info[] = {};
 
 static const std::vector<HloMatcherPattern> patterns = {};
 
-FuseOpsEarly::FuseOpsEarly() : HloMatcher(patterns, false) {}
+FuseOpsEarly::FuseOpsEarly(struct CompilerAnnotations& annotations) :
+    HloMatcher(patterns, annotations, false) {}
 
 ReplacedInstructions FuseOpsEarly::ReplaceNodes(
     int pattern, const HloMatcherMatched& match) {

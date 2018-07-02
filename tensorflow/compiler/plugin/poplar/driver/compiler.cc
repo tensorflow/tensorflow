@@ -357,7 +357,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloCSE>(false);
-    pipeline.AddPass<FuseOpsEarly>();
+    pipeline.AddPass<FuseOpsEarly>(resources.annotations);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
         false, [](const Shape&, const Shape&) { return false; }, false, false);
     pipeline.AddPass<ReshapeMover>();
@@ -374,11 +374,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<FuseOpsLate>();
-    pipeline.AddPass<Outliner>();
+    pipeline.AddPass<FuseOpsLate>(resources.annotations);
+    pipeline.AddPass<Outliner>(resources.annotations);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
-    pipeline.AddPass<ExpressionOutliner>(
-        resources.annotations.inplace_instructions);
+    pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<UpdateOpDependenctOrdering>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();

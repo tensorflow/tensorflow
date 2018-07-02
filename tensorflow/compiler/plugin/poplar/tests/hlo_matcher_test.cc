@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 
 #include "tensorflow/compiler/xla/test.h"
@@ -25,9 +27,11 @@ using HloMatcherTest = HloTestBase;
 
 class TestMatcher : public HloMatcher {
  public:
-  TestMatcher(const std::vector<HloMatcherPattern>& patterns, const char* name,
+  TestMatcher(const std::vector<HloMatcherPattern>& patterns,
+              CompilerAnnotations& annotations, const char* name,
               const char index, bool root_only)
-      : HloMatcher(patterns, root_only), match_index(index), match_name(name) {}
+      : HloMatcher(patterns, annotations, root_only),
+        match_index(index), match_name(name) {}
 
  private:
   ReplacedInstructions ReplaceNodes(int pattern,
@@ -76,7 +80,8 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
       {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  TestMatcher matcher(patterns, "test", 0, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -107,7 +112,8 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
       {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  TestMatcher matcher(patterns, "test", 0, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -158,7 +164,8 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
       {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  TestMatcher matcher(patterns, "test2", 0, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "test2", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -210,7 +217,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
        {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 1, nullptr, {}}}};
-  TestMatcher matcher(patterns, "fuse", 1, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "fuse", 1, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -257,7 +265,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
       {HloOpcode::kParameter, false, 0, nullptr, {}},
       {HloOpcode::kParameter, false, 1, nullptr, {}},
   }};
-  TestMatcher matcher(patterns, "test", 0, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -298,7 +307,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
        {HloOpcode::kBroadcast, false, 1, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 2, nullptr, {}}}};
-  TestMatcher matcher(patterns, "test", 0, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "test", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -333,7 +343,8 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
       {{HloOpcode::kSubtract, true, 0, nullptr, {2, 1}},
        {HloOpcode::kConstant, true, 0, nullptr, {}},
        {HloOpcode::kParameter, false, 0, nullptr, {}}}};
-  TestMatcher matcher(patterns, "abc", 0, false);
+  CompilerAnnotations annotations;
+  TestMatcher matcher(patterns, annotations, "abc", 0, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);

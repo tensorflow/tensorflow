@@ -91,9 +91,9 @@ bool IsPopopsElementwise(const HloInstruction* inst) {
 
 }  // namespace
 
-ExpressionOutliner::ExpressionOutliner(
-    const std::set<const HloInstruction*>& inplace_instructions)
-    : HloMatcher({}, true), inplace_instructions(inplace_instructions) {}
+ExpressionOutliner::ExpressionOutliner(struct CompilerAnnotations& annotations)
+    : HloMatcher({}, annotations, true),
+      inplace_instructions(annotations.inplace_instructions) {}
 
 ReplacedInstructions ExpressionOutliner::ReplaceNodes(
     int, const HloMatcherMatched&) {
