@@ -211,7 +211,7 @@ class TruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp min_positive =
         XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
     auto uniform = xla::RngUniform(min_positive, one, xla_shape);
-    ctx->SetOutput(0, TruncatedNormal(dtype, uniform));
+    ctx->SetOutput(0, TruncatedNormal(uniform));
   }
 };
 

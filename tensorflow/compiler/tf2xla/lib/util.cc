@@ -28,12 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
-  return xla::Broadcast(
-      xla::ConstantLiteral(builder, xla::Literal::Zero(shape.element_type())),
-      xla::AsInt64Slice(shape.dimensions()));
-}
-
 xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                         double value) {
   switch (type) {

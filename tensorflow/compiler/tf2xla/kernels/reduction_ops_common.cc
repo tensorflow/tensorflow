@@ -32,6 +32,8 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
   OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
 
   OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+  OP_REQUIRES_OK(
+      ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }
 
 // Unless BuildFinalizer is overridden the reduction has no

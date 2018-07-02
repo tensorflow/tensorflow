@@ -45,6 +45,8 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
 
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -241,8 +243,17 @@ def _in_place_subclassed_model_state_restoration(model):
   # Restore layers and build attributes
   if (hasattr(model, '_original_attributes_cache') and
       model._original_attributes_cache is not None):
-    model._layers = []
+    # Models have sticky attribute assignment, so we want to be careful to add
+    # back the previous attributes and track Layers by their original names
+    # without adding dependencies on "utility" attributes which Models exempt
+    # when they're constructed.
+    model._layers = data_structures.NoDependency([])
     for name, value in model._original_attributes_cache.items():
+      if not isinstance(value, checkpointable.CheckpointableBase):
+        # If this value is not already checkpointable, it's probably that way
+        # for a reason; we don't want to start tracking data structures that the
+        # original Model didn't.
+        value = data_structures.NoDependency(value)
       setattr(model, name, value)
     model._original_attributes_cache = None
   else:
