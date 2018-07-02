@@ -829,10 +829,11 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
     ENTRY entry_computation {
       param = (f32[2,2]) parameter(0)
       gte = f32[2,2] get-tuple-element(param), index=0
-      recv = (f32[2,2], u32[]) recv(), channel_id=1, sharding={maximal device=1}
+      token = token[] after-all()
+      recv = (f32[2,2], u32[]) recv(token), channel_id=1, sharding={maximal device=1}
       ROOT recv-done = f32[2,2] recv-done(recv), channel_id=1,
         sharding={maximal device=1}
-      send = (f32[2,2], u32[]) send(gte), channel_id=1,
+      send = (f32[2,2], u32[]) send(gte, token), channel_id=1,
         sharding={maximal device=0}
       send-done = () send-done(send), channel_id=1, sharding={maximal device=0}
     }

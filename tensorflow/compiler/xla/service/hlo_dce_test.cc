@@ -75,19 +75,20 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   builder.AddInstruction(
-      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(4, computation->instruction_count());
 
   HloDCE dce;
   EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
 
-  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(4, computation->instruction_count());
 }
 
 TEST_F(HloDceTest, DeadParameters) {

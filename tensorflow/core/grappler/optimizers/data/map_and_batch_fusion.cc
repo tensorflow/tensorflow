@@ -115,15 +115,7 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     nodes_to_delete.insert(map_node->name());
     nodes_to_delete.insert(batch_node.name());
 
-    // Update the input of the outputs of the `Batch` node to use
-    // `MapAndBatch`.
-    GraphView::OutputPort output_port =
-        graph.GetOutputPort(batch_node.name(), 0);
-    auto fanout = graph.GetFanout(output_port);
-    for (auto it = fanout.begin(); it != fanout.end(); ++it) {
-      NodeDef* node = it->node;
-      node->set_input(0, new_node->name());
-    }
+    graph_utils::ReplaceInput(batch_node, *new_node, &graph);
   }
   TF_RETURN_IF_ERROR(graph_utils::DeleteNodes(nodes_to_delete, output));
   return Status::OK();

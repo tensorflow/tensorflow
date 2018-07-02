@@ -327,11 +327,12 @@ TEST_F(BufferLivenessTest, RootInstructionIsNotLastInSequentialOrder) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, vec_, "param"));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, param, param));
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto recv = builder.AddInstruction(
-      HloInstruction::CreateRecv(vec_, /*channel_id=*/0));
+      HloInstruction::CreateRecv(vec_, token, /*channel_id=*/0));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
   auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(recv_done, /*channel_id=*/1));
+      HloInstruction::CreateSend(recv_done, token, /*channel_id=*/1));
   auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
 
   auto module = CreateNewModule();
