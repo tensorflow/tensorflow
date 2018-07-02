@@ -27,3 +27,4 @@ Pooling3DTest.testMaxPoolGradSamePadding2_2_3d  # 3D grad_grad
 Pooling3DTest.testMaxPoolGradSamePadding3_1_3d  # 3D grad_grad
 StatelessRandomOpsTest.testTruncatedNormalIsInRange  # Too slow
 RandomOpsTest.testTruncatedNormalIsInRange  # Too slow
+MatrixBandPartTest  # Too slow
