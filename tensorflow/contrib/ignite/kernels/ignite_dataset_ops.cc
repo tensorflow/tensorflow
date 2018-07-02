@@ -74,7 +74,7 @@ class IgniteDatasetOp : public DatasetOpKernel {
     }
 
     *output = new ignite::IgniteDataset(ctx, cache_name, host, port, local,
-                                        part, page_size, schema, permutation);
+                                        part, page_size, std::move(schema), std::move(permutation));
   }
 };
 
