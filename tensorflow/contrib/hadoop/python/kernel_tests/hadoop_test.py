@@ -24,7 +24,6 @@ from tensorflow.contrib.hadoop.python.ops import hadoop_dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 

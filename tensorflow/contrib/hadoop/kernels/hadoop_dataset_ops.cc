@@ -211,7 +211,7 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
           filenames_(filenames),
           output_types_(output_types) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::SequenceFile")}));
@@ -227,7 +227,9 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "SequenceFileDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "SequenceFileDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
@@ -328,7 +330,6 @@ class SequenceFileDatasetOp : public DatasetOpKernel {
   };
   DataTypeVector output_types_;
 };
-
 }
 
 REGISTER_KERNEL_BUILDER(Name("SequenceFileDataset").Device(DEVICE_CPU),
