@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/platform/s3/s3_crypto.h"
+#include "tensorflow/core/platform/s3/aws_crypto.h"
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 
@@ -21,11 +21,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-class S3Sha256HMACOpenSSLImpl : public Aws::Utils::Crypto::HMAC {
+class AWSSha256HMACOpenSSLImpl : public Aws::Utils::Crypto::HMAC {
  public:
-  S3Sha256HMACOpenSSLImpl() {}
+  AWSSha256HMACOpenSSLImpl() {}
 
-  virtual ~S3Sha256HMACOpenSSLImpl() = default;
+  virtual ~AWSSha256HMACOpenSSLImpl() = default;
 
   virtual Aws::Utils::Crypto::HashResult Calculate(
       const Aws::Utils::ByteBuffer& toSign,
@@ -47,11 +47,11 @@ class S3Sha256HMACOpenSSLImpl : public Aws::Utils::Crypto::HMAC {
   }
 };
 
-class S3Sha256OpenSSLImpl : public Aws::Utils::Crypto::Hash {
+class AWSSha256OpenSSLImpl : public Aws::Utils::Crypto::Hash {
  public:
-  S3Sha256OpenSSLImpl() {}
+  AWSSha256OpenSSLImpl() {}
 
-  virtual ~S3Sha256OpenSSLImpl() = default;
+  virtual ~AWSSha256OpenSSLImpl() = default;
 
   virtual Aws::Utils::Crypto::HashResult Calculate(
       const Aws::String& str) override {
@@ -101,13 +101,13 @@ class S3Sha256OpenSSLImpl : public Aws::Utils::Crypto::Hash {
 };
 
 std::shared_ptr<Aws::Utils::Crypto::Hash>
-S3SHA256Factory::CreateImplementation() const {
-  return Aws::MakeShared<S3Sha256OpenSSLImpl>(S3CryptoAllocationTag);
+AWSSHA256Factory::CreateImplementation() const {
+  return Aws::MakeShared<AWSSha256OpenSSLImpl>(AWSCryptoAllocationTag);
 }
 
 std::shared_ptr<Aws::Utils::Crypto::HMAC>
-S3SHA256HmacFactory::CreateImplementation() const {
-  return Aws::MakeShared<S3Sha256HMACOpenSSLImpl>(S3CryptoAllocationTag);
+AWSSHA256HmacFactory::CreateImplementation() const {
+  return Aws::MakeShared<AWSSha256HMACOpenSSLImpl>(AWSCryptoAllocationTag);
 }
 
 }  // namespace tensorflow
