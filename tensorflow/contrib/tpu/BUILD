@@ -307,3 +307,13 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
 )
+
+tf_py_test(
+    name = "topology_test",
+    size = "small",
+    srcs = ["python/tpu/topology_test.py"],
+    additional_deps = [
+        ":tpu",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
