@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="org.tensorflow.lite">
+    package="org.tensorflow.lite">
 
-    <uses-sdk android:minSdkVersion="4" />
+    <uses-sdk
+        android:minSdkVersion="4"
+        android:targetSdkVersion="28" />
 
-    <application>
-    </application>
+    <application />
+    
 </manifest>
-
