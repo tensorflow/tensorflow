@@ -36,6 +36,7 @@ MatOpsDotAddTest.Dot_Add_2x2_2x2BF16 POPLAR
 PrngTest.ScalarBF16Tests POPLAR
 PrngTest.ScalarBF16CountTests POPLAR
 DynamicUpdateSliceTest.Int32R0BF16 POPLAR
+ConvertTest.ConvertBF16F32 POPLAR
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR
