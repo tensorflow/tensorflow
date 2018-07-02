@@ -152,7 +152,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Need to run graph with calibration data first!");
       }
       if (cres->calibrator_) {
-        cres->calibrator_->setDone();
+        cres->calibrator_->waitAndSetDone();
         cres->thr_->join();
         const auto& calibration_table =
             cres->calibrator_->getCalibrationTableAsString();
