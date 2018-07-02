@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -131,7 +132,7 @@ xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
       return &computation;
     };
 
-    xla::XlaOp output = Zeros(builder, b_shape);
+    xla::XlaOp output = xla::ZerosLike(b);
 
     // Right-looking blocked triangular solve.
     // For an explanation of the algorithm, see the TRSM discussion in:
@@ -342,7 +343,7 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
     //   output[..., m-1:, :] = b[..., m-1:, :] / a[..., m-1:, m-1:]
     // else:
     //   output[..., :1, :] = b[..., :1, :] / a[..., :1, :1]
-    xla::XlaOp output = Zeros(builder, b_shape);
+    xla::XlaOp output = xla::ZerosLike(b);
     {
       auto i = transpose_a ? m - 1 : 0;
       auto a_slice = SliceInMinorDims(a, {i, i}, {i + 1, i + 1});
@@ -484,7 +485,7 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
     }
 
     // The main computation is performed in a While loop.
-    xla::XlaOp output = Zeros(builder, b_shape);
+    xla::XlaOp output = xla::ZerosLike(b);
 
     // Construct the initial loop carry tuple,
     // if transpose_a:

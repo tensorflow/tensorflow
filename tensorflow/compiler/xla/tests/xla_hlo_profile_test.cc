@@ -240,9 +240,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   EXPECT_TRUE(HasTrops(tanh_profile));
 }
 
-// TODO(b/71544591): The GPU backend does not record cycles spent in on Hlo
-// instructions "interior" to while nodes.
-XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
+XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
   const int64 size = 256;
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
   Shape while_result_shape =
@@ -337,8 +335,11 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
   new_argv[argc] = strdup("--xla_hlo_profile");
 
   // Fusion can change the Hlo instructions that show up in the final Hlo
-  // executable, so block it here.
-  new_argv[argc + 1] = strdup("--xla_disable_hlo_passes=fusion");
+  // executable, so block it here. Also block the WhileLoopInvariantCodeMotion
+  // pass, otherwise a while loop is transformed and we could not match the
+  // original name in the ProfileWhileComputation test.
+  new_argv[argc + 1] = strdup(
+      "--xla_disable_hlo_passes=fusion,while-loop-invariant-code-motion");
   return {argc + 2, new_argv};
 }
 

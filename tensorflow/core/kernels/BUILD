@@ -3385,6 +3385,14 @@ cc_library(
     ],
 )
 
+# Kernels for the nodes intented to be added to the graph by the Grappler optimizers.
+cc_library(
+    name = "grappler",
+    deps = [
+        ":unary_ops_composition",
+    ],
+)
+
 NN_DEPS = [
     ":bounds_check",
     ":conv_2d",
@@ -3921,6 +3929,7 @@ tf_cc_test(
 cc_library(
     name = "sparse",
     deps = [
+        ":deserialize_sparse_string_op",
         ":deserialize_sparse_variant_op",
         ":serialize_sparse_op",
         ":sparse_add_grad_op",
@@ -4076,10 +4085,18 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "deserialize_sparse_string_op",
+    prefix = "deserialize_sparse_string_op",
+    deps = SPARSE_DEPS + [
+        ":reshape_util",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
     name = "deserialize_sparse_variant_op",
     prefix = "deserialize_sparse_variant_op",
     deps = SPARSE_DEPS + [
-        ":reshape_util",
         "//tensorflow/core:protos_all_cc",
     ],
 )

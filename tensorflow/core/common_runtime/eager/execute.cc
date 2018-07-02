@@ -128,7 +128,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
     // We are only here if the policy is warn or silent copies, so we should
     // trigger a copy.
     auto pre_time = Env::Default()->NowMicros();
-    TensorHandle* result_handle;
+    TensorHandle* result_handle = nullptr;
     Status status = EagerCopyToDevice(
         *handle, ctx, expected_device->name().c_str(), &result_handle);
     if (run_metadata != nullptr) {

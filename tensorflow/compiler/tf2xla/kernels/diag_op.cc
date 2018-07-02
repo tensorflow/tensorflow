@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -27,10 +28,10 @@ namespace tensorflow {
 namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
-xla::StatusOr<xla::XlaOp> CreateDiagonal(
-    const xla::XlaOp& input, int64 last_dim_size,
-    tensorflow::gtl::ArraySlice<int64> other_dims, XlaOpKernelContext* ctx,
-    xla::XlaBuilder* builder) {
+xla::XlaOp CreateDiagonal(xla::XlaOp input, int64 last_dim_size,
+                          gtl::ArraySlice<int64> other_dims,
+                          xla::PrimitiveType element_type) {
+  xla::XlaBuilder* builder = input.builder();
   // Create two matrices that have the following forms, and compare them:
   //
   // [[0, 0, 0, 0]            [[0, 1, 2, 3]
@@ -67,12 +68,9 @@ xla::StatusOr<xla::XlaOp> CreateDiagonal(
   xla::XlaOp input_broadcast = xla::Reshape(input, broadcast_dims);
 
   broadcast_dims[broadcast_dims.size() - 2] = last_dim_size;
-  xla::PrimitiveType element_type;
-  TF_RETURN_IF_ERROR(
-      DataTypeToPrimitiveType(ctx->input_type(0), &element_type));
   auto broadcast_shape =
       xla::ShapeUtil::MakeShape(element_type, broadcast_dims);
-  xla::XlaOp zeros = Zeros(builder, broadcast_shape);
+  xla::XlaOp zeros = xla::Zeros(builder, broadcast_shape);
 
   input_broadcast = xla::Add(input_broadcast, zeros);
   return xla::Select(mask, input_broadcast, zeros);
@@ -83,8 +81,6 @@ class DiagOp : public XlaOpKernel {
   explicit DiagOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-
     OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
                 errors::InvalidArgument("Diag op must have at an input"));
     const TensorShape input_shape = ctx->InputShape(0);
@@ -107,10 +103,8 @@ class DiagOp : public XlaOpKernel {
     input = xla::Reshape(input, {size});
 
     // Create an R2 with the R1 diagonal.
-    auto diag_or_status =
-        CreateDiagonal(input, size, /*other_dims=*/{}, ctx, builder);
-    OP_REQUIRES_OK(ctx, diag_or_status.status());
-    xla::XlaOp diag = diag_or_status.ValueOrDie();
+    xla::XlaOp diag =
+        CreateDiagonal(input, size, /*other_dims=*/{}, ctx->input_xla_type(0));
 
     // Reshapes to the final shape.
     std::vector<int64> new_dims(dims.size() * 2);
@@ -197,8 +191,6 @@ class MatrixDiagOp : public XlaOpKernel {
   explicit MatrixDiagOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-
     OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
                 errors::InvalidArgument("MatrixDiag op must have at an input"));
     const TensorShape input_shape = ctx->InputShape(0);
@@ -208,17 +200,15 @@ class MatrixDiagOp : public XlaOpKernel {
                 errors::InvalidArgument("Expected 1 <= dims, got shape ",
                                         input_shape.DebugString()));
 
-    xla::XlaOp diag = ctx->Input(0);
 
     int last_dim = dims.size() - 1;
     int64 last_dim_size = input_shape.dim_size(last_dim);
     tensorflow::gtl::ArraySlice<int64> other_dims(dims);
     other_dims.pop_back();
 
-    auto diag_or_status =
-        CreateDiagonal(diag, last_dim_size, other_dims, ctx, builder);
-    OP_REQUIRES_OK(ctx, diag_or_status.status());
-    diag = diag_or_status.ValueOrDie();
+    xla::XlaOp input = ctx->Input(0);
+    xla::XlaOp diag = CreateDiagonal(input, last_dim_size, other_dims,
+                                     ctx->input_xla_type(0));
     ctx->SetOutput(0, diag);
   }
 };

@@ -543,7 +543,7 @@ SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "d
 SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Test entries in /tensorflow/contrib/cmake/python_{modules|protos|protos_cc}.txt for validity and consistency" "Check file names for cases")
 
 INCREMENTAL_FLAG=""
-DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
+DEFAULT_BAZEL_CONFIGS=""
 
 # Parse command-line arguments
 BAZEL_FLAGS=${DEFAULT_BAZEL_CONFIGS}

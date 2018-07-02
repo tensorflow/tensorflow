@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -626,11 +627,11 @@ _FORWARD_UNOP(Sign)
 _FORWARD_UNOP(Cos)
 _FORWARD_UNOP(Sin)
 _FORWARD_UNOP(Tanh)
-_FORWARD_UNOP(SqrtF32)
-_FORWARD_UNOP(SquareF32)
+_FORWARD_UNOP(Sqrt)
+_FORWARD_UNOP(Square)
 _FORWARD_BINOP(Pow)
 _FORWARD_UNOP(IsFinite)
-_FORWARD_UNOP(ReciprocalF32)
+_FORWARD_UNOP(Reciprocal)
 _FORWARD_UNOP(Neg)
 _FORWARD_UNOP(Sort)
 

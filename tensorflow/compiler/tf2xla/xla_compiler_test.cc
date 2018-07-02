@@ -1021,8 +1021,7 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
                                  std::move(graph), args, &result);
   ASSERT_FALSE(status.ok());
-  EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "FillFn:{InvalidOp}"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "InvalidOp"))
       << status.error_message();
 }
 

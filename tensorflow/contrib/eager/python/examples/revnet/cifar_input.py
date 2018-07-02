@@ -35,7 +35,7 @@ def get_ds_from_tfrecords(data_dir,
                           epochs=None,
                           shuffle=True,
                           data_format="channels_first",
-                          num_parallel_calls=8,
+                          num_parallel_calls=12,
                           prefetch=0,
                           div255=True,
                           dtype=tf.float32):
