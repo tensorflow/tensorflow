@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -47,7 +49,7 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
                                 var_shape.DebugString(), " vs ",
                                 delta_shape.DebugString()));
 
-    handle = xla::Sub(handle, xla::Mul(ctx->Input(1), ctx->Input(2)));
+    handle = handle - ctx->Input(1) * ctx->Input(2);
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
@@ -94,14 +96,13 @@ class ResourceApplyMomentum : public XlaOpKernel {
     xla::XlaOp grad = ctx->Input(3);
     xla::XlaOp momentum = ctx->Input(4);
 
-    accum = xla::Add(xla::Mul(accum, momentum), grad);
+    accum = accum * momentum + grad;
     if (use_nesterov_) {
       // See https://github.com/tensorflow/tensorflow/pull/2798 for an
       // explanation of the reparameterization used here.
-      var = xla::Sub(var, xla::Add(xla::Mul(grad, lr),
-                                   xla::Mul(xla::Mul(accum, momentum), lr)));
+      var = var - (grad * lr + accum * momentum * lr);
     } else {
-      var = xla::Sub(var, xla::Mul(accum, lr));
+      var = var - accum * lr;
     }
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
@@ -118,8 +119,6 @@ class ResourceApplyAdagrad : public XlaOpKernel {
   explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-
     DataType type = ctx->input_type(2);
 
     TensorShape var_shape, accum_shape;
@@ -146,12 +145,8 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     xla::XlaOp lr = ctx->Input(2);
     xla::XlaOp grad = ctx->Input(3);
 
-    accum =
-        xla::Add(accum, xla::Pow(grad, XlaHelpers::FloatLiteral(b, type, 2.0)));
-    var = xla::Sub(
-        var,
-        xla::Mul(xla::Mul(grad, lr),
-                 xla::Pow(accum, XlaHelpers::FloatLiteral(b, type, -0.5))));
+    accum = accum + xla::Square(grad);
+    var = var - grad * lr * xla::Rsqrt(accum);
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
@@ -226,18 +221,12 @@ class ResourceApplyAdam : public XlaOpKernel {
     // variable <- variable - alpha * m_t / (sqrt(v_t) + epsilon)
 
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp half = XlaHelpers::FloatLiteral(b, dtype_, 0.5);
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
-    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype_, 2.0);
 
-    xla::XlaOp alpha =
-        xla::Div(xla::Mul(lr, xla::Pow(xla::Sub(one, beta2_power), half)),
-                 xla::Sub(one, beta1_power));
-    m = xla::Add(m, xla::Mul(xla::Sub(grad, m), xla::Sub(one, beta1)));
-    v = xla::Add(
-        v, xla::Mul(xla::Sub(xla::Pow(grad, two), v), xla::Sub(one, beta2)));
-    var = xla::Sub(var, xla::Div(xla::Mul(m, alpha),
-                                 xla::Add(xla::Pow(v, half), epsilon)));
+    xla::XlaOp alpha = lr * xla::Sqrt(one - beta2_power) / (one - beta1_power);
+    m = m + (grad - m) * (one - beta1);
+    v = v + (xla::Square(grad) - v) * (one - beta2);
+    var = var - m * alpha / (xla::Sqrt(v) + epsilon);
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m));
@@ -255,8 +244,6 @@ class ResourceApplyRMSProp : public XlaOpKernel {
   explicit ResourceApplyRMSProp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-
     DataType type = ctx->input_type(3);
 
     TensorShape var_shape, ms_shape, mom_shape;
@@ -320,17 +307,11 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     //    ms <- grad**2 (1 - rho) + ms * rho
     //
     // Which is the equation listed above.
-    xla::XlaOp new_ms = xla::Add(
-        ms, xla::Mul(
-                xla::Sub(xla::Pow(grad, XlaHelpers::FloatLiteral(b, type, 2.0)),
-                         ms),
-                xla::Sub(XlaHelpers::FloatLiteral(b, type, 1.0), rho)));
+    xla::XlaOp new_ms =
+        ms + (xla::Square(grad) - ms) * (xla::ScalarLike(ms, 1.0) - rho);
     xla::XlaOp new_mom =
-        xla::Add(xla::Mul(mom, momentum),
-                 xla::Mul(xla::Mul(grad, lr),
-                          xla::Pow(xla::Add(new_ms, epsilon),
-                                   XlaHelpers::FloatLiteral(b, type, -0.5))));
-    xla::XlaOp new_var = xla::Sub(var, new_mom);
+        mom * momentum + grad * lr * xla::Rsqrt(new_ms + epsilon);
+    xla::XlaOp new_var = var - new_mom;
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, new_var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, new_ms));
@@ -425,23 +406,18 @@ void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
   xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
   xla::XlaOp grad_to_use;
   if (has_l2_shrinkage) {
-    grad_to_use = xla::Add(grad, xla::Mul(two, xla::Mul(l2_shrinkage, var)));
+    grad_to_use = grad + two * l2_shrinkage * var;
   } else {
     grad_to_use = grad;
   }
 
-  xla::XlaOp new_accum = xla::Add(accum, xla::Pow(grad_to_use, two));
-  xla::XlaOp new_accum_lr_pow = xla::Pow(new_accum, xla::Neg(lr_power));
-  xla::XlaOp accum_lr_pow = xla::Pow(accum, xla::Neg(lr_power));
-  linear = xla::Add(
-      linear,
-      xla::Sub(grad_to_use,
-               xla::Mul(xla::Div(xla::Sub(new_accum_lr_pow, accum_lr_pow), lr),
-                        var)));
-  xla::XlaOp linear_clipped = xla::Clamp(xla::Neg(l1), linear, l1);
-  xla::XlaOp quadratic =
-      xla::Add(xla::Div(new_accum_lr_pow, lr), xla::Mul(two, l2));
-  var = xla::Div(xla::Sub(linear_clipped, linear), quadratic);
+  xla::XlaOp new_accum = accum + xla::Square(grad_to_use);
+  xla::XlaOp new_accum_lr_pow = xla::Pow(new_accum, -lr_power);
+  xla::XlaOp accum_lr_pow = xla::Pow(accum, -lr_power);
+  linear = linear + grad_to_use - (new_accum_lr_pow - accum_lr_pow) / lr * var;
+  xla::XlaOp linear_clipped = xla::Clamp(-l1, linear, l1);
+  xla::XlaOp quadratic = new_accum_lr_pow / lr + two * l2;
+  var = (linear_clipped - linear) / quadratic;
   accum = new_accum;
 
   OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype, var));

@@ -65,6 +65,33 @@ xla_test(
 )
 
 cc_library(
+    name = "math",
+    srcs = ["math.cc"],
+    hdrs = ["math.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "math_test",
+    srcs = ["math_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":math",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "numeric",
     srcs = ["numeric.cc"],
     hdrs = ["numeric.h"],

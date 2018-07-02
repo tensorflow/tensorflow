@@ -55,20 +55,6 @@ XlaComputation CreateScalarOrComputation(XlaBuilder* builder);
 // Note: if predicates is zero-sized, Any() vacuously returns false.
 XlaOp Any(XlaOp predicates);
 
-// Evaluate the polynomial given coefficients and `x`.
-// N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients);
-
-// Compute an approximation of the error function complement (1 - erf(x)).
-XlaOp Erfc(XlaOp x);
-
-// Compute an approximation of the error function.
-XlaOp Erf(XlaOp x);
-
-// Compute an approximation of the inverse of the error function.
-XlaOp ErfInv(XlaOp x);
-
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_ARITHMETIC_H_
