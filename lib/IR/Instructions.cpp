@@ -23,6 +23,27 @@ using namespace mlir;
 // Instruction
 //===----------------------------------------------------------------------===//
 
+// Instructions are deleted through the destroy() member because we don't have
+// a virtual destructor.
+Instruction::~Instruction() {
+  assert(block == nullptr && "instruction destroyed but still in a block");
+}
+
+/// Destroy this instruction or one of its subclasses.
+void Instruction::destroy(Instruction *inst) {
+  switch (inst->getKind()) {
+  case Kind::Operation:
+    delete cast<OperationInst>(inst);
+    break;
+  case Kind::Branch:
+    delete cast<BranchInst>(inst);
+    break;
+  case Kind::Return:
+    delete cast<ReturnInst>(inst);
+    break;
+  }
+}
+
 CFGFunction *Instruction::getFunction() const {
   return getBlock()->getFunction();
 }
@@ -31,21 +52,64 @@ CFGFunction *Instruction::getFunction() const {
 // OperationInst
 //===----------------------------------------------------------------------===//
 
-OperationInst::OperationInst(Identifier name, BasicBlock *block) :
-  Instruction(Kind::Operation, block), name(name) {
-  getBlock()->instList.push_back(this);
+mlir::BasicBlock *
+llvm::ilist_traits<::mlir::OperationInst>::getContainingBlock() {
+  size_t Offset(
+      size_t(&((BasicBlock *)nullptr->*BasicBlock::getSublistAccess(nullptr))));
+  iplist<OperationInst> *Anchor(static_cast<iplist<OperationInst> *>(this));
+  return reinterpret_cast<BasicBlock *>(reinterpret_cast<char *>(Anchor) -
+                                           Offset);
 }
+
+/// This is a trait method invoked when an instruction is added to a block.  We
+/// keep the block pointer up to date.
+void llvm::ilist_traits<::mlir::OperationInst>::
+addNodeToList(OperationInst *inst) {
+  assert(!inst->getBlock() && "already in a basic block!");
+  inst->block = getContainingBlock();
+}
+
+/// This is a trait method invoked when an instruction is removed from a block.
+/// We keep the block pointer up to date.
+void llvm::ilist_traits<::mlir::OperationInst>::
+removeNodeFromList(OperationInst *inst) {
+  assert(inst->block && "not already in a basic block!");
+  inst->block = nullptr;
+}
+
+/// This is a trait method invoked when an instruction is moved from one block
+/// to another.  We keep the block pointer up to date.
+void llvm::ilist_traits<::mlir::OperationInst>::
+transferNodesFromList(ilist_traits<OperationInst> &otherList,
+                      instr_iterator first, instr_iterator last) {
+  // If we are transferring instructions within the same basic block, the block
+  // pointer doesn't need to be updated.
+  BasicBlock *curParent = getContainingBlock();
+  if (curParent == otherList.getContainingBlock())
+    return;
+
+  // Update the 'block' member of each instruction.
+  for (; first != last; ++first)
+    first->block = curParent;
+}
+
+/// Unlink this instruction from its BasicBlock and delete it.
+void OperationInst::eraseFromBlock() {
+  assert(getBlock() && "Instruction has no parent");
+  getBlock()->getOperations().erase(this);
+}
+
+
 
 //===----------------------------------------------------------------------===//
 // Terminators
 //===----------------------------------------------------------------------===//
 
-ReturnInst::ReturnInst(BasicBlock *parent)
-  : TerminatorInst(Kind::Return, parent) {
-  getBlock()->setTerminator(this);
+/// Remove this terminator from its BasicBlock and delete it.
+void TerminatorInst::eraseFromBlock() {
+  assert(getBlock() && "Instruction has no parent");
+  getBlock()->setTerminator(nullptr);
+  TerminatorInst::destroy(this);
 }
 
-BranchInst::BranchInst(BasicBlock *dest, BasicBlock *parent)
-  : TerminatorInst(Kind::Branch, parent), dest(dest) {
-  getBlock()->setTerminator(this);
-}
+

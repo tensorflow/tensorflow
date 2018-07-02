@@ -20,7 +20,6 @@
 
 #include "mlir/IR/Function.h"
 #include "mlir/IR/BasicBlock.h"
-#include <vector>
 
 namespace mlir {
 
@@ -30,8 +29,52 @@ class CFGFunction : public Function {
 public:
   CFGFunction(StringRef name, FunctionType *type);
 
-  // FIXME: wrong representation and API, leaks memory etc.
-  std::vector<BasicBlock*> blockList;
+  //===--------------------------------------------------------------------===//
+  // BasicBlock list management
+  //===--------------------------------------------------------------------===//
+
+  /// This is the list of blocks in the function.
+  typedef llvm::iplist<BasicBlock> BasicBlockListType;
+  BasicBlockListType &getBlocks() { return blocks; }
+  const BasicBlockListType &getBlocks() const { return blocks; }
+
+  // Iteration over the block in the function.
+  using iterator = BasicBlockListType::iterator;
+  using const_iterator = BasicBlockListType::const_iterator;
+  using reverse_iterator = BasicBlockListType::reverse_iterator;
+  using const_reverse_iterator = BasicBlockListType::const_reverse_iterator;
+
+  iterator begin() { return blocks.begin(); }
+  iterator end() { return blocks.end(); }
+  const_iterator begin() const { return blocks.begin(); }
+  const_iterator end() const { return blocks.end(); }
+  reverse_iterator rbegin() { return blocks.rbegin(); }
+  reverse_iterator rend() { return blocks.rend(); }
+  const_reverse_iterator rbegin() const { return blocks.rbegin(); }
+  const_reverse_iterator rend() const { return blocks.rend(); }
+
+  bool empty() const { return blocks.empty(); }
+  void push_back(BasicBlock *block) { blocks.push_back(block); }
+  void push_front(BasicBlock *block) { blocks.push_front(block); }
+
+  BasicBlock &back() { return blocks.back(); }
+  const BasicBlock &back() const {
+    return const_cast<CFGFunction *>(this)->back();
+  }
+
+  BasicBlock &front() { return blocks.front(); }
+  const BasicBlock &front() const {
+    return const_cast<CFGFunction*>(this)->front();
+  }
+
+  /// getSublistAccess() - Returns pointer to member of block list
+  static BasicBlockListType CFGFunction::*getSublistAccess(BasicBlock*) {
+    return &CFGFunction::blocks;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {
@@ -39,6 +82,9 @@ public:
   }
 
   void print(raw_ostream &os) const;
+
+private:
+  BasicBlockListType blocks;
 };
 
 

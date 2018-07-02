@@ -19,6 +19,7 @@
 #define MLIR_IR_BASICBLOCK_H
 
 #include "mlir/IR/Instructions.h"
+#include <memory>
 
 namespace mlir {
 
@@ -27,9 +28,11 @@ namespace mlir {
 ///
 /// Basic blocks form a graph (the CFG) which can be traversed through
 /// predecessor and successor edges.
-class BasicBlock {
+class BasicBlock
+  : public llvm::ilist_node_with_parent<BasicBlock, CFGFunction> {
 public:
-  explicit BasicBlock(CFGFunction *function);
+  explicit BasicBlock();
+  ~BasicBlock();
 
   /// Return the function that a BasicBlock is part of.
   CFGFunction *getFunction() const {
@@ -38,23 +41,101 @@ public:
 
   // TODO: bb arguments
 
-  // TODO: Wrong representation.
-  std::vector<OperationInst*> instList;
+  /// Unlink this BasicBlock from its CFGFunction and delete it.
+  void eraseFromFunction();
 
-  void setTerminator(TerminatorInst *inst) {
-    terminator = inst;
+  //===--------------------------------------------------------------------===//
+  // Operation list management
+  //===--------------------------------------------------------------------===//
+
+  /// This is the list of operations in the block.
+  typedef llvm::iplist<OperationInst> OperationListType;
+  OperationListType &getOperations() { return operations; }
+  const OperationListType &getOperations() const { return operations; }
+
+  // Iteration over the operations in the block.
+  using iterator = OperationListType::iterator;
+  using const_iterator = OperationListType::const_iterator;
+  using reverse_iterator = OperationListType::reverse_iterator;
+  using const_reverse_iterator = OperationListType::const_reverse_iterator;
+
+  iterator begin() { return operations.begin(); }
+  iterator end() { return operations.end(); }
+  const_iterator begin() const { return operations.begin(); }
+  const_iterator end() const { return operations.end(); }
+  reverse_iterator rbegin() { return operations.rbegin(); }
+  reverse_iterator rend() { return operations.rend(); }
+  const_reverse_iterator rbegin() const { return operations.rbegin(); }
+  const_reverse_iterator rend() const { return operations.rend(); }
+
+  bool empty() const { return operations.empty(); }
+  void push_back(OperationInst *inst) { operations.push_back(inst); }
+  void push_front(OperationInst *inst) { operations.push_front(inst); }
+
+  OperationInst &back() { return operations.back(); }
+  const OperationInst &back() const {
+    return const_cast<BasicBlock *>(this)->back();
   }
+
+  OperationInst &front() { return operations.front(); }
+  const OperationInst &front() const {
+    return const_cast<BasicBlock*>(this)->front();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Terminator management
+  //===--------------------------------------------------------------------===//
+
+  /// Change the terminator of this block to the specified instruction.
+  void setTerminator(TerminatorInst *inst);
+
   TerminatorInst *getTerminator() const { return terminator; }
 
   void print(raw_ostream &os) const;
   void dump() const;
 
+  /// getSublistAccess() - Returns pointer to member of operation list
+  static OperationListType BasicBlock::*getSublistAccess(OperationInst*) {
+    return &BasicBlock::operations;
+  }
+
 private:
-  CFGFunction *const function;
-  // FIXME: wrong representation and API, leaks memory etc.
+  CFGFunction *function = nullptr;
+
+  /// This is the list of operations in the block.
+  OperationListType operations;
+
+  /// This is the owning reference to the terminator of the block.
   TerminatorInst *terminator = nullptr;
+
+  BasicBlock(const BasicBlock&) = delete;
+  void operator=(const BasicBlock&) = delete;
+
+  friend struct llvm::ilist_traits<BasicBlock>;
 };
 
 } // end namespace mlir
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for OperationInst
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <>
+struct ilist_traits<::mlir::BasicBlock>
+  : public ilist_alloc_traits<::mlir::BasicBlock> {
+  using BasicBlock = ::mlir::BasicBlock;
+  using block_iterator = simple_ilist<BasicBlock>::iterator;
+
+  void addNodeToList(BasicBlock *block);
+  void removeNodeFromList(BasicBlock *block);
+  void transferNodesFromList(ilist_traits<BasicBlock> &otherList,
+                             block_iterator first, block_iterator last);
+private:
+  mlir::CFGFunction *getContainingFunction();
+};
+} // end namespace llvm
+
 
 #endif  // MLIR_IR_BASICBLOCK_H

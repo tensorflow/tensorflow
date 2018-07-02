@@ -24,11 +24,16 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/IR/Identifier.h"
+#include "llvm/ADT/ilist.h"
+#include "llvm/ADT/ilist_node.h"
 
 namespace mlir {
+  class OperationInst;
   class BasicBlock;
   class CFGFunction;
 
+/// Instruction is the root of the operation and terminator instructions in the
+/// hierarchy.
 class Instruction {
 public:
   enum class Kind {
@@ -47,25 +52,44 @@ public:
   /// Return the CFGFunction containing this instruction.
   CFGFunction *getFunction() const;
 
+  /// Destroy this instruction or one of its subclasses
+  static void destroy(Instruction *inst);
+
   void print(raw_ostream &os) const;
   void dump() const;
 
 protected:
-  Instruction(Kind kind, BasicBlock *block) : kind(kind), block(block) {}
+  Instruction(Kind kind) : kind(kind) {}
+
+  // Instructions are deleted through the destroy() member because this class
+  // does not have a virtual destructor.  A vtable would bloat the size of
+  // every instruction by a word, is not necessary given the closed nature of
+  // instruction kinds.
+  ~Instruction();
 private:
   Kind kind;
-  BasicBlock *block;
+  BasicBlock *block = nullptr;
+
+  friend struct llvm::ilist_traits<OperationInst>;
+  friend class BasicBlock;
 };
 
 /// Operations are the main instruction kind in MLIR, which represent all of the
 /// arithmetic and other basic computation that occurs in a CFG function.
-class OperationInst : public Instruction {
+class OperationInst
+  : public Instruction,
+    public llvm::ilist_node_with_parent<OperationInst, BasicBlock> {
 public:
-  explicit OperationInst(Identifier name, BasicBlock *block);
+  explicit OperationInst(Identifier name)
+    : Instruction(Kind::Operation), name(name) {}
+  ~OperationInst() {}
 
   Identifier getName() const { return name; }
 
   // TODO: Need to have results and operands.
+
+  /// Unlink this instruction from its BasicBlock and delete it.
+  void eraseFromBlock();
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
@@ -86,15 +110,22 @@ public:
     return inst->getKind() != Kind::Operation;
   }
 
+  /// Remove this terminator from its BasicBlock and delete it.
+  void eraseFromBlock();
+
 protected:
-  TerminatorInst(Kind kind, BasicBlock *block) : Instruction(kind, block) {}
+  TerminatorInst(Kind kind) : Instruction(kind) {}
+  ~TerminatorInst() {}
 };
 
 /// The 'br' instruction is an unconditional from one basic block to another,
 /// and may pass basic block arguments to the successor.
 class BranchInst : public TerminatorInst {
 public:
-  explicit BranchInst(BasicBlock *dest, BasicBlock *parent);
+  explicit BranchInst(BasicBlock *dest)
+    : TerminatorInst(Kind::Branch), dest(dest) {
+  }
+  ~BranchInst() {}
 
   /// Return the block this branch jumps to.
   BasicBlock *getDest() const {
@@ -118,7 +149,8 @@ private:
 /// required to align with the result list of the containing function's type.
 class ReturnInst : public TerminatorInst {
 public:
-  explicit ReturnInst(BasicBlock *parent);
+  explicit ReturnInst() : TerminatorInst(Kind::Return) {}
+  ~ReturnInst() {}
 
   // TODO: Needs to take an operand list.
 
@@ -129,5 +161,31 @@ public:
 };
 
 } // end namespace mlir
+
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for OperationInst
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <>
+struct ilist_traits<::mlir::OperationInst> {
+  using OperationInst = ::mlir::OperationInst;
+  using instr_iterator = simple_ilist<OperationInst>::iterator;
+
+  static void deleteNode(OperationInst *inst) {
+    OperationInst::destroy(inst);
+  }
+
+  void addNodeToList(OperationInst *inst);
+  void removeNodeFromList(OperationInst *inst);
+  void transferNodesFromList(ilist_traits<OperationInst> &otherList,
+                             instr_iterator first, instr_iterator last);
+private:
+  mlir::BasicBlock *getContainingBlock();
+};
+
+} // end namespace llvm
 
 #endif  // MLIR_IR_INSTRUCTIONS_H

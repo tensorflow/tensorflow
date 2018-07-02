@@ -19,6 +19,68 @@
 #include "mlir/IR/CFGFunction.h"
 using namespace mlir;
 
-BasicBlock::BasicBlock(CFGFunction *function) : function(function) {
-  function->blockList.push_back(this);
+BasicBlock::BasicBlock() {
+}
+
+BasicBlock::~BasicBlock() {
+  if (terminator)
+    terminator->eraseFromBlock();
+}
+
+/// Unlink this BasicBlock from its CFGFunction and delete it.
+void BasicBlock::eraseFromFunction() {
+  assert(getFunction() && "BasicBlock has no parent");
+  getFunction()->getBlocks().erase(this);
+}
+
+void BasicBlock::setTerminator(TerminatorInst *inst) {
+  // If we already had a terminator, abandon it.
+  if (terminator)
+    terminator->block = nullptr;
+
+  // Reset our terminator to the new instruction.
+  terminator = inst;
+  if (inst)
+    inst->block = this;
+}
+
+mlir::CFGFunction *
+llvm::ilist_traits<::mlir::BasicBlock>::getContainingFunction() {
+  size_t Offset(
+    size_t(&((CFGFunction *)nullptr->*CFGFunction::getSublistAccess(nullptr))));
+  iplist<BasicBlock> *Anchor(static_cast<iplist<BasicBlock> *>(this));
+  return reinterpret_cast<CFGFunction *>(reinterpret_cast<char *>(Anchor) -
+                                           Offset);
+}
+
+/// This is a trait method invoked when a basic block is added to a function.
+/// We keep the function pointer up to date.
+void llvm::ilist_traits<::mlir::BasicBlock>::
+addNodeToList(BasicBlock *block) {
+  assert(!block->function && "already in a function!");
+  block->function = getContainingFunction();
+}
+
+/// This is a trait method invoked when an instruction is removed from a
+/// function.  We keep the function pointer up to date.
+void llvm::ilist_traits<::mlir::BasicBlock>::
+removeNodeFromList(BasicBlock *block) {
+  assert(block->function && "not already in a function!");
+  block->function = nullptr;
+}
+
+/// This is a trait method invoked when an instruction is moved from one block
+/// to another.  We keep the block pointer up to date.
+void llvm::ilist_traits<::mlir::BasicBlock>::
+transferNodesFromList(ilist_traits<BasicBlock> &otherList,
+                      block_iterator first, block_iterator last) {
+  // If we are transferring instructions within the same function, the parent
+  // pointer doesn't need to be updated.
+  CFGFunction *curParent = getContainingFunction();
+  if (curParent == otherList.getContainingFunction())
+    return;
+
+  // Update the 'function' member of each BasicBlock.
+  for (; first != last; ++first)
+    first->function = curParent;
 }

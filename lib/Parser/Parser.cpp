@@ -153,10 +153,8 @@ private:
   ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
   MLStatement *parseMLStatement(MLFunction *currentFunction);
 
-  ParseResult parseCFGOperation(BasicBlock *currentBB,
-                                CFGFunctionParserState &functionState);
-  ParseResult parseTerminator(BasicBlock *currentBB,
-                              CFGFunctionParserState &functionState);
+  OperationInst *parseCFGOperation(CFGFunctionParserState &functionState);
+  TerminatorInst *parseTerminator(CFGFunctionParserState &functionState);
 
 };
 } // end anonymous namespace
@@ -792,7 +790,7 @@ class CFGFunctionParserState {
   BasicBlock *getBlockNamed(StringRef name, SMLoc loc) {
     auto &blockAndLoc = blocksByName[name];
     if (!blockAndLoc.first) {
-      blockAndLoc.first = new BasicBlock(function);
+      blockAndLoc.first = new BasicBlock();
       blockAndLoc.second = loc;
     }
     return blockAndLoc.first;
@@ -834,7 +832,7 @@ ParseResult Parser::parseCFGFunc() {
   // StringMap isn't determinstic, but this is good enough for our purposes.
   for (auto &elt : functionState.blocksByName) {
     auto *bb = elt.second.first;
-    if (!bb->getTerminator())
+    if (!bb->getFunction())
       return emitError(elt.second.second,
                        "reference to an undefined basic block '" +
                        elt.first() + "'");
@@ -861,20 +859,11 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
 
   // If this block has already been parsed, then this is a redefinition with the
   // same block name.
-  if (block->getTerminator())
+  if (block->getFunction())
     return emitError(nameLoc, "redefinition of block '" + name.str() + "'");
 
-  // References to blocks can occur in any order, but we need to reassemble the
-  // function in the order that occurs in the source file.  Do this by moving
-  // each block to the end of the list as it is defined.
-  // FIXME: This is inefficient for large functions given that blockList is a
-  // vector.  blockList will eventually be an ilist, which will make this fast.
-  auto &blockList = functionState.function->blockList;
-  if (blockList.back() != block) {
-    auto it = std::find(blockList.begin(), blockList.end(), block);
-    assert(it != blockList.end() && "Block has to be in the blockList");
-    std::swap(*it, blockList.back());
-  }
+  // Add the block to the function.
+  functionState.function->push_back(block);
 
   // TODO: parse bb argument list.
 
@@ -883,12 +872,17 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
 
   // Parse the list of operations that make up the body of the block.
   while (curToken.isNot(Token::kw_return, Token::kw_br)) {
-    if (parseCFGOperation(block, functionState))
+    auto *inst = parseCFGOperation(functionState);
+    if (!inst)
       return ParseFailure;
+
+    block->getOperations().push_back(inst);
   }
 
-  if (parseTerminator(block, functionState))
+  auto *term = parseTerminator(functionState);
+  if (!term)
     return ParseFailure;
+  block->setTerminator(term);
 
   return ParseSuccess;
 }
@@ -903,33 +897,29 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
 ///    (ssa-id `=`)? string '(' ssa-use-list? ')' attribute-dict?
 ///    `:` function-type
 ///
-ParseResult Parser::
-parseCFGOperation(BasicBlock *currentBB,
-                  CFGFunctionParserState &functionState) {
+OperationInst *Parser::
+parseCFGOperation(CFGFunctionParserState &functionState) {
 
   // TODO: parse ssa-id.
 
   if (curToken.isNot(Token::string))
-    return emitError("expected operation name in quotes");
+    return (emitError("expected operation name in quotes"), nullptr);
 
   auto name = curToken.getStringValue();
   if (name.empty())
-    return emitError("empty operation name is invalid");
+    return (emitError("empty operation name is invalid"), nullptr);
 
   consumeToken(Token::string);
 
   if (!consumeIf(Token::l_paren))
-    return emitError("expected '(' in operation");
+    return (emitError("expected '(' in operation"), nullptr);
 
   // TODO: Parse operands.
   if (!consumeIf(Token::r_paren))
-    return emitError("expected '(' in operation");
+    return (emitError("expected '(' in operation"), nullptr);
 
   auto nameId = Identifier::get(name, context);
-  new OperationInst(nameId, currentBB);
-
-  // TODO: add instruction the per-function symbol table.
-  return ParseSuccess;
+  return new OperationInst(nameId);
 }
 
 
@@ -941,25 +931,22 @@ parseCFGOperation(BasicBlock *currentBB,
 ///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
 ///   terminator-stmt ::= `return` ssa-use-and-type-list?
 ///
-ParseResult Parser::parseTerminator(BasicBlock *currentBB,
-                                    CFGFunctionParserState &functionState) {
+TerminatorInst *Parser::parseTerminator(CFGFunctionParserState &functionState) {
   switch (curToken.getKind()) {
   default:
-    return emitError("expected terminator at end of basic block");
+    return (emitError("expected terminator at end of basic block"), nullptr);
 
   case Token::kw_return:
     consumeToken(Token::kw_return);
-    new ReturnInst(currentBB);
-    return ParseSuccess;
+    return new ReturnInst();
 
   case Token::kw_br: {
     consumeToken(Token::kw_br);
     auto destBB = functionState.getBlockNamed(curToken.getSpelling(),
                                               curToken.getLoc());
     if (!consumeIf(Token::bare_identifier))
-      return emitError("expected basic block name");
-    new BranchInst(destBB, currentBB);
-    return ParseSuccess;
+      return (emitError("expected basic block name"), nullptr);
+    return new BranchInst(destBB);
   }
   }
 }

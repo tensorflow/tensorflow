@@ -94,7 +94,7 @@ public:
 private:
   const CFGFunction *function;
   raw_ostream &os;
-  DenseMap<BasicBlock*, unsigned> basicBlockIDs;
+  DenseMap<const BasicBlock*, unsigned> basicBlockIDs;
 };
 } // end anonymous namespace
 
@@ -103,8 +103,8 @@ CFGFunctionState::CFGFunctionState(const CFGFunction *function, raw_ostream &os)
 
   // Each basic block gets a unique ID per function.
   unsigned blockID = 0;
-  for (auto *block : function->blockList)
-    basicBlockIDs[block] = blockID++;
+  for (auto &block : *function)
+    basicBlockIDs[&block] = blockID++;
 }
 
 void CFGFunctionState::print() {
@@ -112,8 +112,8 @@ void CFGFunctionState::print() {
   printFunctionSignature(this->getFunction(), os);
   os << " {\n";
 
-  for (auto *block : function->blockList)
-    print(block);
+  for (auto &block : *function)
+    print(&block);
   os << "}\n\n";
 }
 
@@ -121,8 +121,8 @@ void CFGFunctionState::print(const BasicBlock *block) {
   os << "bb" << getBBID(block) << ":\n";
 
   // TODO Print arguments.
-  for (auto inst : block->instList)
-    print(inst);
+  for (auto &inst : block->getOperations())
+    print(&inst);
 
   print(block->getTerminator());
 }
