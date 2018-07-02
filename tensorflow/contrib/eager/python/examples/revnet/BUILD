@@ -78,6 +78,7 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     tags = [
+        "no_pip",
         "optonly",
     ],
 )
