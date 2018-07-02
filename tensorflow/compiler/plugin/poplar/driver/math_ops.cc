@@ -234,18 +234,33 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
     poplar::Tensor out;
 
     if (inst->opcode() == HloOpcode::kXor) {
-      poplar::Tensor or_out =
-          popops::map(graph, popops::expr::BinaryOpType::BITWISE_OR, in0, in1,
-                      seq, GetDebugName(inst));
-      poplar::Tensor and_out =
-          popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, in0, in1,
-                      seq, GetDebugName(inst));
-      poplar::Tensor not_out =
-          popops::map(graph, popops::expr::UnaryOpType::BITWISE_NOT, and_out,
-                      seq, GetDebugName(inst));
-      out =
-          popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, or_out,
-                      not_out, seq, GetDebugName(inst));
+      if (inst->shape().element_type() == PRED) {
+        poplar::Tensor or_out =
+            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_OR, in0, in1,
+                        seq, GetDebugName(inst));
+        poplar::Tensor and_out =
+            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND, in0, in1,
+                        seq, GetDebugName(inst));
+        poplar::Tensor not_out =
+            popops::map(graph, popops::expr::UnaryOpType::LOGICAL_NOT, and_out,
+                        seq, GetDebugName(inst));
+        out =
+            popops::map(graph, popops::expr::BinaryOpType::LOGICAL_AND, or_out,
+                        not_out, seq, GetDebugName(inst));
+      } else {
+        poplar::Tensor or_out =
+            popops::map(graph, popops::expr::BinaryOpType::BITWISE_OR, in0, in1,
+                        seq, GetDebugName(inst));
+        poplar::Tensor and_out =
+            popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, in0, in1,
+                        seq, GetDebugName(inst));
+        poplar::Tensor not_out =
+            popops::map(graph, popops::expr::UnaryOpType::BITWISE_NOT, and_out,
+                        seq, GetDebugName(inst));
+        out =
+            popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, or_out,
+                        not_out, seq, GetDebugName(inst));
+      }
     } else {
       popops::expr::BinaryOpType op;
       TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
