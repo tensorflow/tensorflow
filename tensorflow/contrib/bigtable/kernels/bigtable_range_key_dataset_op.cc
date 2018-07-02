@@ -81,16 +81,17 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
       explicit Iterator(const Params& params)
           : BigtableReaderDatasetIterator<Dataset>(params) {}
 
-      ::bigtable::RowRange MakeRowRange() override {
-        return ::bigtable::RowRange::Range(dataset()->start_key_,
-                                           dataset()->end_key_);
+      ::google::cloud::bigtable::RowRange MakeRowRange() override {
+        return ::google::cloud::bigtable::RowRange::Range(dataset()->start_key_,
+                                                          dataset()->end_key_);
       }
-      ::bigtable::Filter MakeFilter() override {
-        return ::bigtable::Filter::Chain(
-            ::bigtable::Filter::CellsRowLimit(1),
-            ::bigtable::Filter::StripValueTransformer());
+      ::google::cloud::bigtable::Filter MakeFilter() override {
+        return ::google::cloud::bigtable::Filter::Chain(
+            ::google::cloud::bigtable::Filter::CellsRowLimit(1),
+            ::google::cloud::bigtable::Filter::StripValueTransformer());
       }
-      Status ParseRow(IteratorContext* ctx, const ::bigtable::Row& row,
+      Status ParseRow(IteratorContext* ctx,
+                      const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) override {
         Tensor output_tensor(ctx->allocator({}), DT_STRING, {});
         output_tensor.scalar<string>()() = string(row.row_key());

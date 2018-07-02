@@ -686,30 +686,45 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx,
           dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
           done);
+
+      // NOTE(jsimsa): We must destroy the iterator before calling `done()`, to
+      // avoid destruction races.
+      IteratorBase* raw_iterator = iterator.release();
+      auto cleanup = gtl::MakeCleanup([ctx, raw_iterator, done] {
+        delete raw_iterator;
+        done();
+      });
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
 
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                        errors::InvalidArgument("Dataset was empty."), done);
-
+      Status s =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+      if (!s.ok()) {
+        ctx->SetStatus(s);
+        return;
+      }
+      if (end_of_sequence) {
+        ctx->SetStatus(errors::InvalidArgument("Dataset was empty."));
+        return;
+      }
       for (int i = 0; i < components.size(); ++i) {
         // TODO(mrry): Check that the shapes match the shape attrs.
         ctx->set_output(i, components[i]);
       }
 
       components.clear();
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(
-          ctx, end_of_sequence,
-          errors::InvalidArgument("Dataset had more than one element."), done);
-
-      done();
+      Status s2 =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+      if (!s2.ok()) {
+        ctx->SetStatus(s2);
+        return;
+      }
+      if (!end_of_sequence) {
+        ctx->SetStatus(
+            errors::InvalidArgument("Dataset had more than one element."));
+        return;
+      }
     });
   }
 

@@ -376,7 +376,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                           v3.aggregation)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testInvalidSynchronizationWithGetVariable(self):
+  def testNoneSynchronizationWithGetVariable(self):
     self._skip_eager_if_gpus_less_than(1)
     devices = ["/device:CPU:0", "/device:GPU:0"]
     dist = mirrored_strategy.MirroredStrategy(devices)
@@ -390,7 +390,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
             synchronization=variable_scope.VariableSynchronization.NONE)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testInvalidSynchronizationWithVariable(self):
+  def testNoneSynchronizationWithVariable(self):
     self._skip_eager_if_gpus_less_than(1)
     devices = ["/device:CPU:0", "/device:GPU:0"]
     dist = mirrored_strategy.MirroredStrategy(devices)
@@ -403,6 +403,17 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
             1.0,
             name="v",
             synchronization=variable_scope.VariableSynchronization.NONE)
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testInvalidSynchronizationWithVariable(self):
+    self._skip_eager_if_gpus_less_than(1)
+    devices = ["/device:CPU:0", "/device:GPU:0"]
+    dist = mirrored_strategy.MirroredStrategy(devices)
+    with dist.scope():
+      with self.assertRaisesRegexp(
+          ValueError, "Invalid variable synchronization mode: Invalid for "
+          "variable: v"):
+        variable_scope.variable(1.0, name="v", synchronization="Invalid")
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testInvalidAggregationWithGetVariable(self):
