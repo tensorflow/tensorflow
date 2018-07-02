@@ -79,6 +79,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new FuseBinaryIntoFollowingAffine);
   transformations->Add(new FuseBroadcastIntoFollowingBinary);
   transformations->Add(new MergeReshapeIntoPrecedingTranspose);
+  transformations->Add(new MoveBinaryOperatorBeforeReshape);
   transformations->Add(new ReorderElementwiseUnary);
   transformations->Add(new ReorderReshapeTranspose);
   transformations->Add(new ResolveBatchNormalization);
