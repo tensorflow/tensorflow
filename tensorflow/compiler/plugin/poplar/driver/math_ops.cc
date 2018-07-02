@@ -230,12 +230,28 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
       in1 = TileTensor(bcast.y_bcast(), in1);
     }
 
-    popops::expr::BinaryOpType op;
-    TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
-
     poplar::program::Sequence seq;
-    poplar::Tensor out =
-        popops::map(graph, op, in0, in1, seq, GetDebugName(inst));
+    poplar::Tensor out;
+
+    if (inst->opcode() == HloOpcode::kXor) {
+      poplar::Tensor or_out =
+          popops::map(graph, popops::expr::BinaryOpType::BITWISE_OR, in0, in1,
+                      seq, GetDebugName(inst));
+      poplar::Tensor and_out =
+          popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, in0, in1,
+                      seq, GetDebugName(inst));
+      poplar::Tensor not_out =
+          popops::map(graph, popops::expr::UnaryOpType::BITWISE_NOT, and_out,
+                      seq, GetDebugName(inst));
+      out =
+          popops::map(graph, popops::expr::BinaryOpType::BITWISE_AND, or_out,
+                      not_out, seq, GetDebugName(inst));
+    } else {
+      popops::expr::BinaryOpType op;
+      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(inst));
+
+      out = popops::map(graph, op, in0, in1, seq, GetDebugName(inst));
+    }
 
     // Occasionally, due to an interplay of implicit broadcasting and
     // arithmetic re-arrangement, the output of an op is larger than the inputs
