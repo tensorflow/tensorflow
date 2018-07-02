@@ -520,7 +520,8 @@ class Pruning(object):
       thresholds = get_thresholds()
       for mask, threshold in zip(masks, thresholds):
         if not self._exists_in_do_not_prune_list(mask.name):
-          summary.scalar(mask.op.name + '/sparsity', nn_impl.zero_fraction(mask))
+          summary.scalar(mask.op.name + '/sparsity', 
+                         nn_impl.zero_fraction(mask))
           summary.scalar(threshold.op.name + '/threshold', threshold)
 
   def print_hparams(self):
