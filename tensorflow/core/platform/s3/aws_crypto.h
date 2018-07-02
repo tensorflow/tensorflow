@@ -18,15 +18,15 @@ limitations under the License.
 #include <aws/core/utils/crypto/Hash.h>
 
 namespace tensorflow {
-static const char* S3CryptoAllocationTag = "S3CryptoAllocation";
+static const char* AWSCryptoAllocationTag = "AWSCryptoAllocation";
 
-class S3SHA256Factory : public Aws::Utils::Crypto::HashFactory {
+class AWSSHA256Factory : public Aws::Utils::Crypto::HashFactory {
  public:
   std::shared_ptr<Aws::Utils::Crypto::Hash> CreateImplementation()
       const override;
 };
 
-class S3SHA256HmacFactory : public Aws::Utils::Crypto::HMACFactory {
+class AWSSHA256HmacFactory : public Aws::Utils::Crypto::HMACFactory {
  public:
   std::shared_ptr<Aws::Utils::Crypto::HMAC> CreateImplementation()
       const override;
