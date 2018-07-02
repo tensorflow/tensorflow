@@ -318,8 +318,9 @@ TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
   auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
 
   BuildModuleAndRunAnalysis(builder.Build());
@@ -342,8 +343,9 @@ TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
 TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
   // RecvDone forwards its operand tuple element at {0} to the output.
   auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
-      ShapeUtil::MakeShape(F32, {1, 2, 3}), /*channel_id=*/0));
+      ShapeUtil::MakeShape(F32, {1, 2, 3}), token, /*channel_id=*/0));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
 
   BuildModuleAndRunAnalysis(builder.Build());

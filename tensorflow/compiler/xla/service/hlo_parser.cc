@@ -670,12 +670,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kRecv: {
       optional<tensorflow::int64> channel_id;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateRecv(shape.tuple_shapes(0), *channel_id));
+      instruction = builder->AddInstruction(HloInstruction::CreateRecv(
+          shape.tuple_shapes(0), operands[0], *channel_id));
       break;
     }
     case HloOpcode::kRecvDone: {
@@ -695,12 +695,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kSend: {
       optional<tensorflow::int64> channel_id;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(
-          HloInstruction::CreateSend(operands[0], *channel_id));
+          HloInstruction::CreateSend(operands[0], operands[1], *channel_id));
       break;
     }
     case HloOpcode::kSendDone: {
