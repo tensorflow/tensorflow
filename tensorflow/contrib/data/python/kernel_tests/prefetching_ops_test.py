@@ -237,9 +237,9 @@ class PrefetchingKernelsOpsTest(test.TestCase):
           buffer_resource_handle, ignore_lookup_error=True)
 
     with self.test_session() as sess:
-      self.assertEqual(["a"], sess.run(prefetch_op))
-      self.assertEqual(["b"], sess.run(prefetch_op))
-      self.assertEqual(["c"], sess.run(prefetch_op))
+      self.assertEqual([b"a"], sess.run(prefetch_op))
+      self.assertEqual([b"b"], sess.run(prefetch_op))
+      self.assertEqual([b"c"], sess.run(prefetch_op))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(prefetch_op)
 

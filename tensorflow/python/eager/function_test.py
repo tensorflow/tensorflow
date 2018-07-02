@@ -829,6 +829,25 @@ class FunctionTest(test.TestCase):
     out = foo.two(t)
     self.assertEqual(float(out), 1.0)
 
+  def testPythonCallWithSideEffects(self):
+    state = []
+
+    @function.defun
+    def side_effecting_function():
+      state.append(0)
+
+    side_effecting_function()
+    self.assertAllEqual(state, [0])
+
+    # The second invocation should call the graph function, which shouldn't
+    # trigger the list append.
+    side_effecting_function()
+    self.assertAllEqual(state, [0])
+
+    # Whereas calling the python function directly should create a side-effect.
+    side_effecting_function.call_python_function()
+    self.assertAllEqual(state, [0, 0])
+
 
 @test_util.with_c_shapes
 class AutomaticControlDependenciesTest(test.TestCase):

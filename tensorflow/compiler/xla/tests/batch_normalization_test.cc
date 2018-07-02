@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
@@ -118,7 +119,7 @@ XLA_TEST_P(BatchNormalizationTest, SubtractInZ) {
 XLA_TEST_P(BatchNormalizationTest, SquareTesseractElementwise) {
   XlaBuilder builder("square_tesseract_elementwise");
   auto x = ConstantLiteral(&builder, input_literal_);
-  SquareF32(x);
+  Square(x);
 
   using tensorflow::MathUtil;
 
@@ -150,7 +151,7 @@ XLA_TEST_P(BatchNormalizationTest, SquareAndReduce) {
   auto activation_deviations = Sub(input_activations, set_means,
                                    /*broadcast_dimensions=*/{1});
   XlaComputation add = CreateScalarAddComputation(F32, &builder);
-  auto dev_squares = SquareF32(activation_deviations);
+  auto dev_squares = Square(activation_deviations);
   Reduce(dev_squares, ConstantR0<float>(&builder, 0.0f), add, {0, 2, 3});
 
   std::vector<float> expected = {18, 0.06};
@@ -160,7 +161,7 @@ XLA_TEST_P(BatchNormalizationTest, SquareAndReduce) {
 XLA_TEST_P(BatchNormalizationTest, VarianceToStddev) {
   XlaBuilder builder("variance_to_stddev");
   auto variance = ConstantR1<float>(&builder, {6.f, .02f});
-  SqrtF32(variance);
+  Sqrt(variance);
 
   std::vector<float> expected = {2.44948974f, 0.14142136f};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
@@ -195,20 +196,20 @@ XLA_TEST_P(BatchNormalizationTest, SpecComparisonForward) {
   auto epsilon2 = ConstantR1<float>(&builder, {kEpsilon, kEpsilon});
   auto activation_deviations = Sub(input_activations, set_means,
                                    /*broadcast_dimensions=*/{1});
-  auto dev_squares = SquareF32(activation_deviations);
+  auto dev_squares = Square(activation_deviations);
   auto sum_of_squares =
       CheckShape(&builder,
                  Reduce(dev_squares, ConstantR0<float>(&builder, 0.0f), add,
                         /*dimensions_to_reduce=*/{0, 2, 3}),
                  TwoElementVectorF32);
   auto variance = Div(sum_of_squares, count);
-  auto standard_deviation = SqrtF32(variance);
+  auto standard_deviation = Sqrt(variance);
   auto standard_deviation_above_epsilon =
       CheckShape(&builder, Gt(standard_deviation, epsilon),
                  ShapeUtil::MakeShape(PRED, {2}));
   auto gt_eps =
       Select(standard_deviation_above_epsilon, standard_deviation, epsilon2);
-  auto normalization_factors = ReciprocalF32(gt_eps);
+  auto normalization_factors = Reciprocal(gt_eps);
   auto normalized_input_activations =
       Mul(activation_deviations, normalization_factors,
           /*broadcast_dimensions=*/{1});

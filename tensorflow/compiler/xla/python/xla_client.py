@@ -99,10 +99,10 @@ _UNARY_OPS = [
     'Cos',
     'Sin',
     'Tanh',
-    'SqrtF32',
-    'SquareF32',
+    'Sqrt',
+    'Square',
     'IsFinite',
-    'ReciprocalF32',
+    'Reciprocal',
     'Neg',
     'Sort',
 ]

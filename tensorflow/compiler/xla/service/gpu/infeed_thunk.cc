@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -27,9 +28,11 @@ InfeedThunk::InfeedThunk(
     : Thunk(Kind::kInfeed, hlo_instruction), infeed_slices_(infeed_slices) {}
 
 Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                    se::Stream* stream) {
+                                    se::Stream* stream,
+                                    HloExecutionProfiler* profiler) {
   VLOG(2) << "Infeeding to GPU ";
 
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   // First copy the infeed data which is element 0 of the infeed instruction's
   // two-tuple output (the other element is a token).
   se::DeviceMemoryBase data_address =

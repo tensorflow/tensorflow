@@ -754,6 +754,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
   )
+  tf_http_archive(
+      name = "tflite_mobilenet_ssd_quant",
+      sha256 = "a809cd290b4d6a2e8a9d5dad076e0bd695b8091974e0eed1052b480b2f21b6dc",
+      urls = ["https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+      ],
+      build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+  )
 
   tf_http_archive(
       name = "tflite_conv_actions_frozen",

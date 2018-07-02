@@ -246,6 +246,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:pool",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
 )

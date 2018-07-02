@@ -234,7 +234,6 @@ tf_proto_library(
     srcs = [],
     cc_api_version = 2,
     default_header = True,
-    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     protodeps = [
@@ -1263,6 +1262,7 @@ cc_library(
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
+        "//tensorflow/core/kernels:grappler",
         "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
@@ -2252,7 +2252,6 @@ tf_proto_library(
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     provide_cc_alias = True,
@@ -2274,7 +2273,6 @@ tf_proto_library(
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     protodeps = [

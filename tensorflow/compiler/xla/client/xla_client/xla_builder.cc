@@ -532,6 +532,14 @@ XlaOp XlaBuilder::Broadcast(
   });
 }
 
+XlaOp XlaBuilder::BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return InDimBroadcast(shape, operand, broadcast_dimensions);
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, const XlaOp& operand) {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -1369,11 +1377,6 @@ XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
   });
 }
 
-XlaOp XlaBuilder::SqrtF32(const XlaOp& operand) {
-  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(0.5),
-                  /*broadcast_dimensions=*/{});
-}
-
 XlaOp XlaBuilder::Pow(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kPower, lhs, rhs, broadcast_dimensions);
@@ -1402,16 +1405,6 @@ XlaOp XlaBuilder::BitcastConvertType(const XlaOp& operand,
     return AddInstruction(std::move(instr), HloOpcode::kBitcastConvert,
                           {operand});
   });
-}
-
-XlaOp XlaBuilder::SquareF32(const XlaOp& operand) {
-  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(2.0),
-                  /*broadcast_dimensions=*/{});
-}
-
-XlaOp XlaBuilder::ReciprocalF32(const XlaOp& operand) {
-  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(-1.0),
-                  /*broadcast_dimensions=*/{});
 }
 
 XlaOp XlaBuilder::Neg(const XlaOp& operand) {
@@ -2139,6 +2132,13 @@ XlaOp Broadcast(const XlaOp& operand,
   return operand.builder()->Broadcast(operand, broadcast_sizes);
 }
 
+XlaOp BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return operand.builder()->BroadcastInDim(operand, shape,
+                                           broadcast_dimensions);
+}
+
 XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
           const PaddingConfig& padding_config) {
   return operand.builder()->Pad(operand, padding_value, padding_config);
@@ -2497,14 +2497,6 @@ XlaOp Real(const XlaOp& operand) { return operand.builder()->Real(operand); }
 
 XlaOp Imag(const XlaOp& operand) { return operand.builder()->Imag(operand); }
 
-XlaOp SqrtF32(const XlaOp& operand) {
-  return operand.builder()->SqrtF32(operand);
-}
-
-XlaOp SquareF32(const XlaOp& operand) {
-  return operand.builder()->SquareF32(operand);
-}
-
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   return lhs.builder()->Pow(lhs, rhs, broadcast_dimensions);
@@ -2520,10 +2512,6 @@ XlaOp ConvertElementType(const XlaOp& operand, PrimitiveType new_element_type) {
 
 XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type) {
   return operand.builder()->BitcastConvertType(operand, new_element_type);
-}
-
-XlaOp ReciprocalF32(const XlaOp& operand) {
-  return operand.builder()->ReciprocalF32(operand);
 }
 
 XlaOp Neg(const XlaOp& operand) { return operand.builder()->Neg(operand); }

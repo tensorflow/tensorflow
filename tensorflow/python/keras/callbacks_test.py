@@ -27,6 +27,7 @@ import unittest
 
 import numpy as np
 
+from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -900,6 +901,80 @@ class KerasCallbacksTest(test.TestCase):
                           validation_data=([x_test] * 2, [y_test] * 2),
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
+
+  def test_Tensorboard_histogram_summaries_in_test_function(self):
+
+    class FileWriterStub(object):
+
+      def __init__(self, logdir, graph=None):
+        self.logdir = logdir
+        self.graph = graph
+        self.steps_seen = []
+
+      def add_summary(self, summary, global_step):
+        summary_obj = summary_pb2.Summary()
+
+        # ensure a valid Summary proto is being sent
+        if isinstance(summary, bytes):
+          summary_obj.ParseFromString(summary)
+        else:
+          assert isinstance(summary, summary_pb2.Summary)
+          summary_obj = summary
+
+        # keep track of steps seen for the merged_summary op,
+        # which contains the histogram summaries
+        if len(summary_obj.value) > 1:
+          self.steps_seen.append(global_step)
+
+      def flush(self):
+        pass
+
+      def close(self):
+        pass
+
+    np.random.seed(1337)
+    tmpdir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, tmpdir)
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+    y_test = keras.utils.to_categorical(y_test)
+    y_train = keras.utils.to_categorical(y_train)
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.Dense(
+              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+      # non_trainable_weights: moving_variance, moving_mean
+      model.add(keras.layers.BatchNormalization())
+      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      tsb = keras.callbacks.TensorBoard(
+          log_dir=tmpdir,
+          histogram_freq=1,
+          write_images=True,
+          write_grads=True,
+          batch_size=5)
+      tsb._writer_class = FileWriterStub
+      cbks = [tsb]
+
+      # fit with validation data
+      model.fit(
+          x_train,
+          y_train,
+          batch_size=BATCH_SIZE,
+          validation_data=(x_test, y_test),
+          callbacks=cbks,
+          epochs=3,
+          verbose=0)
+
+      self.assertAllEqual(tsb.writer.steps_seen, [0, 0.5, 1, 1.5, 2, 2.5])
 
   @unittest.skipIf(
       os.name == 'nt',

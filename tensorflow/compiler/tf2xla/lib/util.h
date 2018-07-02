@@ -23,9 +23,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns a zero-filled tensor with shape `shape`.
-xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape);
-
 // Returns a floating point scalar constant of 'type' with 'value'.
 // If 'type' is complex, returns a real value with zero imaginary component.
 xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,

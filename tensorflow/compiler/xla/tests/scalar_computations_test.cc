@@ -897,18 +897,6 @@ XLA_TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
   ComputeAndCompareR0<int32>(&b, 10, {});
 }
 
-XLA_TEST_F(ScalarComputationsTest, SqrtF320) {
-  XlaBuilder builder(TestName());
-  Literal zero_literal = Literal::Zero(PrimitiveType::F32);
-
-  std::unique_ptr<GlobalData> zero_data =
-      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
-
-  XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
-  SqrtF32(zero);
-
-  ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
-}
 
 XLA_TEST_F(ScalarComputationsTest, RoundScalar) {
   XlaBuilder builder(TestName());

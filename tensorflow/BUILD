@@ -603,3 +603,19 @@ py_library(
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],
 )
+
+cc_library(
+    name = "grpc",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc_unsecure"],
+        "//conditions:default": ["@grpc"],
+    }),
+)
+
+cc_library(
+    name = "grpc++",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@grpc//:grpc++"],
+    }),
+)
