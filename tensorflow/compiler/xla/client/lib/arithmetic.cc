@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -121,9 +122,6 @@ XlaOp Any(XlaOp predicates) {
 }
 
 namespace {
-XlaOp FloatLiteral(XlaBuilder* b, PrimitiveType data_type, float value) {
-  return ConvertElementType(ConstantR0(b, value), data_type);
-}
 
 // Polynomials for computing erf/erfc.  Originally from cephes.
 // Note we use float for compatibility across devices, at the cost of some
@@ -164,42 +162,35 @@ std::array<float, 6> kErfUCoefficient = {
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
 XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients,
-                         PrimitiveType data_type) {
-  XlaBuilder* b = x.builder();
-  XlaOp poly = FloatLiteral(b, data_type, 0.0);
+                         tensorflow::gtl::ArraySlice<float> coefficients) {
+  XlaOp poly = ScalarLike(x, 0.0);
   for (float c : coefficients) {
-    poly = Add(Mul(poly, x), FloatLiteral(b, data_type, c));
+    poly = poly * x + ScalarLike(x, c);
   }
   return poly;
 }
 
 // Compute an approximation of the error function complement (1 - erf(x)).
-XlaOp Erfc(XlaOp x, PrimitiveType data_type) {
-  XlaBuilder* b = x.builder();
-  XlaOp zero = FloatLiteral(b, data_type, 0.0);
-  XlaOp two = FloatLiteral(b, data_type, 2.0);
-  XlaOp eight = FloatLiteral(b, data_type, 8.0);
-
+XlaOp Erfc(XlaOp x) {
   XlaOp abs_x = Abs(x);
-  XlaOp z = Exp(Mul(Neg(x), x));
+  XlaOp z = Exp(-x * x);
 
-  XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient, data_type);
-  XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient, data_type);
-  XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient, data_type);
-  XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient, data_type);
+  XlaOp pp = EvaluatePolynomial(abs_x, kErfcPCoefficient);
+  XlaOp pq = EvaluatePolynomial(abs_x, kErfcQCoefficient);
+  XlaOp pr = EvaluatePolynomial(abs_x, kErfcRCoefficient);
+  XlaOp ps = EvaluatePolynomial(abs_x, kErfcSCoefficient);
 
-  XlaOp y = Select(Lt(abs_x, eight), Div(Mul(z, pp), pq), Div(Mul(z, pr), ps));
+  XlaOp y = Select(Lt(abs_x, ScalarLike(x, 8.0)), z * pp / pq, z * pr / ps);
 
-  return Select(Lt(x, zero), Sub(two, y), y);
+  return Select(Lt(x, ScalarLike(x, 0.0)), Sub(ScalarLike(x, 2.0), y), y);
 }
 
 // Compute a polynomial approximation of the error function.
-XlaOp Erf(XlaOp x, PrimitiveType data_type) {
-  XlaOp z = Mul(x, x);
-  XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient, data_type);
-  XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient, data_type);
-  return Div(Mul(x, pt), pu);
+XlaOp Erf(XlaOp x) {
+  XlaOp z = x * x;
+  XlaOp pt = EvaluatePolynomial(z, kErfTCoefficient);
+  XlaOp pu = EvaluatePolynomial(z, kErfUCoefficient);
+  return x * pt / pu;
 }
 
 // Approximation for the inverse error function from
@@ -228,25 +219,23 @@ XlaOp ErfInv(XlaOp x) {
         -0.00367342844f,  0.00573950773f,  -0.0076224613f,
         0.00943887047f,   1.00167406f,     2.83297682f};
 
-    auto one = ConstantR0<float>(b, 1.0);
-    auto w = Neg(Log(Mul(Sub(one, x), Add(one, x))));
+    auto one = ScalarLike(x, 1.0);
+    auto w = -Log((one - x) * (one + x));
 
-    auto lt = Lt(w, ConstantR0<float>(b, 5.0));
+    auto lt = Lt(w, ScalarLike(x, 5.0));
     auto coefficient = [&](int i) {
-      return Select(
-          lt,
-          Broadcast(ConstantR0<float>(b, w_less_than_5_constants[i]),
-                    AsInt64Slice(shape.dimensions())),
-          Broadcast(ConstantR0<float>(b, w_greater_than_5_constants[i]),
-                    AsInt64Slice(shape.dimensions())));
+      return Select(lt,
+                    Broadcast(ScalarLike(x, w_less_than_5_constants[i]),
+                              AsInt64Slice(shape.dimensions())),
+                    Broadcast(ScalarLike(x, w_greater_than_5_constants[i]),
+                              AsInt64Slice(shape.dimensions())));
     };
-    w = Select(lt, Sub(w, ConstantR0<float>(b, 2.5f)),
-               Sub(SqrtF32(w), ConstantR0<float>(b, 3.0f)));
+    w = Select(lt, w - ScalarLike(x, 2.5), SqrtF32(w) - ScalarLike(x, 3.0));
     auto p = coefficient(0);
     for (int i = 1; i < kDegree; ++i) {
-      p = Add(coefficient(i), Mul(p, w));
+      p = coefficient(i) + p * w;
     }
-    return Mul(p, x);
+    return p * x;
   });
 }
 

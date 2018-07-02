@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
@@ -195,18 +196,10 @@ class ErfOp : public XlaOpKernel {
  public:
   explicit ErfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::PrimitiveType primitive_type;
-    xla::XlaOp one = XlaHelpers::One(b, input_type(0));
     xla::XlaOp x = ctx->Input(0);
-    xla::XlaOp abs_x = xla::Abs(x);
-
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(input_type(0), &primitive_type));
-
+    xla::XlaOp one = xla::ScalarLike(x, 1.0);
     auto y =
-        xla::Select(xla::Gt(abs_x, one), xla::Sub(one, Erfc(x, primitive_type)),
-                    Erf(x, primitive_type));
+        xla::Select(xla::Gt(xla::Abs(x), one), one - xla::Erfc(x), xla::Erf(x));
     ctx->SetOutput(0, y);
   }
 };
@@ -216,18 +209,10 @@ class ErfcOp : public XlaOpKernel {
  public:
   explicit ErfcOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp one = XlaHelpers::One(b, input_type(0));
     xla::XlaOp x = ctx->Input(0);
-    xla::XlaOp abs_x = xla::Abs(x);
-
-    xla::PrimitiveType primitive_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(input_type(0), &primitive_type));
-
+    xla::XlaOp one = xla::ScalarLike(x, 1.0);
     auto y =
-        xla::Select(xla::Lt(abs_x, one), xla::Sub(one, Erf(x, primitive_type)),
-                    Erfc(x, primitive_type));
+        xla::Select(xla::Lt(xla::Abs(x), one), one - xla::Erf(x), xla::Erfc(x));
     ctx->SetOutput(0, y);
   }
 };
