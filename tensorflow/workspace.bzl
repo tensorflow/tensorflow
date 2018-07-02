@@ -166,11 +166,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_github_googlecloudplatform_google_cloud_cpp",
       urls = [
-          "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/f9ff105957965bcf87f7cb9a93e951c3d08d1734.tar.gz",
-          "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/f9ff105957965bcf87f7cb9a93e951c3d08d1734.tar.gz",
+          "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/53f822805e77ea7715f5b52c592a162c515c7219.tar.gz",
+          "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/53f822805e77ea7715f5b52c592a162c515c7219.tar.gz",
       ],
-      sha256 = "edb347aae9869ffdcf8df6288335bcc535fec46da946b385c16968e96a74b208",
-      strip_prefix = "google-cloud-cpp-f9ff105957965bcf87f7cb9a93e951c3d08d1734",
+      sha256 = "06853bfca77ef4aec09db5ab48c548f68ef2e18f17404cbce61f8d9b820f951b",
+      strip_prefix = "google-cloud-cpp-53f822805e77ea7715f5b52c592a162c515c7219",
   )
 
   tf_http_archive(

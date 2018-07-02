@@ -31,13 +31,16 @@ string RegexFromStringSet(const std::vector<string>& strs);
 
 class BigtableClientResource : public ResourceBase {
  public:
-  BigtableClientResource(string project_id, string instance_id,
-                         std::shared_ptr<bigtable::DataClient> client)
+  BigtableClientResource(
+      string project_id, string instance_id,
+      std::shared_ptr<google::cloud::bigtable::DataClient> client)
       : project_id_(std::move(project_id)),
         instance_id_(std::move(instance_id)),
         client_(std::move(client)) {}
 
-  std::shared_ptr<bigtable::DataClient> get_client() { return client_; }
+  std::shared_ptr<google::cloud::bigtable::DataClient> get_client() {
+    return client_;
+  }
 
   string DebugString() override {
     return strings::StrCat("BigtableClientResource(project_id: ", project_id_,
@@ -47,7 +50,7 @@ class BigtableClientResource : public ResourceBase {
  private:
   const string project_id_;
   const string instance_id_;
-  std::shared_ptr<bigtable::DataClient> client_;
+  std::shared_ptr<google::cloud::bigtable::DataClient> client_;
 };
 
 class BigtableTableResource : public ResourceBase {
@@ -61,7 +64,7 @@ class BigtableTableResource : public ResourceBase {
 
   ~BigtableTableResource() override { client_->Unref(); }
 
-  ::bigtable::noex::Table& table() { return table_; }
+  ::google::cloud::bigtable::noex::Table& table() { return table_; }
 
   string DebugString() override {
     return strings::StrCat(
@@ -72,7 +75,7 @@ class BigtableTableResource : public ResourceBase {
  private:
   BigtableClientResource* client_;  // Ownes one ref.
   const string table_name_;
-  ::bigtable::noex::Table table_;
+  ::google::cloud::bigtable::noex::Table table_;
 };
 
 // BigtableReaderDatasetIterator is an abstract class for iterators from
@@ -98,7 +101,7 @@ class BigtableReaderDatasetIterator : public DatasetIterator<Dataset> {
       return GrpcStatusToTfStatus(status);
     }
     *end_of_sequence = false;
-    bigtable::Row& row = *iterator_;
+    google::cloud::bigtable::Row& row = *iterator_;
     Status s = ParseRow(ctx, row, out_tensors);
     // Ensure we always advance.
     ++iterator_;
@@ -106,9 +109,10 @@ class BigtableReaderDatasetIterator : public DatasetIterator<Dataset> {
   }
 
  protected:
-  virtual ::bigtable::RowRange MakeRowRange() = 0;
-  virtual ::bigtable::Filter MakeFilter() = 0;
-  virtual Status ParseRow(IteratorContext* ctx, const ::bigtable::Row& row,
+  virtual ::google::cloud::bigtable::RowRange MakeRowRange() = 0;
+  virtual ::google::cloud::bigtable::Filter MakeFilter() = 0;
+  virtual Status ParseRow(IteratorContext* ctx,
+                          const ::google::cloud::bigtable::Row& row,
                           std::vector<Tensor>* out_tensors) = 0;
 
  private:
@@ -122,15 +126,15 @@ class BigtableReaderDatasetIterator : public DatasetIterator<Dataset> {
 
     // Note: the this in `this->dataset()` below is necessary due to namespace
     // name conflicts.
-    reader_.reset(new ::bigtable::RowReader(
+    reader_.reset(new ::google::cloud::bigtable::RowReader(
         this->dataset()->table()->table().ReadRows(rows, filter)));
     iterator_ = reader_->begin();
     return Status::OK();
   }
 
   mutex mu_;
-  std::unique_ptr<::bigtable::RowReader> reader_ GUARDED_BY(mu_);
-  ::bigtable::RowReader::iterator iterator_ GUARDED_BY(mu_);
+  std::unique_ptr<::google::cloud::bigtable::RowReader> reader_ GUARDED_BY(mu_);
+  ::google::cloud::bigtable::RowReader::iterator iterator_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

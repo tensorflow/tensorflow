@@ -51,18 +51,19 @@ class BigtableClientOp : public OpKernel {
       OP_REQUIRES_OK(ctx, cinfo_.Init(mgr, def()));
       BigtableClientResource* resource;
       OP_REQUIRES_OK(
-          ctx, mgr->LookupOrCreate<BigtableClientResource>(
-                   cinfo_.container(), cinfo_.name(), &resource,
-                   [this, ctx](BigtableClientResource** ret)
-                       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                         std::shared_ptr<bigtable::DataClient> client =
-                             bigtable::CreateDefaultDataClient(
-                                 project_id_, instance_id_,
-                                 bigtable::ClientOptions());
-                         *ret = new BigtableClientResource(
-                             project_id_, instance_id_, std::move(client));
-                         return Status::OK();
-                       }));
+          ctx,
+          mgr->LookupOrCreate<BigtableClientResource>(
+              cinfo_.container(), cinfo_.name(), &resource,
+              [this, ctx](
+                  BigtableClientResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                std::shared_ptr<google::cloud::bigtable::DataClient> client =
+                    google::cloud::bigtable::CreateDefaultDataClient(
+                        project_id_, instance_id_,
+                        google::cloud::bigtable::ClientOptions());
+                *ret = new BigtableClientResource(project_id_, instance_id_,
+                                                  std::move(client));
+                return Status::OK();
+              }));
       core::ScopedUnref resource_cleanup(resource);
       initialized_ = true;
     }
@@ -210,7 +211,7 @@ class ToBigtableOp : public AsyncOpKernel {
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence = false;
       do {
-        ::bigtable::BulkMutation mutation;
+        ::google::cloud::bigtable::BulkMutation mutation;
         // TODO(saeta): Make # of mutations configurable.
         for (uint64 i = 0; i < 100 && !end_of_sequence; ++i) {
           OP_REQUIRES_OK_ASYNC(
@@ -226,7 +227,7 @@ class ToBigtableOp : public AsyncOpKernel {
           components.clear();
         }
         grpc::Status mutation_status;
-        std::vector<::bigtable::FailedMutation> failures =
+        std::vector<::google::cloud::bigtable::FailedMutation> failures =
             resource->table().BulkApply(std::move(mutation), mutation_status);
         if (!failures.empty()) {
           for (const auto& failure : failures) {
@@ -267,24 +268,23 @@ class ToBigtableOp : public AsyncOpKernel {
     return clean;
   }
 
-  Status CreateMutation(std::vector<Tensor> tensors,
-                        const std::vector<string>& column_families,
-                        const std::vector<string>& columns,
-                        std::chrono::milliseconds timestamp,
-                        ::bigtable::BulkMutation* bulk_mutation) {
+  Status CreateMutation(
+      std::vector<Tensor> tensors, const std::vector<string>& column_families,
+      const std::vector<string>& columns, std::chrono::milliseconds timestamp,
+      ::google::cloud::bigtable::BulkMutation* bulk_mutation) {
     if (tensors.size() != column_families.size() + 1) {
       return errors::InvalidArgument(
           "Iterator produced a set of Tensors shorter than expected");
     }
-    ::bigtable::SingleRowMutation mutation(
+    ::google::cloud::bigtable::SingleRowMutation mutation(
         std::move(tensors[0].scalar<string>()()));
     for (size_t i = 1; i < tensors.size(); ++i) {
       if (!TensorShapeUtils::IsScalar(tensors[i].shape())) {
         return errors::Internal("Output tensor ", i, " was not a scalar");
       }
-      mutation.emplace_back(
-          ::bigtable::SetCell(column_families[i - 1], columns[i - 1], timestamp,
-                              std::move(tensors[i].scalar<string>()())));
+      mutation.emplace_back(::google::cloud::bigtable::SetCell(
+          column_families[i - 1], columns[i - 1], timestamp,
+          std::move(tensors[i].scalar<string>()())));
     }
     bulk_mutation->emplace_back(std::move(mutation));
     return Status::OK();
