@@ -49,8 +49,7 @@ toc:
   - title: Image recognition
     path: /tutorials/images/image_recognition
   - title: Image retraining
-    path: https://github.com/tensorflow/hub/tree/master/docs/tutorials/image_retraining.md
-    status: external
+    path: /hub/tutorials/image_retraining
   - title: Convolutional Neural Networks
     path: /tutorials/images/deep_cnn
 
