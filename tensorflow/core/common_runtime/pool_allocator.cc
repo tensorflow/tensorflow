@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include <errno.h>
 #ifndef _MSC_VER
@@ -282,6 +282,14 @@ void PoolAllocator::AddFreeVisitor(Visitor visitor) {
       << "AddFreeVisitor may not be called after pool allocation "
       << "has begun.";
   free_visitors_.push_back(visitor);
+}
+
+void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
+  return port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
+}
+
+void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
+  port::AlignedFree(ptr);
 }
 
 }  // namespace tensorflow

@@ -2669,6 +2669,8 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
     "common_runtime/visitable_allocator.h",
+    "common_runtime/process_state.h",
+    "common_runtime/pool_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
@@ -2707,7 +2709,9 @@ tf_cuda_library(
         "common_runtime/optimization_registry.cc",
         "common_runtime/parallel_concat_optimizer.cc",
         "common_runtime/placer.cc",
+        "common_runtime/pool_allocator.cc",
         "common_runtime/process_function_library_runtime.cc",
+        "common_runtime/process_state.cc",
         "common_runtime/process_util.cc",
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
@@ -2894,6 +2898,7 @@ cc_library(
 )
 
 GPU_RUNTIME_HEADERS = [
+    "common_runtime/gpu/cuda_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
@@ -2903,10 +2908,9 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
+    "common_runtime/gpu/gpu_process_state.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
-    "common_runtime/gpu/pool_allocator.h",
-    "common_runtime/gpu/process_state.h",
     "common_runtime/gpu_device_context.h",
 ]
 
@@ -2919,11 +2923,10 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
         "common_runtime/gpu/gpu_managed_allocator.cc",
+        "common_runtime/gpu/gpu_process_state.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
-        "common_runtime/gpu/pool_allocator.cc",
-        "common_runtime/gpu/process_state.cc",
     ],
     hdrs = GPU_RUNTIME_HEADERS,
     copts = tf_copts(),

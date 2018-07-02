@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -651,7 +651,7 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
   // to allocators.
   // TODO(sami): when grappler devices become available else path will not be
   // necessary
-  auto pm = tensorflow::ProcessState::singleton();
+  auto pm = tensorflow::GPUProcessState::singleton();
   if (params.cluster) {  // get allocator
     tensorflow::Device* device = nullptr;
     if (params.cluster->GetDeviceSet()) {
