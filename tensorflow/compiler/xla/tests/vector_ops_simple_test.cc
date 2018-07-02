@@ -135,46 +135,6 @@ XLA_TEST_F(VecOpsSimpleTest, NegateUint32Values) {
   ComputeAndCompareR1<uint32>(&builder, expected, {});
 }
 
-XLA_TEST_F(VecOpsSimpleTest, SquareTenValues) {
-  XlaBuilder builder(TestName());
-  auto x = ConstantR1<float>(
-      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  SquareF32(x);
-
-  std::vector<float> expected = {4.41, 6.76, 6.76, 16.,  4.41,
-                                 5.29, 25.,  0.81, 5.76, 2.56};
-  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
-}
-
-XLA_TEST_F(VecOpsSimpleTest, ReciprocalTenValues) {
-  XlaBuilder builder(TestName());
-  auto x = ConstantR1<float>(
-      &builder, {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-  ReciprocalF32(x);
-
-  std::vector<float> expected = {
-      0.47619048, -0.38461538, 0.38461538,  -0.25,       0.47619048,
-      0.43478261, -0.2,        -1.11111111, -0.41666667, 0.625};
-  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
-}
-
-XLA_TEST_F(VecOpsSimpleTest, SqrtZeroes) {
-  XlaBuilder builder(TestName());
-  auto x = ConstantR1<float>(&builder, {0.0, -0.0});
-  SqrtF32(x);
-
-  ComputeAndCompareR1<float>(&builder, {0, 0}, {}, error_spec_);
-}
-
-XLA_TEST_F(VecOpsSimpleTest, SqrtSixValues) {
-  XlaBuilder builder(TestName());
-  auto x = ConstantR1<float>(&builder, {16.0, 1.0, 1024.0, 0.16, 0.2, 12345});
-  SqrtF32(x);
-
-  std::vector<float> expected = {4, 1, 32, 0.4, 0.4472, 111.1080};
-  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
-}
-
 XLA_TEST_F(VecOpsSimpleTest, InvSqrtSevenValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder,

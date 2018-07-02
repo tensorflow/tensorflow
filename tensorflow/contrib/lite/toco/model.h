@@ -837,6 +837,8 @@ struct BatchMatMulOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct TensorFlowMatMulOperator : Operator {
   TensorFlowMatMulOperator() : Operator(OperatorType::kMatMul) {}
+  bool transpose_a = false;
+  bool transpose_b = false;
 };
 
 // Padding operator. Pads a tensor with zeros.

@@ -124,6 +124,12 @@ def fit_loop(model,
     callback_metrics = copy.copy(out_labels) + [
         'val_' + n for n in out_labels
     ]
+    if callbacks is not None and any(
+        [isinstance(callback, cbks.TensorBoard) for callback in callbacks]):
+      # need to create the test_function before start of the first epoch
+      # because TensorBoard callback on_epoch_begin adds summary to the
+      # list of fetches of the test_function
+      model._make_test_function()
   else:
     callback_metrics = copy.copy(out_labels)
 

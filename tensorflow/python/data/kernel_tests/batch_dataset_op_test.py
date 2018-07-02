@@ -278,7 +278,7 @@ class PaddedBatchDatasetTest(test.TestCase, parameterized.TestCase):
         result = sess.run(get_next)
         padded_len = padded_shapes[0]
         if padded_len is None or padded_len == -1:
-          padded_len = np.max(result)
+          padded_len = np.max(result) if result.size > 0 else 0
         self.assertEqual((batch_size, padded_len), result.shape)
         for j in range(batch_size):
           seq_len = seq_lens[(i * batch_size) + j]
@@ -288,7 +288,7 @@ class PaddedBatchDatasetTest(test.TestCase, parameterized.TestCase):
 
       if not drop_remainder and len(seq_lens) % batch_size > 0:
         result = sess.run(get_next)
-        padded_len = np.max(result)
+        padded_len = np.max(result) if result.size > 0 else 0
         self.assertEqual((len(seq_lens) % batch_size, padded_len),
                          result.shape)
         for j in range(len(seq_lens) % batch_size):

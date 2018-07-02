@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HLO_EXECUTION_PROFILER_H_
 
 #include <memory>
+#include <stack>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -27,6 +28,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+class ScopedInstructionProfiler;
 
 // A helper class for profiling HLO in the course of GPU program execution.
 // All of the profiling is guarded internally, to avoid the caller needing to
@@ -43,12 +46,25 @@ class HloExecutionProfiler {
   // execution timer.
   void FinishExecution();
 
-  // If profiling is enabled, starts the per-operation timer.
-  void StartOperation();
+  // If profiling is enabled, starts a timer for a (sub)computation.
+  void StartHloComputation();
+
+  // If profiling is enabled stops the timer for a (sub)computation and records
+  // the time that the computation took to execute in the profile.
+  void FinishHloComputation(const HloComputation* computation);
+
+  // If profiling is enabled, starts a per-operation timer.
+  void StartHloInstruction();
 
   // If profiling is enabled, stops the per-operation timer and records the time
   // that the hlo_instruction took to execute in the profile.
-  void FinishOperation(const HloInstruction* hlo_instruction);
+  void FinishHloInstruction(const HloInstruction* hlo_instruction);
+
+  // Returns a ScopedInstructionProfiler and triggers a call to
+  // StartHloInstruction(). Once the returned ScopedInstructionProfiler goes
+  // out of scope, it triggers a call to FinishHloInstruction().
+  std::unique_ptr<ScopedInstructionProfiler> MakeScopedInstructionProfiler(
+      const HloInstruction* hlo_instruction);
 
  private:
   const bool do_profile_;
@@ -57,9 +73,31 @@ class HloExecutionProfiler {
   se::Stream* stream_;
   const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams_;
   const HloComputation* computation_;
-  std::unique_ptr<se::Timer> execution_timer_;
-  std::unique_ptr<se::Timer> per_op_timer_;
+  std::stack<std::unique_ptr<se::Timer>> timers_;
   bool finished_execution_ = false;
+};
+
+// This class can be used within the ExecuteOnStream() implementations of
+// Thunks. It ensures that we always have a pair of matching
+// StartHloInstruction() and FinishHloInstruction() calls to the profiler.
+class ScopedInstructionProfiler {
+ public:
+  ScopedInstructionProfiler(HloExecutionProfiler* profiler,
+                            const HloInstruction* hlo_instruction)
+      : profiler_(profiler), hlo_instruction_(hlo_instruction) {
+    if (hlo_instruction != nullptr) {
+      profiler->StartHloInstruction();
+    }
+  }
+  ~ScopedInstructionProfiler() {
+    if (hlo_instruction_ != nullptr) {
+      profiler_->FinishHloInstruction(hlo_instruction_);
+    }
+  }
+
+ private:
+  HloExecutionProfiler* profiler_;
+  const HloInstruction* hlo_instruction_;
 };
 
 }  // namespace gpu
