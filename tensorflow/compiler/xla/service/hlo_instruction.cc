@@ -112,10 +112,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kSend:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Send instruction should have 1 operand but sees "
+      TF_RET_CHECK(proto.operand_ids_size() == 2)
+          << "Send instruction should have 2 operand but sees "
           << proto.operand_ids_size();
-      instruction = CreateSend(operands(0), proto.channel_id());
+      instruction = CreateSend(operands(0), operands(1), proto.channel_id());
       break;
     case HloOpcode::kSendDone:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
@@ -124,11 +124,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateSendDone(operands(0));
       break;
     case HloOpcode::kRecv:
-      TF_RET_CHECK(proto.operand_ids_size() == 0)
-          << "Recv instruction should have 0 operand but sees "
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "Recv instruction should have 1 operand but sees "
           << proto.operand_ids_size();
-      instruction =
-          CreateRecv(proto.shape().tuple_shapes(0), proto.channel_id());
+      instruction = CreateRecv(proto.shape().tuple_shapes(0), operands(0),
+                               proto.channel_id());
       break;
     case HloOpcode::kRecvDone:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
@@ -650,8 +650,8 @@ HloInstruction::CreateCrossReplicaSum(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
-    HloInstruction* operand, int64 channel_id) {
-  return MakeUnique<HloSendInstruction>(operand, channel_id);
+    HloInstruction* operand, HloInstruction* token, int64 channel_id) {
+  return MakeUnique<HloSendInstruction>(operand, token, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
@@ -663,8 +663,8 @@ HloInstruction::CreateCrossReplicaSum(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
-    const Shape& shape, int64 channel_id) {
-  return MakeUnique<HloRecvInstruction>(shape, channel_id);
+    const Shape& shape, HloInstruction* token, int64 channel_id) {
+  return MakeUnique<HloRecvInstruction>(shape, token, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(

@@ -48,6 +48,7 @@ int64 GetUniqueId() {
 // computation.
 bool CanBeRoot(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kAfterAll:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kOutfeed:
@@ -1586,6 +1587,7 @@ XlaOp XlaBuilder::Reduce(
     TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
+
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferReduceShape(
                             operand_shape, init_shape, dimensions_to_reduce,
@@ -1839,16 +1841,24 @@ XlaOp XlaBuilder::ReducePrecision(const XlaOp& operand, const int exponent_bits,
 
 void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
+    // Send HLO takes two operands: a data operand and a token. Generate the
+    // token to pass into the send.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
 
     // Send instruction produces a tuple of {aliased operand, U32 context}.
+    HloInstructionProto send_instr;
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
-    *instr.mutable_shape() =
+    *send_instr.mutable_shape() =
         ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
-    instr.set_channel_id(handle.handle());
-    TF_ASSIGN_OR_RETURN(
-        XlaOp send,
-        AddInstruction(std::move(instr), HloOpcode::kSend, {operand}));
+    send_instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp send,
+                        AddInstruction(std::move(send_instr), HloOpcode::kSend,
+                                       {operand, token}));
 
     HloInstructionProto send_done_instr;
     *send_done_instr.mutable_shape() = ShapeUtil::MakeNil();
@@ -1860,14 +1870,22 @@ void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
 
 XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
+    // Recv HLO takes a single token operand. Generate the token to pass into
+    // the Recv and RecvDone instructions.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
 
     // Recv instruction produces a tuple of {receive buffer, U32 context}.
-    *instr.mutable_shape() =
+    HloInstructionProto recv_instr;
+    *recv_instr.mutable_shape() =
         ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
-    instr.set_channel_id(handle.handle());
-    TF_ASSIGN_OR_RETURN(XlaOp recv,
-                        AddInstruction(std::move(instr), HloOpcode::kRecv, {}));
+    recv_instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp recv, AddInstruction(std::move(recv_instr),
+                                                   HloOpcode::kRecv, {token}));
 
     HloInstructionProto recv_done_instr;
     *recv_done_instr.mutable_shape() = shape;

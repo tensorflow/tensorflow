@@ -149,6 +149,26 @@ TEST(GraphUtilsTest, SetUniqueName) {
   EXPECT_NE(node2->name(), node3->name());
 }
 
+TEST(GraphUtilsTest, ReplaceInput) {
+  GraphDef graph;
+
+  NodeDef* node1;
+  TF_EXPECT_OK(AddNode("", "A", {}, {}, &graph, &node1));
+
+  NodeDef* node2;
+  TF_EXPECT_OK(AddNode("", "A", {node1->name()}, {}, &graph, &node2));
+
+  NodeDef* node3;
+  TF_EXPECT_OK(AddNode("", "A", {node2->name()}, {}, &graph, &node3));
+
+  EXPECT_EQ(node3->input(0), node2->name());
+
+  GraphView view(&graph);
+  ReplaceInput(*node2, *node1, &view);
+
+  EXPECT_EQ(node3->input(0), node1->name());
+}
+
 }  // namespace
 }  // namespace graph_utils
 }  // namespace grappler

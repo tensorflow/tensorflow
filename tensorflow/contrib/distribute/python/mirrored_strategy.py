@@ -122,12 +122,16 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       is_tower_local = False
     else:
       raise ValueError("Invalid variable synchronization mode: " +
-                       synchronization + " for  variable: " + kwargs["name"])
+                       synchronization + " for variable: " + kwargs["name"])
 
     # Get aggregation value
     aggregation = kwargs.pop("aggregation",
                              variable_scope.VariableAggregation.NONE)
-    if aggregation not in [a for a in variable_scope.VariableAggregation]:
+    if aggregation not in [
+        variable_scope.VariableAggregation.NONE,
+        variable_scope.VariableAggregation.SUM,
+        variable_scope.VariableAggregation.MEAN
+    ]:
       raise ValueError("Invalid variable aggregation mode: " + aggregation +
                        " for variable: " + kwargs["name"])
 

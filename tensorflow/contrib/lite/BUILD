@@ -128,6 +128,7 @@ cc_library(
     hdrs = [
         "allocation.h",
         "context.h",
+        "context_util.h",
         "error_reporter.h",
         "graph_info.h",
         "interpreter.h",

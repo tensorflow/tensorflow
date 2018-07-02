@@ -161,7 +161,8 @@ class HloSendRecvInstruction : public HloInstruction {
 
 class HloSendInstruction : public HloSendRecvInstruction {
  public:
-  explicit HloSendInstruction(HloInstruction* operand, int64 channel_id);
+  explicit HloSendInstruction(HloInstruction* operand, HloInstruction* token,
+                              int64 channel_id);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -185,7 +186,8 @@ class HloSendDoneInstruction : public HloSendRecvInstruction {
 
 class HloRecvInstruction : public HloSendRecvInstruction {
  public:
-  explicit HloRecvInstruction(const Shape& shape, int64 channel_id);
+  explicit HloRecvInstruction(const Shape& shape, HloInstruction* token,
+                              int64 channel_id);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.

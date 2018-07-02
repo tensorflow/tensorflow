@@ -59,8 +59,8 @@ release_build=0
 for ARG in "$@"; do
   if [[ "$ARG" == --skip_test ]]; then
     skip_test=1
-  elif [[ "$ARG" == --enable_gcs_remote_cache ]]; then
-    set_gcs_remote_cache_options
+  elif [[ "$ARG" == --enable_remote_cache ]]; then
+    set_remote_cache_options
   elif [[ "$ARG" == --release_build ]]; then
     release_build=1
   fi

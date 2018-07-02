@@ -69,11 +69,11 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   }
 
   const Shape& accumulator_shape = reducer_shape.result();
-  if (ShapeUtil::Rank(accumulator_shape) != 0) {
+  if (!ShapeUtil::IsArray(accumulator_shape) ||
+      ShapeUtil::Rank(accumulator_shape) != 0) {
     return InvalidArgument(
-        "Reduction function must have rank 0 (rank %lld reduction function "
-        "given).",
-        ShapeUtil::Rank(accumulator_shape));
+        "Reduction function must produce a scalar but has shape: %s",
+        ShapeUtil::HumanString(accumulator_shape).c_str());
   }
 
   // Check that the accumulator can be passed in as the first argument.

@@ -97,16 +97,16 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
-    static ::bigtable::Filter MakeFilter(
+    static ::google::cloud::bigtable::Filter MakeFilter(
         const std::vector<string>& column_families,
         const std::vector<string>& columns) {
       string column_family_regex = RegexFromStringSet(column_families);
       string column_regex = RegexFromStringSet(columns);
 
-      return ::bigtable::Filter::Chain(
-          ::bigtable::Filter::Latest(1),
-          ::bigtable::Filter::FamilyRegex(column_family_regex),
-          ::bigtable::Filter::ColumnRegex(column_regex));
+      return ::google::cloud::bigtable::Filter::Chain(
+          ::google::cloud::bigtable::Filter::Latest(1),
+          ::google::cloud::bigtable::Filter::FamilyRegex(column_family_regex),
+          ::google::cloud::bigtable::Filter::ColumnRegex(column_regex));
     }
 
     class Iterator : public DatasetIterator<Dataset> {
@@ -163,7 +163,8 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      Status ParseRow(IteratorContext* ctx, const ::bigtable::Row& row,
+      Status ParseRow(IteratorContext* ctx,
+                      const ::google::cloud::bigtable::Row& row,
                       std::vector<Tensor>* out_tensors) {
         out_tensors->reserve(dataset()->columns_.size() + 1);
         Tensor row_key_tensor(ctx->allocator({}), DT_STRING, {});
@@ -209,7 +210,7 @@ class BigtableLookupDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<string> columns_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
-    const ::bigtable::Filter filter_;
+    const ::google::cloud::bigtable::Filter filter_;
   };
 };
 
