@@ -245,7 +245,8 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        const void* allocation, bool is_variable,
                        TfLiteTensor* tensor);
 
-// Resize the allocated data of a (dynamic) tensor.
+// Resize the allocated data of a (dynamic) tensor. Tensors with allocation
+// types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 
 // A structure representing an instance of a node.

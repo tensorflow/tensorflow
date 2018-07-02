@@ -457,5 +457,74 @@ class ResourceApplyFtrlV2 : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ResourceApplyFtrlV2").TypeConstraint("T", kFloatTypes),
                 ResourceApplyFtrlV2);
 
+class ResourceApplyAdadelta : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdadelta(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, accum_shape, accum_update_shape;
+    xla::XlaOp var, accum, accum_update;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(1, dtype_, &accum_shape, &accum));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype_, &accum_update_shape,
+                                               &accum_update));
+
+    TensorShape lr_shape = ctx->InputShape(3);
+    TensorShape rho_shape = ctx->InputShape(4);
+    TensorShape epsilon_shape = ctx->InputShape(5);
+    TensorShape grad_shape = ctx->InputShape(6);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rho_shape),
+                errors::InvalidArgument("rho is not a scalar: ",
+                                        rho_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(3);
+    xla::XlaOp rho = ctx->Input(4);
+    xla::XlaOp epsilon = ctx->Input(5);
+    xla::XlaOp grad = ctx->Input(6);
+
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp neg_half = XlaHelpers::FloatLiteral(b, dtype_, -0.5);
+    xla::XlaOp half = XlaHelpers::FloatLiteral(b, dtype_, 0.5);
+    xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
+    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype_, 2.0);
+
+    accum = rho * accum + (one - rho) * xla::Pow(grad, two);
+    xla::XlaOp update = xla::Pow(accum_update + epsilon, half) *
+                        xla::Pow(accum + epsilon, neg_half) * grad;
+    accum_update = rho * accum_update + (one - rho) * xla::Pow(update, two);
+    var = var - update * lr;
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, accum));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, dtype_, accum_update));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyAdadelta").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdadelta);
+
 }  // namespace
 }  // namespace tensorflow

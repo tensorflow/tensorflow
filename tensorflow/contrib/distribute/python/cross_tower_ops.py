@@ -117,8 +117,8 @@ def _simple_reduce(per_device_value, reduce_to_device, accumulation_fn,
         reduced = cross_tower_utils.divide_by_n_tensors_or_indexed_slices(
             reduced, count)
       elif aggregation != vs.VariableAggregation.SUM:
-        raise ValueError("`aggregation` must be `sum`(VariableAggregation.SUM) "
-                         "or `mean`(VariableAggregation.MEAN).")
+        raise ValueError("`aggregation` must be VariableAggregation.SUM "
+                         "or VariableAggregation.MEAN.")
   return reduced
 
 

@@ -2769,7 +2769,11 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
   ~UnaryOpsComposition() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return CanOptimize(*node);
+    return CanOptimize(*node) &&
+           // Check that this node was not already a root of a fused chain. If
+           // graph optimization runs twice without pruning in between,
+           // fused_nodes_ will not have this information.
+           !ctx().node_map->NodeExists(OptimizedNodeName(*node));
   }
 
   Status TrySimplify(NodeDef* root, string* simplified_node_name) override {
@@ -2813,8 +2817,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
             << str_util::Join(op_names, ", ") << "]";
 
     NodeDef* composition_node = ctx().optimized_graph->add_node();
-    composition_node->set_name(
-        strings::StrCat(root->name(), "/unary_ops_composition"));
+    composition_node->set_name(OptimizedNodeName(*root));
     composition_node->set_op("_UnaryOpsComposition");
     composition_node->add_input(last_op->input(0));
     composition_node->set_device(root->device());
@@ -2864,6 +2867,10 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 
   bool NodeIsAlreadyFused(const NodeDef& node) const {
     return fused_nodes_.count(node.name()) > 0;
+  }
+
+  string OptimizedNodeName(const NodeDef& node) const {
+    return strings::StrCat(node.name(), "/unary_ops_composition");
   }
 
   void AddToFusedNodes(const string& name) { fused_nodes_.insert(name); }

@@ -51,14 +51,18 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Skip Constant, Parameter, Reduce operation.
+      // Skip Constant, Parameter, Reduce, and AfterAll operation.
       // TODO(b/35975797): Enable Reduce operation once arbitrary computation
       // are supported by the evaluator.
       // TODO(b/64407269): Enable Tuple once the timeout issue is resolved.
+      // TODO(b/110532604): Enable AfterAll once AfterAll requires at least one
+      // operand in which case constant folding will be impossible and this
+      // special case is not necessary.
       if (instruction->opcode() == HloOpcode::kParameter ||
           instruction->opcode() == HloOpcode::kConstant ||
           instruction->opcode() == HloOpcode::kTuple ||
-          instruction->opcode() == HloOpcode::kReduce) {
+          instruction->opcode() == HloOpcode::kReduce ||
+          instruction->opcode() == HloOpcode::kAfterAll) {
         continue;
       }
       // Skip instructions with non-constant operands.

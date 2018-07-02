@@ -339,7 +339,7 @@ class _VariableStore(object):
         use when doing asynchronous distributed training.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{VariableSynchronization}. By default the synchronization is set to
+        @{tf.VariableSynchronization}. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
@@ -2348,7 +2348,7 @@ def default_variable_creator(next_creator=None, **kwargs):
   use_resource = kwargs.get("use_resource", None)
 
   # Enforce `ON_READ` variables to be not trainable.
-  synchronization = kwargs.pop("synchronization", VariableSynchronization.AUTO)
+  synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
   if synchronization == VariableSynchronization.ON_READ:
     trainable = False
 
@@ -2461,7 +2461,7 @@ def variable_creator_scope(variable_creator):
       use_resource: if True, a ResourceVariable is always created.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
-        @{VariableSynchronization}. By default the synchronization is set to
+        @{tf.VariableSynchronization}. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
         when to synchronize.
       aggregation: Indicates how a distributed variable will be aggregated.
