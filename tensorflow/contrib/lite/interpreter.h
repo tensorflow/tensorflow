@@ -224,21 +224,21 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
-    if (tensor_index >= context_.tensors_size || tensor_index < 0)
+    if ((size_t)tensor_index >= context_.tensors_size | tensor_index < 0)
       return nullptr;
     return &context_.tensors[tensor_index];
   }
 
   // Get an immutable tensor data structure.
   const TfLiteTensor* tensor(int tensor_index) const {
-    if (tensor_index >= context_.tensors_size || tensor_index < 0)
+    if ((size_t)tensor_index >= context_.tensors_size | tensor_index < 0)
       return nullptr;
     return &context_.tensors[tensor_index];
   }
 
   // Get a pointer to an operation and registration data structure if in bounds.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
-      int node_index) const {
+      size_t node_index) const {
     if (node_index >= nodes_and_registration_.size() || node_index < 0)
       return nullptr;
     return &nodes_and_registration_[node_index];
@@ -337,7 +337,7 @@ class Interpreter {
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
-    TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
+    TF_LITE_ENSURE(&context_, (size_t)tensor_index < tensors_size());
     TfLiteTensor* tensor = &tensors_[tensor_index];
     if (tensor->data_is_stale) {
       TF_LITE_ENSURE(&context_, tensor->delegate != nullptr);
