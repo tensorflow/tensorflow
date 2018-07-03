@@ -945,6 +945,61 @@ def For(start,
 # pylint: enable=invalid-name,protected-access
 
 
-def partitioned_call(args, f):
-  return gen_functional_ops.partitioned_call(
-      args=args, Tout=[o.type for o in f.definition.signature.output_arg], f=f)
+def partitioned_call(args, f, tout=None, executing_eagerly=None):
+  """Executes a function while respecting device annotations.
+
+  Currently, only those functions that execute within the same address space
+  can be executed.
+
+  Args:
+    args: The arguments of the function, including captured inputs.
+    f: The function to execute; an instance of `_DefinedFunction` or
+      `_EagerDefinedFunction`.
+    tout: a list containing the output dtypes enums; if `None`, inferred from
+      the signature of `f`.
+    executing_eagerly: (Optional) A boolean indicating whether the context is
+      executing eagerly. If `None`, fetched from the global context.
+
+  Returns:
+    The list of `Tensor`s returned by invoking `f(args)`. If the function does
+    not return anything, then returns `None` if eager execution is enabled, or
+    the `Operation` if not.
+  """
+
+  if tout is None:
+    tout = tuple(x.type for x in f.definition.signature.output_arg)
+
+  if executing_eagerly is None:
+    executing_eagerly = context.executing_eagerly()
+
+  if executing_eagerly or len(tout):
+    if f.stateful_ops:
+      outputs = gen_functional_ops.stateful_partitioned_call(
+          args=args, Tout=tout, f=f)
+    else:
+      outputs = gen_functional_ops.partitioned_call(args=args, Tout=tout, f=f)
+    return outputs if outputs else None
+
+  # The generated binding returns an empty list for functions that don't
+  # return any Tensors, hence the need to use `create_op` directly.
+  args = [ops.internal_convert_to_tensor(x) for x in args]
+  tin_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(
+          type=[x.dtype.as_datatype_enum for x in args]))
+  tout_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(type=tout))
+  func_attr = attr_value_pb2.AttrValue(
+      func=attr_value_pb2.NameAttrList(name=f.name))
+
+  graph = ops.get_default_graph()
+  f.add_to_graph(graph)
+  op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
+  op = graph.create_op(
+      op_name,
+      args,
+      tout,
+      compute_shapes=False,
+      name="PartitionedFunctionCall",
+      attrs={"Tin": tin_attr, "Tout": tout_attr, "f": func_attr})
+  outputs = op.outputs
+  return outputs if outputs else op
