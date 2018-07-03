@@ -781,7 +781,7 @@ sess.run(b)
 ``` python
 import numpy as np
 
-a = tf.Variable(np.ones[10], name="a")
+a = tf.Variable(np.ones(10), name="a")
 b = tf.add(a, a, name="b")
 sess = tf.Session()
 sess.run(tf.global_variables_initializer())
