@@ -28,6 +28,8 @@ namespace {
 void UpdateRow(const ::google::bigtable::v2::Mutation& mut,
                std::map<string, string>* row) {
   if (mut.has_set_cell()) {
+    CHECK(mut.set_cell().timestamp_micros() >= -1)
+        << "Timestamp_micros: " << mut.set_cell().timestamp_micros();
     auto col =
         strings::Printf("%s:%s", mut.set_cell().family_name().c_str(),
                         string(mut.set_cell().column_qualifier()).c_str());

@@ -212,7 +212,6 @@ class ToBigtableOp : public AsyncOpKernel {
       OP_REQUIRES_ASYNC(ctx, timestamp_int >= -1,
                         errors::InvalidArgument("timestamp must be >= -1"),
                         done);
-      std::chrono::milliseconds timestamp(timestamp_int);
 
       BigtableTableResource* resource;
       OP_REQUIRES_OK_ASYNC(
@@ -233,7 +232,7 @@ class ToBigtableOp : public AsyncOpKernel {
             OP_REQUIRES_OK_ASYNC(
                 ctx,
                 CreateMutation(std::move(components), column_families, columns,
-                               timestamp, &mutation),
+                               timestamp_int, &mutation),
                 done);
           }
           components.clear();
@@ -282,7 +281,7 @@ class ToBigtableOp : public AsyncOpKernel {
 
   Status CreateMutation(
       std::vector<Tensor> tensors, const std::vector<string>& column_families,
-      const std::vector<string>& columns, std::chrono::milliseconds timestamp,
+      const std::vector<string>& columns, int64 timestamp_int,
       ::google::cloud::bigtable::BulkMutation* bulk_mutation) {
     if (tensors.size() != column_families.size() + 1) {
       return errors::InvalidArgument(
@@ -290,13 +289,20 @@ class ToBigtableOp : public AsyncOpKernel {
     }
     ::google::cloud::bigtable::SingleRowMutation mutation(
         std::move(tensors[0].scalar<string>()()));
+    std::chrono::milliseconds timestamp(timestamp_int);
     for (size_t i = 1; i < tensors.size(); ++i) {
       if (!TensorShapeUtils::IsScalar(tensors[i].shape())) {
         return errors::Internal("Output tensor ", i, " was not a scalar");
       }
-      mutation.emplace_back(::google::cloud::bigtable::SetCell(
-          column_families[i - 1], columns[i - 1], timestamp,
-          std::move(tensors[i].scalar<string>()())));
+      if (timestamp_int == -1) {
+        mutation.emplace_back(::google::cloud::bigtable::SetCell(
+            column_families[i - 1], columns[i - 1],
+            std::move(tensors[i].scalar<string>()())));
+      } else {
+        mutation.emplace_back(::google::cloud::bigtable::SetCell(
+            column_families[i - 1], columns[i - 1], timestamp,
+            std::move(tensors[i].scalar<string>()())));
+      }
     }
     bulk_mutation->emplace_back(std::move(mutation));
     return Status::OK();
