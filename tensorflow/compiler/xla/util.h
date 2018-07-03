@@ -534,6 +534,13 @@ c_count_if(const C& c, Pred&& pred) {
   return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
+// Determines whether `value` is present in `c`.
+template <typename C, typename T>
+bool c_linear_search(const C& c, T&& value) {
+  auto last = std::end(c);
+  return std::find(std::begin(c), last, std::forward<T>(value)) != last;
+}
+
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));

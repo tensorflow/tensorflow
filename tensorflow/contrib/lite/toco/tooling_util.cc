@@ -447,8 +447,12 @@ void LogSummary(int log_level, const Model& model) {
 }
 
 void LogArray(int log_level, const Model& model, const string& name) {
-  const auto& array = model.GetArray(name);
   VLOG(log_level) << "Array: " << name;
+  if (!model.HasArray(name)) {
+    VLOG(log_level) << "  DOES NOT EXIST";
+    return;
+  }
+  const auto& array = model.GetArray(name);
   VLOG(log_level) << "  Data type: " << ArrayDataTypeName(array.data_type);
   VLOG(log_level) << "  Final type: "
                   << ArrayDataTypeName(array.final_data_type);
