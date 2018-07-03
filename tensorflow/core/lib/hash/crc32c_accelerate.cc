@@ -29,8 +29,9 @@ limitations under the License.
 #endif
 #endif /* __SSE4_2__ */
 
-// MSVC does not have __SSE4_2__ macro, but does support sse4.2 for x64
-#ifdef _M_X64
+// MSVC does not have __SSE4_2__ macro, but will enable SSE 4.2 when AVX
+// is turned on.
+#if defined(_MSC_VER) && defined(__AVX__)
 #define USE_SEE_CRC32C 1
 #endif
 
