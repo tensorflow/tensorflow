@@ -434,7 +434,6 @@ should be able to transfer some of that understanding to solving related
 problems.  One way to perform transfer learning is to remove the final
 classification layer of the network and extract
 the [next-to-last layer of the CNN](https://arxiv.org/abs/1310.1531), in this case a 2048 dimensional vector.
-There's a guide to doing this @{$image_retraining$in the how-to section}.
 
 
 ## Resources for Learning More
