@@ -202,12 +202,13 @@ ENTRY entry {
   p0 = (f32[4]) parameter(0)
   a = f32[4] get-tuple-element(p0), index=0
   token = token[] after-all()
-  b = (f32[4], u32[]) send(a, token), channel_id=1, sharding={maximal device=0}
-  c = () send-done(b), channel_id=1, sharding={maximal device=0}
-  d = (f32[4], u32[]) recv(token), channel_id=2, sharding={maximal device=0}
-  e = f32[4] recv-done(d), channel_id=2, sharding={maximal device=0}
-  f = f32[4] add(a, e)
-  g = f32[4] subtract(a, e)
+  b = (f32[4], u32[], token[]) send(a, token), channel_id=1, sharding={maximal device=0}
+  c = token[] send-done(b), channel_id=1, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) recv(token), channel_id=2, sharding={maximal device=0}
+  e = (f32[4], token[]) recv-done(d), channel_id=2, sharding={maximal device=0}
+  e_element = f32[4] get-tuple-element(e), index=0, sharding={maximal device=0}
+  f = f32[4] add(a, e_element)
+  g = f32[4] subtract(a, e_element)
   ROOT h = (f32[4], f32[4]) tuple(f, g)
 }
 )";
@@ -220,7 +221,7 @@ ENTRY entry {
   EXPECT_TRUE(isolator_changed);
 
   EXPECT_TRUE(HasDomainEdge(module, "b", "a"));
-  EXPECT_TRUE(HasDomainEdge(module, "f", "e"));
+  EXPECT_TRUE(HasDomainEdge(module, "f", "e_element"));
   EXPECT_FALSE(HasDomainEdge(module, "a", "p0"));
   EXPECT_FALSE(HasDomainEdge(module, "c", "b"));
   EXPECT_FALSE(HasDomainEdge(module, "e", "d"));
@@ -231,7 +232,7 @@ ENTRY entry {
   EXPECT_TRUE(remover_changed);
 
   EXPECT_FALSE(HasDomainEdge(module, "b", "a"));
-  EXPECT_FALSE(HasDomainEdge(module, "f", "e"));
+  EXPECT_FALSE(HasDomainEdge(module, "f", "e_element"));
 }
 
 TEST_F(HloDomainTest, CheckNoDomainAddedOnPureIOComputation) {
@@ -240,11 +241,12 @@ HloModule Module
 
 ENTRY entry {
   token = token[] after-all(), sharding={maximal device=-1}
-  a = (f32[4], u32[]) recv(token), channel_id=1, sharding={maximal device=-1}
-  b = f32[4] recv-done(a), channel_id=1, sharding={maximal device=-1}
-  c = f32[4] add(b, b), sharding={maximal device=-1}
-  d = (f32[4], u32[]) send(c, token), channel_id=2, sharding={maximal device=-1}
-  ROOT e = () send-done(d), channel_id=2, sharding={maximal device=-1}
+  a = (f32[4], u32[], token[]) recv(token), channel_id=1, sharding={maximal device=-1}
+  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=-1}
+  b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
+  c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
+  d = (f32[4], u32[], token[]) send(c, token), channel_id=2, sharding={maximal device=-1}
+  ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
 }
 )";
 
@@ -262,11 +264,12 @@ HloModule Module
 
 ENTRY entry {
   token = token[] after-all(), sharding={maximal device=0}
-  a = (f32[4], u32[]) recv(token), channel_id=1, sharding={maximal device=0}
-  b = f32[4] recv-done(a), channel_id=1, sharding={maximal device=0}
-  c = f32[4] add(b, b)
-  d = (f32[4], u32[]) send(c, token), channel_id=2, sharding={maximal device=0}
-  ROOT e = () send-done(d), channel_id=2, sharding={maximal device=0}
+  a = (f32[4], u32[], token[]) recv(token), channel_id=1, sharding={maximal device=0}
+  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=0}
+  b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=0}
+  c = f32[4] add(b_element, b_element)
+  d = (f32[4], u32[], token[]) send(c, token), channel_id=2, sharding={maximal device=0}
+  ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=0}
 }
 )";
 

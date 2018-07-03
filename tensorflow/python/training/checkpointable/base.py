@@ -501,7 +501,7 @@ class CheckpointableBase(object):
       ValueError: If the variable name is not unique.
     """
     self._maybe_initialize_checkpointable()
-    if not overwrite and self._lookup_dependency(name) is not None:
+    if overwrite and self._lookup_dependency(name) is not None:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
            "Checkpointable._add_variable called to create another with "
@@ -631,9 +631,9 @@ class CheckpointableBase(object):
           self._unconditional_checkpoint_dependencies[index] = new_reference
     elif current_object is None:
       self._unconditional_checkpoint_dependencies.append(new_reference)
-      self._unconditional_dependency_names[name] = checkpointable
       self._handle_deferred_dependencies(
           name=name, checkpointable=checkpointable)
+    self._unconditional_dependency_names[name] = checkpointable
     return checkpointable
 
   def _handle_deferred_dependencies(self, name, checkpointable):

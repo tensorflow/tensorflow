@@ -1092,14 +1092,12 @@ void MaybeDumpModule(const string& message, const HloModule& module) {
 
 }  // namespace
 
-Status RemoveUnnecessaryCopies(
-    const HloOrdering& ordering, HloModule* module,
-    const HloDataflowAnalysis::FusionCanShareBufferFunction&
-        fusion_can_share_buffer) {
+Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
+                                              HloModule* module) {
   MaybeDumpModule("after adding copies to resolve interference", *module);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, fusion_can_share_buffer));
+                      HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
   CopyRemover copy_remover(*alias_analysis, ordering, module);
   XLA_VLOG_LINES(3, copy_remover.ToString());
 

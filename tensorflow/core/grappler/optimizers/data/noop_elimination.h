@@ -13,22 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_TAKE_ALL_ELIMINATION_H_
-#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_TAKE_ALL_ELIMINATION_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_NOOP_ELIMINATION_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_NOOP_ELIMINATION_H_
 
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
 
 namespace tensorflow {
 namespace grappler {
 
-// This class optimizes 'TakeDataset' operations that take all the elements
-// e.g. - take(-1).
-class TakeAllElimination : public CustomGraphOptimizer {
+// This class eliminates tf.data transformations such as `take(n)` (for n < 0),
+// `skip(0)`, or `repeat(1)`
+class NoOpElimination : public CustomGraphOptimizer {
  public:
-  TakeAllElimination() = default;
-  ~TakeAllElimination() override = default;
+  NoOpElimination() = default;
+  ~NoOpElimination() override = default;
 
-  string name() const override { return "take_all_elimination"; };
+  string name() const override { return "noop_elimination"; };
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -45,4 +45,4 @@ class TakeAllElimination : public CustomGraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_TAKE_ALL_ELIMINATION_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_NOOP_ELIMINATION_H_

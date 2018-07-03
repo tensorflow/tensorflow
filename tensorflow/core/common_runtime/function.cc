@@ -399,12 +399,11 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // types.
   MemoryTypeVector input_memory_types;
   for (const auto& t : fbody->arg_types) {
-    input_memory_types.push_back(
-        (t == DT_INT32 || t == DT_RESOURCE) ? HOST_MEMORY : DEVICE_MEMORY);
+    input_memory_types.push_back(MTypeFromDType(t));
   }
   MemoryTypeVector output_memory_types;
   for (const auto& t : fbody->ret_types) {
-    output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
+    output_memory_types.push_back(MTypeFromDType(t));
   }
 
   // Constructs a CallOp kernel for running the instantiated function.
@@ -731,16 +730,17 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
   args_alloc_attrs.reserve(fbody->arg_types.size());
   rets_alloc_attrs.reserve(fbody->ret_types.size());
+  // Note: Functions assume that int32's are always on host memory.
   for (const auto& arg_type : fbody->arg_types) {
     AllocatorAttributes arg_alloc_attrs;
-    if (DataTypeAlwaysOnHost(arg_type)) {
+    if (MTypeFromDType(arg_type) == HOST_MEMORY) {
       arg_alloc_attrs.set_on_host(true);
     }
     args_alloc_attrs.push_back(arg_alloc_attrs);
   }
   for (const auto& ret_type : fbody->ret_types) {
     AllocatorAttributes ret_alloc_attrs;
-    if (DataTypeAlwaysOnHost(ret_type)) {
+    if (MTypeFromDType(ret_type) == HOST_MEMORY) {
       ret_alloc_attrs.set_on_host(true);
     }
     rets_alloc_attrs.push_back(ret_alloc_attrs);
