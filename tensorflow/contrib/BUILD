@@ -128,7 +128,7 @@ py_library(
             "//tensorflow/contrib/ignite",
         ],
         "//conditions:default": [],
-    }) + if_not_windows([
+    }) + select({
         "//tensorflow:with_aws_support_windows_override": [],
         "//tensorflow:with_aws_support": [
             "//tensorflow/contrib/kinesis",
