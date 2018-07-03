@@ -1365,8 +1365,9 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
       HloInstruction::CreateParameter(1, tuple_shape, "param1"));
   auto pred_param = builder.AddInstruction(HloInstruction::CreateParameter(
       2, ShapeUtil::MakeShape(PRED, {}), "param1"));
-  auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred_param, tuple_param0, tuple_param1));
+  auto select = builder.AddInstruction(
+      HloInstruction::CreateTernary(tuple_shape, HloOpcode::kTupleSelect,
+                                    pred_param, tuple_param0, tuple_param1));
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());

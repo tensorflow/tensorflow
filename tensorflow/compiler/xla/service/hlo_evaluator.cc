@@ -1024,8 +1024,6 @@ Status HloEvaluator::HandleSelect(HloInstruction* select) {
   const auto& on_false = GetEvaluatedLiteralFor(select->operand(2));
 
   // If predicate is of scalar type, no element-wise selection would be needed.
-  // This would also handle output array of tuple types as the DefaultAction
-  // would go through the HloEvaluatorTypedVisitor which doesn't handle tuples.
   if (ShapeUtil::IsScalar(pred.shape())) {
     if (pred.Get<bool>({})) {
       evaluated_[select] = on_true.CloneToUnique();
@@ -1036,6 +1034,19 @@ Status HloEvaluator::HandleSelect(HloInstruction* select) {
   }
 
   return DefaultAction(select);
+}
+
+Status HloEvaluator::HandleTupleSelect(HloInstruction* tuple_select) {
+  const auto& pred = GetEvaluatedLiteralFor(tuple_select->operand(0));
+  const auto& on_true = GetEvaluatedLiteralFor(tuple_select->operand(1));
+  const auto& on_false = GetEvaluatedLiteralFor(tuple_select->operand(2));
+
+  if (pred.Get<bool>({})) {
+    evaluated_[tuple_select] = on_true.CloneToUnique();
+  } else {
+    evaluated_[tuple_select] = on_false.CloneToUnique();
+  }
+  return Status::OK();
 }
 
 Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {

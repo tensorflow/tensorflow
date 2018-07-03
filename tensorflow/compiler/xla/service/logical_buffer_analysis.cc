@@ -157,10 +157,10 @@ Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select) {
+Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
-  NewLogicalBuffer(select, /*index=*/{});
+  NewLogicalBuffer(tuple_select, /*index=*/{});
   return Status::OK();
 }
 

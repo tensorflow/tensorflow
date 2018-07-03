@@ -376,7 +376,7 @@ TEST_F(TuplePointsToAnalysisTest, TupleSelect) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -405,7 +405,7 @@ TEST_F(TuplePointsToAnalysisTest, SelectTupleParameters) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, param0, param1));
+      tuple_shape, HloOpcode::kTupleSelect, pred, param0, param1));
   auto copy = builder.AddInstruction(
       HloInstruction::CreateUnary(tuple_shape, HloOpcode::kCopy, select));
 
@@ -454,7 +454,7 @@ TEST_F(TuplePointsToAnalysisTest, UnambiguousTupleSelect) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -490,7 +490,7 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   BuildModuleAndRunAnalysis(builder.Build());
 

@@ -41,6 +41,10 @@ Status ShapeVerifier::HandleSelect(HloInstruction* select) {
   return CheckTernaryShape(select);
 }
 
+Status ShapeVerifier::HandleTupleSelect(HloInstruction* tuple_select) {
+  return CheckTernaryShape(tuple_select);
+}
+
 Status ShapeVerifier::HandleConcatenate(HloInstruction* concatenate) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : concatenate->operands()) {
@@ -439,6 +443,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kTuple:
@@ -501,16 +506,10 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   // We treat BF16 and F32 as compatible types if mixed precision is allowed,
   // but only when the instruction defines the BF16/F32 buffer.
   switch (instruction->opcode()) {
-    case HloOpcode::kSelect:
-      if (ShapeUtil::IsTuple(inferred_shape) || !allow_mixed_precision_) {
-        // Select only defines the top-level buffer, which in this case is the
-        // tuple, so we cannot allow mixed precision.
-        compatible =
-            ShapeUtil::Compatible(instruction->shape(), inferred_shape);
-      } else {
-        compatible = ShapeUtil::CompatibleIgnoringFpPrecision(
-            instruction->shape(), inferred_shape);
-      }
+    case HloOpcode::kTupleSelect:
+      // TupleSelect only defines the top-level buffer, which in this case is
+      // the tuple, so we cannot allow mixed precision.
+      compatible = ShapeUtil::Compatible(instruction->shape(), inferred_shape);
       break;
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:

@@ -79,6 +79,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
   }
+  Status HandleTupleSelect(HloInstructionPtr tuple_select) override {
+    return DefaultAction(tuple_select);
+  }
   Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }

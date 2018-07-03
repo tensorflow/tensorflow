@@ -743,7 +743,15 @@ void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
 
 XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
                          const XlaOp& on_false) {
-  return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& true_shape, GetShape(on_true));
+    TF_ASSIGN_OR_RETURN(const Shape& false_shape, GetShape(on_false));
+    TF_RET_CHECK(ShapeUtil::IsTuple(true_shape) ==
+                 ShapeUtil::IsTuple(false_shape));
+    HloOpcode opcode = ShapeUtil::IsTuple(true_shape) ? HloOpcode::kTupleSelect
+                                                      : HloOpcode::kSelect;
+    return TernaryOp(opcode, pred, on_true, on_false);
+  });
 }
 
 XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {

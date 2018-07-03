@@ -577,17 +577,17 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   }
 }
 
-bool HloDataflowAnalysis::UpdateSelectValueSet(HloInstruction* select) {
-  CHECK_EQ(select->opcode(), HloOpcode::kSelect);
-  // A phi value is not defined at a kSelect instruction because kSelect does
-  // not create a new value. Rather it forwards a value from its operands. This
-  // contrasts with kWhile instruction (which does define a phi value) which has
-  // in-place update semantics.
+bool HloDataflowAnalysis::UpdateTupleSelectValueSet(HloInstruction* select) {
+  CHECK_EQ(select->opcode(), HloOpcode::kTupleSelect);
+  // A phi value is not defined at a kTupleSelect instruction because
+  // kTupleSelect does not create a new value. Rather it forwards a value from
+  // its operands. This contrasts with kWhile instruction (which does define a
+  // phi value) which has in-place update semantics.
   bool changed = false;
   for (auto& pair : GetInstructionValueSet(select)) {
     const ShapeIndex& index = pair.first;
     if (index.empty()) {
-      // kSelect copies (not forwards) the top-level value.
+      // kTupleSelect copies (not forwards) the top-level value.
       continue;
     }
     HloValueSet& value_set = pair.second;
@@ -649,8 +649,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
       return UpdateGetTupleElementValueSet(instruction);
-    case HloOpcode::kSelect:
-      return UpdateSelectValueSet(instruction);
+    case HloOpcode::kTupleSelect:
+      return UpdateTupleSelectValueSet(instruction);
     case HloOpcode::kTuple:
       return UpdateTupleValueSet(instruction);
     case HloOpcode::kParameter:
@@ -849,7 +849,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           }
           break;
         case HloOpcode::kCopy:
-        case HloOpcode::kSelect:
+        case HloOpcode::kTupleSelect:
         case HloOpcode::kTuple:
           // These instructions only define their top-level values. Any other
           // values flow from their operands.
