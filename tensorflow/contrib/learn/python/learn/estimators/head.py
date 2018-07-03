@@ -579,10 +579,10 @@ def _poisson_loss(labels, logits, weights=None):
     labels = ops.convert_to_tensor(labels)
     # To prevent broadcasting inside "-".
     if len(labels.get_shape()) == 1:
-      labels = array_ops.expand_dims(labels, dim=(1,))
+      labels = array_ops.expand_dims(labels, axis=(1,))
     # TODO(zakaria): make sure it does not recreate the broadcast bug.
     if len(logits.get_shape()) == 1:
-      logits = array_ops.expand_dims(logits, dim=(1,))
+      logits = array_ops.expand_dims(logits, axis=(1,))
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
     loss = nn.log_poisson_loss(labels, logits, compute_full_loss=True,
                                name=name)
