@@ -126,7 +126,7 @@ landing_page:
                 {% dynamic if request.tld == 'cn' %}
                 <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
+                <a href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
                 {% dynamic endif %}
               </li>
               <li>
