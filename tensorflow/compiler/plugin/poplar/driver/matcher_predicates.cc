@@ -22,8 +22,8 @@ bool IsFloatType(const HloInstruction *inst) {
   return ShapeUtil::ElementIsFloating(inst->shape());
 }
 
-bool IsTruncatedNormalWhile(const HloInstruction *inst) {
-  return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
+bool IsTruncatedNormal(const HloInstruction *inst) {
+  return inst->metadata().op_type() == "TruncatedNormal";
 }
 
 bool IsRandomNormal(const HloInstruction *inst) {

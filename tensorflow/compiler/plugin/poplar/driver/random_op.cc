@@ -27,30 +27,6 @@ static StatusOr<double> DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   return *val;
 }
 
-StatusOr<poplar::program::Program> TruncatedNormalScale(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map) {
-  const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* mean = root->operand(1);
-  const HloInstruction* sd = root->operand(0)->operand(1);
-
-  double mean_val;
-  TF_ASSIGN_OR_RETURN(mean_val, DoubleValueOfScalarLiteral(mean->literal()));
-  double sd_val;
-  TF_ASSIGN_OR_RETURN(sd_val, DoubleValueOfScalarLiteral(sd->literal()));
-
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(
-      out, AddTensor(graph, std::make_pair(inst, 0), output_shape, res));
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-
-  poplar::program::Sequence seq;
-  res.random.truncatedNormal(graph, out, mean_val, sd_val, 1.0, seq,
-                             GetDebugName(inst));
-
-  return seq;
-}
-
 StatusOr<poplar::program::Program> TruncatedNormal(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map) {

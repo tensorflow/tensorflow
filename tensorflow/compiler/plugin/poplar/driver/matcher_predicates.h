@@ -8,7 +8,7 @@ class HloInstruction;
 namespace poplarplugin {
 
 bool IsFloatType(const HloInstruction*);
-bool IsTruncatedNormalWhile(const HloInstruction*);
+bool IsTruncatedNormal(const HloInstruction*);
 bool IsRandomNormal(const HloInstruction*);
 bool IsRandomUniform(const HloInstruction*);
 bool IsConstantZero(const HloInstruction*);

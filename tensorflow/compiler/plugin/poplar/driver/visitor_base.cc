@@ -62,7 +62,6 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"sigmoid", CreateSigmoidOp},
     {"sigmoidgrad", CreateSigmoidGradOp},
     {"biasadd", CreateBiasAddOp},
-    {"trunc_norm_scale_add", TruncatedNormalScale},
     {"trunc_norm", TruncatedNormal},
     {"norm_scale_add", RandomNormalScale},
     {"uniform_scale_add", RandomUniformScale},

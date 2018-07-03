@@ -196,10 +196,6 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> TruncatedNormalScale(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map);
-
 StatusOr<poplar::program::Program> TruncatedNormal(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
