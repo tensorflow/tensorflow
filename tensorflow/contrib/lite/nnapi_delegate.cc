@@ -534,10 +534,14 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_DIV:
         nnapi_version = 11;  // require NNAPI 1.1
         nn_op_type = ANEURALNETWORKS_DIV;
+        check_and_add_activation(
+            reinterpret_cast<TfLiteDivParams*>(node.builtin_data)->activation);
         break;
       case tflite::BuiltinOperator_SUB:
         nnapi_version = 11;  // require NNAPI 1.1
         nn_op_type = ANEURALNETWORKS_SUB;
+        check_and_add_activation(
+            reinterpret_cast<TfLiteSubParams*>(node.builtin_data)->activation);
         break;
       case tflite::BuiltinOperator_SQUEEZE:
         nnapi_version = 11;  // requires NNAPI 1.1
