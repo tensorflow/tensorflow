@@ -160,6 +160,8 @@ ScopedActivateContext::ScopedActivateContext(int device_ordinal) {
   
   tls->depth++;
 
+  to_restore_ = tls->current_device_ordinal;
+
   if (device_ordinal == tls->current_device_ordinal) {
     DCHECK_EQ(ROCMDriver::CurrentDeviceOrDie(), device_ordinal);
     return;
@@ -167,8 +169,6 @@ ScopedActivateContext::ScopedActivateContext(int device_ordinal) {
 
   VLOG(3) << "ScopedActivateContext switching device from " << tls->current_device_ordinal
           << " to " << device_ordinal;
-
-  to_restore_ = tls->current_device_ordinal;
 
   // Set the device and update thread local.
   CHECK_EQ(hipSuccess, hipSetDevice(device_ordinal));
