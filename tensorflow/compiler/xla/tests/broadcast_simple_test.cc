@@ -37,17 +37,17 @@ class BroadcastSimpleTest : public ClientLibraryTestBase {
                    XlaBuilder* builder) {
     switch (op) {
       case HloOpcode::kMinimum: {
-        return builder->Min(lhs, rhs);
+        return Min(lhs, rhs);
       }
       case HloOpcode::kMaximum: {
-        return builder->Max(lhs, rhs);
+        return Max(lhs, rhs);
       }
       case HloOpcode::kMultiply: {
-        return builder->Mul(lhs, rhs);
+        return Mul(lhs, rhs);
       }
       default: {
         // Default to Add
-        return builder->Add(lhs, rhs);
+        return Add(lhs, rhs);
       }
     }
   }
@@ -104,13 +104,13 @@ using ::testing::HasSubstr;
 
 XLA_TEST_F(BroadcastSimpleTest, ScalarNoOpBroadcast) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR0<float>(1.5), {});
+  Broadcast(ConstantR0<float>(&b, 1.5), {});
   ComputeAndCompareR0<float>(&b, 1.5, {}, ErrorSpec(0.0001));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, ScalarTo2D_2x3) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR0<float>(2.25), {2, 3});
+  Broadcast(ConstantR0<float>(&b, 2.25), {2, 3});
   Array2D<float> expected(2, 3, 2.25);
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
 }
@@ -122,7 +122,7 @@ XLA_TEST_F(BroadcastSimpleTest, ScalarParamTo2D_2x3) {
       CreateR0Parameter<float>(2.25f, /*parameter_number=*/0, /*name=*/"src",
                                /*builder=*/&b, /*data_handle=*/&src);
 
-  b.Broadcast(src, {2, 3});
+  Broadcast(src, {2, 3});
   Array2D<float> expected(2, 3, 2.25);
   ComputeAndCompareR2<float>(&b, expected, {param_data.get()},
                              ErrorSpec(0.0001));
@@ -130,21 +130,21 @@ XLA_TEST_F(BroadcastSimpleTest, ScalarParamTo2D_2x3) {
 
 XLA_TEST_F(BroadcastSimpleTest, ScalarTo2D_2x0) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR0<float>(2.25), {2, 0});
+  Broadcast(ConstantR0<float>(&b, 2.25), {2, 0});
   Array2D<float> expected(2, 0);
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, ScalarTo2D_0x2) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR0<float>(2.25), {0, 2});
+  Broadcast(ConstantR0<float>(&b, 2.25), {0, 2});
   Array2D<float> expected(0, 2);
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, 1DTo2D) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR1<float>({1, 2, 3}), {2});
+  Broadcast(ConstantR1<float>(&b, {1, 2, 3}), {2});
 
   Array2D<float> expected(2, 3);
   expected(0, 0) = 1;
@@ -153,6 +153,86 @@ XLA_TEST_F(BroadcastSimpleTest, 1DTo2D) {
   expected(1, 0) = 1;
   expected(1, 1) = 2;
   expected(1, 2) = 3;
+  ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, 1DTo2D_WithDimsUsual) {
+  XlaBuilder b(TestName());
+  BroadcastInDim(ConstantR1<float>(&b, {1, 2}),
+                 ShapeUtil::MakeShape(F32, {2, 2}), {1});
+
+  Array2D<float> expected(2, 2);
+  expected(0, 0) = 1;
+  expected(0, 1) = 2;
+  expected(1, 0) = 1;
+  expected(1, 1) = 2;
+
+  ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, 1DTo2D_WithDimsTranspose) {
+  XlaBuilder b(TestName());
+  BroadcastInDim(ConstantR1<float>(&b, {1, 2}),
+                 ShapeUtil::MakeShape(F32, {2, 2}), {0});
+
+  Array2D<float> expected(2, 2);
+  expected(0, 0) = 1;
+  expected(0, 1) = 1;
+  expected(1, 0) = 2;
+  expected(1, 1) = 2;
+
+  ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, 2DTo3D_WithDims) {
+  XlaBuilder b(TestName());
+  BroadcastInDim(ConstantR2<float>(&b, {{1.0, 5.0}, {2.0, 6.0}}),
+                 ShapeUtil::MakeShape(F32, {2, 2, 2}), {0, 1});
+
+  Array3D<float> expected(2, 2, 2);
+  expected(0, 0, 0) = 1.0;
+  expected(1, 0, 0) = 2.0;
+  expected(0, 0, 1) = 1.0;
+  expected(1, 0, 1) = 2.0;
+  expected(0, 1, 0) = 5.0;
+  expected(1, 1, 0) = 6.0;
+  expected(1, 1, 1) = 6.0;
+  expected(0, 1, 1) = 5.0;
+
+  ComputeAndCompareR3<float>(&b, expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, 2DTo3D_WithDimsNotPossibleWithBroadCast) {
+  XlaBuilder b(TestName());
+  BroadcastInDim(ConstantR2<float>(&b, {{1.0, 5.0}, {2.0, 6.0}}),
+                 ShapeUtil::MakeShape(F32, {2, 2, 2}), {0, 2});
+
+  Array3D<float> expected(2, 2, 2);
+  expected(0, 0, 0) = 1.0;
+  expected(1, 0, 0) = 2.0;
+  expected(0, 0, 1) = 5.0;
+  expected(1, 0, 1) = 6.0;
+  expected(0, 1, 0) = 1.0;
+  expected(1, 1, 0) = 2.0;
+  expected(1, 1, 1) = 6.0;
+  expected(0, 1, 1) = 5.0;
+
+  ComputeAndCompareR3<float>(&b, expected, {}, ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(BroadcastSimpleTest, 1DTo2D_WithDimsNotPossibleWithBroadCast) {
+  XlaBuilder b(TestName());
+  BroadcastInDim(ConstantR1<float>(&b, {1, 2}),
+                 ShapeUtil::MakeShape(F32, {3, 2}), {1});
+
+  Array2D<float> expected(3, 2);
+  expected(0, 0) = 1;
+  expected(0, 1) = 2;
+  expected(1, 0) = 1;
+  expected(1, 1) = 2;
+  expected(2, 0) = 1;
+  expected(2, 1) = 2;
+
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
 }
 
@@ -172,7 +252,7 @@ XLA_TEST_F(BroadcastSimpleTest, BooleanAnd2DTo3D_Pred) {
   XlaOp x, y;
   auto x_data = CreateR2Parameter<bool>(x_vals, 0, "x", &b, &x);
   auto y_data = CreateR3Parameter<bool>(y_vals, 1, "y", &b, &y);
-  b.And(x, y, /*broadcast_dimensions=*/{1, 2});
+  And(x, y, /*broadcast_dimensions=*/{1, 2});
 
   Array3D<bool> expected(2, 2, 1);
   expected(0, 0, 0) = false;
@@ -185,7 +265,7 @@ XLA_TEST_F(BroadcastSimpleTest, BooleanAnd2DTo3D_Pred) {
 
 XLA_TEST_F(BroadcastSimpleTest, ZeroElement_1DTo2D) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR1<float>({}), {2});
+  Broadcast(ConstantR1<float>(&b, {}), {2});
 
   Array2D<float> expected(2, 0);
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
@@ -193,7 +273,7 @@ XLA_TEST_F(BroadcastSimpleTest, ZeroElement_1DTo2D) {
 
 XLA_TEST_F(BroadcastSimpleTest, 1DToZeroElement2D) {
   XlaBuilder b(TestName());
-  b.Broadcast(b.ConstantR1<float>({1, 2, 3}), {0});
+  Broadcast(ConstantR1<float>(&b, {1, 2, 3}), {0});
 
   Array2D<float> expected(0, 3);
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
@@ -209,10 +289,10 @@ XLA_TEST_F(BroadcastSimpleTest, InDimensionAndDegenerateBroadcasting) {
   // dimensions.
   XlaBuilder b(TestName());
 
-  b.Add(b.ConstantR2<float>({{1.0, 5.0}}),
-        b.ConstantLiteral(*Literal::CreateR3<float>(
-            {{{2.0}, {3.0}, {4.0}}, {{5.0}, {6.0}, {7.0}}})),
-        /*broadcast_dimensions=*/{1, 2});
+  Add(ConstantR2<float>(&b, {{1.0, 5.0}}),
+      ConstantLiteral(&b, *Literal::CreateR3<float>(
+                              {{{2.0}, {3.0}, {4.0}}, {{5.0}, {6.0}, {7.0}}})),
+      /*broadcast_dimensions=*/{1, 2});
 
   auto expected =
       Literal::CreateR3<float>({{{3.0, 7.0}, {4.0, 8.0}, {5.0, 9.0}},
@@ -260,9 +340,10 @@ XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
       MakeR3Data(spec.input_bounds, spec.minor2major_layout, &r3_implicit_shape,
                  &r3_implicit_array, 1.0, 0.2, 56789);
 
-  auto r3_implicit_parameter = builder.Parameter(0, r3_implicit_shape, "input");
-  auto r3_parameter = builder.Parameter(1, r3_shape, "input");
-  XlaOp op = BuildBinOp(spec.op, r3_implicit_parameter, r3_parameter, &builder);
+  auto r3_implicit_parameter =
+      Parameter(&builder, 0, r3_implicit_shape, "input");
+  auto r3_parameter = Parameter(&builder, 1, r3_shape, "input");
+  BuildBinOp(spec.op, r3_implicit_parameter, r3_parameter, &builder);
 
   Array3D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1],
                                 spec.output_bounds[2]);
@@ -306,7 +387,7 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_1_2) {
   auto r1 = CreateR3Parameter(r1d, 1, "r1", &b, &r1h);
   auto r3 = CreateR3Parameter(r3d, 0, "r3", &b, &r3h);
 
-  b.Add(r3h, r1h);
+  Add(r3h, r1h);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 3}, {4, 5}}, {{7, 8}, {9, 10}}});
@@ -317,10 +398,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_1_2) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_1) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR3<float>({{{1, 2}}}));
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1);
+  auto r1 = ConstantLiteral(&b, *Literal::CreateR3<float>({{{1, 2}}}));
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 4}, {4, 6}}, {{6, 8}, {8, 10}}});
@@ -330,10 +411,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_1) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_2) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR3<float>({{{1}, {2}}}));
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1);
+  auto r1 = ConstantLiteral(&b, *Literal::CreateR3<float>({{{1}, {2}}}));
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 3}, {5, 6}}, {{6, 7}, {9, 10}}});
@@ -343,10 +424,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_2) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR3<float>({{{1, 2}, {3, 4}}}));
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1);
+  auto r1 = ConstantLiteral(&b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}}));
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 4}, {6, 8}}, {{6, 8}, {10, 12}}});
@@ -356,10 +437,11 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_1) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR3<float>({{{1, 2}}, {{3, 4}}}));
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1);
+  auto r1 =
+      ConstantLiteral(&b, *Literal::CreateR3<float>({{{1, 2}}, {{3, 4}}}));
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 4}, {4, 6}}, {{8, 10}, {10, 12}}});
@@ -370,10 +452,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_1) {
 XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_2) {
   XlaBuilder b(TestName());
   auto r1 =
-      b.ConstantLiteral(*Literal::CreateR3<float>({{{1}, {2}}, {{3}, {4}}}));
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1);
+      ConstantLiteral(&b, *Literal::CreateR3<float>({{{1}, {2}}, {{3}, {4}}}));
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 3}, {5, 6}}, {{8, 9}, {11, 12}}});
@@ -383,10 +465,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_2) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_1_2) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR3<float>({{{1}}}));
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1);
+  auto r1 = ConstantLiteral(&b, *Literal::CreateR3<float>({{{1}}}));
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1);
 
   auto expected =
       Literal::CreateR3<float>({{{2, 3}, {4, 5}}, {{6, 7}, {8, 9}}});
@@ -509,14 +591,14 @@ XLA_TEST_P(BroadcastR2ImplicitTest, Doit) {
                  &r2_implicit_shape2, &r2_implicit_array2, 0.8, 0.4, 56789);
 
   auto r2_implicit_parameter1 =
-      builder.Parameter(0, r2_implicit_shape1, "input0");
-  auto r2_parameter = builder.Parameter(1, r2_shape, "input1");
+      Parameter(&builder, 0, r2_implicit_shape1, "input0");
+  auto r2_parameter = Parameter(&builder, 1, r2_shape, "input1");
   auto r2_implicit_parameter2 =
-      builder.Parameter(2, r2_implicit_shape2, "input2");
+      Parameter(&builder, 2, r2_implicit_shape2, "input2");
 
   XlaOp op1 =
       BuildBinOp(spec.op1, r2_implicit_parameter1, r2_parameter, &builder);
-  XlaOp op2 = BuildBinOp(spec.op2, op1, r2_implicit_parameter2, &builder);
+  BuildBinOp(spec.op2, op1, r2_implicit_parameter2, &builder);
 
   Array2D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1]);
 
@@ -544,9 +626,9 @@ INSTANTIATE_TEST_CASE_P(BroadcastR2ImplicitTestInstances,
 
 XLA_TEST_F(BroadcastSimpleTest, Add2DTo2DDegenerate_0) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR2<float>({{1, 2}}));
-  auto r2 = b.ConstantLiteral(*Literal::CreateR2<float>({{1, 2}, {3, 4}}));
-  b.Add(r2, r1);
+  auto r1 = ConstantLiteral(&b, *Literal::CreateR2<float>({{1, 2}}));
+  auto r2 = ConstantLiteral(&b, *Literal::CreateR2<float>({{1, 2}, {3, 4}}));
+  Add(r2, r1);
 
   auto expected = Literal::CreateR2<float>({{2, 4}, {4, 6}});
 
@@ -555,9 +637,9 @@ XLA_TEST_F(BroadcastSimpleTest, Add2DTo2DDegenerate_0) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add2DTo2DDegenerate_1) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantLiteral(*Literal::CreateR2<float>({{1}, {2}}));
-  auto r2 = b.ConstantLiteral(*Literal::CreateR2<float>({{1, 2}, {3, 4}}));
-  b.Add(r2, r1);
+  auto r1 = ConstantLiteral(&b, *Literal::CreateR2<float>({{1}, {2}}));
+  auto r2 = ConstantLiteral(&b, *Literal::CreateR2<float>({{1, 2}, {3, 4}}));
+  Add(r2, r1);
 
   auto expected = Literal::CreateR2<float>({{2, 3}, {5, 6}});
 
@@ -566,10 +648,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add2DTo2DDegenerate_1) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim0) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantR1<float>({10, 20});
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r3, r1, {0});
+  auto r1 = ConstantR1<float>(&b, {10, 20});
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r3, r1, {0});
 
   auto expected =
       Literal::CreateR3<float>({{{11, 12}, {13, 14}}, {{25, 26}, {27, 28}}});
@@ -579,10 +661,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim0) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim1) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantR1<float>({10, 20});
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r1, r3, {1});
+  auto r1 = ConstantR1<float>(&b, {10, 20});
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r1, r3, {1});
 
   auto expected =
       Literal::CreateR3<float>({{{11, 12}, {23, 24}}, {{15, 16}, {27, 28}}});
@@ -592,10 +674,10 @@ XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim1) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim2) {
   XlaBuilder b(TestName());
-  auto r1 = b.ConstantR1<float>({10, 20});
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
-  b.Add(r1, r3, {2});
+  auto r1 = ConstantR1<float>(&b, {10, 20});
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  Add(r1, r3, {2});
 
   auto expected =
       Literal::CreateR3<float>({{{11, 22}, {13, 24}}, {{15, 26}, {17, 28}}});
@@ -605,17 +687,17 @@ XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDim2) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDimAll) {
   XlaBuilder b(TestName());
-  auto r1_0 = b.ConstantR1<float>({1000, 2000});
-  auto r1_1 = b.ConstantR1<float>({100, 200});
-  auto r1_2 = b.ConstantR1<float>({10, 20});
-  auto r3 = b.ConstantLiteral(
-      *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
+  auto r1_0 = ConstantR1<float>(&b, {1000, 2000});
+  auto r1_1 = ConstantR1<float>(&b, {100, 200});
+  auto r1_2 = ConstantR1<float>(&b, {10, 20});
+  auto r3 = ConstantLiteral(
+      &b, *Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}));
   for (int i = 0; i < 3; ++i) {
-    r3 = b.Add(r1_0, r3, {0});
-    r3 = b.Add(r3, r1_1, {1});
-    r3 = b.Add(r1_2, r3, {2});
+    r3 = Add(r1_0, r3, {0});
+    r3 = Add(r3, r1_1, {1});
+    r3 = Add(r1_2, r3, {2});
   }
-  r3 = b.Mul(r3, b.ConstantR0<float>(-2));
+  r3 = Mul(r3, ConstantR0<float>(&b, -2));
 
   auto expected = Literal::CreateR3<float>(
       {{{-6 * 1110 - 2, -6 * 1120 - 4}, {-6 * 1210 - 6, -6 * 1220 - 8}},
@@ -626,17 +708,17 @@ XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDimAll) {
 
 XLA_TEST_F(BroadcastSimpleTest, Add1DTo3DInDimAllWithScalarBroadcast) {
   XlaBuilder b(TestName());
-  auto r1_0 = b.ConstantR1<float>({1000, 2000});
-  auto r1_1 = b.ConstantR1<float>({100, 200});
-  auto r1_2 = b.ConstantR1<float>({10, 20});
-  auto r0 = b.ConstantR0<float>(3);
-  auto r3 = b.Broadcast(r0, {2, 2, 2});
+  auto r1_0 = ConstantR1<float>(&b, {1000, 2000});
+  auto r1_1 = ConstantR1<float>(&b, {100, 200});
+  auto r1_2 = ConstantR1<float>(&b, {10, 20});
+  auto r0 = ConstantR0<float>(&b, 3);
+  auto r3 = Broadcast(r0, {2, 2, 2});
   for (int i = 0; i < 3; ++i) {
-    r3 = b.Add(r1_0, r3, {0});
-    r3 = b.Add(r3, r1_1, {1});
-    r3 = b.Add(r1_2, r3, {2});
+    r3 = Add(r1_0, r3, {0});
+    r3 = Add(r3, r1_1, {1});
+    r3 = Add(r1_2, r3, {2});
   }
-  r3 = b.Mul(r3, b.ConstantR0<float>(-1));
+  r3 = Mul(r3, ConstantR0<float>(&b, -1));
 
   auto expected = Literal::CreateR3<float>(
       {{{-3 * 1110 - 3, -3 * 1120 - 3}, {-3 * 1210 - 3, -3 * 1220 - 3}},
@@ -650,10 +732,10 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidBinaryAndDegenerateBroadcasting) {
   // results in a shape incompatible with the lhs [2, 3, 1].
   XlaBuilder b(TestName());
 
-  b.Add(b.ConstantR2<float>({{1.0, 5.0}, {1.0, 5.0}}),
-        b.ConstantLiteral(*Literal::CreateR3<float>(
-            {{{2.0}, {3.0}, {4.0}}, {{5.0}, {6.0}, {7.0}}})),
-        /*broadcast_dimensions=*/{1, 2});
+  Add(ConstantR2<float>(&b, {{1.0, 5.0}, {1.0, 5.0}}),
+      ConstantLiteral(&b, *Literal::CreateR3<float>(
+                              {{{2.0}, {3.0}, {4.0}}, {{5.0}, {6.0}, {7.0}}})),
+      /*broadcast_dimensions=*/{1, 2});
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
@@ -665,26 +747,26 @@ XLA_TEST_F(BroadcastSimpleTest, InvalidInDimensionBroadcasting) {
   // Test invalid broadcasting with [1, 2] and [2, 3] inputs.
   XlaBuilder b(TestName());
 
-  b.Add(b.ConstantR2<float>({{1.0, 2.0}}),
-        b.ConstantR2<float>({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}}));
+  Add(ConstantR2<float>(&b, {{1.0, 2.0}}),
+      ConstantR2<float>(&b, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}}));
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("op BINOP_ADD with incompatible shapes"));
+              HasSubstr("op add with incompatible shapes"));
 }
 
 XLA_TEST_F(BroadcastSimpleTest, InvalidDegenerateBroadcasting) {
   // Test invalid broadcasting with [1, 2] and [2, 3] inputs.
   XlaBuilder b(TestName());
 
-  b.Add(b.ConstantR2<float>({{1.0, 2.0}}),
-        b.ConstantR2<float>({{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}}));
+  Add(ConstantR2<float>(&b, {{1.0, 2.0}}),
+      ConstantR2<float>(&b, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}}));
 
   auto result_status = Execute(&b, {});
   EXPECT_FALSE(result_status.ok());
   EXPECT_THAT(result_status.status().error_message(),
-              HasSubstr("op BINOP_ADD with incompatible shapes"));
+              HasSubstr("op add with incompatible shapes"));
 }
 
 }  // namespace

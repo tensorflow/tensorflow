@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Substr"
+  endpoint {
+    name: "strings.substr"
+  }
+  endpoint {
+    name: "substr"
+    deprecation_message: "tf.substr is deprecated, please use tf.strings.substr instead."
+  }
+}

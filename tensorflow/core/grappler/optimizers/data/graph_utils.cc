@@ -28,6 +28,8 @@ namespace grappler {
 namespace graph_utils {
 namespace {
 
+constexpr char kConstOpName[] = "Const";
+
 int FindNodeWithPredicate(const std::function<bool(const NodeDef&)>& predicate,
                           const GraphDef& graph) {
   for (int i = 0; i < graph.node_size(); ++i) {
@@ -68,9 +70,8 @@ Status AddScalarConstNodeHelper(
     DataType dtype, const std::function<void(TensorProto*)>& add_value,
     GraphDef* graph, NodeDef** result) {
   NodeDef* node = graph->add_node();
-  const string& name = strings::StrCat("Const/_", graph->node_size());
-  node->set_name(name);
-  node->set_op("Const");
+  node->set_op(kConstOpName);
+  SetUniqueName(kConstOpName, graph, node);
   (*node->mutable_attr())["dtype"].set_type(dtype);
   std::unique_ptr<tensorflow::TensorProto> tensor =
       tensorflow::MakeUnique<tensorflow::TensorProto>();
@@ -94,7 +95,7 @@ Status AddNode(const string& name, const string& op,
   if (!name.empty()) {
     node->set_name(name);
   } else {
-    node->set_name(strings::StrCat(op, "/_", graph->node_size()));
+    SetUniqueName(op, graph, node);
   }
   node->set_op(op);
   for (const string& input : inputs) {
@@ -210,6 +211,22 @@ int FindNodeWithName(const string& name, const GraphDef& graph) {
 int FindNodeWithOp(const string& op, const GraphDef& graph) {
   return FindNodeWithPredicate(
       [op](const NodeDef& node) { return node.op() == op; }, graph);
+}
+
+void SetUniqueName(const string& op, GraphDef* graph, NodeDef* node) {
+  int id = graph->node_size();
+  while (ContainsNodeWithName(strings::StrCat(op, "/_", id), *graph)) {
+    ++id;
+  }
+  node->set_name(strings::StrCat(op, "/_", id));
+}
+
+void ReplaceInput(const NodeDef& old_input, const NodeDef& new_input,
+                  GraphView* graph) {
+  GraphView::OutputPort output_port = graph->GetOutputPort(old_input.name(), 0);
+  auto fanout = graph->GetFanout(output_port);
+  for (auto& input_port : fanout)
+    input_port.node->set_input(0, new_input.name());
 }
 
 }  // end namespace graph_utils

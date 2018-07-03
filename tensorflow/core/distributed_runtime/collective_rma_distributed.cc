@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
@@ -27,45 +28,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-
-// Supports client side cancellation of WorkerInterface calls via
-// registration with a CancellationManager.
-//
-// TODO(tucker): Maybe unify this with CancellableCall in
-// collective_param_resolver_distributed.cc.
-class CancellableCall {
- public:
-  CancellableCall(CancellationManager* cancel_mgr, const string& remote_worker,
-                  WorkerCacheInterface* wc)
-      : cancel_mgr_(cancel_mgr), remote_worker_(remote_worker), wc_(wc) {
-    wi_ = wc_->CreateWorker(remote_worker_);
-  }
-  virtual ~CancellableCall() { wc_->ReleaseWorker(remote_worker_, wi_); }
-
-  virtual void IssueCall(const StatusCallback& done) = 0;
-
-  void Start(const StatusCallback& done) {
-    CancellationToken token = cancel_mgr_->get_cancellation_token();
-    const bool not_yet_cancelled = cancel_mgr_->RegisterCallback(
-        token, [this, token]() { opts_.StartCancel(); });
-    if (not_yet_cancelled) {
-      IssueCall([this, token, done](const Status& s) {
-        cancel_mgr_->DeregisterCallback(token);
-        done(s);
-      });
-    } else {
-      done(errors::Cancelled("RPC Request was cancelled"));
-    }
-  }
-
- protected:
-  mutable mutex mu_;
-  CancellationManager* cancel_mgr_;  // Not owned
-  const string remote_worker_;
-  WorkerCacheInterface* wc_;  // Not owned
-  WorkerInterface* wi_;       // Owned by wc_, must be released.
-  CallOptions opts_;
-};
 
 class RecvBufCall : public CancellableCall {
  public:
@@ -103,11 +65,13 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
     const string& peer_device, const string& peer_task, bool peer_is_local,
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, const StatusCallback& done) {
+    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
+    const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, done);
+        to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
+        done);
     return;
   }
 
@@ -119,9 +83,10 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   };
   State* state = new State;
 
-  // Logic to be executed on the RecvBufferAsync callback.
+  // Logic to be executed on the RecvBufAsync callback.
   auto recv_buf_callback = [this, state, peer_task, to_device, to_alloc_attr,
-                            to_device_ctx, to_tensor, done](const Status& s) {
+                            to_device_ctx, to_tensor, dev_to_dev_stream_index,
+                            done](const Status& s) {
     if (s.ok()) {
       // In this generic implementation the bytes come back in the
       // RPC response protobuf rather than via RDMA so we need to copy
@@ -157,7 +122,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         CopyTensor::ViaDMA("",  // edge name (non-existent)
                            nullptr /*send_dev_ctx*/, to_device_ctx, cpu_dev,
                            to_device, cpu_attr, to_alloc_attr, cpu_tensor,
-                           to_tensor,
+                           to_tensor, dev_to_dev_stream_index,
                            [this, cpu_tensor, done](const Status& s) {
                              delete cpu_tensor;
                              // This callback must not block, so execute

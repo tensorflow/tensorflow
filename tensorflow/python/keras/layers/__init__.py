@@ -20,15 +20,16 @@ from __future__ import print_function
 
 # Generic layers.
 # pylint: disable=g-bad-import-order
-from tensorflow.python.keras.engine import Input
-from tensorflow.python.keras.engine import InputLayer
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.input_layer import Input
+from tensorflow.python.keras.engine.input_layer import InputLayer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
 from tensorflow.python.keras.layers.advanced_activations import PReLU
 from tensorflow.python.keras.layers.advanced_activations import ELU
+from tensorflow.python.keras.layers.advanced_activations import ReLU
 from tensorflow.python.keras.layers.advanced_activations import ThresholdedReLU
 from tensorflow.python.keras.layers.advanced_activations import Softmax
 
@@ -86,9 +87,11 @@ from tensorflow.python.keras.layers.local import LocallyConnected2D
 
 # Merge layers.
 from tensorflow.python.keras.layers.merge import Add
+from tensorflow.python.keras.layers.merge import Subtract
 from tensorflow.python.keras.layers.merge import Multiply
 from tensorflow.python.keras.layers.merge import Average
 from tensorflow.python.keras.layers.merge import Maximum
+from tensorflow.python.keras.layers.merge import Minimum
 from tensorflow.python.keras.layers.merge import Concatenate
 from tensorflow.python.keras.layers.merge import Dot
 from tensorflow.python.keras.layers.merge import add

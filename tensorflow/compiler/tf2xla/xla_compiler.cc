@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -230,10 +231,13 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
     case XlaCompiler::Argument::kParameter: {
-      TensorShape shape =
-          is_entry_computation
-              ? options_.shape_representation_fn(arg.shape, arg.type)
-              : arg.shape;
+      TensorShape shape;
+      if (is_entry_computation) {
+        TF_ASSIGN_OR_RETURN(
+            shape, options_.shape_representation_fn(arg.shape, arg.type));
+      } else {
+        shape = arg.shape;
+      }
       return TensorShapeToXLAShape(arg.type, shape, xla_shape);
     }
     case XlaCompiler::Argument::kResource: {
@@ -241,8 +245,9 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
 
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
-          TensorShape representation_shape =
-              options_.shape_representation_fn(arg.shape, arg.type);
+          TF_ASSIGN_OR_RETURN(
+              TensorShape representation_shape,
+              options_.shape_representation_fn(arg.shape, arg.type));
           return TensorShapeToXLAShape(arg.type, representation_shape,
                                        xla_shape);
         }
@@ -338,9 +343,9 @@ Status BuildComputation(
     const std::vector<int>& arg_cores,
     const std::vector<XlaContext::Retval>& retvals,
     const std::vector<std::unique_ptr<XlaResource>>& resources,
-    bool return_updated_values_for_all_resources, xla::XlaBuilder* builder,
-    xla::XlaComputation* computation, int* num_computation_outputs,
-    int* num_nonconst_outputs,
+    bool return_updated_values_for_all_resources, bool always_return_tuple,
+    xla::XlaBuilder* builder, xla::XlaComputation* computation,
+    int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
   std::vector<xla::XlaOp> elems;
@@ -384,13 +389,14 @@ Status BuildComputation(
     const XlaCompiler::Argument& arg = args[resource->arg_num()];
     const int core = arg_cores[resource->arg_num()];
     DCHECK_LT(resource->arg_num(), arg_cores.size());
-    bool modified = resource->value() != resource->initial_value();
+    bool modified = !resource->value().IsIdenticalTo(resource->initial_value());
     // TensorArray gradients were modified if their values changed or there are
     // any newly created gradients.
     for (const auto& grad : resource->tensor_array_gradients()) {
-      modified = modified ||
-                 grad.second->value() != grad.second->initial_value() ||
-                 arg.tensor_array_gradients.count(grad.first) == 0;
+      modified =
+          modified ||
+          !grad.second->value().IsIdenticalTo(grad.second->initial_value()) ||
+          arg.tensor_array_gradients.count(grad.first) == 0;
     }
     if (return_updated_values_for_all_resources || modified) {
       resource_updates->emplace_back();
@@ -415,7 +421,7 @@ Status BuildComputation(
       // create a tuple/get-tuple-element combination so that sharding
       // assignment will be placed on this value, which will cause the resource
       // update to be returned from the same device that provided the resource.
-      handle = builder->GetTupleElement(builder->Tuple({handle}), 0);
+      handle = xla::GetTupleElement(xla::Tuple(builder, {handle}), 0);
 
       elems.push_back(handle);
     }
@@ -424,7 +430,9 @@ Status BuildComputation(
   *num_computation_outputs = elems.size();
 
   // Builds the XLA computation.
-  builder->Tuple(elems);
+  if (always_return_tuple || elems.size() != 1) {
+    xla::Tuple(builder, elems);
+  }
   builder->ClearOpMetadata();
 
   xla::StatusOr<xla::XlaComputation> computation_status = builder->Build();
@@ -551,16 +559,16 @@ Status XlaCompiler::BuildArguments(
       }
       xla::XlaScopedShardingAssignment assign_tuple_sharding(builder,
                                                              tuple_sharding);
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     } else {
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+      tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
       const int core = (*arg_cores)[input_mapping->at(i)];
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = builder->GetTupleElement(tuple, i);
+      arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
     for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
@@ -568,8 +576,8 @@ Status XlaCompiler::BuildArguments(
       xla::XlaScopedShardingAssignment assign_sharding(
           builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
                               : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] =
-          builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
+      arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
+                                      strings::StrCat("arg", i));
     }
   }
 
@@ -600,7 +608,7 @@ Status XlaCompiler::BuildArguments(
         // return values of functions, and then reshape unconditionally.
         if (is_entry_computation) {
           arg_expression.set_handle(
-              builder->Reshape(arg_handles[i], arg.shape.dim_sizes()));
+              xla::Reshape(arg_handles[i], arg.shape.dim_sizes()));
         } else {
           arg_expression.set_handle(arg_handles[i]);
         }
@@ -660,20 +668,17 @@ Status XlaCompiler::CompileSingleOp(
 namespace {
 
 // Check that the ops of all non-functional nodes have been registered.
-string ValidateFunctionDef(const FunctionDef* fdef,
+Status ValidateFunctionDef(const FunctionDef* fdef,
                            const FunctionLibraryDefinition& flib_def) {
-  std::vector<string> invalid_ops;
   for (const NodeDef& node : fdef->node_def()) {
     const string& op = node.op();
     if (op == FunctionLibraryDefinition::kGradientOp || flib_def.Find(op)) {
       continue;
     }
     const OpDef* op_def;
-    if (!OpRegistry::Global()->LookUpOpDef(op, &op_def).ok()) {
-      invalid_ops.push_back(op);
-    }
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(op, &op_def));
   }
-  return tensorflow::str_util::Join(invalid_ops, ", ");
+  return Status::OK();
 }
 
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
@@ -681,35 +686,33 @@ string ValidateFunctionDef(const FunctionDef* fdef,
 Status ValidateGraph(const Graph* graph,
                      const FunctionLibraryDefinition& flib_def,
                      const DeviceType& device_type, const string& name) {
-  std::vector<string> invalid_ops;
+  auto maybe_error = [&](const string& op, const Status& s) -> Status {
+    if (!s.ok()) {
+      return errors::InvalidArgument(strings::StrCat(
+          "Detected unsupported operations when trying to compile graph ", name,
+          " on ", device_type.type_string(), ": ", op, " (", s.error_message(),
+          ")"));
+    }
+    return Status::OK();
+  };
+
   for (const Node* node : graph->nodes()) {
     if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
       continue;
     }
     const FunctionDef* fdef = flib_def.Find(node->def().op());
+    Status s;
     if (fdef) {
-      string error_msg = ValidateFunctionDef(fdef, flib_def);
-      if (!error_msg.empty()) {
-        invalid_ops.push_back(
-            strings::StrCat(node->def().op(), ":{", error_msg, "}"));
-      }
+      s = ValidateFunctionDef(fdef, flib_def);
+      TF_RETURN_IF_ERROR(maybe_error(node->def().op(), s));
       continue;
     }
     const OpDef* op_def;
-    if (!OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def).ok()) {
-      invalid_ops.push_back(node->def().op());
-      continue;
-    }
+    s = OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def);
+    TF_RETURN_IF_ERROR(maybe_error(node->def().op(), s));
     TF_RETURN_IF_ERROR(ValidateNodeDef(node->def(), *op_def));
-    if (!FindKernelDef(device_type, node->def(), nullptr, nullptr).ok()) {
-      invalid_ops.push_back(node->def().op());
-    }
-  }
-  if (!invalid_ops.empty()) {
-    return errors::InvalidArgument(strings::StrCat(
-        "Detected unsupported operations when trying to compile graph ", name,
-        " on ", device_type.type_string(), ":",
-        tensorflow::str_util::Join(invalid_ops, ", ")));
+    s = FindKernelDef(device_type, node->def(), nullptr, nullptr);
+    TF_RETURN_IF_ERROR(maybe_error(node->def().op(), s));
   }
   return Status::OK();
 }
@@ -767,9 +770,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   TF_RETURN_IF_ERROR(BuildComputation(
       args, arg_cores, context->retvals(), context->resources(),
-      options.return_updated_values_for_all_resources, &builder,
-      result->computation.get(), &num_computation_outputs,
-      &num_nonconst_outputs, &result->outputs, &result->resource_updates));
+      options.return_updated_values_for_all_resources,
+      options.always_return_tuple, &builder, result->computation.get(),
+      &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
+      &result->resource_updates));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;

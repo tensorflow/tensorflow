@@ -133,7 +133,6 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
     bool should_select = true;
     for (int j = selected.size() - 1; j >= 0; --j) {
       iou = IOU(boxes_data, next_candidate.box_index, selected[j]);
-      if (iou == 0.0) continue;
       if (iou > iou_threshold) should_select = false;
     }
 

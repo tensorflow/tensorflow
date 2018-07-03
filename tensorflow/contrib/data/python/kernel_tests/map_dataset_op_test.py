@@ -17,24 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import os
+import time
 
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
+from tensorflow.contrib.data.python.ops import batching
 from tensorflow.contrib.data.python.ops import error_ops
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -143,229 +140,82 @@ class MapDatasetTest(test.TestCase):
           sess.run(get_next)
 
 
-class MapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def setUp(self):
-    self._tensor_slice_len = 7
-    self._num_epochs = 14
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
-
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (
-        dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-        .repeat(self._num_epochs))
-
-  def testSaveRestoreCore(self):
-    self.run_core_tests(
-        self._build_ds,
-        lambda: self._build_ds(multiplier=15.0),
-        self._num_outputs)
-
-  def testSaveStatefulFunction(self):
-
-    def _build_ds():
-
-      def _map_fn(x):
-        return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(100).map(_map_fn)
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureVariableInMapFn(self):
-
-    def _build_ds():
-      counter_var = variable_scope.get_variable(
-          "counter", (), dtypes.int32, use_resource=True)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1)))
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureConstantInMapFn(self):
-
-    def _build_ds():
-      constant_var = constant_op.constant(5)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var))
-
-    self.run_core_tests(_build_ds, None, 10)
-
-  def testCaptureDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-  def testBuildDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-
-        @function.Defun(dtypes.int32)
-        def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
-
-        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
-
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-  def testSparseCore(self):
-
-    def _sparse(i):
-      return sparse_tensor.SparseTensorValue(
-          indices=np.array([[0, 0]]),
-          values=(i * np.array([1])),
-          dense_shape=np.array([1, 1]))
-
-    def _build_ds(num_outputs):
-      return dataset_ops.Dataset.range(num_outputs).map(_sparse)
-
-    num_outputs = 10
-    self.run_core_tests(lambda: _build_ds(num_outputs),
-                        lambda: _build_ds(int(num_outputs / 2)), num_outputs)
-
-
-class ParallelMapDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def setUp(self):
-    self._tensor_slice_len = 7
-    self._num_epochs = 1
-    self._num_outputs = self._tensor_slice_len * self._num_epochs
-
-  def _build_ds(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_parallel_calls=3).repeat(self._num_epochs))
-
-  def _build_ds_with_prefetch(self, multiplier=37.0):
-    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
-                  np.arange(self._tensor_slice_len)[:, np.newaxis],
-                  np.array(multiplier) * np.arange(self._tensor_slice_len))
-
-    def _map_fn(x, y, z):
-      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
-        _map_fn, num_parallel_calls=3).repeat(self._num_epochs).prefetch(5))
-
-  def testSaveRestoreCore(self):
-    for ds_fn in [self._build_ds, self._build_ds_with_prefetch]:
-      self.run_core_tests(
-          ds_fn,
-          lambda: ds_fn(multiplier=15.0),
-          self._num_outputs)
-
-  def testSaveStatefulFunction(self):
-
-    def _build_ds():
-
-      def _map_fn(x):
-        return random_ops.random_uniform(
-            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(100).map(
-          _map_fn, num_parallel_calls=2).prefetch(2)
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureVariableInMapFn(self):
-
-    def _build_ds():
-      counter_var = variable_scope.get_variable(
-          "counter", (), dtypes.int32, use_resource=True)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1),
-          num_parallel_calls=2).prefetch(2))
-
-    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
-
-  def testCaptureConstantInMapFn(self):
-
-    def _build_ds():
-      constant_var = constant_op.constant(5)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var, num_parallel_calls=2).prefetch(2))
-
-    self.run_core_tests(_build_ds, None, 10)
-
-  def testCaptureDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-        return constant_op.constant(1000) + math_ops.to_int32(x)
-
-      return dataset_ops.Dataset.range(num_outputs).map(
-          defun_fn, num_parallel_calls=2).prefetch(2)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-  def testBuildDefunInMapFn(self):
-    num_outputs = 100
-
-    def _build_ds():
-
-      @function.Defun(dtypes.int64)
-      def defun_fn(x):
-
-        @function.Defun(dtypes.int32)
-        def defun_fn_deep(x):
-          return constant_op.constant(1000) + math_ops.to_int32(x)
-
-        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
-
-      return dataset_ops.Dataset.range(num_outputs).map(
-          defun_fn, num_parallel_calls=2).prefetch(2)
-
-    self.run_core_tests(_build_ds, None, num_outputs)
-
-
-class IgnoreErrorsSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def _build_ds(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).map(
-        lambda x: array_ops.check_numerics(x, "message")).apply(
-            error_ops.ignore_errors())
-
-  def testIgnoreErrorsCore(self):
-    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
-    diff_components = np.array([1., 2., 3., np.nan]).astype(np.float32)
-    num_outputs = 4
-    self.run_core_tests(lambda: self._build_ds(components),
-                        lambda: self._build_ds(diff_components), num_outputs)
-
+class MapDatasetBenchmark(test.Benchmark):
+
+  def benchmarkMapAndBatch(self):
+    small = itertools.product([1, 4], [1, 4], [1, 4], [16, 64], [100])
+    large = itertools.product([16, 64], [16, 64], [16, 64], [256, 1024], [10])
+
+    num_iters = 100
+
+    def benchmark(series):
+
+      for num_calls, inter_op, element_size, batch_size, num_steps in series:
+        dataset = dataset_ops.Dataset.from_tensors(
+            np.random.randint(100, size=element_size)).repeat().map(
+                lambda x: x,
+                num_parallel_calls=num_calls).batch(batch_size=batch_size)
+        iterator = dataset.make_one_shot_iterator()
+        get_next = iterator.get_next()
+
+        fused_dataset = dataset_ops.Dataset.from_tensors(
+            np.random.randint(100, size=element_size)).repeat(None).apply(
+                batching.map_and_batch(
+                    lambda x: x,
+                    num_parallel_calls=num_calls,
+                    batch_size=batch_size))
+        fused_iterator = fused_dataset.make_one_shot_iterator()
+        fused_get_next = fused_iterator.get_next()
+
+        fused_deltas = []
+        with session.Session(
+            config=config_pb2.ConfigProto(
+                inter_op_parallelism_threads=inter_op)) as sess:
+
+          for _ in range(5):
+            sess.run(fused_get_next)
+          for _ in range(num_iters):
+            start = time.time()
+            for _ in range(num_steps):
+              sess.run(fused_get_next)
+            end = time.time()
+            fused_deltas.append(end - start)
+
+        chained_deltas = []
+        with session.Session(
+            config=config_pb2.ConfigProto(
+                inter_op_parallelism_threads=inter_op)) as sess:
+          for _ in range(5):
+            sess.run(get_next)
+          for _ in range(num_iters):
+            start = time.time()
+            for _ in range(num_steps):
+              sess.run(get_next)
+            end = time.time()
+            chained_deltas.append(end - start)
+
+        chained_wall_time = np.median(chained_deltas) / num_iters
+        fused_wall_time = np.median(fused_deltas) / num_iters
+        print(
+            "batch size: %d, num parallel calls: %d, inter-op parallelism: %d, "
+            "element size: %d, chained wall time: %f, fused wall time: %f" %
+            (batch_size, num_calls, inter_op, element_size, chained_wall_time,
+             fused_wall_time))
+
+        self.report_benchmark(
+            iters=num_iters,
+            wall_time=chained_wall_time,
+            name="chained_batch_size_%d_num_calls_%d_inter_op_%d_elem_size_%d"
+            % (batch_size, num_calls, inter_op, element_size))
+
+        self.report_benchmark(
+            iters=num_iters,
+            wall_time=fused_wall_time,
+            name="fused_batch_size_%d_num_calls_%d_inter_op_%d_elem_size_%d"
+            % (batch_size, num_calls, inter_op, element_size))
+
+    benchmark(small)
+    benchmark(large)
 
 if __name__ == "__main__":
   test.main()

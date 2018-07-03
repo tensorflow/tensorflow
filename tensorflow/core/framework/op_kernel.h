@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_KERNEL_H_
-#define TENSORFLOW_FRAMEWORK_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
 #include <functional>
 
@@ -1304,8 +1304,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 // missing kernel errors.
 void LogAllRegisteredKernels();
 
-// Gets a vector of all registered kernels.
-std::vector<KernelDef> GetAllRegisteredKernels();
+// Gets a list of all registered kernels.
+KernelList GetAllRegisteredKernels();
 
 namespace kernel_factory {
 
@@ -1576,4 +1576,4 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_

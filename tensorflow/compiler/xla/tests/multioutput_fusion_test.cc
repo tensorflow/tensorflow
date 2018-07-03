@@ -204,10 +204,10 @@ XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
           Literal::CreateR0<float>(1.0)),
       Literal::MakeTupleOwned(Literal::CreateR0<float>(3.0),
                               Literal::CreateR0<int32>(4)));
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(Literal::CreateR0<int32>(42))));
+      *Literal::MakeTupleOwned(Literal::CreateR0<int32>(42)), *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
@@ -233,10 +233,9 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0, 1.0})));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
+  LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, *result);
 }
 
 XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
@@ -267,10 +266,9 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR1<float>({1.0, 2.0, 3.0});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::CreateR1<float>({0.0, 4.0, 9.0})));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
+  LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0}, *result);
 }
 
 const char* const kScalarOps = R"(
@@ -311,12 +309,12 @@ XLA_TEST_F(MultiOutputFusionTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(Literal::CreateR2<float>({{3, 7}, {11, 15}}),
-                               Literal::CreateR2<float>({{5, 16}, {36, 64}}))));
+                               Literal::CreateR2<float>({{5, 16}, {36, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -341,12 +339,12 @@ XLA_TEST_F(MultiOutputFusionTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(
-                   Literal::CreateR2<float>({{6, 8}, {10, 12}}),
-                   Literal::CreateR2<float>({{25, 36}, {49, 64}}))));
+      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{6, 8}, {10, 12}}),
+                               Literal::CreateR2<float>({{25, 36}, {49, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -372,12 +370,13 @@ XLA_TEST_F(MultiOutputFusionTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(Literal::CreateR1<float>({14, 22}),
-                                        Literal::CreateR1<float>({36, 64}),
-                                        Literal::CreateR1<float>({66, 138}))));
+      *Literal::MakeTupleOwned(Literal::CreateR1<float>({14, 22}),
+                               Literal::CreateR1<float>({36, 64}),
+                               Literal::CreateR1<float>({66, 138})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -403,14 +402,14 @@ XLA_TEST_F(MultiOutputFusionTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(
           Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}),
           Literal::CreateR2<float>({{3, 7}, {11, 15}}),
-          Literal::CreateR2<float>({{5, 16}, {36, 64}}))));
+          Literal::CreateR2<float>({{5, 16}, {36, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -436,14 +435,14 @@ XLA_TEST_F(MultiOutputFusionTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(
           Literal::CreateR2<float>({{6, 8}, {10, 12}}),
           Literal::CreateR3<float>({{{1, 4}, {9, 16}}, {{25, 36}, {49, 64}}}),
-          Literal::CreateR2<float>({{25, 36}, {49, 64}}))));
+          Literal::CreateR2<float>({{25, 36}, {49, 64}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -455,7 +454,8 @@ XLA_TEST_F(MultiOutputFusionTest,
       r1 = f32[2]{0} reduce(p0, c0), dimensions={0,2}, to_apply=Add
       mul = f32[2,2,2]{2,1,0} multiply(p0, p0)
       c1 = f32[] constant(5)
-      mul2 = f32[2,2,2]{2,1,0} multiply(p0, c1)
+      b1 = f32[2,2,2]{2,1,0} broadcast(c1), dimensions={}
+      mul2 = f32[2,2,2]{2,1,0} multiply(p0, b1)
       ROOT tuple = (f32[2]{0}, f32[2,2,2]{2,1,0}, f32[2,2,2]{2,1,0})
                                                            tuple(r1, mul, mul2)
     }
@@ -469,15 +469,15 @@ XLA_TEST_F(MultiOutputFusionTest,
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
   auto param = Literal::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          Execute(std::move(module), {param.get()}));
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result,
       *Literal::MakeTupleOwned(
           Literal::CreateR1<float>({14, 22}),
           Literal::CreateR3<float>({{{1, 4}, {9, 16}}, {{25, 36}, {49, 64}}}),
           Literal::CreateR3<float>(
-              {{{5, 10}, {15, 20}}, {{25, 30}, {35, 40}}}))));
+              {{{5, 10}, {15, 20}}, {{25, 30}, {35, 40}}})),
+      *result));
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
@@ -505,13 +505,52 @@ XLA_TEST_F(MultiOutputFusionTest,
   auto param = Literal::CreateR3<float>({{{0, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
   auto init1 = Literal::CreateR0<float>(5);
   auto init2 = Literal::CreateR0<float>(6);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      Execute(std::move(module), {param.get(), init1.get(), init2.get()}));
+  std::unique_ptr<Literal> result = ExecuteNoHloPasses(
+      std::move(module), {param.get(), init1.get(), init2.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result, *Literal::MakeTupleOwned(
-                   Literal::CreateR2<float>({{167, 172}, {176, 180}}),
-                   Literal::CreateR2<float>({{6, 6}, {6, 8}}))));
+      *Literal::MakeTupleOwned(
+          Literal::CreateR2<float>({{167, 172}, {176, 180}}),
+          Literal::CreateR2<float>({{6, 6}, {6, 8}})),
+      *result));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
+           DISABLED_ON_CPU(MultiOutputReduceFusionDifferentElementTypes)) {
+  const string testcase = tensorflow::strings::StrCat(kScalarOps, R"(
+    fused_reduce (p0: f16[2,2,2]) -> (f32[2,2], f32[2,2], f16[2,2,2]) {
+      p0 = f16[2,2,2]{2,1,0} parameter(0)
+      convert = f32[2,2,2]{2,1,0} convert(p0)
+      c0 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(convert, c0), dimensions={2}, to_apply=Add
+      mul = f32[2,2,2]{2,1,0} multiply(convert, convert)
+      c1 = f32[] constant(5)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={2}, to_apply=Max
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}, f16[2,2,2]{2,1,0})
+                   tuple(r1, r2, p0)
+    }
+
+    ENTRY reduce {
+      p = f16[2,2,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}, f16[2,2,2]{2,1,0}) fusion(p),
+                    kind=kInput, calls=fused_reduce
+    })");
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param = Literal::CreateR3<Eigen::half>(
+      {{{Eigen::half(1), Eigen::half(2)}, {Eigen::half(3), Eigen::half(4)}},
+       {{Eigen::half(5), Eigen::half(6)}, {Eigen::half(7), Eigen::half(8)}}});
+  std::unique_ptr<Literal> result =
+      ExecuteNoHloPasses(std::move(module), {param.get()});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *Literal::MakeTupleOwned(
+          Literal::CreateR2<float>({{3, 7}, {11, 15}}),
+          Literal::CreateR2<float>({{5, 16}, {36, 64}}),
+          Literal::CreateR3<Eigen::half>({{{Eigen::half(1), Eigen::half(2)},
+                                           {Eigen::half(3), Eigen::half(4)}},
+                                          {{Eigen::half(5), Eigen::half(6)},
+                                           {Eigen::half(7), Eigen::half(8)}}})),
+      *result));
 }
 
 }  // namespace

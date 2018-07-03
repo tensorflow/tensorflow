@@ -105,3 +105,136 @@ def expand_cmake_vars(name, src, dst, cmake_vars):
              "< $< > $@")
   )
 
+# TODO(phawkins): the set of CMake variables was hardcoded for expediency.
+# However, we should really detect many of these via configure-time tests.
+
+# The set of CMake variables common to all targets.
+cmake_vars = {
+    # Headers
+    "HAVE_DIRENT_H": 1,
+    "HAVE_DLFCN_H": 1,
+    "HAVE_ERRNO_H": 1,
+    "HAVE_EXECINFO_H": 1,
+    "HAVE_FCNTL_H": 1,
+    "HAVE_INTTYPES_H": 1,
+    "HAVE_PTHREAD_H": 1,
+    "HAVE_SIGNAL_H": 1,
+    "HAVE_STDINT_H": 1,
+    "HAVE_SYS_IOCTL_H": 1,
+    "HAVE_SYS_MMAN_H": 1,
+    "HAVE_SYS_PARAM_H": 1,
+    "HAVE_SYS_RESOURCE_H": 1,
+    "HAVE_SYS_STAT_H": 1,
+    "HAVE_SYS_TIME_H": 1,
+    "HAVE_SYS_TYPES_H": 1,
+    "HAVE_TERMIOS_H": 1,
+    "HAVE_UNISTD_H": 1,
+    "HAVE_ZLIB_H": 1,
+
+    # Features
+    "HAVE_BACKTRACE": 1,
+    "BACKTRACE_HEADER": "execinfo.h",
+    "HAVE_DLOPEN": 1,
+    "HAVE_FUTIMES": 1,
+    "HAVE_GETCWD": 1,
+    "HAVE_GETPAGESIZE": 1,
+    "HAVE_GETRLIMIT": 1,
+    "HAVE_GETRUSAGE": 1,
+    "HAVE_GETTIMEOFDAY": 1,
+    "HAVE_INT64_T": 1,
+    "HAVE_ISATTY": 1,
+    "HAVE_LIBEDIT": 1,
+    "HAVE_LIBPTHREAD": 1,
+    "HAVE_LIBZ": 1,
+    "HAVE_MKDTEMP": 1,
+    "HAVE_MKSTEMP": 1,
+    "HAVE_MKTEMP": 1,
+    "HAVE_PREAD": 1,
+    "HAVE_PTHREAD_GETSPECIFIC": 1,
+    "HAVE_PTHREAD_MUTEX_LOCK": 1,
+    "HAVE_PTHREAD_RWLOCK_INIT": 1,
+    "HAVE_REALPATH": 1,
+    "HAVE_SBRK": 1,
+    "HAVE_SETENV": 1,
+    "HAVE_SETRLIMIT": 1,
+    "HAVE_SIGALTSTACK": 1,
+    "HAVE_STRERROR": 1,
+    "HAVE_STRERROR_R": 1,
+    "HAVE_STRTOLL": 1,
+    "HAVE_SYSCONF": 1,
+    "HAVE_UINT64_T": 1,
+    "HAVE__UNWIND_BACKTRACE": 1,
+
+    # LLVM features
+    "ENABLE_BACKTRACES": 1,
+    "LLVM_BINDIR": "/dev/null",
+    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
+    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
+    "LLVM_ENABLE_THREADS": 1,
+    "LLVM_ENABLE_ZLIB": 1,
+    "LLVM_HAS_ATOMICS": 1,
+    "LLVM_INCLUDEDIR": "/dev/null",
+    "LLVM_INFODIR": "/dev/null",
+    "LLVM_MANDIR": "/dev/null",
+    "LLVM_NATIVE_TARGET": 1,
+    "LLVM_NATIVE_TARGETINFO": 1,
+    "LLVM_NATIVE_TARGETMC": 1,
+    "LLVM_NATIVE_ASMPRINTER": 1,
+    "LLVM_NATIVE_ASMPARSER": 1,
+    "LLVM_NATIVE_DISASSEMBLER": 1,
+    "LLVM_ON_UNIX": 1,
+    "LLVM_PREFIX": "/dev/null",
+    "LLVM_VERSION_MAJOR": 0,
+    "LLVM_VERSION_MINOR": 0,
+    "LLVM_VERSION_PATCH": 0,
+    "LTDL_SHLIB_EXT": ".so",
+    "PACKAGE_NAME": "llvm",
+    "PACKAGE_STRING": "llvm tensorflow-trunk",
+    "PACKAGE_VERSION": "tensorflow-trunk",
+    "RETSIGTYPE": "void",
+}
+
+# CMake variables specific to the Linux platform
+linux_cmake_vars = {
+    "HAVE_MALLOC_H": 1,
+    "HAVE_LINK_H": 1,
+    "HAVE_MALLINFO": 1,
+    "HAVE_FUTIMENS": 1,
+}
+
+# CMake variables specific to the Darwin (Mac OS X) platform.
+darwin_cmake_vars = {
+    "HAVE_MALLOC_MALLOC_H": 1,
+}
+
+# Select a set of CMake variables based on the platform.
+# TODO(phawkins): use a better method to select the right host triple, rather
+# than hardcoding x86_64.
+llvm_all_cmake_vars = select({
+    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
+        cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
+        darwin_cmake_vars),
+    "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
+        cmake_vars +
+        llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
+        linux_cmake_vars,
+    ),
+    "//conditions:default": cmake_var_string(
+         cmake_vars +
+         llvm_target_cmake_vars("X86", "x86_64-unknown-linux_gnu") +
+         linux_cmake_vars),
+
+})
+
+LLVM_LINKOPTS = ["-ldl", "-lm", "-lpthread"]
+
+LLVM_DEFINES = [
+    "LLVM_ENABLE_STATS",
+    "__STDC_LIMIT_MACROS",
+    "__STDC_CONSTANT_MACROS",
+    "__STDC_FORMAT_MACROS",
+    "_DEBUG",
+    "LLVM_BUILD_GLOBAL_ISEL",
+]
+
+LLVM_COPTS = []

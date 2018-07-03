@@ -354,12 +354,14 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
     }
 
     if (op == "TensorArraySizeV3") {
-      const NodeDef* array = node_map_->GetNode(node->input(0));
-      if (array->attr().count("dynamic_size") != 0 &&
-          array->attr().at("dynamic_size").b()) {
+      const NodeDef* array = CHECK_NOTNULL(node_map_->GetNode(node->input(0)));
+      if (array->input_size() == 0 ||
+          (array->attr().count("dynamic_size") != 0 &&
+           array->attr().at("dynamic_size").b())) {
         continue;
       }
-      const NodeDef* array_size = node_map_->GetNode(array->input(0));
+      const NodeDef* array_size =
+          CHECK_NOTNULL(node_map_->GetNode(array->input(0)));
       if (IsReallyConstant(*array_size)) {
         // Don't materialize 0 sizes to avoid triggering incorrect static
         // checks. A 0 sized array that can't grow isn't useful anyway.
@@ -374,6 +376,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         if (value.flat<int32>()(0) == 0) {
           continue;
         }
+
         node->set_op("Const");
         *node->mutable_attr() = array_size->attr();
         node->set_input(0, AsControlDependency(NodeName(node->input(0))));

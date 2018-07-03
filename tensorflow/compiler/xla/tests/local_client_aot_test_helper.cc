@@ -37,8 +37,8 @@ using xla::string;
 xla::XlaComputation Doubler() {
   xla::XlaBuilder builder("doubler");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
-  auto x = builder.Parameter(0, r0f32, "x");
-  builder.Mul(x, builder.ConstantR0<float>(2.0));
+  auto x = xla::Parameter(&builder, 0, r0f32, "x");
+  xla::Mul(x, xla::ConstantR0<float>(&builder, 2.0));
   return std::move(builder.Build().ValueOrDie());
 }
 
@@ -51,10 +51,10 @@ int main(int argc, char** argv) {
 
   xla::XlaBuilder builder("aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
-  auto opaque_param = builder.Parameter(0, opaque_shape, "x");
+  auto opaque_param = Parameter(&builder, 0, opaque_shape, "x");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
-  auto sum = builder.CustomCall("SumStructElements", {opaque_param}, r0f32);
-  builder.Call(Doubler(), {sum});
+  auto sum = CustomCall(&builder, "SumStructElements", {opaque_param}, r0f32);
+  Call(&builder, Doubler(), {sum});
 
   if (argc != 2) {
     LOG(FATAL) << "local_client_aot_test_helper TARGET_CPU";

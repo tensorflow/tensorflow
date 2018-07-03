@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
-
 namespace swig {
 
 // Initializes the number of replicas that XLA will be initialized with (when
@@ -69,9 +68,41 @@ class LocalShapedBuffer {
 
   StatusOr<std::unique_ptr<Literal> > ToLiteral() const;
 
+  // Transfers ownership of the encapsulated ShapedBuffer to the caller,
+  // analogous to std::unique_ptr::release().
+  ShapedBuffer Release();
+
  private:
   ScopedShapedBuffer shaped_buffer_;
 };
+
+// Result of a tuple destructuring operation on a LocalShapedBuffer -- this
+// appears to be a simpler mechanism for the time being than an alternative like
+// using SWIG to transform std::vectors into Python lists of SWIG objects
+// directly.
+class LocalShapedBufferTuple {
+ public:
+  // Note: any LocalShapedBuffer elements that are not Release()'d will be
+  // deallocated in the destructor.
+  explicit LocalShapedBufferTuple(std::vector<LocalShapedBuffer*> elements);
+
+  ~LocalShapedBufferTuple();
+
+  // Releases the ith element to the caller. Further attempts to release the ith
+  // element will return an invalid argument error.
+  StatusOr<LocalShapedBuffer*> Release(int i);
+
+  // Returns the number of elements in the destructured tuple.
+  int size() const;
+
+ private:
+  std::vector<LocalShapedBuffer*> elements_;
+};
+
+// Destructures a tuple-valued LocalShapedBuffer into its constitutent elements
+// in LocalShapedBufferTuple form.
+StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
+    LocalShapedBuffer* local_shaped_buffer);
 
 // Wraps a LocalExecutable produced by compiling a
 // LocalComputation. The Execute method forwards to that of the
@@ -156,7 +187,7 @@ class LocalComputationBuilder {
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
 
-  std::unique_ptr<Shape> GetShape(const LocalOp& operand);
+  StatusOr<Shape> GetShape(const LocalOp& operand);
 
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();
@@ -239,8 +270,7 @@ class LocalComputationBuilder {
 
   LocalOp Map(tensorflow::gtl::ArraySlice<LocalOp> operands,
               const LocalComputation& local_computation,
-              tensorflow::gtl::ArraySlice<int64> dimensions,
-              tensorflow::gtl::ArraySlice<LocalOp> static_operands);
+              tensorflow::gtl::ArraySlice<int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
                  const LocalComputation& local_computation,
@@ -302,22 +332,25 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(Min)
   _FORWARD_BINOP(And)
   _FORWARD_BINOP(Or)
+  _FORWARD_BINOP(Xor)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
+  _FORWARD_UNOP(Expm1)
   _FORWARD_UNOP(Floor)
   _FORWARD_UNOP(Ceil)
   _FORWARD_UNOP(Round)
   _FORWARD_UNOP(Log)
+  _FORWARD_UNOP(Log1p)
   _FORWARD_UNOP(Sign)
   _FORWARD_UNOP(Cos)
   _FORWARD_UNOP(Sin)
   _FORWARD_UNOP(Tanh)
-  _FORWARD_UNOP(SqrtF32)
-  _FORWARD_UNOP(SquareF32)
+  _FORWARD_UNOP(Sqrt)
+  _FORWARD_UNOP(Square)
   _FORWARD_BINOP(Pow)
   _FORWARD_UNOP(IsFinite)
-  _FORWARD_UNOP(ReciprocalF32)
+  _FORWARD_UNOP(Reciprocal)
   _FORWARD_UNOP(Neg)
   _FORWARD_UNOP(Sort)
 
@@ -336,7 +369,6 @@ void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
 void DeleteLocalComputation(LocalComputation* computation);
 
 }  // namespace swig
-
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_

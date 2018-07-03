@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
+#include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 namespace {
@@ -35,11 +33,32 @@ class VarIsInitializedOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     XlaResource* variable;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &variable));
-    ctx->SetOutput(0,
-                   ctx->builder()->ConstantR0<bool>(variable->initialized()));
+    ctx->SetOutput(
+        0, xla::ConstantR0<bool>(ctx->builder(), variable->initialized()));
   }
 };
 REGISTER_XLA_OP(Name("VarIsInitializedOp"), VarIsInitializedOp);
+
+class VariableShapeOp : public XlaOpKernel {
+ public:
+  explicit VariableShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType variable_dtype;
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetVariableTypeAndShape(0, &variable_dtype, &shape));
+    Tensor shape_constant(out_dtype_, TensorShape({shape.dims()}));
+    OP_REQUIRES_OK(ctx, TensorShapeToConstant(shape, &shape_constant));
+    ctx->SetConstantOutput(0, shape_constant);
+  }
+
+ private:
+  DataType out_dtype_;
+};
+REGISTER_XLA_OP(Name("VariableShape"), VariableShapeOp);
 
 class ReadVariableOp : public XlaOpKernel {
  public:
@@ -77,7 +96,7 @@ class AssignAddVariableOp : public XlaOpKernel {
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
-    handle = ctx->builder()->Add(handle, ctx->Input(1));
+    handle = xla::Add(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
@@ -93,7 +112,7 @@ class AssignSubVariableOp : public XlaOpKernel {
     xla::XlaOp handle;
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
-    handle = ctx->builder()->Sub(handle, ctx->Input(1));
+    handle = xla::Sub(handle, ctx->Input(1));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
@@ -125,29 +144,152 @@ class ResourceGatherOp : public XlaOpKernel {
     ctx->SetOutput(0, gather);
   }
 };
-REGISTER_XLA_OP(Name("ResourceGather").TypeConstraint("dtype", kNumericTypes),
-                ResourceGatherOp);
+REGISTER_XLA_OP(Name("ResourceGather"), ResourceGatherOp);
 
-class VariableShapeOp : public XlaOpKernel {
+class ResourceScatterOp : public XlaOpKernel {
  public:
-  explicit VariableShapeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("out_type", &out_dtype_));
-  }
+  explicit ResourceScatterOp(
+      OpKernelConstruction* context, bool indices_are_vectors,
+      std::function<xla::XlaOp(const xla::XlaOp&, const xla::XlaOp&,
+                               xla::XlaBuilder*)>
+          combiner)
+      : XlaOpKernel(context),
+        indices_are_vectors_(indices_are_vectors),
+        combiner_(std::move(combiner)) {}
 
-  void Compile(XlaOpKernelContext* ctx) override {
-    DataType variable_dtype;
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetVariableTypeAndShape(0, &variable_dtype, &shape));
-    Tensor shape_constant(out_dtype_, TensorShape({shape.dims()}));
-    OP_REQUIRES_OK(ctx, TensorShapeToConstant(shape, &shape_constant));
-    ctx->SetConstantOutput(0, shape_constant);
+  void Compile(XlaOpKernelContext* context) override {
+    xla::XlaBuilder* builder = context->builder();
+
+    DataType dtype = context->input_type(2);
+    TensorShape var_shape;
+    xla::XlaOp var_value;
+    OP_REQUIRES_OK(
+        context, context->ReadVariableInput(0, dtype, &var_shape, &var_value));
+
+    const xla::XlaOp indices = context->Input(1);
+    const xla::XlaOp updates = context->Input(2);
+
+    auto result = XlaScatter(var_value, updates, indices, indices_are_vectors_,
+                             combiner_, builder);
+    OP_REQUIRES_OK(context, result.status());
+    OP_REQUIRES_OK(context,
+                   context->AssignVariable(0, dtype, result.ValueOrDie()));
   }
 
  private:
-  DataType out_dtype_;
+  const bool indices_are_vectors_;
+  const std::function<xla::XlaOp(const xla::XlaOp&, const xla::XlaOp&,
+                                 xla::XlaBuilder*)>
+      combiner_;
 };
 
-REGISTER_XLA_OP(Name("VariableShape"), VariableShapeOp);
+class ResourceScatterAddOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterAddOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Add(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterAdd"), ResourceScatterAddOp);
+
+class ResourceScatterSubOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterSubOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Sub(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterSub"), ResourceScatterSubOp);
+
+class ResourceScatterMulOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterMulOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Mul(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterMul"), ResourceScatterMulOp);
+
+class ResourceScatterDivOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterDivOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Div(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterDiv"), ResourceScatterDivOp);
+
+class ResourceScatterMinOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterMinOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Min(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterMin"), ResourceScatterMinOp);
+
+class ResourceScatterMaxOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterMaxOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Max(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterMax"), ResourceScatterMaxOp);
+
+class ResourceScatterUpdateOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterUpdateOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/false,
+                          /*combiner=*/{}) {}
+};
+REGISTER_XLA_OP(Name("ResourceScatterUpdate"), ResourceScatterUpdateOp);
+
+class ResourceScatterNdUpdateOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterNdUpdateOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/true,
+                          /*combiner=*/{}) {}
+};
+REGISTER_XLA_OP(Name("ResourceScatterNdUpdate"), ResourceScatterNdUpdateOp);
+
+class ResourceScatterNdAddOp : public ResourceScatterOp {
+ public:
+  explicit ResourceScatterNdAddOp(OpKernelConstruction* context)
+      : ResourceScatterOp(context, /*indices_are_vectors=*/true,
+                          /*combiner=*/Combine) {}
+
+ private:
+  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+                            xla::XlaBuilder* builder) {
+    return xla::Add(x, y);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceScatterNdAdd"), ResourceScatterNdAddOp);
+
 }  // namespace
 }  // namespace tensorflow

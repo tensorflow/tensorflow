@@ -23,19 +23,15 @@ import os
 import sys
 
 from tensorflow.contrib.lite.python import lite
+from tensorflow.contrib.lite.python import lite_constants
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.platform import app
 
 
-def _parse_array(values):
+def _parse_array(values, type_fn=str):
   if values:
-    return values.split(",")
-
-
-def _parse_int_array(values):
-  if values:
-    return [int(val) for val in values.split(",")]
+    return [type_fn(val) for val in values.split(",") if val]
 
 
 def _parse_set(values):
@@ -57,7 +53,8 @@ def _get_toco_converter(flags):
   input_shapes = None
   if flags.input_shapes:
     input_shapes_list = [
-        _parse_int_array(shape) for shape in flags.input_shapes.split(":")
+        _parse_array(shape, type_fn=int)
+        for shape in flags.input_shapes.split(":")
     ]
     input_shapes = dict(zip(input_arrays, input_shapes_list))
   output_arrays = _parse_array(flags.output_arrays)
@@ -77,6 +74,9 @@ def _get_toco_converter(flags):
     converter_kwargs["saved_model_dir"] = flags.saved_model_dir
     converter_kwargs["tag_set"] = _parse_set(flags.saved_model_tag_set)
     converter_kwargs["signature_key"] = flags.saved_model_signature_key
+  elif flags.keras_model_file:
+    converter_fn = lite.TocoConverter.from_keras_model_file
+    converter_kwargs["model_file"] = flags.keras_model_file
 
   return converter_fn(**converter_kwargs)
 
@@ -103,9 +103,9 @@ def _convert_model(flags):
 
   if flags.mean_values and flags.std_dev_values:
     input_arrays = converter.get_input_arrays()
-    std_dev_values = _parse_int_array(flags.std_dev_values)
-    mean_values = _parse_int_array(flags.mean_values)
-    quant_stats = zip(mean_values, std_dev_values)
+    std_dev_values = _parse_array(flags.std_dev_values, type_fn=int)
+    mean_values = _parse_array(flags.mean_values, type_fn=int)
+    quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
       raise ValueError("Mismatching --input_arrays, --std_dev_values, and "
@@ -114,9 +114,10 @@ def _convert_model(flags):
                        "--input_arrays must be present when specifying "
                        "--std_dev_values and --mean_values with multiple input "
                        "tensors in order to map between names and "
-                       "values".format(",".join(input_arrays)))
+                       "values.".format(",".join(input_arrays)))
     converter.quantized_input_stats = dict(zip(input_arrays, quant_stats))
-  if flags.default_ranges_min and flags.default_ranges_max:
+  if (flags.default_ranges_min is not None) and (flags.default_ranges_max is
+                                                 not None):
     converter.default_ranges_stats = (flags.default_ranges_min,
                                       flags.default_ranges_max)
 
@@ -129,7 +130,14 @@ def _convert_model(flags):
   if flags.allow_custom_ops:
     converter.allow_custom_ops = flags.allow_custom_ops
   if flags.quantize_weights:
+    if flags.inference_type == lite_constants.QUANTIZED_UINT8:
+      raise ValueError("--quantized_weights is not supported with "
+                       "--inference_type=QUANTIZED_UINT8")
     converter.quantize_weights = flags.quantize_weights
+  if flags.dump_graphviz_dir:
+    converter.dump_graphviz_dir = flags.dump_graphviz_dir
+  if flags.dump_graphviz_video:
+    converter.dump_graphviz_vode = flags.dump_graphviz_video
 
   # Convert model.
   output_data = converter.convert()
@@ -161,8 +169,12 @@ def _check_flags(flags, unparsed):
     output = ""
     for flag in unparsed:
       output += _get_message_unparsed(flag, "--input_file", "--graph_def_file")
+      output += _get_message_unparsed(flag, "--savedmodel_directory",
+                                      "--saved_model_dir")
       output += _get_message_unparsed(flag, "--std_value", "--std_dev_values")
       output += _get_message_unparsed(flag, "--batch_size", "--input_shapes")
+      output += _get_message_unparsed(flag, "--dump_graphviz",
+                                      "--dump_graphviz_dir")
     if output:
       raise ValueError(output)
 
@@ -187,9 +199,12 @@ def _check_flags(flags, unparsed):
       raise ValueError("--std_dev_values, --mean_values must have the same "
                        "number of items")
 
-  if bool(flags.default_ranges_min) != bool(flags.default_ranges_max):
+  if (flags.default_ranges_min is None) != (flags.default_ranges_max is None):
     raise ValueError("--default_ranges_min and --default_ranges_max must be "
                      "used together")
+
+  if flags.dump_graphviz_video and not flags.dump_graphviz:
+    raise ValueError("--dump_graphviz_video must be used with --dump_graphviz")
 
 
 def run_main(_):
@@ -210,29 +225,33 @@ def run_main(_):
   input_file_group.add_argument(
       "--graph_def_file",
       type=str,
-      help="Full filepath of file containing TensorFlow GraphDef.")
+      help="Full filepath of file containing frozen TensorFlow GraphDef.")
   input_file_group.add_argument(
       "--saved_model_dir",
       type=str,
       help="Full filepath of directory containing the SavedModel.")
+  input_file_group.add_argument(
+      "--keras_model_file",
+      type=str,
+      help="Full filepath of HDF5 file containing tf.Keras model.")
 
   # Model format flags.
   parser.add_argument(
       "--output_format",
-      type=str,
+      type=str.upper,
       choices=["TFLITE", "GRAPHVIZ_DOT"],
       help="Output file format.")
   parser.add_argument(
       "--inference_type",
-      type=str,
+      type=str.upper,
       choices=["FLOAT", "QUANTIZED_UINT8"],
-      help="Target data type of arrays in the output file.")
+      help="Target data type of real-number arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
-      type=str,
+      type=str.upper,
       choices=["FLOAT", "QUANTIZED_UINT8"],
-      help=("Target data type of input arrays. Allows for a different type for "
-            "input arrays in the case of quantization."))
+      help=("Target data type of real-number input arrays. Allows for a "
+            "different type for input arrays in the case of quantization."))
 
   # Input and output arrays flags.
   parser.add_argument(
@@ -266,12 +285,12 @@ def run_main(_):
       "--std_dev_values",
       type=str,
       help=("Standard deviation of training data for each input tensor, "
-            "comma-separated. Used for quantization. (default None)"))
+            "comma-separated integers. Used for quantization. (default None)"))
   parser.add_argument(
       "--mean_values",
       type=str,
-      help=("Mean of training data for each input tensor, comma-separated. "
-            "Used for quantization. (default None)"))
+      help=("Mean of training data for each input tensor, comma-separated "
+            "integers. Used for quantization. (default None)"))
   parser.add_argument(
       "--default_ranges_min",
       type=int,
@@ -321,6 +340,20 @@ def run_main(_):
             "created for any op that is unknown. The developer will need to "
             "provide these to the TensorFlow Lite runtime with a custom "
             "resolver. (default False)"))
+
+  # Logging flags.
+  parser.add_argument(
+      "--dump_graphviz_dir",
+      type=str,
+      help=("Full filepath of folder to dump the graphs at various stages of "
+            "processing GraphViz .dot files. Preferred over --output_format="
+            "GRAPHVIZ_DOT in order to keep the requirements of the output "
+            "file."))
+  parser.add_argument(
+      "--dump_graphviz_video",
+      action="store_true",
+      help=("Boolean indicating whether to dump the graph after every graph "
+            "transformation"))
 
   tflite_flags, unparsed = parser.parse_known_args(args=sys.argv[1:])
   try:

@@ -205,14 +205,20 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
 }
 
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
-                      const char** value) {
+                      tensorflow::StringPiece* value) {
   if (PyBytes_Check(py_value)) {
-    *value = PyBytes_AsString(py_value);
+    Py_ssize_t size = 0;
+    char* buf = nullptr;
+    if (PyBytes_AsStringAndSize(py_value, &buf, &size) < 0) return false;
+    *value = tensorflow::StringPiece(buf, size);
     return true;
   }
 #if PY_MAJOR_VERSION >= 3
   if (PyUnicode_Check(py_value)) {
-    *value = PyUnicode_AsUTF8(py_value);
+    Py_ssize_t size = 0;
+    char* buf = PyUnicode_AsUTF8AndSize(py_value, &size);
+    if (buf == nullptr) return false;
+    *value = tensorflow::StringPiece(buf, size);
     return true;
   }
 #endif
@@ -275,8 +281,16 @@ bool SetOpAttrList(
   }
 
   if (type == TF_ATTR_STRING) {
-    PARSE_LIST(const char*, ParseStringValue);
-    TFE_OpSetAttrStringList(op, key, values.get(), num_values);
+    std::unique_ptr<const void*[]> values(new const void*[num_values]);
+    std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
+    for (int i = 0; i < num_values; ++i) {
+      tensorflow::StringPiece value;
+      tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      if (!ParseStringValue(key, py_value.get(), status, &value)) return false;
+      values[i] = value.data();
+      lengths[i] = value.size();
+    }
+    TFE_OpSetAttrStringList(op, key, values.get(), lengths.get(), num_values);
   } else if (type == TF_ATTR_INT) {
     PARSE_LIST(int64_t, ParseInt64Value);
     TFE_OpSetAttrIntList(op, key, values.get(), num_values);
@@ -379,12 +393,15 @@ void SetOpAttrListDefault(
     TF_Status* status) {
   if (type == TF_ATTR_STRING) {
     int num_values = attr.default_value().list().s_size();
-    std::unique_ptr<const char*[]> values(new const char*[num_values]);
+    std::unique_ptr<const void*[]> values(new const void*[num_values]);
+    std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
     (*attr_list_sizes)[key] = num_values;
     for (int i = 0; i < num_values; i++) {
-      values[i] = attr.default_value().list().s(i).data();
+      const string& v = attr.default_value().list().s(i);
+      values[i] = v.data();
+      lengths[i] = v.size();
     }
-    TFE_OpSetAttrStringList(op, key, values.get(), num_values);
+    TFE_OpSetAttrStringList(op, key, values.get(), lengths.get(), num_values);
   } else if (type == TF_ATTR_INT) {
     int num_values = attr.default_value().list().i_size();
     std::unique_ptr<int64_t[]> values(new int64_t[num_values]);
@@ -470,9 +487,9 @@ bool SetOpAttrScalar(
     tensorflow::gtl::FlatMap<string, tensorflow::int64>* attr_list_sizes,
     TF_Status* status) {
   if (type == TF_ATTR_STRING) {
-    const char* value;
+    tensorflow::StringPiece value;
     if (!ParseStringValue(key, py_value, status, &value)) return false;
-    TFE_OpSetAttrString(op, key, value);
+    TFE_OpSetAttrString(op, key, value.data(), value.size());
   } else if (type == TF_ATTR_INT) {
     int64_t value;
     if (!ParseInt64Value(key, py_value, status, &value)) return false;
@@ -533,7 +550,7 @@ bool SetOpAttrScalar(
     //     (which is what the various "defun" or "Defun" decorators do).
     // And in the future also allow an object that can encapsulate
     // the function name and its attribute values.
-    const char* func_name = nullptr;
+    tensorflow::StringPiece func_name;
     if (!ParseStringValue(key, py_value, status, &func_name)) {
       PyObject* name_attr = PyObject_GetAttrString(py_value, "name");
       if (name_attr == nullptr ||
@@ -549,7 +566,8 @@ bool SetOpAttrScalar(
         return false;
       }
     }
-    TFE_Op* func = TFE_NewOp(ctx, func_name, status);
+    TFE_Op* func = TFE_NewOp(
+        ctx, string(func_name.data(), func_name.size()).c_str(), status);
     if (TF_GetCode(status) != TF_OK) return false;
     TFE_OpSetAttrFunction(op, key, func);
     TFE_DeleteOp(func);
@@ -873,22 +891,6 @@ static tensorflow::DataType FastTensorDtype(PyObject* tensor) {
   return static_cast<tensorflow::DataType>(id);
 }
 
-static tensorflow::int64 FastHandleId(PyObject* variable) {
-  PyObject* handle = PyObject_GetAttrString(variable, "handle");
-  if (handle == nullptr) {
-    return -1;
-  }
-  tensorflow::int64 id = FastTensorId(handle);
-  Py_DECREF(handle);
-  return id;
-}
-
-struct CompareByHandleId {
-  bool operator()(PyObject* lhs, PyObject* rhs) {
-    return FastHandleId(lhs) < FastHandleId(rhs);
-  }
-};
-
 class GradientTape
     : public tensorflow::eager::GradientTape<PyObject, PyBackwardFunction> {
  public:
@@ -897,35 +899,63 @@ class GradientTape
             persistent) {}
 
   virtual ~GradientTape() {
-    for (PyObject* v : watched_variables_) {
-      Py_DECREF(v);
+    for (const IdAndVariable& v : watched_variables_) {
+      Py_DECREF(v.variable);
     }
   }
 
   void WatchVariable(PyObject* v) {
-    auto insert_result = watched_variables_.insert(v);
+    tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(v, "handle"));
+    if (handle == nullptr) {
+      return;
+    }
+    tensorflow::int64 id = FastTensorId(handle.get());
+
+    if (!PyErr_Occurred()) {
+      this->Watch(id);
+    }
+
+    tensorflow::mutex_lock l(watched_variables_mu_);
+    auto insert_result = watched_variables_.emplace(id, v);
+
     if (insert_result.second) {
       // Only increment the reference count if we aren't already watching this
       // variable.
       Py_INCREF(v);
     }
-    PyObject* handle = PyObject_GetAttrString(v, "handle");
-    if (handle == nullptr) {
-      return;
-    }
-    tensorflow::int64 id = FastTensorId(handle);
-    Py_DECREF(handle);
-    if (!PyErr_Occurred()) {
-      this->Watch(id);
-    }
   }
 
-  const std::set<PyObject*, CompareByHandleId> WatchedVariables() {
-    return watched_variables_;
+  PyObject* GetVariablesAsPyTuple() {
+    tensorflow::mutex_lock l(watched_variables_mu_);
+    PyObject* result = PyTuple_New(watched_variables_.size());
+    Py_ssize_t pos = 0;
+    for (const IdAndVariable& id_and_variable : watched_variables_) {
+      PyTuple_SET_ITEM(result, pos++, id_and_variable.variable);
+      Py_INCREF(id_and_variable.variable);
+    }
+    return result;
   }
 
  private:
-  std::set<PyObject*, CompareByHandleId> watched_variables_;
+  // We store an IdAndVariable in the map since the map needs to be locked
+  // during insert, but should not call back into python during insert to avoid
+  // deadlocking with the GIL.
+  struct IdAndVariable {
+    tensorflow::int64 id;
+    PyObject* variable;
+
+    IdAndVariable(tensorflow::int64 id, PyObject* variable)
+        : id(id), variable(variable) {}
+  };
+  struct CompareById {
+    bool operator()(const IdAndVariable& lhs, const IdAndVariable& rhs) const {
+      return lhs.id < rhs.id;
+    }
+  };
+
+  tensorflow::mutex watched_variables_mu_;
+  std::set<IdAndVariable, CompareById> watched_variables_
+      GUARDED_BY(watched_variables_mu_);
 };
 
 typedef struct {
@@ -1217,15 +1247,7 @@ void TFE_Py_TapeSetWatchVariable(PyObject* variable) {
 }
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
-  const auto& watched_variables =
-      reinterpret_cast<TFE_Py_Tape*>(tape)->tape->WatchedVariables();
-  PyObject* result = PyTuple_New(watched_variables.size());
-  Py_ssize_t pos = 0;
-  for (PyObject* variable : watched_variables) {
-    PyTuple_SET_ITEM(result, pos++, variable);
-    Py_INCREF(variable);
-  }
-  return result;
+  return reinterpret_cast<TFE_Py_Tape*>(tape)->tape->GetVariablesAsPyTuple();
 }
 
 namespace {
@@ -1869,6 +1891,8 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         delete backward_function;
       });
 
+  Py_DECREF(num_inputs);
+
   Py_RETURN_NONE;
 }
 
@@ -1927,8 +1951,10 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
     Py_INCREF(output->get());  // stay alive after since tuple steals.
     PyTuple_SET_ITEM(outputs.get(), 0, output->get());
 
-    if (!RecordGradient(GetPythonObjectFromString("ReadVariableOp"),
-                        inputs.get(), Py_None, outputs.get(), Py_None)) {
+    tensorflow::Safe_PyObjectPtr op_string(
+        GetPythonObjectFromString("ReadVariableOp"));
+    if (!RecordGradient(op_string.get(), inputs.get(), Py_None, outputs.get(),
+                        Py_None)) {
       return false;
     }
   }

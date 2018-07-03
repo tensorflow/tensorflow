@@ -43,8 +43,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
   std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
   for (const std::vector<int64>& execute_layout : layouts) {
     for (const std::vector<int64>& transfer_layout : layouts) {
-      b.Add(b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-            b.ConstantR2<int32>({{10, 20}, {30, 40}}));
+      Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+          ConstantR2<int32>(&b, {{10, 20}, {30, 40}}));
       TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
       ExecutionOptions execution_options = execution_options_;
@@ -72,8 +72,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
 XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   XlaBuilder b(TestName());
 
-  b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-           b.ConstantR2<int32>({{10, 20}, {30, 40}})});
+  Tuple(&b, {ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+             ConstantR2<int32>(&b, {{10, 20}, {30, 40}})});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
@@ -117,8 +117,8 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
       client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
 
   XlaBuilder b(TestName() + ".add");
-  b.Add(b.Parameter(0, shape, "param_0"),
-        b.ConstantR2<int32>({{1, 2}, {3, 4}}));
+  Add(Parameter(&b, 0, shape, "param_0"),
+      ConstantR2<int32>(&b, {{1, 2}, {3, 4}}));
   TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
 
   // We can't really test parallel execution on CPU since all of the cores in a
