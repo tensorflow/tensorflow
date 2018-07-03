@@ -449,11 +449,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/d184fa229d75d336aedea0041bd59cb93e7e267f.tar.gz",
-          "https://github.com/grpc/grpc/archive/d184fa229d75d336aedea0041bd59cb93e7e267f.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/v1.13.0.tar.gz",
+          "https://github.com/grpc/grpc/archive/v1.13.0.tar.gz",
       ],
-      sha256 = "895b31310e718a61f7335759a778c068a6edde1c089883598a0830cbb7075673",
-      strip_prefix = "grpc-d184fa229d75d336aedea0041bd59cb93e7e267f",
+      sha256 = "50db9cf2221354485eb7c3bd55a4c27190caef7048a2a1a15fbe60a498f98b44",
+      strip_prefix = "grpc-1.13.0",
   )
 
 
