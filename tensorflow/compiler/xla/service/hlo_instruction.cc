@@ -2028,8 +2028,8 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   }
   if (operand_side_metadata_ != nullptr && user_side_metadata_ != nullptr) {
     extra.push_back(StrCat("domain={kind=\"", operand_side_metadata_->Kind(),
-                           "\", entry=", operand_side_metadata_->ToString(),
-                           ", exit=", user_side_metadata_->ToString(), "}"));
+                           "\", entry=", user_side_metadata_->ToString(),
+                           ", exit=", operand_side_metadata_->ToString(), "}"));
   }
 
   return extra;
