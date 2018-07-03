@@ -25,17 +25,16 @@ namespace rocm {
 
 bool ROCMTimer::Init() {
   CHECK(start_event_ == nullptr && stop_event_ == nullptr);
-  ROCmContext* context = parent_->rocm_context();
-  if (!ROCMDriver::CreateEvent(context, &start_event_,
+  if (!ROCMDriver::CreateEvent(parent_->device_ordinal(), &start_event_,
                                ROCMDriver::EventFlags::kDefault)
            .ok()) {
     return false;
   }
 
-  if (!ROCMDriver::CreateEvent(context, &stop_event_,
+  if (!ROCMDriver::CreateEvent(parent_->device_ordinal(), &stop_event_,
                                ROCMDriver::EventFlags::kDefault)
            .ok()) {
-    port::Status status = ROCMDriver::DestroyEvent(context, &start_event_);
+    port::Status status = ROCMDriver::DestroyEvent(parent_->device_ordinal(), &start_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
@@ -47,13 +46,12 @@ bool ROCMTimer::Init() {
 }
 
 void ROCMTimer::Destroy() {
-  ROCmContext* context = parent_->rocm_context();
-  port::Status status = ROCMDriver::DestroyEvent(context, &start_event_);
+  port::Status status = ROCMDriver::DestroyEvent(parent_->device_ordinal(), &start_event_);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
 
-  status = ROCMDriver::DestroyEvent(context, &stop_event_);
+  status = ROCMDriver::DestroyEvent(parent_->device_ordinal(), &stop_event_);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -64,20 +62,20 @@ float ROCMTimer::GetElapsedMilliseconds() const {
   // TODO(leary) provide a way to query timer resolution?
   // ROCM docs say a resolution of about 0.5us
   float elapsed_milliseconds = NAN;
-  (void)ROCMDriver::GetEventElapsedTime(parent_->rocm_context(),
+  (void)ROCMDriver::GetEventElapsedTime(parent_->device_ordinal(),
                                         &elapsed_milliseconds, start_event_,
                                         stop_event_);
   return elapsed_milliseconds;
 }
 
 bool ROCMTimer::Start(ROCMStream *stream) {
-  return ROCMDriver::RecordEvent(parent_->rocm_context(), start_event_,
+  return ROCMDriver::RecordEvent(parent_->device_ordinal(), start_event_,
                                  stream->rocm_stream())
       .ok();
 }
 
 bool ROCMTimer::Stop(ROCMStream *stream) {
-  return ROCMDriver::RecordEvent(parent_->rocm_context(), stop_event_,
+  return ROCMDriver::RecordEvent(parent_->device_ordinal(), stop_event_,
                                  stream->rocm_stream())
       .ok();
 }
