@@ -29,61 +29,35 @@ namespace tensorflow {
 namespace shape_inference {
 
 tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
-  tensorflow::tensorrt::Logger logger;
-  string serialized_engine;
-  TF_RETURN_IF_ERROR(context->GetAttr("serialized_engine", &serialized_engine));
-  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
-  nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
-      serialized_engine.c_str(), serialized_engine.size(),
-      tensorrt::PluginFactoryTensorRT::GetInstance());
-
-  int num_batch = -1;
-  std::vector<::tensorflow::DataType> input_type;
-  TF_RETURN_IF_ERROR(context->GetAttr("InT", &input_type));
-  for (size_t i = 0; i < context->num_inputs(); i++) {
-    // Check if input shape is legit
-    auto input_shape = context->input(i);
-    for (int j = 0; j < context->Rank(input_shape); j++) {
-      auto dim_handler = context->Dim(input_shape, j);
-      if (j == 0) {
-        if (i == 0) {
-          num_batch = context->Value(dim_handler);
-        } else if (num_batch != context->Value(dim_handler)) {
-          // TODO(jie): TensorRT engine requires consistent batch between inputs
-          //            tensors. Segmenter should be aware of this.
-          LOG(FATAL) << "TensorRT engine requires consistent batch size";
-        }
-      }
-    }
+  std::vector<tensorflow::TensorShape> shapes;
+  for (int i = 0; i < context->num_outputs(); ++i) {
+    context->set_output(i, context->UnknownShape());
   }
-
-  // Arrange input here
-  std::vector<string> input_nodes;
-  TF_RETURN_IF_ERROR(context->GetAttr("input_nodes", &input_nodes));
-
-  // Arrange output here
-  std::vector<string> output_nodes;
-  TF_RETURN_IF_ERROR(context->GetAttr("output_nodes", &output_nodes));
-  for (size_t i = 0; i < output_nodes.size(); i++) {
-    int binding_index = trt_engine->getBindingIndex(output_nodes[i].c_str());
-    ShapeHandle output_shape;
-    std::vector<DimensionHandle> dim_vec;
-    dim_vec.emplace_back(context->MakeDim(num_batch));
-    if (binding_index != -1) {
-      auto dims = trt_engine->getBindingDimensions(binding_index);
-      for (int j = 0; j < dims.nbDims; j++) {
-        dim_vec.emplace_back(context->MakeDim(dims.d[j]));
-      }
-    } else {
-      LOG(FATAL) << "TensorRT engine cannot find binding: " << output_nodes[i];
-    }
-    output_shape = context->MakeShape(dim_vec);
-    context->set_output(i, output_shape);
+  auto status = context->GetAttr("input_shapes", &shapes);
+  // it is ok to not to have shapes
+  if (!status.ok()) return Status::OK();
+  if ((int)shapes.size() != context->num_inputs()) return Status::OK();
+  bool different_input = false;
+  for (int i = 0; i < context->num_inputs(); ++i) {
+    if (shapes.at(i) != context->input_tensor(i)->shape())
+      different_input = true;
   }
-
+  if (different_input) return Status::OK();
+  shapes.resize(0);
+  status = context->GetAttr("output_shapes", &shapes);
+  if (!status.ok()) return Status::OK();
+  if ((int)shapes.size() != context->num_outputs()) return Status::OK();
+  std::vector<ShapeHandle> shape_handles(shapes.size());
+  for (size_t i = 0; i < shapes.size(); ++i) {
+    status =
+        context->MakeShapeFromTensorShape(shapes.at(i), &shape_handles.at(i));
+    if (!status.ok()) return Status::OK();
+  }
+  for (int i = 0; i < context->num_outputs(); ++i) {
+    context->set_output(i, shape_handles.at(i));
+  }
   return Status::OK();
 }
-
 }  // namespace shape_inference
 }  // namespace tensorflow
 

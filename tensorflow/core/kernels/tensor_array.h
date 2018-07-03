@@ -325,13 +325,15 @@ class TensorArray : public ResourceBase {
   bool HasIdenticalElementShapes() const { return identical_element_shapes_; }
 
   // Copy the TensorShapes from another TensorArray into this one.
+  // If `shapes_to_prepend` is set, expands the rank of the copied shape by
+  // prepending the passed in shape prefix to the shape values in `rhs`.
   // The sizes of the two TensorArrays must match and this one
   // may not have any entries filled in.  This performs a "soft copy",
   // essentially filling the current TensorArray with virtual
   // zero-tensors, which will be replaced by future aggregate writes,
   // or instantiated by future reads.  Requires a non-const pointer
   // to the rhs to access its mutex.
-  Status CopyShapesFrom(TensorArray* rhs);
+  Status CopyShapesFrom(TensorArray* rhs, const TensorShape* shape_to_prepend);
 
   // Clear the TensorArray, including any Tensor references, and mark as closed.
   void ClearAndMarkClosed() {

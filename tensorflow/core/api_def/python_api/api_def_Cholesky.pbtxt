@@ -1,9 +1,10 @@
 op {
   graph_op_name: "Cholesky"
   endpoint {
-    name: "cholesky"
+    name: "linalg.cholesky"
   }
   endpoint {
-    name: "linalg.cholesky"
+    name: "cholesky"
+    deprecation_message: "tf.cholesky is deprecated, please use tf.linalg.cholesky instead."
   }
 }

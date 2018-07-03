@@ -24,11 +24,12 @@ import copy
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.training import Model
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -108,6 +109,7 @@ class Sequential(Model):
       return self._layers[1:]
     return self._layers
 
+  @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
 
@@ -146,8 +148,6 @@ class Sequential(Model):
           first_layer = layer.layers[0]
           while isinstance(first_layer, (Model, Sequential)):
             first_layer = first_layer.layers[0]
-          batch_shape = first_layer._batch_input_shape
-          dtype = first_layer.dtype
 
         if hasattr(first_layer, '_batch_input_shape'):
           batch_shape = first_layer._batch_input_shape
@@ -179,7 +179,7 @@ class Sequential(Model):
                            'use the functional API.')
 
         self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
-        self.inputs = network.get_source_inputs(self.outputs[0])
+        self.inputs = layer_utils.get_source_inputs(self.outputs[0])
     elif self.outputs:
       output_tensor = layer(self.outputs[0])
       if isinstance(output_tensor, list):
@@ -193,6 +193,7 @@ class Sequential(Model):
     else:
       self._layers.append(layer)
 
+  @checkpointable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
 
@@ -212,6 +213,7 @@ class Sequential(Model):
       self.outputs = [self.layers[-1].output]
       self.build()
 
+  @checkpointable.no_automatic_dependency_tracking
   def build(self, input_shape=None):
     if input_shape and not self.inputs:
       batch_shape = tuple(input_shape)
@@ -222,11 +224,16 @@ class Sequential(Model):
       for layer in self._layers:
         x = layer(x)
       self.outputs = [x]
+      # Make sure that the model's input shape will be preserved during
+      # serialization.
+      if self._layers:
+        self._layers[0]._batch_input_shape = batch_shape
 
     if self.inputs:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
-    self._track_layers(self._layers)
+    if self._layers:
+      self._track_layers(self._layers)
 
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.

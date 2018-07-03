@@ -694,4 +694,17 @@ void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
 ADD_ATTR(bool)
 #undef ADD_ATTR
 
+Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
+                                NodeDef* node_def) {
+  node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
+  if (node_def->op() == "Enter" || node_def->op() == "RefEnter") {
+    string frame_name;
+    TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
+    AttrValue& attr = (*node_def->mutable_attr())["frame_name"];
+    frame_name = strings::StrCat(prefix, frame_name, suffix);
+    attr.set_s(frame_name);
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

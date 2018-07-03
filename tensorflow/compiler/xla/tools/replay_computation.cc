@@ -24,6 +24,9 @@ limitations under the License.
 // passing --use_fake_data on the command line.  If the real data is available
 // in the proto and --use_fake_data is false, the real data is used.
 //
+// Input can be a binary HloSnapshot proto, a binary HloProto proto, or a
+// textual HLO string.
+//
 // The output format is:
 //
 // file_path: computation_name :: type:literal_str
@@ -43,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -170,6 +174,11 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       client->Compile(computation, argument_layouts, ExecutableBuildOptions())
           .ValueOrDie();
 
+  // Do not attmept to run the executable, if num_runs is less than 1.
+  if (opts.num_runs < 1) {
+    return Cancelled("Cancelled after compilation since --num_runs < 1.");
+  }
+
   // Run the computation num_runs times, and return the result from the last
   // execution.
   StreamExecutorMemoryAllocator allocator(
@@ -187,33 +196,50 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << static_cast<double>(profile.compute_time_ns()) / 1e9 << "s";
   }
 
-  // Check that --num_runs > 0, otherwise *result below will fail with an
-  // unhelpful error (because the loop didn't run any iterations).
-  CHECK_GT(opts.num_runs, 0) << "--num_runs must be > 0";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result_literal,
                       client->ShapedBufferToLiteral(*result));
   return std::move(*result_literal);
 }
 
+StatusOr<HloSnapshot> ParseInputFile(const string& filename,
+                                     const Options& opts) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+  HloSnapshot snapshot;
+  if (tensorflow::ReadBinaryProto(env, filename, &snapshot).ok()) {
+    return snapshot;
+  }
+  CHECK(opts.use_fake_data)
+      << "Without --use_fake_data, you must pass an HloSnapshot -- HloProto "
+         "and textual HLO don't carry real data.";
+  fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n",
+          filename.c_str());
+
+  if (tensorflow::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
+    return snapshot;
+  }
+  fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
+  string contents;
+  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
+  StatusOr<std::unique_ptr<HloModule>> module = ParseHloString(contents);
+  if (module.ok()) {
+    *snapshot.mutable_hlo()->mutable_hlo_module() =
+        module.ValueOrDie()->ToProto();
+    return snapshot;
+  }
+  fprintf(stderr, "%s: is not HLO text.  Nothing left to try.\n",
+          filename.c_str());
+  return InvalidArgument("Could not parse %s.", filename.c_str());
+}
+
 int RealMain(tensorflow::gtl::ArraySlice<char*> args, const Options& opts) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
-  tensorflow::Env* env = tensorflow::Env::Default();
   int exit_status = EXIT_SUCCESS;
   for (char* arg : args) {
-    HloSnapshot snapshot;
-    auto status = tensorflow::ReadBinaryProto(env, arg, &snapshot);
-    if (!status.ok()) {
-      fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n", arg);
-      status = tensorflow::ReadBinaryProto(env, arg, snapshot.mutable_hlo());
-      if (!status.ok()) {
-        fprintf(stderr, "%s: is not HloSnapshot or HloProto: %s.\n", arg,
-                status.ToString().c_str());
-        continue;
-      }
-      CHECK(opts.use_fake_data)
-          << "HloProto input must be handled with --use_fake_data";
+    StatusOr<HloSnapshot> maybe_snapshot = ParseInputFile(arg, opts);
+    if (!maybe_snapshot.ok()) {
+      continue;
     }
-
+    HloSnapshot snapshot = std::move(maybe_snapshot).ValueOrDie();
     StatusOr<Literal> result_status = ReplayComputation(snapshot, client, opts);
     if (!result_status.ok()) {
       fprintf(stderr, "%s: error: %s\n", arg,

@@ -157,6 +157,13 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayBool([True, True, False, False])))
     self._ExecuteAndCompareExact(c, expected=[True, True, True, False])
 
+  def testBooleanXor(self):
+    c = self._NewComputation()
+    c.Xor(
+        c.Constant(NumpyArrayBool([True, False, True, False])),
+        c.Constant(NumpyArrayBool([True, True, False, False])))
+    self._ExecuteAndCompareExact(c, expected=[False, True, True, False])
+
   def testSum2DF32(self):
     c = self._NewComputation()
     c.Add(
@@ -365,6 +372,55 @@ class LocalBufferTest(LocalComputationTest):
     with self.assertRaises(ValueError):
       compiled_c.ExecuteWithLocalBuffers([arg_buffer])
 
+  def testDestructureTupleEmpty(self):
+    t = ()
+    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    pieces = local_buffer.destructure()
+    self.assertTrue(local_buffer.is_deleted())
+    self.assertEqual(len(pieces), 0)
+
+  def testDestructureTupleOneArrayElement(self):
+    t = (np.array([1, 2, 3, 4], dtype=np.int32),)
+    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    pieces = local_buffer.destructure()
+    self.assertTrue(local_buffer.is_deleted())
+    self.assertEqual(len(pieces), 1)
+    array = pieces[0]
+    got = array.to_py()
+    want = NumpyArrayS32([1, 2, 3, 4])
+    np.testing.assert_equal(want, got)
+
+  def testDestructureTupleTwoArrayElementDifferentType(self):
+    t = (np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
+         np.array([2, 3, 4, 5], dtype=np.int32))
+    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    pieces = local_buffer.destructure()
+    self.assertTrue(local_buffer.is_deleted())
+    self.assertEqual(len(pieces), 2)
+    array0, array1 = pieces
+    got = array0.to_py()
+    want = NumpyArrayF32([1.0, 2.0, 3.0, 4.0])
+    np.testing.assert_equal(want, got)
+    got = array1.to_py()
+    want = NumpyArrayS32([2, 3, 4, 5])
+    np.testing.assert_equal(want, got)
+
+  def testDestructureTupleNested(self):
+    t = ((NumpyArrayF32([1.0, 2.0]), NumpyArrayS32([3, 4])), NumpyArrayS32([5]))
+    local_buffer = xla_client.LocalBuffer.from_pyval(t)
+    pieces = local_buffer.destructure()
+    self.assertTrue(local_buffer.is_deleted())
+    self.assertEqual(len(pieces), 2)
+    tuple0, array1 = pieces
+    got = array1.to_py()
+    want = NumpyArrayS32([5])
+    np.testing.assert_equal(want, got)
+    got = tuple0.to_py()
+    self.assertEqual(type(got), tuple)
+    self.assertEqual(len(got), 2)
+    np.testing.assert_equal(NumpyArrayF32([1.0, 2.0]), got[0])
+    np.testing.assert_equal(NumpyArrayS32([3, 4]), got[1])
+
 
 class SingleOpTest(LocalComputationTest):
   """Tests for single ops.
@@ -571,6 +627,12 @@ class SingleOpTest(LocalComputationTest):
     c.Exp(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.exp(arr))
 
+  def testExpm1(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Expm1(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.expm1(arr))
+
   def testRound(self):
     c = self._NewComputation()
     arr = NumpyArrayF32([3.3, 12.1])
@@ -582,6 +644,12 @@ class SingleOpTest(LocalComputationTest):
     arr = NumpyArrayF32([3.3, 12.1])
     c.Log(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.log(arr))
+
+  def testLog1p(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Log1p(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.log1p(arr))
 
   def testNeg(self):
     c = self._NewComputation()
@@ -1106,14 +1174,6 @@ class EmbeddedComputationsTest(LocalComputationTest):
            c.Constant(NumpyArrayF64([5.0, 5.0, 4.0, 4.0]))),
           self._CreateBinaryDivF64Computation(), [0])
     self._ExecuteAndCompareClose(c, expected=[0.2, 0.4, 0.75, 1.0])
-
-  def DISABLED_testMapWithStaticOperands(self):
-    c = self._NewComputation()
-    factor = c.ConstantF32Scalar(3.0)
-    c.Map([c.Constant(NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
-          self._CreateMulF32ByParamComputation(), [0],
-          static_operands=[factor])
-    self._ExecuteAndCompareClose(c, expected=[3.0, 6.0, 9.0, 12.0])
 
   def testSelectAndScatterF32(self):
     c = self._NewComputation()

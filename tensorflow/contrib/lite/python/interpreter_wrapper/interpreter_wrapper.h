@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// Place `<locale>` before <Python.h> to avoid build failures in macOS.
 #include <Python.h>
+#include <locale>
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
@@ -56,6 +58,9 @@ class InterpreterWrapper {
   PyObject* TensorQuantization(int i) const;
   bool SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
+  // Returns a reference to tensor index i as a numpy array. The base_object
+  // should be the interpreter object providing the memory.
+  PyObject* tensor(PyObject* base_object, int i);
 
  private:
   InterpreterWrapper(std::unique_ptr<tflite::FlatBufferModel> model);

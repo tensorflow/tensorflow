@@ -917,6 +917,9 @@ class Literal : public LiteralBase {
     return MakeTupleOwned(std::move(v));
   }
 
+  // Create a constant token literal. Token types have no value.
+  static std::unique_ptr<Literal> CreateToken();
+
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
@@ -1099,8 +1102,10 @@ class BorrowingLiteral : public LiteralBase {
   const Piece& root_piece() const override { return root_piece_; };
   Piece root_piece_;
 
-  // Shape of this literal.
-  const Shape shape_;
+  // Shape of this literal. Stored as unique_ptr so such that the (default)
+  // move construction of this class would be trivially correct: the pointer to
+  // Shape root_piece_ stores will still point to the correct address.
+  std::unique_ptr<Shape> shape_;
 };
 
 template <typename NativeT>
@@ -1454,7 +1459,7 @@ void LiteralBase::EachCell(
     std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                        NativeT value)>
         per_cell) const {
-  if (ShapeUtil::HasZeroElements(shape())) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
   std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);

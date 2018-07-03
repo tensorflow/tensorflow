@@ -25,17 +25,12 @@ limitations under the License.
 
 namespace toco {
 
-bool CreateIm2colArrays::Run(Model* model, std::size_t op_index) {
-  auto conv_it = model->operators.begin() + op_index;
-  if (conv_it->get()->type != OperatorType::kConv) {
-    return false;
-  }
-  auto* conv_op = static_cast<ConvOperator*>(conv_it->get());
-  if (conv_op->outputs.size() == 2) {
+bool ProcessConvOperator(Model* model, ConvOperator* op) {
+  if (op->outputs.size() == 2) {
     // We already have an im2col array
     return false;
   }
-  const auto& weights_array = model->GetArray(conv_op->inputs[1]);
+  const auto& weights_array = model->GetArray(op->inputs[1]);
   if (!weights_array.has_shape()) {
     // We need to yield until weights dims have been resolved, because
     // from the weights dims we determine whether an im2col array is
@@ -45,25 +40,52 @@ bool CreateIm2colArrays::Run(Model* model, std::size_t op_index) {
   const auto& weights_shape = weights_array.shape();
   const int kheight = weights_shape.dims(1);
   const int kwidth = weights_shape.dims(2);
-  if (kwidth == 1 && kheight == 1 && conv_op->stride_width == 1 &&
-      conv_op->stride_height == 1) {
-    // 1x1 unstrided conv does not need an im2col array.
+  if (kwidth == 1 && kheight == 1 && op->stride_width == 1 &&
+      op->stride_height == 1 && op->dilation_width_factor == 1 &&
+      op->dilation_height_factor == 1) {
+    // 1x1 unstrided undilated conv does not need an im2col array.
     return false;
   }
 
   // Create the im2col array.
-  CHECK_EQ(conv_op->outputs.size(), 1);
+  CHECK_EQ(op->outputs.size(), 1);
   const string& im2col_array_name =
-      AvailableArrayName(*model, conv_op->inputs[0] + "_im2col");
+      AvailableArrayName(*model, op->inputs[0] + "_im2col");
   model->GetOrCreateArray(im2col_array_name);
-  conv_op->outputs.push_back(im2col_array_name);
-  AddMessageF(
-      "Created an im2col array for %s, with %dx%d kernel and stride_width=%d, "
-      "stride_height=%d",
-      LogName(*conv_op), kwidth, kheight, conv_op->stride_width,
-      conv_op->stride_height);
+  op->outputs.push_back(im2col_array_name);
 
   return true;
+}
+
+bool ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
+  if (op->outputs.size() == 2) {
+    // We already have an im2col array
+    return false;
+  }
+
+  // Always create an im2col array for transpose_conv.
+  CHECK_EQ(op->outputs.size(), 1);
+  const string& im2col_array_name = AvailableArrayName(
+      *model, op->inputs[TransposeConvOperator::DATA_INPUT] + "_im2col");
+  model->GetOrCreateArray(im2col_array_name);
+  op->outputs.push_back(im2col_array_name);
+
+  return true;
+}
+
+bool CreateIm2colArrays::Run(Model* model, std::size_t op_index) {
+  auto it = model->operators.begin() + op_index;
+  auto* op = it->get();
+
+  switch (op->type) {
+    case OperatorType::kConv:
+      return ProcessConvOperator(model, static_cast<ConvOperator*>(op));
+    case OperatorType::kTransposeConv:
+      return ProcessTransposeConvOperator(
+          model, static_cast<TransposeConvOperator*>(op));
+    default:
+      return false;
+  }
 }
 
 }  // namespace toco

@@ -207,12 +207,6 @@ class IteratorResource : public ResourceBase {
     return Status::OK();
   }
 
-
-  std::shared_ptr<StatsAggregator> stats_aggregator() {
-    tf_shared_lock l(mu_);
-    return stats_aggregator_;
-  }
-
   string DebugString() override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
@@ -231,7 +225,6 @@ class IteratorResource : public ResourceBase {
   FunctionLibraryRuntime* lib_ = nullptr;  // not owned.
   std::shared_ptr<IteratorBase> iterator_;
   mutex mu_;
-  std::shared_ptr<StatsAggregator> stats_aggregator_ GUARDED_BY(mu_);
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
@@ -693,30 +686,45 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx,
           dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
           done);
+
+      // NOTE(jsimsa): We must destroy the iterator before calling `done()`, to
+      // avoid destruction races.
+      IteratorBase* raw_iterator = iterator.release();
+      auto cleanup = gtl::MakeCleanup([ctx, raw_iterator, done] {
+        delete raw_iterator;
+        done();
+      });
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
 
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                        errors::InvalidArgument("Dataset was empty."), done);
-
+      Status s =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+      if (!s.ok()) {
+        ctx->SetStatus(s);
+        return;
+      }
+      if (end_of_sequence) {
+        ctx->SetStatus(errors::InvalidArgument("Dataset was empty."));
+        return;
+      }
       for (int i = 0; i < components.size(); ++i) {
         // TODO(mrry): Check that the shapes match the shape attrs.
         ctx->set_output(i, components[i]);
       }
 
       components.clear();
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(
-          ctx, end_of_sequence,
-          errors::InvalidArgument("Dataset had more than one element."), done);
-
-      done();
+      Status s2 =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+      if (!s2.ok()) {
+        ctx->SetStatus(s2);
+        return;
+      }
+      if (!end_of_sequence) {
+        ctx->SetStatus(
+            errors::InvalidArgument("Dataset had more than one element."));
+        return;
+      }
     });
   }
 
@@ -782,11 +790,11 @@ class OneShotIteratorOp : public AsyncOpKernel {
         return;
       }
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
  private:
-  void Init(OpKernelContext* ctx, DoneCallback done) {
+  void Init(OpKernelContext* ctx, const DoneCallback& done) {
     IteratorResource* iterator = nullptr;
     ContainerInfo cinfo;
     Status s = TryInit(ctx, &iterator, &cinfo);
@@ -803,9 +811,9 @@ class OneShotIteratorOp : public AsyncOpKernel {
     }
 
     for (auto&& ctx_done : callbacks_to_run) {
-      ProduceOutput(ctx_done.first, std::move(ctx_done.second));
+      ProduceOutput(ctx_done.first, ctx_done.second);
     }
-    ProduceOutput(ctx, std::move(done));
+    ProduceOutput(ctx, done);
   }
 
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
@@ -944,9 +952,6 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
           IteratorContext::Params params;
           params.env = ctx->env();
-          params.stats_aggregator_getter = [iterator]() {
-            return iterator->stats_aggregator();
-          };
           params.runner = *(ctx->runner());
           params.function_library = iterator->function_library();
           DeviceBase* device = ctx->function_library()->device();
@@ -995,9 +1000,6 @@ class IteratorGetNextSyncOp : public OpKernel {
 
     IteratorContext::Params params;
     params.env = ctx->env();
-    params.stats_aggregator_getter = [iterator]() {
-      return iterator->stats_aggregator();
-    };
     params.runner = *(ctx->runner());
     params.function_library = iterator->function_library();
     DeviceBase* device = ctx->function_library()->device();

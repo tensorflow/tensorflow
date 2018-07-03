@@ -318,8 +318,9 @@ TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
   auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
 
   BuildModuleAndRunAnalysis(builder.Build());
@@ -342,8 +343,9 @@ TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
 TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
   // RecvDone forwards its operand tuple element at {0} to the output.
   auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
-      ShapeUtil::MakeShape(F32, {1, 2, 3}), /*channel_id=*/0));
+      ShapeUtil::MakeShape(F32, {1, 2, 3}), token, /*channel_id=*/0));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
 
   BuildModuleAndRunAnalysis(builder.Build());
@@ -1146,6 +1148,31 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
 
   EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(reverse, {},
                                                                  call, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, LoopFusionWithElementwiseOperand) {
+  Shape full_shape = ShapeUtil::MakeShape(F32, {16, 32});
+  Shape broadcast_shape = ShapeUtil::MakeShape(F32, {16});
+
+  auto builder = HloComputation::Builder(TestName() + "_fusion");
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, full_shape, "full"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, broadcast_shape, "small"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(full_shape, param1, {0}));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      full_shape, HloOpcode::kAdd, param0, broadcast));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, broadcast}, HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                 fusion, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                  fusion, {}));
 }
 
 }  // namespace

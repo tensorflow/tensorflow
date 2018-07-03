@@ -63,7 +63,8 @@ TEST(uKernels, SymmetricQuantizeFloatsTest) {
 
   EXPECT_EQ(min, -640);
   EXPECT_EQ(max, 1000);
-  EXPECT_NEAR(scaling_factor, 0.127, 1e-6);  // EQ won't work due to fpoint.
+  // EQ won't work due to fpoint.
+  EXPECT_NEAR(scaling_factor, 1000 / 127.0, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-81, -81, -80, 1, 0, -1, -1, 0, 127}));
 }
@@ -95,7 +96,7 @@ TEST(uKernels, SymmetricQuantizeFloatsAllAlmostZeroTest) {
 
   EXPECT_NEAR(min, -9e-05, 1e-6);
   EXPECT_NEAR(max, 0.0002, 1e-6);
-  EXPECT_EQ(scaling_factor, 635000);
+  EXPECT_NEAR(scaling_factor, 1.57e-6, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-6, 19, -4, -57, 1, 25, 6, 127, 0}));
 }

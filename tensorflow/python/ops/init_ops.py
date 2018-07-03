@@ -43,7 +43,8 @@ from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import (
+    deprecated, deprecated_arg_values)
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -409,8 +410,10 @@ class UniformUnitScaling(Initializer):
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
-  With `distribution="normal"`, samples are drawn from a truncated normal
-  distribution centered on zero, with `stddev = sqrt(scale / n)`
+  With `distribution="truncated_normal" or "untruncated_normal"`,
+  samples are drawn from a truncated/untruncated normal
+  distribution with a mean of zero and a standard deviation (after truncation,
+  if used) `stddev = sqrt(scale / n)`
   where n is:
     - number of input units in the weight tensor, if mode = "fan_in"
     - number of output units, if mode = "fan_out"
@@ -433,10 +436,14 @@ class VarianceScaling(Initializer):
       "distribution" arguments.
   """
 
+  @deprecated_arg_values(
+      None,
+      "`normal` is a deprecated alias for `truncated_normal`",
+      distribution="normal")
   def __init__(self,
                scale=1.0,
                mode="fan_in",
-               distribution="normal",
+               distribution="truncated_normal",
                seed=None,
                dtype=dtypes.float32):
     if scale <= 0.:
@@ -444,7 +451,8 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
-    if distribution not in {"normal", "uniform"}:
+    if distribution not in {"normal", "uniform",
+                            "truncated_normal", "untruncated_normal"}:
       raise ValueError("Invalid `distribution` argument:", distribution)
     self.scale = scale
     self.mode = mode
@@ -466,10 +474,14 @@ class VarianceScaling(Initializer):
       scale /= max(1., fan_out)
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
-    if self.distribution == "normal":
+    if self.distribution == "normal" or self.distribution == "truncated_normal":
       # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
+          shape, 0.0, stddev, dtype, seed=self.seed)
+    elif self.distribution == "untruncated_normal":
+      stddev = math.sqrt(scale)
+      return random_ops.random_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     else:
       limit = math.sqrt(3.0 * scale)
@@ -551,7 +563,9 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
   The shape of the tensor must have length 3, 4 or 5. The number of input
   filters must not exceed the number of output filters. The center pixels of the
-  tensor form an orthogonal matrix. Other pixels are set to be zero.
+  tensor form an orthogonal matrix. Other pixels are set to be zero. See
+  algorithm 2 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
+
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
@@ -672,6 +686,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
@@ -807,6 +822,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
@@ -923,6 +939,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
   filters must not exceed the number of output filters.
   The orthogonality(==isometry) is exact when the inputs are circular padded.
   There are finite-width effects with non-circular padding (e.g. zero padding).
+  See algorithm 1 [Xiao et al., 2018] in: https://arxiv.org/abs/1806.05393
 
   Args:
     gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.

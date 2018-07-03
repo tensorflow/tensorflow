@@ -31,11 +31,19 @@ REGISTER_OP("SymbolicGradient")
       if (c->num_inputs() < c->num_outputs()) {
         return errors::InvalidArgument("len(inputs) < len(outputs)");
       }
+      std::vector<DataType> types;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tin", &types));
       // Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
       // (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
       // outputs (dx, dy, dz) are the same as (x, y, z).
       for (int i = 0; i < c->num_outputs(); ++i) {
-        c->set_output(i, c->input(i));
+        if (types[i] == DT_RESOURCE) {
+          const std::vector<shape_inference::ShapeAndType>* handle_type =
+              c->input_handle_shapes_and_types(i);
+          c->set_output(i, handle_type->at(0).shape);
+        } else {
+          c->set_output(i, c->input(i));
+        }
       }
       return Status::OK();
     });
@@ -82,7 +90,7 @@ REGISTER_OP("If")
     .Input("input: Tin")
     .Output("output: Tout")
     .Attr("Tcond: type")
-    .Attr("Tin: list(type)")
+    .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type)")
     .Attr("then_branch: func")
     .Attr("else_branch: func")

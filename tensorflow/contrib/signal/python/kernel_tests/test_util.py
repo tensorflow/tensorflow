@@ -39,6 +39,7 @@ def grappler_optimize(graph, fetches=None, rewriter_config=None):
   """
   if rewriter_config is None:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
+    rewriter_config.min_graph_nodes = -1
   if fetches is not None:
     for fetch in fetches:
       graph.add_to_collection('train_op', fetch)

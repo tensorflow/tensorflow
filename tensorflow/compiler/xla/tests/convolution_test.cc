@@ -47,9 +47,9 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
   // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-2);
+  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-4);
 #else
-  ErrorSpec error_spec_ = ErrorSpec(1e-4);
+  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-4);
 #endif
 };
 
@@ -89,9 +89,9 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     ASSERT_EQ(2, arhs->height());
 
     XlaBuilder builder(TestName());
-    auto lhs = builder.ConstantR4FromArray4D<T>(*alhs);
-    auto rhs = builder.ConstantR4FromArray4D<T>(*arhs);
-    builder.Conv(lhs, rhs, {1, 1}, Padding::kValid);
+    auto lhs = ConstantR4FromArray4D<T>(&builder, *alhs);
+    auto rhs = ConstantR4FromArray4D<T>(&builder, *arhs);
+    Conv(lhs, rhs, {1, 1}, Padding::kValid);
 
     ComputeAndCompare(&builder, {}, error_spec_);
   }
@@ -109,9 +109,9 @@ class Convolve_1x1x1x2_1x1x1x2_Valid : public ConvolutionTest {
     XlaBuilder builder(TestName());
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 1, 2});
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 1, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kValid);
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    Conv(input, filter, {1, 1}, Padding::kValid);
 
     Array4D<T> input_data(1, 1, 1, 2);
     input_data.FillWithYX(Array2D<T>({
@@ -140,9 +140,9 @@ class Convolve_1x1x4x4_1x1x2x2_Valid : public ConvolutionTest {
     XlaBuilder builder(TestName());
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kValid);
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    Conv(input, filter, {1, 1}, Padding::kValid);
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({
@@ -174,9 +174,9 @@ class Convolve_1x1x4x4_1x1x2x2_Same : public ConvolutionTest {
     XlaBuilder builder(TestName());
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kSame);
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    Conv(input, filter, {1, 1}, Padding::kSame);
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({
@@ -210,9 +210,9 @@ class Convolve_1x1x4x4_1x1x3x3_Same : public ConvolutionTest {
     XlaBuilder builder(TestName());
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 4, 4});
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 1, 3, 3});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1, 1}, Padding::kSame);
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    Conv(input, filter, {1, 1}, Padding::kSame);
 
     Array4D<T> input_data(1, 1, 4, 4);
     input_data.FillWithYX(Array2D<T>({{1.0f, 2.0f, 3.0f, 4.0f},
@@ -238,9 +238,9 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
-    builder.Conv(input, filter, {1}, Padding::kValid);
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
+    Conv(input, filter, {1}, Padding::kValid);
   }
 
   Array3D<float> input({{{1, 2, 3, 4, 5}, {6, 7, 8, 9, 10}}});
@@ -268,10 +268,10 @@ class Convolve1D_1x2x5_1x2x2_WithRHSDilation : public ConvolutionTest {
     {
       Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
       Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
-      auto input = builder.Parameter(0, input_shape, "input");
-      auto filter = builder.Parameter(1, filter_shape, "filter");
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
       // Convolution dimensions are bf0_oi0->bo0.
-      builder.ConvGeneralDilated(
+      ConvGeneralDilated(
           input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
           /*lhs_dilation=*/{1}, /*rhs_dilation=*/{2},
           /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
@@ -304,10 +304,10 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSDilation) {
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bo0.
-    builder.ConvGeneralDilated(
+    ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{1},
         /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
@@ -335,10 +335,10 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
   {
     Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
     Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bo0.
-    builder.ConvGeneralDilated(
+    ConvGeneralDilated(
         input, filter, /*window_strides=*/{1}, /*padding=*/{{0, 0}},
         /*lhs_dilation=*/{2}, /*rhs_dilation=*/{2},
         /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
@@ -369,10 +369,10 @@ class Convolve1D_1x2x5_1x2x2_WithPadding : public ConvolutionTest {
     {
       Shape input_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 5});
       Shape filter_shape = ShapeUtil::MakeShapeWithType<T>({1, 2, 2});
-      auto input = builder.Parameter(0, input_shape, "input");
-      auto filter = builder.Parameter(1, filter_shape, "filter");
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
       // Convolution dimensions are bf0_oi0->bo0.
-      builder.ConvGeneralDilated(
+      ConvGeneralDilated(
           input, filter, /*window_strides=*/{1}, /*padding=*/{{2, 2}},
           /*lhs_dilation=*/{1}, /*rhs_dilation=*/{1},
           /*dimension_numbers=*/builder.CreateDefaultConvDimensionNumbers(1));
@@ -408,8 +408,8 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
   Shape filter_shape = ShapeUtil::MakeShape(F32, filter_dims);
   {
-    auto input = builder.Parameter(0, input_shape, "input");
-    auto filter = builder.Parameter(1, filter_shape, "filter");
+    auto input = Parameter(&builder, 0, input_shape, "input");
+    auto filter = Parameter(&builder, 1, filter_shape, "filter");
 
     // Tensorflow dimension numbers for 3D convolution.
     ConvolutionDimensionNumbers dnums;
@@ -429,8 +429,7 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
     dnums.set_kernel_input_feature_dimension(3);
     dnums.set_kernel_output_feature_dimension(4);
 
-    builder.ConvWithGeneralDimensions(input, filter, {1, 1, 1}, Padding::kValid,
-                                      dnums);
+    ConvWithGeneralDimensions(input, filter, {1, 1, 1}, Padding::kValid, dnums);
   }
 
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
@@ -475,8 +474,8 @@ class Convolve2D_1x3x3x5_3x3x5x5_Valid : public ConvolutionTest {
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
-      auto input = builder.Parameter(0, input_shape, "input");
-      auto filter = builder.Parameter(1, filter_shape, "filter");
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
 
       // Tensorflow dimension numbers for 2D convolution.
       ConvolutionDimensionNumbers dnums;
@@ -493,8 +492,7 @@ class Convolve2D_1x3x3x5_3x3x5x5_Valid : public ConvolutionTest {
       dnums.set_kernel_input_feature_dimension(2);
       dnums.set_kernel_output_feature_dimension(3);
 
-      builder.ConvWithGeneralDimensions(input, filter, {1, 1}, Padding::kValid,
-                                        dnums);
+      ConvWithGeneralDimensions(input, filter, {1, 1}, Padding::kValid, dnums);
     }
 
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
@@ -541,8 +539,8 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
   Shape input_shape = ShapeUtil::MakeShape(F32, {4, 29});
   Shape filter_shape = ShapeUtil::MakeShape(F32, {4, 10});
 
-  auto input = builder.Parameter(0, input_shape, "input");
-  auto filter = builder.Parameter(1, filter_shape, "filter");
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto filter = Parameter(&builder, 1, filter_shape, "filter");
 
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_feature_dimension(0);
@@ -551,7 +549,7 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
   dnums.set_kernel_output_feature_dimension(1);
   dnums.set_output_batch_dimension(0);
   dnums.set_output_feature_dimension(1);
-  builder.ConvWithGeneralDimensions(input, filter, {}, Padding::kValid, dnums);
+  ConvWithGeneralDimensions(input, filter, {}, Padding::kValid, dnums);
 
   Array2D<float> param0(4, 29);
   param0.FillUnique();
@@ -599,8 +597,8 @@ class Convolve1D1WindowTestBase
     Shape input_shape = ShapeUtil::MakeShapeWithType<T>(input_dims);
     Shape filter_shape = ShapeUtil::MakeShapeWithType<T>(filter_dims);
     {
-      auto input = builder.Parameter(0, input_shape, "input");
-      auto filter = builder.Parameter(1, filter_shape, "filter");
+      auto input = Parameter(&builder, 0, input_shape, "input");
+      auto filter = Parameter(&builder, 1, filter_shape, "filter");
 
       // Tensorflow dimension numbers for 1D convolution.
       ConvolutionDimensionNumbers dnums;
@@ -614,8 +612,7 @@ class Convolve1D1WindowTestBase
       dnums.set_kernel_input_feature_dimension(1);
       dnums.set_kernel_output_feature_dimension(2);
 
-      builder.ConvWithGeneralDimensions(input, filter, {1}, Padding::kValid,
-                                        dnums);
+      ConvWithGeneralDimensions(input, filter, {1}, Padding::kValid, dnums);
     }
 
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
@@ -726,9 +723,9 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
   Shape filter_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
-  auto input = builder.Parameter(0, input_shape, "input");
-  auto filter = builder.Parameter(1, filter_shape, "filter");
-  builder.Conv(input, filter, {1, 1}, Padding::kValid);
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto filter = Parameter(&builder, 1, filter_shape, "filter");
+  Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<bfloat16> input_data(1, 1, 1, 2);
   input_data.FillWithYX(Array2D<bfloat16>({
@@ -754,9 +751,9 @@ XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
-  auto input = builder.Parameter(0, input_shape, "input");
-  auto filter = builder.Parameter(1, filter_shape, "filter");
-  builder.Conv(input, filter, {1, 1}, Padding::kValid);
+  auto input = Parameter(&builder, 0, input_shape, "input");
+  auto filter = Parameter(&builder, 1, filter_shape, "filter");
+  Conv(input, filter, {1, 1}, Padding::kValid);
 
   Array4D<float> input_data(1, 1, 1, 2);
   input_data.FillIota(0);

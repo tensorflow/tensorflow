@@ -201,7 +201,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
         }
       }
       if (optimizable) {
-        VLOG(1)<< "Optimizing fused batch norm node " << node.DebugString();
+        VLOG(1) << "Optimizing fused batch norm node " << node.DebugString();
         AddBatchNormNodes(optimized_graph, node);
         continue;
       }

@@ -138,8 +138,8 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_values);
-    builder.DynamicSlice(input, starts, slice_sizes);
+    auto input = ConstantLiteral(&builder, input_values);
+    DynamicSlice(input, starts, slice_sizes);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_values, {start_data.get()});
   }
@@ -164,8 +164,8 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_values);
-    builder.DynamicSlice(input, starts, slice_sizes);
+    auto input = ConstantLiteral(&builder, input_values);
+    DynamicSlice(input, starts, slice_sizes);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_values, {start_data.get()});
   }
@@ -190,8 +190,8 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_values);
-    builder.DynamicSlice(input, starts, slice_sizes);
+    auto input = ConstantLiteral(&builder, input_values);
+    DynamicSlice(input, starts, slice_sizes);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_values, {start_data.get()});
   }
@@ -367,9 +367,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_value);
-    auto update = builder.ConstantLiteral(update_value);
-    builder.DynamicUpdateSlice(input, update, starts);
+    auto input = ConstantLiteral(&builder, input_value);
+    auto update = ConstantLiteral(&builder, update_value);
+    DynamicUpdateSlice(input, update, starts);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_value, {start_data.get()});
   }
@@ -398,9 +398,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_values);
-    auto update = builder.ConstantLiteral(update_values);
-    builder.DynamicUpdateSlice(input, update, starts);
+    auto input = ConstantLiteral(&builder, input_values);
+    auto update = ConstantLiteral(&builder, update_values);
+    DynamicUpdateSlice(input, update, starts);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_values, {start_data.get()});
   }
@@ -429,9 +429,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_values);
-    auto update = builder.ConstantLiteral(update_values);
-    builder.DynamicUpdateSlice(input, update, starts);
+    auto input = ConstantLiteral(&builder, input_values);
+    auto update = ConstantLiteral(&builder, update_values);
+    DynamicUpdateSlice(input, update, starts);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_values, {start_data.get()});
   }
@@ -460,9 +460,9 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> start_data = CreateR1Parameter<IndexT>(
         slice_starts, 0, "slice_starts", &builder, &starts);
     // Build dynamic slice computation.
-    auto input = builder.ConstantLiteral(input_values);
-    auto update = builder.ConstantLiteral(update_values);
-    builder.DynamicUpdateSlice(input, update, starts);
+    auto input = ConstantLiteral(&builder, input_values);
+    auto update = ConstantLiteral(&builder, update_values);
+    DynamicUpdateSlice(input, update, starts);
     // Run computation and compare against expected values.
     ComputeAndCompareLiteral(&builder, expected_values, {start_data.get()});
   }
@@ -508,8 +508,8 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     XlaOp update;
     std::unique_ptr<GlobalData> update_data = CreateR3Parameter<T>(
         update_values, 1, "update_values", &builder, &update);
-    auto starts = builder.ConstantR1<int32>({index, 0, 0});
-    builder.DynamicUpdateSlice(input, update, starts);
+    auto starts = ConstantR1<int32>(&builder, {index, 0, 0});
+    DynamicUpdateSlice(input, update, starts);
 
     // Run computation and compare against expected values.
     ComputeAndCompareR3<T>(&builder, expected_values,
@@ -698,14 +698,14 @@ void BM_DynamicSlice(int num_iters) {
   auto input_literal = Literal::CreateR4(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
-  auto input = builder.ConstantLiteral(*input_literal);
+  auto input = ConstantLiteral(&builder, *input_literal);
 
   // Create dynamic slice start indices as a parameter: shape [4]
   auto start_indices_shape = ShapeUtil::MakeShape(S32, {4});
   auto start_indices =
-      builder.Parameter(0, start_indices_shape, "start_indices");
+      Parameter(&builder, 0, start_indices_shape, "start_indices");
   // Add DynamicSlice op to the computatation.
-  builder.DynamicSlice(input, start_indices, {1, 1, 1, 1});
+  DynamicSlice(input, start_indices, {1, 1, 1, 1});
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Initialize and transfer parameter buffer.
@@ -716,8 +716,10 @@ void BM_DynamicSlice(int num_iters) {
                     .ConsumeValueOrDie();
 
   auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
+  auto stream =
+      client->mutable_backend()->BorrowStream(device_ordinal).ValueOrDie();
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
-      executors[device_ordinal], *start_indices_literal, buffer));
+      stream.get(), *start_indices_literal, buffer));
 
   std::unique_ptr<LocalExecutable> executable =
       client

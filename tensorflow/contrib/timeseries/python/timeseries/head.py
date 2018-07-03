@@ -132,7 +132,8 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         loss=model_outputs.loss,
         mode=mode,
         eval_metric_ops=metrics,
-        predictions={})
+        # needed for custom metrics.
+        predictions=model_outputs.predictions)
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
@@ -210,12 +211,12 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope(self._name, "head"):
-      if labels:
+      if labels is not None and labels != {}:  # for better error messages.
         raise ValueError(
-            "The model received a `labels` dictionary, which is "
-            "not supported. Pass '{}' and '{}' as "
-            "features.".format(feature_keys.TrainEvalFeatures.TIMES,
-                               feature_keys.TrainEvalFeatures.VALUES))
+            "The model received a `labels`, which is not supported. "
+            "Pass '{}' and '{}' as features.".format(
+                feature_keys.TrainEvalFeatures.TIMES,
+                feature_keys.TrainEvalFeatures.VALUES))
       del labels
       features = {
           name: self._convert_feature_to_tensor(name=name, value=value)

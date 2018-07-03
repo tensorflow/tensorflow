@@ -148,6 +148,12 @@ def if_windows(a):
       "//conditions:default": [],
   })
 
+def if_not_windows_cuda(a):
+  return select({
+      clean_dep("//tensorflow:with_cuda_support_windows_override"): [],
+      "//conditions:default": a,
+  })
+
 def if_linux_x86_64(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
@@ -240,6 +246,9 @@ def tf_opts_nortti_if_android():
   ])
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
+
+def tf_features_nomodules_if_android():
+  return if_android(["-use_header_modules"])
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
@@ -919,6 +928,7 @@ def tf_gpu_kernel_library(srcs,
                           hdrs=[],
                           **kwargs):
   copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
   native.cc_library(
       srcs=srcs,
@@ -959,6 +969,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
@@ -1301,6 +1312,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
         name=basename + "_gpu",
         srcs=gpu_srcs,
         copts=_cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+        features = if_cuda(["-use_header_modules"]),
         deps=deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 

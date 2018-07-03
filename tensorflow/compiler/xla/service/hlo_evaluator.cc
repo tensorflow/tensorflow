@@ -300,12 +300,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateWithSubstitutions(
       instruction->CloneWithNewOperands(instruction->shape(), operands);
   auto result = Evaluate(cloned_instruction.get());
 
-  // Clean up our cloned instructions before returning.
-  cloned_instruction->DetachFromOperands();
-  for (auto& operand : owned_operands) {
-    operand->DetachFromOperands();
-  }
-
   return result;
 }
 
@@ -321,7 +315,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseBinaryOp(
                                    rhs_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
-  cloned_instruction->DetachFromOperands();
   return result;
 }
 
@@ -334,7 +327,6 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
       HloInstruction::CreateUnary(operand.shape(), opcode, operand_instr.get());
   auto result = Evaluate(cloned_instruction.get());
 
-  cloned_instruction->DetachFromOperands();
   return result;
 }
 
@@ -372,7 +364,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
-  CHECK(!ShapeUtil::IsTuple(reference_shape));
+  CHECK(ShapeUtil::IsArray(reference_shape));
   const int64 rank = ShapeUtil::Rank(reference_shape);
   const int64 concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
@@ -383,7 +375,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (int64 i = 1; i < operands.size(); ++i) {
     const Shape& operand_shape = operands[i]->shape();
-    CHECK(!ShapeUtil::IsTuple(operand_shape));
+    CHECK(ShapeUtil::IsArray(operand_shape));
     // Accumulate the concat dimension from all tensors taking part to the
     // operation.
     concat_dimensions[concat_dim] +=
@@ -910,6 +902,11 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleAfterAll(HloInstruction* token) {
+  evaluated_[token] = Literal::CreateToken();
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   const auto result_shape = get_tuple_element->shape();
   const int64 index = get_tuple_element->tuple_index();
@@ -1069,6 +1066,19 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   }
   evaluated_[while_hlo] = std::move(lcv);
   return Status::OK();
+}
+
+Status HloEvaluator::HandleSort(HloInstruction* sort) {
+  if (!ShapeUtil::IsTuple(sort->shape())) {
+    return DefaultAction(sort);
+  }
+  // The key-value version of Sort is a special snowflake, since the output
+  // shape is a tuple, so its element type is not meaningful.
+  //
+  // TODO(mkuper): Do something sane here, so that we can support different key
+  // and value types.
+  return sort->Visit(
+      typed_visitors_.at(sort->operand(0)->shape().element_type()).get());
 }
 
 Status HloEvaluator::Preprocess(HloInstruction* hlo) {

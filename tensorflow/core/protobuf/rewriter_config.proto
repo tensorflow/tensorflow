@@ -80,6 +80,12 @@ message RewriterConfig {
   // is once).
   NumIterationsType meta_optimizer_iterations = 12;
 
+  // The minimum number of nodes in a graph to optimizer. For smaller graphs,
+  // optimization is skipped.
+  // 0 means the system picks an appropriate number.
+  // < 0 means do not skip optimization.
+  int32 min_graph_nodes = 17;
+
   enum MemOptType {
     // The default setting (SCHEDULING and SWAPPING HEURISTICS only)
     DEFAULT_MEM_OPT = 0;

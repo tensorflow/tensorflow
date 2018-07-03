@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "QuantizedConcat"
+  endpoint {
+    name: "quantization.quantized_concat"
+  }
+  endpoint {
+    name: "quantized_concat"
+    deprecation_message: "tf.quantized_concat is deprecated, please use tf.quantization.quantized_concat instead."
+  }
+}

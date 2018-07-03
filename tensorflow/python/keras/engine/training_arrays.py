@@ -124,6 +124,12 @@ def fit_loop(model,
     callback_metrics = copy.copy(out_labels) + [
         'val_' + n for n in out_labels
     ]
+    if callbacks is not None and any(
+        [isinstance(callback, cbks.TensorBoard) for callback in callbacks]):
+      # need to create the test_function before start of the first epoch
+      # because TensorBoard callback on_epoch_begin adds summary to the
+      # list of fetches of the test_function
+      model._make_test_function()
   else:
     callback_metrics = copy.copy(out_labels)
 
@@ -185,6 +191,7 @@ def fit_loop(model,
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     if steps_per_epoch is not None:
+      # Step-wise fit loop.
       for step_index in range(steps_per_epoch):
         batch_logs = {}
         batch_logs['batch'] = step_index
@@ -215,7 +222,6 @@ def fit_loop(model,
             val_inputs,
             val_targets,
             sample_weights=val_sample_weights,
-            batch_size=batch_size,
             steps=validation_steps,
             verbose=0)
         if not isinstance(val_outs, list):
@@ -224,6 +230,7 @@ def fit_loop(model,
         for l, o in zip(out_labels, val_outs):
           epoch_logs['val_' + l] = o
     else:
+      # Sample-wise fit loop.
       if shuffle == 'batch':
         index_array = training_utils.batch_shuffle(index_array, batch_size)
       elif shuffle:

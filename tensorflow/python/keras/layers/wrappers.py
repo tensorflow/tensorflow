@@ -23,8 +23,8 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -45,7 +45,9 @@ class Wrapper(Layer):
   """
 
   def __init__(self, layer, **kwargs):
+    assert isinstance(layer, Layer)
     self.layer = layer
+    self._track_checkpointable(layer, name='layer')
     # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
     # the inner layer has update ops that depend on its inputs (as opposed
     # to the inputs to the Wrapper layer).
@@ -154,9 +156,16 @@ class TimeDistributed(Wrapper):
 
   Arguments:
       layer: a layer instance.
+
+  Raises:
+      ValueError: If not initialized with a `Layer` instance.
   """
 
   def __init__(self, layer, **kwargs):
+    if not isinstance(layer, Layer):
+      raise ValueError(
+          'Please initialize `TimeDistributed` layer with a '
+          '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
 
@@ -166,7 +175,10 @@ class TimeDistributed(Wrapper):
     self.input_spec = InputSpec(shape=input_shape)
     child_input_shape = [input_shape[0]] + input_shape[2:]
     if not self.layer.built:
-      self.layer.build(child_input_shape)
+      # The base layer class calls a conversion function on the input shape to
+      # convert it to a TensorShape. The conversion function requires a
+      # tuple which is why we cast the shape.
+      self.layer.build(tuple(child_input_shape))
       self.layer.built = True
     super(TimeDistributed, self).build()
     self.built = True
@@ -249,7 +261,8 @@ class Bidirectional(Wrapper):
           they will be returned as a list.
 
   Raises:
-      ValueError: In case of invalid `merge_mode` argument.
+      ValueError: If not initialized with a `Layer` instance or
+          In case of invalid `merge_mode` argument.
 
   Examples:
 
@@ -265,6 +278,10 @@ class Bidirectional(Wrapper):
   """
 
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
+    if not isinstance(layer, Layer):
+      raise ValueError(
+          'Please initialize `Bidirectional` layer with a '
+          '`Layer` instance. You passed: {input}'.format(input=layer))
     if merge_mode not in ['sum', 'mul', 'ave', 'concat', None]:
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '

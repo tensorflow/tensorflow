@@ -45,7 +45,8 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
 
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -123,8 +124,8 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'It needs to match one '
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
-      tensors = [_convert_tensor(estimator_io[io_name])
-                 for io_name in keras_io_names]
+    tensors = [_convert_tensor(estimator_io[io_name])
+               for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.
@@ -242,8 +243,17 @@ def _in_place_subclassed_model_state_restoration(model):
   # Restore layers and build attributes
   if (hasattr(model, '_original_attributes_cache') and
       model._original_attributes_cache is not None):
-    model._layers = []
+    # Models have sticky attribute assignment, so we want to be careful to add
+    # back the previous attributes and track Layers by their original names
+    # without adding dependencies on "utility" attributes which Models exempt
+    # when they're constructed.
+    model._layers = data_structures.NoDependency([])
     for name, value in model._original_attributes_cache.items():
+      if not isinstance(value, checkpointable.CheckpointableBase):
+        # If this value is not already checkpointable, it's probably that way
+        # for a reason; we don't want to start tracking data structures that the
+        # original Model didn't.
+        value = data_structures.NoDependency(value)
       setattr(model, name, value)
     model._original_attributes_cache = None
   else:
@@ -446,7 +456,6 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
         saver.save(sess, os.path.join(estimator.model_dir, 'keras_model.ckpt'))
 
 
-@tf_export('keras.estimator.model_to_estimator')
 def model_to_estimator(keras_model=None,
                        keras_model_path=None,
                        custom_objects=None,
@@ -455,7 +464,7 @@ def model_to_estimator(keras_model=None,
   """Constructs an `Estimator` instance from given keras model.
 
   For usage example, please see
-  @{$programmers_guide/estimators$creating_estimators_from_keras_models}.
+  @{$guide/estimators$creating_estimators_from_keras_models}.
 
   Args:
     keras_model: A compiled Keras model object. This argument is mutually

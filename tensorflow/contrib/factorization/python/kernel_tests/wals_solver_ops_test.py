@@ -55,7 +55,41 @@ class WalsSolverOpsTest(test.TestCase):
        rhs_matrix] = gen_factorization_ops.wals_compute_partial_lhs_and_rhs(
            self._column_factors, self._column_weights, self._unobserved_weights,
            self._row_weights, sparse_block.indices, sparse_block.values,
-           sparse_block.dense_shape[0], False)
+           [],
+           input_block_size=sparse_block.dense_shape[0],
+           input_is_transpose=False)
+      self.assertAllClose(lhs_tensor.eval(), [[
+          [0.014800, 0.017000, 0.019200],
+          [0.017000, 0.019600, 0.022200],
+          [0.019200, 0.022200, 0.025200],
+      ], [
+          [0.0064000, 0.0080000, 0.0096000],
+          [0.0080000, 0.0100000, 0.0120000],
+          [0.0096000, 0.0120000, 0.0144000],
+      ], [
+          [0.0099000, 0.0126000, 0.0153000],
+          [0.0126000, 0.0162000, 0.0198000],
+          [0.0153000, 0.0198000, 0.0243000],
+      ], [
+          [0.058800, 0.067200, 0.075600],
+          [0.067200, 0.076800, 0.086400],
+          [0.075600, 0.086400, 0.097200],
+      ]])
+      self.assertAllClose(rhs_matrix.eval(), [[0.019300, 0.023000, 0.026700],
+                                              [0.061600, 0.077000, 0.092400],
+                                              [0.160400, 0.220000, 0.279600],
+                                              [0.492800, 0.563200, 0.633600]])
+
+  def testWalsSolverLhsEntryWeights(self):
+    sparse_block = SparseBlock3x3()
+    with self.test_session():
+      [lhs_tensor,
+       rhs_matrix] = gen_factorization_ops.wals_compute_partial_lhs_and_rhs(
+           self._column_factors, [], self._unobserved_weights,
+           [], sparse_block.indices, sparse_block.values,
+           [0.01, 0.03, 0.04, 0.03, 0.06, 0.12],
+           input_block_size=sparse_block.dense_shape[0],
+           input_is_transpose=False)
       self.assertAllClose(lhs_tensor.eval(), [[
           [0.014800, 0.017000, 0.019200],
           [0.017000, 0.019600, 0.022200],

@@ -48,7 +48,7 @@ bool ParseModelFlagsFromCommandLineFlags(
            "that information from the input file."),
       Flag("input_arrays", parsed_flags.input_arrays.bind(),
            parsed_flags.input_arrays.default_value(),
-           "Names of the output arrays, comma-separated. If not specified, "
+           "Names of the input arrays, comma-separated. If not specified, "
            "will try to read that information from the input file."),
       Flag("output_array", parsed_flags.output_array.bind(),
            parsed_flags.output_array.default_value(),
@@ -74,10 +74,10 @@ bool ParseModelFlagsFromCommandLineFlags(
            "height, input array width, input array depth."),
       Flag("batch_size", parsed_flags.batch_size.bind(),
            parsed_flags.batch_size.default_value(),
-           "Batch size for the model. Replaces the first dimension of an "
-           "input size array if undefined. Use only with SavedModels when "
-           "--input_shapes flag is not specified. Always use --input_shapes "
-           "flag with frozen graphs."),
+           "Deprecated. Batch size for the model. Replaces the first dimension "
+           "of an input size array if undefined. Use only with SavedModels "
+           "when --input_shapes flag is not specified. Always use "
+           "--input_shapes flag with frozen graphs."),
       Flag("input_data_type", parsed_flags.input_data_type.bind(),
            parsed_flags.input_data_type.default_value(),
            "Deprecated: use --input_data_types instead. Input array type, if "

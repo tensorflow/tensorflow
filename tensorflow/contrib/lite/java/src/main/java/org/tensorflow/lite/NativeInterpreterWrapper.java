@@ -311,7 +311,29 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return DataType.fromNumber(type).toStringName();
   }
 
+  /**
+   * Gets the quantization zero point of an output.
+   *
+   * @throws IllegalArgumentExeption if the output index is invalid.
+   */
+  int getOutputQuantizationZeroPoint(int index) {
+    return getOutputQuantizationZeroPoint(interpreterHandle, index);
+  }
+
+  /**
+   * Gets the quantization scale of an output.
+   *
+   * @throws IllegalArgumentExeption if the output index is invalid.
+   */
+  float getOutputQuantizationScale(int index) {
+    return getOutputQuantizationScale(interpreterHandle, index);
+  }
+
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
+
+  private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
+
+  private static native float getOutputQuantizationScale(long interpreterHandle, int outputIdx);
 
   private static final int ERROR_BUFFER_SIZE = 512;
 

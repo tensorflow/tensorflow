@@ -116,6 +116,7 @@ class Layer(checkpointable.CheckpointableBase):
       constraints on inputs that can be accepted by the layer.
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, **kwargs):
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
@@ -217,7 +218,7 @@ class Layer(checkpointable.CheckpointableBase):
   @activity_regularizer.setter
   def activity_regularizer(self, regularizer):
     """Optional regularizer function for the output of this layer."""
-    self._activity_regularizer = regularizer
+    self._activity_regularizer = self._no_dependency(regularizer)
 
   @property
   def trainable_weights(self):
@@ -658,7 +659,8 @@ class Layer(checkpointable.CheckpointableBase):
         self._compute_previous_mask):
       previous_mask = collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = function_utils.fn_args(self.call)
+        self._call_fn_args = self._no_dependency(
+            function_utils.fn_args(self.call))
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass

@@ -138,6 +138,9 @@ cc_library(
 tf_cc_test(
     name = "serial_device_batch_scheduler_test",
     srcs = ["serial_device_batch_scheduler_test.cc"],
+    tags = [
+        "notap",  # b/110374108
+    ],
     deps = [
         ":fake_clock_env",
         ":serial_device_batch_scheduler",

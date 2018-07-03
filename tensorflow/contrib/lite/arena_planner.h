@@ -43,8 +43,11 @@ struct AllocationInfo;
 class ArenaPlanner : public MemoryPlanner {
  public:
   // Ownership of 'context' is not taken and it must remain util the
-  // ArenaPlanner is destroyed.
-  ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info);
+  // ArenaPlanner is destroyed. If 'preserve_inputs' is true the inputs to the
+  // graph will not share memory with any other tensor, effectively preserving
+  // them until the end of inference.
+  ArenaPlanner(TfLiteContext* context, std::unique_ptr<GraphInfo> graph_info,
+               bool preserve_inputs);
   ~ArenaPlanner() override;
   ArenaPlanner(const ArenaPlanner&) = delete;
   ArenaPlanner& operator=(const ArenaPlanner&) = delete;
@@ -100,6 +103,8 @@ class ArenaPlanner : public MemoryPlanner {
   // Raw memory buffer that is allocated for persistent tensors that are
   // declared as kTfLiteArenaRwPersistent.
   SimpleMemoryArena persistent_arena_;
+
+  bool preserve_inputs_;
 };
 
 }  // namespace tflite
