@@ -31,6 +31,7 @@ limitations under the License.
 
 #include <string.h>
 
+#include <poplar/DeviceSet.hpp>
 #include <poplar/IPUModel.hpp>
 #include <poplar/Tensor.hpp>
 
@@ -248,73 +249,80 @@ Status PoplarExecutor::InitializePoplarDevice(
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
-  if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-    type = tensorflow::IPUOptions::DeviceConfig::CPU;
+  poplar::DeviceSet device_set = poplar::DeviceSet::getDeviceSet();
+
+  int num_ipus = cfg.ipu_model_config().num_ipus();
+  int tiles_per_ipu = cfg.ipu_model_config().tiles_per_ipu();
+
+  if (num_ipus == 0) {
+    num_ipus = 1;
   }
 
+  if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
+    if (device_set.getDevices(poplar::TargetType::IPU, num_ipus).size() > 0) {
+      type = tensorflow::IPUOptions::DeviceConfig::IPU;
+    } else {
+      type = tensorflow::IPUOptions::DeviceConfig::CPU;
+    }
+  }
+
+  bool opened = false;
   switch (type) {
+    case tensorflow::IPUOptions::DeviceConfig::IPU: {
+      auto devices = device_set.getDevices(poplar::TargetType::IPU, num_ipus);
+      for (auto& d : devices) {
+        if (d.attach()) {
+          poplar_device_ = d;
+
+          if (num_ipus > 0) {
+            poplar_device_ = poplar_device_.createVirtualDevice(num_ipus);
+          }
+
+          profile_compilation_ = false;
+          profile_poplar_text_ = false;
+          profile_execution_ = false;
+          profile_io_ = false;
+          opened = true;
+          break;
+        }
+      }
+      break;
+    }
     case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
       poplar::IPUModel model;
-      if (cfg.ipu_model_config().num_ipus() != 0) {
-        model.numIPUs = cfg.ipu_model_config().num_ipus();
+      if (num_ipus != 0) {
+        model.numIPUs = num_ipus;
       }
-      if (cfg.ipu_model_config().tiles_per_ipu() != 0) {
-        model.tilesPerIPU = cfg.ipu_model_config().tiles_per_ipu();
+      if (tiles_per_ipu != 0) {
+        model.tilesPerIPU = tiles_per_ipu;
       }
       poplar_device_ = model.createDevice();
-      profile_compilation_ = cfg.profiling().enable_compilation_trace();
-      profile_poplar_text_ = cfg.profiling().enable_poplar_reports_text();
-      profile_execution_ = cfg.profiling().enable_execution_trace();
-      profile_io_ = cfg.profiling().enable_io_trace();
+      if (poplar_device_.attach()) {
+        profile_compilation_ = cfg.profiling().enable_compilation_trace();
+        profile_poplar_text_ = cfg.profiling().enable_poplar_reports_text();
+        profile_execution_ = cfg.profiling().enable_execution_trace();
+        profile_io_ = cfg.profiling().enable_io_trace();
+        opened = true;
+      }
       break;
     }
-    case tensorflow::IPUOptions::DeviceConfig::IPU_SIMULATOR: {
-      int num_ipus = 1;
-      if (cfg.ipu_model_config().num_ipus() != 0) {
-        num_ipus = cfg.ipu_model_config().num_ipus();
-      }
-      int num_tiles = cfg.ipu_model_config().tiles_per_ipu();
-      std::string system_type;
-      switch (num_tiles) {
-        case 0:
-        case 1:
-          system_type = "_TEST_SYSTEM_ONE_TILE";
-          break;
-        case 4:
-          system_type = "_TEST_SYSTEM_FOUR_TILES";
-          break;
-        default:
-          return xla::InternalError(
-              "Invalid number of tiles %d on IPU simulator device for "
-              "ordinal %d (must be 1 or 4)",
-              num_tiles, ordinal_);
-      }
-      try {
-        auto target = poplar::Target::createIPUTarget(num_ipus, system_type);
-        poplar_device_ = poplar::Device::createSimulatorDevice(target);
-      } catch (const std::logic_error&) {
-        return xla::InternalError(
-            "Failed to connect to IPU simulator device for ordinal %d",
-            ordinal_);
-      }
-      profile_compilation_ = false;
-      profile_execution_ = false;
-      profile_io_ = false;
-      break;
-    }
-    case tensorflow::IPUOptions::DeviceConfig::CPU:
+    case tensorflow::IPUOptions::DeviceConfig::CPU: {
       poplar_device_ = poplar::Device::createCPUDevice();
-      profile_compilation_ = false;
-      profile_poplar_text_ = false;
-      profile_execution_ = false;
-      profile_io_ = false;
+      if (poplar_device_.attach()) {
+        profile_compilation_ = false;
+        profile_poplar_text_ = false;
+        profile_execution_ = false;
+        profile_io_ = false;
+        opened = true;
+      }
       break;
+    }
     default:
       return xla::InternalError(
           "Unrecognized poplar device type for ordinal %d: %d", ordinal_, type);
   }
 
-  if (!poplar_device_.attach()) {
+  if (!opened) {
     return xla::ResourceExhausted(
         "Unable to acquire poplar device type for ordinal %d", ordinal_);
   }
