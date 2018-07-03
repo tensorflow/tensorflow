@@ -31,6 +31,17 @@ class BigtableClientOp : public OpKernel {
                 errors::InvalidArgument("project_id must be non-empty"));
     OP_REQUIRES(ctx, !instance_id_.empty(),
                 errors::InvalidArgument("instance_id must be non-empty"));
+
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("connection_pool_size", &connection_pool_size_));
+    // If left unset by the client code, set it to a default of 100. Note: the
+    // cloud-cpp default of 4 concurrent connections is far too low for high
+    // performance streaming.
+    if (connection_pool_size_ == -1) {
+      connection_pool_size_ = 100;
+    }
+    OP_REQUIRES(ctx, connection_pool_size_ > 0,
+                errors::InvalidArgument("connection_pool_size must be > 0"));
   }
 
   ~BigtableClientOp() override {
@@ -56,10 +67,10 @@ class BigtableClientOp : public OpKernel {
               cinfo_.container(), cinfo_.name(), &resource,
               [this, ctx](
                   BigtableClientResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                auto client_options = google::cloud::bigtable::ClientOptions();
                 std::shared_ptr<google::cloud::bigtable::DataClient> client =
                     google::cloud::bigtable::CreateDefaultDataClient(
-                        project_id_, instance_id_,
-                        google::cloud::bigtable::ClientOptions());
+                        project_id_, instance_id_, std::move(client_options));
                 *ret = new BigtableClientResource(project_id_, instance_id_,
                                                   std::move(client));
                 return Status::OK();
@@ -75,6 +86,7 @@ class BigtableClientOp : public OpKernel {
  private:
   string project_id_;
   string instance_id_;
+  int64 connection_pool_size_;
 
   mutex mu_;
   ContainerInfo cinfo_ GUARDED_BY(mu_);
