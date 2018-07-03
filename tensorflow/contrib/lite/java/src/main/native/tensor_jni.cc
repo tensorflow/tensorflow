@@ -203,6 +203,16 @@ size_t writeMultiDimensionalArray(JNIEnv* env, jobject src, TfLiteType type,
   }
 }
 
+JNIEXPORT jobject JNICALL Java_org_tensorflow_lite_Tensor_buffer(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle) {
+  TfLiteTensor* tensor = convertLongToTensor(env, handle);
+  if (tensor == nullptr) return nullptr;
+
+  return env->NewDirectByteBuffer(static_cast<void*>(tensor->data.raw),
+                                  static_cast<jlong>(tensor->bytes));
+}
+
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_Tensor_readMultiDimensionalArray(JNIEnv* env,
                                                           jclass clazz,

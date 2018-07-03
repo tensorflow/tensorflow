@@ -30138,6 +30138,54 @@ op {
   }
 }
 op {
+  name: "SparseSliceGrad"
+  input_arg {
+    name: "backprop_val_grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_start"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "val_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+}
+op {
   name: "SparseSoftmax"
   input_arg {
     name: "sp_indices"
