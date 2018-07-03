@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_POOL_ALLOCATOR_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_POOL_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_POOL_ALLOCATOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_POOL_ALLOCATOR_H_
 
 // Simple LRU pool allocators for various flavors of CPU RAM that
-// implement the VisitableAllocator interface. GPU memory is managed
-// by GPURegionAllocator.
+// implement the VisitableAllocator interface.
 
 #include <atomic>
 #include <map>
@@ -28,9 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -168,48 +165,18 @@ class Pow2Rounder : public RoundUpInterface {
 
 class BasicCPUAllocator : public SubAllocator {
  public:
+  // Argument numa_node is currently ignored.
+  explicit BasicCPUAllocator(int numa_node) : numa_node_(numa_node) {}
+
   ~BasicCPUAllocator() override {}
 
-  void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
-  }
-  void Free(void* ptr, size_t num_bytes) override { port::AlignedFree(ptr); }
-};
+  void* Alloc(size_t alignment, size_t num_bytes) override;
 
-// Allocator for pinned CPU RAM that is made known to CUDA for the
-// purpose of efficient DMA with a GPU.
-class CUDAHostAllocator : public SubAllocator {
- public:
-  // Note: stream_exec cannot be null.
-  explicit CUDAHostAllocator(se::StreamExecutor* stream_exec)
-      : stream_exec_(stream_exec) {
-    CHECK(stream_exec_ != nullptr);
-  }
-  ~CUDAHostAllocator() override {}
-
-  void* Alloc(size_t alignment, size_t num_bytes) override {
-    void* ptr = nullptr;
-    if (num_bytes > 0) {
-      ptr = stream_exec_->HostMemoryAllocate(num_bytes);
-      if (ptr == nullptr) {
-        LOG(WARNING) << "could not allocate pinned host memory of size: "
-                     << num_bytes;
-      }
-    }
-    return ptr;
-  }
-
-  void Free(void* ptr, size_t num_bytes) override {
-    if (ptr != nullptr) {
-      stream_exec_->HostMemoryDeallocate(ptr);
-    }
-  }
+  void Free(void* ptr, size_t num_bytes) override;
 
  private:
-  se::StreamExecutor* stream_exec_;  // not owned, non-null
-
-  TF_DISALLOW_COPY_AND_ASSIGN(CUDAHostAllocator);
+  int numa_node_;
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_POOL_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_POOL_ALLOCATOR_H_

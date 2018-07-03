@@ -188,6 +188,7 @@ py_test(
         "optonly",
     ],
     deps = [
+        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/data/python/ops:error_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -24,8 +24,17 @@ extern "C" {
 #endif  // __cplusplus
 
 /*
- *  Class:     org_tensorflow_lite_TfLiteTensor
- *  Method:
+ * Class:     org_tensorflow_lite_Tensor
+ * Method:    buffer
+ * Signature: (J)Ljava/nio/ByteBuffer;
+ */
+JNIEXPORT jobject JNICALL Java_org_tensorflow_lite_Tensor_buffer(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    dtype
  *  Signature: (J)I
  */
 JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
@@ -33,8 +42,8 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
                                                              jlong handle);
 
 /*
- *  Class:     org_tensorflow_lite_TfLiteTensor
- *  Method:
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    shape
  *  Signature: (J)[I
  */
 JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env,
@@ -42,8 +51,8 @@ JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env,
                                                                   jlong handle);
 
 /*
- *  Class:     org_tensorflow_lite_TfLiteTensor
- *  Method:
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    readMultiDimensionalArray
  *  Signature: (JLjava/lang/Object;)
  */
 JNIEXPORT void JNICALL
