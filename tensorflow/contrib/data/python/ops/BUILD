@@ -115,6 +115,8 @@ py_library(
     srcs = ["batching.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":get_single_element",
+        ":grouping",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",

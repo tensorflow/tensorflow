@@ -382,7 +382,8 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   // Check if the shapes match for each channel.
   for (const Channel& channel : channels_) {
     const Shape& send_shape = channel.send->operand(0)->shape();
-    const Shape& recv_shape = channel.recv_done->shape();
+    const Shape& recv_shape =
+        ShapeUtil::GetTupleElementShape(channel.recv_done->shape(), 0);
     if (!ShapeUtil::Compatible(send_shape, recv_shape)) {
       return FailedPrecondition("send/recv shapes do not match");
     }

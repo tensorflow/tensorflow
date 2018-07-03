@@ -68,6 +68,7 @@ GPUProcessState* GPUProcessState::instance_ = nullptr;
 
 GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
   CHECK(instance_ == nullptr);
+  instance_ = this;
   process_state_ = ProcessState::singleton();
 }
 

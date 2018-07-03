@@ -1136,7 +1136,10 @@ Status Encapsulator::Subgraph::AddShapeInferenceInfo(
         GraphToFunctionDef(*inference_graph, inference_graph_name, &fdef));
     host_compute->AddAttr("shape_inference_graph", inference_graph_name);
     host_compute->AddAttr("shapes", std::vector<TensorShapeProto>());
-    TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+    // TODO(sibyl-Aix6ihai): Understand why there are multiple calls to Encapsulator.
+    if (library->Find(inference_graph_name) == nullptr) {
+      TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+    }
   }
   return Status::OK();
 }

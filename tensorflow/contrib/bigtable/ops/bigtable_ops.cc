@@ -22,6 +22,7 @@ namespace tensorflow {
 REGISTER_OP("BigtableClient")
     .Attr("project_id: string")
     .Attr("instance_id: string")
+    .Attr("connection_pool_size: int")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Output("client: resource")

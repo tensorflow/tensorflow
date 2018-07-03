@@ -89,7 +89,8 @@ def _dnn_linear_combined_model_fn(features,
                                   dnn_dropout=None,
                                   input_layer_partitioner=None,
                                   config=None,
-                                  batch_norm=False):
+                                  batch_norm=False,
+                                  linear_sparse_combiner='sum'):
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
@@ -117,7 +118,9 @@ def _dnn_linear_combined_model_fn(features,
     input_layer_partitioner: Partitioner for input layer.
     config: `RunConfig` object to configure the runtime settings.
     batch_norm: Whether to use batch normalization after each hidden layer.
-
+    linear_sparse_combiner: A string specifying how to reduce the linear model
+      if a categorical column is multivalent.  One of "mean", "sqrtn", and
+      "sum".
   Returns:
     An `EstimatorSpec` instance.
 
@@ -185,7 +188,8 @@ def _dnn_linear_combined_model_fn(features,
         partitioner=input_layer_partitioner) as scope:
       logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
-          feature_columns=linear_feature_columns)
+          feature_columns=linear_feature_columns,
+          sparse_combiner=linear_sparse_combiner)
       linear_logits = logit_fn(features=features)
       _add_layer_summary(linear_logits, scope.name)
 
@@ -325,7 +329,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                config=None,
                warm_start_from=None,
                loss_reduction=losses.Reduction.SUM,
-               batch_norm=False):
+               batch_norm=False,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -379,6 +384,11 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
       batch_norm: Whether to use batch normalization after each hidden layer.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see @{tf.feature_column.linear_model$linear_model}.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -419,7 +429,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config,
-          batch_norm=batch_norm)
+          batch_norm=batch_norm,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
@@ -522,7 +533,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                config=None,
                warm_start_from=None,
                loss_reduction=losses.Reduction.SUM,
-               batch_norm=False):
+               batch_norm=False,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -570,6 +582,11 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
       batch_norm: Whether to use batch normalization after each hidden layer.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see @{tf.feature_column.linear_model$linear_model}.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -601,7 +618,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config,
-          batch_norm=batch_norm)
+          batch_norm=batch_norm,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedRegressor, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,

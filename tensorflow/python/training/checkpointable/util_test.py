@@ -102,7 +102,7 @@ class InterfaceTests(test.TestCase):
         name="duplicate", initial_value=1.)
     duplicate = checkpointable_utils.add_variable(
         obj, name="duplicate", shape=[])
-    with self.assertRaisesRegexp(ValueError, "'duplicate' already exists"):
+    with self.assertRaisesRegexp(ValueError, "'duplicate'.*already declared"):
       checkpointable_utils.add_variable(obj, name="duplicate", shape=[])
 
     self.evaluate(checkpointable_utils.gather_initializers(obj))

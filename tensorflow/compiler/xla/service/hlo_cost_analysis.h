@@ -54,7 +54,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleConstant(const HloInstruction* constant) override;
   Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  Status HandleSelect(const HloInstruction* select) override;
+  Status HandleSelect(const HloInstruction* hlo) override;
+  Status HandleTupleSelect(const HloInstruction* hlo) override;
   Status HandleCompare(const HloInstruction* compare) override;
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
