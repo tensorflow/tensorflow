@@ -91,7 +91,7 @@ REGISTER_OP("If")
     .Output("output: Tout")
     .Attr("Tcond: type")
     .Attr("Tin: list(type) >= 0")
-    .Attr("Tout: list(type)")
+    .Attr("Tout: list(type) >= 0")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
     .SetShapeFn(shape_inference::UnknownShape);
