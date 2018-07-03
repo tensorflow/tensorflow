@@ -81,7 +81,7 @@ or
 [macOS](#PrepareMac)
 
 
-<a name="#PrepareLinux"></a>
+<a name="PrepareLinux"></a>
 ## Prepare environment for Linux
 
 Before building TensorFlow on Linux, install the following build
@@ -289,17 +289,27 @@ Note: If you're only interested in building the libraries for the TensorFlow C
 or Java APIs, see [Build the C or Java libraries](#BuildCorJava), you do not
 need to build the pip package in that case.
 
-To build a pip package for TensorFlow with CPU-only support,
-you would typically invoke the following command:
+### CPU-only support
+
+To build a pip package for TensorFlow with CPU-only support:
 
 <pre>
-$ <b>bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package</b>
+$ bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package
 </pre>
 
-To build a pip package for TensorFlow with GPU support,
-invoke the following command:
+To build a pip package for TensorFlow with CPU-only support for the Intel® MKL-DNN:
 
-<pre>$ <b>bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package</b> </pre>
+<pre>
+$ bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package
+</pre>
+
+### GPU support
+
+To build a pip package for TensorFlow with GPU support:
+
+<pre>
+$ bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+</pre>
 
 **NOTE on gcc 5 or later:** the binary pip packages available on the
 TensorFlow website are built with gcc 4, which uses the older ABI. To
@@ -328,10 +338,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.9.0rc2 on Linux:
+for TensorFlow 1.9.0rc0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.9.0rc2-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.9.0rc0-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation
@@ -362,7 +372,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
@@ -373,9 +383,9 @@ The build and installation problems you encounter typically depend on the
 operating system.  See the "Common installation problems" section
 of one of the following guides:
 
-  * @{$install_linux#CommonInstallationProblems$Installing TensorFlow on Linux}
-  * @{$install_mac#CommonInstallationProblems$Installing TensorFlow on Mac OS}
-  * @{$install_windows#CommonInstallationProblems$Installing TensorFlow on Windows}
+  * @{$install_linux#common_installation_problems$Installing TensorFlow on Linux}
+  * @{$install_mac#common_installation_problems$Installing TensorFlow on Mac OS}
+  * @{$install_windows#common_installation_problems$Installing TensorFlow on Windows}
 
 Beyond the errors documented in those two guides, the following table
 notes additional errors specific to building TensorFlow.  Note that we
