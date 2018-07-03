@@ -47,7 +47,6 @@ class SymbolNamer(object):
 
 class ControlFlowTransformer(converter.Base):
   """Transforms control flow structures like loops an conditionals."""
-
   def _create_cond_branch(self, body_name, aliased_orig_names,
                           aliased_new_names, body, returns):
     if aliased_orig_names:

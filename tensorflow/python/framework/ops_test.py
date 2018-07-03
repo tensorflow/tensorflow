@@ -965,6 +965,15 @@ class NameStackTest(test_util.TensorFlowTestCase):
     self.assertEqual("foo_1", g.unique_name("foo"))
     self.assertEqual("foo_3", g.unique_name("foo"))
 
+  def testUniqueNameCaseInsensitivity(self):
+    g = ops.Graph()
+    self.assertEqual("foo", g.unique_name("foo"))
+    self.assertEqual("Foo_1", g.unique_name("Foo"))
+    with g.name_scope("bar"):
+      self.assertEqual("bar/foo", g.unique_name("foo"))
+    with g.name_scope("Bar"):
+      self.assertEqual("Bar_1/foo", g.unique_name("foo"))
+
   def testInvalidNameRaisesError(self):
     g = ops.Graph()
     with g.name_scope(""):  # Should not raise

@@ -1356,7 +1356,7 @@ class DropoutTest(test.TestCase):
     with self.test_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = _layers.dropout(images)
-      self.assertEqual(output.op.name, 'Dropout/dropout/mul')
+      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul')
       output.get_shape().assert_is_compatible_with(
           ops.convert_to_tensor(images).get_shape())
 

@@ -893,6 +893,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
+        "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
 )

@@ -289,17 +289,27 @@ Note: If you're only interested in building the libraries for the TensorFlow C
 or Java APIs, see [Build the C or Java libraries](#BuildCorJava), you do not
 need to build the pip package in that case.
 
-To build a pip package for TensorFlow with CPU-only support,
-you would typically invoke the following command:
+### CPU-only support
+
+To build a pip package for TensorFlow with CPU-only support:
 
 <pre>
-$ <b>bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package</b>
+$ bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package
 </pre>
 
-To build a pip package for TensorFlow with GPU support,
-invoke the following command:
+To build a pip package for TensorFlow with CPU-only support for the Intel® MKL-DNN:
 
-<pre>$ <b>bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package</b> </pre>
+<pre>
+$ bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package
+</pre>
+
+### GPU support
+
+To build a pip package for TensorFlow with GPU support:
+
+<pre>
+$ bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package
+</pre>
 
 **NOTE on gcc 5 or later:** the binary pip packages available on the
 TensorFlow website are built with gcc 4, which uses the older ABI. To

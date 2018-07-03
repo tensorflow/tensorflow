@@ -2009,7 +2009,8 @@ def sparse_softmax_cross_entropy_with_logits(
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32`, or
+      `float64`.
     name: A name for the operation (optional).
 
   Returns:

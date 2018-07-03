@@ -30,6 +30,7 @@ from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
 from tensorflow.contrib.opt.python.training.nadam_optimizer import *
+from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *
 from tensorflow.contrib.opt.python.training.powersign import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 from tensorflow.contrib.opt.python.training.weight_decay_optimizers import *

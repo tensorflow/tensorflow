@@ -817,6 +817,10 @@ tf_module {
     argspec: "args=[\'shape_x\', \'shape_y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "broadcast_to"
+    argspec: "args=[\'input\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "case"
     argspec: "args=[\'pred_fn_pairs\', \'default\', \'exclusive\', \'strict\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\', \'case\'], "
   }

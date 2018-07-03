@@ -125,9 +125,9 @@ py_library(
     }) + if_not_windows_cuda([
         "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
     ]) + if_not_windows([
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/cloud:cloud_py",  # depends on bigtable
         "//tensorflow/contrib/bigtable",  # doesn't compile on Windows
+        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),
 )

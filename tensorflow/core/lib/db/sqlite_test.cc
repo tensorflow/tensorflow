@@ -73,6 +73,21 @@ TEST_F(SqliteTest, InsertAndSelectDouble) {
   EXPECT_EQ(1, stmt.ColumnInt(1));
 }
 
+#ifdef DSQLITE_ENABLE_JSON1
+TEST_F(SqliteTest, Json1Extension) {
+  string s1 = "{\"key\": 42}";
+  string s2 = "{\"key\": \"value\"}";
+  auto stmt = db_->PrepareOrDie("INSERT INTO T (a, b) VALUES (?, ?)");
+  stmt.BindText(1, s1);
+  stmt.BindText(2, s2);
+  TF_ASSERT_OK(stmt.StepAndReset());
+  stmt = db_->PrepareOrDie("SELECT json_extract(a, '$.key'), json_extract(b, '$.key') FROM T");
+  TF_ASSERT_OK(stmt.Step(&is_done_));
+  EXPECT_EQ(42, stmt.ColumnInt(0));
+  EXPECT_EQ("value", stmt.ColumnString(1));
+}
+#endif //DSQLITE_ENABLE_JSON1
+
 TEST_F(SqliteTest, NulCharsInString) {
   string s;  // XXX: Want to write {2, '\0'} but not sure why not.
   s.append(static_cast<size_t>(2), '\0');

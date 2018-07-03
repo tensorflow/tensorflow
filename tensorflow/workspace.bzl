@@ -559,11 +559,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "kafka",
       urls = [
-          "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.1.tar.gz",
-          "https://github.com/edenhill/librdkafka/archive/v0.11.1.tar.gz",
+          "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.4.tar.gz",
+          "https://github.com/edenhill/librdkafka/archive/v0.11.4.tar.gz",
       ],
-      sha256 = "dd035d57c8f19b0b612dd6eefe6e5eebad76f506e302cccb7c2066f25a83585e",
-      strip_prefix = "librdkafka-0.11.1",
+      sha256 = "9d8f1eb7b0e29e9ab1168347c939cb7ae5dff00a39cef99e7ef033fd8f92737c",
+      strip_prefix = "librdkafka-0.11.4",
       build_file = clean_dep("//third_party:kafka/BUILD"),
       patch_file = clean_dep("//third_party/kafka:config.patch"),
   )

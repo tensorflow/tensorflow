@@ -1390,7 +1390,7 @@ class LayoutOptimizerTest(test.TestCase):
       expected_num_transposes = 3
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
-      self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/Add_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testLoopWithVecAnd4D(self):
@@ -1414,7 +1414,7 @@ class LayoutOptimizerTest(test.TestCase):
       expected_num_transposes = 2
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
-      self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)
+      self._assert_trans_nchw_to_nhwc('map/while/Add_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
   def testBinaryOpSecondPort(self):
