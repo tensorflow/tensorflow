@@ -26317,6 +26317,43 @@ op {
   }
 }
 op {
+  name: "If"
+  input_arg {
+    name: "cond"
+    type_attr: "Tcond"
+  }
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tcond"
+    type: "type"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "then_branch"
+    type: "func"
+  }
+  attr {
+    name: "else_branch"
+    type: "func"
+  }
+}
+op {
   name: "Igamma"
   input_arg {
     name: "a"
