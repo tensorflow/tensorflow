@@ -794,11 +794,12 @@ Here's the syntax:
 ```
 usage: saved_model_cli run [-h] --dir DIR --tag_set TAG_SET --signature_def
                            SIGNATURE_DEF_KEY [--inputs INPUTS]
-                           [--input_exprs INPUT_EXPRS] [--outdir OUTDIR]
+                           [--input_exprs INPUT_EXPRS]
+                           [--input_examples INPUT_EXAMPLES] [--outdir OUTDIR]
                            [--overwrite] [--tf_debug]
 ```
 
-The `run` command provides the following two ways to pass inputs to the model:
+The `run` command provides the following three ways to pass inputs to the model:
 
 * `--inputs` option enables you to pass numpy ndarray in files.
 * `--input_exprs` option enables you to pass Python expressions.
@@ -847,7 +848,7 @@ dictionary is stored in the pickle file and the value corresponding to
 the *variable_name* will be used.
 
 
-#### `--inputs_exprs`
+#### `--input_exprs`
 
 To pass inputs through Python expressions, specify the `--input_exprs` option.
 This can be useful for when you don't have data
@@ -869,7 +870,7 @@ example:
 (Note that the `numpy` module is already available to you as `np`.)
 
 
-#### `--inputs_examples`
+#### `--input_examples`
 
 To pass `tf.train.Example` as inputs, specify the `--input_examples` option.
 For each input key, it takes a list of dictionary, where each dictionary is an

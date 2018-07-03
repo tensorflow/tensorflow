@@ -57,8 +57,8 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
                                 input_shape.DebugString(), "; update shape is ",
                                 update_shape.DebugString()));
 
-    xla::XlaOp result = ctx->builder()->DynamicUpdateSlice(
-        ctx->Input(0), ctx->Input(1), ctx->Input(2));
+    xla::XlaOp result =
+        xla::DynamicUpdateSlice(ctx->Input(0), ctx->Input(1), ctx->Input(2));
     ctx->SetOutput(0, result);
   }
 };

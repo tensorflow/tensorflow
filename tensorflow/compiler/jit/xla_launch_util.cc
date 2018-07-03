@@ -176,6 +176,21 @@ void XlaComputationLaunchContext::PopulateOutputs(
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 
+  // If the on-host-shape isn't a tuple, create a new single-element tuple
+  // buffer with a nullptr root index table. This allows the code below to treat
+  // output as a tuple unconditionally.
+  if (!xla::ShapeUtil::IsTuple(output.on_host_shape())) {
+    ShapedBuffer nontuple_buffer = output.release();
+    ShapedBuffer buffer(
+        xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_host_shape()}),
+        xla::ShapeUtil::MakeTupleShape({nontuple_buffer.on_device_shape()}),
+        output.platform(), output.device_ordinal());
+    buffer.buffers().CopySubtreeFrom(nontuple_buffer.buffers(),
+                                     /*source_base_index=*/{},
+                                     /*target_base_index=*/{0});
+    output = ScopedShapedBuffer(std::move(buffer), output.memory_allocator());
+  }
+
   // Copy XLA results to the OpOutputList.
   int output_num = 0;
   for (int i = 0; i < ctx->num_outputs(); ++i) {
@@ -230,9 +245,14 @@ void XlaComputationLaunchContext::PopulateOutputs(
         Tensor* output_tensor;
         OP_REQUIRES_OK(ctx, ctx->allocate_output(i, shape, &output_tensor));
         XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
-        CHECK(xla_tensor);
-        xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
-            ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
+        if (xla_tensor) {
+          xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
+              ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
+        } else {
+          // xla_tensor wasn't valid, which must mean this is a zero-element
+          // tensor.
+          CHECK_EQ(output_tensor->TotalBytes(), 0);
+        }
       } else {
         Tensor output_tensor = XlaTensorBuffer::MakeTensor(
             ctx->expected_output_dtype(i), shape, buffer, allocator);

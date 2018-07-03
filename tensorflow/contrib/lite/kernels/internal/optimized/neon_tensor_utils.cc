@@ -162,7 +162,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 
   int batch, row, col;
   for (batch = 0; batch < n_batch; ++batch) {
-    const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
+    const float batch_scaling_factor = scaling_factors[batch];
     // Copy the vector data to an aligned vector.
     memcpy(aligned_vec, vectors + batch * m_cols, sizeof(int8) * m_cols);
     // Compute dot-product for every column.
@@ -232,7 +232,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
       int32 neon_sum =
           vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
 
-      *result += ((neon_sum + postable_sum) * batch_scaling_factor_inv);
+      *result += ((neon_sum + postable_sum) * batch_scaling_factor);
     }  // for row
   }    // for batch
 
@@ -418,13 +418,14 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     *scaling_factor = 1;
     return;
   }
-  *scaling_factor = kScale / range;
+  *scaling_factor = range / kScale;
+  const float scaling_factor_inv = 1.0f / *scaling_factor;
 
   const int postamble_start =
       size - (size & (2 * kFloatWeightsPerNeonLane - 1));
 
   // Vectorized constants.
-  const float32x4_t q_factor_f32x4 = vmovq_n_f32(*scaling_factor);
+  const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
   const float32x4_t point5_f32x4 = vmovq_n_f32(0.5);
   const float32x4_t zero_f32x4 = vmovq_n_f32(0.0);
   const int32x4_t scale_i32x4 = vmovq_n_s32(kScale);
@@ -476,7 +477,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 
   for (int i = postamble_start; i < size; ++i) {
     const int32 quantized_value =
-        static_cast<int32>(TfLiteRound(*scaling_factor * values[i]));
+        static_cast<int32>(TfLiteRound(scaling_factor_inv * values[i]));
     quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 }

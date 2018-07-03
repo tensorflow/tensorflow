@@ -19,13 +19,14 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace tensorflow {
-xla::StatusOr<xla::XlaOp> TruncatedNormal(const DataType dtype,
-                                          const xla::XlaOp& uniform,
-                                          xla::XlaBuilder* builder) {
+
+xla::XlaOp TruncatedNormal(xla::XlaOp uniform) {
   auto normal_cdf = [](double x) {
     return (1.0 + std::erf(x / std::sqrt(2.0))) / 2.0;
   };
@@ -40,18 +41,15 @@ xla::StatusOr<xla::XlaOp> TruncatedNormal(const DataType dtype,
   const double kBetaNormalCdf = normal_cdf(kBeta);
   const double kZ = kBetaNormalCdf - kAlphaNormalCdf;
 
-  xla::XlaOp one = XlaHelpers::FloatLiteral(builder, dtype, 1.0);
-  xla::XlaOp two = XlaHelpers::FloatLiteral(builder, dtype, 2.0);
-  xla::XlaOp sqrt_2 = XlaHelpers::FloatLiteral(builder, dtype, std::sqrt(2.0));
+  xla::XlaOp one = xla::ScalarLike(uniform, 1.0);
+  xla::XlaOp two = xla::ScalarLike(uniform, 2.0);
+  xla::XlaOp sqrt_2 = xla::ScalarLike(uniform, std::sqrt(2.0));
+  xla::XlaOp z = xla::ScalarLike(uniform, kZ);
+  xla::XlaOp alpha_normal_cdf = xla::ScalarLike(uniform, kAlphaNormalCdf);
 
-  xla::XlaOp z = XlaHelpers::FloatLiteral(builder, dtype, kZ);
-  xla::XlaOp alpha_normal_cdf =
-      XlaHelpers::FloatLiteral(builder, dtype, kAlphaNormalCdf);
-
+  auto p = alpha_normal_cdf + z * uniform;
   // probit(p) = sqrt(2) * erfinv(2*p-1)
-  auto p = builder->Add(alpha_normal_cdf, builder->Mul(z, uniform));
-  auto erfinv_input = builder->Sub(builder->Mul(p, two), one);
-  TF_ASSIGN_OR_RETURN(auto erfinv_or_status, ErfInv(erfinv_input));
-  return builder->Mul(sqrt_2, erfinv_or_status);
+  return sqrt_2 * xla::ErfInv(two * p - one);
 }
+
 }  // namespace tensorflow

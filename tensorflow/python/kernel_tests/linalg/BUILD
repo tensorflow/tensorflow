@@ -107,6 +107,10 @@ gpu_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 gpu_py_test(
@@ -124,7 +128,10 @@ gpu_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 5,
-    tags = ["optonly"],  # Test is flaky without optimization.
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 gpu_py_test(
@@ -141,6 +148,10 @@ gpu_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 gpu_py_test(
@@ -178,6 +189,10 @@ gpu_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 gpu_py_test(
@@ -214,4 +229,8 @@ gpu_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )

@@ -163,6 +163,13 @@ Status XlaCompileOnDemandOp::Compile(
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
+  // Optimization: don't resolve constants. If we resolve constants we never
+  // emit them on the device, meaning that if they are needed by a following
+  // computation the host has to transfer them.
+  compile_options.resolve_compile_time_constants = false;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,

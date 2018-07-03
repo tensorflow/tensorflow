@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -46,8 +48,8 @@ class RandomUniformOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp result = b->RngUniform(XlaHelpers::Zero(b, dtype),
-                                      XlaHelpers::One(b, dtype), xla_shape);
+    xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
+                                        XlaHelpers::One(b, dtype), xla_shape);
 
     ctx->SetOutput(0, result);
   }
@@ -79,12 +81,11 @@ class RandomShuffleOp : public XlaOpKernel {
       // Generate the random swaps for the indices.
       auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
       auto swaps =
-          builder->RngUniform(builder->ConstantR0<int32>(0),
-                              builder->ConstantR0<int32>(n), swaps_shape);
+          xla::RngUniform(xla::ConstantR0<int32>(builder, 0),
+                          xla::ConstantR0<int32>(builder, n), swaps_shape);
 
       // Generate range(n) as the initial value for the indices to be swapped.
-      xla::XlaOp indices;
-      TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32, n, &indices));
+      xla::XlaOp indices = xla::Iota(builder, xla::S32, n);
 
       // Swap the indices at i and swaps[i].
       auto swap_body_fn = [&](xla::XlaOp i,
@@ -93,17 +94,17 @@ class RandomShuffleOp : public XlaOpKernel {
           -> xla::StatusOr<std::vector<xla::XlaOp>> {
         auto swaps = loop_vars[0];
         auto indices = loop_vars[1];
-        i = builder->Reshape(i, {1});
+        i = xla::Reshape(i, {1});
         // temp = indices[i]
-        auto temp = builder->DynamicSlice(indices, i, {1});
+        auto temp = xla::DynamicSlice(indices, i, {1});
         // swap_index = swaps[i]
-        auto swap_index = builder->DynamicSlice(swaps, i, {1});
+        auto swap_index = xla::DynamicSlice(swaps, i, {1});
         // swap_value = indices[swaps[i]]
-        auto swap_value = builder->DynamicSlice(indices, swap_index, {1});
+        auto swap_value = xla::DynamicSlice(indices, swap_index, {1});
         // indices[i] = indices[swaps[i]]
-        indices = builder->DynamicUpdateSlice(indices, swap_value, i);
+        indices = xla::DynamicUpdateSlice(indices, swap_value, i);
         // indices[swaps[i]] = temp
-        indices = builder->DynamicUpdateSlice(indices, temp, swap_index);
+        indices = xla::DynamicUpdateSlice(indices, temp, swap_index);
         return std::vector<xla::XlaOp>{swaps, indices};
       };
       // for i in range(n):
@@ -153,7 +154,7 @@ class RandomUniformIntOp : public XlaOpKernel {
 
     auto minval = ctx->Input(1);
     auto maxval = ctx->Input(2);
-    ctx->SetOutput(0, ctx->builder()->RngUniform(minval, maxval, xla_shape));
+    ctx->SetOutput(0, xla::RngUniform(minval, maxval, xla_shape));
   }
 
  private:
@@ -179,8 +180,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
     xla::XlaBuilder* b = ctx->builder();
 
     // Normal distribution with a mean of 0 and a standard deviation of 1:
-    xla::XlaOp result = b->RngNormal(XlaHelpers::Zero(b, dtype),
-                                     XlaHelpers::One(b, dtype), xla_shape);
+    xla::XlaOp result = xla::RngNormal(XlaHelpers::Zero(b, dtype),
+                                       XlaHelpers::One(b, dtype), xla_shape);
 
     ctx->SetOutput(0, result);
   }
@@ -209,10 +210,8 @@ class TruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
     xla::XlaOp min_positive =
         XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
-    auto uniform = b->RngUniform(min_positive, one, xla_shape);
-    auto truncated_normal_or_status = TruncatedNormal(dtype, uniform, b);
-    OP_REQUIRES_OK(ctx, truncated_normal_or_status.status());
-    ctx->SetOutput(0, truncated_normal_or_status.ValueOrDie());
+    auto uniform = xla::RngUniform(min_positive, one, xla_shape);
+    ctx->SetOutput(0, TruncatedNormal(uniform));
   }
 };
 

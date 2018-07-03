@@ -1626,15 +1626,6 @@ Status DirectSession::MakeCallable(const CallableOptions& callable_options,
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("MakeCallable()"));
 
-  if (!callable_options.run_options()
-           .debug_options()
-           .debug_tensor_watch_opts()
-           .empty()) {
-    return errors::Unimplemented(
-        "Debug options are not currently supported via the C++ MakeCallable "
-        "interface.");
-  }
-
   std::unique_ptr<ExecutorsAndKeys> ek;
   std::unique_ptr<FunctionInfo> func_info;
   RunStateArgs run_state_args(callable_options.run_options().debug_options());

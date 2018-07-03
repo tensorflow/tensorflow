@@ -99,10 +99,10 @@ _UNARY_OPS = [
     'Cos',
     'Sin',
     'Tanh',
-    'SqrtF32',
-    'SquareF32',
+    'Sqrt',
+    'Square',
     'IsFinite',
-    'ReciprocalF32',
+    'Reciprocal',
     'Neg',
     'Sort',
 ]
@@ -123,6 +123,7 @@ _BINARY_OPS = [
     'Min',
     'And',
     'Or',
+    'Xor',
     'Pow',
 ]
 
@@ -908,20 +909,19 @@ class ComputationBuilder(object):
     """
     return self._client.Call(computation_to_apply.c_local_computation, operands)
 
-  def Map(self, operands, computation_to_apply, dimensions, static_operands=()):
+  def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
 
     Args:
       operands: an iterable of LocalOp.
       computation_to_apply: a Computation object.
       dimensions: dimensions over which to apply map the function.
-      static_operands: auxiliary arguments passed to the applied computation.
 
     Returns:
       A LocalOp representing the added Map op.
     """
     return self._client.Map(operands, computation_to_apply.c_local_computation,
-                            dimensions, static_operands)
+                            dimensions)
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
     """Enqueues a reduction operation onto the computation.

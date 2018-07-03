@@ -27,6 +27,7 @@ import random
 import re
 import tempfile
 import threading
+import unittest
 
 import numpy as np
 import six
@@ -418,8 +419,28 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
+      collection_sizes_before = {
+          collection: len(ops.get_collection(collection))
+          for collection in ops.get_default_graph().collections}
       for _ in range(3):
         f(self, **kwargs)
+      # Note that gc.get_objects misses anything that isn't subject to garbage
+      # collection (C types). Collections are a common source of leaks, so we
+      # test for collection sizes explicitly.
+      for collection_key in ops.get_default_graph().collections:
+        collection = ops.get_collection(collection_key)
+        size_before = collection_sizes_before.get(collection_key, 0)
+        if len(collection) > size_before:
+          raise AssertionError(
+              ("Collection %s increased in size from "
+               "%d to %d (current items %s).")
+              % (collection_key, size_before, len(collection), collection))
+        # Make sure our collection checks don't show up as leaked memory by
+        # removing references to temporary variables.
+        del collection
+        del collection_key
+        del size_before
+      del collection_sizes_before
       gc.collect()
       # There should be no new Python objects hanging around.
       new_count = len(gc.get_objects())
@@ -629,16 +650,12 @@ def run_in_graph_and_eager_modes(func=None,
           "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
 
     def decorated(self, **kwargs):
-      with context.graph_mode():
-        with self.test_session(use_gpu=use_gpu, config=config):
-          f(self, **kwargs)
-
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
-        self.setUp()
+      try:
+        with context.graph_mode():
+          with self.test_session(use_gpu=use_gpu, config=config):
+            f(self, **kwargs)
+      except unittest.case.SkipTest:
+        pass
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
@@ -653,6 +670,13 @@ def run_in_graph_and_eager_modes(func=None,
             assert_no_garbage_created(run_eagerly))
 
       with context.eager_mode():
+        if reset_test:
+          # This decorator runs the wrapped test twice.
+          # Reset the test environment between runs.
+          self.tearDown()
+          self._tempdir = None
+          self.setUp()
+
         run_eagerly(self, **kwargs)
 
     return decorated

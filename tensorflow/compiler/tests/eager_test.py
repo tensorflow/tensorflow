@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -40,7 +40,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import adam
 
 
-class EagerTest(XLATestCase):
+class EagerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
@@ -286,7 +286,7 @@ class EagerTest(XLATestCase):
                          [2.0, 2.0]], embedding_matrix.numpy())
 
 
-class EagerFunctionTest(XLATestCase):
+class EagerFunctionTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
@@ -419,7 +419,7 @@ class EagerFunctionTest(XLATestCase):
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
 
-class ExcessivePaddingTest(XLATestCase):
+class ExcessivePaddingTest(xla_test.XLATestCase):
   """Test that eager execution works with TPU flattened tensors.
 
   Tensors that would normally be excessively padded when written
