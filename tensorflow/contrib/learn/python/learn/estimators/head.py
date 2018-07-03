@@ -797,7 +797,7 @@ def _log_loss_with_two_classes(labels, logits, weights=None):
     # TODO(ptucker): This will break for dynamic shapes.
     # sigmoid_cross_entropy_with_logits requires [batch_size, 1] labels.
     if len(labels.get_shape()) == 1:
-      labels = array_ops.expand_dims(labels, dim=(1,))
+      labels = array_ops.expand_dims(labels, axis=(1,))
     loss = nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=logits,
                                                 name=name)
     return _compute_weighted_loss(loss, weights)
