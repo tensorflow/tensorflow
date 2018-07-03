@@ -110,7 +110,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                input_layer_partitioner=None,
-               config=None):
+               config=None,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedEstimator instance.
 
     Args:
@@ -142,6 +143,11 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see @{tf.feature_column.linear_model$linear_model}.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -169,7 +175,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
           dnn_activation_fn=dnn_activation_fn,
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
