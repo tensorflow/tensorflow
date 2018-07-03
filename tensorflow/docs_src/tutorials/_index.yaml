@@ -174,9 +174,10 @@ landing_page:
               <a href="/guide/estimators">Estimators guide</a> for details.
             </p>
             <ol style="padding-left: 20px;">
+              <li><a href="/tutorials/images/layers">Build a Convolutional Neural Network using Estimators</a></li>
               <li><a href="/hub/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
               <li><a href="https://github.com/tensorflow/models/tree/master/official/boosted_trees">Classifying Higgs boson processes</a></li>
-              <li><a href="/tutorials/representation/wide_and_deep">Wide and deep learning using estimators</a></li>
+              <li><a href="/tutorials/representation/wide_and_deep">Wide and deep learning using Estimators</a></li>
               <li><a href="/tutorials/representation/linear">Large-scale linear models</a></li>
             </ol>
           </div>
