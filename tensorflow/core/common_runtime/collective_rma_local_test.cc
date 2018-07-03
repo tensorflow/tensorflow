@@ -69,6 +69,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU0) {
   rma_->RecvFromPeer(kTaskName + "/device:CPU:0", kTaskName, true /*is_local*/,
                      "key_0", cpu0 /*to_device*/, nullptr /*to_device_ctx*/,
                      attr /*to_alloc_attr*/, &sink_tensor, dev_locality,
+                     0 /*stream_index*/,
                      [this, &recv_note, &recv_status](const Status& s) {
                        recv_status = s;
                        recv_note.Notify();
@@ -111,6 +112,7 @@ TEST_F(CollectiveRemoteAccessLocalTest, PostRecvCPU1_2) {
   rma_->RecvFromPeer(kTaskName + "/device:CPU:1", kTaskName, true /*is_local*/,
                      "key_0", cpu2 /*to_device*/, nullptr /*to_device_ctx*/,
                      attr /*to_alloc_attr*/, &sink_tensor, dev_locality,
+                     0 /*stream_index*/,
                      [this, &recv_note, &recv_status](const Status& s) {
                        recv_status = s;
                        recv_note.Notify();

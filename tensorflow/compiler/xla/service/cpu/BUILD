@@ -54,29 +54,6 @@ cc_library(
 )
 
 cc_library(
-    name = "external_constant_pool",
-    srcs = ["external_constant_pool.cc"],
-    hdrs = ["external_constant_pool.h"],
-    deps = [
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "external_constant_pool_test",
-    srcs = ["external_constant_pool_test.cc"],
-    deps = [
-        ":external_constant_pool",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-    ],
-)
-
-cc_library(
     name = "cpu_compiler",
     srcs = ["cpu_compiler.cc"],
     hdrs = ["cpu_compiler.h"],
@@ -151,7 +128,14 @@ cc_library(
         "@llvm//:target",  # fixdeps: keep
         "@llvm//:x86_code_gen",  # fixdeps: keep
         "@llvm//:x86_disassembler",  # fixdeps: keep
-    ],
+    ] + select({
+        "//tensorflow:linux_ppc64le": [
+            "@llvm//:powerpc_disassembler",
+            "@llvm//:powerpc_code_gen",
+        ],
+        "//conditions:default": [
+        ],
+    }),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -168,7 +152,6 @@ cc_library(
         ":cpu_runtime",
         ":custom_call_target_registry",
         ":disassembler",
-        ":external_constant_pool",
         ":orc_jit_memory_mapper",
         ":runtime_fp16",
         ":runtime_conv2d",
@@ -178,6 +161,7 @@ cc_library(
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
+        ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         "@llvm//:execution_engine",
         "@llvm//:core",
@@ -248,7 +232,6 @@ cc_library(
         ":cpu_options",
         ":cpu_runtime",
         ":dot_op_emitter",
-        ":external_constant_pool",
         ":ir_emission_utils",
         ":ir_function",
         ":parallel_loop_emitter",
@@ -265,6 +248,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:name_uniquer",
         "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
@@ -516,7 +500,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
@@ -574,6 +557,22 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core/kernels:eigen_helpers",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_fft",
+    srcs = [
+        "runtime_fft_impl.h",
+        "runtime_single_threaded_fft.cc",
+    ],
+    hdrs = ["runtime_single_threaded_fft.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
@@ -882,6 +881,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
     ],

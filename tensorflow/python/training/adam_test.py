@@ -150,7 +150,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
 
-  def doTestBasic(self, use_resource=False):
+  def doTestBasic(self, use_resource=False, use_callable_params=False):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.test_session(graph=ops.Graph()):
         # Initialize variables for numpy implementation.
@@ -171,7 +171,17 @@ class AdamOptimizerTest(test.TestCase):
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
-        opt = adam.AdamOptimizer()
+        learning_rate = lambda: 0.001
+        beta1 = lambda: 0.9
+        beta2 = lambda: 0.999
+        epsilon = lambda: 1e-8
+        if not use_callable_params:
+          learning_rate = learning_rate()
+          beta1 = beta1()
+          beta2 = beta2()
+          epsilon = epsilon()
+
+        opt = adam.AdamOptimizer(learning_rate=learning_rate)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         opt_variables = opt.variables()
         beta1_power, beta2_power = opt._get_beta_accumulators()
@@ -220,6 +230,10 @@ class AdamOptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
+
+  def testBasicCallableParams(self):
+    with context.eager_mode():
+      self.doTestBasic(use_resource=True, use_callable_params=True)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

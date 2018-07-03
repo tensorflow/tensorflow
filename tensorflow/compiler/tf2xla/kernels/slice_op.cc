@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -92,8 +93,7 @@ class SliceOp : public XlaOpKernel {
         limits.push_back(begin[i] + size[i]);
       }
       std::vector<int64> strides(begin.size(), 1);
-      ctx->SetOutput(
-          0, ctx->builder()->Slice(ctx->Input(0), begin, limits, strides));
+      ctx->SetOutput(0, xla::Slice(ctx->Input(0), begin, limits, strides));
     } else {
       // `begin` is not a compile-time constant.
       for (int i = 0; i < input_dims; ++i) {
@@ -106,8 +106,7 @@ class SliceOp : public XlaOpKernel {
                                             input_shape.dim_size(i), "], but ",
                                             "got ", size[i]));
       }
-      ctx->SetOutput(
-          0, ctx->builder()->DynamicSlice(ctx->Input(0), ctx->Input(1), size));
+      ctx->SetOutput(0, xla::DynamicSlice(ctx->Input(0), ctx->Input(1), size));
     }
   }
 };

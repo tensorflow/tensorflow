@@ -34,6 +34,7 @@ from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -89,6 +90,32 @@ class FunctionTest(test.TestCase):
       return backprop.implicit_grad(inner)()[0][0]
 
     self.assertAllEqual(step(), 2.0)
+
+  def testGraphGradientVariable(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      @function.defun
+      def f():
+        return 2.0 * v
+
+      node = f()
+      grads, = gradients_impl.gradients(node, v)
+      v.initializer.run()
+      self.assertAllEqual(grads.eval(), 2.0)
+      self.assertEqual(grads.shape, v.shape)
+
+  def testGraphEagerIsolation(self):
+
+    @function.defun
+    def f():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      return v.read_value()
+
+    self.assertAllEqual(f(), 1.0)
+
+    with ops.Graph().as_default():
+      self.assertEqual(f().shape, ())
 
   def testBasicDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)
@@ -195,6 +222,21 @@ class FunctionTest(test.TestCase):
 
     compiled = function.defun(f)
     compiled()
+
+  def testVariableInLoopInFunction(self):
+
+    @function.defun
+    def test_function():
+
+      def loop_test(_):
+        return False
+
+      def loop_body(_):
+        return variable_scope.get_variable('a', shape=())
+
+      return control_flow_ops.while_loop(loop_test, loop_body, [0.0])
+
+    self.assertEqual(test_function().shape, [])
 
   def testDefunShapeInferenceWithCapturedResourceVariableInGraphMode(self):
     with context.graph_mode():
@@ -349,6 +391,23 @@ class FunctionTest(test.TestCase):
 
     g(constant_op.constant(1.0))
 
+  def testNestedDefunWithNoOutputAndTapedInput(self):
+    three = resource_variable_ops.ResourceVariable(3.0, name='v')
+
+    @function.defun
+    def f(x):
+      # This function intentionally takes a taped variable as input,
+      # but does not return any values
+      math_ops.add(x, three)
+
+    @function.defun
+    def g(x):
+      tape.watch_variable(x)
+      y = math_ops.add(x, three)
+      f(y)
+
+    g(three)
+
   def testGradientTensorConversionWithDefun(self):
     three = resource_variable_ops.ResourceVariable(3.0, name='v')
 
@@ -495,6 +554,60 @@ class FunctionTest(test.TestCase):
     g = backprop.gradients_function(wrapper, [0])(constant_op.constant(0.0))
     self.assertAllEqual(g[0], 1.)
 
+    @function.defun
+    def foo(a):
+      return None, a * a
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      none, r = foo(x)
+    g = tp.gradient(r, x)
+
+    self.assertIs(none, None)
+    self.assertAllEqual(r, 25.0)
+    self.assertAllEqual(g, 2 * 5.0)
+
+  def testNestedDifferentiableFunction(self):
+    @function.defun
+    def foo(a, b):
+      return a * math_ops.add(a, b)
+
+    @function.defun
+    def bar(x):
+      return foo(x, 1.0)
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape() as tp:
+      tp.watch(x)
+      result = bar(x)
+    grad = tp.gradient(result, x)
+
+    self.assertAllEqual(grad, 2 * 5.0 + 1.0)
+
+  def testNestedDifferentiableFunctionNoneOutputs(self):
+    @function.defun
+    def foo(a, b):
+      return None, a * math_ops.add(a, b), None, 2*a
+
+    @function.defun
+    def bar(x):
+      return foo(x, 1.0)
+
+    x = constant_op.constant(5.0)
+    with backprop.GradientTape(persistent=True) as tp:
+      tp.watch(x)
+      none1, r1, none2, r2 = bar(x)
+    g1 = tp.gradient(r1, x)
+    g2 = tp.gradient(r2, x)
+
+    self.assertAllEqual(r1, 30.0)
+    self.assertAllEqual(r2, 10.0)
+    self.assertIs(none1, None)
+    self.assertIs(none2, None)
+    self.assertAllEqual(g1, 2 * 5.0 + 1.0)
+    self.assertAllEqual(g2, 2.0)
+
   def testNoneOutput(self):
 
     @function.defun
@@ -615,6 +728,125 @@ class FunctionTest(test.TestCase):
     x = array_ops.ones([1, 2, 2, 1])
     y = model(x)
     self.assertAllEqual([[[[4.0]]]], y.numpy())
+
+  def testVariablesAreTracked(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    def foo(x):
+      return v * x
+
+    defined = function.defun(foo)
+
+    x = constant_op.constant([1.0])
+    self.assertAllEqual(defined.variables, [])
+    _ = defined(x)
+    self.assertAllEqual(defined.variables, [v])
+
+    x = constant_op.constant([1.0, 2.0])
+    _ = defined(x)  # ensure the variables list remains the same
+    self.assertAllEqual(defined.variables, [v])
+
+  def testTensorKeywordArguments(self):
+
+    def foo(a, b):
+      del a
+      return b
+
+    defined = function.defun(foo)
+    a = constant_op.constant(2.0)
+    b = constant_op.constant([1.0, 2.0])
+    one = defined(a, b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    two = defined(a=a, b=b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    three = defined(b=b, a=a)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    four = defined(a, b=b)
+    self.assertEqual(len(defined._arguments_to_functions), 1)
+
+    # The next call corresponds to a new input signature, hence
+    # we expect another function to be defined.
+    five = defined(b, a)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    six = defined(a=b, b=a)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    seven = defined(b=a, a=b)
+    self.assertEqual(len(defined._arguments_to_functions), 2)
+
+    self.assertAllEqual(one, [1.0, 2.0])
+    self.assertAllEqual(two, [1.0, 2.0])
+    self.assertAllEqual(three, [1.0, 2.0])
+    self.assertAllEqual(four, [1.0, 2.0])
+    self.assertAllEqual(five, 2.0)
+    self.assertAllEqual(six, 2.0)
+    self.assertAllEqual(seven, 2.0)
+
+  def testGradientWithKeywordArguments(self):
+    matmul = function.defun(math_ops.matmul)
+
+    def sq(x):
+      return matmul(a=x, b=x, transpose_a=True)
+
+    t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
+    grad_t, = backprop.gradients_function(sq, [0])(t)
+    self.assertAllEqual(grad_t, [[6, 6], [14, 14]])
+
+    with backprop.GradientTape(persistent=True) as gtape:
+      gtape.watch(t)
+      one = matmul(t, b=t, transpose_a=True)
+      two = matmul(b=t, a=t, transpose_a=True)
+      three = matmul(a=t, b=t, transpose_a=True)
+
+    for output in [one, two, three]:
+      self.assertAllEqual(gtape.gradient(output, t), [[6, 6], [14, 14]])
+
+  def testGradientInFunctionWithKeywordArguments(self):
+
+    @function.defun
+    def f(x):
+      return backprop.gradients_function(lambda y: y * y, [0])(x)[0]
+
+    self.assertAllEqual(f(x=constant_op.constant(1.0)), 2.0)
+
+  def testDecoratingInstanceMethod(self):
+
+    class Foo(object):
+
+      def one(self, tensor):
+        return tensor
+
+      @function.defun
+      def two(self, tensor):
+        return self.one(tensor)
+
+    foo = Foo()
+    t = constant_op.constant(1.0)
+    out = foo.two(t)
+    self.assertEqual(float(out), 1.0)
+
+  def testPythonCallWithSideEffects(self):
+    state = []
+
+    @function.defun
+    def side_effecting_function():
+      state.append(0)
+
+    side_effecting_function()
+    self.assertAllEqual(state, [0])
+
+    # The second invocation should call the graph function, which shouldn't
+    # trigger the list append.
+    side_effecting_function()
+    self.assertAllEqual(state, [0])
+
+    # Whereas calling the python function directly should create a side-effect.
+    side_effecting_function.call_python_function()
+    self.assertAllEqual(state, [0, 0])
 
 
 @test_util.with_c_shapes

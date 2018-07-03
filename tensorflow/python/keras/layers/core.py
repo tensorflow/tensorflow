@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import sys
 import types as python_types
+import warnings
 
 import numpy as np
 
@@ -31,8 +33,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -714,6 +716,7 @@ class Lambda(Layer):
     return self.mask
 
   def get_config(self):
+    module = self.function.__module__
     if isinstance(self.function, python_types.LambdaType):
       function = generic_utils.func_dump(self.function)
       function_type = 'lambda'
@@ -721,21 +724,26 @@ class Lambda(Layer):
       function = self.function.__name__
       function_type = 'function'
 
+    output_shape_module = None
     if isinstance(self._output_shape, python_types.LambdaType):
       output_shape = generic_utils.func_dump(self._output_shape)
       output_shape_type = 'lambda'
+      output_shape_module = self._output_shape.__module__
     elif callable(self._output_shape):
       output_shape = self._output_shape.__name__
       output_shape_type = 'function'
+      output_shape_module = self._output_shape.__module__
     else:
       output_shape = self._output_shape
       output_shape_type = 'raw'
 
     config = {
         'function': function,
+        'module': module,
         'function_type': function_type,
         'output_shape': output_shape,
         'output_shape_type': output_shape_type,
+        'output_shape_module': output_shape_module,
         'arguments': self.arguments
     }
     base_config = super(Lambda, self).get_config()
@@ -745,8 +753,16 @@ class Lambda(Layer):
   def from_config(cls, config, custom_objects=None):
     config = config.copy()
     globs = globals()
+    module = config.pop('module', None)
+    if module in sys.modules:
+      globs.update(sys.modules[module].__dict__)
+    elif module is not None:
+      # Note: we don't know the name of the function if it's a lambda.
+      warnings.warn('{} is not loaded, but a Lambda layer uses it. '
+                    'It may cause errors.'.format(module)
+                    , UserWarning)
     if custom_objects:
-      globs = dict(list(globs.items()) + list(custom_objects.items()))
+      globs.update(custom_objects)
     function_type = config.pop('function_type')
     if function_type == 'function':
       # Simple lookup in custom objects
@@ -760,6 +776,14 @@ class Lambda(Layer):
     else:
       raise TypeError('Unknown function type:', function_type)
 
+    output_shape_module = config.pop('output_shape_module', None)
+    if output_shape_module in sys.modules:
+      globs.update(sys.modules[output_shape_module].__dict__)
+    elif output_shape_module is not None:
+      # Note: we don't know the name of the function if it's a lambda.
+      warnings.warn('{} is not loaded, but a Lambda layer uses it. '
+                    'It may cause errors.'.format(output_shape_module)
+                    , UserWarning)
     output_shape_type = config.pop('output_shape_type')
     if output_shape_type == 'function':
       # Simple lookup in custom objects
@@ -882,21 +906,23 @@ class Dense(Layer):
                        'should be defined. Found `None`.')
     self.input_spec = InputSpec(min_ndim=2,
                                 axes={-1: input_shape[-1].value})
-    self.kernel = self.add_variable('kernel',
-                                    shape=[input_shape[-1].value, self.units],
-                                    initializer=self.kernel_initializer,
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint,
-                                    dtype=self.dtype,
-                                    trainable=True)
+    self.kernel = self.add_weight(
+        'kernel',
+        shape=[input_shape[-1].value, self.units],
+        initializer=self.kernel_initializer,
+        regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint,
+        dtype=self.dtype,
+        trainable=True)
     if self.use_bias:
-      self.bias = self.add_variable('bias',
-                                    shape=[self.units,],
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    constraint=self.bias_constraint,
-                                    dtype=self.dtype,
-                                    trainable=True)
+      self.bias = self.add_weight(
+          'bias',
+          shape=[self.units,],
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          dtype=self.dtype,
+          trainable=True)
     else:
       self.bias = None
     self.built = True

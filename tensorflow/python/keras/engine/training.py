@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -41,6 +42,7 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -114,6 +116,7 @@ class Model(Network):
     # Create a cache for dataset - uninitialized iterators
     self._dataset_iterator_cache = weakref.WeakKeyDictionary()
 
+  @checkpointable.no_automatic_dependency_tracking
   def compile(self,
               optimizer,
               loss=None,
@@ -177,6 +180,11 @@ class Model(Network):
       raise ValueError('Only TF native optimizers are supported in Eager mode.')
 
     self.optimizer = optimizers.get(optimizer)
+    # We've disabled automatic dependency tracking for this method, but do want
+    # to add a checkpoint dependency on the optimizer if it's checkpointable.
+    if isinstance(self.optimizer, checkpointable.CheckpointableBase):
+      self._track_checkpointable(
+          self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
     self.metrics = metrics or []
     self.loss_weights = loss_weights
@@ -409,11 +417,13 @@ class Model(Network):
         else:
           if sample_weight_mode == 'temporal':
             sample_weights.append(array_ops.placeholder_with_default(
-                [[1.]], shape=[None, None], name=name + '_sample_weights'))
+                constant_op.constant([[1.]], dtype=K.floatx()),
+                shape=[None, None], name=name + '_sample_weights'))
             sample_weight_modes.append('temporal')
           else:
             sample_weights.append(array_ops.placeholder_with_default(
-                [1.], shape=[None], name=name + '_sample_weights'))
+                constant_op.constant([1.], dtype=K.floatx()),
+                shape=[None], name=name + '_sample_weights'))
             sample_weight_modes.append(None)
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = []
@@ -938,6 +948,7 @@ class Model(Network):
                          str(x[0].shape[0]) + ' samples')
     return x, y, sample_weights
 
+  @checkpointable.no_automatic_dependency_tracking
   def _set_inputs(self, inputs, training=None):
     """Set model's input and output specs based on the input data received.
 
@@ -986,6 +997,7 @@ class Model(Network):
     else:
       self._symbolic_set_inputs(inputs, training=training)
 
+  @checkpointable.no_automatic_dependency_tracking
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
 
@@ -1008,14 +1020,16 @@ class Model(Network):
     # to keep track of number of inputs and outputs and their ndim.
     if isinstance(inputs, (list, tuple)):
       if tensor_util.is_tensor(inputs[0]):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             [ops.convert_to_tensor(v, dtype=K.floatx()) for v in inputs])
       dummy_input_values = list(inputs)
     else:
       if tensor_util.is_tensor(inputs):
-        dummy_output_values = self.call(inputs)
+        dummy_output_values = self.call(
+            training_utils.cast_if_floating_dtype(inputs))
       else:
         dummy_output_values = self.call(
             ops.convert_to_tensor(inputs, dtype=K.floatx()))
@@ -1036,6 +1050,7 @@ class Model(Network):
         'output_%d' % (i + 1) for i in range(len(dummy_output_values))]
     self.built = True
 
+  @checkpointable.no_automatic_dependency_tracking
   def _symbolic_set_inputs(self, inputs, outputs=None, training=None):
     """Set model's inputs and output specs based.
 
@@ -1616,7 +1631,10 @@ class Model(Network):
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
     if context.executing_eagerly():
-      if not isinstance(inputs, iterator_ops.EagerIterator):
+      if (isinstance(x, iterator_ops.EagerIterator) or
+          (isinstance(x, dataset_ops.Dataset) and context.executing_eagerly())):
+        inputs = training_utils.cast_if_floating_dtype(inputs)
+      else:
         inputs = [
             ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs
         ]

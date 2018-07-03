@@ -111,7 +111,7 @@ bool DequantizeArray(const string& array_name,
 
   auto* op_outputting_array = GetOpWithOutput(*model, array_name);
   if (op_outputting_array) {
-    if (op_outputting_array->type == OperatorType::kTensorFlowReshape) {
+    if (op_outputting_array->type == OperatorType::kReshape) {
       return true;
     }
   }

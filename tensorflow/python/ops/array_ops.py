@@ -41,6 +41,7 @@ from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
+from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
@@ -2609,16 +2610,12 @@ def where(condition, x=None, y=None, name=None):
     raise ValueError("x and y must both be non-None or both be None.")
 
 
-@tf_export("reverse")
-def reverse(tensor, axis, name=None):
-  return gen_array_ops.reverse_v2(tensor, axis, name)
-
-
-reverse.__doc__ = gen_array_ops.reverse_v2.__doc__
-
-
 # pylint: disable=redefined-builtin
 @tf_export("reverse_sequence")
+@deprecation.deprecated_args(
+    None, "seq_dim is deprecated, use seq_axis instead", "seq_dim")
+@deprecation.deprecated_args(
+    None, "batch_dim is deprecated, use batch_axis instead", "batch_dim")
 def reverse_sequence(input,
                      seq_lengths,
                      seq_axis=None,

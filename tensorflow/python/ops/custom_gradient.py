@@ -89,7 +89,7 @@ def custom_gradient(f):
          operations in `f` to `x`.
        - `grad_fn` is a function with the signature `g(*grad_ys)` which returns
          a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
-         to the `Tensor`s in `x.  `grad_ys` is a `Tensor` or sequence of
+         to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
          `Tensor`s the same size as `y` holding the initial value gradients for
          each `Tensor` in `y`. If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have

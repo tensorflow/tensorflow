@@ -129,7 +129,7 @@ class TestModelCloning(test.TestCase):
 
 class CheckpointingTests(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_optimizer_dependency(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(1, input_shape=(4,)))
@@ -143,6 +143,20 @@ class CheckpointingTests(test.TestCase):
     self.evaluate(beta1_power.assign(13.))
     model.load_weights(save_prefix)
     self.assertEqual(12., self.evaluate(beta1_power))
+
+class TestModelBackend(test.TestCase):
+
+  def test_model_backend_float64_use_cases(self):
+    # Test case for GitHub issue 19318
+    floatx = keras.backend.floatx()
+    keras.backend.set_floatx('float64')
+
+    x = keras.Input((5,))
+    y = keras.layers.Dense(1)(x)
+    model = keras.models.Model(x, y)
+    model.compile('rmsprop', 'mse')
+
+    keras.backend.set_floatx(floatx)
 
 if __name__ == '__main__':
   test.main()

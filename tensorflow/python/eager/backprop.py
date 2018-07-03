@@ -196,11 +196,11 @@ def implicit_val_and_grad(f):
   # TODO(cais): Remove calls to tf.constant() once the gradients functions
   # accept lists and np.ndarrays.
 
-  def grad_fn(*args):
+  def grad_fn(*args, **kwds):
     """Computes the gradient of the wrapped function."""
     this_tape = tape.push_new_tape()
     try:
-      end_node = f(*args)
+      end_node = f(*args, **kwds)
       if end_node is None:
         raise ValueError("Cannot differentiate a function that returns None; "
                          "did you forget to return a value from {}?".format(
@@ -605,7 +605,9 @@ def _zeros(shape, dtype):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
-  cache_key = shape, dtype, device
+  # pylint: disable=protected-access
+  cache_key = shape, dtype, device, context.context()._eager_context.mode
+  # pylint: enable=protected-access
   cached = _zeros_cache.get(cache_key)
   if cached is None:
     cached = _fast_fill(0, shape, dtype)

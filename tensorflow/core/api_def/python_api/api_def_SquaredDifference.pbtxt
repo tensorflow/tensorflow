@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "SquaredDifference"
+  endpoint {
+    name: "math.squared_difference"
+  }
+  endpoint {
+    name: "squared_difference"
+    deprecation_message: "tf.squared_difference is deprecated, please use tf.math.squared_difference instead."
+  }
+}

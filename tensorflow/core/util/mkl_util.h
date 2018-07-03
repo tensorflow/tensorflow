@@ -22,10 +22,13 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#ifdef INTEL_MKL_ML
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 #include "mkl_service.h"
 #include "mkl_trans.h"
+#endif
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -39,6 +42,7 @@ limitations under the License.
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
+#include "tensorflow/core/lib/core/stringpiece.h"
 
 using mkldnn::engine;
 using mkldnn::memory;
@@ -51,10 +55,11 @@ using mkldnn::reorder;
 typedef unsigned int uint;
 #endif
 
-// The file contains a number of utility classes and functions used by MKL
-// enabled kernels
 
 namespace tensorflow {
+
+// The file contains a number of utility classes and functions used by MKL
+// enabled kernels
 
 // This class encapsulates all the meta data that is associated with an MKL
 // tensor. A tensor is an MKL tensor if it was created as the result of an
@@ -71,6 +76,7 @@ typedef enum {
   Dim_I = 1
 } MklDnnDims;
 
+#ifdef INTEL_MKL_ML
 class MklShape {
  public:
   MklShape() {}
@@ -331,7 +337,7 @@ class MklShape {
       nullptr;  // TF dimension corresponding to this MKL dimension
 };
 
-#ifndef INTEL_MKL_ML
+#else
 
 // Forward decl
 TensorFormat MklDnnDataFormatToTFDataFormat(memory::format format);
@@ -664,12 +670,14 @@ class MklDnnShape {
 
 // List of MklShape objects. Used in Concat/Split layers.
 
-typedef std::vector<MklShape> MklShapeList;
 
 #ifndef INTEL_MKL_ML
 typedef std::vector<MklDnnShape> MklDnnShapeList;
+#else
+typedef std::vector<MklShape> MklShapeList;
 #endif
 
+#ifdef INTEL_MKL_ML
 // Check if all tensors specified by MklShapes are MKL tensors.
 inline bool AreAllMklTensors(const MklShapeList& shapes) {
   for (auto& s : shapes) {
@@ -680,7 +688,6 @@ inline bool AreAllMklTensors(const MklShapeList& shapes) {
   return true;
 }
 
-#ifdef INTEL_MKL_ML
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                              const MklShape& mkl_shape) {
@@ -706,20 +713,54 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
   return output_tensor;
 }
 #else
+using mkldnn::stream;
+template <typename T> class MklDnnData;
+
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                              const MklDnnShape& mkl_shape) {
   Tensor output_tensor;
-  TensorShape output_shape;
+  try {
+    if (!mkl_shape.IsMklTensor())
+      return mkl_tensor;  // return input since it is already TF tensor
 
-  TF_CHECK_OK(
-      Status(error::Code::UNIMPLEMENTED, "Unimplemented conversion function"));
+    TensorShape output_shape = mkl_shape.GetTfShape();;
 
+    // Allocate output tensor.
+    context->allocate_temp(DataTypeToEnum<T>::v(),
+        output_shape, &output_tensor);
+
+    auto cpu_engine = engine(engine::cpu, 0);
+    MklDnnData<T> input(&cpu_engine);
+
+    // Get Mkl layout of input tensor.
+    auto input_mkl_md = mkl_shape.GetMklLayout();
+    auto output_tf_md = mkl_shape.GetTfLayout();
+    auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
+    input.SetUsrMem(input_mkl_md, &mkl_tensor);
+
+    // reorder
+    if (input.IsReorderNeeded(output_tf_pd)) {
+      std::vector<primitive> net;
+      CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net),
+             true);
+      stream(stream::kind::eager).submit(net).wait();
+    } else {
+      // If not, just forward input tensor to output tensor.
+      CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
+    }
+  } catch (mkldnn::error& e) {
+    string error_msg = "Status: " + std::to_string(e.status) +
+                       ", message: " + string(e.message) + ", in file " +
+                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    LOG(FATAL) << "Operation received an exception: " << error_msg;
+  }
   return output_tensor;
 }
 #endif
 
 // Get the MKL shape from the second string tensor
+#ifdef INTEL_MKL_ML
 inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
   mklshape->DeSerializeMklShape(
       ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
@@ -730,8 +771,7 @@ inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
               .size() *
           sizeof(uint8));
 }
-
-#ifndef INTEL_MKL_ML
+#else
 inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape) {
   mklshape->DeSerializeMklDnnShape(
       ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
@@ -805,6 +845,7 @@ inline TensorShape GetTfShape(OpKernelContext* context, size_t input_idx) {
 }
 #endif
 
+#ifdef INTEL_MKL_ML
 // Allocate the second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -820,7 +861,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
 
-#ifndef INTEL_MKL_ML
+#else
 // Allocate the second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -837,6 +878,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
 }
 #endif
 
+#ifdef INTEL_MKL_ML
 // Allocate the output tensor, create a second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -857,7 +899,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
 
-#ifndef INTEL_MKL_ML
+#else
 // Allocate the output tensor, create a second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -892,8 +934,7 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                                                  tf_shape, tensor_out));
   *buf_out = static_cast<void*>(tensor_out->flat<T>().data());
 }
-#endif
-
+#else
 inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                            dnnLayout_t lt_buff, void** buf_out) {
   TensorShape tf_shape;
@@ -907,6 +948,7 @@ inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
   *buf_out = static_cast<void*>(tensor_out->flat<float>().data());
 }
 
+#endif
 template <typename T>
 inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                            TensorShape tf_shape) {
@@ -930,6 +972,7 @@ inline void GetStridesFromSizes(TensorFormat data_format, size_t* strides,
   }
 }
 
+#ifdef INTEL_MKL_ML
 inline void MklSizesToTFSizes(OpKernelContext* context,
                               TensorFormat data_format_,
                               const MklShape& mkl_shape,
@@ -955,6 +998,7 @@ inline void MklSizesToTFSizes(OpKernelContext* context,
 
   OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(sizes, tf_shape));
 }
+#endif
 
 inline int32 GetMklTensorDimIndex(char dimension) {
   switch (dimension) {
@@ -972,12 +1016,14 @@ inline int32 GetMklTensorDimIndex(char dimension) {
   }
 }
 
+#ifdef INTEL_MKL_ML
 inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   int index = GetMklTensorDimIndex(dimension);
   CHECK(index >= 0 && index < mkl_shape.GetDimension())
       << "Invalid index from the dimension: " << index << ", " << dimension;
   return mkl_shape.dim_size(index);
 }
+#endif
 
 inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
                                  int idx_out) {
@@ -1097,6 +1143,14 @@ inline void ForwardMklTensorInToOut(OpKernelContext* context, int idx_in,
 }
 
 #ifndef INTEL_MKL_ML
+// Set a dummy MKLDNN shape (called when the output is in TF format)
+inline void SetDummyMklDnnShapeOutput(OpKernelContext* context,
+                                      uint32 idx_data_out) {
+  MklDnnShape mkl_shape_output;
+  mkl_shape_output.SetMklTensor(false);
+  AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
+}
+
 inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
                                                 int idx_in, int idx_out,
                                                 const MklDnnShape& mkl_shape) {
@@ -1132,6 +1186,7 @@ inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
   }
 }
 
+#ifdef INTEL_MKL_ML
 // Set a dummy MKL shape (called when the output is in TF format)
 inline void SetDummyMklShapeOutput(OpKernelContext* context,
                                    uint32 idx_data_out) {
@@ -1139,8 +1194,6 @@ inline void SetDummyMklShapeOutput(OpKernelContext* context,
   mkl_shape_output.SetMklTensor(false);
   AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
 }
-
-#ifdef INTEL_MKL_ML
 // We don't need these functions in MKLDNN. We have defined equality operator
 // on MklDnnShape class directly.
 
@@ -1210,7 +1263,6 @@ inline bool MklCompareShapes(const TensorShape* input_shape_0,
 
   return true;
 }
-#endif
 
 // These functions do not compile with MKL-DNN since mkl.h is missing.
 // We may need to remove them later.
@@ -1248,6 +1300,7 @@ inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
   }
 }
 
+#endif
 // -------------------------------------------------------------------
 
 #ifndef INTEL_MKL_ML
@@ -1761,11 +1814,11 @@ class MklDnnData {
   }
 };
 
-/// Base class for operations with reuse of DNN primitives
+/// Base class for operations with reuse of primitives
 ///
-class DnnOp {
+class MklPrimitive {
  public:
-  virtual ~DnnOp() {}
+  virtual ~MklPrimitive() {}
 
   // Dummy data. Its size, hard-coded as 256 here, does
   // not matter since MKL should never operate on this buffer.
@@ -1773,33 +1826,33 @@ class DnnOp {
 };
 
 const mkldnn::memory::dims NONE_DIMS = {};
-// This constant is used to declare dummy buffer (size), for MKL primitives
-template <typename T>
-class DnnOpFactory {
- public:
-  DnnOpFactory() {}
-  ~DnnOpFactory() {}
 
-  DnnOp* GetOp(const std::string& key) {
-    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
-    if (stream_iter == DnnOpFactory<T>::GetHashMap().end()) {
+template <typename T>
+class MklPrimitiveFactory {
+ public:
+  MklPrimitiveFactory() {}
+  ~MklPrimitiveFactory() {}
+
+  MklPrimitive* GetOp(const std::string& key) {
+    auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
+    if (stream_iter == MklPrimitiveFactory<T>::GetHashMap().end()) {
       return nullptr;
     } else {
       return stream_iter->second;
     }
   }
 
-  void SetOp(const std::string& key, DnnOp* op) {
-    auto stream_iter = DnnOpFactory<T>::GetHashMap().find(key);
+  void SetOp(const std::string& key, MklPrimitive* op) {
+    auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
 
-    CHECK(stream_iter == DnnOpFactory<T>::GetHashMap().end());
+    CHECK(stream_iter == MklPrimitiveFactory<T>::GetHashMap().end());
 
-    DnnOpFactory<T>::GetHashMap()[key] = op;
+    MklPrimitiveFactory<T>::GetHashMap()[key] = op;
   }
 
  private:
-  static inline std::unordered_map<std::string, DnnOp*> &GetHashMap() {
-    static thread_local std::unordered_map<std::string, DnnOp*> map_;
+  static inline std::unordered_map<std::string, MklPrimitive*>& GetHashMap() {
+    static thread_local std::unordered_map<std::string, MklPrimitive*> map_;
     return map_;
   }
 };
@@ -1813,10 +1866,7 @@ class FactoryKeyCreator {
 
   ~FactoryKeyCreator() {}
 
-  void AddAsKey(const string &str) {
-    auto buffer = reinterpret_cast<const char *>(str.c_str());
-    Append(buffer, str.length());
-  }
+  void AddAsKey(const string& str) { Append(str); }
 
   void AddAsKey(const mkldnn::memory::dims &dims) {
     for (unsigned int i = 0; i < dims.size(); i++) {
@@ -1827,7 +1877,7 @@ class FactoryKeyCreator {
   template <typename T>
   void AddAsKey(const T data) {
     auto buffer = reinterpret_cast<const char *>(&data);
-    Append(buffer, sizeof(T));
+    Append(StringPiece(buffer, sizeof(T)));
   }
 
   std::string GetKey() {
@@ -1838,8 +1888,8 @@ class FactoryKeyCreator {
   string key_;
   const char delimiter = 'x';
   const int kMaxKeyLength = 256;
-  void Append(const char* data, int len) {
-    key_.append(data, len);
+  void Append(StringPiece s) {
+    key_.append(s.ToString());
     key_.append(1, delimiter);
   }
 };

@@ -1901,6 +1901,11 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 #else  // INTEL_MKL_ML
 
+// NOTE: Unit tests in this file rely on a topological sorted graph for
+// printing. But since sibling nodes of a node in the topologically sorted graph
+// can be printed in different orders, tests may fail if the order in which
+// sibling nodes are visited is changed.
+
 namespace {
 
 const char kCPUDevice[] = "/job:a/replica:0/task:0/device:CPU:0";
@@ -2572,9 +2577,9 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Concat_Input_Mkl) {
             "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"
             "F(_MklConv2D);G(Const);H(_MklConcat);I(Zeta)|A->E;A->I;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "B->E:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"
-            "D->F:1;DMT/_0->F:2;DMT/_1->F:3;DMT/_2->E:2;DMT/_3->E:3;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "B->E:1;C->F;C:control->DMT/_2:control;C:control->DMT/_3:control;"
+            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"
             "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"
             "G:control->DMT/_4:control;H->I:1");
 }
@@ -2681,9 +2686,9 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ConcatV2_Input_Mkl) {
             "A(Input);B(Input);C(Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
             "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"
             "F(_MklConv2D);G(Const);H(_MklConcatV2);I(Zeta)|A->E;A->I;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;B->E:1;C->F;"
-            "C:control->DMT/_0:control;C:control->DMT/_1:control;"
-            "D->F:1;DMT/_0->F:2;DMT/_1->F:3;DMT/_2->E:2;DMT/_3->E:3;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;B->E:1;C->F;"
+            "C:control->DMT/_2:control;C:control->DMT/_3:control;"
+            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"
             "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"
             "F:2->H:4;G->H:2;H->I:1");
 }
@@ -3060,8 +3065,8 @@ TEST_F(MklLayoutPassTest, LRN_Negative3) {
             "C:control->DMT/_1:control;C:control->DMT/_2:control;"
             "C:control->DMT/_3:control;C:control->DMT/_4:control;"
             "C:control->DMT/_5:control;C:control->DMT/_6:control;"
-            "D->E:1;D->F:2;DMT/_0->B:1;DMT/_1->F:3;DMT/_2->F:7;DMT/_3->F:4;"
-            "DMT/_4->F:6;DMT/_5->E:4;DMT/_6->E:5;E->G;F->G:1");
+            "D->E:1;D->F:2;DMT/_0->B:1;DMT/_1->E:4;DMT/_2->E:5;DMT/_3->F:3;"
+            "DMT/_4->F:7;DMT/_5->F:4;DMT/_6->F:6;E->G;F->G:1");
 }
 
 /* Test MaxPool->MaxPoolGrad replacement by workspace+rewrite nodes. */
@@ -3516,6 +3521,37 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_DeviceTest) {
             "A(Input);B(Input);C(_MklConv2D);D(Input);E(BiasAdd);"
             "M(_MklInput);N(_MklInput);Y(Input);Z(Zeta)|A->C;"
             "B->C:1;C->E;D->E:1;E->Z;M->C:2;N->C:3;Y->Z:1");
+}
+
+/////////////////////////////////////////////////////////////////////
+//         Post-rewrite fixup pass test
+
+TEST_F(MklLayoutPassTest, PostRewriteFixUpPass) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: '_MklInput'}"
+      "node { name: 'N' op: '_MklInput'}"
+      "node { name: 'C' op: '_MklConv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['A', 'B', 'M', 'N']}"
+      "node { name: 'D' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_UINT8 } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_UINT8 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'E' op: '_MklAdd'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['C', 'A', 'D', 'D']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklConv2D);D(Const);E(_MklAdd);"
+            "M(_MklInput);N(_MklInput)|A->C;A->E:1;B->C:1;C->E;C:2->E:2;"
+            "D->E:3;M->C:2;N->C:3");
 }
 
 /////////////////////////////////////////////////////////////////////

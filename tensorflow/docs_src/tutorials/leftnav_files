@@ -3,10 +3,11 @@ index.md
 ### Images
 layers.md: MNIST
 image_recognition.md: Image Recognition
-image_retraining.md: Image Retraining
+/hub/tutorials/image_retraining.md: Image Retraining
 deep_cnn.md
 
 ### Sequences
+/hub/tutorials/text_classification_with_tf_hub: Text Classification
 recurrent.md
 seq2seq.md: Neural Machine Translation
 recurrent_quickdraw.md: Drawing Classification

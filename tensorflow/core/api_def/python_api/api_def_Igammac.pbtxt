@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Igammac"
+  endpoint {
+    name: "math.igammac"
+  }
+  endpoint {
+    name: "igammac"
+    deprecation_message: "tf.igammac is deprecated, please use tf.math.igammac instead."
+  }
+}

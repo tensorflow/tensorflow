@@ -44,11 +44,11 @@ using ReshapeMotionTest = ClientLibraryTestBase;
 
 TEST_F(ReshapeMotionTest, ElementwiseOfReshapesWithNonSameInputShapes) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2<int32>({{2, 3, 5}, {7, 11, 13}});
-  auto b = builder.ConstantR2<int32>({{17, 19}, {23, 29}, {31, 37}});
-  auto c = builder.Reshape(a, {6});
-  auto d = builder.Reshape(b, {6});
-  auto e = builder.Mul(c, d);
+  auto a = ConstantR2<int32>(&builder, {{2, 3, 5}, {7, 11, 13}});
+  auto b = ConstantR2<int32>(&builder, {{17, 19}, {23, 29}, {31, 37}});
+  auto c = Reshape(a, {6});
+  auto d = Reshape(b, {6});
+  Mul(c, d);
 
   ComputeAndCompareR1<int32>(&builder, {34, 57, 115, 203, 341, 481}, {});
 }

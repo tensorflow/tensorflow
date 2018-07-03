@@ -51,7 +51,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   //   H <=> Y
   //   W <=> X
   //
-  // Therefore kOutputInputYX means NHWC; kBatchDepthYX means NCHW.
+  // Therefore kOutputInputYX and kBatchDepthYX mean NCHW.
 
   // As of today, our empirical evidence is that cudnn 7.0 is faster on V100 x
   // fp16 with the mostly-NHWC layout. The heuristic may change as cudnn version

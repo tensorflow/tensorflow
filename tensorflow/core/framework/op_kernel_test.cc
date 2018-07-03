@@ -964,5 +964,27 @@ void BM_SelectInputRange(int iters) {
 BENCHMARK(BM_ConcatInputRange);
 BENCHMARK(BM_SelectInputRange);
 
+TEST(RegisteredKernels, CanCallGetAllRegisteredKernels) {
+  auto all_registered_kernels = GetAllRegisteredKernels().kernel();
+  auto has_name_test1 = [](const KernelDef& k) { return k.op() == "Test1"; };
+
+  // Verify we can find the "Test1" op registered above
+  auto test1_it = std::find_if(all_registered_kernels.begin(),
+                               all_registered_kernels.end(), has_name_test1);
+  ASSERT_NE(test1_it, all_registered_kernels.end());
+  EXPECT_EQ(test1_it->device_type(), "CPU");
+
+  // Verify there was just one kernel
+  ++test1_it;
+  EXPECT_EQ(
+      std::find_if(test1_it, all_registered_kernels.end(), has_name_test1),
+      all_registered_kernels.end());
+}
+
+// Simple test just to check we can call LogAllRegisteredKernels
+TEST(RegisteredKernels, CanLogAllRegisteredKernels) {
+  tensorflow::LogAllRegisteredKernels();
+}
+
 }  // namespace
 }  // namespace tensorflow

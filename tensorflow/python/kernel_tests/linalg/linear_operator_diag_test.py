@@ -34,25 +34,21 @@ class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     diag = linear_operator_test_util.random_sign_uniform(
         shape[:-1], minval=1., maxval=2., dtype=dtype)
+
+    lin_op_diag = diag
+
     if use_placeholder:
-      diag_ph = array_ops.placeholder(dtype=dtype)
-      # Evaluate the diag here because (i) you cannot feed a tensor, and (ii)
-      # diag is random and we want the same value used for both mat and
-      # feed_dict.
-      diag = diag.eval()
-      operator = linalg.LinearOperatorDiag(diag_ph)
-      feed_dict = {diag_ph: diag}
-    else:
-      operator = linalg.LinearOperatorDiag(diag)
-      feed_dict = None
+      lin_op_diag = array_ops.placeholder_with_default(diag, shape=None)
 
-    mat = array_ops.matrix_diag(diag)
+    operator = linalg.LinearOperatorDiag(lin_op_diag)
 
-    return operator, mat, feed_dict
+    matrix = array_ops.matrix_diag(diag)
+
+    return operator, matrix
 
   def test_assert_positive_definite_raises_for_zero_eigenvalue(self):
     # Matrix with one positive eigenvalue and one zero eigenvalue.

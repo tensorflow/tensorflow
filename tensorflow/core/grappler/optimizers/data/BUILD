@@ -68,10 +68,80 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "shuffle_and_repeat_fusion",
+    srcs = ["shuffle_and_repeat_fusion.cc"],
+    hdrs = [
+        "shuffle_and_repeat_fusion.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "shuffle_and_repeat_fusion_test",
+    srcs = ["shuffle_and_repeat_fusion_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":shuffle_and_repeat_fusion",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
+    name = "take_all_elimination",
+    srcs = ["take_all_elimination.cc"],
+    hdrs = [
+        "take_all_elimination.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "take_all_elimination_test",
+    srcs = ["take_all_elimination_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":take_all_elimination",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
     name = "data",
     visibility = ["//visibility:public"],
     deps = [
         ":map_and_batch_fusion",
+        ":shuffle_and_repeat_fusion",
+        ":take_all_elimination",
     ],
     alwayslink = 1,
 )

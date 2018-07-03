@@ -44,9 +44,25 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "random",
+    srcs = ["random.cc"],
+    hdrs = ["random.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -81,6 +97,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/core:lib",

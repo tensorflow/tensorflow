@@ -22,6 +22,7 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 @@Interpreter
 @@OpHint
 @@convert_op_hints_to_stubs
+@@build_toco_convert_protos
 
 @@FLOAT
 @@QUANTIZED_UINT8
@@ -33,9 +34,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six import PY3
+
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.contrib.lite.python import lite_constants as constants
+from tensorflow.contrib.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.convert import tensor_name
 from tensorflow.contrib.lite.python.convert import toco_convert
 from tensorflow.contrib.lite.python.convert import toco_convert_protos  # pylint: disable=unused-import
@@ -46,12 +50,14 @@ from tensorflow.contrib.lite.python.interpreter import Interpreter  # pylint: di
 from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
+from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops.variables import global_variables_initializer
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+# from tensorflow.python.util.all_util import remove_undocumented
 
 
 class TocoConverter(object):
@@ -62,11 +68,11 @@ class TocoConverter(object):
 
   Attributes:
 
-    inference_type: Target data type of arrays in the output file. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
-    inference_input_type: Target data type of input arrays. Allows for a
-      different type for input arrays in the case of quantization. Currently
-      must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+    inference_type: Target data type of real-number arrays in the output file.
+      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of real-number input arrays. Allows
+      for a different type for input arrays in the case of quantization.
+      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: Dict of strings representing input tensor names
@@ -92,6 +98,16 @@ class TocoConverter(object):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
+    quantize_weights: Boolean indicating whether to store weights as quantized
+      weights followed by dequantize operations. Computation is still done in
+      float, but reduces model size (at the cost of accuracy and latency).
+      (default False)
+    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
+      stages of processing GraphViz .dot files. Preferred over
+      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
+      output file. (default None)
+    dump_graphviz_video: Boolean indicating whether to dump the graph after
+      every graph transformation. (default False)
 
   Example usage:
 
@@ -116,7 +132,7 @@ class TocoConverter(object):
 
     Args:
 
-      graph_def: TensorFlow GraphDef.
+      graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
         `foo.get_shape()` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
@@ -133,6 +149,9 @@ class TocoConverter(object):
     self.reorder_across_fake_quant = False
     self.change_concat_input_ranges = False
     self.allow_custom_ops = False
+    self.quantize_weights = False
+    self.dump_graphviz_dir = None
+    self.dump_graphviz_video = False
 
   @classmethod
   def from_session(cls, sess, input_tensors, output_tensors):
@@ -159,7 +178,7 @@ class TocoConverter(object):
     """Creates a TocoConverter class from a file containing a frozen GraphDef.
 
     Args:
-      graph_def_file: Full filepath of file containing TensorFlow GraphDef.
+      graph_def_file: Full filepath of file containing frozen GraphDef.
       input_arrays: List of input tensors to freeze graph with.
       output_arrays: List of output tensors to freeze graph with.
       input_shapes: Dict of strings representing input tensor names to list of
@@ -188,6 +207,12 @@ class TocoConverter(object):
       except (_text_format.ParseError, DecodeError):
         try:
           print("Ignore 'tcmalloc: large alloc' warnings.")
+
+          if not isinstance(file_content, str):
+            if PY3:
+              file_content = file_content.decode('utf-8')
+            else:
+              file_content = file_content.encode('utf-8')
           _text_format.Merge(file_content, graph_def)
         except (_text_format.ParseError, DecodeError):
           raise ValueError(
@@ -202,7 +227,7 @@ class TocoConverter(object):
 
       # Check if graph is frozen.
       if not _is_frozen_graph(sess):
-        raise ValueError("Please freeze the graph using freeze_graph.py")
+        raise ValueError("Please freeze the graph using freeze_graph.py.")
 
       # Create TocoConverter class.
       return cls(sess.graph_def, input_tensors, output_tensors)
@@ -244,6 +269,48 @@ class TocoConverter(object):
                                 output_arrays, tag_set, signature_key)
     return cls(
         graph_def=result[0], input_tensors=result[1], output_tensors=result[2])
+
+  @classmethod
+  def from_keras_model_file(cls,
+                            model_file,
+                            input_arrays=None,
+                            input_shapes=None,
+                            output_arrays=None):
+    """Creates a TocoConverter class from a tf.keras model file.
+
+    Args:
+      model_file: Full filepath of HDF5 file containing the tf.keras model.
+      input_arrays: List of input tensors to freeze graph with. Uses input
+        arrays from SignatureDef when none are provided. (default None)
+      input_shapes: Dict of strings representing input tensor names to list of
+        integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
+        Automatically determined when input shapes is None (e.g., {"foo" :
+        None}). (default None)
+      output_arrays: List of output tensors to freeze graph with. Uses output
+        arrays from SignatureDef when none are provided. (default None)
+
+    Returns:
+      TocoConverter class.
+    """
+    _keras.backend.clear_session()
+    _keras.backend.set_learning_phase(False)
+    keras_model = _keras.models.load_model(model_file)
+    sess = _keras.backend.get_session()
+
+    # Get input and output tensors.
+    if input_arrays:
+      input_tensors = get_tensors_from_tensor_names(sess.graph, input_arrays)
+    else:
+      input_tensors = keras_model.inputs
+
+    if output_arrays:
+      output_tensors = get_tensors_from_tensor_names(sess.graph, output_arrays)
+    else:
+      output_tensors = keras_model.outputs
+    set_tensor_shapes(input_tensors, input_shapes)
+
+    graph_def = _freeze_graph(sess, output_tensors)
+    return cls(graph_def, input_tensors, output_tensors)
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -302,8 +369,19 @@ class TocoConverter(object):
         drop_control_dependency=self.drop_control_dependency,
         reorder_across_fake_quant=self.reorder_across_fake_quant,
         change_concat_input_ranges=self.change_concat_input_ranges,
-        allow_custom_ops=self.allow_custom_ops)
+        allow_custom_ops=self.allow_custom_ops,
+        quantize_weights=self.quantize_weights,
+        dump_graphviz_dir=self.dump_graphviz_dir,
+        dump_graphviz_video=self.dump_graphviz_video)
     return result
+
+  def get_input_arrays(self):
+    """Returns a list of the names of the input tensors.
+
+    Returns:
+      List of strings.
+    """
+    return [tensor_name(tensor) for tensor in self._input_tensors]
 
   def _set_batch_size(self, batch_size):
     """Sets the first dimension of the input tensor to `batch_size`.
@@ -331,7 +409,7 @@ def _is_frozen_graph(sess):
     Bool.
   """
   for op in sess.graph.get_operations():
-    if op.type.startswith("Variable"):
+    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
       return False
   return True
 
@@ -356,3 +434,5 @@ def _freeze_graph(sess, output_tensors):
                                                         output_arrays)
   else:
     return sess.graph_def
+
+# remove_undocumented(__name__)

@@ -72,24 +72,24 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "full_path",
     "if_android",
-    "if_not_android_mips_and_mips64",
     "if_ios",
     "if_linux_x86_64",
     "if_mobile",
     "if_not_mobile",
-    "if_windows",
     "if_not_windows",
-    "tf_copts",
+    "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
+    "tf_copts",
     "tf_cuda_library",
     "tf_gen_op_libs",
     "tf_generate_proto_text_sources",
     "tf_genrule_cmd_append_to_srcs",
     "tf_opts_nortti_if_android",
-    "cc_header_only_library",
+    "tf_features_nomodules_if_android",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
@@ -113,11 +113,11 @@ load(
     "tf_additional_human_readable_json_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
+    "tf_additional_lib_hdrs",
+    "tf_additional_lib_srcs",
     "tf_additional_libdevice_data",
     "tf_additional_libdevice_deps",
     "tf_additional_libdevice_srcs",
-    "tf_additional_lib_hdrs",
-    "tf_additional_lib_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
     "tf_additional_proto_hdrs",
@@ -141,8 +141,8 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
     "if_static",
+    "tf_cuda_tests_tags",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
@@ -150,6 +150,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 
 exports_files(["ops/ops.pbtxt"])
 
@@ -233,7 +234,6 @@ tf_proto_library(
     srcs = [],
     cc_api_version = 2,
     default_header = True,
-    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     protodeps = [
@@ -700,7 +700,9 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
+        ":abi",
         ":lib_platform",
+        ":stacktrace",
     ],
 )
 
@@ -790,6 +792,7 @@ tf_cuda_library(
         "framework/graph_def_util.h",
         "framework/graph_to_functiondef.h",
         "framework/kernel_def_builder.h",
+        "framework/kernel_def_util.h",
         "framework/log_memory.h",
         "framework/lookup_interface.h",
         "framework/memory_types.h",
@@ -876,6 +879,7 @@ cc_library(
     hdrs = [
         "util/stats_calculator.h",
     ],
+    copts = tf_copts(),
 )
 
 cc_library(
@@ -888,8 +892,23 @@ cc_library(
 )
 
 cc_library(
+    name = "exec_on_stall",
+    hdrs = ["util/exec_on_stall.h"],
+    deps = [":framework_lite"],
+)
+
+cc_library(
     name = "ptr_util",
     hdrs = ["util/ptr_util.h"],
+)
+
+cc_library(
+    name = "status_util",
+    hdrs = ["util/status_util.h"],
+    deps = [
+        ":graph",
+        ":lib",
+    ],
 )
 
 cc_library(
@@ -989,6 +1008,7 @@ tf_gen_op_libs(
         "nn_ops",
         "no_op",
         "parsing_ops",
+        "random_grad",
         "random_ops",
         "remote_fused_graph_ops",
         "resource_variable_ops",
@@ -1187,6 +1207,7 @@ tf_cuda_library(
     hdrs = [
         "common_runtime/device.h",
         "common_runtime/device_factory.h",
+        "common_runtime/function.h",
         "common_runtime/optimization_registry.h",
         "common_runtime/shape_refiner.h",
         "graph/algorithm.h",
@@ -1241,6 +1262,7 @@ cc_library(
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
+        "//tensorflow/core/kernels:grappler",
         "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
@@ -1439,6 +1461,7 @@ filegroup(
             "lib/png/**/*",
             "lib/gif/**/*",
             "util/events_writer.*",
+            "util/stats_calculator.*",
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/default/test_benchmark.*",
@@ -1522,6 +1545,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -1562,6 +1586,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc_impl",
+        ":stats_calculator_portable",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
@@ -1898,6 +1923,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/master_service.proto"],
     has_services = 1,
     cc_api_version = 2,
+    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
     protodeps = [":master_proto"],
     visibility = [
@@ -2226,7 +2252,6 @@ tf_proto_library(
     srcs = ERROR_CODES_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     provide_cc_alias = True,
@@ -2248,7 +2273,6 @@ tf_proto_library(
     srcs = COMMON_PROTO_SRCS + ADDITIONAL_CORE_PROTO_SRCS,
     cc_api_version = 2,
     default_header = True,
-    j2objc_api_version = 1,
     java_api_version = 2,
     js_api_version = 2,
     protodeps = [
@@ -2327,6 +2351,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
 FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/op_segment.h",
     "framework/rendezvous.h",  # only needed for tests
+    "framework/resource_var.h",
     "framework/tensor_reference.h",
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
@@ -2622,6 +2647,7 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/dma_helper.h",
     "common_runtime/eigen_thread_pool.h",
     "common_runtime/executor.h",
+    "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
     "common_runtime/lower_if_op.h",
@@ -2644,6 +2670,8 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
     "common_runtime/visitable_allocator.h",
+    "common_runtime/process_state.h",
+    "common_runtime/pool_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
@@ -2671,6 +2699,7 @@ tf_cuda_library(
         "common_runtime/device_resolver_local.cc",
         "common_runtime/device_set.cc",
         "common_runtime/executor.cc",
+        "common_runtime/executor_factory.cc",
         "common_runtime/function.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
@@ -2681,7 +2710,9 @@ tf_cuda_library(
         "common_runtime/optimization_registry.cc",
         "common_runtime/parallel_concat_optimizer.cc",
         "common_runtime/placer.cc",
+        "common_runtime/pool_allocator.cc",
         "common_runtime/process_function_library_runtime.cc",
+        "common_runtime/process_state.cc",
         "common_runtime/process_util.cc",
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
@@ -2868,6 +2899,7 @@ cc_library(
 )
 
 GPU_RUNTIME_HEADERS = [
+    "common_runtime/gpu/cuda_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
@@ -2877,10 +2909,9 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
+    "common_runtime/gpu/gpu_process_state.h",
     "common_runtime/gpu/gpu_stream_util.h",
     "common_runtime/gpu/gpu_util.h",
-    "common_runtime/gpu/pool_allocator.h",
-    "common_runtime/gpu/process_state.h",
     "common_runtime/gpu_device_context.h",
 ]
 
@@ -2893,11 +2924,10 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
         "common_runtime/gpu/gpu_managed_allocator.cc",
+        "common_runtime/gpu/gpu_process_state.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
         "common_runtime/gpu/gpu_util_platform_specific.cc",
-        "common_runtime/gpu/pool_allocator.cc",
-        "common_runtime/gpu/process_state.cc",
     ],
     hdrs = GPU_RUNTIME_HEADERS,
     copts = tf_copts(),
@@ -3077,6 +3107,8 @@ cc_library(
         # we now need at least "str_util".
         ":lib",
         ":lib_platform",
+        ":stacktrace_handler",
+        ":test_lite",
         "//tensorflow/core/platform/default/build_config:test_lite_main",
     ],
     alwayslink = 1,
@@ -3251,6 +3283,18 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "exec_on_stall_test",
+    size = "small",
+    srcs = ["util/exec_on_stall_test.cc"],
+    deps = [
+        ":exec_on_stall",
+        ":framework_lite",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
     name = "lib_jpeg_jpeg_mem_unittest",
     srcs = ["lib/jpeg/jpeg_mem_unittest.cc"],
     data = glob(["lib/jpeg/testdata/*.jpg"]),
@@ -3341,10 +3385,12 @@ tf_cc_tests(
         "framework/bfloat16_test.cc",
         "framework/cancellation_test.cc",
         "framework/common_shape_fns_test.cc",
+        "framework/device_base_test.cc",
         "framework/function_test.cc",
         "framework/graph_def_util_test.cc",
         "framework/graph_to_functiondef_test.cc",
         "framework/kernel_def_builder_test.cc",
+        "framework/kernel_def_util_test.cc",
         "framework/memory_types_test.cc",
         "framework/node_def_builder_test.cc",
         "framework/node_def_util_test.cc",
@@ -3369,6 +3415,7 @@ tf_cc_tests(
         "framework/variant_op_registry_test.cc",
         "framework/variant_test.cc",
         "graph/algorithm_test.cc",
+        "graph/control_flow_test.cc",
         "graph/edgeset_test.cc",
         "graph/graph_def_builder_test.cc",
         "graph/graph_partition_test.cc",
@@ -3393,6 +3440,7 @@ tf_cc_tests(
         "util/semver_test.cc",
         "util/sparse/sparse_tensor_test.cc",
         "util/stat_summarizer_test.cc",
+        "util/status_util_test.cc",
         "util/tensor_format_test.cc",
         "util/tensor_slice_reader_test.cc",
         "util/tensor_slice_set_test.cc",
@@ -3417,6 +3465,7 @@ tf_cc_tests(
         ":ops",
         ":protos_all_cc",
         ":protos_test_cc",
+        ":status_util",
         ":test",
         ":test_main",
         ":testlib",
@@ -3544,7 +3593,10 @@ tf_cc_tests_gpu(
 tf_cc_test_mkl(
     name = "mkl_runtime_tests",
     size = "small",
-    srcs = ["common_runtime/mkl_cpu_allocator_test.cc"],
+    srcs = [
+        "common_runtime/mkl_cpu_allocator_test.cc",
+        "common_runtime/mkl_threadpool_device_test.cc",
+    ],
     linkstatic = 1,
     deps = [
         ":core",
@@ -3872,13 +3924,13 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "common_runtime_direct_session_test",
     size = "small",
     srcs = ["common_runtime/direct_session_test.cc"],
+    args = [] + if_cuda(["--heap_check=local"]),  # The GPU tracer leaks memory
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
@@ -3891,6 +3943,7 @@ tf_cc_test(
         ":test",
         ":test_main",
         ":testlib",
+        "//third_party/eigen3",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
@@ -3904,8 +3957,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
-        "//third_party/eigen3",
-    ],
+    ] + if_cuda([":cuda"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of

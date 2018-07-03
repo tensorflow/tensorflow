@@ -57,6 +57,10 @@ class StatsAggregator {
   // interface. It is possible that not all implementations will support
   // encoding their state as a protocol buffer.
   virtual void EncodeToProto(Summary* out_summary) = 0;
+
+  // Increment the `label` cell of metrics mapped with `name` by given `value`.
+  virtual void IncrementCounter(const string& name, const string& label,
+                                int64 val) = 0;
 };
 
 // A `StatsAggregatorResource` wraps a shareable `StatsAggregator` as a resource

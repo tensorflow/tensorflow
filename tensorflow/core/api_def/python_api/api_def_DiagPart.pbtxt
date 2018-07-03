@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DiagPart"
+  endpoint {
+    name: "linalg.tensor_diag_part"
+  }
+  endpoint {
+    name: "diag_part"
+    deprecation_message: "tf.diag_part is deprecated, please use tf.linalg.tensor_diag_part instead."
+  }
+}

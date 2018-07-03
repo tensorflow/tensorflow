@@ -27,14 +27,14 @@ from tensorflow.python.platform import test
 
 class GlobalPoolingTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_globalpooling_1d(self):
     testing_utils.layer_test(keras.layers.pooling.GlobalMaxPooling1D,
                              input_shape=(3, 4, 5))
     testing_utils.layer_test(
         keras.layers.pooling.GlobalAveragePooling1D, input_shape=(3, 4, 5))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_globalpooling_2d(self):
     testing_utils.layer_test(
         keras.layers.pooling.GlobalMaxPooling2D,
@@ -53,7 +53,7 @@ class GlobalPoolingTest(test.TestCase):
         kwargs={'data_format': 'channels_last'},
         input_shape=(3, 5, 6, 4))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_globalpooling_3d(self):
     testing_utils.layer_test(
         keras.layers.pooling.GlobalMaxPooling3D,
@@ -75,7 +75,7 @@ class GlobalPoolingTest(test.TestCase):
 
 class Pooling2DTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_maxpooling_2d(self):
     pool_size = (3, 3)
     for strides in [(1, 1), (2, 2)]:
@@ -88,7 +88,7 @@ class Pooling2DTest(test.TestCase):
           },
           input_shape=(3, 5, 6, 4))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_averagepooling_2d(self):
     testing_utils.layer_test(
         keras.layers.AveragePooling2D,
@@ -122,7 +122,7 @@ class Pooling2DTest(test.TestCase):
 
 class Pooling3DTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_maxpooling_3d(self):
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
@@ -141,7 +141,7 @@ class Pooling3DTest(test.TestCase):
         },
         input_shape=(3, 4, 11, 12, 10))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_averagepooling_3d(self):
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
@@ -163,7 +163,7 @@ class Pooling3DTest(test.TestCase):
 
 class Pooling1DTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_maxpooling_1d(self):
     for padding in ['valid', 'same']:
       for stride in [1, 2]:
@@ -173,7 +173,7 @@ class Pooling1DTest(test.TestCase):
                     'padding': padding},
             input_shape=(3, 5, 4))
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_averagepooling_1d(self):
     for padding in ['valid', 'same']:
       for stride in [1, 2]:

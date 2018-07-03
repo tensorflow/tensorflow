@@ -1064,7 +1064,7 @@ def streaming_auc(predictions,
       name=name)
 
 
-def _compute_dynamic_auc(labels, predictions, curve='ROC'):
+def _compute_dynamic_auc(labels, predictions, curve='ROC', weights=None):
   """Computes the apporixmate AUC by a Riemann sum with data-derived thresholds.
 
   Computes the area under the ROC or PR curve using each prediction as a
@@ -1077,13 +1077,22 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
     predictions: A 1-D `Tensor` of predictions whose values are `float64`.
     curve: The name of the curve to be computed, 'ROC' for the Receiving
       Operating Characteristic or 'PR' for the Precision-Recall curve.
+    weights: A 1-D `Tensor` of weights whose values are `float64`.
 
   Returns:
     A scalar `Tensor` containing the area-under-curve value for the input.
   """
-  # Count the total number of positive and negative labels in the input.
+  # Compute the total weight and the total positive weight.
   size = array_ops.size(predictions)
-  total_positive = math_ops.cast(math_ops.reduce_sum(labels), dtypes.int32)
+  if weights is None:
+    weights = array_ops.ones_like(labels, dtype=dtypes.float64)
+  labels, predictions, weights = metrics_impl._remove_squeezable_dimensions(
+      labels, predictions, weights)
+  total_weight = math_ops.reduce_sum(weights)
+  total_positive = math_ops.reduce_sum(
+      array_ops.where(
+          math_ops.greater(labels, 0), weights,
+          array_ops.zeros_like(labels, dtype=dtypes.float64)))
 
   def continue_computing_dynamic_auc():
     """Continues dynamic auc computation, entered if labels are not all equal.
@@ -1091,9 +1100,11 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
     Returns:
       A scalar `Tensor` containing the area-under-curve value.
     """
-    # Sort the predictions descending, and the corresponding labels as well.
+    # Sort the predictions descending, keeping the same order for the
+    # corresponding labels and weights.
     ordered_predictions, indices = nn.top_k(predictions, k=size)
     ordered_labels = array_ops.gather(labels, indices)
+    ordered_weights = array_ops.gather(weights, indices)
 
     # Get the counts of the unique ordered predictions.
     _, _, counts = array_ops.unique_with_counts(ordered_predictions)
@@ -1103,23 +1114,39 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
         array_ops.pad(math_ops.cumsum(counts), paddings=[[1, 0]]), dtypes.int32)
 
     # Count the positives to the left of the split indices.
-    positives = math_ops.cast(
-        array_ops.pad(math_ops.cumsum(ordered_labels), paddings=[[1, 0]]),
-        dtypes.int32)
-    true_positives = array_ops.gather(positives, splits)
+    true_positives = array_ops.gather(
+        array_ops.pad(
+            math_ops.cumsum(
+                array_ops.where(
+                    math_ops.greater(ordered_labels, 0), ordered_weights,
+                    array_ops.zeros_like(ordered_labels,
+                                         dtype=dtypes.float64))),
+            paddings=[[1, 0]]), splits)
     if curve == 'ROC':
-      # Count the negatives to the left of every split point and the total
-      # number of negatives for computing the FPR.
-      false_positives = math_ops.subtract(splits, true_positives)
-      total_negative = size - total_positive
+      # Compute the weight of the negatives to the left of every split point and
+      # the total weight of the negatives number of negatives for computing the
+      # FPR.
+      false_positives = array_ops.gather(
+          array_ops.pad(
+              math_ops.cumsum(
+                  array_ops.where(
+                      math_ops.less(ordered_labels, 1), ordered_weights,
+                      array_ops.zeros_like(
+                          ordered_labels, dtype=dtypes.float64))),
+              paddings=[[1, 0]]), splits)
+      total_negative = total_weight - total_positive
       x_axis_values = math_ops.truediv(false_positives, total_negative)
       y_axis_values = math_ops.truediv(true_positives, total_positive)
     elif curve == 'PR':
       x_axis_values = math_ops.truediv(true_positives, total_positive)
       # For conformance, set precision to 1 when the number of positive
       # classifications is 0.
+      positives = array_ops.gather(
+          array_ops.pad(math_ops.cumsum(ordered_weights), paddings=[[1, 0]]),
+          splits)
       y_axis_values = array_ops.where(
-          math_ops.greater(splits, 0), math_ops.truediv(true_positives, splits),
+          math_ops.greater(splits, 0),
+          math_ops.truediv(true_positives, positives),
           array_ops.ones_like(true_positives, dtype=dtypes.float64))
 
     # Calculate trapezoid areas.
@@ -1133,7 +1160,7 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
   return control_flow_ops.cond(
       math_ops.logical_or(
           math_ops.equal(total_positive, 0), math_ops.equal(
-              total_positive, size)),
+              total_positive, total_weight)),
       true_fn=lambda: array_ops.constant(0, dtypes.float64),
       false_fn=continue_computing_dynamic_auc)
 
@@ -1143,7 +1170,8 @@ def streaming_dynamic_auc(labels,
                           curve='ROC',
                           metrics_collections=(),
                           updates_collections=(),
-                          name=None):
+                          name=None,
+                          weights=None):
   """Computes the apporixmate AUC by a Riemann sum with data-derived thresholds.
 
   USAGE NOTE: this approach requires storing all of the predictions and labels
@@ -1168,6 +1196,8 @@ def streaming_dynamic_auc(labels,
       should be added to.
     name: An optional name for the variable_scope that contains the metric
       variables.
+    weights: A 'Tensor' of non-negative weights whose values are castable to
+      `float64`. Will be flattened into a 1-D `Tensor`.
 
   Returns:
     auc: A scalar `Tensor` containing the current area-under-curve value.
@@ -1195,14 +1225,24 @@ def streaming_dynamic_auc(labels,
         check_ops.assert_less_equal(
             labels,
             array_ops.ones_like(labels, dtypes.int64),
-            message='labels must be 0 or 1, at least one is >1')
+            message='labels must be 0 or 1, at least one is >1'),
     ]):
       preds_accum, update_preds = streaming_concat(
           predictions, name='concat_preds')
       labels_accum, update_labels = streaming_concat(
           labels, name='concat_labels')
-      update_op = control_flow_ops.group(update_labels, update_preds)
-      auc = _compute_dynamic_auc(labels_accum, preds_accum, curve=curve)
+      if weights is not None:
+        weights = array_ops.reshape(
+            math_ops.cast(weights, dtypes.float64), [-1])
+        weights_accum, update_weights = streaming_concat(
+            weights, name='concat_weights')
+        update_op = control_flow_ops.group(update_labels, update_preds,
+                                           update_weights)
+      else:
+        weights_accum = None
+        update_op = control_flow_ops.group(update_labels, update_preds)
+      auc = _compute_dynamic_auc(
+          labels_accum, preds_accum, curve=curve, weights=weights_accum)
       if updates_collections:
         ops.add_to_collections(updates_collections, update_op)
       if metrics_collections:
@@ -2503,7 +2543,7 @@ def _compute_recall_at_precision(tp, fp, fn, precision, name):
     name: An optional variable_scope name.
 
   Returns:
-    The recall at a the given `precision`.
+    The recall at a given `precision`.
   """
   precisions = math_ops.div(tp, tp + fp + _EPSILON)
   tf_index = math_ops.argmin(

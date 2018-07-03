@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Sinh"
+  endpoint {
+    name: "math.sinh"
+  }
+  endpoint {
+    name: "sinh"
+    deprecation_message: "tf.sinh is deprecated, please use tf.math.sinh instead."
+  }
+}

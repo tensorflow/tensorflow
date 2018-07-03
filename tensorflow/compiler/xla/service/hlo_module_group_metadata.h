@@ -230,6 +230,9 @@ class HloModuleGroupMetadata {
     return it != tracked_instructions_.end() ? &it->second : nullptr;
   }
 
+  // Dump all the collected module group statistics to the logs.
+  void DumpCollectedStats() const;
+
   // List of all companion instructions sets in the module.
   std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>
       companion_sets_;

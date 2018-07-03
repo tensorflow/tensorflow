@@ -20,9 +20,25 @@ from __future__ import print_function
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+
+try:
+  import os  # pylint: disable=g-import-not-at-top
+  # Add `estimator` attribute to allow access to estimator APIs via
+  # "tf.estimator..."
+  from tensorflow.python.estimator.api import estimator  # pylint: disable=g-import-not-at-top
+
+  # Add `estimator` to the __path__ to allow "from tensorflow.estimator..."
+  # style imports.
+  from tensorflow.python.estimator import api as estimator_api  # pylint: disable=g-import-not-at-top
+  __path__ += [os.path.dirname(estimator_api.__file__)]
+  del estimator_api
+  del os
+except (ImportError, AttributeError):
+  print('tf.estimator package not installed.')
+
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.util.lazy_loader import LazyLoader
+from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
 del LazyLoader
 

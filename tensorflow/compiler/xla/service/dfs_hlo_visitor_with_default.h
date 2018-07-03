@@ -188,6 +188,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleGather(HloInstructionPtr gather) override {
     return DefaultAction(gather);
   }
+  Status HandleAfterAll(HloInstructionPtr token) override {
+    return DefaultAction(token);
+  }
 
   // Invoked to inform the visitor that the traversal has completed, and that
   // the root was "root".

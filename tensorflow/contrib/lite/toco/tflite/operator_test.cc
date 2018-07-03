@@ -74,8 +74,10 @@ class OperatorTest : public ::testing::Test {
     auto new_toco_op = op.Deserialize(output_options->builtin_options(),
                                       output_options->custom_options());
 
-    CHECK(dynamic_cast<T*>(new_toco_op.get()))
-        << "Cannot cast " << HelpfulOperatorTypeName(*new_toco_op) << " to "
+    CHECK(new_toco_op->type == toco_op.type)
+        << "The type of the serialized and deserialized"
+        << HelpfulOperatorTypeName(*new_toco_op)
+        << " does not match the type of the original "
         << HelpfulOperatorTypeName(toco_op);
 
     return std::unique_ptr<T>(dynamic_cast<T*>(new_toco_op.release()));
@@ -110,15 +112,21 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
                                           OperatorType::kLogSoftmax);
   CheckSimpleOperator<TensorFlowMaximumOperator>(
-      "MAXIMUM", OperatorType::kTensorFlowMaximum);
+      "MAXIMUM", OperatorType::kMaximum);  //  Element-wise Maximum
   CheckSimpleOperator<TensorFlowMinimumOperator>(
-      "MINIMUM", OperatorType::kTensorFlowMinimum);
-  CheckSimpleOperator<TensorFlowLessOperator>("LESS",
-                                              OperatorType::kTensorFlowLess);
+      "MINIMUM", OperatorType::kMinimum);  //  Element-wise Minimum
+  CheckSimpleOperator<TensorFlowLessOperator>("LESS", OperatorType::kLess);
   CheckSimpleOperator<NegOperator>("NEG", OperatorType::kNeg);
   CheckSimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect);
   CheckSimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice);
   CheckSimpleOperator<SinOperator>("SIN", OperatorType::kSin);
+  CheckSimpleOperator<TensorFlowEqualOperator>("EQUAL", OperatorType::kEqual);
+  CheckSimpleOperator<TensorFlowNotEqualOperator>("NOT_EQUAL",
+                                                  OperatorType::kNotEqual);
+  CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
+  CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
+  CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
+  CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -247,7 +255,7 @@ TEST_F(OperatorTest, BuiltinReshape) {
   TensorFlowReshapeOperator op;
   op.shape = {1, 2, 4, 5, 8};
   auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("RESHAPE", OperatorType::kTensorFlowReshape), op);
+      GetOperator("RESHAPE", OperatorType::kReshape), op);
   EXPECT_EQ(op.shape, output_toco_op->shape);
 }
 
@@ -270,8 +278,8 @@ TEST_F(OperatorTest, BuiltinSpaceToDepth) {
 TEST_F(OperatorTest, CustomSplit) {
   TensorFlowSplitOperator op;
   op.num_split = 123;
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("SPLIT", OperatorType::kTensorFlowSplit), op);
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("SPLIT", OperatorType::kSplit), op);
   EXPECT_EQ(op.num_split, output_toco_op->num_split);
 }
 
@@ -420,6 +428,14 @@ TEST_F(OperatorTest, BuiltinTransposeConv) {
   EXPECT_EQ(op.padding.type, output_toco_op->padding.type);
 }
 
+TEST_F(OperatorTest, BuiltinShape) {
+  TensorFlowShapeOperator op;
+  op.output_data_type = ArrayDataType::kInt64;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("SHAPE", OperatorType::kShape), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
 TEST_F(OperatorTest, BuiltinSparseToDense) {
   SparseToDenseOperator op;
   op.validate_indices = false;
@@ -439,12 +455,17 @@ TEST_F(OperatorTest, TensorFlowUnsupported) {
   (*attr)["str_attr"].set_s("Hello World");
   (*attr)["int_attr"].set_i(17);
   (*attr)["bool_attr"].set_b(true);
+  {
+    auto* list = (*attr)["list_int_attr"].mutable_list();
+    list->add_i(1);
+    list->add_i(20);
+    list->add_i(1LL << 40);
+    list->add_i(-(1LL << 40));
+  }
   node_def.SerializeToString(&op.tensorflow_node_def);
 
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("TENSORFLOW_UNSUPPORTED",
-                                          OperatorType::kTensorFlowUnsupported),
-                              op);
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TENSORFLOW_UNSUPPORTED", OperatorType::kUnsupported), op);
 
   ::tensorflow::NodeDef output_node_def;
   output_node_def.ParseFromString(output_toco_op->tensorflow_node_def);
@@ -453,15 +474,22 @@ TEST_F(OperatorTest, TensorFlowUnsupported) {
   EXPECT_EQ("Hello World", output_attr.at("str_attr").s());
   EXPECT_EQ(17, output_attr.at("int_attr").i());
   EXPECT_EQ(true, output_attr.at("bool_attr").b());
+
+  {
+    const auto& list = output_attr.at("list_int_attr").list();
+    ASSERT_EQ(4, list.i_size());
+    EXPECT_EQ(1, list.i(0));
+    EXPECT_EQ(20, list.i(1));
+    EXPECT_EQ(1LL << 40, list.i(2));
+    EXPECT_EQ(-(1LL << 40), list.i(3));
+  }
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupportedWithoutAttr) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("TENSORFLOW_UNSUPPORTED",
-                                          OperatorType::kTensorFlowUnsupported),
-                              op);
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TENSORFLOW_UNSUPPORTED", OperatorType::kUnsupported), op);
 
   ::tensorflow::NodeDef output_node_def;
   output_node_def.ParseFromString(output_toco_op->tensorflow_node_def);

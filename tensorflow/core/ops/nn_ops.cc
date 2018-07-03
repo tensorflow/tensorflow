@@ -648,7 +648,7 @@ REGISTER_OP("MaxPool3DGradGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float}")
+    .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Pool3DShape(c));
       ShapeHandle unused;
@@ -1453,6 +1453,7 @@ REGISTER_OP("QuantizedReluX")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

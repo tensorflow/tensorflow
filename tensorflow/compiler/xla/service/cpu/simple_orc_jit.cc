@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matmul_mkl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_conv2d.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_fft.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/cpu/windows_compatibility.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -126,13 +127,6 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  if (const uint8* from_constant_pool =
-          external_constant_pool_.Find(string(name))) {
-    return llvm::JITEvaluatedSymbol(
-        reinterpret_cast<uint64_t>(from_constant_pool),
-        llvm::JITSymbolFlags::None);
-  }
-
   void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
   if (func_addr == nullptr) {
     return nullptr;
@@ -202,6 +196,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(MKLSingleThreadedMatMulF64);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
