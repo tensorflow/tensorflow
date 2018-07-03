@@ -25,21 +25,20 @@ limitations under the License.
     (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8))
 #define USE_SSE_CRC32C 1
 #elif defined(__x86_64__) && defined(__clang__)
-#if __has_builtin(__builtin_cpu_supports)
 #define USE_SSE_CRC32C 1
-#endif
 #endif
 #endif /* __SSE4_2__ */
 
-// This version of Apple clang has a bug:
-// https://llvm.org/bugs/show_bug.cgi?id=25510
-#if defined(__APPLE__) && (__clang_major__ <= 8)
-#undef USE_SSE_CRC32C
+// MSVC does not have __SSE4_2__ macro, but does support sse4.2 for x64
+#ifdef _M_X64
+#define USE_SEE_CRC32C 1
 #endif
 
 #ifdef USE_SSE_CRC32C
 #include <nmmintrin.h>
 #endif
+
+#include <tensorflow/core/platform/cpu_info.h>
 
 namespace tensorflow {
 namespace crc32c {
@@ -55,7 +54,9 @@ uint32_t AcceleratedExtend(uint32_t crc, const char *buf, size_t size) {
 #else
 
 // SSE4.2 optimized crc32c computation.
-bool CanAccelerate() { return __builtin_cpu_supports("sse4.2"); }
+bool CanAccelerate() {
+  return tensorflow::port::TestCPUFeature(tensorflow::port::CPUFeature::SSE4_2);
+}
 
 uint32_t AcceleratedExtend(uint32_t crc, const char *buf, size_t size) {
   const uint8_t *p = reinterpret_cast<const uint8_t *>(buf);

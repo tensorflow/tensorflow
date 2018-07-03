@@ -2112,6 +2112,7 @@ cc_library(
     srcs = ["lib/hash/crc32c_accelerate.cc"],
     # -msse4.2 enables the use of crc32c compiler builtins.
     copts = tf_copts() + if_linux_x86_64(["-msse4.2"]),
+    deps = [":platform_port"],
 )
 
 cc_library(
