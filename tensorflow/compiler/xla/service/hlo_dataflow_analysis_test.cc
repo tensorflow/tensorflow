@@ -1167,20 +1167,21 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  EXPECT_EQ(analysis.values().size(), 5);
+  EXPECT_EQ(analysis.values().size(), 6);
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(send, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{2}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send_done));
   EXPECT_THAT(HloValuesAt(send, /*index=*/{0}),
               UnorderedElementsAre(analysis.GetValueDefinedAt(param)));
 }
 
 TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
-  // Test that a RecvDone forwards its operand tuple element at {0} to the
-  // output.
+  // Test that a RecvDone forwards its operand tuple element at {0} to element
+  // {0} of the output.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto recv = builder.AddInstruction(
@@ -1191,13 +1192,16 @@ TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  EXPECT_EQ(analysis.values().size(), 4);
+  EXPECT_EQ(analysis.values().size(), 7);
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{1}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done));
-  EXPECT_THAT(HloValuesAt(recv_done),
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{1}));
+  EXPECT_THAT(HloValuesAt(recv_done, /*index=*/{0}),
               UnorderedElementsAre(analysis.GetValueDefinedAt(recv, {0})));
   EXPECT_TRUE(
       analysis.GetValueDefinedAt(recv, /*index=*/{0}).live_out_of_module());

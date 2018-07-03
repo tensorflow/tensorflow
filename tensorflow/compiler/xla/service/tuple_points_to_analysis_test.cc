@@ -357,7 +357,7 @@ TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
 
   ExpectHasTopLevelBuffers(
       points_to_analysis_->GetPointsToSet(recv).element({}), {recv});
-  ExpectHasBufferAliases(recv, {0}, {{recv, {0}}, {recv_done, {}}});
+  ExpectHasBufferAliases(recv, {0}, {{recv, {0}}, {recv_done, {0}}});
 }
 
 TEST_F(TuplePointsToAnalysisTest, TupleSelect) {

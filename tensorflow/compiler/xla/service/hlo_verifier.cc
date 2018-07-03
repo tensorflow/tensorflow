@@ -346,9 +346,10 @@ Status ShapeVerifier::HandleSend(HloInstruction* send) {
   TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
   TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
   TF_RETURN_IF_ERROR(CheckIsTokenOperand(send, 1));
-  return CheckShape(
-      send, ShapeUtil::MakeTupleShape(
-                {send->operand(0)->shape(), ShapeUtil::MakeShape(U32, {})}));
+  return CheckShape(send,
+                    ShapeUtil::MakeTupleShape({send->operand(0)->shape(),
+                                               ShapeUtil::MakeShape(U32, {}),
+                                               ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
@@ -357,7 +358,7 @@ Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
   TF_RET_CHECK(send->opcode() == HloOpcode::kSend);
   TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
 
-  return CheckShape(send_done, ShapeUtil::MakeNil());
+  return CheckShape(send_done, ShapeUtil::MakeTokenShape());
 }
 
 Status ShapeVerifier::HandleRecv(HloInstruction* recv) {
@@ -366,9 +367,10 @@ Status ShapeVerifier::HandleRecv(HloInstruction* recv) {
   TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
   TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
   TF_RETURN_IF_ERROR(CheckIsTokenOperand(recv, 0));
-  return CheckShape(recv,
-                    ShapeUtil::MakeTupleShape(
-                        {recv_done->shape(), ShapeUtil::MakeShape(U32, {})}));
+  return CheckShape(
+      recv, ShapeUtil::MakeTupleShape(
+                {ShapeUtil::GetTupleElementShape(recv_done->shape(), 0),
+                 ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
@@ -376,7 +378,9 @@ Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
   const HloInstruction* recv = recv_done->operand(0);
   TF_RET_CHECK(recv->opcode() == HloOpcode::kRecv);
   TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
-  return CheckShape(recv_done, recv->shape().tuple_shapes(0));
+  return CheckShape(recv_done,
+                    ShapeUtil::MakeTupleShape({recv->shape().tuple_shapes(0),
+                                               ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleBatchNormTraining(

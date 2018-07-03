@@ -207,8 +207,9 @@ HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        HloInstruction* token, int64 channel_id)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
-          ShapeUtil::MakeTupleShape(
-              {CHECK_NOTNULL(operand)->shape(), ShapeUtil::MakeShape(U32, {})}),
+          ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
+                                     ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
           channel_id) {
   AppendOperand(operand);
   AppendOperand(token);
@@ -224,7 +225,7 @@ std::unique_ptr<HloInstruction> HloSendInstruction::CloneWithNewOperandsImpl(
 }
 
 HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand)
-    : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeNil(),
+    : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
                              CHECK_NOTNULL(operand)->channel_id()) {
   AppendOperand(operand);
 }
@@ -244,7 +245,8 @@ HloRecvInstruction::HloRecvInstruction(const Shape& shape,
                                        HloInstruction* token, int64 channel_id)
     : HloSendRecvInstruction(
           HloOpcode::kRecv,
-          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
+          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
           channel_id) {
   AppendOperand(token);
 }
@@ -261,7 +263,9 @@ std::unique_ptr<HloInstruction> HloRecvInstruction::CloneWithNewOperandsImpl(
 HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
-          ShapeUtil::GetTupleElementShape(operand->shape(), 0),
+          ShapeUtil::MakeTupleShape(
+              {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
+               ShapeUtil::MakeTokenShape()}),
           CHECK_NOTNULL(operand)->channel_id()) {
   AppendOperand(operand);
 }

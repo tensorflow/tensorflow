@@ -1623,8 +1623,8 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
 
   TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
                                                         new_operand->shape()))
-      << old_operand->shape().ShortDebugString() << " is not compatible with "
-      << new_operand->shape().ShortDebugString();
+      << old_operand->shape() << " is not compatible with "
+      << new_operand->shape();
   operands_[operand_num] = new_operand;
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
