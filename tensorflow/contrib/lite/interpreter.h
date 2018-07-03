@@ -206,6 +206,24 @@ class Interpreter {
   const char* GetOutputName(int index) const {
     return context_.tensors[outputs_[index]].name;
   }
+    
+  // Return the dims of a given tensor. The given index must be between
+  // 0 and tensors_size().
+  const std::vector<int> GetTensorDims(int index) const {
+    TfLiteIntArray* dims = context_.tensors[index].dims;
+    std::vector<int> res;
+    res.assign(dims->data, dims->data + dims->size);
+    return res;
+  }
+    
+  // Return the output dims of a given output. The given index must be between
+  // 0 and outputs().size().
+  const std::vector<int> GetOutputTensorDims(int index) const {
+    TfLiteIntArray* dims = context_.tensors[outputs_[index]].dims;
+    std::vector<int> res;
+    res.assign(dims->data, dims->data + dims->size);
+    return res;
+  }
 
   // Return the number of tensors in the model.
   size_t tensors_size() const { return context_.tensors_size; }
