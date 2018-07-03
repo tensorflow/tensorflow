@@ -68825,6 +68825,32 @@ op {
   is_stateful: true
 }
 op {
+  name: "StatefulPartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  is_stateful: true
+}
+op {
   name: "StatelessMultinomial"
   input_arg {
     name: "logits"
