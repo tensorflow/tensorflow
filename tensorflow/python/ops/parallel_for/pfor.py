@@ -34,12 +34,15 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 flags.DEFINE_bool(
     "op_conversion_fallback_to_while_loop", False,
@@ -2482,3 +2485,48 @@ def _convert_stack_pop_v2(pfor_input):
   elem_type = pfor_input.get_attr("elem_type")
   out = data_flow_ops.stack_pop_v2(handle, elem_type)
   return wrap(out, stacked)
+
+
+# parsing_ops
+
+
+@RegisterPFor("DecodeCSV")
+def _convert_decode_csv(pfor_input):
+  lines = pfor_input.stacked_input(0)
+  record_defaults = [
+      pfor_input.unstacked_input(i) for i in range(1, pfor_input.num_inputs)
+  ]
+  field_delim = pfor_input.get_attr("field_delim")
+  use_quote_delim = pfor_input.get_attr("use_quote_delim")
+  select_cols = pfor_input.get_attr("select_cols")
+  if not select_cols:
+    select_cols = None
+  return [
+      wrap(t, True) for t in parsing_ops.decode_csv(
+          lines,
+          record_defaults,
+          field_delim=field_delim,
+          use_quote_delim=use_quote_delim,
+          select_cols=select_cols)
+  ]
+
+
+@RegisterPFor("ParseSingleExample")
+def _convert_parse_single_example(pfor_input):
+  serialized = pfor_input.stacked_input(0)
+  dense_defaults = [
+      pfor_input.unstacked_input(i) for i in range(1, pfor_input.num_inputs)
+  ]
+  sparse_keys = pfor_input.get_attr("sparse_keys")
+  dense_keys = pfor_input.get_attr("dense_keys")
+  sparse_types = pfor_input.get_attr("sparse_types")
+  dense_shapes = pfor_input.get_attr("dense_shapes")
+  output = gen_parsing_ops.parse_example(
+      serialized=serialized,
+      names=[],
+      dense_defaults=dense_defaults,
+      sparse_keys=sparse_keys,
+      dense_keys=dense_keys,
+      sparse_types=sparse_types,
+      dense_shapes=dense_shapes)
+  return [wrap(t, True, True) for t in nest.flatten(output)]
