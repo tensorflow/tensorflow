@@ -44,24 +44,27 @@ toc:
 - title: Images
   style: accordion
   section:
-  - title: MNIST
+  - title: Build a CNN using Estimators
     path: /tutorials/images/layers
   - title: Image recognition
     path: /tutorials/images/image_recognition
   - title: Image retraining
     path: /hub/tutorials/image_retraining
-  - title: Convolutional Neural Networks
+  - title: Advanced CNN
     path: /tutorials/images/deep_cnn
 
 - title: Sequences
   style: accordion
   section:
-  - title: Recurrent Neural Networks
+  - title: Recurrent neural network
     path: /tutorials/sequences/recurrent
   - title: Drawing classification
     path: /tutorials/sequences/recurrent_quickdraw
   - title: Simple audio recognition
     path: /tutorials/sequences/audio_recognition
+  - title: Neural machine translation
+    path: https://github.com/tensorflow/nmt
+    status: external
 
 - title: Data representation
   style: accordion

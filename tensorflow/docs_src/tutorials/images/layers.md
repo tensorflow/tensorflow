@@ -1,4 +1,4 @@
-# A Guide to TF Layers: Building a Convolutional Neural Network
+# Build a Convolutional Neural Network using Estimators
 
 The TensorFlow @{tf.layers$`layers` module} provides a high-level API that makes
 it easy to construct a neural network. It provides methods that facilitate the

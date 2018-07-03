@@ -1,7 +1,4 @@
-# Convolutional Neural Networks
-
-Note: This tutorial is intended for *advanced* users of TensorFlow
-and assumes expertise and experience in machine learning.
+# Advanced Convolutional Neural Networks
 
 ## Overview
 
