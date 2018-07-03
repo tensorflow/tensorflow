@@ -681,7 +681,14 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         }
       }
 
-      current_engine_->run(0);
+      try {
+        current_engine_->run(0);
+      }
+      catch (std::logic_error e) {
+        return tensorflow::errors::Internal(
+            "Poplar execution error ", e.what());
+      }
+
 
       try {
         if (profile_execution_) {
