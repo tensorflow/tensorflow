@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Converts checkpoint variables into Const ops in a standalone GraphDef file.
+"""Converts checkpoint variables into Const ops in a standalone GraphDef file.
 
 This script is designed to take a GraphDef proto, a SaverDef proto, and a set of
 variable values stored in a checkpoint file, and output a GraphDef with all of
