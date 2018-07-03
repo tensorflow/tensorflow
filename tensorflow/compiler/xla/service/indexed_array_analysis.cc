@@ -441,7 +441,7 @@ int64 FindSourcePositionForPassthroughResultDim(ArraySlice<int64> operand_shape,
 
   int64 indexed_source_subarray_size =
       std::accumulate(operand_shape.begin() + source_passthrough_dim + 1,
-                      operand_shape.end(), 1, std::multiplies<int64>());
+                      operand_shape.end(), 1LL, std::multiplies<int64>());
 
   return FindSuffixWithProduct(result_shape, indexed_source_subarray_size);
 }
@@ -758,7 +758,7 @@ IndexedArrayAnalysis::FoldReshapeOfGatherNoDegenerateDims(
       &new_scalar_indexed_source_shape, source_dim_for_new_scalar_indexed_node,
       scalar_indexed_source_shape.dimensions(scalar_indexed->source_dim()));
 
-  CHECK_EQ(c_accumulate(new_scalar_indexed_source_shape, 1l,
+  CHECK_EQ(c_accumulate(new_scalar_indexed_source_shape, 1LL,
                         std::multiplies<int64>()),
            ShapeUtil::ElementsIn(scalar_indexed_source_shape));
 
