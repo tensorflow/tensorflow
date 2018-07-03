@@ -48,11 +48,9 @@ enum ParseResult {
 class Parser {
 public:
   Parser(llvm::SourceMgr &sourceMgr, MLIRContext *context,
-         const SMDiagnosticHandlerTy &errorReporter)
-      : context(context),
-        lex(sourceMgr, errorReporter),
-        curToken(lex.lexToken()),
-        errorReporter(errorReporter) {
+         SMDiagnosticHandlerTy errorReporter)
+      : context(context), lex(sourceMgr, errorReporter),
+        curToken(lex.lexToken()), errorReporter(std::move(errorReporter)) {
     module.reset(new Module());
   }
 
@@ -68,7 +66,7 @@ private:
   Token curToken;
 
   // The diagnostic error reporter.
-  const SMDiagnosticHandlerTy &errorReporter;
+  SMDiagnosticHandlerTy errorReporter;
 
   // This is the result module we are parsing into.
   std::unique_ptr<Module> module;
@@ -1049,10 +1047,16 @@ Module *Parser::parseModule() {
 
 //===----------------------------------------------------------------------===//
 
+void mlir::defaultErrorReporter(const llvm::SMDiagnostic &error) {
+  const auto &sourceMgr = *error.getSourceMgr();
+  sourceMgr.PrintMessage(error.getLoc(), error.getKind(), error.getMessage());
+}
+
 /// This parses the file specified by the indicated SourceMgr and returns an
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
 Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
-                              const SMDiagnosticHandlerTy &errorReporter) {
-  return Parser(sourceMgr, context, errorReporter).parseModule();
+                              SMDiagnosticHandlerTy errorReporter) {
+  return Parser(sourceMgr, context,
+                errorReporter ? std::move(errorReporter) : defaultErrorReporter)
+      .parseModule();
 }
-

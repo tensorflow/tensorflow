@@ -44,6 +44,8 @@ static cl::opt<bool>
 checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
                   cl::init(false));
 
+enum OptResult { OptSuccess, OptFailure };
+
 /// Open the specified output file and return it, exiting if there is any I/O or
 /// other errors.
 static std::unique_ptr<ToolOutputFile> getOutputStream() {
@@ -59,30 +61,29 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
 }
 
 /// Parses the memory buffer and, if successfully parsed, prints the parsed
-/// output. Returns whether parsing succeeded.
-bool parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer,
-                               const SMDiagnosticHandlerTy& errorReporter) {
+/// output.
+OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   // Tell sourceMgr about this buffer, which is what the parser will pick up.
   SourceMgr sourceMgr;
   sourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
 
   // Parse the input file.
   MLIRContext context;
-  std::unique_ptr<Module> module(
-      parseSourceFile(sourceMgr, &context, errorReporter));
-  if (!module) return false;
+  std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
+  if (!module)
+    return OptFailure;
 
   // Print the output.
   auto output = getOutputStream();
   module->print(output->os());
   output->keep();
 
-  // Success.
-  return true;
+  return OptSuccess;
 }
 
 /// Split the memory buffer into multiple buffers using the marker -----.
-bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
+OptResult
+splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
   const char marker[] = "-----";
   SmallVector<StringRef, 2> sourceBuffers;
   buffer->getBuffer().split(sourceBuffers, marker);
@@ -93,7 +94,7 @@ bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
   // of diagnostics.
   // TODO: Enable specifying errors on different lines (@-1).
   // TODO: Currently only checking if substring matches, enable regex checking.
-  bool failed = false;
+  OptResult opt_result = OptSuccess;
   SourceMgr fileSourceMgr;
   fileSourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
 
@@ -104,7 +105,7 @@ bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
 
   // Create error checker that uses the helper function to relate the reported
   // error to the file being parsed.
-  SMDiagnosticHandlerTy checker = [&](SMDiagnostic err) {
+  SMDiagnosticHandlerTy checker = [&](const SMDiagnostic &err) {
     const auto &sourceMgr = *err.getSourceMgr();
     const char *bufferStart =
         sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID())->getBufferStart();
@@ -122,7 +123,7 @@ bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
       fileSourceMgr.PrintMessage(
           loc, SourceMgr::DK_Error,
           "unexpected error: " + err.getMessage());
-      failed = true;
+      opt_result = OptFailure;
       return;
     }
 
@@ -131,11 +132,11 @@ bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
       const char checkPrefix[] = "expected-error {{";
       loc = SMLoc::getFromPointer(fileOffset + offset + line.find(checkPrefix) -
                                   err.getColumnNo() + strlen(checkPrefix));
-      fileSourceMgr.PrintMessage(loc, SourceMgr::DK_Error,
-                                 "\"" + err.getMessage() +
-                                     "\" did not contain expected substring \"" +
-                                     matches[1] + "\"");
-      failed = true;
+      fileSourceMgr.PrintMessage(
+          loc, SourceMgr::DK_Error,
+          "\"" + err.getMessage() + "\" did not contain expected substring \"" +
+              matches[1] + "\"");
+      opt_result = OptFailure;
       return;
     }
   };
@@ -155,7 +156,7 @@ bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
                                  "too many errors expected: unable to verify "
                                  "more than one error per group");
       fileOffset += subbuffer.size() + strlen(marker);
-      failed = true;
+      opt_result = OptFailure;
       continue;
     }
 
@@ -177,13 +178,13 @@ bool splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
       fileSourceMgr.PrintMessage(
           loc, SourceMgr::DK_Error,
           "expected error \"" + matches[1] + "\" was not produced", range);
-      failed = true;
+      opt_result = OptFailure;
     }
 
     fileOffset += subbuffer.size() + strlen(marker);
   }
 
-  return !failed;
+  return opt_result;
 }
 
 int main(int argc, char **argv) {
@@ -200,12 +201,7 @@ int main(int argc, char **argv) {
   }
 
   if (checkParserErrors)
-    return !splitMemoryBufferForErrorChecking(std::move(*fileOrErr));
+    return splitMemoryBufferForErrorChecking(std::move(*fileOrErr));
 
-  // Error reporter that simply prints the errors reported.
-  SMDiagnosticHandlerTy errorReporter = [](llvm::SMDiagnostic err) {
-    const auto& sourceMgr = *err.getSourceMgr();
-    sourceMgr.PrintMessage(err.getLoc(), err.getKind(), err.getMessage());
-  };
-  return !parseAndPrintMemoryBuffer(std::move(*fileOrErr), errorReporter);
+  return parseAndPrintMemoryBuffer(std::move(*fileOrErr));
 }
