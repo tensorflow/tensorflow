@@ -279,8 +279,13 @@ Status PoplarExecutor::InitializePoplarDevice(
         if (d.attach()) {
           poplar_device_ = d;
 
-          if (num_ipus > 0) {
-            poplar_device_ = poplar_device_.createVirtualDevice(num_ipus);
+          // Temporary fix to prevent many long compilation times
+          if (tiles_per_ipu == 0) {
+            tiles_per_ipu = 4;
+          }
+
+          if (tiles_per_ipu > 0) {
+            poplar_device_ = poplar_device_.createVirtualDevice(tiles_per_ipu);
           }
 
           profile_compilation_ = false;
@@ -335,6 +340,8 @@ Status PoplarExecutor::InitializePoplarDevice(
   random_type_ = cfg.random_type();
 
   option_flags_ = poplar::OptionFlags();
+  option_flags_.set("target.textSectionSizeInBytes", "0xa000");
+  option_flags_.set("target.workerStackSizeInBytes", "0x400");
   for (const auto& opt : cfg.compilation_options()) {
     option_flags_.set(opt.option(), opt.value());
   }
