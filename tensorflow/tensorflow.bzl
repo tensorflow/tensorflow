@@ -180,9 +180,12 @@ def get_win_copts(is_external=False):
         "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
-        "/U_HAS_EXCEPTIONS",
-        "/D_HAS_EXCEPTIONS=1",
-        "/EHsc",  # -fno-exceptions
+        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+        # default. We can't pass /EHs-c- to disable exception, otherwise
+        # we will get a waterfall of flag conflict warnings. Wait for
+        # Bazel to fix this.
+        # "/D_HAS_EXCEPTIONS=0",
+        # "/EHs-c-",
         "/DNOGDI",
     ]
     if is_external:

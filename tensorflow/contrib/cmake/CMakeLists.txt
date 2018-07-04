@@ -145,25 +145,38 @@ if(WIN32)
       # temporary fix for #18241
       add_definitions(-DEIGEN_DEFAULT_DENSE_INDEX_TYPE=std::int64_t)
   endif()
-  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11)
-  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
+  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00)
+  add_definitions(-DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
+  add_compile_options(/bigobj /GF /MP /Gm-)
   # Suppress warnings to reduce build log size.
-  add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
-  add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
-  add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
-  add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  add_compile_options(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
+  add_compile_options(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
+  add_compile_options(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
+  add_compile_options(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
   # Suppress linker warnings.
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
   set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob2")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
+
+  set(compiler_flags
+    CMAKE_CXX_FLAGS
+    CMAKE_CXX_FLAGS_DEBUG
+    CMAKE_CXX_FLAGS_RELEASE
+    CMAKE_C_FLAGS
+    CMAKE_C_FLAGS_DEBUG
+    CMAKE_C_FLAGS_RELEASE
+  )
+  # No exception
+  foreach(flag ${compiler_flags})
+    string(REPLACE "/EHsc" "/EHs-c-" ${flag} "${${flag}}")
+  endforeach()
+  add_definitions(/D_HAS_EXCEPTIONS=0)
 
   # Try to avoid flaky failures due to failed generation of generate.stamp files.
   set(CMAKE_SUPPRESS_REGENERATION ON)
