@@ -28,8 +28,11 @@ ForThunk::ForThunk(const int64 loop_limit,
                    const HloInstruction* hlo)
     : Thunk(Kind::kWhile, hlo),
       loop_limit_(loop_limit),
-      body_thunk_sequence_(
-          MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
+      body_thunk_sequence_(MakeUnique<SequentialThunk>(
+          // Pass nullptr as the HloInstruction* to the body_thunk_sequence_
+          // constructor because this SequentialThunk is logically "part of"
+          // this ForThunk, and shouldn't be profiled separately from it.
+          std::move(*body_thunk_sequence), nullptr)) {}
 
 Status ForThunk::Initialize(const GpuExecutable& executable,
                             se::StreamExecutor* executor) {

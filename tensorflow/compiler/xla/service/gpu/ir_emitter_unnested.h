@@ -186,9 +186,12 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
   // Thunk object. The kernel implementation will be unrolled if unroll_factor
-  // is greater than one.
-  std::unique_ptr<KernelThunk> BuildKernelThunk(const HloInstruction* inst,
-                                                int unroll_factor = 1);
+  // is greater than one. 'implements_whole_instruction' specifies whether this
+  // KernelThunk implements the whole 'inst' HloInstruction. In some cases
+  // 'inst' will be implemented by a sequence of Thunks.
+  std::unique_ptr<KernelThunk> BuildKernelThunk(
+      const HloInstruction* inst, bool implements_whole_instruction,
+      int unroll_factor = 1);
 
   // Returns a FftThunk that calls cuFFT to implement `inst`.
   std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
