@@ -34,12 +34,15 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import nest
 
 flags.DEFINE_bool(
     "op_conversion_fallback_to_while_loop", False,
@@ -152,8 +155,14 @@ class WhileOp(object):
     # `loop_vars` and are not returned from the `while_loop`. In Python code,
     # they are usually captured by the body lambda. We collect them below by
     # iterating over all the ops in the graph. They are appended to the end of
-    # self._enters and don't correspond to any outputs in self._outputs.
+    # self._enters or self._direct_enters, and don't correspond to any outputs
+    # in self._outputs. Note that we keep the resource/variant Enter nodes in
+    # self._direct_enters and the constructed while_loop's body uses them
+    # directly as opposed to passing them as loop variables. This is done
+    # because the while_body cannot partition the resource/variant Tensors, so
+    # it has to leave them unchanged.
     self._enters = []
+    self._direct_enters = []
 
     for e in self._while_context.loop_exits:
       self._outputs.append(e.op.outputs[0])
@@ -185,7 +194,11 @@ class WhileOp(object):
         if op.type == "Enter":
           output = op.outputs[0]
           if output not in self._enters:
-            self._enters.append(output)
+            if output.dtype in (dtypes.resource, dtypes.variant):
+              if output not in self._direct_enters:
+                self._direct_enters.append(output)
+            else:
+              self._enters.append(output)
 
   def __str__(self):
     """String representation."""
@@ -194,13 +207,13 @@ class WhileOp(object):
   @property
   def inputs(self):
     """Input to all the Enter nodes."""
-    return [x.op.inputs[0] for x in self._enters]
+    return [x.op.inputs[0] for x in self._enters + self._direct_enters]
 
   @property
   def control_inputs(self):
     """Control input to all the Enter nodes."""
     control_inputs = []
-    for x in self._enters:
+    for x in self._enters + self._direct_enters:
       control_inputs.extend(x.op.control_inputs)
     return control_inputs
 
@@ -268,6 +281,16 @@ class WhileOp(object):
         pfor_ops=self._pfor_ops,
         all_indices=indices,
         all_indices_partitioned=cond_stacked)
+    # Map all inputs of Enter nodes in self._direct_enters to their converted
+    # values.
+    for enter in self._direct_enters:
+      enter_input = enter.op.inputs[0]
+      converted_enter, stacked, is_sparse_stacked = parent_pfor._convert_helper(
+          enter_input)
+      # Since these are resources / variants, they should be unstacked.
+      assert not stacked and not is_sparse_stacked, (enter, converted_enter)
+      pfor._add_conversion(enter, wrap(converted_enter, False))
+
     # Map all Enter nodes to the inputs.
     for enter, inp, stacked in zip(self._enters, inputs, inputs_stacked):
       pfor._add_conversion(enter, wrap(inp, stacked))
@@ -2482,3 +2505,48 @@ def _convert_stack_pop_v2(pfor_input):
   elem_type = pfor_input.get_attr("elem_type")
   out = data_flow_ops.stack_pop_v2(handle, elem_type)
   return wrap(out, stacked)
+
+
+# parsing_ops
+
+
+@RegisterPFor("DecodeCSV")
+def _convert_decode_csv(pfor_input):
+  lines = pfor_input.stacked_input(0)
+  record_defaults = [
+      pfor_input.unstacked_input(i) for i in range(1, pfor_input.num_inputs)
+  ]
+  field_delim = pfor_input.get_attr("field_delim")
+  use_quote_delim = pfor_input.get_attr("use_quote_delim")
+  select_cols = pfor_input.get_attr("select_cols")
+  if not select_cols:
+    select_cols = None
+  return [
+      wrap(t, True) for t in parsing_ops.decode_csv(
+          lines,
+          record_defaults,
+          field_delim=field_delim,
+          use_quote_delim=use_quote_delim,
+          select_cols=select_cols)
+  ]
+
+
+@RegisterPFor("ParseSingleExample")
+def _convert_parse_single_example(pfor_input):
+  serialized = pfor_input.stacked_input(0)
+  dense_defaults = [
+      pfor_input.unstacked_input(i) for i in range(1, pfor_input.num_inputs)
+  ]
+  sparse_keys = pfor_input.get_attr("sparse_keys")
+  dense_keys = pfor_input.get_attr("dense_keys")
+  sparse_types = pfor_input.get_attr("sparse_types")
+  dense_shapes = pfor_input.get_attr("dense_shapes")
+  output = gen_parsing_ops.parse_example(
+      serialized=serialized,
+      names=[],
+      dense_defaults=dense_defaults,
+      sparse_keys=sparse_keys,
+      dense_keys=dense_keys,
+      sparse_types=sparse_types,
+      dense_shapes=dense_shapes)
+  return [wrap(t, True, True) for t in nest.flatten(output)]

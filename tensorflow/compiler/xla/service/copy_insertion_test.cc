@@ -211,7 +211,7 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   HloInstruction* pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   EXPECT_THAT(constant1->users(), UnorderedElementsAre(tuple1));
   EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
@@ -382,7 +382,7 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
   HloInstruction* pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   HloInstruction* select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   HloInstruction* gte =
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetSubshape(select->shape(), {0}), select, 0));
@@ -691,7 +691,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto pred = builder.AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
     auto data_init = builder.AddInstruction(HloInstruction::CreateTernary(
-        nested_tuple_shape_, HloOpcode::kSelect, pred, tuple1, tuple2));
+        nested_tuple_shape_, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
     return BuildWhileInstructionWithCustomInit(nested_loop_state_shape_,
                                                data_init, &builder);

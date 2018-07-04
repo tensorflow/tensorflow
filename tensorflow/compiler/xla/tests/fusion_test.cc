@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -762,6 +763,39 @@ XLA_TEST_F(FusionTest, LesserOrEqual2D) {
 
 XLA_TEST_F(FusionTest, Clamp2D) {
   TestElementwise2D<float, 3>(HloOpcode::kClamp);
+}
+
+// TODO(b/73903144): Enable on interpreter once interpreter supports bitcast.
+XLA_TEST_F(FusionTest, DISABLED_ON_INTERPRETER(FusionWithLayout)) {
+  const string hlo_text = R"(
+HloModule Cluster
+
+fusion_c {
+  fusion.arg = f32[2,2]{1,0} parameter(0)
+  bitcast.0 = f32[2,2,1]{2,1,0} bitcast(fusion.arg)
+  tanh.0 = f32[2,2,1]{0,2,1} tanh(bitcast.0)
+  ROOT bitcast.2 = f32[2,2,1]{1,2,0} bitcast(tanh.0)
+}
+
+ENTRY main {
+  arg = f32[2,2]{1,0} parameter(0)
+  ROOT fusion = f32[2,2,1]{1,2,0} fusion(arg), kind=kLoop, calls=fusion_c
+}
+)";
+
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<float>({{0., 0.}, {1., 0.}});
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      test_runner_.Execute(std::move(module), {operand.get()},
+                           /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *Literal::CreateR3<float>({{{0.}, {0.76159415595}}, {{0.}, {0.}}}),
+      *result));
 }
 
 void BM_ParallelFusion(int num_iters) {

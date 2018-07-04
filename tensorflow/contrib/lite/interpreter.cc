@@ -25,10 +25,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
-#ifndef TFLITE_MCU
-#include "tensorflow/contrib/lite/kernels/eigen_support.h"
-#include "tensorflow/contrib/lite/kernels/gemm_support.h"
-#endif
 #include "tensorflow/contrib/lite/memory_planner.h"
 #ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
@@ -120,9 +116,9 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
-  context_.eigen_context = nullptr;
-  context_.gemm_context = nullptr;
   context_.recommended_num_threads = -1;
+  context_.GetExternalContext = GetExternalContext;
+  context_.SetExternalContext = SetExternalContext;
 
   // Invalid to call these these except from TfLiteDelegate
   SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
@@ -133,6 +129,11 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   tensors_.reserve(kTensorsReservedCapacity);
   nodes_and_registration_.reserve(kTensorsReservedCapacity);
   next_execution_plan_index_to_prepare_ = 0;
+
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    external_contexts_[i] = nullptr;
+  }
+
   UseNNAPI(false);
 }
 
@@ -288,6 +289,33 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
     }
   }
   return kTfLiteOk;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    TfLiteExternalContextType type) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    return external_contexts_[type];
+  }
+  return nullptr;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    struct TfLiteContext* context, TfLiteExternalContextType type) {
+  return static_cast<Interpreter*>(context->impl_)->GetExternalContext(type);
+}
+
+void Interpreter::SetExternalContext(TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    external_contexts_[type] = ctx;
+  }
+}
+
+void Interpreter::SetExternalContext(struct TfLiteContext* context,
+                                     TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->SetExternalContext(type, ctx);
 }
 
 // Gets an TfLiteIntArray* representing the execution plan. The interpreter owns
@@ -869,12 +897,12 @@ void Interpreter::UseNNAPI(bool enable) {
 void Interpreter::SetNumThreads(int num_threads) {
   context_.recommended_num_threads = num_threads;
 
-  // TODO(ahentz): find a way to avoid this. It causes gemmlowp and eigen to
-  // be required in order to compile the framework.
-#ifndef TFLITE_MCU
-  gemm_support::SetNumThreads(&context_, num_threads);
-  eigen_support::SetNumThreads(&context_, num_threads);
-#endif
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    auto* c = external_contexts_[i];
+    if (c && c->Refresh) {
+      c->Refresh(&context_);
+    }
+  }
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,

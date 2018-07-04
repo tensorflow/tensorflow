@@ -23,6 +23,15 @@ limitations under the License.
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
+
+// InterpreterTest is a friend of Interpreter, so it can access context_.
+class InterpreterTest : public ::testing::Test {
+ protected:
+  TfLiteContext* GetInterpreterContext() { return &interpreter_.context_; }
+
+  Interpreter interpreter_;
+};
+
 namespace ops {
 namespace builtin {
 TfLiteRegistration* Register_PADV2();
@@ -778,6 +787,47 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
                                               &registration),
             kTfLiteOk);
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
+struct TestExternalContext : public TfLiteExternalContext {
+  static const TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
+
+  static TestExternalContext* Get(TfLiteContext* context) {
+    return reinterpret_cast<TestExternalContext*>(
+        context->GetExternalContext(context, kType));
+  }
+
+  static void Set(TfLiteContext* context, TestExternalContext* value) {
+    context->SetExternalContext(context, kType, value);
+  }
+
+  int num_refreshes = 0;
+};
+
+TEST_F(InterpreterTest, GetSetResetExternalContexts) {
+  auto* context = GetInterpreterContext();
+
+  TestExternalContext external_context;
+  external_context.Refresh = [](TfLiteContext* context) {
+    auto* ptr = TestExternalContext::Get(context);
+    if (ptr != nullptr) {
+      ++ptr->num_refreshes;
+    }
+    return kTfLiteOk;
+  };
+
+  EXPECT_EQ(TestExternalContext::Get(context), nullptr);
+  interpreter_.SetNumThreads(4);
+
+  TestExternalContext::Set(context, &external_context);
+  EXPECT_EQ(TestExternalContext::Get(context), &external_context);
+  interpreter_.SetNumThreads(4);
+  interpreter_.SetNumThreads(5);
+  EXPECT_EQ(external_context.num_refreshes, 2);
+
+  TestExternalContext::Set(context, nullptr);
+  EXPECT_EQ(TestExternalContext::Get(context), nullptr);
+  interpreter_.SetNumThreads(4);
 }
 
 // Test fixture that allows playing with execution plans. It creates a two

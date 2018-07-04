@@ -100,6 +100,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kAfterAll:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
+    case HloOpcode::kTupleSelect:
       return false;
 
     // Cheap instructions for reals, but expensive for complex.

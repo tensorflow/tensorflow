@@ -860,8 +860,7 @@ TEST_P(HloDataflowAnalysisTest, ArraySelect) {
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelect) {
-  // Test a kSelect of a tuple value. Non-top-level element flow through the
-  // instruction.
+  // Test a kTupleSelect. Non-top-level element flow through the instruction.
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
@@ -883,20 +882,20 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
       builder.AddInstruction(HloInstruction::CreateTuple({constant4}));
   const Shape tuple_shape = tuple1->shape();
   auto select11 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple1));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple1));
   auto select12 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   auto select34 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple3, tuple4));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple3, tuple4));
   auto select1234 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, select12, select34));
+      tuple_shape, HloOpcode::kTupleSelect, pred, select12, select34));
 
   module_->AddEntryComputation(builder.Build());
 
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  // Top-level value is always defined by a kSelect.
+  // Top-level value is always defined by a kTupleSelect.
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select11));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select12));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select34));
@@ -937,7 +936,7 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
 }
 
 TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
-  // Test kSelect of a nested tuple.
+  // Test kTupleSelect of a nested tuple.
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
@@ -960,7 +959,7 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
   auto tuple2 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant4, inner_tuple2}));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -983,7 +982,7 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
-  // Test a tuple-shaped kSelect feeding a kWhile instruction. HLO:
+  // Test a tuple-shaped kTupleSelect feeding a kWhile instruction. HLO:
   //
   // body((F32[], F32[]) %tuple_param):
   //   %add = Add(%tuple_param{0}, %tuple_param{1})
@@ -1043,7 +1042,7 @@ TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
   auto tuple2 =
       builder.AddInstruction(HloInstruction::CreateTuple({constant2}));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   auto gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(scalar_shape_, select, 0));
   auto tuple =
@@ -1167,20 +1166,21 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  EXPECT_EQ(analysis.values().size(), 5);
+  EXPECT_EQ(analysis.values().size(), 6);
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(send, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{2}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send_done));
   EXPECT_THAT(HloValuesAt(send, /*index=*/{0}),
               UnorderedElementsAre(analysis.GetValueDefinedAt(param)));
 }
 
 TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
-  // Test that a RecvDone forwards its operand tuple element at {0} to the
-  // output.
+  // Test that a RecvDone forwards its operand tuple element at {0} to element
+  // {0} of the output.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto recv = builder.AddInstruction(
@@ -1191,13 +1191,16 @@ TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  EXPECT_EQ(analysis.values().size(), 4);
+  EXPECT_EQ(analysis.values().size(), 7);
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{1}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done));
-  EXPECT_THAT(HloValuesAt(recv_done),
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{1}));
+  EXPECT_THAT(HloValuesAt(recv_done, /*index=*/{0}),
               UnorderedElementsAre(analysis.GetValueDefinedAt(recv, {0})));
   EXPECT_TRUE(
       analysis.GetValueDefinedAt(recv, /*index=*/{0}).live_out_of_module());
