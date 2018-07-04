@@ -49,6 +49,8 @@ ExternalProject_Add(snappy
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DSNAPPY_BUILD_TESTS:BOOL=OFF
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )
 
 # actually enables snappy in the source code

@@ -35,7 +35,10 @@ if(WIN32)
       CMAKE_CACHE_ARGS
           -DCMAKE_BUILD_TYPE:STRING=Release
           -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-          -DCMAKE_INSTALL_PREFIX:STRING=${fft2d_INSTALL})
+          -DCMAKE_INSTALL_PREFIX:STRING=${fft2d_INSTALL}
+      GIT_SHALLOW 1
+      GIT_PROGRESS 1
+  )
 else()
   set(fft2d_STATIC_LIBRARIES ${fft2d_BUILD}/src/fft2d/libfft2d.a)
 
@@ -48,6 +51,9 @@ else()
       PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/fft2d/CMakeLists.txt ${fft2d_BUILD}/src/fft2d/CMakeLists.txt
       INSTALL_DIR ${fft2d_INSTALL}
       INSTALL_COMMAND echo
-      BUILD_COMMAND $(MAKE))
-    
+      BUILD_COMMAND $(MAKE)
+      GIT_SHALLOW 1
+      GIT_PROGRESS 1
+  )
+
 endif()

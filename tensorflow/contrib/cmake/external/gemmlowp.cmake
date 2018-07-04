@@ -26,4 +26,7 @@ ExternalProject_Add(gemmlowp
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/gemmlowp/CMakeLists.txt ${gemmlowp_BUILD}
-    INSTALL_COMMAND "")
+    INSTALL_COMMAND ""
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
+)

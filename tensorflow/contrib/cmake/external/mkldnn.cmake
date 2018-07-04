@@ -45,6 +45,8 @@ ExternalProject_Add(mkldnn
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DMKLINC:STRING=${mkl_INCLUDE_DIRS}
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )
 
 # since mkldnn depends on mkl, copy the mkldnn.dll together with mklml.dll to mkl_bin_dirs

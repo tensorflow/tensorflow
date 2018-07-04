@@ -70,6 +70,8 @@ else (systemlib_ZLIB)
           -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
           -DCMAKE_BUILD_TYPE:STRING=Release
           -DCMAKE_INSTALL_PREFIX:STRING=${ZLIB_INSTALL}
+      GIT_SHALLOW 1
+      GIT_PROGRESS 1
   )
 
   # put zlib includes in the directory where they are expected

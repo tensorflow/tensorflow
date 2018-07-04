@@ -40,6 +40,8 @@ ExternalProject_Add(lmdb
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DCMAKE_INSTALL_PREFIX:STRING=${lmdb_INSTALL}
+    GIT_SHALLOW 1
+    GIT_PROGRESS 1
 )
 
 set(lmdb_HEADERS
