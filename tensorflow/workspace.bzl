@@ -254,11 +254,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "org_sqlite",
       urls = [
-          "https://mirror.bazel.build/www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
-          "https://www.sqlite.org/2018/sqlite-amalgamation-3230100.zip",
+          "https://mirror.bazel.build/www.sqlite.org/2018/sqlite-amalgamation-3240000.zip",
+          "https://www.sqlite.org/2018/sqlite-amalgamation-3240000.zip",
       ],
-      sha256 = "4239a1f69e5721d07d9a374eb84d594225229e54be4ee628da2995f4315d8dfc",
-      strip_prefix = "sqlite-amalgamation-3230100",
+      sha256 = "ad68c1216c3a474cf360c7581a4001e952515b3649342100f2d7ca7c8e313da6",
+      strip_prefix = "sqlite-amalgamation-3240000",
       build_file = clean_dep("//third_party:sqlite.BUILD"),
   )
 
