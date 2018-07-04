@@ -127,8 +127,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return false;
   }
 
-  // No "synchronize all activity" implemented for this platform at the moment.
-  bool SynchronizeAllActivity() override { return false; }
+  bool SynchronizeAllActivity() override;
   bool SynchronousMemZero(se::DeviceMemoryBase *location, uint64) override {
     return false;
   }

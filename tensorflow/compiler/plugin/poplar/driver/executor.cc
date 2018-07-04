@@ -233,6 +233,11 @@ Status PoplarExecutor::BlockHostUntilDone(se::Stream* stream) {
   return Status::OK();
 }
 
+bool PoplarExecutor::SynchronizeAllActivity() {
+  // TODO actually ensure that all execution has finished
+  return true;
+}
+
 se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
   se::internal::DeviceDescriptionBuilder builder;
 
