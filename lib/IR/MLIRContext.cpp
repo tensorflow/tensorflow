@@ -127,11 +127,9 @@ public:
   using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
 
-  // Affine binary op expression uniquing. We don't need to unique dimensional
+  // Affine binary op expression uniquing. Figure out uniquing of dimensional
   // or symbolic identifiers.
-  // std::tuple doesn't work with DesnseMap!
-  // DenseSet<AffineBinaryOpExpr *, AffineBinaryOpExprKeyInfo>;
-  // AffineExprSet affineExprs;
+  // std::tuple doesn't work with DenseMap!, using nested pair.
   DenseMap<std::pair<unsigned, std::pair<AffineExpr *, AffineExpr *>>,
            AffineBinaryOpExpr *>
       affineExprs;
