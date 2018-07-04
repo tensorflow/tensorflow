@@ -19,26 +19,41 @@ limitations under the License.
 
 namespace tflite {
 namespace eigen_support {
+namespace {
 
-struct RefCountedEigenContext {
+struct RefCountedEigenContext : public TfLiteExternalContext {
   int num_references = 0;
 };
 
+RefCountedEigenContext* GetEigenContext(TfLiteContext* context) {
+  return reinterpret_cast<RefCountedEigenContext*>(
+      context->GetExternalContext(context, kTfLiteEigenContext));
+}
+
+TfLiteStatus Refresh(TfLiteContext* context) {
+  Eigen::setNbThreads(context->recommended_num_threads);
+  return kTfLiteOk;
+}
+
+}  // namespace
+
 void IncrementUsageCounter(TfLiteContext* context) {
-  auto* ptr = reinterpret_cast<RefCountedEigenContext*>(context->eigen_context);
+  auto* ptr = GetEigenContext(context);
   if (ptr == nullptr) {
     if (context->recommended_num_threads != -1) {
       Eigen::setNbThreads(context->recommended_num_threads);
     }
     ptr = new RefCountedEigenContext;
+    ptr->type = kTfLiteEigenContext;
+    ptr->Refresh = Refresh;
     ptr->num_references = 0;
-    context->eigen_context = ptr;
+    context->SetExternalContext(context, kTfLiteEigenContext, ptr);
   }
   ptr->num_references++;
 }
 
 void DecrementUsageCounter(TfLiteContext* context) {
-  auto* ptr = reinterpret_cast<RefCountedEigenContext*>(context->eigen_context);
+  auto* ptr = GetEigenContext(context);
   if (ptr == nullptr) {
     TF_LITE_FATAL(
         "Call to DecrementUsageCounter() not preceded by "
@@ -46,14 +61,8 @@ void DecrementUsageCounter(TfLiteContext* context) {
   }
   if (--ptr->num_references == 0) {
     delete ptr;
-    context->eigen_context = nullptr;
+    context->SetExternalContext(context, kTfLiteEigenContext, nullptr);
   }
-}
-
-void SetNumThreads(TfLiteContext* context, int num_threads) {
-  IncrementUsageCounter(context);
-  Eigen::setNbThreads(num_threads);
-  DecrementUsageCounter(context);
 }
 
 }  // namespace eigen_support

@@ -174,6 +174,15 @@ class StreamExecutorInterface {
   virtual void *AllocateSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                                   uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
+  // Allocates unified memory space of the given size, if supported.
+  // See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
+  // for more details on unified memory.
+  virtual void *UnifiedMemoryAllocate(uint64 size) { return nullptr; }
+
+  // Deallocates unified memory space previously allocated with
+  // UnifiedMemoryAllocate.
+  virtual void UnifiedMemoryDeallocate(void *mem) {}
   virtual void *HostMemoryAllocate(uint64 size) = 0;
   virtual void HostMemoryDeallocate(void *mem) = 0;
   virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;

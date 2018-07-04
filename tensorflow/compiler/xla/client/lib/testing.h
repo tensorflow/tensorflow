@@ -34,12 +34,6 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
 
 // Returns vector of GlobalData handles of fake data (created using
 // MakeFakeDataOrDie) that are correctly shaped arguments for the given
-// computation.
-std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const Computation& computation, Client* client);
-
-// Returns vector of GlobalData handles of fake data (created using
-// MakeFakeDataOrDie) that are correctly shaped arguments for the given
 // xla computation.
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
     const XlaComputation& computation, Client* client);

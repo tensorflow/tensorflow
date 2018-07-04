@@ -97,7 +97,9 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
       break;                                                                   \
     default:                                                                   \
       context->ReportError(context,                                            \
-                           "Does not support type other than bool|float|int"); \
+                           "Does not support type other than bool|float|int, " \
+                           "got %d",                                           \
+                           type);                                              \
       return kTfLiteError;                                                     \
   }
 

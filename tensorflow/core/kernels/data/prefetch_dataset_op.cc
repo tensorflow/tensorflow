@@ -39,8 +39,8 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx,
-                buffer_size > 0 || buffer_size == PrefetchAutotuner::kAutoTune,
-                errors::InvalidArgument("buffer_size must be > 0"));
+                buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
+                errors::InvalidArgument("buffer_size must be >= 0"));
 
     *output = new Dataset(ctx, input, buffer_size);
   }
@@ -55,7 +55,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Prefetch")}));
@@ -68,7 +68,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "PrefetchDatasetOp::Dataset"; }
+    string DebugString() const override { return "PrefetchDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -87,7 +87,6 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             auto_tuner_(params.dataset->buffer_size_) {}
 
       ~Iterator() override {
@@ -106,16 +105,20 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
+
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
-
-        while (true) {
+        {
+          mutex_lock l(mu_);
+          TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
           // Wait until the next element in the buffer has been
           // produced, or we are shutting down.
-          while (!cancelled_ && !prefetch_thread_finished_ && buffer_.empty()) {
+          while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
+                 auto_tuner_.buffer_limit() != 0) {
             auto_tuner_.RecordEmpty();
             cond_var_.wait(l);
           }
@@ -126,29 +129,20 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           }
 
           if (!buffer_.empty()) {
-            // A new element is available. Forward the status from
-            // computing it, and (if we successfully got an element)
-            // the output values.
-            Status s = buffer_.front().status;
-            if (s.ok()) {
-              *out_tensors = std::move(buffer_.front().value);
-            }
-            auto_tuner_.RecordConsumption(buffer_.size());
-            buffer_.pop_front();
-            *end_of_sequence = false;
+            return Consume(out_tensors, end_of_sequence);
+          }
 
-            // Wake the prefetch thread, in case it has been waiting
-            // for space in the buffer.
-            // Also wake up threads from other calls to GetNext.
-            // TODO(mrry): Consider using different condition variables
-            // for GetNext and Prefetch.
-            cond_var_.notify_all();
-            return s;
-          } else if (prefetch_thread_finished_) {
+          if (prefetch_thread_finished_) {
             *end_of_sequence = true;
             return Status::OK();
           }
+
+          DCHECK_EQ(auto_tuner_.buffer_limit(), 0);
         }
+
+        mutex_lock parent_l(parent_mu_);
+        mutex_lock l(mu_);
+        return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -224,6 +218,26 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> value;
       };
 
+      Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        // A new element is available. Forward the status from computing it, and
+        // (if we successfully got an element) the output values.
+        Status s = buffer_.front().status;
+        if (s.ok()) {
+          *out_tensors = std::move(buffer_.front().value);
+        }
+        buffer_.pop_front();
+        *end_of_sequence = false;
+
+        // Wake the prefetch thread, in case it has been waiting for space
+        // in the buffer. Also wake up threads from other calls to GetNext.
+        //
+        // TODO(mrry): Consider using different condition variables for
+        // GetNext and Prefetch.
+        cond_var_.notify_all();
+        return s;
+      }
+
       Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!prefetch_thread_) {
@@ -248,7 +262,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
           {
             mutex_lock l(mu_);
             while (!cancelled_ &&
-                   buffer_.size() == auto_tuner_.buffer_limit()) {
+                   buffer_.size() >= auto_tuner_.buffer_limit()) {
               cond_var_.wait(l);
             }
 
@@ -327,7 +341,7 @@ class PrefetchDatasetOp : public UnaryDatasetOpKernel {
       // accessing the parent iterator. We keep this separate from `mu_` to
       // allow prefetching to run in parallel with GetNext calls.
       mutex parent_mu_ ACQUIRED_BEFORE(mu_);
-      const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(parent_mu_);
       condition_variable cond_var_;
       PrefetchAutotuner auto_tuner_ GUARDED_BY(mu_);
       std::deque<BufferElement> buffer_ GUARDED_BY(mu_);

@@ -20,11 +20,11 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 
 
-class AssertsTransformer(transformer.Base):
+class AssertsTransformer(converter.Base):
   """Transforms Print nodes to Call so they can be handled as functions."""
 
   def visit_Assert(self, node):
@@ -45,5 +45,5 @@ class AssertsTransformer(transformer.Base):
       raise NotImplementedError('can only convert string messages for now.')
 
 
-def transform(node, context):
-  return AssertsTransformer(context).visit(node)
+def transform(node, ctx):
+  return AssertsTransformer(ctx).visit(node)

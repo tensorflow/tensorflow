@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 // NB!  TODO(b/74360564): These tests do not test out of bounds behavior since
 // that hasn't been specced yet.
@@ -41,7 +42,7 @@ class GatherOperationTest : public HloTestBase {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                            tools::Parse(hlo_text, config));
+                            ParseHloString(hlo_text, config));
     EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
   }
 };
@@ -598,14 +599,14 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
   Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
 
-  auto operand = builder.Parameter(0, operand_shape, "operand");
-  auto indices = builder.Parameter(1, indices_shape, "indices");
+  auto operand = Parameter(&builder, 0, operand_shape, "operand");
+  auto indices = Parameter(&builder, 1, indices_shape, "indices");
   GatherDimensionNumbers dim_numbers;
   dim_numbers.add_output_window_dims(1);
   dim_numbers.add_elided_window_dims(0);
   dim_numbers.add_gather_dims_to_operand_dims(0);
   dim_numbers.set_index_vector_dim(1);
-  builder.Gather(operand, indices, dim_numbers, {1, 3});
+  Gather(operand, indices, dim_numbers, {1, 3});
 
   std::vector<int32> expected = {};
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> operand_arg,
@@ -629,8 +630,8 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
       client_->ExecuteParallel(computation_instances));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result_literal,
                           client_->Transfer(*(result_data[0])));
-  EXPECT_TRUE(LiteralTestUtil::Equal(
-      *result_literal, *Literal::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}})));
+  LiteralTestUtil::ExpectR2Equal<int32>({{1, 2, 3}, {7, 8, 9}},
+                                        *result_literal);
 }
 }  // namespace
 }  // namespace xla

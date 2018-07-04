@@ -462,7 +462,7 @@ class SNLIClassifierTrainer(tfe.Checkpointable):
       2. logits as a dense `Tensor` of shape (batch_size, d_out), where d_out is
         the output dimension size of the SNLIClassifier.
     """
-    with tfe.GradientTape() as tape:
+    with tf.GradientTape() as tape:
       tape.watch(self._model.variables)
       logits = self._model(premise,
                            premise_transition,

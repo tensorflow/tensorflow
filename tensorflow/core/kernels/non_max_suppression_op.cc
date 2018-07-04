@@ -117,10 +117,6 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
     }
   }
 
-  auto suppress_func = [iou_threshold](const float x) {
-    return x <= iou_threshold ? 1 : 0;
-  };
-
   std::vector<int> selected;
   std::vector<float> selected_scores;
   Candidate next_candidate;
@@ -134,14 +130,13 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
     // Overlapping boxes are likely to have similar scores,
     // therefore we iterate through the previously selected boxes backwards
     // in order to see if `next_candidate` should be suppressed.
+    bool should_select = true;
     for (int j = selected.size() - 1; j >= 0; --j) {
       iou = IOU(boxes_data, next_candidate.box_index, selected[j]);
-      if (iou == 0.0) continue;
-      next_candidate.score *= suppress_func(iou);
-      if (next_candidate.score <= score_threshold) break;
+      if (iou > iou_threshold) should_select = false;
     }
 
-    if (original_score == next_candidate.score) {
+    if (should_select) {
       selected.push_back(next_candidate.box_index);
       selected_scores.push_back(next_candidate.score);
     }
@@ -178,7 +173,7 @@ class NonMaxSuppressionOp : public OpKernel {
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
 
-    const float score_threshold_val = 0.0;
+    const float score_threshold_val = std::numeric_limits<float>::lowest();
     DoNonMaxSuppressionOp(context, boxes, scores, max_output_size,
                           iou_threshold_, score_threshold_val);
   }
@@ -211,7 +206,7 @@ class NonMaxSuppressionV2Op : public OpKernel {
                                         iou_threshold.shape().DebugString()));
     const float iou_threshold_val = iou_threshold.scalar<float>()();
 
-    const float score_threshold_val = 0.0;
+    const float score_threshold_val = std::numeric_limits<float>::lowest();
     DoNonMaxSuppressionOp(context, boxes, scores, max_output_size,
                           iou_threshold_val, score_threshold_val);
   }

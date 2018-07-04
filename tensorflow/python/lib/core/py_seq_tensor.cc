@@ -51,6 +51,10 @@ bool IsPyInt(PyObject* obj) {
 #endif
 }
 
+bool IsPyDouble(PyObject* obj) {
+  return PyIsInstance(obj, &PyDoubleArrType_Type);  // NumPy double type.
+}
+
 bool IsPyFloat(PyObject* obj) {
   return PyFloat_Check(obj) ||
          PyIsInstance(obj, &PyFloatingArrType_Type);  // NumPy float types
@@ -84,6 +88,41 @@ bool IsPyDimension(PyObject* obj) {
   return ret;
 }
 
+// Sets *elem to a NEW reference to an element in seq on success.
+// REQUIRES: PySequence_Check(seq) && PySequence_Length(seq) > 0.
+Status SampleElementFromSequence(PyObject* seq, PyObject** elem) {
+  *elem = PySequence_GetItem(seq, 0);
+  if (*elem != nullptr) return Status::OK();
+  // seq may implement the sequence protocol (i.e., implement __getitem__)
+  // but may legitimately not have a 0-th element (__getitem__(self, 0)
+  // raises a KeyError). For example:
+  // seq = pandas.Series([0, 1, 2], index=[2, 4, 6])
+  //
+  // We don't actually care for the element at key 0, any element will do
+  // for inferring the element types. All elements are expected to
+  // have the same type, and this will be validated when converting
+  // to an EagerTensor.
+  PyErr_Clear();
+  Safe_PyObjectPtr iter(PyObject_GetIter(seq));
+  if (PyErr_Occurred()) {
+    return errors::InvalidArgument("Cannot infer dtype of a ",
+                                   Py_TYPE(seq)->tp_name,
+                                   " object: ", PyExceptionFetch());
+  }
+  *elem = PyIter_Next(iter.get());
+  if (PyErr_Occurred()) {
+    return errors::InvalidArgument(
+        "Cannot infer dtype of a ", Py_TYPE(seq)->tp_name,
+        " object, as iter(<object>).next() failed: ", PyExceptionFetch());
+  }
+  if (*elem == nullptr) {
+    return errors::InvalidArgument("Cannot infer dtype of a ",
+                                   Py_TYPE(seq)->tp_name,
+                                   " object since it is an empty sequence");
+  }
+  return Status::OK();
+}
+
 Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
   std::vector<Safe_PyObjectPtr> refs_to_clean;
   while (true) {
@@ -94,7 +133,9 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
       auto length = PySequence_Length(obj);
       if (length > 0) {
         shape->AddDim(length);
-        obj = PySequence_GetItem(obj, 0);
+        PyObject* elem = nullptr;
+        TF_RETURN_IF_ERROR(SampleElementFromSequence(obj, &elem));
+        obj = elem;
         refs_to_clean.push_back(make_safe(obj));
         continue;
       } else if (length == 0) {
@@ -113,8 +154,10 @@ Status InferShapeAndType(PyObject* obj, TensorShape* shape, DataType* dtype) {
               "Attempted to convert an invalid sequence to a Tensor.");
         }
       }
-    } else if (IsPyFloat(obj)) {
+    } else if (IsPyDouble(obj)) {
       *dtype = DT_DOUBLE;
+    } else if (IsPyFloat(obj)) {
+      *dtype = DT_FLOAT;
     } else if (PyBool_Check(obj) || PyIsInstance(obj, &PyBoolArrType_Type)) {
       // Have to test for bool before int, since IsInt(True/False) == true.
       *dtype = DT_BOOL;
@@ -433,7 +476,7 @@ Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret) {
       break;
   }
   switch (infer_dtype) {
-    case DT_DOUBLE:
+    case DT_FLOAT:
       // TODO(josh11b): Handle mixed floats and complex numbers?
       if (requested_dtype == DT_INVALID) {
         // TensorFlow uses float32s to represent floating point numbers
@@ -446,7 +489,8 @@ Status PySeqToTensor(PyObject* obj, PyObject* dtype, Tensor* ret) {
         // final type.
         RETURN_STRING_AS_STATUS(ConvertDouble(obj, shape, ret));
       }
-
+    case DT_DOUBLE:
+      RETURN_STRING_AS_STATUS(ConvertDouble(obj, shape, ret));
     case DT_INT64:
       if (requested_dtype == DT_INVALID) {
         const char* error = ConvertInt32(obj, shape, ret);

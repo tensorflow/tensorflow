@@ -18,7 +18,7 @@ limitations under the License.
 // Shows the signature (ProgramShape) of binary snapshot proto(s) on the command
 // line.
 //
-// some_binary_snapshot_proto is obtained by serializing the SessionModule from
+// some_binary_snapshot_proto is obtained by serializing the HloSnapshot from
 // ServiceInterface::SnapshotComputation to disk.
 //
 // The output format is:
@@ -31,9 +31,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -49,13 +48,14 @@ namespace tools {
 void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
   Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
-    SessionModule module;
+    HloSnapshot module;
     TF_CHECK_OK(
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
-    Computation computation = client->LoadSnapshot(module).ConsumeValueOrDie();
+    auto computation = client->LoadSnapshot(module).ConsumeValueOrDie();
     std::unique_ptr<ProgramShape> shape =
         client->GetComputationShape(computation).ConsumeValueOrDie();
-    fprintf(stdout, "%s: %s :: %s\n", arg, module.entry().name().c_str(),
+    fprintf(stdout, "%s: %s :: %s\n", arg,
+            module.hlo().hlo_module().name().c_str(),
             ShapeUtil::HumanString(*shape).c_str());
   }
 }

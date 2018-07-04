@@ -1,7 +1,5 @@
 # Description:
 #   The new XLA client libraries.
-#
-# This is NOT YET ready to use.
 
 licenses(["notice"])  # Apache 2.0
 
@@ -37,11 +35,11 @@ cc_library(
     ],
 )
 
-# TODO(b/74197823): Replace computation_builder with xla_builder.
 cc_library(
     name = "xla_builder",
     srcs = ["xla_builder.cc"],
     hdrs = ["xla_builder.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":xla_computation",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -53,6 +51,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:shape_inference",

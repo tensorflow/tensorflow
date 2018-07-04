@@ -21,6 +21,7 @@ namespace tensorflow {
 REGISTER_OP("_ScopedAllocator")
     .Output("output: T")
     .Attr("shapes: list(shape)")
+    .Attr("shape: shape")
     .Attr("T: type")
     .Attr("sa_name: string")
     .Attr("id: int")
@@ -35,6 +36,16 @@ Returns a reference to this value.
 
 This is an experimental op for internal use only.  It is possible to use this
 op in unsafe ways.
+
+'shapes' is a list of the shapes of the tensors that are to be allocated
+by this ScopedAllocator.
+'shape' is the shape of the output of this Op, i.e. the 1D backing tensor
+from which the individual allocated tensors are aliased.
+'sa_name' is the name assigned to the Node, for connectivity specification
+and debugging.
+'id' is a non-negative integer 'scope_id' handled by the ScopedAllocatorMgr.
+'expected_call_count' is the number of individual tensors expected to
+be allocated from the backing tensor.
 )doc");
 
 REGISTER_OP("_ScopedAllocatorConcat")
@@ -57,6 +68,18 @@ reference to that ScopedAllocator's backing tensor.
 
 This is an experimental op for internal use only.  It is possible to use this
 op in unsafe ways.
+
+'backing' is the backing tensor, i.e. the output of an upstream ScopedAllocator.
+'inputs' is a list of nominal input tensors, all of which must be aliases
+to regions of the backing tensor.  These will be outputs of upstream nodes
+that allocate their outputs from the same ScopedAllocator.
+'shape' is the shape of the output, which will usually be the same shape as
+the input backing tensor.
+'reshape' is true iff the output shape is to be different from that of
+the input backing tensor.
+'sa_name' is the Node name of the upstream ScopedAllocator.
+'id' is the scope_id identifying the upstream ScopedAllocator.
+'N' is the number of nominal inputs to be concatenated.
 )doc");
 
 REGISTER_OP("_ScopedAllocatorSplit")
@@ -67,8 +90,9 @@ REGISTER_OP("_ScopedAllocatorSplit")
     .Attr("sa_name: string")
     .Attr("id: int")
     .Attr("N: int >= 2")
+    .Attr("shapes: list(shape)")
     .SetIsStateful()
-    .SetShapeFn(shape_inference::ExplicitShape)
+    .SetShapeFn(shape_inference::ExplicitShapes)
     .Doc(R"doc(
 Acts roughly like a SplitV Op that splits one tensor into multiple tensors
 but must only be used in conjunction with corresponding ScopedAllocator
@@ -79,6 +103,17 @@ second list.
 
 This is an experimental op for internal use only.  It is possible to use this
 op in unsafe ways.
+
+'concat' is the single output produced by an upstream ScopedAllocatorConcat
+node.  This is actually the backing tensor from a ScopedAllocator node
+upstream of the ScopedAllocatorConcat.
+'split' is a list of tensors aliased from the backing tensor.  It will
+become the output of this ScopedAllocatorSplit node.
+'type' is the common DataType of all of the input and output tensors.
+'sa_name' is the Node name of the upstream ScopedAllocator.
+'id' is the scope_id identifying the upstream ScopedAllocator.
+'N' is the number of split tensors.
+'shapes' is a list of the split tensor shapes.
 )doc");
 
 }  // end namespace tensorflow

@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class MixtureSameFamily(distribution.Distribution):
@@ -95,6 +96,14 @@ class MixtureSameFamily(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                mixture_distribution,
                components_distribution,
@@ -130,7 +139,7 @@ class MixtureSameFamily(distribution.Distribution):
       ValueError: if `mixture_distribution` categories does not equal
         `components_distribution` rightmost batch shape.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       self._mixture_distribution = mixture_distribution
       self._components_distribution = components_distribution
@@ -321,6 +330,14 @@ class MixtureSameFamily(distribution.Distribution):
       return x
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _outer_squared_difference(x, y):
   """Convenience function analogous to tf.squared_difference."""
   z = x - y

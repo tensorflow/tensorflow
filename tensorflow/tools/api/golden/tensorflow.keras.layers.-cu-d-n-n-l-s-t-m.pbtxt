@@ -1,9 +1,9 @@
 path: "tensorflow.keras.layers.CuDNNLSTM"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.cudnn_recurrent.CuDNNLSTM\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.cudnn_recurrent._CuDNNRNN\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.recurrent.RNN\'>"
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.base_layer.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.cudnn_recurrent.CuDNNLSTM\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.cudnn_recurrent._CuDNNRNN\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.RNN\'>"
+  is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
   member {

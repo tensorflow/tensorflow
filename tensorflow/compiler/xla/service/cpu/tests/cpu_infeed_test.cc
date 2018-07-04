@@ -47,7 +47,7 @@ class InfeedTest : public ClientLibraryTestBase {
     // don't use ResetDevice since it is not implemented on CPU.
     ASSERT_IS_OK(client_->TransferToInfeed(literal));
     XlaBuilder builder(TestName());
-    builder.Infeed(literal.shape());
+    Infeed(&builder, literal.shape());
     if (ShapeUtil::IsTuple(literal.shape())) {
       // TODO(b/30609564): Use ComputeAndCompareLiteral instead.
       ComputeAndCompareTuple(&builder, literal, {});
@@ -125,8 +125,8 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   XlaComputation condition;
   {
     XlaBuilder builder("condition");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    builder.Gt(builder.ConstantR0<float>(40.0f), prev);
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    Gt(ConstantR0<float>(&builder, 40.0f), prev);
     condition = builder.Build().ConsumeValueOrDie();
   }
   // Create a computation for the body: add the reduced value of the Infeed
@@ -134,17 +134,16 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   XlaComputation body;
   {
     XlaBuilder builder("body");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    auto infeed = builder.Infeed(infeed_shape);
-    auto addend =
-        builder.Reduce(infeed, builder.ConstantR0<float>(0.0f),
-                       CreateScalarAddComputation(F32, &builder), {0});
-    builder.Add(prev, addend);
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    auto infeed = Infeed(&builder, infeed_shape);
+    auto addend = Reduce(infeed, ConstantR0<float>(&builder, 0.0f),
+                         CreateScalarAddComputation(F32, &builder), {0});
+    Add(prev, addend);
     body = builder.Build().ConsumeValueOrDie();
   }
   // Create a While node with computations for the condition and the body.
-  auto init = builder.ConstantR0<float>(0.0f);
-  builder.While(condition, body, init);
+  auto init = ConstantR0<float>(&builder, 0.0f);
+  While(condition, body, init);
 
   // Build and asynchronously launch the computation.
   auto computation = builder.Build().ConsumeValueOrDie();
@@ -207,8 +206,8 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   XlaComputation condition;
   {
     XlaBuilder builder("condition");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    builder.GetTupleElement(prev, 1);
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    GetTupleElement(prev, 1);
     condition = builder.Build().ConsumeValueOrDie();
   }
 
@@ -221,27 +220,27 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   const auto build_body = [this, &result_shape](const Shape& infeed_shape) {
     XlaComputation body;
     XlaBuilder builder("body");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    auto infeed = builder.Infeed(infeed_shape);
-    auto addend = builder.Reduce(
-        builder.GetTupleElement(infeed, 0), builder.ConstantR0<float>(0.0f),
-        CreateScalarAddComputation(F32, &builder), {0});
-    auto result = builder.Add(builder.GetTupleElement(prev, 0), addend);
-    builder.Tuple({result, builder.GetTupleElement(infeed, 1)});
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    auto infeed = Infeed(&builder, infeed_shape);
+    auto addend =
+        Reduce(GetTupleElement(infeed, 0), ConstantR0<float>(&builder, 0.0f),
+               CreateScalarAddComputation(F32, &builder), {0});
+    auto result = Add(GetTupleElement(prev, 0), addend);
+    Tuple(&builder, {result, GetTupleElement(infeed, 1)});
     return builder.Build().ConsumeValueOrDie();
   };
 
   // Create the first while loop with infeed1_shape.
-  auto init = builder.Tuple(
-      {builder.ConstantR0<float>(0.0f), builder.ConstantR0<bool>(true)});
-  auto while1 = builder.While(condition, build_body(infeed1_shape), init);
-  auto result1 = builder.Tuple(
-      {builder.GetTupleElement(while1, 0), builder.ConstantR0<bool>(true)});
+  auto init = Tuple(&builder, {ConstantR0<float>(&builder, 0.0f),
+                               ConstantR0<bool>(&builder, true)});
+  auto while1 = While(condition, build_body(infeed1_shape), init);
+  auto result1 = Tuple(
+      &builder, {GetTupleElement(while1, 0), ConstantR0<bool>(&builder, true)});
 
   // Create the second while loop with infeed2_shape. Note that the result from
   // the first while loop is used as the initial value.
-  auto while2 = builder.While(condition, build_body(infeed2_shape), result1);
-  builder.GetTupleElement(while2, 0);
+  auto while2 = While(condition, build_body(infeed2_shape), result1);
+  GetTupleElement(while2, 0);
 
   // Build the computation.
   auto computation = builder.Build().ConsumeValueOrDie();

@@ -33,6 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 class CancellationManager;
+class CollectiveExecutor;
 class GraphDef;
 class OpKernel;
 class ProcessFunctionLibraryRuntime;
@@ -449,6 +450,12 @@ class FunctionLibraryRuntime {
     // state (in stateful kernels); and two functions with different
     // values for `state_handle` will have independent state.
     string state_handle;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instatiates the function using an executor of the given type. If empty,
+    // the default TensorFlow executor will be used.
+    string executor_type;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -484,6 +491,7 @@ class FunctionLibraryRuntime {
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
     StepStatsCollector* stats_collector = nullptr;
 

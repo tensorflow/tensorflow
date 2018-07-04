@@ -46,6 +46,8 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.estimator import util as estimator_util
+from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -61,6 +63,7 @@ from tensorflow.python.ops import summary_ops_v2 as contrib_summary
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import evaluation
@@ -71,17 +74,24 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
+
 _INITIAL_LOSS = 1e7
 _ZERO_LOSS = 0.
 _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CTX_KEY = 'context'
+_USE_TPU_KEY = 'use_tpu'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
+_REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
 
+# Ideally _USE_TPU_KEY should be reserved as well. However there are already
+# models that make use of this key, thus it can not be reserved now to prevent
+# breakage. In the long run, we would like to mitigate this by migrating models
+# off of using _USE_TPU_KEY.
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
@@ -117,6 +127,33 @@ def _create_global_step(graph):
 
 
 def _create_or_get_iterations_per_loop():
+  """Creates or gets the iterations_per_loop variable.
+
+  In TPUEstimator, the user provided computation, the model_fn, is wrapped
+  inside a tf.while_loop for peak performance. The iterations of the loop are
+  specified by this variable, which adjusts its value on the CPU after each TPU
+  program execution and before the next TPU execution.
+
+  The purpose of using a variable, rather then a constant, is to allow
+  TPUEstimator adapt the TPU training iterations according to the final steps
+  specified by users. For example, if the user sets the iterations_per_loop as 4
+  in TPUConfig and steps as 10 in TPUEstimator.train(), the iterations_per_loop
+  variable will have the following value before each TPU training.
+
+      - 1-th TPU execution: iterations_per_loop = 4
+      - 2-th TPU execution: iterations_per_loop = 4
+      - 3-th TPU execution: iterations_per_loop = 2
+
+  As model_fn increases the global step once per train_op invocation, the global
+  step is 10 after all TPU executions, matching the steps=10 inputs passed in by
+  users.
+
+  Returns:
+    A TF non-trainable resource variable.
+
+  Raises:
+    RuntimeError: If multi iterations_per_loop variables were found.
+  """
   graph = ops.get_default_graph()
   collection_name = '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)
   iter_vars = graph.get_collection(collection_name)
@@ -179,8 +216,8 @@ class _SIGNAL(object):
 class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
   """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
 
-  See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
-  'export_outputs`.
+  See `EstimatorSpec` for `mode`, `predictions`, `loss`, `train_op`, and
+  `export_outputs`.
 
   For evaluation, `eval_metrics `is a tuple of `metric_fn` and `tensors`, where
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
@@ -194,7 +231,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   size is the first dimension. Once all tensors are available at CPU host from
   all shards, they are concatenated (on CPU) and passed as positional arguments
   to the `metric_fn` if `tensors` is list or keyword arguments if `tensors` is
-  dict. `metric_fn` takes the `tensors` and returns a dict from metric string
+  a dict. `metric_fn` takes the `tensors` and returns a dict from metric string
   name to the result of calling a metric function, namely a `(metric_tensor,
   update_op)` tuple. See `TPUEstimator` for MNIST example how to specify the
   `eval_metrics`.
@@ -383,20 +420,21 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       return
 
     def _cancel_session():
-      # Close the session to avoid the main thread from hanging. If input
-      # pipeline triggers any error, the infeed thread dies but the main thread
-      # for TPU computation waits for the infeed enqueue forever. Close the
-      # Session to cancel the main thread Session.run execution.
-      #
-      # We sleep for a few seconds before closing to give some time
-      # for the TPU compilation error, if any, propagating, from TPU to CPU
-      # host. Compilation errors should be reported by the main thread so that
-      # the program can be interrupted and users can take action.  Due to a race
-      # condition, the infeed thread might see an error first.  Closing the
-      # session here immediately would result in a session cancellation
-      # exception in the main thread, instead of the expected compile error.
-      # User code that depends on having the proper exception type will
-      # therefore be confused.
+      """Close the session to avoid the main thread from hanging.
+
+      If input pipeline triggers any error, the infeed thread dies but the main
+      thread for TPU computation waits for the infeed enqueue forever. Close the
+      Session to cancel the main thread Session.run execution.
+
+      We sleep for a few seconds before closing to give some time for the TPU
+      compilation error, if any, propagating, from TPU to CPU host. Compilation
+      errors should be reported by the main thread so that the program can be
+      interrupted and users can take action.  Due to a race condition, the
+      infeed thread might see an error first.  Closing the session here
+      immediately would result in a session cancellation exception in the main
+      thread, instead of the expected compile error.  User code that depends on
+      having the proper exception type will therefore be confused.
+      """
       time.sleep(5)
 
       # If the main session is still running, the infeed/outfeed errors are
@@ -631,6 +669,7 @@ def generate_per_core_enqueue_ops_fn_for_host(
     ctx, input_fn, inputs_structure_recorder, host_device, host_id):
   """Generates infeed enqueue ops for per-core input_fn on a single host."""
   captured_infeed_queue = _CapturedObject()
+  tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
 
   def enqueue_ops_fn():
     """A fn returns enqueue_ops."""
@@ -666,7 +705,7 @@ def generate_per_core_enqueue_ops_fn_for_host(
         per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
-        per_host_sharded_inputs, tpu_ordinal_function=ctx.tpu_ordinal_function)
+        per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
     return per_host_enqueue_ops
 
   return enqueue_ops_fn, captured_infeed_queue
@@ -701,21 +740,18 @@ def generate_per_host_enqueue_ops_fn_for_host(
     if is_dataset:
       hooks.append(inputs.dataset_initializer_hook())
 
-  # TODO(ylc): Refactoring the code to merge the tpu ordinal logic here and the
-  # _InternalTPUContext.tpu_ordinal_function. We should either introduce another
-  # abstraction or a different helper method.
-  def _tpu_ordinal_function_impl(shard_index_in_host):
-    # We put both enqueue/dequeue op at tpu.core(0) in each replica.
-    replica = ctx.device_assignment.lookup_replicas(
-        host_id, (0, 0, 0))[shard_index_in_host]
-    return ctx.device_assignment.tpu_ordinal(replica=replica)
-
-  if ctx.model_parallelism_enabled:
-    tpu_ordinal_function = _tpu_ordinal_function_impl
-  else:
-    tpu_ordinal_function = None
+    tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
 
   def enqueue_ops_fn():
+    """A Fn returning the TPU infeed enqueue ops.
+
+    By providing as a Fn, it can be invoked inside the tf.while_loop such that
+    the input pipeline for multiple iterations can be executed by one
+    Session.run call.
+
+    Returns:
+      list of dict of ops.
+    """
     with ops.device(device):
       num_of_replicas_per_host = ctx.num_of_replicas_per_host
       # Convert user input to features and labels.  If the user returns a
@@ -740,7 +776,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
           infeed_queue.split_inputs_and_generate_enqueue_ops(
               unsharded_tensor_list,
               placement_function=lambda x: device,
-              tpu_ordinal_function=tpu_ordinal_function))
+              tpu_ordinal_function=tpu_ordinal_function_impl))
       if signals is None:
         return per_host_enqueue_ops
       else:
@@ -774,6 +810,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
       raise TypeError('Most PREDICT not yet supported in PER_HOST_V2 mode.')
 
     hooks.append(inputs.dataset_initializer_hook())
+    tpu_ordinal_function_impl = ctx.tpu_ordinal_function(host_id)
 
   def enqueue_ops_fn():
     """Generates the per_host enqueue ops."""
@@ -804,7 +841,7 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
         per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
-        per_host_sharded_inputs, tpu_ordinal_function=ctx.tpu_ordinal_function)
+        per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
     return per_host_enqueue_ops
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
@@ -1090,15 +1127,21 @@ class _InputPipeline(object):
     return enqueue_ops, all_hooks, run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
-    # Perform some sanity checks to log user friendly information. We should
-    # error out to give users better error message. But, if
-    # _WRAP_INPUT_FN_INTO_WHILE_LOOP is False (legacy behavior), we cannot break
-    # user code, so, log a warning.
+    """Validates the input pipeline.
+
+    Perform some sanity checks to log user friendly information. We should
+    error out to give users better error message. But, if
+    _WRAP_INPUT_FN_INTO_WHILE_LOOP is False (legacy behavior), we cannot break
+    user code, so, log a warning.
+
+    Raises:
+      RuntimeError: If the validation failed.
+    """
     if ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
                  'It could be slow and not scalable. Please consider '
                  'converting your input pipeline to use `tf.data` instead (see '
-                 'https://www.tensorflow.org/programmers_guide/datasets for '
+                 'https://www.tensorflow.org/guide/datasets for '
                  'instructions.')
       if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
         raise RuntimeError(err_msg)
@@ -1264,13 +1307,11 @@ class _ModelFnWrapper(object):
             'estimator_spec used by TPU prediction must have type'
             '`TPUEstimatorSpec`. Got {}'.format(type(tpu_estimator_spec)))
 
+      self._verify_tpu_spec_predictions(tpu_estimator_spec.predictions)
+
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
       to_record = {}
       identity_fn = lambda **kwargs: kwargs
-      # TODO(xiejw): Adds validation for prediction dictionrary.
-      # TODO(xiejw): Adds support for single tensor as predictions.
-      if not isinstance(tpu_estimator_spec.predictions, dict):
-        raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
       to_record['predictions'] = [identity_fn, tpu_estimator_spec.predictions]
       to_record['signals'] = [identity_fn, stopping_signals]
       if tpu_estimator_spec.host_call is not None:
@@ -1282,8 +1323,70 @@ class _ModelFnWrapper(object):
 
     return predict_step, host_calls, captured_scaffold_fn
 
+  def _verify_tpu_spec_predictions(self, predictions):
+    """Validates TPUEstimatorSpec.predictions dict."""
+    # TODO(xiejw): Adds validation for prediction dictionrary.
+    # TODO(xiejw): Adds support for single tensor as predictions.
+    if not isinstance(predictions, dict):
+      raise TypeError('TPUEstimatorSpec.predictions must be dict of Tensors.')
+
+    for (key, tensor) in predictions.items():
+      if tensor.shape[0].value is None:
+        raise ValueError(
+            'The tensor with key ({}) in TPUEstimatorSpec.predictions has '
+            'dynamic shape (should be static). Tensor: {}'.format(
+                key, tensor))
+    return predictions
+
+  def _validate_model_features_and_labels(self,
+                                          features,
+                                          labels,
+                                          is_export_mode):
+    """Validates that the features and labels for the model function are valid.
+
+    A valid features/labels object is the one with:
+    - Type: Tensor or a dictionary of Tensors
+    - Static shape if is_export_mode is False.
+
+    Args:
+      features: the features that would be input to the model function.
+      labels: the labels that would be input to the model function.
+      is_export_mode: boolean value specifying if in export mode.
+
+    Raises:
+      TypeError: If features/labels are not of the correct type.
+      ValueError: If features/labels have dynamic shape.
+    """
+
+    def validate(obj, obj_name):
+      """Helper validate function."""
+      if not isinstance(obj, ops.Tensor) and not isinstance(obj, dict):
+        raise TypeError(
+            'The {} to the model returned by input_fn must be either a Tensor '
+            'or a dictionary of Tensors. {}: {}'.format(obj_name, obj_name,
+                                                        obj))
+      if is_export_mode or self._ctx.is_running_on_cpu(is_export_mode):
+        return
+      if isinstance(obj, ops.Tensor):
+        if not obj.get_shape().is_fully_defined():
+          raise ValueError(
+              'The {} to the model returned by input_fn must have static shape.'
+              ' Tensor: {}'.format(obj_name, obj))
+      else:
+        for (key, tensor) in obj.items():
+          if not tensor.get_shape().is_fully_defined():
+            raise ValueError(
+                'The {} to the model returned by input_fn must have static '
+                'shape. Key: \'{}\', Tensor: {}'.format(
+                    obj_name, key, tensor))
+
+    validate(features, 'features')
+    if labels is not None:
+      validate(labels, 'labels')
+
   def _call_model_fn(self, features, labels, is_export_mode=False):
     """Calls the model_fn with required parameters."""
+    self._validate_model_features_and_labels(features, labels, is_export_mode)
     model_fn_args = function_utils.fn_args(self._model_fn)
     kwargs = {}
 
@@ -1314,13 +1417,13 @@ class _ModelFnWrapper(object):
       batch_size_for_model_fn = self._ctx.batch_size_for_model_fn
 
     if batch_size_for_model_fn is not None:
-      if isinstance(params, hparam.HParams):
-        params.add_hparam(_BATCH_SIZE_KEY, batch_size_for_model_fn)
-      else:
-        params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
+      _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
+
+    running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
+    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
 
     estimator_spec = self._model_fn(features=features, **kwargs)
-    if (self._ctx.is_running_on_cpu(is_export_mode) and
+    if (running_on_cpu and
         isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
       # The estimator_spec will be passed to `Estimator` directly, which expects
       # type `EstimatorSpec`.
@@ -1763,8 +1866,40 @@ class TPUEstimator(estimator_lib.Estimator):
   Exporting
   =========
 
-  Exporting `SavedModel` support on TPU is not yet implemented. So,
-  `export_savedmodel` is executed on CPU, even if `use_tpu` is true.
+  `export_savedmodel` exports 2 metagraphs, one with `tag_constants.SERVING`,
+  and another with `tag_constants.SERVING` and `tag_constants.TPU`.
+  At serving time, these tags are used to select metagraph to load.
+
+  Before running the graph on TPU, TPU system needs to be initialized. If
+  TensorFlow Serving model-server is used, this is done automatically. If
+  not, please call `session.run(tpu.initialize_system())`.
+
+  `tpu.outside_compilation` can be used to wrap TPU incompatible ops in
+  `model_fn`.
+
+  Example:
+  ----------------
+
+  ```
+  def model_fn(features, labels, mode, config, params):
+    ...
+    logits = ...
+    export_outputs = {
+      'logits': export_output_lib.PredictOutput(
+        {'logits': logits})
+    }
+
+    def host_call(logits):
+      class_ids = math_ops.argmax(logits)
+      classes = string_ops.as_string(class_ids)
+      export_outputs['classes'] =
+        export_output_lib.ClassificationOutput(classes=classes)
+
+    tpu.outside_compilation(host_call, logits)
+
+    ...
+  ```
+
   """
 
   def __init__(self,
@@ -1778,13 +1913,15 @@ class TPUEstimator(estimator_lib.Estimator):
                predict_batch_size=None,
                batch_axis=None,
                eval_on_tpu=True,
+               export_to_tpu=True,
                warm_start_from=None):
     """Constructs an `TPUEstimator` instance.
 
     Args:
       model_fn: Model function as required by `Estimator`. For training, the
         returned `EstimatorSpec` cannot have hooks as it is not supported in
-        `TPUEstimator`.
+        `TPUEstimator`. Instead, the user can pass the training hooks as
+        an argument to `TPUEstimator.train()`.
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model. If `None`, the model_dir in
@@ -1820,6 +1957,8 @@ class TPUEstimator(estimator_lib.Estimator):
         False or `PER_HOST_V2`, batch_axis is ignored.
       eval_on_tpu: If False, evaluation runs on CPU or GPU. In this case, the
         model_fn must return `EstimatorSpec` when called with `mode` as `EVAL`.
+      export_to_tpu: If True, `export_savedmodel()` exports a metagraph for
+        serving on TPU besides the one on CPU.
       warm_start_from: Optional string filepath to a checkpoint or SavedModel to
                        warm-start from, or a `tf.estimator.WarmStartSettings`
                        object to fully configure warm-starting.  If the string
@@ -1891,7 +2030,125 @@ class TPUEstimator(estimator_lib.Estimator):
         use_tpu,
         eval_on_tpu)
 
+    self._export_to_tpu = export_to_tpu
+
     self._is_input_fn_invoked = None
+
+  def _add_meta_graph_for_mode(self,
+                               builder,
+                               input_receiver_fn_map,
+                               checkpoint_path,
+                               strip_default_attrs,
+                               save_variables=True,
+                               mode=model_fn_lib.ModeKeys.PREDICT,
+                               export_tags=None,
+                               check_variables=True):
+    if mode != model_fn_lib.ModeKeys.PREDICT:
+      raise NotImplementedError(
+          'TPUEstimator only handles mode PREDICT for export_savedmodel(); '
+          'got {}.'.format(mode))
+
+    (super(TPUEstimator, self).
+     _add_meta_graph_for_mode(builder,
+                              input_receiver_fn_map,
+                              checkpoint_path,
+                              strip_default_attrs,
+                              save_variables,
+                              mode=mode,
+                              export_tags=export_tags,
+                              check_variables=check_variables))
+
+    if self._export_to_tpu:
+      input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
+                               input_receiver_fn_map[mode]}
+      export_tags = [tag_constants.SERVING, tag_constants.TPU]
+      mode = _REWRITE_FOR_INFERENCE_MODE
+      # See b/110052256 for why `check_variables` is `False`.
+      (super(TPUEstimator, self).
+       _add_meta_graph_for_mode(builder,
+                                input_receiver_fn_map,
+                                checkpoint_path,
+                                strip_default_attrs,
+                                save_variables=False,
+                                mode=mode,
+                                export_tags=export_tags,
+                                check_variables=False))
+
+  def _call_model_fn(self, features, labels, mode, config):
+    if mode == _REWRITE_FOR_INFERENCE_MODE:
+      return self._call_model_fn_for_inference(features, labels, mode, config)
+    else:
+      return super(TPUEstimator, self)._call_model_fn(
+          features, labels, mode, config)
+
+  def _call_model_fn_for_inference(self, features, labels, mode, config):
+    """Wraps `_call_model_fn` for `export_savedmodel`."""
+    if mode != _REWRITE_FOR_INFERENCE_MODE:
+      raise ValueError('mode must be {}; '
+                       'got {}.'.format(_REWRITE_FOR_INFERENCE_MODE, mode))
+
+    capture = _CapturedObject()
+
+    def computation():
+      """Compute tpu tensors used in export_outputs.
+
+      Passed to rewrite_for_inference so that model_fn will be called under
+      the rewriting contexts. Only tpu tensors are returned, but export_outputs
+      and scaffold are captured.
+
+      Returns:
+         A list of Tensors used in export_outputs and not marked for
+         outside_compilation.
+      """
+      # We should only call model fn once and it should be inside `computation`
+      # so that building the graph will happen under `rewrite_for_inference`.
+      mode = model_fn_lib.ModeKeys.PREDICT
+      estimator_spec = self._call_model_fn(features, labels, mode, config)
+
+      # We pick the TPU tensors out from `export_output` and later return them
+      # from `computation` for rewriting.
+      tensors_dict = collections.OrderedDict(
+          (k, _export_output_to_tensors(v))
+          for k, v in six.iteritems(estimator_spec.export_outputs)
+      )
+      tensors = nest.flatten(tensors_dict)
+      tpu_tensors = [t for t in tensors if _is_tpu_tensor(t)]
+
+      # We cannot return anything other than `tpu_tensors` here so we capture
+      # the rest for later use.
+      capture.capture((estimator_spec, tensors_dict, tensors))
+      return tpu_tensors
+
+    tpu_tensors_on_cpu = tpu.rewrite_for_inference(computation)
+    estimator_spec, tensors_dict, tensors = capture.get()
+
+    # Reconstruct `tensors`, but with `tpu_tensors` replaced with
+    # `tpu_tensors_on_cpu`.
+    new_tensors = []
+    for t in tensors:
+      if _is_tpu_tensor(t):
+        new_tensors.append(tpu_tensors_on_cpu.pop(0))
+      elif t is None:
+        new_tensors.append(None)
+      else:
+        # Only fetching `tpu_tensors_on_cpu` does not trigger
+        # TPU computation and blocks, so we add the control dependency here.
+        control_inputs = (tpu_tensors_on_cpu
+                          if isinstance(tpu_tensors_on_cpu, (list, tuple))
+                          else (tpu_tensors_on_cpu,))
+        with ops.control_dependencies(control_inputs):
+          new_tensors.append(array_ops.identity(t))
+
+    # Reconstruct `tensors_dict`.
+    new_tensors_dict = nest.pack_sequence_as(tensors_dict, new_tensors)
+    # Reconstruct `export_outputs`.
+    export_outputs = estimator_spec.export_outputs
+    new_export_outputs = collections.OrderedDict(
+        (k, _clone_export_output_with_tensors(export_outputs[k], v))
+        for k, v in six.iteritems(new_tensors_dict)
+    )
+
+    return estimator_spec._replace(export_outputs=new_export_outputs)
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.
@@ -1983,10 +2240,8 @@ class TPUEstimator(estimator_lib.Estimator):
       # input_fn for use_tpu=True/False.
       batch_size_for_input_fn = ctx.batch_size_for_input_fn
       if batch_size_for_input_fn is not None:
-        if isinstance(kwargs['params'], hparam.HParams):
-          kwargs['params'].add_hparam(_BATCH_SIZE_KEY, batch_size_for_input_fn)
-        else:
-          kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
+        _add_item_to_params(kwargs['params'],
+                            _BATCH_SIZE_KEY, batch_size_for_input_fn)
 
       # For export_savedmodel, input_fn is never passed to Estimator. So,
       # `is_export_mode` must be False.
@@ -2005,7 +2260,7 @@ class TPUEstimator(estimator_lib.Estimator):
       # dequeue_fn to model_fn. Here, `input_fn` is passed directly as
       # `features` in `model_fn` signature.
       def _input_fn(ctx):
-        kwargs['params'][_CTX_KEY] = ctx
+        _add_item_to_params(kwargs['params'], _CTX_KEY, ctx)
         return input_fn(**kwargs)
 
       return _input_fn
@@ -2077,11 +2332,11 @@ class TPUEstimator(estimator_lib.Estimator):
           if shutdown_mode:
             if shutdown_mode == 'shutdown_worker':
               finalizer_hooks = [
-                  session_support.ShutdownLameWorkers(timeout_ms=1000),
+                  session_support.ShutdownLameWorkers(timeout_ms=60*1000),
               ]
             elif shutdown_mode == 'shutdown_computation':
               finalizer_hooks = [
-                  session_support.RestartComputation(timeout_ms=1000),
+                  session_support.RestartComputation(timeout_ms=60*1000),
               ]
             else:
               raise ValueError('Unknown TF_TPU_GRACEFUL_SHUTDOWN_MODE "%s"' %
@@ -2270,6 +2525,76 @@ class TPUEstimator(estimator_lib.Estimator):
     return _model_fn
 
 
+def _is_tpu_tensor(tensor):
+  if not isinstance(tensor, ops.Tensor):
+    return False
+  try:
+    tensor.op.get_attr(tpu._OUTSIDE_COMPILATION_ATTR)  # pylint: disable=protected-access
+  except ValueError:
+    return True
+  else:
+    return False
+
+
+def _export_output_to_tensors(export_output):
+  """Get a list of `Tensors` used in `export_output`.
+
+  Args:
+    export_output: an `ExportOutput` object such as `ClassificationOutput`,
+            `RegressionOutput`, or `PredictOutput`.
+  Returns:
+    a list of tensors used in export_output.
+
+  Raises:
+    ValueError: if `export_output` is not one of `ClassificationOutput`,
+        `RegressionOutput`, or `PredictOutput`.
+  """
+  if isinstance(export_output, export_output_lib.ClassificationOutput):
+    return [export_output.scores, export_output.classes]
+  elif isinstance(export_output, export_output_lib.RegressionOutput):
+    return [export_output.value]
+  elif isinstance(export_output, export_output_lib.PredictOutput):
+    return export_output.outputs.values()
+  else:
+    raise ValueError(
+        '`export_output` must be have type `ClassificationOutput`, '
+        '`RegressionOutput`, or `PredictOutput`; got {}.'.format(export_output))
+
+
+def _clone_export_output_with_tensors(export_output, tensors):
+  """Clones `export_output` but with new `tensors`.
+
+  Args:
+    export_output: an `ExportOutput` object such as `ClassificationOutput`,
+            `RegressionOutput`, or `PredictOutput`.
+    tensors: a list of `Tensors` used to construct a new `export_output`.
+
+  Returns:
+    A dict similar to `export_output` but with `tensors`.
+
+  Raises:
+    ValueError: if `export_output` is not one of `ClassificationOutput`,
+        `RegressionOutput`, or `PredictOutput`.
+  """
+  if isinstance(export_output, export_output_lib.ClassificationOutput):
+    if len(tensors) != 2:
+      raise ValueError('tensors must be of length 2; '
+                       'got {}.'.format(len(tensors)))
+    return export_output_lib.ClassificationOutput(*tensors)
+  elif isinstance(export_output, export_output_lib.RegressionOutput):
+    if len(tensors) != 1:
+      raise ValueError('tensors must be of length 1; '
+                       'got {}'.format(len(tensors)))
+    return export_output_lib.RegressionOutput(*tensors)
+  elif isinstance(export_output, export_output_lib.PredictOutput):
+    return export_output_lib.PredictOutput(
+        dict(zip(export_output.outputs.keys(), tensors)))
+  else:
+    raise ValueError(
+        '`export_output` must be have type `ClassificationOutput`, '
+        '`RegressionOutput`, or `PredictOutput`; got {}.'.format(export_output))
+
+
 def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
   iterations_per_loop_var = _create_or_get_iterations_per_loop()
@@ -2417,7 +2742,7 @@ class _CapturedObject(object):
   def capture(self, o):
     if self._captured:
       raise RuntimeError(
-          'InternalError: Object can be captured only. Please file bug .')
+          'InternalError: Object can capture only once. Please file bug.')
 
     self._captured = True
     self._object = o
@@ -2426,7 +2751,7 @@ class _CapturedObject(object):
     if not self._captured:
       raise RuntimeError(
           'InternalError: Object is not captured properly before `get`. '
-          'Please file bug .')
+          'Please file bug.')
     return self._object
 
 
@@ -2527,7 +2852,8 @@ class _Inputs(object):
     """
     iterator = self._dataset.make_initializable_iterator()
     # pylint: disable=protected-access
-    hook = estimator_lib._DatasetInitializerHook(iterator)
+    hook = estimator_util._DatasetInitializerHook(iterator)
+    # pylint: enable=protected-access
     self._iterator = iterator
     return hook
 
@@ -2673,6 +2999,7 @@ class _StopSignals(object):
 
   @staticmethod
   def should_stop(scalar_stopping_signal):
+    """Detects whether scalar_stopping_signal indicates stopping."""
     if isinstance(scalar_stopping_signal, ops.Tensor):
       # STOPPING_SIGNAL is a constant True. Here, the logical_and is just the TF
       # way to express the bool check whether scalar_stopping_signal is True.
@@ -2792,7 +3119,7 @@ class _SignalsHelper(object):
 
   def __init__(self, signals):
     self._signal_keys = []
-    for key in sorted(signals.iterkeys()):
+    for key in sorted(iter(signals.keys())):
       self._signal_keys.append(key)
 
   @property
@@ -2804,7 +3131,7 @@ class _SignalsHelper(object):
 
   @staticmethod
   def as_tensor_list(signals):
-    return [signals[key] for key in sorted(signals.iterkeys())]
+    return [signals[key] for key in sorted(iter(signals.keys()))]
 
 
 def _verify_cross_hosts_transfer_size(tensor_dict, message):
@@ -2823,3 +3150,16 @@ def _verify_cross_hosts_transfer_size(tensor_dict, message):
         '{}'.format(message, '\n'.join([
             ' -- Key: {}, Shape: {}'.format(k, v)
             for k, v in tensor_structure.items()])))
+
+
+def _add_item_to_params(params, key, value):
+  """Adds a new item into `params`."""
+  if isinstance(params, hparam.HParams):
+    # For HParams, we need to use special API.
+    if key in params:
+      params.set_hparam(key, value)
+    else:
+      params.add_hparam(key, value)
+  else:
+    # Now params is Python dict.
+    params[key] = value

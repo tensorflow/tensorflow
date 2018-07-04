@@ -27,16 +27,17 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::concat;
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -703,14 +704,14 @@ class MklConcatOp : public OpKernel {
             if (input_tensors[k].NumElements() == 0)
               continue;
 
-            auto src_dims = TFShapeToMklDnnDims(
-                mkl_input_shapes[k].GetTfShape());
             auto src_md = mkl_input_shapes[k].GetMklLayout();
             srcs[k].SetUsrMem(src_md, &input_tensors[k]);
 
-            if (src_md.data.format != mkl_common_format)
+            if (src_md.data.format != mkl_common_format) {
+              memory::dims src_dims(src_md.data.dims, &src_md.data.dims[src_md.data.ndims]);
               src_md = memory::desc(src_dims, MklDnnType<T>(),
                            mkl_common_format);
+            }
 
             srcs_pd.push_back(memory::primitive_desc(src_md, cpu_engine));
           }
@@ -755,11 +756,10 @@ class MklConcatOp : public OpKernel {
       }
 
       std::vector<primitive::at> inputs;
-      std::vector<primitive> net;
       if (isMklReorderNeeded) {
         for (int k = 0; k < input_tensors.size(); k++) {
           if (input_tensors[k].NumElements() > 0) {
-            srcs[k].CheckReorderToOpMem(srcs_pd[k], &net);
+            srcs[k].CheckReorderToOpMem(srcs_pd[k]);
           }
         }
       }
@@ -805,6 +805,7 @@ class MklConcatOp : public OpKernel {
       dst.SetUsrMem(dst_md, dst_tensor);
 
       auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
+      std::vector<primitive> net;
       net.push_back(concat_op);
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
@@ -870,7 +871,7 @@ class MklConcatOp : public OpKernel {
       int concat_dim, bool* is_reorder_needed, int64* concat_dim_size) {
     *is_reorder_needed = false;
     *concat_dim_size = 0;
-    std::unordered_map<memory::format, int> occurrence_map;
+    std::unordered_map<int, int> occurrence_map;
     if (input_shapes.size() == 0)
       return memory::format::any;
 
@@ -878,7 +879,7 @@ class MklConcatOp : public OpKernel {
     for (int k=0; k <input_shapes.size(); k++) {
       auto src_dims = TFShapeToMklDnnDims(input_shapes[k].GetTfShape());
       *concat_dim_size += src_dims[concat_dim];
-      memory::format fmt = static_cast<memory::format>(
+      int fmt = static_cast<int>(
           input_shapes[k].GetMklLayout().data.format);
       occurrence_map[fmt] += 1;
     }
@@ -898,7 +899,7 @@ class MklConcatOp : public OpKernel {
     *is_reorder_needed = true;
     for (auto item : occurrence_map) {
       if (item.second > max_occurrence) {
-        commonest_format = item.first;
+        commonest_format = static_cast<memory::format>(item.first);
         max_occurrence = item.second;
       }
     }

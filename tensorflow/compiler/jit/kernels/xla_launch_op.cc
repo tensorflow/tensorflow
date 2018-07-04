@@ -148,7 +148,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   XlaCompiler::Options options;
   options.client = client;
-  options.device_type = &cache->device_type();
+  options.device_type = cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
@@ -166,6 +166,14 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   }
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
+  // Optimization: don't resolve constants. If we resolve constants we never
+  // emit them on the device, meaning that if they are needed by a following
+  // computation the host has to transfer them.
+  compile_options.resolve_compile_time_constants = false;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+
   OP_REQUIRES_OK(
       ctx, cache->Compile(options, function_, constant_args, variables, ctx,
                           &kernel, &executable, &compile_options));
@@ -256,10 +264,9 @@ XlaLocalLaunchOp::~XlaLocalLaunchOp() {
   VLOG(1) << "XlaLocalLaunchOp destroyed";
 }
 
-REGISTER_KERNEL_BUILDER(Name("_XlaLaunch").Device(DEVICE_CPU),
-                        XlaLocalLaunchOp);
+REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
 
-REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")
+REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
                             .Device(DEVICE_GPU)
                             .HostMemory("constants")
                             .HostMemory("resources"),

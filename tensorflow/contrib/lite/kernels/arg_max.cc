@@ -52,7 +52,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       output->type = kTfLiteInt64;
       break;
     default:
-      context->ReportError(context, "Unknown index output data type");
+      context->ReportError(context, "Unknown index output data type: %d",
+                           params->output_type);
       return kTfLiteError;
   }
 
@@ -64,7 +65,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(context, "Only float32 and int types are supported");
+      context->ReportError(
+          context,
+          "Unkonwn input type: %d, only float32 and int types are supported",
+          input->type);
       return kTfLiteError;
   }
 

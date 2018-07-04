@@ -206,6 +206,15 @@ TEST_P(HloEvaluatorTest, DoesOr) {
                std::move(rhs));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise or with 2 operands.
+TEST_P(HloEvaluatorTest, DoesXor) {
+  auto lhs = Literal::CreateR2<int64>({{1, 0}, {-100, 4}});
+  auto rhs = Literal::CreateR2<int64>({{2, 4}, {4, 4}});
+  auto expected = Literal::CreateR2<int64>({{3, 4}, {-104, 0}});
+  TestBinaryOp(HloOpcode::kXor, std::move(expected), std::move(lhs),
+               std::move(rhs));
+}
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise multiply with 2 operands.
 TEST_P(HloEvaluatorTest, DoesMultiply) {
   auto lhs = Literal::CreateR2<int32>({{-1, 0}, {-100, 4}});
@@ -262,13 +271,13 @@ TEST_P(HloEvaluatorTest, DoesCosR2) {
   auto operand = Literal::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = Literal::CreateR2<float>({{1, -1}, {-1, 1}});
   TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand),
-              use_bfloat16_ ? 0x1.0P-5 : 0x1.0P-20);
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_P(HloEvaluatorTest, DoesSinR2) {
   auto operand = Literal::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = Literal::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand),
-              use_bfloat16_ ? 0x1.0P-5 : 0x1.0P-20);
+              use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
 }
 TEST_P(HloEvaluatorTest, DoesNotR2) {
   auto operand =
@@ -333,7 +342,7 @@ TEST_P(HloEvaluatorTest, DoesReshape) {
   result->EachCell<NativeT>(
       [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0x1.0P-5);
+        EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0.031250);
       });
 }
 
@@ -567,7 +576,7 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
   (*expected_array)(0, 4) = 2.718f;
   auto expected = Literal::CreateR2FromArray2D<float>(*expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(0x1.0P-5)));
+  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(0.031250)));
 }
 
 TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
@@ -1248,7 +1257,7 @@ void BM_ReducePrecisely(int num_iters) {
   HloComputation::Builder b("BM_ReducePrecisely");
   HloModuleConfig config;
   config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-  HloModule module("BM_ReducePrecisely", VersionedComputationHandle(), config);
+  HloModule module("BM_ReducePrecisely", config);
 
   constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
   std::vector<float> v(kNumElements, 1.0f);

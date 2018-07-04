@@ -106,6 +106,25 @@ bool ShapesBroadcastable(const OpInfo::TensorProperties& left,
   return ShapesBroadcastable(left.shape(), right.shape());
 }
 
+bool ShapeAfterBroadcast(const TensorShapeProto& left,
+                         const TensorShapeProto& right,
+                         TensorShapeProto* output_shape) {
+  if (!ShapeIsSymbolicallyDefined(left) || !ShapeIsSymbolicallyDefined(right)) {
+    return false;
+  }
+  BCast bcast(ShapeDims(left), ShapeDims(right),
+              /*fewer_dims_optimization*/ false);
+  if (!bcast.IsValid()) {
+    return false;
+  }
+  output_shape->set_unknown_rank(false);
+  output_shape->clear_dim();
+  for (const auto& dim : bcast.output_shape()) {
+    output_shape->add_dim()->set_size(dim);
+  }
+  return true;
+}
+
 bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
                                           const TensorShapeProto& right) {
   // if one of the ranks is unknown, it's impossible to compare tensor sizes

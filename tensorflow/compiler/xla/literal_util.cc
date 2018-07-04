@@ -148,8 +148,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
 
       piece->emplace_back(std::move(child_piece));
     }
-  } else {
-    CHECK(ShapeUtil::IsArray(shape));
+  } else if (ShapeUtil::IsArray(shape)) {
     if (allocate_arrays) {
       if (LayoutUtil::IsSparseArray(shape)) {
         // For sparse arrays, the buffer must be of the size of the maximum
@@ -165,6 +164,10 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
         piece->set_buffer(new char[piece->size_bytes()]);
       }
     }
+  } else {
+    // If the shape is neither an array nor tuple, then it must be
+    // zero-sized. Otherwise, some memory needs to be allocated for it.
+    CHECK_EQ(piece->size_bytes(), 0);
   }
 }
 
@@ -264,8 +267,8 @@ Status Literal::CopySliceFromInternal(
     StridedCopy(data<NativeT>(), linear_index(shape(), dest_base), 0,
                 src_literal.data<NativeT>(),
                 linear_index(src_literal.shape(), src_base), 0, 1);
-  } else if (!ShapeUtil::HasZeroElements(shape()) &&
-             !ShapeUtil::HasZeroElements(src_literal.shape())) {
+  } else if (!ShapeUtil::IsZeroElementArray(shape()) &&
+             !ShapeUtil::IsZeroElementArray(src_literal.shape())) {
     // Perform copy if neither src nor dest has dimensions with zero element,
     // otherwise it's a no-op.
     TF_RET_CHECK(src_base.size() == dest_base.size());
@@ -327,6 +330,10 @@ Status Literal::CopyElementFrom(const LiteralSlice& src_literal,
   return Status::OK();
 }
 
+/* static */ std::unique_ptr<Literal> Literal::CreateToken() {
+  return MakeUnique<Literal>(ShapeUtil::MakeTokenShape());
+}
+
 std::vector<Literal> Literal::DecomposeTuple() {
   CHECK(ShapeUtil::IsTuple(shape()));
   std::vector<Literal> elements;
@@ -379,7 +386,7 @@ void CopyElementsBetween(tensorflow::gtl::MutableArraySlice<NativeT> dest,
                          tensorflow::gtl::ArraySlice<NativeT> src,
                          const Shape& dest_shape, const Shape& src_shape) {
   CHECK(ShapeUtil::Compatible(dest_shape, src_shape));
-  if (ShapeUtil::HasZeroElements(dest_shape)) {
+  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
   std::vector<int64> index(ShapeUtil::Rank(dest_shape));
@@ -807,6 +814,47 @@ std::unique_ptr<Literal> LiteralBase::Relayout(
   return result;
 }
 
+StatusOr<std::unique_ptr<Literal>> LiteralBase::Broadcast(
+    const Shape& result_shape,
+    tensorflow::gtl::ArraySlice<int64> dimensions) const {
+  if (!ShapeUtil::IsArray(shape())) {
+    return InvalidArgument("Broadcast only supports arrays.");
+  }
+
+  for (int64 i = 0; i < dimensions.size(); i++) {
+    TF_RET_CHECK(shape().dimensions(i) ==
+                 result_shape.dimensions(dimensions[i]));
+  }
+
+  std::unique_ptr<Literal> result = MakeUnique<Literal>(result_shape);
+
+  // scratch_source_index is temporary storage space for the computed index into
+  // the input literal.  We put it here to avoid allocating an std::vector in
+  // every iteration of ShapeUtil::ForEachIndex.
+  std::vector<int64> scratch_source_index(shape().dimensions_size());
+
+  char* dest_data = static_cast<char*>(result->untyped_data());
+  const char* source_data = static_cast<const char*>(untyped_data());
+  const int64 primitive_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+
+  ShapeUtil::ForEachIndex(
+      result_shape, [&](tensorflow::gtl::ArraySlice<int64> output_index) {
+        for (int64 i = 0; i < dimensions.size(); ++i) {
+          scratch_source_index[i] = output_index[dimensions[i]];
+        }
+        int64 dest_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+            result_shape, output_index);
+        int64 source_index = IndexUtil::MultidimensionalIndexToLinearIndex(
+            shape(), scratch_source_index);
+        memcpy(dest_data + primitive_size * dest_index,
+               source_data + primitive_size * source_index, primitive_size);
+        return true;
+      });
+
+  return std::move(result);
+}
+
 StatusOr<std::unique_ptr<Literal>> LiteralBase::Reshape(
     tensorflow::gtl::ArraySlice<int64> dimensions) const {
   if (!ShapeUtil::IsArray(shape())) {
@@ -939,11 +987,28 @@ std::unique_ptr<Literal> LiteralBase::Transpose(
   for (auto index : LayoutUtil::MinorToMajor(shape())) {
     layout->add_minor_to_major(inverse_permutation[index]);
   }
-  std::unique_ptr<Literal> new_literal = CreateFromShape(permuted_shape);
-  DCHECK_GE(ShapeUtil::ByteSizeOf(new_literal->shape()),
+  auto new_literal = MakeUnique<Literal>(permuted_shape);
+  DCHECK_EQ(ShapeUtil::ByteSizeOf(new_literal->shape()),
             ShapeUtil::ByteSizeOf(shape()));
   std::memcpy(new_literal->untyped_data(), untyped_data(), size_bytes());
   return new_literal;
+}
+
+template <typename NativeT>
+std::unique_ptr<Literal> LiteralBase::SliceInternal(
+    const Shape& result_shape,
+    tensorflow::gtl::ArraySlice<int64> start_indices) const {
+  auto result_literal = MakeUnique<Literal>(result_shape);
+  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
+  result_literal->EachCell<NativeT>(
+      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT /*value*/) {
+        for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
+          new_indices[i] = indices[i] + start_indices[i];
+        }
+        NativeT value = Get<NativeT>(new_indices);
+        result_literal->Set<NativeT>(indices, value);
+      });
+  return result_literal;
 }
 
 std::unique_ptr<Literal> LiteralBase::Slice(
@@ -963,51 +1028,17 @@ std::unique_ptr<Literal> LiteralBase::Slice(
   const auto result_shape =
       ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
                                      LayoutUtil::MinorToMajor(shape()));
-
-  auto result_literal = MakeUnique<Literal>(result_shape);
-
-  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
   switch (result_shape.element_type()) {
     case F32:
-      result_literal->EachCell<float>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, float /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            float value = Get<float>(new_indices);
-            result_literal->Set<float>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<float>(result_shape, start_indices);
+    case BF16:
+      return SliceInternal<bfloat16>(result_shape, start_indices);
     case C64:
-      result_literal->EachCell<complex64>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, complex64 /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            complex64 value = Get<complex64>(new_indices);
-            result_literal->Set<complex64>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<complex64>(result_shape, start_indices);
     case S32:
-      result_literal->EachCell<int32>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, int32 /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            int32 value = Get<int32>(new_indices);
-            result_literal->Set<int32>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<int32>(result_shape, start_indices);
     case U32:
-      result_literal->EachCell<uint32>(
-          [&](tensorflow::gtl::ArraySlice<int64> indices, uint32 /*value*/) {
-            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
-              new_indices[i] = indices[i] + start_indices[i];
-            }
-            uint32 value = Get<uint32>(new_indices);
-            result_literal->Set<uint32>(indices, value);
-          });
-      return result_literal;
+      return SliceInternal<uint32>(result_shape, start_indices);
     default:
       LOG(FATAL) << "not yet implemented: "
                  << PrimitiveType_Name(result_shape.element_type());
@@ -1153,7 +1184,7 @@ size_t LiteralBase::Hash() const {
 
   ShapeUtil::ForEachSubshape(
       shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsTuple(subshape)) {
+        if (!ShapeUtil::IsArray(subshape)) {
           return;
         }
 
@@ -1341,6 +1372,11 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
     }
     pieces->push_back(tensorflow::str_util::Join(tuple_pieces, ",\n"));
     pieces->push_back("\n)");
+    return;
+  }
+
+  if (ShapeUtil::IsToken(subshape)) {
+    pieces->push_back("token");
     return;
   }
 
@@ -1532,7 +1568,7 @@ string LiteralBase::ToString(bool print_layout) const {
 void LiteralBase::EachCellAsString(
     const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                              const string& value)>& per_cell) const {
-  if (ShapeUtil::HasZeroElements(shape())) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
   std::vector<int64> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
@@ -1938,7 +1974,7 @@ bool LiteralBase::IsAllFirst() const {
 
         // Empty shapes are not all the first element since there is no first
         // element.
-        if (ShapeUtil::HasZeroElements(piece.subshape())) {
+        if (ShapeUtil::IsZeroElementArray(piece.subshape())) {
           return false;
         }
         auto piece_is_all = [&]() {
@@ -2106,6 +2142,7 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       }
       break;
     case TUPLE:
+    case TOKEN:
       // Nothing to do but assign the shape which is done above.
       return;
     default:
@@ -2258,6 +2295,9 @@ StatusOr<std::unique_ptr<Literal>> Literal::CreateFromProto(
           }
           return Status::OK();
         }
+        if (piece->subshape().element_type() == TOKEN) {
+          return Status::OK();
+        }
 
         CHECK(ShapeUtil::IsArray(piece->subshape()));
         TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
@@ -2317,28 +2357,27 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal,
     : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
-    : LiteralBase(), shape_(shape) {
-  CHECK(ShapeUtil::IsArray(shape_));
-  CHECK_NE(src_buf_ptr, nullptr);
-  CHECK(LayoutUtil::HasLayout(shape_));
+    : LiteralBase(), shape_(MakeUnique<Shape>(shape)) {
+  CHECK(ShapeUtil::IsArray(*shape_));
+  CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = Piece();
   root_piece_.set_buffer(const_cast<char*>(src_buf_ptr));
-  root_piece_.set_subshape(&shape_);
+  root_piece_.set_subshape(shape_.get());
 }
 
 BorrowingLiteral::BorrowingLiteral(
     tensorflow::gtl::ArraySlice<const char*> src_buf_ptrs, const Shape& shape)
-    : LiteralBase(), shape_(shape) {
-  CHECK(ShapeUtil::IsTuple(shape_));
-  CHECK(!ShapeUtil::IsNestedTuple(shape_));
-  CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(shape_));
+    : LiteralBase(), shape_(MakeUnique<Shape>(shape)) {
+  CHECK(ShapeUtil::IsTuple(*shape_));
+  CHECK(!ShapeUtil::IsNestedTuple(*shape_));
+  CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(*shape_));
   root_piece_ = Piece();
-  root_piece_.set_subshape(&shape_);
-  BuildPieceSubtree(shape_, &root_piece_);
+  root_piece_.set_subshape(shape_.get());
+  BuildPieceSubtree(*shape_, &root_piece_);
 
   for (int i = 0; i < src_buf_ptrs.size(); ++i) {
-    const auto& src_shape = shape_.tuple_shapes(i);
+    const auto& src_shape = shape_->tuple_shapes(i);
     CHECK(ShapeUtil::IsArray(src_shape));
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
   }

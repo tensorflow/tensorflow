@@ -18,9 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.training.checkpointable import base as checkpointable_lib
+from tensorflow.python.training.checkpointable import data_structures
 
 
-class UniqueNameTracker(checkpointable_lib.CheckpointableBase):
+class UniqueNameTracker(data_structures.CheckpointableDataStructure):
   """Adds dependencies on checkpointable objects with name hints.
 
   Useful for creating dependencies with locally unique names.
@@ -41,6 +42,7 @@ class UniqueNameTracker(checkpointable_lib.CheckpointableBase):
   """
 
   def __init__(self):
+    super(UniqueNameTracker, self).__init__()
     self._maybe_initialize_checkpointable()
     self._name_counts = {}
 
@@ -74,4 +76,5 @@ class UniqueNameTracker(checkpointable_lib.CheckpointableBase):
       count += 1
       candidate = _format_name(base_name, count)
     self._name_counts[base_name] = count + 1
-    return self._track_checkpointable(checkpointable, name=candidate)
+    self._track_value(checkpointable, name=candidate)
+    return checkpointable

@@ -18,6 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace toco {
 
@@ -99,7 +100,7 @@ static const char kLargeTensorMessage[] = "Tensor shape is too large";
 
 TEST(NumElementsTest, Int) {
   int count;
-  port::Status status = port::Status::OK();
+  tensorflow::Status status = tensorflow::Status::OK();
 
   status = NumElements(std::vector<int>{1024, 1024, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -114,7 +115,7 @@ TEST(NumElementsTest, Int) {
 
 TEST(NumElementsTest, Int32) {
   int32_t count;
-  port::Status status = port::Status::OK();
+  tensorflow::Status status = tensorflow::Status::OK();
 
   status = NumElements(std::vector<int32_t>{1024, 1024, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -129,7 +130,7 @@ TEST(NumElementsTest, Int32) {
 
 TEST(NumElementsTest, Int64) {
   int64_t count;
-  port::Status status = port::Status::OK();
+  tensorflow::Status status = tensorflow::Status::OK();
 
   status = NumElements(std::vector<int64_t>{16777216, 16777216, 32767}, &count);
   EXPECT_TRUE(status.ok());
@@ -144,7 +145,7 @@ TEST(NumElementsTest, Int64) {
 
 TEST(NumElementsTest, UnsignedInt32) {
   uint32_t count;
-  port::Status status = port::Status::OK();
+  tensorflow::Status status = tensorflow::Status::OK();
 
   status = NumElements(std::vector<uint32_t>{1024, 2048, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -159,7 +160,7 @@ TEST(NumElementsTest, UnsignedInt32) {
 
 TEST(NumElementsTest, UnsignedInt64) {
   uint64_t count;
-  port::Status status = port::Status::OK();
+  tensorflow::Status status = tensorflow::Status::OK();
 
   status =
       NumElements(std::vector<uint64_t>{16777216, 16777216, 65535}, &count);
@@ -172,6 +173,12 @@ TEST(NumElementsTest, UnsignedInt64) {
   status =
       NumElements(std::vector<uint64_t>{16777216, 16777216, 65536}, &count);
   EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+}
+
+TEST(FusedActivationTest, DefaultsToUnfused) {
+  EXPECT_TRUE(OperatorSupportsFusedActivation(OperatorType::kAdd));
+  EXPECT_FALSE(OperatorSupportsFusedActivation(OperatorType::kNone));
+  EXPECT_FALSE(OperatorSupportsFusedActivation(static_cast<OperatorType>(255)));
 }
 
 }  // namespace toco

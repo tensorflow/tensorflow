@@ -24,9 +24,9 @@ from tensorflow.contrib.data.python.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
@@ -153,7 +153,7 @@ def sloppy_interleave(map_func, cycle_length, block_length=1):
   return _apply_fn
 
 
-class DirectedInterleaveDataset(dataset_ops.Dataset):
+class _DirectedInterleaveDataset(dataset_ops.Dataset):
   """A substitute for `Dataset.interleave()` on a fixed list of datasets."""
 
   def __init__(self, selector_input, data_inputs):
@@ -170,10 +170,7 @@ class DirectedInterleaveDataset(dataset_ops.Dataset):
     return gen_dataset_ops.directed_interleave_dataset(
         self._selector_input._as_variant_tensor(),
         [data_input._as_variant_tensor() for data_input in self._data_inputs],
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
   @property
@@ -239,4 +236,48 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   selector_input = dataset_ops.Dataset.zip(
       (logits_ds, random_ops.RandomDataset(seed).batch(2))).map(select_dataset)
 
-  return DirectedInterleaveDataset(selector_input, datasets)
+  return _DirectedInterleaveDataset(selector_input, datasets)
+
+
+def choose_from_datasets(datasets, choice_dataset):
+  """Creates a dataset that deterministically chooses elements from `datasets`.
+
+  For example, given the following datasets:
+
+  ```python
+  datasets = [tf.data.Dataset.from_tensors("foo").repeat(),
+              tf.data.Dataset.from_tensors("bar").repeat(),
+              tf.data.Dataset.from_tensors("baz").repeat()]
+
+  # Define a dataset containing `[0, 1, 2, 0, 1, 2, 0, 1, 2]`.
+  choice_dataset = tf.data.Dataset.range(3).repeat(3)
+
+  result = tf.contrib.data.choose_from_datasets(datasets, choice_dataset)
+  ```
+
+  The elements of `result` will be:
+
+  ```
+  "foo", "bar", "baz", "foo", "bar", "baz", "foo", "bar", "baz"
+  ```
+
+  Args:
+    datasets: A list of @{tf.data.Dataset} objects with compatible structure.
+    choice_dataset: A @{tf.data.Dataset} of scalar `tf.int64` tensors between
+      `0` and `len(datasets) - 1`.
+
+  Returns:
+    A dataset that interleaves elements from `datasets` according to the values
+    of `choice_dataset`.
+
+  Raises:
+    TypeError: If the `datasets` or `choice_dataset` arguments have the wrong
+      type.
+  """
+  if not (choice_dataset.output_types == dtypes.int64
+          and choice_dataset.output_shapes.is_compatible_with(
+              tensor_shape.scalar())
+          and choice_dataset.output_classes == ops.Tensor):
+    raise TypeError("`choice_dataset` must be a dataset of scalar "
+                    "`tf.int64` tensors.")
+  return _DirectedInterleaveDataset(choice_dataset, datasets)

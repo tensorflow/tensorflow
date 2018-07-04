@@ -135,6 +135,12 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
                             .TypeConstraint<ResourceHandle>("T"),
                         ArgOp);
 
+REGISTER_KERNEL_BUILDER(Name(kArgOp)
+                            .Device(DEVICE_GPU)
+                            .HostMemory("output")
+                            .TypeConstraint<string>("T"),
+                        ArgOp);
+
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
@@ -147,6 +153,12 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<ResourceHandle>("T")
+                            .HostMemory("input"),
+                        RetvalOp);
+
+REGISTER_KERNEL_BUILDER(Name(kRetOp)
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<string>("T")
                             .HostMemory("input"),
                         RetvalOp);
 #undef REGISTER
@@ -254,6 +266,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     opts.runner = ctx->runner();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
+    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -296,20 +309,28 @@ class RemoteCallOp : public AsyncOpKernel {
   explicit RemoteCallOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr(FunctionLibraryDefinition::kFuncAttr, &func_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tin", &input_dtypes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &output_dtypes_));
   }
 
   ~RemoteCallOp() override {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    const Tensor* target;
-    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
-    const string& target_device =
-        DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()());
-
     FunctionLibraryRuntime* lib = ctx->function_library();
     OP_REQUIRES_ASYNC(ctx, lib != nullptr,
                       errors::Internal("No function library is provided."),
                       done);
+
+    const string& source_device = lib->device()->name();
+    const Tensor* target;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
+    string target_device;
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()(),
+                                                source_device, &target_device),
+        done);
+
     AttrValueMap attr_values = func_.attr();
     FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
     instantiate_opts.target = target_device;
@@ -344,7 +365,7 @@ class RemoteCallOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
     opts.runner = ctx->runner();
-    opts.source_device = lib->device()->name();
+    opts.source_device = source_device;
     if (opts.source_device != target_device) {
       opts.remote_execution = true;
     }
@@ -353,6 +374,20 @@ class RemoteCallOp : public AsyncOpKernel {
     args.reserve(arguments.size());
     for (const Tensor& argument : arguments) {
       args.push_back(argument);
+    }
+    for (const auto& dtype : input_dtypes_) {
+      AllocatorAttributes arg_alloc_attrs;
+      if (DataTypeAlwaysOnHost(dtype)) {
+        arg_alloc_attrs.set_on_host(true);
+      }
+      opts.args_alloc_attrs.push_back(arg_alloc_attrs);
+    }
+    for (const auto& dtype : output_dtypes_) {
+      AllocatorAttributes ret_alloc_attrs;
+      if (DataTypeAlwaysOnHost(dtype)) {
+        ret_alloc_attrs.set_on_host(true);
+      }
+      opts.rets_alloc_attrs.push_back(ret_alloc_attrs);
     }
     auto* rets = new std::vector<Tensor>;
     auto* activity = new tracing::ScopedActivity(strings::StrCat(
@@ -376,6 +411,8 @@ class RemoteCallOp : public AsyncOpKernel {
 
  private:
   NameAttrList func_;
+  DataTypeVector input_dtypes_;
+  DataTypeVector output_dtypes_;
 
   mutex mu_;
   typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;

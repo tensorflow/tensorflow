@@ -3,6 +3,7 @@ syntax = "proto3";
 option cc_enable_arenas = true;
 package tensorflow.tpu;
 
+import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/core/lib/core/error_codes.proto";
 
 // Describes the result of a TPU compilation.
@@ -10,4 +11,7 @@ message CompilationResultProto {
   // The error message, if any, returned during compilation.
   error.Code status_code = 1;
   string status_error_message = 2;
+
+  // HLO proto.
+  repeated xla.HloProto hlo_protos = 3;
 }

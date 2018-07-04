@@ -27,7 +27,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
-from tensorflow.python.keras._impl.keras import layers as keras_layers
+from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -184,7 +184,6 @@ def dense(
                 bias_constraint=bias_constraint,
                 trainable=trainable,
                 name=name,
-                dtype=inputs.dtype.base_dtype,
                 _scope=name,
                 _reuse=reuse)
   return layer.apply(inputs)

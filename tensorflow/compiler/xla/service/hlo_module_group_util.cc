@@ -277,7 +277,7 @@ Status HloModuleGroupUtil::VerifyComputations(
 StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
     tensorflow::gtl::ArraySlice<HloComputation*> computations) {
-  std::list<HloInstruction*> post_order;
+  std::vector<HloInstruction*> post_order;
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {

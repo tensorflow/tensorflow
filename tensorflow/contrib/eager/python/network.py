@@ -24,7 +24,7 @@ import weakref
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.keras._impl.keras.engine import base_layer as keras_base_layer
+from tensorflow.python.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging

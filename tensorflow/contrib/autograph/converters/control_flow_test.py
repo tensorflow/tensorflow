@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import control_flow
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -27,7 +27,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
 
 
-class ControlFlowTest(converter_test_base.TestCase):
+class ControlFlowTest(converter_testing.TestCase):
 
   def test_simple_while(self):
 
@@ -42,7 +42,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.while_loop) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual((10, 5, 5),
                          sess.run(result.test_fn(constant_op.constant(5))))
@@ -57,7 +57,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.while_loop) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
 
@@ -75,7 +75,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.cond) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual((-1, 0),
                          sess.run(result.test_fn(constant_op.constant(1))))
@@ -92,7 +92,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, self.ctx)
 
-    with self.compiled(node, control_flow_ops.cond) as result:
+    with self.compiled(node) as result:
       with self.test_session() as sess:
         self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
 
