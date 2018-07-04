@@ -15,6 +15,7 @@ cc_library(
         "src-cpp/KafkaConsumerImpl.cpp",
         "src-cpp/MessageImpl.cpp",
         "src-cpp/MetadataImpl.cpp",
+        "src-cpp/ProducerImpl.cpp",
         "src-cpp/QueueImpl.cpp",
         "src-cpp/RdKafka.cpp",
         "src-cpp/TopicImpl.cpp",
@@ -130,7 +131,15 @@ cc_library(
         "src/tinycthread.h",
         "src/xxhash.c",
         "src/xxhash.h",
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow:windows": [
+            "src/rdkafka_sasl_win32.c",
+            "src/rdwin32.h",
+            "src/regexp.c",
+            "src/regexp.h",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "config.h",
         "src-cpp/rdkafkacpp.h",
@@ -138,15 +147,22 @@ cc_library(
         "src/lz4.c",
         "src/snappy_compat.h",
     ],
-    copts = [
-        "-Iexternal/kafka/src",
-        "-Iexternal/kafka/src-cpp",
-    ],
-    defines = [
-    ],
-    linkopts = [
-        "-lpthread",
-    ],
+    includes = ["src", "src-cpp"],
+    defines = ["LIBRDKAFKA_STATICLIB"],
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "-DWIN32_LEAN_AND_MEAN",
+            "-DWITHOUT_WIN32_CONFIG",
+            "-DWITH_ZLIB=1",
+            "-DWITH_SSL=1",
+            "-DWITH_SNAPPY=1",
+        ],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@org_tensorflow//tensorflow:windows": ["-defaultlib:crypt32.lib"],
+        "//conditions:default": ["-lpthread"],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "@boringssl//:ssl",
