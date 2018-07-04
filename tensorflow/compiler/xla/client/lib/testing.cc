@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -49,7 +49,7 @@ int64 DataSizeOfShape(const Shape& shape) {
 XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   if (ShapeUtil::IsArray(shape)) {
     return Broadcast(
-        ConstantLiteral(builder, Literal::One(shape.element_type())),
+        ConstantLiteral(builder, LiteralUtil::One(shape.element_type())),
         AsInt64Slice(shape.dimensions()));
   }
   std::vector<XlaOp> parts;

@@ -157,7 +157,7 @@ string ClientLibraryTestBase::ExecuteToString(
 void ClientLibraryTestBase::ComputeAndCompareR1(
     XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
+  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -295,7 +295,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
   if (use_bfloat16_) {
-    converted_expected = Literal::ConvertF32ToBF16(expected);
+    converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
@@ -347,7 +347,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   std::unique_ptr<Literal> converted_expected;
   Shape layout_shape;
   if (use_bfloat16_) {
-    converted_expected = Literal::ConvertF32ToBF16(expected);
+    converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
     expected_ptr = converted_expected.get();
     if (shape_with_layout != nullptr) {
       layout_shape = *shape_with_layout;
@@ -389,7 +389,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   auto actual = actual_status.ConsumeValueOrDie();
 
   // Turn the expected value into a literal.
-  std::unique_ptr<Literal> expected_literal = Literal::CreateR1U8(expected);
+  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1U8(expected);
 
   VLOG(1) << "expected: " << expected_literal->ToString();
   VLOG(1) << "actual:   " << actual->ToString();
@@ -560,8 +560,9 @@ XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
 
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
-  return ConstantLiteral(
-      builder, use_bfloat16_ ? *Literal::ConvertF32ToBF16(literal) : literal);
+  return ConstantLiteral(builder, use_bfloat16_
+                                      ? *LiteralUtil::ConvertF32ToBF16(literal)
+                                      : literal);
 }
 
 std::unique_ptr<GlobalData>
@@ -582,7 +583,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
   const Literal* param_literal = &literal;
   std::unique_ptr<Literal> converted_literal;
   if (use_bfloat16_) {
-    converted_literal = Literal::ConvertF32ToBF16(literal);
+    converted_literal = LiteralUtil::ConvertF32ToBF16(literal);
     param_literal = converted_literal.get();
   }
   std::unique_ptr<GlobalData> data =

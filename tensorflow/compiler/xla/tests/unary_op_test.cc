@@ -101,7 +101,7 @@ void UnaryOpTest::AbsTestHelper<complex64>() {
   Abs(arg);
 
   std::unique_ptr<Literal> expected =
-      Literal::CreateR1<float>({2, 25, 0, 0.5, inf<float>(), inf<float>()});
+      LiteralUtil::CreateR1<float>({2, 25, 0, 0.5, inf<float>(), inf<float>()});
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
 }
 
@@ -113,7 +113,7 @@ void UnaryOpTest::SignTestHelper<complex64>() {
       {{-2, 0}, {0, 25}, {0, 0}, {static_cast<float>(-0.0), 0}, {-1, 1}});
   Sign(arg);
 
-  std::unique_ptr<Literal> expected = Literal::CreateR1<complex64>(
+  std::unique_ptr<Literal> expected = LiteralUtil::CreateR1<complex64>(
       {{-1, 0}, {0, 1}, {0, 0}, {0, 0}, {-std::sqrt(0.5f), std::sqrt(0.5f)}});
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
 }
@@ -128,7 +128,7 @@ void UnaryOpTest::SignAbsTestHelper<complex64>() {
   Sub(Mul(sign, ConvertElementType(abs, C64)), arg);
 
   std::unique_ptr<Literal> expected =
-      Literal::CreateR1<complex64>({0, 0, 0, 0});
+      LiteralUtil::CreateR1<complex64>({0, 0, 0, 0});
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
 }
 
@@ -173,7 +173,7 @@ XLA_TEST_F(UnaryOpTest, SignTestR0) {
                 Add(Add(sgnf0, sgnf), ConvertElementType(sgni, F32)), C64));
 
   std::unique_ptr<Literal> expected =
-      Literal::CreateR0<complex64>({-2.6f, 0.8f});
+      LiteralUtil::CreateR0<complex64>({-2.6f, 0.8f});
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6f));
 }
 

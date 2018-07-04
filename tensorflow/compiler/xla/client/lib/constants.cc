@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla {
 
 XlaOp Zero(XlaBuilder* builder, PrimitiveType type) {
-  return ConstantLiteral(builder, Literal::Zero(type));
+  return ConstantLiteral(builder, LiteralUtil::Zero(type));
 }
 
 XlaOp Zeros(XlaBuilder* builder, const Shape& shape) {
@@ -38,7 +38,7 @@ XlaOp ZerosLike(XlaOp prototype) {
 }
 
 XlaOp One(XlaBuilder* builder, PrimitiveType type) {
-  return ConstantLiteral(builder, Literal::One(type));
+  return ConstantLiteral(builder, LiteralUtil::One(type));
 }
 
 XlaOp Epsilon(XlaBuilder* builder, PrimitiveType type) {
@@ -61,7 +61,7 @@ XlaOp Epsilon(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp MinValue(XlaBuilder* builder, PrimitiveType type) {
-  return ConstantLiteral(builder, Literal::MinValue(type));
+  return ConstantLiteral(builder, LiteralUtil::MinValue(type));
 }
 
 XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type) {
@@ -81,7 +81,7 @@ XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp MaxValue(XlaBuilder* builder, PrimitiveType type) {
-  return ConstantLiteral(builder, Literal::MaxValue(type));
+  return ConstantLiteral(builder, LiteralUtil::MaxValue(type));
 }
 
 XlaOp MaxFiniteValue(XlaBuilder* builder, PrimitiveType type) {

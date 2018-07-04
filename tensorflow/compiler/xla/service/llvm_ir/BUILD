@@ -42,7 +42,7 @@ cc_library(
     srcs = ["llvm_util.cc"],
     hdrs = ["llvm_util.h"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

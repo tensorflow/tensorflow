@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -1609,7 +1610,7 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
       }
     }
   }
-  *literal = Literal::MakeTupleOwned(std::move(elements));
+  *literal = LiteralUtil::MakeTupleOwned(std::move(elements));
   return ParseToken(TokKind::kRparen,
                     StrCat("expects ')' at the end of the tuple with ",
                            ShapeUtil::TupleElementCount(shape), "elements"));
@@ -1637,8 +1638,8 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
   }
 
   // Create a literal with the given shape in default layout.
-  *literal = Literal::CreateFromDimensions(shape.element_type(),
-                                           AsInt64Slice(shape.dimensions()));
+  *literal = LiteralUtil::CreateFromDimensions(
+      shape.element_type(), AsInt64Slice(shape.dimensions()));
   tensorflow::int64 nest_level = 0;
   tensorflow::int64 linear_index = 0;
   // elems_seen_per_dim[i] is how many elements or sub-arrays we have seen for

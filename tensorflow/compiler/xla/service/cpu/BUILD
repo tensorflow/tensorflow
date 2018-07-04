@@ -37,6 +37,7 @@ cc_library(
     srcs = ["cpu_transfer_manager.cc"],
     hdrs = ["cpu_transfer_manager.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -72,7 +73,7 @@ cc_library(
         ":ir_emitter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -355,7 +356,7 @@ tf_cc_binary(
     srcs = ["sample_harness.cc"],
     deps = [
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -717,7 +718,7 @@ tf_cc_test(
     deps = [
         ":cpu_layout_assignment",
         ":target_machine_features_fake",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -809,7 +810,7 @@ tf_cc_test(
         ":cpu_executable",
         ":parallel_task_assignment",
         ":target_machine_features_fake",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -892,7 +893,7 @@ tf_cc_test(
     srcs = ["cpu_copy_insertion_test.cc"],
     deps = [
         ":cpu_copy_insertion",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
