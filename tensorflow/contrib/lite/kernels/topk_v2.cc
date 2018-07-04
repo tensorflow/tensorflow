@@ -56,11 +56,13 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   output_values_shape->data[num_dimensions - 1] = k;
   TfLiteTensor* output_indexes = GetOutput(context, node, kOutputIndexes);
   TfLiteTensor* output_values = GetOutput(context, node, kOutputValues);
+  // Force output types.
+  output_indexes->type = kTfLiteInt32;
+  output_values->type = input->type;
   auto resize_tensor = [context](TfLiteTensor* tensor, TfLiteIntArray* new_size,
                                  TfLiteIntArray* delete_on_error) {
     TfLiteStatus status = context->ResizeTensor(context, tensor, new_size);
     if (status != kTfLiteOk) {
-      TfLiteIntArrayFree(new_size);
       if (delete_on_error != nullptr) {
         TfLiteIntArrayFree(delete_on_error);
       }
@@ -214,7 +216,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
            output_values->data.i64);
       break;
     default:
-      context->ReportError(context, "Type is currently not supported by TopK.");
+      context->ReportError(context,
+                           "Type %d is currently not supported by TopK.",
+                           output_values->type);
       return kTfLiteError;
   }
 

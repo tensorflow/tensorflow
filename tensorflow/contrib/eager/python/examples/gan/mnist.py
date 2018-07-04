@@ -227,7 +227,7 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
           maxval=1.,
           seed=batch_index)
 
-      with tfe.GradientTape(persistent=True) as g:
+      with tf.GradientTape(persistent=True) as g:
         generated_images = generator(noise)
         tf.contrib.summary.image(
             'generated_images',
@@ -306,7 +306,7 @@ def main(_):
 
 
 if __name__ == '__main__':
-  tfe.enable_eager_execution()
+  tf.enable_eager_execution()
 
   parser = argparse.ArgumentParser()
   parser.add_argument(

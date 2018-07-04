@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_map>
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
+#include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
 
@@ -55,8 +56,7 @@ struct OperatorKeyHasher {
   size_t operator()(const T& x) const {
     size_t a = ValueHasher<typename T::first_type>()(x.first);
     size_t b = ValueHasher<typename T::second_type>()(x.second);
-    // Hash combinator used by TensorFlow core.
-    return a ^ (b + 0x9e3779b97f4a7800ULL + (a << 10) + (a >> 4));
+    return CombineHashes({a, b});
   }
 };
 }  // namespace op_resolver_hasher

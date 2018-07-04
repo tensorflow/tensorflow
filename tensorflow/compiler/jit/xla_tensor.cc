@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-/*static*/ XlaTensor* XlaTensor::FromTensor(Tensor* tensor) {
+/*static*/ XlaTensor* XlaTensor::FromTensor(const Tensor* tensor) {
   if (tensor->NumElements() == 0) {
     return nullptr;
   }
@@ -27,8 +27,8 @@ namespace tensorflow {
   return xla_tensor;
 }
 
-/*static*/ const XlaTensor* XlaTensor::FromTensor(const Tensor* tensor) {
-  return FromTensor(const_cast<Tensor*>(tensor));
+/*static*/ bool XlaTensor::RefCountIsOne(const Tensor& tensor) {
+  return tensor.RefCountIsOne();
 }
 
 /*static*/ se::DeviceMemoryBase XlaTensor::DeviceMemoryFromTensor(
@@ -66,6 +66,8 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
     // Move our buffer into shaped_buffer, which takes ownership of it.
     index_to_buffer.second = buffer.Forget();
   }
+
+  VLOG(4) << shaped_buffer.ToString();
 
   set_shaped_buffer(std::move(shaped_buffer));
   return Status::OK();

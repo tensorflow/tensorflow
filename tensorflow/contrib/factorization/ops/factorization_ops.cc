@@ -25,20 +25,33 @@ REGISTER_OP("WALSComputePartialLhsAndRhs")
     .Input("input_weights: float32")
     .Input("input_indices: int64")
     .Input("input_values: float32")
+    .Input("entry_weights: float32")
     .Input("input_block_size: int64")
     .Input("input_is_transpose: bool")
     .Output("partial_lhs: float32")
     .Output("partial_rhs: float32")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"(
-Computes the partial left-hand side and right-hand side of WALS update.
+Computes the partial left-hand side and right-hand side of WALS update. For
+observed entry input_indices[i]=[m, n] with value input_values[i]=v, the weight
+should be specified either through (1) entry_weights[i] or (2) through
+input_weights[m] * factor_weights[n] (if input_is_transpose is false) or
+input_weights[n] * factor_weights[m] (if input_is_transpose is true). Note it is
+not allowed to have both (1) and (2) specified at the same time: when one
+approach is used, the input tensors related to the other approach must be kept
+completely empty.
 
 factors: Matrix of size m * k.
-factor_weights: Vector of size m. Corresponds to column weights
+factor_weights: Vector of size m. Corresponds to column weights. Should be empty
+  if entry_weights is used.
 unobserved_weights: Scalar. Weight for unobserved input entries.
-input_weights: Vector of size n. Corresponds to row weights.
+input_weights: Vector of size n. Corresponds to row weights. Should be empty if
+  entry_weights is used.
 input_indices: Indices for the input SparseTensor.
 input_values: Values for the input SparseTensor.
+entry_weights: If not empty, this must be same length as input_vaues and is used
+  as the per-entry non-zero weight. If this is used, input_weights and
+  factor_weights must be empty.
 input_block_size: Scalar. Number of rows spanned by input.
 input_is_transpose: If true, logically transposes the input for processing.
 partial_lhs: 3-D tensor with size input_block_size x k x k.

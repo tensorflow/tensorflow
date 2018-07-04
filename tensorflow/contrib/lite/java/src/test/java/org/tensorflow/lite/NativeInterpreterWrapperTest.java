@@ -41,6 +41,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String BYTE_MODEL_PATH =
       "tensorflow/contrib/lite/java/src/testdata/uint8.bin";
 
+  private static final String QUANTIZED_MODEL_PATH =
+      "tensorflow/contrib/lite/java/src/testdata/quantized.bin";
+
   private static final String INVALID_MODEL_PATH =
       "tensorflow/contrib/lite/java/src/testdata/invalid_model.bin";
 
@@ -106,6 +109,27 @@ public final class NativeInterpreterWrapperTest {
     float[] expected = {3.69f, -19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
     wrapper.close();
+  }
+
+  @Test
+  public void testRunWithBufferOutput() {
+    try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH)) {
+      float[] oneD = {1.23f, -6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      Object[] inputs = {fourD};
+      Tensor[] outputs = wrapper.run(inputs);
+      assertThat(outputs).hasLength(1);
+      ByteBuffer parsedOutput =
+          ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
+      outputs[0].copyTo(parsedOutput);
+      float[] outputOneD = {
+        parsedOutput.getFloat(0), parsedOutput.getFloat(4), parsedOutput.getFloat(8)
+      };
+      float[] expected = {3.69f, -19.62f, 23.43f};
+      assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
   }
 
   @Test
@@ -535,5 +559,17 @@ public final class NativeInterpreterWrapperTest {
     wrapper = new NativeInterpreterWrapper(BYTE_MODEL_PATH);
     assertThat(wrapper.getOutputDataType(0)).contains("byte");
     wrapper.close();
+  }
+
+  @Test
+  public void testGetOutputQuantizationParams() {
+    try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH)) {
+      assertThat(wrapper.getOutputQuantizationZeroPoint(0)).isEqualTo(0);
+      assertThat(wrapper.getOutputQuantizationScale(0)).isWithin(1e-6f).of(0.0f);
+    }
+    try (NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(QUANTIZED_MODEL_PATH)) {
+      assertThat(wrapper.getOutputQuantizationZeroPoint(0)).isEqualTo(127);
+      assertThat(wrapper.getOutputQuantizationScale(0)).isWithin(1e-6f).of(0.25f);
+    }
   }
 }

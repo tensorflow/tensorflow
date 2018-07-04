@@ -46,6 +46,8 @@ cc_library(
         "aws-cpp-sdk-core/source/utils/xml/**/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/*.cpp",
         "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
+        "aws-cpp-sdk-kinesis/include/**/*.h",
+        "aws-cpp-sdk-kinesis/source/**/*.cpp",
         "aws-cpp-sdk-s3/include/**/*.h",
         "aws-cpp-sdk-s3/source/**/*.cpp",
     ]),
@@ -72,6 +74,7 @@ cc_library(
     }),
     includes = [
         "aws-cpp-sdk-core/include/",
+        "aws-cpp-sdk-kinesis/include/",
         "aws-cpp-sdk-s3/include/",
     ],
     deps = [

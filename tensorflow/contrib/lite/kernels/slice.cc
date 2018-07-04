@@ -85,7 +85,8 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
     TF_LITE_ENSURE_STATUS(CalculateOutputShapeVector<int64_t>(
         context, input, begin, size, &output_shape_vector));
   } else {
-    context->ReportError(context, "Type is currently not supported by Slice.");
+    context->ReportError(
+        context, "Type %d is currently not supported by Slice.", begin->type);
     return kTfLiteError;
   }
 
@@ -148,7 +149,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     GetBeginAndSizeVectors<int64_t>(NumDimensions(input), begin, size, &begins,
                                     &sizes);
   } else {
-    context->ReportError(context, "Type is currently not supported by Slice.");
+    context->ReportError(
+        context, "Type %d is currently not supported by Slice.", begin->type);
     return kTfLiteError;
   }
 
@@ -179,8 +181,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_SLICE(bool);
       break;
     default:
-      context->ReportError(context,
-                           "Type is currently not supported by Slice.");
+      context->ReportError(
+          context, "Type %d is currently not supported by Slice.", input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_SLICE

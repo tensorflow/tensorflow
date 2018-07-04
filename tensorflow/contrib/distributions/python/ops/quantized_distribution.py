@@ -27,10 +27,19 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distributions
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 __all__ = ["QuantizedDistribution"]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _logsum_expbig_minus_expsmall(big, small):
   """Stable evaluation of `Log[exp{big} - exp{small}]`.
 
@@ -228,6 +237,14 @@ class QuantizedDistribution(distributions.Distribution):
        https://arxiv.org/abs/1711.10433
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                distribution,
                low=None,
@@ -263,7 +280,7 @@ class QuantizedDistribution(distributions.Distribution):
           `Distribution` or continuous.
       NotImplementedError:  If the base distribution does not implement `cdf`.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     values = (
         list(distribution.parameters.values()) +
         [low, high])

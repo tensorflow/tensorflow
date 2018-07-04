@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
@@ -32,16 +32,17 @@ ENTRY main {
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
 
-  ROOT out = () outfeed(f32[2,3,2] const_a)
+  outfeed = token[] outfeed(f32[2,3,2] const_a)
+  ROOT root = () tuple()
 }
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [2 x [3 x [2 x float]]]
+CHECK: private constant [48 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_text));
+                          ParseHloString(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
@@ -111,6 +112,82 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
 }
 
+TEST_F(FunctionOptimizerTest, InlineFunction_SkipErrorsIfGraphNotModified) {
+  using test::function::NDef;
+
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT);
+
+  // Standard XTimesTwo() function.
+  FunctionDef x_times_two = test::function::XTimesTwo();
+
+  // Function with sequence of tensors as an input (currently not supported).
+  FunctionDef my_identity_n = FunctionDefHelper::Create(
+      // Name
+      "MyIdentityN",
+      // Args
+      {"x: N*T"},
+      // Return values
+      {"out: N*T"},
+      // Attrs
+      {"N:int", "T:{float, double, int32, int64}"},
+      // Nodes (just forward inputs through IdentityN)
+      {
+          {{"Id"}, "IdentityN", {"x"}, {{"T", "$T"}, {"N", "$N"}}},
+      },
+      // Output mapping
+      {{"out", "Id:output:0"}});
+
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("y1", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("y2", "MyIdentityN", {"x"}, {{"T", DT_FLOAT}, {"N", 1}}, kDevice),
+       NDef("z1", "Identity", {"y1:0"}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("z2", "Identity", {"y2:0"}, {{"T", DT_FLOAT}}, kDevice)},
+      // FunctionLib
+      {x_times_two, my_identity_n});
+
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  // Verify that only MyIdentityN is in the function library after optimization.
+  ASSERT_EQ(1, output.library().function().size());
+  EXPECT_EQ("MyIdentityN", output.library().function(0).signature().name());
+
+  // And that XTimesTwo was successfully inlined.
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "y1/inlined_inputs") {
+      found++;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    } else if (node.name() == "y1") {
+      found++;
+      EXPECT_EQ("IdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("y1/y", node.input(0));
+    } else if (node.name() == "y2") {
+      found++;
+      EXPECT_EQ("MyIdentityN", node.op());
+      EXPECT_EQ(kDevice, node.device());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    }
+  }
+  EXPECT_EQ(3, found);
+
+  Tensor pi = test::AsScalar<float>(3.14f);
+  item.fetch = {"z1"};
+  item.feed.emplace_back("x", pi);
+  auto tensors_expected = EvaluateFetchNodes(item);
+  GrapplerItem optimized(item, std::move(output));
+  auto tensors = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(tensors_expected[0], tensors[0]);
+}
+
 TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
   using test::function::NDef;
 
@@ -131,6 +208,12 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
       // Nodes
       {
           {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_FLOAT}}},
+          // "enter" node is used to verify that InlineFunction would update the
+          // frame name accordingly.
+          {{"enter"},
+           "Enter",
+           {"x"},
+           {{"T", DT_FLOAT}, {"frame_name", "frame"}}},
           {{"y"}, "Mul", {"x", "two"}, {{"T", DT_FLOAT}}},
       });
 
@@ -187,9 +270,14 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FixedTypeFunction) {
       EXPECT_EQ(kDevice, node.device());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("y", node.input(0));
+    } else if (node.name() == "y/enter") {
+      count++;
+      EXPECT_TRUE(IsEnter(node));
+      const string frame_name = node.attr().at("frame_name").s();
+      EXPECT_EQ("y/frame", frame_name);
     }
   }
-  EXPECT_EQ(6, count);
+  EXPECT_EQ(7, count);
 
   Tensor pi = test::AsScalar<float>(3.14f);
   item.fetch = {"z"};

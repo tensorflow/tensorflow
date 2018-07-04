@@ -61,7 +61,7 @@ class ParallelLoopEmitter : public llvm_ir::LoopEmitter {
   ~ParallelLoopEmitter() override = default;
 
   std::vector<llvm_ir::IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name) override;
+      tensorflow::StringPiece loop_name, llvm::Type* index_type) override;
 
  private:
   const DynamicLoopBounds* dynamic_loop_bounds_;

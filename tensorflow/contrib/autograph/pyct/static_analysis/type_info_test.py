@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph import utils
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis import activity
 from tensorflow.contrib.autograph.pyct.static_analysis import live_values
 from tensorflow.contrib.autograph.pyct.static_analysis import type_info
@@ -62,21 +61,18 @@ class TypeInfoResolverTest(test.TestCase):
                          namespace,
                          arg_types=None):
     node, source = parser.parse_entity(test_fn)
-    ctx = context.EntityContext(
-        namer=None,
+    entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace=namespace,
         arg_values=None,
         arg_types=arg_types,
-        owner_type=None,
-        recursive=True,
-        type_annotation_func=utils.set_element_type)
+        owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, ctx)
-    node = live_values.resolve(node, ctx, {})
-    node = type_info.resolve(node, ctx)
-    node = live_values.resolve(node, ctx, {})
+    node = activity.resolve(node, entity_info)
+    node = live_values.resolve(node, entity_info, {})
+    node = type_info.resolve(node, entity_info)
+    node = live_values.resolve(node, entity_info, {})
     return node
 
   def test_constructor_detection(self):
@@ -147,7 +143,7 @@ class TypeInfoResolverTest(test.TestCase):
       opt.minimize(0)
 
     node = self._parse_and_analyze(
-        test_fn, {'training': training},
+        test_fn, {},
         arg_types={
             'opt': (training.GradientDescentOptimizer.__name__,
                     training.GradientDescentOptimizer)
@@ -180,22 +176,6 @@ class TypeInfoResolverTest(test.TestCase):
     method_call = node.body[0].body[1].value.func
     self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
-  def test_type_annotation(self):
-
-    class Foo(object):
-      pass
-
-    def test_fn():
-      f = []
-      f = utils.set_element_type(f, Foo)
-      return f
-
-    node = self._parse_and_analyze(test_fn, {'Foo': Foo, 'utils': utils})
-    f_def = node.body[0].body[0].value
-    self.assertEqual(anno.getanno(f_def, 'element_type'), Foo)
-    f_ref = node.body[0].body[1].value
-    self.assertEqual(anno.getanno(f_ref, 'element_type'), Foo)
-
   def test_nested_unpacking(self):
 
     class Foo(object):
@@ -210,31 +190,12 @@ class TypeInfoResolverTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn, {'Foo': Foo, 'Bar': Bar})
     a, b, c = node.body[0].body[1].value.elts
-    self.assertEquals(Foo, anno.getanno(a, 'type'))
-    self.assertEquals(Bar, anno.getanno(b, 'type'))
-    self.assertEquals(Foo, anno.getanno(c, 'type'))
+    self.assertEquals(anno.getanno(a, 'type'), Foo)
+    self.assertEquals(anno.getanno(b, 'type'), Bar)
+    self.assertEquals(anno.getanno(c, 'type'), Foo)
     self.assertFalse(anno.hasanno(a, 'live_val'))
     self.assertFalse(anno.hasanno(b, 'live_val'))
     self.assertFalse(anno.hasanno(c, 'live_val'))
-
-  def test_inner_scope(self):
-
-    def test_fn():
-      a = []
-      utils.set_element_type(a, 1)
-      for _ in a:
-        b = []
-        utils.set_element_type(b, 2)
-        return a, b
-
-    node = self._parse_and_analyze(test_fn, {'utils': utils})
-    a, b = node.body[0].body[2].body[2].value.elts
-    self.assertEquals(1, anno.getanno(a, 'element_type'))
-    self.assertEquals(2, anno.getanno(b, 'element_type'))
-    self.assertFalse(anno.hasanno(a, 'type'))
-    self.assertFalse(anno.hasanno(b, 'type'))
-    self.assertFalse(anno.hasanno(a, 'live_val'))
-    self.assertFalse(anno.hasanno(b, 'live_val'))
 
 
 if __name__ == '__main__':

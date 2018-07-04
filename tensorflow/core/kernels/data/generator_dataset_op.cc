@@ -99,7 +99,7 @@ class GeneratorDatasetOp : public DatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Generator")}));
@@ -112,7 +112,9 @@ class GeneratorDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "GeneratorDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "GeneratorDatasetOp::Dataset";
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {

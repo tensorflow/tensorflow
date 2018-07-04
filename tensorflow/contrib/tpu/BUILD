@@ -181,6 +181,7 @@ py_library(
         ":datasets",
         ":profiler",
         ":tpu_py",
+        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/contrib/tpu/proto:topology_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -303,6 +304,16 @@ tf_py_test(
     additional_deps = [
         ":tpu_estimator",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_py_test(
+    name = "topology_test",
+    size = "small",
+    srcs = ["python/tpu/topology_test.py"],
+    additional_deps = [
+        ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
 )

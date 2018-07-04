@@ -122,6 +122,14 @@ message RegisterGraphRequest {
 
   // Field(s) used by TensorFlow Debugger (tfdbg).
   DebugOptions debug_options = 5;
+
+  // If graph_def contains any collective ops this must be a positive
+  // integer used to coordinate execution with other graphs.  All
+  // graphs in a distributed execution with the same
+  // collective_graph_key will coordinate to use the same step_id
+  // concurrently so that BufRendezvous entries will make the correct
+  // values accessible.
+  int64 collective_graph_key = 7;
 }
 
 message RegisterGraphResponse {

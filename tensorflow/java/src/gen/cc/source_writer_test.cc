@@ -245,12 +245,17 @@ TEST(StreamTest, Types) {
   SourceBufferWriter writer;
   Type generic = Type::Generic("T").add_supertype(Type::Class("Number"));
 
-  writer.AppendType(Type::Int()).Append(", ")
-        .AppendType(Type::Class("String")).Append(", ")
-        .AppendType(generic).Append(", ")
-        .AppendType(Type::ListOf(generic)).Append(", ")
-        .AppendType(Type::ListOf(Type::IterableOf(generic))).Append(", ")
-        .AppendType(Type::ListOf(Type::Wildcard()));
+  writer.AppendType(Type::Int())
+      .Append(", ")
+      .AppendType(Type::Class("String"))
+      .Append(", ")
+      .AppendType(generic)
+      .Append(", ")
+      .AppendType(Type::ListOf(generic))
+      .Append(", ")
+      .AppendType(Type::ListOf(Type::IterableOf(generic)))
+      .Append(", ")
+      .AppendType(Type::ListOf(Type::Wildcard()));
 
   const char* expected =
       "int, String, T, List<T>, List<Iterable<T>>, List<?>";
@@ -314,7 +319,7 @@ TEST(WriteType, AnnotatedAndDocumentedClass) {
   SourceBufferWriter writer;
   Type clazz = Type::Class("Test", "org.tensorflow");
   Javadoc clazz_doc = Javadoc::Create("Javadoc test")
-      .details("This is a\nmultiline description.");
+                          .details("This is a\nmultiline description.");
   clazz.add_annotation(Annotation::Create("Bean"));
   clazz.add_annotation(Annotation::Create("SuppressWarnings")
       .attributes("\"rawtypes\""));
@@ -380,10 +385,10 @@ TEST(WriteType, ParameterizedClassFields) {
   Javadoc field3_doc = Javadoc::Create("This variable is documented");
 
   writer.BeginType(clazz, PUBLIC)
-          .WriteField(field1, STATIC | PUBLIC | FINAL)
-          .WriteField(field2, PRIVATE)
-          .WriteField(field3, PRIVATE, &field3_doc)
-        .EndType();
+      .WriteField(field1, STATIC | PUBLIC | FINAL)
+      .WriteField(field2, PRIVATE)
+      .WriteField(field3, PRIVATE, &field3_doc)
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -402,9 +407,9 @@ TEST(WriteType, SimpleInnerClass) {
   Type inner_class = Type::Class("InnerTest");
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginInnerType(inner_class, PUBLIC)
-          .EndType()
-        .EndType();
+      .BeginInnerType(inner_class, PUBLIC)
+      .EndType()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -425,9 +430,9 @@ TEST(WriteType, StaticParameterizedInnerClass) {
   inner_class.add_parameter(type_t);
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginInnerType(inner_class, PUBLIC | STATIC)
-          .EndType()
-        .EndType();
+      .BeginInnerType(inner_class, PUBLIC | STATIC)
+      .EndType()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -445,8 +450,9 @@ TEST(WriteMethod, SimpleMethod) {
   Method method = Method::Create("doNothing", Type::Void());
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginMethod(method, PUBLIC).EndMethod()
-        .EndType();
+      .BeginMethod(method, PUBLIC)
+      .EndMethod()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -462,15 +468,17 @@ TEST(WriteMethod, AnnotatedAndDocumentedMethod) {
   SourceBufferWriter writer;
   Type clazz = Type::Class("Test", "org.tensorflow");
   Method method = Method::Create("doNothing", Type::Void());
-  Javadoc method_doc = Javadoc::Create("Javadoc test")
-      .details("This method has a\nmultiline description.");
+  Javadoc method_doc =
+      Javadoc::Create("Javadoc test")
+          .details("This method has a\nmultiline description.");
   method.add_annotation(Annotation::Create("Override"));
   method.add_annotation(Annotation::Create("SuppressWarnings")
       .attributes("\"rawtypes\""));
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginMethod(method, PUBLIC, &method_doc).EndMethod()
-        .EndType();
+      .BeginMethod(method, PUBLIC, &method_doc)
+      .EndMethod()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -497,20 +505,23 @@ TEST(WriteMethod, DocumentedMethodWithArguments) {
   Method method = Method::Create("boolToInt", Type::Int());
   method.add_argument(Variable::Create("b", Type::Boolean()));
   method.add_argument(reverse);
-  Javadoc method_doc = Javadoc::Create("Converts a boolean to an int")
-      .details("This method will convert\na boolean to an int")
-      .add_param_tag(reverse.name(), "if true, value is reversed")
-      .add_tag("return", "int value for this boolean");
+  Javadoc method_doc =
+      Javadoc::Create("Converts a boolean to an int")
+          .details("This method will convert\na boolean to an int")
+          .add_param_tag(reverse.name(), "if true, value is reversed")
+          .add_tag("return", "int value for this boolean");
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginMethod(method, PUBLIC, &method_doc)
-            .Append("if (b && !reverse)")
-            .BeginBlock()
-              .Append("return 1;").EndLine()
-            .EndBlock()
-          .Append("return 0;").EndLine()
-          .EndMethod()
-        .EndType();
+      .BeginMethod(method, PUBLIC, &method_doc)
+      .Append("if (b && !reverse)")
+      .BeginBlock()
+      .Append("return 1;")
+      .EndLine()
+      .EndBlock()
+      .Append("return 0;")
+      .EndLine()
+      .EndMethod()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -543,10 +554,11 @@ TEST(WriteMethod, ParameterizedMethod) {
   Method method = Method::Create("doNothing", type_t);
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginMethod(method, PUBLIC)
-            .Append("return null;").EndLine()
-          .EndMethod()
-        .EndType();
+      .BeginMethod(method, PUBLIC)
+      .Append("return null;")
+      .EndLine()
+      .EndMethod()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"
@@ -567,10 +579,11 @@ TEST(WriteMethod, StaticParameterizedMethod) {
   Method method = Method::Create("doNothing", type_t);
 
   writer.BeginType(clazz, PUBLIC)
-          .BeginMethod(method, PUBLIC | STATIC)
-            .Append("return null;").EndLine()
-          .EndMethod()
-        .EndType();
+      .BeginMethod(method, PUBLIC | STATIC)
+      .Append("return null;")
+      .EndLine()
+      .EndMethod()
+      .EndType();
 
   const char* expected =
       "package org.tensorflow;\n\n"

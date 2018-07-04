@@ -21,10 +21,7 @@ limitations under the License.
 #include "tensorflow/core/util/cuda_device_functions.h"
 #include "tensorflow/core/util/cuda_launch_config.h"
 
-#if CUDA_VERSION >= 7050
 #include "cuda/include/cuda_fp16.h"
-#define TF_HAS_CUDA_FP16
-#endif
 
 // Deprecated, use 'for(int i : CudaGridRangeX(n))' instead.
 #define CUDA_1D_KERNEL_LOOP(i, n) \

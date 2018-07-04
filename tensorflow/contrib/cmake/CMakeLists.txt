@@ -18,7 +18,16 @@ cmake_policy(SET CMP0022 NEW)
 
 # Options
 option(tensorflow_VERBOSE "Enable for verbose output" OFF)
+
+if(WIN32)
+# BoringSSL is disabled for windows as it currently doesn't build with
+# MSBuild. (Ninja is required.)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
+else()
+# BoringSSL is enabled for gRPC.
+option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" ON)
+endif()
+
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
@@ -290,17 +299,20 @@ include_directories(
     ${double_conversion_INCLUDE_DIR}
 )
 
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  include(boringssl)
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
-  include_directories(${boringssl_INCLUDE_DIR})
-endif()
 if(tensorflow_ENABLE_GRPC_SUPPORT)
+  if(tensorflow_ENABLE_SSL_SUPPORT)
+    include(boringssl)
+    include_directories(${boringssl_INCLUDE_DIR})
+  endif()
   include(grpc)
+  include_directories(${GRPC_INCLUDE_DIRS})
+  # Place boringssl after grpc as grpc depends on boringssl.
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
-  include_directories(${GRPC_INCLUDE_DIRS})
+  if(tensorflow_ENABLE_SSL_SUPPORT)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
+  endif()
 endif()
 if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
   include(jemalloc)
@@ -327,40 +339,14 @@ endif()
 # MKL Support
 if (tensorflow_ENABLE_MKL_SUPPORT)
   add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
-  if (WIN32)
-    find_path(MKL_HOME_PLATFORM mkl
-      PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
-      $ENV{MKLROOT} $ENV{MKLROOT}/../ $ENV{MKLROOT}/../../
-      PATH_SUFFIXES windows)
-    set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
-    set(MKL_LINK_DIRS
-      ${MKL_HOME_PLATFORM}/mkl/lib/intel64
-      ${MKL_HOME_PLATFORM}/tbb/lib/intel64/vc_mt
-      ${MKL_HOME_PLATFORM}/compiler/lib/intel64
-      ${MKL_HOME_PLATFORM}/mkl/tools/builder/lib)
-    set(MKL_REDIST_DLL_DIRS
-      ${MKL_HOME_PLATFORM}/redist/intel64/mkl
-      ${MKL_HOME_PLATFORM}/redist/intel64/tbb/vc_mt
-      ${MKL_HOME_PLATFORM}/redist/intel64/compiler)
-    list(APPEND tensorflow_EXTERNAL_LIBRARIES
-      mkl_intel_lp64_dll mkl_sequential_dll mkl_core_dll mkl_rt mkl_cdll_intel64)
-  endif()
-  if (UNIX)
-    # Fix me: complete the path on linux
-    find_path(MKL_HOME_PLATFORM mkl
-      HINTS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
-      $ENV{MKLROOT} $ENV{MKLROOT}/../ $ENV{MKLROOT}/../../
-      PATH_SUFFIXES linux)
-    set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
-    set(MKL_LINK_DIRS) # incompleted
-    set(MKL_REDIST_SO_DIRS) # incompleted
-  endif()
-  include_directories(${MKL_INCLUDE_DIRS})
-  link_directories(${MKL_LINK_DIRS})
+  include(mkl)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkl_STATIC_LIBRARIES})
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkl_copy_shared_to_destination)
+  include_directories(${mkl_INCLUDE_DIRS})
   if (tensorflow_ENABLE_MKLDNN_SUPPORT)
     include(mkldnn)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
-    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn)
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn_copy_shared_to_destination)
     include_directories(${mkldnn_INCLUDE_DIRS})
   else (tensorflow_ENABLE_MKLDNN_SUPPORT)
     add_definitions(-DINTEL_MKL_ML)

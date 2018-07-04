@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 
 namespace tensorflow {
 
@@ -48,11 +49,11 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
 
   VLOG(1) << "Building If: " << input_types_.size() << " inputs";
 
-  std::vector<xla::XlaOp> inputs(input_types_.size());
   std::vector<XlaCompiler::Argument> arguments(input_types_.size());
   for (int i = 0; i < input_types_.size(); ++i) {
     XlaCompiler::Argument& arg = arguments[i];
     DataType type = ctx->input_type(i + 1);
+
     if (type == DT_RESOURCE) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(i + 1, &resource));
@@ -60,7 +61,6 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.initialized = resource->initialized();
       arg.kind = XlaCompiler::Argument::kResource;
       arg.resource_kind = resource->kind();
-      OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
 
       arg.type = resource->type();
       arg.shape = resource->shape();
@@ -79,7 +79,6 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = input_types_[i];
       arg.shape = ctx->InputShape(i + 1);
-      inputs[i] = ctx->Input(i + 1);
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
               << " shape: " << arg.shape.DebugString();
     }
@@ -100,6 +99,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
                                                 arguments, &else_result));
 
+  bool has_tensor_array_gradients = false;
   for (XlaCompiler::CompilationResult* result : {&then_result, &else_result}) {
     for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
       XlaResource* resource;
@@ -121,7 +121,19 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
+      if (!resource->tensor_array_gradients().empty())
+        has_tensor_array_gradients = true;
     }
+  }
+
+  // Recompile the functions to update the argument shapes for tensor arrays.
+  if (has_tensor_array_gradients) {
+    then_result = {};
+    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, then_branch_,
+                                                  arguments, &then_result));
+    else_result = {};
+    OP_REQUIRES_OK(ctx, compiler->CompileFunction(options, else_branch_,
+                                                  arguments, &else_result));
   }
 
   // Check that both branches have identical input shapes.
@@ -175,13 +187,26 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
             "Mismatch in resource of then and else branch for resource ", i));
   }
 
-  xla::XlaOp outputs =
-      b->Conditional(ctx->Input(0), b->Tuple(inputs), *then_result.computation,
-                     b->Tuple(inputs), *else_result.computation);
+  int num_inputs = then_result.input_mapping.size();
+  std::vector<xla::XlaOp> inputs(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    int input_num = then_result.input_mapping[i] + 1;
+    if (ctx->input_type(input_num) == DT_RESOURCE) {
+      XlaResource* resource;
+      OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
+      OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], b));
+    } else {
+      inputs[i] = ctx->Input(i + 1);
+    }
+  }
+
+  xla::XlaOp outputs = xla::Conditional(
+      ctx->Input(0), xla::Tuple(b, inputs), *then_result.computation,
+      xla::Tuple(b, inputs), *else_result.computation);
   // Sets non-variable outputs.
   for (int i = 0; i < output_types_.size(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
-      xla::XlaOp output_handle = b->GetTupleElement(outputs, i);
+      xla::XlaOp output_handle = xla::GetTupleElement(outputs, i);
       if (VLOG_IS_ON(2)) {
         LOG(INFO) << "Setting output " << i;
         auto shape_or = b->GetShape(output_handle);
@@ -209,7 +234,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
         OP_REQUIRES_OK(ctx,
                        resource->SetFromPack(
                            arguments[update.input_index].tensor_array_gradients,
-                           b->GetTupleElement(outputs, pos), b));
+                           xla::GetTupleElement(outputs, pos), b));
       }
       VLOG(2) << "If variable: pos: " << update.input_index
               << " name: " << resource->name()

@@ -24,6 +24,7 @@ import six
 
 from tensorflow.contrib import lookup
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -1396,15 +1397,22 @@ class KeyValueTensorInitializerTest(test.TestCase):
 
 class IndexTableFromTensor(test.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def test_index_table_from_tensor_with_tensor_init(self):
-    with self.test_session():
+    table = lookup.index_table_from_tensor(
+        mapping=("brain", "salad", "surgery"), num_oov_buckets=1)
+
+    if not context.executing_eagerly():
+      with self.assertRaises(errors_impl.OpError):
+        self.evaluate(table.lookup(
+            constant_op.constant(("salad", "surgery", "tarkus"))))
+    else:
+      # Reinitializing a table in eager should work.
       table = lookup.index_table_from_tensor(
           mapping=("brain", "salad", "surgery"), num_oov_buckets=1)
-      ids = table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
-
-      self.assertRaises(errors_impl.OpError, ids.eval)
-      lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+    self.evaluate(lookup_ops.tables_initializer())
+    ids = table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
+    self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
   def test_int32_index_table_from_tensor_with_tensor_init(self):
     with self.test_session():
@@ -1662,7 +1670,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInitializeStringTable(self):
     vocabulary_file = self._createVocabFile("one_column_1.txt")
     default_value = -1

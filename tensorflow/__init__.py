@@ -22,9 +22,6 @@ from __future__ import print_function
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-# pylint: disable=wildcard-import
-from tensorflow.tools.api.generator.api import *  # pylint: disable=redefined-builtin
-# pylint: enable=wildcard-import
 
 from tensorflow.python.util.lazy_loader import LazyLoader
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')

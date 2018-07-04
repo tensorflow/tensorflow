@@ -87,7 +87,7 @@ TEST_P(FloatReverseTest, Reverses) {
 
   XlaBuilder builder(TestName());
   auto a = AddParam(*input_literal, &builder);
-  builder.Rev(a, spec.reversal);
+  Rev(a, spec.reversal);
 
   std::unique_ptr<Literal> expected = input_literal->CloneToUnique();
   std::vector<int64> output_indices(spec.input_dims.size());
@@ -127,7 +127,7 @@ XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {
   }});
   // clang-format on
 
-  b.Rev(b.ConstantR4FromArray4D<uint8>(input), {0, 3});
+  Rev(ConstantR4FromArray4D<uint8>(&b, input), {0, 3});
 
   // clang-format off
   Array4D<uint8> expected({{
@@ -163,7 +163,7 @@ TEST_F(ReverseTest, Reverse4DFloatArrayOnDim01) {
   });
   // clang-format on
 
-  b.Rev(b.ConstantR4FromArray4D<float>(input), {0, 1});
+  Rev(ConstantR4FromArray4D<float>(&b, input), {0, 1});
 
   // clang-format off
   Array4D<float> expected({

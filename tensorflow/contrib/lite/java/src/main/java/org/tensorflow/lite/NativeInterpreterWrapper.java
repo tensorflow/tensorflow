@@ -43,21 +43,31 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   }
 
   /**
-   * Initializes a {@code NativeInterpreterWrapper} with a {@code MappedByteBuffer}. The
-   * MappedByteBuffer should not be modified after the construction of a {@code
-   * NativeInterpreterWrapper}.
+   * Initializes a {@code NativeInterpreterWrapper} with a {@code ByteBuffer}. The ByteBuffer should
+   * not be modified after the construction of a {@code NativeInterpreterWrapper}. The {@code
+   * ByteBuffer} can be either a {@code MappedByteBuffer} that memory-maps a model file, or a direct
+   * {@code ByteBuffer} of nativeOrder() that contains the bytes content of a model.
    */
-  NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer) {
-    this(mappedByteBuffer, /* numThreads= */ -1);
+  NativeInterpreterWrapper(ByteBuffer byteBuffer) {
+    this(byteBuffer, /* numThreads= */ -1);
   }
 
   /**
-   * Initializes a {@code NativeInterpreterWrapper} with a {@code MappedByteBuffer} and specifies
-   * the number of inference threads. The MappedByteBuffer should not be modified after the
-   * construction of a {@code NativeInterpreterWrapper}.
+   * Initializes a {@code NativeInterpreterWrapper} with a {@code ByteBuffer} and specifies the
+   * number of inference threads. The ByteBuffer should not be modified after the construction of a
+   * {@code NativeInterpreterWrapper}. The {@code ByteBuffer} can be either a {@code
+   * MappedByteBuffer} that memory-maps a model file, or a direct {@code ByteBuffer} of
+   * nativeOrder() that contains the bytes content of a model.
    */
-  NativeInterpreterWrapper(MappedByteBuffer mappedByteBuffer, int numThreads) {
-    modelByteBuffer = mappedByteBuffer;
+  NativeInterpreterWrapper(ByteBuffer buffer, int numThreads) {
+    if (buffer == null
+        || (!(buffer instanceof MappedByteBuffer)
+            && (!buffer.isDirect() || buffer.order() != ByteOrder.nativeOrder()))) {
+      throw new IllegalArgumentException(
+          "Model ByteBuffer should be either a MappedByteBuffer of the model file, or a direct "
+              + "ByteBuffer using ByteOrder.nativeOrder() which contains bytes of model content.");
+    }
+    modelByteBuffer = buffer;
     errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     modelHandle = createModelWithBuffer(modelByteBuffer, errorHandle);
     interpreterHandle = createInterpreter(modelHandle, errorHandle, numThreads);
@@ -90,9 +100,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
       dataTypes[i] = dataType.getNumber();
       if (dataType == DataType.BYTEBUFFER) {
         ByteBuffer buffer = (ByteBuffer) inputs[i];
-        if (buffer.order() != ByteOrder.nativeOrder()) {
+        if (buffer == null || !buffer.isDirect() || buffer.order() != ByteOrder.nativeOrder()) {
           throw new IllegalArgumentException(
-              "Input error: ByteBuffer shoud use ByteOrder.nativeOrder().");
+              "Input error: ByteBuffer should be a direct ByteBuffer that uses "
+                  + "ByteOrder.nativeOrder().");
         }
         numsOfBytes[i] = buffer.limit();
         sizes[i] = getInputDims(interpreterHandle, i, numsOfBytes[i]);
@@ -153,8 +164,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     useNNAPI(interpreterHandle, useNNAPI);
   }
 
-  void setNumThreads(int num_threads) {
-    numThreads(interpreterHandle, num_threads);
+  void setNumThreads(int numThreads) {
+    numThreads(interpreterHandle, numThreads);
   }
 
   /** Gets index of an input given its name. */
@@ -300,7 +311,29 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return DataType.fromNumber(type).toStringName();
   }
 
+  /**
+   * Gets the quantization zero point of an output.
+   *
+   * @throws IllegalArgumentExeption if the output index is invalid.
+   */
+  int getOutputQuantizationZeroPoint(int index) {
+    return getOutputQuantizationZeroPoint(interpreterHandle, index);
+  }
+
+  /**
+   * Gets the quantization scale of an output.
+   *
+   * @throws IllegalArgumentExeption if the output index is invalid.
+   */
+  float getOutputQuantizationScale(int index) {
+    return getOutputQuantizationScale(interpreterHandle, index);
+  }
+
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
+
+  private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
+
+  private static native float getOutputQuantizationScale(long interpreterHandle, int outputIdx);
 
   private static final int ERROR_BUFFER_SIZE = 512;
 
@@ -314,7 +347,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private long inferenceDurationNanoseconds = -1;
 
-  private MappedByteBuffer modelByteBuffer;
+  private ByteBuffer modelByteBuffer;
 
   private Map<String, Integer> inputsIndexes;
 
@@ -328,13 +361,13 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void useNNAPI(long interpreterHandle, boolean state);
 
-  private static native void numThreads(long interpreterHandle, int num_threads);
+  private static native void numThreads(long interpreterHandle, int numThreads);
 
   private static native long createErrorReporter(int size);
 
   private static native long createModel(String modelPathOrBuffer, long errorHandle);
 
-  private static native long createModelWithBuffer(MappedByteBuffer modelBuffer, long errorHandle);
+  private static native long createModelWithBuffer(ByteBuffer modelBuffer, long errorHandle);
 
   private static native long createInterpreter(long modelHandle, long errorHandle, int numThreads);
 

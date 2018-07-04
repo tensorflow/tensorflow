@@ -239,6 +239,21 @@ REGISTER_OP("Acos").UNARY();
 
 REGISTER_OP("Atan").UNARY();
 
+REGISTER_OP("BesselI0e").UNARY_REAL();
+
+REGISTER_OP("BesselI1e").UNARY_REAL();
+
+REGISTER_OP("_UnaryOpsComposition")
+    .Input("x: T")
+    .Output("y: T")
+    .Attr("T: {float, half, double}")
+    .Attr("op_names: list(string)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to create these operators.
+)doc");
+
 #undef UNARY
 #undef UNARY_REAL
 #undef UNARY_COMPLEX
@@ -485,6 +500,13 @@ REGISTER_OP("Igamma")
     .Attr("T: {float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("IgammaGradA")
+    .Input("a: T")
+    .Input("x: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("Zeta")
     .Input("x: T")
     .Input("q: T")
@@ -592,7 +614,13 @@ REGISTER_OP("ApproximateEqual")
     .SetIsCommutative()
     .Attr("T: numbertype")
     .Attr("tolerance: float = 0.00001")
-    .SetShapeFn(shape_inference::UnchangedShape);
+    .SetShapeFn([](InferenceContext* c) {
+      // The inputs 'x' and 'y' must have the same shape.
+      ShapeHandle data_x = c->input(0);
+      ShapeHandle data_y = c->input(1);
+      TF_RETURN_IF_ERROR(c->Merge(data_x, data_y, &data_x));
+      return shape_inference::UnchangedShape(c);
+    });
 
 // --------------------------------------------------------------------------
 
@@ -1080,7 +1108,7 @@ REGISTER_OP("UnsortedSegmentProd")
     .Input("segment_ids: Tindices")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
-    .Attr("T: realnumbertype")
+    .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .SetShapeFn(UnsortedSegmentReductionShapeFn);

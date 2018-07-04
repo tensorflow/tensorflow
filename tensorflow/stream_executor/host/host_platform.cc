@@ -100,7 +100,6 @@ static void InitializeHostPlatform() {
 REGISTER_MODULE_INITIALIZER(host_platform,
                             stream_executor::host::InitializeHostPlatform());
 
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(host_platform, multi_platform_manager);

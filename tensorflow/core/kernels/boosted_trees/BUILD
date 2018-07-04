@@ -30,6 +30,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
 )
 
@@ -42,6 +43,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
     ],
+)
+
+cc_library(
+    name = "tree_helper",
+    hdrs = ["tree_helper.h"],
 )
 
 tf_kernel_library(
@@ -60,6 +66,7 @@ tf_kernel_library(
     name = "stats_ops",
     srcs = ["stats_ops.cc"],
     deps = [
+        ":tree_helper",
         "//tensorflow/core:boosted_trees_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -71,6 +78,7 @@ tf_kernel_library(
     srcs = ["training_ops.cc"],
     deps = [
         ":resources",
+        ":tree_helper",
         "//tensorflow/core:boosted_trees_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

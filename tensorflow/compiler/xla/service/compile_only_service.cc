@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/computation_tracker.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -64,7 +63,8 @@ CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
     const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
-    const AotCompilationOptions& options) {
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<std::unique_ptr<HloModule>> hlo_modules;
   for (const AotXlaComputationInstance& instance : computations) {
     TF_RET_CHECK(instance.computation.has_program_shape());
@@ -101,59 +101,8 @@ CompileOnlyService::CompileAheadOfTime(
     hlo_modules.push_back(std::move(hlo_module));
   }
 
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
-}
-
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CompileOnlyService::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
-    const AotCompilationOptions& options) {
-  std::vector<std::unique_ptr<HloModule>> hlo_modules;
-  for (const AotComputationInstance& instance : computations) {
-    TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
-                        computation_tracker_.Resolve(instance.computation));
-    VersionedComputationHandle versioned_handle =
-        user_computation->GetVersionedHandle();
-
-    const DebugOptions& debug_options = options.debug_options();
-
-    // Dump computation proto state if flag is set.
-    const string& directory_path = debug_options.xla_dump_computations_to();
-    if (!directory_path.empty()) {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<SessionModule> session_module,
-          computation_tracker_.SnapshotComputation(versioned_handle.handle));
-      string filename = tensorflow::strings::StrCat(
-          "computation_", versioned_handle.handle.handle(), "__",
-          session_module->entry().name(), "__version_",
-          versioned_handle.version);
-      const string& per_host_path = tensorflow::io::JoinPath(
-          directory_path, tensorflow::port::Hostname());
-
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(per_host_path, filename,
-                                                     *session_module));
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<const ProgramShape> program_shape,
-        user_computation->ComputeProgramShape(versioned_handle.version));
-
-    ExecutionOptions execution_options;
-    *execution_options.mutable_debug_options() = debug_options;
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(*program_shape, instance.argument_layouts,
-                           &execution_options, user_computation));
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                        computation_tracker_.BuildHloModule(
-                            versioned_handle, *module_config,
-                            /*include_unreachable_instructions=*/true));
-    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
-    hlo_modules.push_back(std::move(hlo_module));
-  }
-
-  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options);
+  return compiler_->CompileAheadOfTime(std::move(hlo_modules), options,
+                                       metadata);
 }
 
 }  // namespace xla

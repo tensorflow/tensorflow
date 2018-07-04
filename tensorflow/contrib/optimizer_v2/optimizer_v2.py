@@ -162,12 +162,12 @@ def _get_processor(v):
 def _var_key_v2(var):
   """Key for representing a primary variable, for looking up slots."""
   # pylint: disable=protected-access
-  if hasattr(var, "_mirrored_container"):
-    mirrored_container = var._mirrored_container()
-    assert mirrored_container is not None
+  if hasattr(var, "_distributed_container"):
+    distributed_container = var._distributed_container()
+    assert distributed_container is not None
     if context.executing_eagerly():
-      return mirrored_container._unique_id
-    return mirrored_container._shared_name
+      return distributed_container._unique_id
+    return distributed_container._shared_name
   if context.executing_eagerly():
     return var._unique_id
   return var.op.name
@@ -211,8 +211,9 @@ class _OptimizerV2State(object):
     # This dict starts with a single item with key "None" with the hyper
     # parameter value converted to a Tensor. Other items have dtype keys
     # with that Tensor cast to that dtype.
-    self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
-                   for name, (dynamic, value) in hyper.items() if not dynamic}
+    with ops.init_scope():
+      self._hyper = {name: {None: ops.convert_to_tensor(value, name=name)}
+                     for name, (dynamic, value) in hyper.items() if not dynamic}
     self._slots = {}
     self._non_slot_dict = {}
     # Extra state to help Optimizers implement Checkpointable. Holds information
@@ -765,7 +766,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         if scale_loss_by_num_towers is None:
           scale_loss_by_num_towers = (
-              distribute_lib.get_loss_reduction() == "mean")
+              distribute_lib.get_loss_reduction() ==
+              variable_scope.VariableAggregation.MEAN)
         if scale_loss_by_num_towers:
           num_towers = distribute_lib.get_distribution_strategy().num_towers
           if num_towers > 1:
@@ -783,7 +785,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     # Scale loss for number of towers (non-callable-loss case).
     if scale_loss_by_num_towers is None:
       scale_loss_by_num_towers = (
-          distribute_lib.get_loss_reduction() == "mean")
+          distribute_lib.get_loss_reduction() ==
+          variable_scope.VariableAggregation.MEAN)
     if scale_loss_by_num_towers:
       num_towers = distribute_lib.get_distribution_strategy().num_towers
       if num_towers > 1:
@@ -895,7 +898,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
-    reduced_grads = distribution.batch_reduce("sum", grads_and_vars)
+    reduced_grads = distribution.batch_reduce(
+        variable_scope.VariableAggregation.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 

@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+// Place `<locale>` before <Python.h> to avoid build failures in macOS.
 #include <Python.h>
+#include <locale>
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
@@ -40,8 +42,7 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path);
 
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromBuffer(const char* data,
-                                                        size_t len);
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(PyObject* data);
 
   ~InterpreterWrapper();
   bool AllocateTensors();
@@ -57,6 +58,9 @@ class InterpreterWrapper {
   PyObject* TensorQuantization(int i) const;
   bool SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
+  // Returns a reference to tensor index i as a numpy array. The base_object
+  // should be the interpreter object providing the memory.
+  PyObject* tensor(PyObject* base_object, int i);
 
  private:
   InterpreterWrapper(std::unique_ptr<tflite::FlatBufferModel> model);
