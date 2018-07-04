@@ -2269,6 +2269,11 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
   return IrEmitter::HandleSelect(select);
 }
 
+Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
+  thunk_sequence_->push_back(BuildKernelThunk(tuple_select));
+  return IrEmitter::HandleTupleSelect(tuple_select);
+}
+
 Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on GPU.

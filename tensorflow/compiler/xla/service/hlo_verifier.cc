@@ -41,6 +41,10 @@ Status ShapeVerifier::HandleSelect(HloInstruction* select) {
   return CheckTernaryShape(select);
 }
 
+Status ShapeVerifier::HandleTupleSelect(HloInstruction* tuple_select) {
+  return CheckTernaryShape(tuple_select);
+}
+
 Status ShapeVerifier::HandleConcatenate(HloInstruction* concatenate) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : concatenate->operands()) {
@@ -346,9 +350,10 @@ Status ShapeVerifier::HandleSend(HloInstruction* send) {
   TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
   TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
   TF_RETURN_IF_ERROR(CheckIsTokenOperand(send, 1));
-  return CheckShape(
-      send, ShapeUtil::MakeTupleShape(
-                {send->operand(0)->shape(), ShapeUtil::MakeShape(U32, {})}));
+  return CheckShape(send,
+                    ShapeUtil::MakeTupleShape({send->operand(0)->shape(),
+                                               ShapeUtil::MakeShape(U32, {}),
+                                               ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
@@ -357,7 +362,7 @@ Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
   TF_RET_CHECK(send->opcode() == HloOpcode::kSend);
   TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
 
-  return CheckShape(send_done, ShapeUtil::MakeNil());
+  return CheckShape(send_done, ShapeUtil::MakeTokenShape());
 }
 
 Status ShapeVerifier::HandleRecv(HloInstruction* recv) {
@@ -366,9 +371,10 @@ Status ShapeVerifier::HandleRecv(HloInstruction* recv) {
   TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
   TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
   TF_RETURN_IF_ERROR(CheckIsTokenOperand(recv, 0));
-  return CheckShape(recv,
-                    ShapeUtil::MakeTupleShape(
-                        {recv_done->shape(), ShapeUtil::MakeShape(U32, {})}));
+  return CheckShape(
+      recv, ShapeUtil::MakeTupleShape(
+                {ShapeUtil::GetTupleElementShape(recv_done->shape(), 0),
+                 ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
@@ -376,7 +382,9 @@ Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
   const HloInstruction* recv = recv_done->operand(0);
   TF_RET_CHECK(recv->opcode() == HloOpcode::kRecv);
   TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
-  return CheckShape(recv_done, recv->shape().tuple_shapes(0));
+  return CheckShape(recv_done,
+                    ShapeUtil::MakeTupleShape({recv->shape().tuple_shapes(0),
+                                               ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleBatchNormTraining(
@@ -435,6 +443,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kTuple:
@@ -497,16 +506,10 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
   // We treat BF16 and F32 as compatible types if mixed precision is allowed,
   // but only when the instruction defines the BF16/F32 buffer.
   switch (instruction->opcode()) {
-    case HloOpcode::kSelect:
-      if (ShapeUtil::IsTuple(inferred_shape) || !allow_mixed_precision_) {
-        // Select only defines the top-level buffer, which in this case is the
-        // tuple, so we cannot allow mixed precision.
-        compatible =
-            ShapeUtil::Compatible(instruction->shape(), inferred_shape);
-      } else {
-        compatible = ShapeUtil::CompatibleIgnoringFpPrecision(
-            instruction->shape(), inferred_shape);
-      }
+    case HloOpcode::kTupleSelect:
+      // TupleSelect only defines the top-level buffer, which in this case is
+      // the tuple, so we cannot allow mixed precision.
+      compatible = ShapeUtil::Compatible(instruction->shape(), inferred_shape);
       break;
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:

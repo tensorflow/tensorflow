@@ -44,6 +44,9 @@ class InterfaceTests(test.TestCase):
     # from doing this while maintaining backward compatibility.
     root.leaf = duplicate_name_dep
     root._track_checkpointable(duplicate_name_dep, name="leaf", overwrite=True)
+    self.assertIs(duplicate_name_dep, root._lookup_dependency("leaf"))
+    (_, dep_object), = root._checkpoint_dependencies
+    self.assertIs(duplicate_name_dep, dep_object)
 
   def testNoDependency(self):
     root = tracking.Checkpointable()

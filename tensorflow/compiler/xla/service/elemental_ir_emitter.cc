@@ -1227,7 +1227,14 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
 
   // If no implicit broadcast is needed for this operand, returns the target
   // index as the source index.
-  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape())) {
+  //
+  // `IrArray::Index` may contain a physical linear which we can propagate to
+  // our operand only if our layouts match.  "only if" is a bit strong since
+  // e.g. we can still forward the linear index if the operand shape is
+  // [5,1,1,5]{3,2,1,0} and the HLO shape is[5,1,1,5]{3,1,2,0}, but those cases
+  // are probably not worth handling here for now.
+  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape()) &&
+      LayoutUtil::Equal(operand_shape.layout(), hlo.shape().layout())) {
     return target_index;
   }
 

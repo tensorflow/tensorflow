@@ -584,6 +584,32 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "proximal_adagrad_test",
+    size = "medium",
+    srcs = ["proximal_adagrad_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "proximal_gradient_descent_test",
+    size = "medium",
+    srcs = ["proximal_gradient_descent_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],

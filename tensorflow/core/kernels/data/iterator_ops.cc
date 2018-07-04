@@ -696,7 +696,7 @@ class ToSingleElementOp : public AsyncOpKernel {
       });
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
-      bool end_of_sequence;
+      bool end_of_sequence = false;
 
       Status s =
           raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);

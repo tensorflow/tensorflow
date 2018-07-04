@@ -286,6 +286,10 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
+  // Helper for inferring the shape of TupleSelect ops.
+  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
+                                               const Shape& on_true,
+                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast
