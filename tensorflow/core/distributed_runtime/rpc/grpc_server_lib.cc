@@ -121,6 +121,9 @@ Status GrpcServer::Init(
   worker_env_.env = env_;
 
 
+  // Check parameters before DeviceFactory::AddDevices,
+  // otherwise if 'task_index=-1' the program will abort.
+
   // Look up the port that has been requested for this task in `server_def_`.
   int requested_port = -1;
   for (const auto& job : server_def_.cluster().job()) {
