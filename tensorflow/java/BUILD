@@ -86,7 +86,10 @@ tf_cc_binary(
         "src/gen/cc/op_gen_main.cc",
     ],
     copts = tf_copts(),
-    linkopts = ["-lm"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     linkstatic = 1,
     deps = [
         ":java_op_gen_lib",
