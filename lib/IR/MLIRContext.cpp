@@ -121,7 +121,7 @@ public:
   llvm::StringMap<char, llvm::BumpPtrAllocator&> identifiers;
 
   // Primitive type uniquing.
-  PrimitiveType *primitives[int(TypeKind::LAST_PRIMITIVE_TYPE)+1] = { nullptr };
+  PrimitiveType *primitives[int(Type::Kind::LAST_PRIMITIVE_TYPE)+1] = {nullptr};
 
   // Affine map uniquing.
   using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
@@ -194,8 +194,8 @@ Identifier Identifier::get(StringRef str, const MLIRContext *context) {
 // Types
 //===----------------------------------------------------------------------===//
 
-PrimitiveType *PrimitiveType::get(TypeKind kind, MLIRContext *context) {
-  assert(kind <= TypeKind::LAST_PRIMITIVE_TYPE && "Not a primitive type kind");
+PrimitiveType *PrimitiveType::get(Kind kind, MLIRContext *context) {
+  assert(kind <= Kind::LAST_PRIMITIVE_TYPE && "Not a primitive type kind");
   auto &impl = context->getImpl();
 
   // We normally have these types.
@@ -284,7 +284,7 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
 }
 
 
-TensorType::TensorType(TypeKind kind, Type *elementType, MLIRContext *context)
+TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
   : Type(kind, context), elementType(elementType) {
   assert((isa<PrimitiveType>(elementType) || isa<VectorType>(elementType) ||
           isa<IntegerType>(elementType)) &&

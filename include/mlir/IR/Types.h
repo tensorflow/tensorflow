@@ -26,45 +26,40 @@ namespace mlir {
   class PrimitiveType;
   class IntegerType;
 
-/// Integer identifier for all the concrete type kinds.
-enum class TypeKind {
-  // Target pointer sized integer.
-  AffineInt,
-
-  // Floating point.
-  BF16,
-  F16,
-  F32,
-  F64,
-
-  /// This is a marker for the last primitive type.  The range of primitive
-  /// types is expected to be this element and earlier.
-  LAST_PRIMITIVE_TYPE = F64,
-
-  // Derived types.
-  Integer,
-  Function,
-  Vector,
-  RankedTensor,
-  UnrankedTensor,
-
-  // TODO: MemRef types.
-};
-
 /// Instances of the Type class are immutable, uniqued, immortal, and owned by
 /// MLIRContext.  As such, they are passed around by raw non-const pointer.
 ///
 class Type {
 public:
+  /// Integer identifier for all the concrete type kinds.
+  enum class Kind {
+    // Target pointer sized integer.
+    AffineInt,
+
+    // Floating point.
+    BF16,
+    F16,
+    F32,
+    F64,
+
+    /// This is a marker for the last primitive type.  The range of primitive
+    /// types is expected to be this element and earlier.
+    LAST_PRIMITIVE_TYPE = F64,
+
+    // Derived types.
+    Integer,
+    Function,
+    Vector,
+    RankedTensor,
+    UnrankedTensor,
+
+    // TODO: MemRef types.
+  };
+
 
   /// Return the classification for this type.
-  TypeKind getKind() const {
+  Kind getKind() const {
     return kind;
-  }
-
-  /// Return true if this type is the specified kind.
-  bool is(TypeKind k) const {
-    return kind == k;
   }
 
   /// Return the LLVMContext in which this type was uniqued.
@@ -83,10 +78,10 @@ public:
   static PrimitiveType *getF64(MLIRContext *ctx);
 
 protected:
-  explicit Type(TypeKind kind, MLIRContext *context)
+  explicit Type(Kind kind, MLIRContext *context)
     : context(context), kind(kind), subclassData(0) {
   }
-  explicit Type(TypeKind kind, MLIRContext *context, unsigned subClassData)
+  explicit Type(Kind kind, MLIRContext *context, unsigned subClassData)
     : Type(kind, context) {
     setSubclassData(subClassData);
   }
@@ -102,11 +97,13 @@ protected:
   }
 
 private:
+  Type(const Type&) = delete;
+  void operator=(const Type&) = delete;
   /// This refers to the MLIRContext in which this type was uniqued.
   MLIRContext *const context;
 
   /// Classification of the subclass, used for type checking.
-  TypeKind kind : 8;
+  Kind kind : 8;
 
   // Space for subclasses to store data.
   unsigned subclassData : 24;
@@ -121,31 +118,31 @@ inline raw_ostream &operator<<(raw_ostream &os, const Type &type) {
 /// and floating point values.
 class PrimitiveType : public Type {
 public:
-  static PrimitiveType *get(TypeKind kind, MLIRContext *context);
+  static PrimitiveType *get(Kind kind, MLIRContext *context);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
-    return type->getKind() <= TypeKind::LAST_PRIMITIVE_TYPE;
+    return type->getKind() <= Kind::LAST_PRIMITIVE_TYPE;
   }
 private:
-  PrimitiveType(TypeKind kind, MLIRContext *context);
+  PrimitiveType(Kind kind, MLIRContext *context);
 };
 
 
 inline PrimitiveType *Type::getAffineInt(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::AffineInt, ctx);
+  return PrimitiveType::get(Kind::AffineInt, ctx);
 }
 inline PrimitiveType *Type::getBF16(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::BF16, ctx);
+  return PrimitiveType::get(Kind::BF16, ctx);
 }
 inline PrimitiveType *Type::getF16(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::F16, ctx);
+  return PrimitiveType::get(Kind::F16, ctx);
 }
 inline PrimitiveType *Type::getF32(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::F32, ctx);
+  return PrimitiveType::get(Kind::F32, ctx);
 }
 inline PrimitiveType *Type::getF64(MLIRContext *ctx) {
-  return PrimitiveType::get(TypeKind::F64, ctx);
+  return PrimitiveType::get(Kind::F64, ctx);
 }
 
 /// Integer types can have arbitrary bitwidth up to a large fixed limit of 4096.
@@ -160,7 +157,7 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
-    return type->getKind() == TypeKind::Integer;
+    return type->getKind() == Kind::Integer;
   }
 private:
   unsigned width;
@@ -189,7 +186,7 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
-    return type->getKind() == TypeKind::Function;
+    return type->getKind() == Kind::Function;
   }
 
 private:
@@ -217,7 +214,7 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
-    return type->getKind() == TypeKind::Vector;
+    return type->getKind() == Kind::Vector;
   }
 
 private:
@@ -236,15 +233,15 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
-    return type->getKind() == TypeKind::RankedTensor ||
-           type->getKind() == TypeKind::UnrankedTensor;
+    return type->getKind() == Kind::RankedTensor ||
+           type->getKind() == Kind::UnrankedTensor;
   }
 
 protected:
   /// The type of each scalar element of the tensor.
   Type *elementType;
 
-  TensorType(TypeKind kind, Type *elementType, MLIRContext *context);
+  TensorType(Kind kind, Type *elementType, MLIRContext *context);
 };
 
 /// Ranked tensor types represent multi-dimensional arrays that have a shape
@@ -262,7 +259,7 @@ public:
   unsigned getRank() const { return getShape().size(); }
 
   static bool classof(const Type *type) {
-    return type->getKind() == TypeKind::RankedTensor;
+    return type->getKind() == Kind::RankedTensor;
   }
 
 private:
@@ -279,7 +276,7 @@ public:
   static UnrankedTensorType *get(Type *elementType);
 
   static bool classof(const Type *type) {
-    return type->getKind() == TypeKind::UnrankedTensor;
+    return type->getKind() == Kind::UnrankedTensor;
   }
 
 private:
