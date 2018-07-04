@@ -12,12 +12,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-FLATBUFFERS_COPTS = [
-    "-fexceptions",
-] + select({
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
+FLATBUFFERS_COPTS = select({
     "@bazel_tools//src:windows": [],
     "@bazel_tools//src:windows_msvc": [],
-    "//conditions:default": ["-Wno-implicit-fallthrough"],
+    "//conditions:default": ["-Wno-implicit-fallthrough", "-fexceptions"],
 })
 
 # Public flatc library to compile flatbuffer files at runtime.
@@ -121,6 +124,7 @@ cc_binary(
         ":freebsd": [
             "-lm",
         ],
+        ":windows": [],
         "//conditions:default": [
             "-lm",
             "-ldl",
