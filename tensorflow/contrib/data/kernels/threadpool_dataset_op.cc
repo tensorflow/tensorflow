@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace {
@@ -24,19 +25,32 @@ namespace {
 class ThreadPoolResource : public ResourceBase {
  public:
   ThreadPoolResource(Env* env, const ThreadOptions& thread_options,
-                     const string& name, int num_threads, bool low_latency_hint)
-      : thread_pool_(env, thread_options, name, num_threads, low_latency_hint) {
-  }
+                     const string& name, int num_threads, bool low_latency_hint,
+                     int max_intra_op_parallelism)
+      : thread_pool_(env, thread_options, name, num_threads, low_latency_hint),
+        max_intra_op_parallelism_(max_intra_op_parallelism) {}
 
   // Schedules fn() for execution in the pool of threads.
   void Schedule(std::function<void()> fn) {
-    thread_pool_.Schedule(std::move(fn));
+    if (max_intra_op_parallelism_ < 0) {
+      thread_pool_.Schedule(std::move(fn));
+    } else {
+      thread_pool_.Schedule(std::bind(
+          [this](std::function<void()> bound_fn) {
+            // TODO(mrry): Consider moving this thread-local configuration to
+            // the threads themselves.
+            ScopedPerThreadMaxParallelism scope(max_intra_op_parallelism_);
+            bound_fn();
+          },
+          std::move(fn)));
+    }
   }
 
   string DebugString() override { return "ThreadPoolResource"; }
 
  private:
   thread::ThreadPool thread_pool_;
+  const int max_intra_op_parallelism_;
 };
 
 // Creates a handle to a ThreadPool resource. Note that we don't use
@@ -48,6 +62,8 @@ class ThreadPoolHandleOp : public OpKernel {
   explicit ThreadPoolHandleOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("display_name", &display_name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("num_threads", &num_threads_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_intra_op_parallelism",
+                                     &max_intra_op_parallelism_));
     OP_REQUIRES(
         ctx, num_threads_ > 0,
         errors::InvalidArgument("`num_threads` must be greater than zero."));
@@ -78,7 +94,7 @@ class ThreadPoolHandleOp : public OpKernel {
                                   EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                                     *ret = new ThreadPoolResource(
                                         ctx->env(), {}, display_name_,
-                                        num_threads_,
+                                        num_threads_, max_intra_op_parallelism_,
                                         false /* low_latency_hint */);
                                     return Status::OK();
                                   }));
@@ -95,6 +111,7 @@ class ThreadPoolHandleOp : public OpKernel {
   bool initialized_ GUARDED_BY(mu_) = false;
   string display_name_;
   int num_threads_;
+  int max_intra_op_parallelism_;
 };
 
 class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
@@ -127,7 +144,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       threadpool_->Unref();
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::ThreadPool")}));
@@ -140,7 +157,9 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "ThreadPoolDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "ThreadPoolDatasetOp::Dataset";
+    }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -154,8 +173,11 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

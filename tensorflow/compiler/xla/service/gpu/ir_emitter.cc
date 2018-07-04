@@ -191,6 +191,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
   HloOpcode root_opcode = computation.root_instruction()->opcode();
   PrimitiveType element_type =
       computation.root_instruction()->shape().element_type();
+  bool is_atomic_integral = element_type == S32 || element_type == U32 ||
+                            element_type == S64 || element_type == U64;
   llvm::Value* source = ir_builder_.CreateLoad(source_address, "source");
   if (root_opcode == HloOpcode::kAdd) {
     // NVPTX supports atomicAdd on F32 and integer types.
@@ -201,7 +203,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                                    {output_address->getType()}, &ir_builder_);
       return true;
     }
-    if (primitive_util::IsIntegralType(element_type)) {
+    if (is_atomic_integral) {
       // integral + integral
       ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, output_address,
                                   source,
@@ -210,9 +212,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     }
   }
 
-  // NVPTX supports atomicMax and atomicMin on only integer types.
-  if (root_opcode == HloOpcode::kMaximum &&
-      primitive_util::IsIntegralType(element_type)) {
+  // NVPTX supports atomicMax and atomicMin only on integer types.
+  if (root_opcode == HloOpcode::kMaximum && is_atomic_integral) {
     // max(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Max
@@ -222,8 +223,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     return true;
   }
 
-  if (root_opcode == HloOpcode::kMinimum &&
-      primitive_util::IsIntegralType(element_type)) {
+  if (root_opcode == HloOpcode::kMinimum && is_atomic_integral) {
     // min(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Min
@@ -421,22 +421,25 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
 Status IrEmitter::HandleSelect(HloInstruction* select) {
   auto pred = select->operand(0);
-  auto on_true = select->operand(1);
-  auto on_false = select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
-
-  if (ShapeUtil::IsTuple(select->shape())) {
-    llvm_ir::EmitTupleSelect(GetIrArray(*select, *select),
-                             GetIrArray(*pred, *select),
-                             GetBasePointer(*on_true),
-                             GetBasePointer(*on_false), &ir_builder_, module_);
-    return Status::OK();
-  }
-
   // We must not call the subclass `DefaultAction` method, lest its
   // `HandleSelect` call `IrEmitter::HandleSelect` and its `DefaultAction`
   // assume no handler has already been called.
   return IrEmitter::DefaultAction(select);
+}
+
+Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
+  auto pred = tuple_select->operand(0);
+  auto on_true = tuple_select->operand(1);
+  auto on_false = tuple_select->operand(2);
+  TF_RET_CHECK(pred->shape().element_type() == PRED);
+  TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
+  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  llvm_ir::EmitTupleSelect(GetIrArray(*tuple_select, *tuple_select),
+                           GetIrArray(*pred, *tuple_select),
+                           GetBasePointer(*on_true), GetBasePointer(*on_false),
+                           &ir_builder_, module_);
+  return Status::OK();
 }
 
 namespace {
@@ -475,12 +478,15 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   const Shape& lhs_shape = lhs_instruction->shape();
   const Shape& rhs_shape = rhs_instruction->shape();
 
+  // TODO(b/110211620): Convert to use i32 index_type when it is possible.
+  llvm::Type* index_type = ir_builder_.getInt64Ty();
+  llvm_ir::IrArray::Index element_index(index_type);
   if (ShapeUtil::IsScalar(lhs_shape) && ShapeUtil::IsScalar(rhs_shape)) {
     // If the operands are scalar, don't emit any loops.
     llvm::Value* lhs_value =
-        lhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
+        lhs_array.EmitReadArrayElement(/*index=*/element_index, &ir_builder_);
     llvm::Value* rhs_value =
-        rhs_array.EmitReadArrayElement(/*index=*/{}, &ir_builder_);
+        rhs_array.EmitReadArrayElement(/*index=*/element_index, &ir_builder_);
     llvm::Value* result;
     if (ShapeUtil::ElementIsComplex(lhs_shape)) {
       auto value = MultiplyComplex(lhs_value, rhs_value, &ir_builder_);
@@ -490,7 +496,8 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     } else {
       result = ir_builder_.CreateFMul(lhs_value, rhs_value);
     }
-    target_array.EmitWriteArrayElement(/*index=*/{}, result, &ir_builder_);
+    target_array.EmitWriteArrayElement(/*index=*/element_index, result,
+                                       &ir_builder_);
     return Status::OK();
   }
 
@@ -581,7 +588,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // address. The index into the target address is the concatenation of the rhs
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
-  llvm_ir::IrArray::Index target_index;
+  llvm_ir::IrArray::Index target_index(index_type);
   for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
       target_index.push_back(lhs_index[dimension]);
@@ -607,7 +614,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 }
 
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
-  if (ShapeUtil::HasZeroElements(convolution->shape())) {
+  if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }
@@ -617,7 +624,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 }
 
 Status IrEmitter::HandleFft(HloInstruction* fft) {
-  if (ShapeUtil::HasZeroElements(fft->shape())) {
+  if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
     return Status::OK();
   }

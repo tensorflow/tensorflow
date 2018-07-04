@@ -16,8 +16,6 @@
 
 _SINGLE_URL_WHITELIST = depset([
     "arm_compiler",
-    "ortools_archive",
-    "gemmlowp",
 ])
 
 def _is_windows(ctx):
@@ -88,7 +86,9 @@ def _tf_http_archive(ctx):
   if ctx.attr.patch_file != None:
     _apply_patch(ctx, ctx.attr.patch_file)
   if ctx.attr.build_file != None:
-    ctx.template("BUILD", ctx.attr.build_file, {
+    # Use BUILD.bazel to avoid conflict with third party projects with
+    # BUILD or build (directory) underneath.
+    ctx.template("BUILD.bazel", ctx.attr.build_file, {
         "%prefix%": ".." if _repos_are_siblings() else "external",
     }, False)
 

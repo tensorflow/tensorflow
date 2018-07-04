@@ -75,19 +75,7 @@ service XlaService {
   rpc GetShape(GetShapeRequest) returns (GetShapeResponse) {
   }
 
-  // Requests the program shape of the referenced computation.
-  rpc GetComputationShape(GetComputationShapeRequest)
-      returns (GetComputationShapeResponse) {
-  }
-
   // Requests the statistics of the given computation.
-  rpc GetComputationStats(ComputationStatsRequest)
-      returns (ComputationStatsResponse) {
-  }
-
-  // Requests the statistics of the given computation.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   rpc GetComputationGraphStats(ComputationGraphStatsRequest)
       returns (ComputationStatsResponse) {
   }
@@ -121,23 +109,10 @@ service XlaService {
   rpc ResetDevice(ResetDeviceRequest) returns (ResetDeviceResponse) {
   }
 
-  // Tests if an expression is a compile-time constant.
-  rpc IsConstant(IsConstantRequest) returns (IsConstantResponse) {
-  }
-
-  // Computes the value of a constant expression.
-  rpc ComputeConstant(ComputeConstantRequest)
-      returns (ComputeConstantResponse) {
-  }
-
   // Computes the value of a constant expression. The request contains the
   // computation graph for the constant expression.
   rpc ComputeConstantGraph(ComputeConstantGraphRequest)
       returns (ComputeConstantResponse) {
-  }
-
-  // Retrieves the inferred shape for a value within a computation.
-  rpc GetLocalShape(GetLocalShapeRequest) returns (GetLocalShapeResponse) {
   }
 
   // Requests one or more device handles from the target. The returned device
@@ -153,32 +128,6 @@ service XlaService {
       returns (CreateChannelHandleResponse) {
   }
 
-  // Requests that the referenced computation be specialized for the provided
-  // arguments for subsequent execution. This permits things such as value
-  // specialization.
-  rpc Specialize(SpecializeRequest) returns (SpecializeResponse) {
-  }
-
-  // Modifies the provided computation so that subsequent executions
-  // will compute the provided ComputationDataHandle, rather than the
-  // last expression enqueued on that Computation.
-  rpc SetReturnValue(SetReturnValueRequest) returns (SetReturnValueResponse) {
-  }
-
-  // Computation creates a new computation with the given name.
-  // A unique ComputationHandle is returned.
-  rpc Computation(ComputationRequest) returns (ComputationResponse) {
-  }
-
-  // Adds a new op to a computation.
-  rpc CreateOp(OpRequest) returns (OpResponse) {
-  }
-
-  // Invokes the provided computation with the provided global data passed as
-  // immutable arguments. Returns global data output and execution timing.
-  rpc Execute(ExecuteRequest) returns (ExecuteResponse) {
-  }
-
   // Invokes the provided computation with the provided global data passed as
   // immutable arguments. The request contains the whole computation graph.
   // Returns global data output and execution timing.
@@ -188,38 +137,13 @@ service XlaService {
   // Invokes the provided list of computations in parallel with the provided
   // global data for each computation. Returns a list of global data output and
   // execution timing.
-  rpc ExecuteParallel(ExecuteParallelRequest)
-      returns (ExecuteParallelResponse) {
-  }
-
-  // Invokes the provided list of computations in parallel with the provided
-  // global data for each computation. Returns a list of global data output and
-  // execution timing.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   rpc ExecuteGraphParallel(ExecuteGraphParallelRequest)
       returns (ExecuteParallelResponse) {
-  }
-
-  // Invokes the provided computation with the provided global data passed as
-  // immutable arguments. Returns a handle to the execution.
-  rpc ExecuteAsync(ExecuteAsyncRequest) returns (ExecuteAsyncResponse) {
   }
 
   // Waits until the given execution (aysnchronously launched) is complete, and
   // returns the global data output.
   rpc WaitForExecution(WaitForExecutionRequest)
       returns (WaitForExecutionResponse) {
-  }
-
-  // Serializes a computation to proto form, so it can be loaded via
-  // LoadComputationSnapshot.
-  rpc SnapshotComputation(SnapshotComputationRequest)
-      returns (SnapshotComputationResponse) {
-  }
-
-  // Loads a computation from a captured snapshot.
-  rpc LoadComputationSnapshot(LoadComputationSnapshotRequest)
-      returns (LoadComputationSnapshotResponse) {
   }
 }

@@ -125,21 +125,27 @@ TEST_F(CopyInsertionTest, SingleConstant) {
 }
 
 TEST_F(CopyInsertionTest, ExistingCopiesNotRemoved) {
-  // Verify that an kCopy instructions which exist in the pass before
+  // Verify that kCopy instructions which change layout and exist before
   // copy-insertion remain in the graph after copy-insertion.
   auto module = CreateNewModule();
 
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
-  HloInstruction* copy_1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      constant->shape(), HloOpcode::kCopy, constant));
-  HloInstruction* copy_2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      constant->shape(), HloOpcode::kCopy, constant));
+  HloInstruction* constant =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          Literal::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}})));
+  auto minor_to_major = LayoutUtil::MinorToMajor(constant->shape());
+  Layout reversed_layout =
+      LayoutUtil::MakeLayoutFromMajorToMinor(minor_to_major);
+  Shape copy_shape = constant->shape();
+  *copy_shape.mutable_layout() = reversed_layout;
+  HloInstruction* copy_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(copy_shape, HloOpcode::kCopy, constant));
+  HloInstruction* copy_2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(copy_shape, HloOpcode::kCopy, constant));
   HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant->shape(), HloOpcode::kAdd, copy_1, copy_2));
-  HloInstruction* add_copy = builder.AddInstruction(
-      HloInstruction::CreateUnary(constant->shape(), HloOpcode::kCopy, add));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(add->shape(), HloOpcode::kCopy, add));
 
   module->AddEntryComputation(builder.Build());
 
@@ -147,12 +153,11 @@ TEST_F(CopyInsertionTest, ExistingCopiesNotRemoved) {
 
   InsertCopies(module.get());
 
-  EXPECT_EQ(CountCopies(*module), 3);
+  EXPECT_EQ(CountCopies(*module), 2);
 
-  EXPECT_EQ(module->entry_computation()->root_instruction(), add_copy);
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Copy(op::Add(op::Copy(op::Constant()), op::Copy(op::Constant()))));
+  EXPECT_EQ(module->entry_computation()->root_instruction(), add);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Add(op::Copy(op::Constant()), op::Copy(op::Constant())));
 }
 
 TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
@@ -206,7 +211,7 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   HloInstruction* pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   EXPECT_THAT(constant1->users(), UnorderedElementsAre(tuple1));
   EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
@@ -377,7 +382,7 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
   HloInstruction* pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   HloInstruction* select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   HloInstruction* gte =
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetSubshape(select->shape(), {0}), select, 0));
@@ -686,7 +691,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto pred = builder.AddInstruction(
         HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
     auto data_init = builder.AddInstruction(HloInstruction::CreateTernary(
-        nested_tuple_shape_, HloOpcode::kSelect, pred, tuple1, tuple2));
+        nested_tuple_shape_, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
     return BuildWhileInstructionWithCustomInit(nested_loop_state_shape_,
                                                data_init, &builder);
@@ -1595,6 +1600,45 @@ TEST_F(CopyInsertionTest, WhileBodyWithConstantRoot) {
   EXPECT_THAT(condition->root_instruction(), op::Constant());
 }
 
+TEST_F(CopyInsertionTest, TokensShouldNotBeCopied) {
+  string module_string = R"(
+HloModule TokensShouldNotBeCopied
+
+%Body (param.1: (s32[], token[])) -> (s32[], token[]) {
+  %param.1 = (s32[], token[]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], token[]) %param.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
+  %after-all = token[] after-all(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %after-all)
+}
+
+%Cond (param: (s32[], token[])) -> pred[] {
+  %param = (s32[], token[]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
+  %constant = s32[] constant(42)
+  ROOT %less-than = pred[] less-than(s32[] %get-tuple-element, s32[] %constant)
+}
+
+ENTRY %TokensShouldNotBeCopied () -> s32[] {
+  %one = s32[] constant(1)
+  %negative_one = s32[] negate(%one)
+  %init_token = token[] after-all()
+  %init_tuple = (s32[], token[]) tuple(s32[] %negative_one, token[] %init_token)
+  %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
+  ROOT %root = s32[] get-tuple-element((s32[], token[]) %while), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          HloRunner::CreateModuleFromString(
+                              module_string, GetDebugOptionsForTest()));
+  InsertCopies(module.get());
+
+  // There should be no copies added because tokens should not be copied.
+  EXPECT_EQ(CountCopies(*module), 0);
+}
+
 std::unique_ptr<HloComputation> MakeTrivialCondition(const Shape& shape) {
   auto builder = HloComputation::Builder("trivial_condition");
   builder.AddInstruction(
@@ -1636,8 +1680,7 @@ void BM_SequentialWhiles(int num_iters, int num_whiles) {
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    HloModule module("BM_SequentialWhiles", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_SequentialWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1677,8 +1720,7 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
     config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-    HloModule module("BM_SequentialWhiles", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -1750,8 +1792,7 @@ void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
   for (int i = 0; i < num_iters; ++i) {
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
-    HloModule module("BM_ManyElementTuple", VersionedComputationHandle(),
-                     config);
+    HloModule module("BM_ManyElementTuple", config);
     for (int j = 0; j < num_tuple_inputs; ++j) {
       tuple_params[j] = builder.AddInstruction(
           HloInstruction::CreateParameter(j, element_shape, ""));

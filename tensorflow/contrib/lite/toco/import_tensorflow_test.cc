@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace toco {
 
-using port::Status;
 using tensorflow::AttrValue;
 using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
@@ -33,10 +33,17 @@ using tensorflow::DT_INT64;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
 using tensorflow::NodeDef;
+using tensorflow::Status;
 
 namespace internal {
+using ConverterType = tensorflow::Status (*)(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model);
+using ConverterMapType = std::unordered_map<std::string, ConverterType>;
+
+ConverterMapType GetTensorFlowNodeConverterMap();
 Status ImportTensorFlowNode(const NodeDef&, const TensorFlowImportFlags&,
-                            Model*);
+                            Model*, const ConverterMapType&);
 }  // namespace internal
 
 namespace {
@@ -104,8 +111,9 @@ class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
 
   Status ImportNode(const NodeDef& node) {
     Model model;
-    return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
-                                          &model);
+    const auto converter = internal::GetTensorFlowNodeConverterMap();
+    return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), &model,
+                                          converter);
   }
 };
 
@@ -117,9 +125,10 @@ TEST_P(ShapeImportTest, ShapeElementIsNegative) {
   NodeDef node;
   BuildConstNode({1, -2, 10}, GetParam(), 0, &node);
   auto status = ImportNode(node);
-  EXPECT_EQ(status.error_message(),
-            "Tensor shape should not include negative values (while processing "
-            "node 'Node1')");
+  EXPECT_EQ(
+      status.error_message(),
+      "Tensor shape should not include negative values\n\t (while processing "
+      "node 'Node1')");
 }
 INSTANTIATE_TEST_CASE_P(ShapeElementIsNegative, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
@@ -129,7 +138,7 @@ TEST_P(ShapeImportTest, ShapeElementTooLarge) {
   BuildConstNode({3000000000}, GetParam(), 0, &node);
   auto status = ImportNode(node);
   EXPECT_EQ(status.error_message(),
-            "Shape element overflows (while processing node 'Node1')");
+            "Shape element overflows\n\t (while processing node 'Node1')");
 }
 INSTANTIATE_TEST_CASE_P(ShapeElementTooLarge, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
@@ -139,7 +148,7 @@ TEST_P(ShapeImportTest, ShapeTooLarge) {
   BuildConstNode({1000000, 2000000, 2000000, 2000000}, GetParam(), 0, &node);
   auto status = ImportNode(node);
   EXPECT_EQ(status.error_message(),
-            "Tensor shape is too large (while processing node 'Node1')");
+            "Tensor shape is too large\n\t (while processing node 'Node1')");
 }
 INSTANTIATE_TEST_CASE_P(ShapeTooLarge, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
@@ -150,8 +159,9 @@ TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
   auto status = ImportNode(node);
   EXPECT_THAT(status.error_message(),
               ::testing::MatchesRegex(
-                  "Neither input_content nor .*_val have the right dimensions "
-                  "for this .* tensor .while processing node 'Node1'."));
+                  "Neither input_content .0. nor .*_val .0. have the right "
+                  "dimensions .8. for this .* tensor\n\t .while processing "
+                  "node 'Node1'."));
 }
 INSTANTIATE_TEST_CASE_P(ValidShapeButZeroElements, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));

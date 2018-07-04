@@ -25,6 +25,7 @@ from tensorflow.contrib.linear_optimizer.python import sdca_estimator
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.platform import test
 
 
@@ -273,6 +274,47 @@ class SDCALogisticClassifierTest(test.TestCase):
       metrics = classifier.evaluate(input_fn=input_fn, steps=1)
       self.assertGreater(metrics['accuracy'], 0.9)
 
+  def testPartitionedMixedFeatures(self):
+    """Tests SDCALogisticClassifier with a mix of features (partitioned)."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              constant_op.constant([[0.6], [0.8], [0.3]]),
+          'sq_footage':
+              constant_op.constant([900.0, 700.0, 600.0]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 3], [2, 1]],
+                  dense_shape=[3, 5]),
+          'weights':
+              constant_op.constant([[3.0], [1.0], [1.0]])
+      }, constant_op.constant([[1], [0], [1]])
+
+    with self._single_threaded_test_session():
+      price = feature_column_lib.real_valued_column('price')
+      sq_footage_bucket = feature_column_lib.bucketized_column(
+          feature_column_lib.real_valued_column('sq_footage'),
+          boundaries=[650.0, 800.0])
+      country = feature_column_lib.sparse_column_with_hash_bucket(
+          'country', hash_bucket_size=5)
+      sq_footage_country = feature_column_lib.crossed_column(
+          [sq_footage_bucket, country], hash_bucket_size=10)
+      classifier = sdca_estimator.SDCALogisticClassifier(
+          example_id_column='example_id',
+          feature_columns=[
+              price, sq_footage_bucket, country, sq_footage_country
+          ],
+          weight_column_name='weights',
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_shards=2, axis=0))
+      classifier.fit(input_fn=input_fn, steps=50)
+      metrics = classifier.evaluate(input_fn=input_fn, steps=1)
+      self.assertGreater(metrics['accuracy'], 0.9)
+
 
 class SDCALinearRegressorTest(test.TestCase):
 
@@ -346,6 +388,48 @@ class SDCALinearRegressorTest(test.TestCase):
           ],
           l2_regularization=1.0,
           weight_column_name='weights')
+      regressor.fit(input_fn=input_fn, steps=20)
+      loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+      self.assertLess(loss, 0.05)
+
+  def testMixedFeaturesArbitraryWeightsPartitioned(self):
+    """Tests SDCALinearRegressor works with a mix of features (partitioned)."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              constant_op.constant([[0.6], [0.8], [0.3]]),
+          'sq_footage':
+              constant_op.constant([[900.0], [700.0], [600.0]]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 3], [2, 1]],
+                  dense_shape=[3, 5]),
+          'weights':
+              constant_op.constant([[3.0], [5.0], [7.0]])
+      }, constant_op.constant([[1.55], [-1.25], [-3.0]])
+
+    with self._single_threaded_test_session():
+      price = feature_column_lib.real_valued_column('price')
+      sq_footage_bucket = feature_column_lib.bucketized_column(
+          feature_column_lib.real_valued_column('sq_footage'),
+          boundaries=[650.0, 800.0])
+      country = feature_column_lib.sparse_column_with_hash_bucket(
+          'country', hash_bucket_size=5)
+      sq_footage_country = feature_column_lib.crossed_column(
+          [sq_footage_bucket, country], hash_bucket_size=10)
+      regressor = sdca_estimator.SDCALinearRegressor(
+          example_id_column='example_id',
+          feature_columns=[
+              price, sq_footage_bucket, country, sq_footage_country
+          ],
+          l2_regularization=1.0,
+          weight_column_name='weights',
+          partitioner=partitioned_variables.fixed_size_partitioner(
+              num_shards=2, axis=0))
       regressor.fit(input_fn=input_fn, steps=20)
       loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
       self.assertLess(loss, 0.05)

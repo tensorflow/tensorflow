@@ -148,6 +148,12 @@ def if_windows(a):
       "//conditions:default": [],
   })
 
+def if_not_windows_cuda(a):
+  return select({
+      clean_dep("//tensorflow:with_cuda_support_windows_override"): [],
+      "//conditions:default": a,
+  })
+
 def if_linux_x86_64(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
@@ -240,6 +246,9 @@ def tf_opts_nortti_if_android():
   ])
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
+
+def tf_features_nomodules_if_android():
+  return if_android(["-use_header_modules"])
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
@@ -919,6 +928,7 @@ def tf_gpu_kernel_library(srcs,
                           hdrs=[],
                           **kwargs):
   copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
   native.cc_library(
       srcs=srcs,
@@ -959,6 +969,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   if not cuda_deps:
     cuda_deps = []
 
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
   native.cc_library(
       deps=deps + if_cuda(cuda_deps + [
           clean_dep("//tensorflow/core:cuda"),
@@ -1301,6 +1312,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
         name=basename + "_gpu",
         srcs=gpu_srcs,
         copts=_cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+        features = if_cuda(["-use_header_modules"]),
         deps=deps + if_cuda(cuda_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
 
@@ -1352,12 +1364,6 @@ register_extension_info(
     extension_name = "tf_custom_op_py_library",
     label_regex_for_dep = "{extension_name}",
 )
-
-def tf_extension_linkopts():
-  return []  # No extension link opts
-
-def tf_extension_copts():
-  return []  # No extension c opts
 
 # In tf_py_wrap_cc generated libraries
 # module init functions are not exported unless
@@ -1459,10 +1465,10 @@ def tf_py_wrap_cc(name,
   tf_cc_shared_object(
       name=cc_library_name,
       srcs=[module_name + ".cc"],
-      copts=(copts + if_not_windows([
+      copts=copts + if_not_windows([
           "-Wno-self-assign", "-Wno-sign-compare", "-Wno-write-strings"
-      ]) + tf_extension_copts()),
-      linkopts=tf_extension_linkopts() + extra_linkopts,
+      ]),
+      linkopts=extra_linkopts,
       linkstatic=1,
       deps=deps + extra_deps,
       **kwargs)
@@ -1725,7 +1731,7 @@ def tf_py_build_info_genrule():
       name="py_build_info_gen",
       outs=["platform/build_info.py"],
       cmd=
-      "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
+     "$(location //tensorflow/tools/build_info:gen_build_info.py) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu"),
       local=1,
       tools=[clean_dep("//tensorflow/tools/build_info:gen_build_info.py")],)
 

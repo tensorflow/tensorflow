@@ -1073,23 +1073,46 @@ def _create_local_cuda_repository(repository_ctx):
   cc_fullpath = cc if not should_download_clang else "crosstool/" + cc
 
   host_compiler_includes = _host_compiler_includes(repository_ctx, cc_fullpath)
-  cuda_defines = {
-           "%{cuda_include_path}": _cuda_include_path(repository_ctx,
-                                                      cuda_config),
-           "%{host_compiler_includes}": host_compiler_includes,
-       }
+  cuda_defines = {}
   if is_cuda_clang:
-    cuda_defines["%{clang_path}"] = cc
+    cuda_defines["%{host_compiler_path}"] = str(cc)
+    cuda_defines["%{host_compiler_warnings}"] = """
+        # Some parts of the codebase set -Werror and hit this warning, so
+        # switch it off for now.
+        flag: "-Wno-invalid-partial-specialization"
+    """
+    cuda_defines["%{host_compiler_includes}"] = host_compiler_includes
     _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty"})
-    _tpl(repository_ctx, "crosstool:CROSSTOOL_clang", cuda_defines, out="crosstool/CROSSTOOL")
     repository_ctx.file("crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc", "")
   else:
+    cuda_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
+    cuda_defines["%{host_compiler_warnings}"] = ""
+    # TODO(klimek): We currently need to inject "/" as builtin directory path
+    # to disable bazel's dependency checks.
+    # The problem is that:
+    # - the python rules symlink the python headers into the bazel root
+    # - the rules use 'includes' in the BUILD file to redirect includes of the
+    #   python headers through those paths
+    # - bazel currently uses -isystem for include paths specified via 'includes'
+    # - gcc follows symlinks when resolving files via -isystem paths, and puts
+    #   the resolved paths into the .d file, which makes the dependency check
+    #   fail for bazel
+    # There are multiple possible ways to solve this:
+    # 1. make bazel not use -isystem for paths specified via 'includes'
+    # 2. cp the headers instead of symlinking them
+    #
+    # Once this is fixed, the right builtin directory path is:
+    # (host_compiler_includes +
+    #    "\n  cxx_builtin_include_directory: \"%s\"" % cuda_include_path)
+    # The cuda directory needs to be passed, as there is currently no rule
+    # providing the cuda headers in the same way the python headers are
+    # provided.
+    cuda_defines["%{host_compiler_includes}"] = "\n  cxx_builtin_include_directory: \"/\""
     nvcc_path = str(repository_ctx.path("%s/bin/nvcc%s" %
         (cuda_config.cuda_toolkit_path,
         ".exe" if cuda_config.cpu_value == "Windows" else "")))
     _tpl(repository_ctx, "crosstool:BUILD",
          {"%{linker_files}": ":crosstool_wrapper_driver_is_not_gcc"})
-    _tpl(repository_ctx, "crosstool:CROSSTOOL_nvcc", cuda_defines, out="crosstool/CROSSTOOL")
     _tpl(repository_ctx,
          "crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc",
          {
@@ -1100,6 +1123,7 @@ def _create_local_cuda_repository(repository_ctx):
              "%{cuda_compute_capabilities}": ", ".join(
                  ["\"%s\"" % c for c in cuda_config.compute_capabilities]),
          })
+  _tpl(repository_ctx, "crosstool:CROSSTOOL", cuda_defines, out="crosstool/CROSSTOOL")
 
   # Set up cuda_config.h, which is used by
   # tensorflow/stream_executor/dso_loader.cc.

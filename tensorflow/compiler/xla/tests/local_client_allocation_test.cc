@@ -38,9 +38,9 @@ class LocalClientAllocationTest : public LocalClientTestBase {
 
 XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR1<float>({0.0f, 1.0f, 2.0f});
-  auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
-  builder.Add(x, y);
+  auto x = ConstantR1<float>(&builder, {0.0f, 1.0f, 2.0f});
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
 
   TestAllocator* allocator = GetOrCreateAllocator(local_client_->platform());
 
@@ -74,9 +74,9 @@ XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
   // Run a computation on every device on the system. Verify that allocation
   // occurs on the proper device.
   XlaBuilder builder(TestName());
-  auto x = builder.ConstantR1<float>({0.0f, 1.0f, 2.0f});
-  auto y = builder.ConstantR1<float>({2.0f, 3.0f, 4.0f});
-  builder.Add(x, y);
+  auto x = ConstantR1<float>(&builder, {0.0f, 1.0f, 2.0f});
+  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
+  Add(x, y);
   auto computation = builder.Build().ConsumeValueOrDie();
 
   TestAllocator* allocator = GetOrCreateAllocator(local_client_->platform());

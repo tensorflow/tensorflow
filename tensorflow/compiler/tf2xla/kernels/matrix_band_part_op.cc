@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -50,6 +52,7 @@ class MatrixBandPartOp : public XlaOpKernel {
     xla::XlaOp num_upper = context->Input(2);
     DataType input_type = context->input_type(0);
     DataType index_type = context->input_type(1);
+    xla::PrimitiveType index_xla_type = context->input_xla_type(1);
 
     TensorShape batch_shape = input_shape;
     batch_shape.RemoveLastDims(2);
@@ -58,33 +61,29 @@ class MatrixBandPartOp : public XlaOpKernel {
 
     // Compute 'offset', which is how many diagonals we are above/below the
     // diagonal.
-    xla::XlaOp iota_m;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, index_type, m, &iota_m));
+    xla::XlaOp iota_m = xla::Iota(builder, index_xla_type, m);
+    xla::XlaOp iota_n = xla::Iota(builder, index_xla_type, n);
 
-    xla::XlaOp iota_n;
-    OP_REQUIRES_OK(context, XlaHelpers::Iota(builder, index_type, n, &iota_n));
-
-    auto offset = builder->Sub(builder->Broadcast(iota_n, {m}), iota_m,
-                               /*broadcast_dimensions=*/{0});
+    auto offset = xla::Sub(xla::Broadcast(iota_n, {m}), iota_m,
+                           /*broadcast_dimensions=*/{0});
 
     // If num_lower or num_upper are negative, include all lower/upper
     // diagonals.
     auto zero_index = XlaHelpers::Zero(builder, index_type);
-    num_lower = builder->Select(
-        builder->Lt(num_lower, zero_index),
-        XlaHelpers::IntegerLiteral(builder, index_type, m), num_lower);
-    num_upper = builder->Select(
-        builder->Lt(num_upper, zero_index),
-        XlaHelpers::IntegerLiteral(builder, index_type, n), num_upper);
+    num_lower = xla::Select(xla::Lt(num_lower, zero_index),
+                            XlaHelpers::IntegerLiteral(builder, index_type, m),
+                            num_lower);
+    num_upper = xla::Select(xla::Lt(num_upper, zero_index),
+                            XlaHelpers::IntegerLiteral(builder, index_type, n),
+                            num_upper);
 
-    auto indicator = builder->And(builder->Le(builder->Neg(num_lower), offset),
-                                  builder->Le(offset, num_upper));
-    indicator = builder->Broadcast(indicator, batch_shape.dim_sizes());
+    auto indicator = xla::And(xla::Le(xla::Neg(num_lower), offset),
+                              xla::Le(offset, num_upper));
+    indicator = xla::Broadcast(indicator, batch_shape.dim_sizes());
 
     auto zero_input = XlaHelpers::Zero(builder, input_type);
-    auto output = builder->Select(
-        indicator, input,
-        builder->Broadcast(zero_input, input_shape.dim_sizes()));
+    auto output = xla::Select(
+        indicator, input, xla::Broadcast(zero_input, input_shape.dim_sizes()));
 
     context->SetOutput(0, output);
   }

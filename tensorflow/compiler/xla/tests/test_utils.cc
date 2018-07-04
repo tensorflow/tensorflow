@@ -26,6 +26,7 @@ namespace {
 template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointDataImpl(Literal* literal,
                                              std::minstd_rand0* engine) {
+  CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   // Create uniform numbers between 1 and 1.125 to avoid creating denormal
@@ -59,12 +60,14 @@ void PopulateWithRandomFloatingPointDataImpl(Literal* literal,
 template <typename FloatT>
 void PopulateWithRandomFloatingPointData(Literal* literal,
                                          std::minstd_rand0* engine) {
+  CHECK(engine != nullptr);
   PopulateWithRandomFloatingPointDataImpl<FloatT, FloatT>(literal, engine);
 }
 
 template <>
 void PopulateWithRandomFloatingPointData<half>(Literal* literal,
                                                std::minstd_rand0* engine) {
+  CHECK(engine != nullptr);
   PopulateWithRandomFloatingPointDataImpl<half, float>(literal, engine);
 }
 
@@ -73,6 +76,7 @@ void PopulateWithRandomFloatingPointData<half>(Literal* literal,
 template <>
 void PopulateWithRandomFloatingPointData<bfloat16>(Literal* literal,
                                                    std::minstd_rand0* engine) {
+  CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(), BF16);
   std::uniform_real_distribution<float> generator(-0.9f, 1.0f);
   TF_CHECK_OK(literal->Populate<bfloat16>(
@@ -84,6 +88,7 @@ void PopulateWithRandomFloatingPointData<bfloat16>(Literal* literal,
 template <typename IntT>
 void PopulateWithRandomIntegralData(Literal* literal,
                                     std::minstd_rand0* engine) {
+  CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
   std::uniform_int_distribution<IntT> generator(
@@ -107,7 +112,10 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
     }
     return Literal::MakeTupleOwned(std::move(elements));
   }
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
+  if (engine == nullptr) {
+    return Literal::CreateFromShape(shape);
+  }
+  auto literal = MakeUnique<Literal>(shape);
   switch (shape.element_type()) {
     case BF16:
       PopulateWithRandomFloatingPointData<bfloat16>(literal.get(), engine);
@@ -153,6 +161,9 @@ StatusOr<std::unique_ptr<Literal>> MakeFakeLiteralInternal(
           }));
       break;
     }
+    // Token requires no data.
+    case TOKEN:
+      break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape).c_str());
@@ -201,11 +212,13 @@ std::unique_ptr<Literal> MakeRandomNonwrappingSliceIndex(
     std::minstd_rand0* engine) {
   const int64 rank = ShapeUtil::Rank(input_shape);
   std::vector<int32> start_indices(rank);
-  for (int i = 0; i < rank; ++i) {
-    const int32 upper_bound = ShapeUtil::GetDimension(input_shape, i) -
-                              ShapeUtil::GetDimension(slice_shape, i);
-    std::uniform_int_distribution<int32> generator(0, upper_bound);
-    start_indices[i] = generator(*engine);
+  if (engine != nullptr) {
+    for (int i = 0; i < rank; ++i) {
+      const int32 upper_bound = ShapeUtil::GetDimension(input_shape, i) -
+                                ShapeUtil::GetDimension(slice_shape, i);
+      std::uniform_int_distribution<int32> generator(0, upper_bound);
+      start_indices[i] = generator(*engine);
+    }
   }
   return Literal::CreateR1<int32>(start_indices);
 }
@@ -260,14 +273,22 @@ StatusOr<std::unique_ptr<Literal>> CreateLiteralForConstrainedUses(
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
-        if (needs_index != nullptr &&
-            !ShapeUtil::Equal(needs_index->shape(), use->shape())) {
-          return Unimplemented(
-              "Conflicting operand generation slice index constraints\n");
+        if (needs_index != nullptr) {
+          auto needs_index_shape = needs_index->shape();
+          auto use_shape = use->shape();
+          if (needs_index->opcode() == HloOpcode::kDynamicSlice) {
+            needs_index_shape = needs_index->operand(0)->shape();
+          }
+          if (use->opcode() == HloOpcode::kDynamicSlice) {
+            use_shape = use->operand(0)->shape();
+          }
+          if (!ShapeUtil::Equal(needs_index_shape, use_shape)) {
+            return Unimplemented(
+                "Conflicting operand generation slice index constraints\n");
+          }
         }
         needs_index = use;
         break;
-
       case HloOpcode::kReduce:
       case HloOpcode::kReduceWindow:
         needs_constant = use;
@@ -321,20 +342,21 @@ StatusOr<std::unique_ptr<Literal>> MakeConstrainedArgument(
 
 }  // namespace
 
-StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape) {
-  std::minstd_rand0 engine;
-  return MakeFakeLiteralInternal(shape, &engine);
+StatusOr<std::unique_ptr<Literal>> MakeFakeLiteral(const Shape& shape,
+                                                   bool pseudo_random) {
+  auto engine = pseudo_random ? MakeUnique<std::minstd_rand0>() : nullptr;
+  return MakeFakeLiteralInternal(shape, engine.get());
 }
 
 StatusOr<std::vector<std::unique_ptr<Literal>>> MakeFakeArguments(
-    HloModule* const module) {
+    HloModule* const module, bool pseudo_random) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
-  std::minstd_rand0 engine;
+  auto engine = pseudo_random ? MakeUnique<std::minstd_rand0>() : nullptr;
   std::vector<std::unique_ptr<Literal>> arguments(params.size());
   for (int i = 0; i < params.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
-        arguments[i], MakeConstrainedArgument(*dataflow, *params[i], &engine));
+    TF_ASSIGN_OR_RETURN(arguments[i], MakeConstrainedArgument(
+                                          *dataflow, *params[i], engine.get()));
   }
   return std::move(arguments);
 }

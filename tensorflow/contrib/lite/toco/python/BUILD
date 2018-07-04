@@ -12,10 +12,11 @@ cc_library(
     deps = [
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_cc",
+        "//tensorflow/contrib/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/contrib/lite/toco:toco_port",
         "//tensorflow/contrib/lite/toco:toco_tooling",
         "//tensorflow/core:lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )
 
@@ -26,7 +27,7 @@ tf_py_wrap_cc(
         ":toco_python_api",
         "//tensorflow/contrib/lite/toco:model_flags_proto_cc",
         "//tensorflow/contrib/lite/toco:toco_flags_proto_cc",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -39,12 +40,6 @@ py_binary(
         ":tensorflow_wrap_toco",
         "//tensorflow/python:platform",
     ],
-)
-
-py_binary(
-    name = "toco_wrapper",
-    srcs = ["toco_wrapper.py"],
-    srcs_version = "PY2AND3",
 )
 
 tf_py_test(

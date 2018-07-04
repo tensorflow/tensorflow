@@ -79,6 +79,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
   }
+  Status HandleTupleSelect(HloInstructionPtr tuple_select) override {
+    return DefaultAction(tuple_select);
+  }
   Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);
   }
@@ -187,6 +190,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleGather(HloInstructionPtr gather) override {
     return DefaultAction(gather);
+  }
+  Status HandleAfterAll(HloInstructionPtr token) override {
+    return DefaultAction(token);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

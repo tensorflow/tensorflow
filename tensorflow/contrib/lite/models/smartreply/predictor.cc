@@ -104,11 +104,11 @@ void GetSegmentPredictions(
             });
 
   // Add backoff response.
-  for (const string& backoff : config.backoff_responses) {
+  for (const auto& backoff : config.backoff_responses) {
     if (predictor_responses->size() >= config.num_response) {
       break;
     }
-    predictor_responses->push_back({backoff, config.backoff_confidence});
+    predictor_responses->emplace_back(backoff, config.backoff_confidence);
   }
 }
 

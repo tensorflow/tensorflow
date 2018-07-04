@@ -123,6 +123,30 @@ class Variable(checkpointable.CheckpointableBase):
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
 
+  WARNING: tf.Variable objects have a non-intuitive memory model. A Variable is
+  represented internally as a mutable Tensor which can non-deterministically
+  alias other Tensors in a graph. The set of operations which consume a Variable
+  and can lead to aliasing is undetermined and can change across TensorFlow
+  versions. Avoid writing code which relies on the value of a Variable either
+  changing or not changing as other operations happen. For example, using
+  Variable objects or simple functions thereof as predicates in a `tf.cond` is
+  dangerous and error-prone:
+
+  ```
+  v = tf.Variable(True)
+  tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
+  ```
+
+  Here replacing tf.Variable with tf.contrib.eager.Variable will fix any
+  nondeterminism issues.
+
+  To use the replacement for variables which does
+  not have these issues:
+
+  * Replace `tf.Variable` with `tf.contrib.eager.Variable`;
+  * Call `tf.get_variable_scope().set_use_resource(True)` inside a
+    `tf.variable_scope` before the `tf.get_variable()` call.
+
   @compatibility(eager)
   `tf.Variable` is not compatible with eager execution.  Use
   `tf.contrib.eager.Variable` instead which is compatible with both eager
@@ -235,7 +259,7 @@ class Variable(checkpointable.CheckpointableBase):
           constraint=constraint)
 
   def __repr__(self):
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not self._in_graph_mode:
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
           self.name, self.get_shape(), self.dtype.name,
           ops.numpy_text(self.read_value(), is_repr=True))
@@ -317,6 +341,7 @@ class Variable(checkpointable.CheckpointableBase):
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
+    self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
@@ -426,6 +451,7 @@ class Variable(checkpointable.CheckpointableBase):
                                  import_scope=import_scope))
     else:
       self._initial_value = None
+    self._trainable = getattr(variable_def, "trainable", True)
     self._snapshot = g.as_graph_element(
         ops.prepend_name_scope(variable_def.snapshot_name,
                                import_scope=import_scope))
@@ -518,6 +544,10 @@ class Variable(checkpointable.CheckpointableBase):
     """
     self._ref().set_shape(shape)
     self.value().set_shape(shape)
+
+  @property
+  def trainable(self):
+    return self._trainable
 
   def eval(self, session=None):
     """In a session, computes and returns the value of this variable.
@@ -1026,6 +1056,7 @@ class Variable(checkpointable.CheckpointableBase):
         # For backwards compatibility.
         var_def.initial_value_name = ops.strip_name_scope(
             self._initial_value.name, export_scope)
+      var_def.trainable = self.trainable
       var_def.initializer_name = ops.strip_name_scope(
           self.initializer.name, export_scope)
       var_def.snapshot_name = ops.strip_name_scope(
@@ -1062,39 +1093,40 @@ class Variable(checkpointable.CheckpointableBase):
   def __imul__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable *= will be deprecated. Use variable.assign_mul"
-        " if you want assignment to the variable value or 'x = x * y'"
+        "Variable *= will be deprecated. Use `var.assign(var * other)`"
+        " if you want assignment to the variable value or `x = x * y`"
         " if you want a new python Tensor object.", 1)
     return self * other
 
   def __idiv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __itruediv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __irealdiv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __ipow__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable **= will be deprecated. Use 'x = x ** y'"
+        "Variable **= will be deprecated. Use `var.assign(var ** other)`"
+        " if you want assignment to the variable value or `x = x ** y`"
         " if you want a new python Tensor object.", 1)
     return self ** other
 
@@ -1691,6 +1723,8 @@ def report_uninitialized_variables(var_list=None,
           var_list.append(op.outputs[0])
   with ops.name_scope(name):
     # Run all operations on CPU
+    if var_list:
+      init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
     with ops.device("/cpu:0"):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor
@@ -1698,9 +1732,7 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.constant([], dtype=dtypes.string)
       else:
         # Get a 1-D boolean tensor listing whether each variable is initialized.
-        variables_mask = math_ops.logical_not(
-            array_ops.stack(
-                [state_ops.is_variable_initialized(v) for v in var_list]))
+        variables_mask = math_ops.logical_not(array_ops.stack(init_vars))
         # Get a 1-D string tensor containing all the variable names.
         variable_names_tensor = array_ops.constant(
             [s.op.name for s in var_list])

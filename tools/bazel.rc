@@ -1,14 +1,8 @@
-# By default, we don't distinct target and host platfroms.
-# When doing cross compilation, use --config=cross_compile to distinct them.
-build --distinct_host_configuration=false
-build:cross_compile --distinct_host_configuration=true
-
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
 build:android --crosstool_top=//external:android/crosstool
 build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
-build:android --config=cross_compile
 build:android_arm --config=android
 build:android_arm --cpu=armeabi-v7a
 build:android_arm --fat_apk_cpu=armeabi-v7a

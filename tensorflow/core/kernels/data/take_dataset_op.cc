@@ -47,12 +47,9 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      if (count_ < 0) {
-        // Pass through
-        return input_->MakeIterator(prefix);
-      } else if (count_ == 0) {
+      if (count_ == 0) {
         return std::unique_ptr<IteratorBase>(
             new EmptyIterator({this, strings::StrCat(prefix, "::EmptyTake")}));
       } else {
@@ -69,7 +66,7 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "TakeDatasetOp::Dataset"; }
+    string DebugString() const override { return "TakeDatasetOp::Dataset"; }
 
    protected:
     Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
@@ -109,9 +106,11 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
       explicit FiniteIterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params), i_(0) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -121,7 +120,7 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        while (i_ < dataset()->count_) {
+        while (dataset()->count_ < 0 || i_ < dataset()->count_) {
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
           if (!*end_of_sequence) {

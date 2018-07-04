@@ -34,11 +34,11 @@ limitations under the License.
 
 namespace toco {
 namespace {
-// CHECK-fails if the model contains a kTensorFlowUnsupported operation.
+// CHECK-fails if the model contains a kUnsupported operation.
 void CheckUnsupportedOperations(const Model& model) {
   std::set<string> unsupported_ops;
   for (auto& op : model.operators) {
-    if (op->type == OperatorType::kTensorFlowUnsupported) {
+    if (op->type == OperatorType::kUnsupported) {
       unsupported_ops.insert(
           static_cast<const TensorFlowUnsupportedOperator*>(op.get())
               ->tensorflow_op);
@@ -56,6 +56,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialStackToReshape);
+  transformations->Add(new ConvertTrivialTileToConcat);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
@@ -76,7 +77,9 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
+  transformations->Add(new FuseBroadcastIntoFollowingBinary);
   transformations->Add(new MergeReshapeIntoPrecedingTranspose);
+  transformations->Add(new MoveBinaryOperatorBeforeReshape);
   transformations->Add(new ReorderElementwiseUnary);
   transformations->Add(new ReorderReshapeTranspose);
   transformations->Add(new ResolveBatchNormalization);
@@ -94,7 +97,6 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMerge);
   transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
-  transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
   transformations->Add(new IdentifyDilatedConv);
@@ -132,6 +134,8 @@ bool SupportsLstmCell(FileFormat format) {
 bool SupportsPreallocatedWorkspace(FileFormat format) {
   return (format == TFLITE);
 }
+
+bool SupportsShuffledFCWeights(FileFormat format) { return format == TFLITE; }
 
 bool IsRealValued(toco::ArrayDataType type) {
   // TODO(benoitjacob) - this is hardcoding that uint8 and int16 are only used
@@ -263,11 +267,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
       transformations.Add(new IdentifyLstmCell);
     }
-    if (output_format == TFLITE) {
+    if (output_format == TFLITE && toco_flags.split_tflite_lstm_inputs()) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {
       transformations.Add(new toco::MergeLstmCellInputs);
     }
+  }
+  if (toco_flags.quantize_weights()) {
+    transformations.Add(new QuantizeWeights);
   }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
@@ -331,6 +338,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                                 new RemoveFinalDequantizeOp,
                                 ensure_safe_for_int8_kernels,
                             });
+    if (SupportsShuffledFCWeights(output_format)) {
+      RunGraphTransformations(model, "shuffling of FC weights",
+                              {new ShuffleFCWeights});
+    }
   } else {
     GraphTransformationsSet dequantization_transformations{new Dequantize};
     // Dequantize creates FakeQuant nodes. We may want to discard

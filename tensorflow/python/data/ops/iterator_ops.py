@@ -471,9 +471,7 @@ class EagerIterator(object):
           sparse.as_dense_types(self._output_types, self._output_classes))
       self._flat_output_shapes = nest.flatten(
           sparse.as_dense_shapes(self._output_shapes, self._output_classes))
-      self._resource = gen_dataset_ops.iterator(
-          shared_name="",
-          container=_generate_shared_name("eageriterator"),
+      self._resource = gen_dataset_ops.anonymous_iterator(
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       gen_dataset_ops.make_iterator(ds_variant, self._resource)

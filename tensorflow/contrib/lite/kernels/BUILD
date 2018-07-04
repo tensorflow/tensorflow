@@ -142,11 +142,13 @@ cc_library(
         "conv.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
+        "detection_postprocess.cc",
         "div.cc",
         "elementwise.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "exp.cc",
+        "expand_dims.cc",
         "floor.cc",
         "fully_connected.cc",
         "gather.cc",
@@ -156,25 +158,29 @@ cc_library(
         "lsh_projection.cc",
         "lstm.cc",
         "maximum_minimum.cc",
-        "mean.cc",
         "mfcc.cc",
         "mul.cc",
         "neg.cc",
         "pad.cc",
         "pooling.cc",
+        "pow.cc",
+        "reduce.cc",
         "register.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "select.cc",
+        "shape.cc",
         "skip_gram.cc",
         "slice.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "sparse_to_dense.cc",
         "split.cc",
         "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
+        "tile.cc",
         "topk_v2.cc",
         "transpose.cc",
         "transpose_conv.cc",
@@ -233,6 +239,20 @@ tf_cc_test(
     name = "mfcc_test",
     size = "small",
     srcs = ["mfcc_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "detection_postprocess_test",
+    size = "small",
+    srcs = ["detection_postprocess_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
@@ -551,9 +571,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "mean_test",
+    name = "reduce_test",
     size = "small",
-    srcs = ["mean_test.cc"],
+    srcs = ["reduce_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
@@ -858,6 +878,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "tile_test",
+    size = "small",
+    srcs = ["tile_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "comparisons_test",
     size = "small",
     srcs = [
@@ -928,6 +962,63 @@ tf_cc_test(
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "expand_dims_test",
+    size = "small",
+    srcs = ["expand_dims_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_to_dense_test",
+    size = "small",
+    srcs = ["sparse_to_dense_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_test",
+    size = "small",
+    srcs = ["shape_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pow_test",
+    size = "small",
+    srcs = ["pow_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

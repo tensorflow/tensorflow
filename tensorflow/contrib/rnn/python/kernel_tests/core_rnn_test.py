@@ -921,7 +921,7 @@ class LSTMTest(test.TestCase):
     # Smoke test, this should not raise an error
     rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDynamicRNNWithTupleStates(self):
     num_units = 3
     input_size = 5
@@ -997,7 +997,7 @@ class LSTMTest(test.TestCase):
         self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
       self.assertAllEqual(np.hstack(state_static), np.hstack(state_dynamic))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDynamicRNNWithNestedTupleStates(self):
     num_units = 3
     input_size = 5
@@ -1285,7 +1285,7 @@ class LSTMTest(test.TestCase):
             "Comparing individual variable gradients iteration %d" % i)
         self.assertAllEqual(a, b)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDynamicEquivalentToStaticRNN(self):
     self._testDynamicEquivalentToStaticRNN(use_sequence_length=False)
     self._testDynamicEquivalentToStaticRNN(use_sequence_length=False)

@@ -55,13 +55,18 @@ class XlaTransferManager {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done);
+
+  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
+                                const StatusCallback& done);
+
   se::Stream* stream() const { return stream_; }
 
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
                                  Tensor* device_tensor) const;
-  Status TransferLiteralFromDevice(Tensor* host_tensor,
-                                   const Tensor& device_tensor) const;
+  void TransferLiteralFromDevice(Tensor* host_tensor,
+                                 const Tensor& device_tensor,
+                                 const StatusCallback& done) const;
 
   // Stream obtained from a Device, used to transfer tensors between
   // CPU and device.
@@ -72,7 +77,7 @@ class XlaTransferManager {
   xla::TransferManager* transfer_manager_;
   // True if we must use XLA's TransferManager for correct device transfers.
   const bool transfer_as_literal_;
-  const XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 };
 
 // DeviceContext for operators assigned to XlaDevice devices. The
@@ -90,6 +95,9 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              StringPiece tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
+                                const StatusCallback& done);
+
   se::Stream* stream() const override { return manager_.stream(); }
 
  private:

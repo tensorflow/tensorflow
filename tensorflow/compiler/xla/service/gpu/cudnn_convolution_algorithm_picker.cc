@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/core/lib/gtl/optional.h"
@@ -316,21 +317,20 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
   Shape new_call_shape =
       ShapeUtil::MakeTupleShape({instr->shape().tuple_shapes(0),
                                  ShapeUtil::MakeShape(U8, {scratch_bytes})});
-  HloInstruction* algorithm_hlo = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int64>(algorithm)));
-  HloInstruction* tensor_ops_enabled_hlo =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          Literal::CreateR0<bool>(tensor_ops_enabled)));
+
+  CudnnConvBackendConfig backend_config;
+  backend_config.set_algorithm(algorithm);
+  backend_config.set_tensor_ops_enabled(tensor_ops_enabled);
 
   HloInstruction* new_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           new_call_shape,
-          {instr->mutable_operand(0), instr->mutable_operand(1), algorithm_hlo,
-           tensor_ops_enabled_hlo},
+          {instr->mutable_operand(0), instr->mutable_operand(1)},
           instr->custom_call_target()));
   new_call->set_window(instr->window());
   new_call->set_convolution_dimension_numbers(
       instr->convolution_dimension_numbers());
+  TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
 
   // Repackage new_call so it has the same shape as the original call, namely
   // (conv_result, u8[0]).

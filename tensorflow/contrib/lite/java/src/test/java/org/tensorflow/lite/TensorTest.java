@@ -18,6 +18,9 @@ package org.tensorflow.lite;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
 
+import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -68,6 +71,32 @@ public final class TensorTest {
     float[] outputOneD = parsedOutputs[0][0][0];
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testCopyToByteBuffer() {
+    Tensor tensor = Tensor.fromHandle(nativeHandle);
+    ByteBuffer parsedOutput =
+        ByteBuffer.allocateDirect(2 * 8 * 8 * 3 * 4).order(ByteOrder.nativeOrder());
+    tensor.copyTo(parsedOutput);
+    assertThat(parsedOutput.position()).isEqualTo(2 * 8 * 8 * 3 * 4);
+    float[] outputOneD = {
+      parsedOutput.getFloat(0), parsedOutput.getFloat(4), parsedOutput.getFloat(8)
+    };
+    float[] expected = {3.69f, 19.62f, 23.43f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testCopyToInvalidByteBuffer() {
+    Tensor tensor = Tensor.fromHandle(nativeHandle);
+    ByteBuffer parsedOutput = ByteBuffer.allocateDirect(3 * 4).order(ByteOrder.nativeOrder());
+    try {
+      tensor.copyTo(parsedOutput);
+      fail();
+    } catch (BufferOverflowException e) {
+      // Expected.
+    }
   }
 
   @Test

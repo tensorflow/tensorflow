@@ -137,6 +137,9 @@ class LazyColumnTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'bbb is not in features dictionary'):
       builder.get('bbb')
+    with self.assertRaisesRegexp(ValueError,
+                                 'bbb is not in features dictionary'):
+      builder.get(u'bbb')
 
   def test_not_supported_feature_column(self):
 
@@ -1254,14 +1257,14 @@ class CrossedColumnTest(test.TestCase):
         }, (crossed,))
 
 
-def get_linear_model_bias():
-  with variable_scope.variable_scope('linear_model', reuse=True):
+def get_linear_model_bias(name='linear_model'):
+  with variable_scope.variable_scope(name, reuse=True):
     return variable_scope.get_variable('bias_weights')
 
 
-def get_linear_model_column_var(column):
+def get_linear_model_column_var(column, name='linear_model'):
   return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
-                            'linear_model/' + column.name)[0]
+                            name + '/' + column.name)[0]
 
 
 def get_keras_linear_model_predictions(features,
@@ -1925,6 +1928,27 @@ class LinearModelTest(test.TestCase):
       with self.assertRaisesOpError('Feature .* cannot have rank 0'):
         sess.run(net, feed_dict={features['price']: np.array(1)})
 
+  def test_multiple_linear_models(self):
+    price = fc.numeric_column('price')
+    with ops.Graph().as_default():
+      features1 = {'price': [[1.], [5.]]}
+      features2 = {'price': [[2.], [10.]]}
+      predictions1 = fc.linear_model(features1, [price])
+      predictions2 = fc.linear_model(features2, [price])
+      bias1 = get_linear_model_bias(name='linear_model')
+      bias2 = get_linear_model_bias(name='linear_model_1')
+      price_var1 = get_linear_model_column_var(price, name='linear_model')
+      price_var2 = get_linear_model_column_var(price, name='linear_model_1')
+      with _initialized_session() as sess:
+        self.assertAllClose([0.], bias1.eval())
+        sess.run(price_var1.assign([[10.]]))
+        sess.run(bias1.assign([5.]))
+        self.assertAllClose([[15.], [55.]], predictions1.eval())
+        self.assertAllClose([0.], bias2.eval())
+        sess.run(price_var2.assign([[10.]]))
+        sess.run(bias2.assign([5.]))
+        self.assertAllClose([[25.], [105.]], predictions2.eval())
+
 
 class _LinearModelTest(test.TestCase):
 
@@ -2583,7 +2607,7 @@ class _LinearModelTest(test.TestCase):
 
 class InputLayerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_retrieving_input(self):
     features = {'a': [0.]}
     input_layer = InputLayer(fc.numeric_column('a'))
@@ -4556,12 +4580,12 @@ class IndicatorColumnTest(test.TestCase):
     weights = fc.weighted_categorical_column(ids, 'weights')
     indicator = fc.indicator_column(weights)
     features = {
-        'ids': constant_op.constant([['c', 'b', 'a']]),
-        'weights': constant_op.constant([[2., 4., 6.]])
+        'ids': constant_op.constant([['c', 'b', 'a', 'c']]),
+        'weights': constant_op.constant([[2., 4., 6., 1.]])
     }
     indicator_tensor = _transform_features(features, [indicator])[indicator]
     with _initialized_session():
-      self.assertAllEqual([[6., 4., 2.]], indicator_tensor.eval())
+      self.assertAllEqual([[6., 4., 3.]], indicator_tensor.eval())
 
   def test_transform_with_missing_value_in_weighted_column(self):
     # Github issue 12583
@@ -5326,9 +5350,9 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertIsNone(embedding_column_a.ckpt_to_load_from)
     self.assertIsNone(embedding_column_b.ckpt_to_load_from)
     self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_a.var_scope_name)
+                     embedding_column_a.shared_embedding_collection_name)
     self.assertEqual('aaa_bbb_shared_embedding',
-                     embedding_column_b.var_scope_name)
+                     embedding_column_b.shared_embedding_collection_name)
     self.assertIsNone(embedding_column_a.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column_b.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column_a.max_norm)
@@ -5375,9 +5399,9 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertEqual('my_combiner', embedding_column_a.combiner)
     self.assertEqual('my_combiner', embedding_column_b.combiner)
     self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_a.var_scope_name)
+                     embedding_column_a.shared_embedding_collection_name)
     self.assertEqual('shared_embedding_collection_name',
-                     embedding_column_b.var_scope_name)
+                     embedding_column_b.shared_embedding_collection_name)
     self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
     self.assertEqual('my_ckpt', embedding_column_b.ckpt_to_load_from)
     self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
@@ -5428,7 +5452,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
       self.assertEqual(embedding_dimension, embedding_column_a.dimension)
       self.assertEqual('my_combiner', embedding_column_a.combiner)
       self.assertEqual('shared_embedding_collection_name',
-                       embedding_column_a.var_scope_name)
+                       embedding_column_a.shared_embedding_collection_name)
       self.assertEqual('my_ckpt', embedding_column_a.ckpt_to_load_from)
       self.assertEqual('my_ckpt_tensor', embedding_column_a.tensor_name_in_ckpt)
       self.assertEqual(42., embedding_column_a.max_norm)
@@ -5611,6 +5635,72 @@ class SharedEmbeddingColumnTest(test.TestCase):
       self.assertAllEqual(embedding_values, embedding_var.eval())
       self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
       self.assertAllEqual(expected_lookups_b, embedding_lookup_b.eval())
+
+  def test_get_dense_tensor_weight_collections(self):
+    # Inputs.
+    vocabulary_size = 3
+    # -1 values are ignored.
+    input_a = np.array([
+        [2, -1, -1],  # example 0, ids [2]
+        [0, 1, -1]
+    ])  # example 1, ids [0, 1]
+    input_b = np.array([
+        [0, -1, -1],  # example 0, ids [0]
+        [-1, -1, -1]
+    ])  # example 1, ids []
+    input_features = {'aaa': input_a, 'bbb': input_b}
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+        (7., 11.)  # id 2
+    )
+
+    def _initializer(shape, dtype, partition_info):
+      self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+      self.assertEqual(dtypes.float32, dtype)
+      self.assertIsNone(partition_info)
+      return embedding_values
+
+    # Expected lookup result, using combiner='mean'.
+    expected_lookups_a = (
+        # example 0:
+        (7., 11.),  # ids [2], embedding = [7, 11]
+        # example 1:
+        (2., 3.5),  # ids [0, 1], embedding = mean([1, 2] + [3, 5]) = [2, 3.5]
+    )
+    expected_lookups_b = (
+        # example 0:
+        (1., 2.),  # ids [0], embedding = [1, 2]
+        # example 1:
+        (0., 0.),  # ids [], embedding = [0, 0]
+    )
+
+    # Build columns.
+    categorical_column_a = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    categorical_column_b = fc.categorical_column_with_identity(
+        key='bbb', num_buckets=vocabulary_size)
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
+        [categorical_column_a, categorical_column_b],
+        dimension=embedding_dimension,
+        initializer=_initializer)
+
+    fc.input_layer(
+        input_features, [embedding_column_a, embedding_column_b],
+        weight_collections=('my_vars',))
+
+    # Assert expected embedding variable and lookups.
+    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+    self.assertItemsEqual(
+        ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+        tuple(v.name for v in global_vars))
+    my_vars = ops.get_collection('my_vars')
+    self.assertItemsEqual(
+        ('input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
+        tuple(v.name for v in my_vars))
 
   def test_get_dense_tensor_placeholder_inputs(self):
     # Inputs.

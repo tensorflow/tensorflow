@@ -162,7 +162,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 
   int batch, row, col;
   for (batch = 0; batch < n_batch; ++batch) {
-    const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
+    const float batch_scaling_factor = scaling_factors[batch];
     // Copy the vector data to an aligned vector.
     memcpy(aligned_vec, vectors + batch * m_cols, sizeof(int8) * m_cols);
     // Compute dot-product for every column.
@@ -232,7 +232,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
       int32 neon_sum =
           vgetq_lane_s64(pairwiseAdded, 0) + vgetq_lane_s64(pairwiseAdded, 1);
 
-      *result += ((neon_sum + postable_sum) * batch_scaling_factor_inv);
+      *result += ((neon_sum + postable_sum) * batch_scaling_factor);
     }  // for row
   }    // for batch
 
@@ -352,6 +352,30 @@ void NeonSub1Vector(const float* vector, int v_size, float* result) {
   }
 }
 
+bool NeonIsZeroVector(const float* vector, int v_size) {
+  // If v_size is not divisible by kFloatWeightsPerNeonLane, we cannot
+  // use the main vectorized loop, and we need to process sequentially.
+  // postamble_start shows the start index where this should happen.
+  const int postamble_start =
+      v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
+
+  const float32x4_t zero_x4_float = vmovq_n_f32(0.0f);
+  for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
+    const float32x4_t i_x4_float = vld1q_f32(vector + v);
+    uint32x4_t cmp_result = vceqq_f32(i_x4_float, zero_x4_float);
+    if (vgetq_lane_u32(cmp_result, 0) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 1) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 2) == 0) return false;
+    if (vgetq_lane_u32(cmp_result, 3) == 0) return false;
+  }
+
+  // Postamble loop
+  for (int v = postamble_start; v < v_size; ++v) {
+    if (vector[v] != 0.0) return false;
+  }
+  return true;
+}
+
 void NeonClipVector(const float* vector, int v_size, float abs_limit,
                     float* result) {
   // If v_size is not divisible by kWeightsPerNeonLane, we cannot use the main
@@ -394,13 +418,14 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     *scaling_factor = 1;
     return;
   }
-  *scaling_factor = kScale / range;
+  *scaling_factor = range / kScale;
+  const float scaling_factor_inv = 1.0f / *scaling_factor;
 
   const int postamble_start =
       size - (size & (2 * kFloatWeightsPerNeonLane - 1));
 
   // Vectorized constants.
-  const float32x4_t q_factor_f32x4 = vmovq_n_f32(*scaling_factor);
+  const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
   const float32x4_t point5_f32x4 = vmovq_n_f32(0.5);
   const float32x4_t zero_f32x4 = vmovq_n_f32(0.0);
   const int32x4_t scale_i32x4 = vmovq_n_s32(kScale);
@@ -452,7 +477,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 
   for (int i = postamble_start; i < size; ++i) {
     const int32 quantized_value =
-        static_cast<int32>(TfLiteRound(*scaling_factor * values[i]));
+        static_cast<int32>(TfLiteRound(scaling_factor_inv * values[i]));
     quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
 }

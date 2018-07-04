@@ -24,11 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace {
@@ -340,7 +342,7 @@ TEST_F(HloInstructionTest, TrivialMap) {
   // Builds a parameter and feeds it to the map.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto map = builder.AddInstruction(
       HloInstruction::CreateMap(f32a100x10, {param0}, add_f32));
   module->AddEntryComputation(builder.Build());
@@ -379,7 +381,7 @@ TEST_F(HloInstructionTest, TrivialReduce) {
   // Builds a parameter and an initial value and feeds them to the reduce.
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32a100x10, ""));
+      HloInstruction::CreateParameter(0, f32a100x10, "p"));
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
   builder.AddInstruction(
@@ -714,10 +716,11 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
       })));
   auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
   auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto outfeed10 = builder.AddInstruction(
-      HloInstruction::CreateOutfeed(shape10, constant, ""));
+      HloInstruction::CreateOutfeed(shape10, constant, token, ""));
   auto outfeed01 = builder.AddInstruction(
-      HloInstruction::CreateOutfeed(shape01, constant, ""));
+      HloInstruction::CreateOutfeed(shape01, constant, token, ""));
 
   auto clone01 = builder.AddInstruction(outfeed01->Clone());
   auto clone10 = builder.AddInstruction(outfeed10->Clone());
@@ -761,12 +764,12 @@ TEST_F(HloInstructionTest, FusionOpWithCalledComputations) {
   HloComputation::Builder builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
-  auto map_1_x = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {constant}, computation_x, /*static_operands=*/{}));
-  auto map_2_x = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {map_1_x}, computation_x, /*static_operands=*/{}));
-  auto map_3_y = builder.AddInstruction(HloInstruction::CreateMap(
-      scalar_shape, {map_2_x}, computation_y, /*static_operands=*/{}));
+  auto map_1_x = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {constant}, computation_x));
+  auto map_2_x = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {map_1_x}, computation_x));
+  auto map_3_y = builder.AddInstruction(
+      HloInstruction::CreateMap(scalar_shape, {map_2_x}, computation_y));
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto* fusion = computation->CreateFusionInstruction(
@@ -921,6 +924,40 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
       *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
 }
 
+TEST_F(HloInstructionTest, IdenticalCallInstructions) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+subcomp1 (x: f32[]) -> f32[] {
+  x = f32[] parameter(0)
+  ROOT n = f32[] sine(x)
+}
+
+subcomp2 (x: f32[]) -> f32[] {
+  x = f32[] parameter(0)
+  ROOT n = f32[] cosine(x)
+}
+
+ENTRY entry (param: f32[]) -> (f32[], f32[], f32[]) {
+  p = f32[] parameter(0)
+  t1 = f32[] call(p), to_apply=subcomp1
+  t2 = f32[] call(p), to_apply=subcomp1
+  t3 = f32[] call(p), to_apply=subcomp2
+  ROOT t = (f32[], f32[], f32[]) tuple(t1, t2, t3)
+ }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto* t1 = root->operand(0);
+  auto* t2 = root->operand(1);
+  auto* t3 = root->operand(2);
+
+  EXPECT_TRUE(StructuralEqual(*t1, *t2));
+  EXPECT_FALSE(StructuralEqual(*t1, *t3));
+}
+
 TEST_F(HloInstructionTest, FunctionVisitor) {
   // Verify the function visitor HloInstruction::Accept visits all instructions
   // from a root properly given the following graph:
@@ -976,6 +1013,23 @@ TEST_F(HloInstructionTest, FullyElementwise) {
   for (int i = 0; i < add->operand_count(); ++i) {
     EXPECT_TRUE(add->IsElementwiseOnOperand(i));
   }
+}
+
+TEST_F(HloInstructionTest, MapIsElementwise) {
+  auto module = CreateNewModule();
+  const Shape r2f32 = ShapeUtil::MakeShapeWithLayout(F32, {10, 10}, {1, 0});
+  HloComputation::Builder builder(TestName());
+  HloComputation::Builder map_builder("id");
+  map_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  auto map_computation = module->AddEmbeddedComputation(map_builder.Build());
+  auto x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r2f32, "x"));
+  auto map = builder.AddInstruction(
+      HloInstruction::CreateMap(r2f32, {x}, map_computation));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(map->IsElementwise());
 }
 
 TEST_F(HloInstructionTest, PartiallyElementwise) {
@@ -1115,6 +1169,40 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
   EXPECT_TRUE(ShapeUtil::Equal(root->operand(1)->operand(0)->shape(),
                                root2->operand(1)->operand(0)->shape()));
   EXPECT_TRUE(StructuralEqual(*fusion, *fusion2));
+}
+
+TEST_F(HloInstructionTest, NoRedundantFusionOperandsAfterReplacingUse) {
+  // Fused expression:
+  //
+  // x     y
+  // |     |
+  // |  transpose
+  //  \   /
+  //   dot
+  const Shape s = ShapeUtil::MakeShape(F32, {10, 10});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  HloInstruction* dot = builder.AddInstruction(
+      HloInstruction::CreateDot(s, x, reshape, dot_dnums));
+
+  auto module = CreateNewModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* fusion = computation->CreateFusionInstruction(
+      {dot, reshape}, HloInstruction::FusionKind::kLoop);
+
+  EXPECT_TRUE(x->ReplaceAllUsesWith(y).ok());
+
+  EXPECT_THAT(fusion->operands(), UnorderedElementsAre(y));
+  EXPECT_EQ(fusion->fused_instructions_computation()->num_parameters(), 1);
 }
 
 TEST_F(HloInstructionTest, FusionEquality) {
@@ -1492,6 +1580,118 @@ TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
 })");
+}
+
+TEST_F(HloInstructionTest, CheckDeepClone) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+addy (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT zadd = s32[] add(lhs, rhs)
+}
+
+calla (x: s32[]) -> s32[] {
+  x = s32[] parameter(0)
+  reduce = s32[] reduce-window(x, x), to_apply=addy
+  ROOT xadd = s32[] add(x, reduce)
+}
+
+body (bparam: s32[]) -> s32[] {
+  constant = s32[] constant(1)
+  bparam = s32[] parameter(0)
+  v = s32[] call(bparam), to_apply=calla
+  ROOT add = s32[] add(constant, bparam)
+}
+
+condition (cparam: s32[]) -> pred[] {
+  xconstant = s32[] constant(5)
+  cparam = s32[] parameter(0)
+  ROOT greater-than = pred[] greater-than(xconstant, cparam)
+}
+
+ENTRY entry (param: s32[]) -> s32[] {
+  eparam = s32[] parameter(0)
+  ROOT while = s32[] while(eparam), condition=condition, body=body
+ }
+)";
+  // Check that deep clones really deep clones every instruction and
+  // computations, without leaving dangling pointers to the old module.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  std::unique_ptr<HloModule> clone = module->Clone();
+  for (HloComputation* computation : clone->computations()) {
+    EXPECT_EQ(computation->parent(), clone.get());
+    for (HloInstruction* instruction : computation->instructions()) {
+      EXPECT_EQ(instruction->parent()->parent(), clone.get());
+    }
+  }
+}
+
+TEST_F(HloInstructionTest, IdenticalAccountsForBackendConfig) {
+  const Shape shape = ShapeUtil::MakeShape(F32, {42});
+  HloComputation::Builder builder("test");
+  HloInstruction* p =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+
+  HloInstruction* add1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p, p));
+  HloInstruction* add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p, p));
+
+  EXPECT_TRUE(add1->Identical(*add2));
+  add1->set_raw_backend_config_string("abc");
+  EXPECT_FALSE(add1->Identical(*add2));
+}
+
+TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallWindow) {
+  auto instr1 = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                 /*operands=*/{},
+                                                 /*custom_call_target=*/"foo");
+  auto instr2 = instr1->Clone();
+  EXPECT_TRUE(instr1->Identical(*instr2));
+
+  Window w = window_util::MakeWindow({1, 2, 3});
+  instr1->set_window(w);
+  EXPECT_FALSE(instr1->Identical(*instr2));
+}
+
+TEST_F(HloInstructionTest, IdenticalAccountsForCustomCallDnums) {
+  auto instr1 = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                 /*operands=*/{},
+                                                 /*custom_call_target=*/"foo");
+  auto instr2 = instr1->Clone();
+  EXPECT_TRUE(instr1->Identical(*instr2));
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_output_batch_dimension(42);
+  instr1->set_convolution_dimension_numbers(dnums);
+  EXPECT_FALSE(instr1->Identical(*instr2));
+}
+
+TEST_F(HloInstructionTest, CloneWindowOnCustomCall) {
+  auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                /*operands=*/{},
+                                                /*custom_call_target=*/"foo");
+  Window w = window_util::MakeWindow({1, 2, 3});
+  instr->set_window(w);
+  auto clone = instr->Clone();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(clone->window(), w))
+      << clone->window().DebugString();
+}
+
+TEST_F(HloInstructionTest, CloneDnumsOnCustomCall) {
+  auto instr = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                                /*operands=*/{},
+                                                /*custom_call_target=*/"foo");
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_output_batch_dimension(42);
+  instr->set_convolution_dimension_numbers(dnums);
+  auto clone = instr->Clone();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(
+      clone->convolution_dimension_numbers(), dnums))
+      << clone->convolution_dimension_numbers().DebugString();
 }
 
 }  // namespace

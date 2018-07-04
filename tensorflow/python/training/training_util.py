@@ -119,18 +119,18 @@ def create_global_step(graph=None):
   graph = graph or ops.get_default_graph()
   if get_global_step(graph) is not None:
     raise ValueError('"global_step" already exists.')
+  if context.executing_eagerly():
+    with ops.device('cpu:0'):
+      return variable_scope.get_variable(
+          ops.GraphKeys.GLOBAL_STEP,
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                       ops.GraphKeys.GLOBAL_STEP])
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    if context.executing_eagerly():
-      with ops.device('cpu:0'):
-        return variable_scope.get_variable(
-            ops.GraphKeys.GLOBAL_STEP,
-            shape=[],
-            dtype=dtypes.int64,
-            initializer=init_ops.zeros_initializer(),
-            trainable=False,
-            collections=[ops.GraphKeys.GLOBAL_VARIABLES,
-                         ops.GraphKeys.GLOBAL_STEP])
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],

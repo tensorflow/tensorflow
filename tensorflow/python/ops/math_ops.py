@@ -125,8 +125,8 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`,
-      `int64`, `complex64` or `complex128`.
+    x: A `Tensor` or `SparseTensor` of type `float16`, `float32`, `float64`,
+      `int32`, `int64`, `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -370,7 +370,7 @@ def erf(x, name=None):
   """Computes the Gauss error function of `x` element-wise.
 
   Args:
-    x: A `Tensor` of `SparseTensor`. Must be one of the following types: `half`,
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
     name: A name for the operation (optional).
 
@@ -430,10 +430,10 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-     or `complex128`.
-    y: A `Tensor` of type `float32`, `float64`, `int32`, `int64`, `complex64`,
-     or `complex128`.
+    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
+     `complex64`, or `complex128`.
+    y: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, `int64`,
+     `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
@@ -600,7 +600,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float32` or `float64`.
+    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1257,7 +1257,7 @@ def reduce_sum(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1397,7 +1397,7 @@ def reduce_mean(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1469,7 +1469,7 @@ def reduce_prod(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1519,7 +1519,7 @@ def reduce_min(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1568,7 +1568,7 @@ def reduce_max(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   Args:
@@ -1617,7 +1617,7 @@ def reduce_all(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1675,7 +1675,7 @@ def reduce_any(input_tensor,
   entry in `axis`. If `keepdims` is true, the reduced dimensions
   are retained with length 1.
 
-  If `axis` has no entries, all dimensions are reduced, and a
+  If `axis` is None, all dimensions are reduced, and a
   tensor with a single element is returned.
 
   For example:
@@ -1990,7 +1990,7 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if (a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16 and
+    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
         a.dtype != b.dtype):
       # matmul currently doesn't handle mixed-precision inputs.
       use_sparse_matmul = True
@@ -2225,8 +2225,8 @@ def sigmoid(x, name=None):
   Returns:
     A Tensor with the same type as `x`.
 
-  @compatibility(numpy)
-  Equivalent to np.scipy.special.expit
+  @compatibility(scipy)
+  Equivalent to scipy.special.expit
   @end_compatibility
   """
   with ops.name_scope(name, "Sigmoid", [x]) as name:
@@ -2953,6 +2953,67 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+@tf_export("math.bessel_i0e")
+def bessel_i0e(x, name=None):
+  """Computes the Bessel i0e function of `x` element-wise.
+
+  Exponentially scaled modified Bessel function of order 0 defined as
+  `bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+  This function is faster and numerically stabler than `bessel_i0(x)`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i0e
+  @end_compatibility
+  """
+  with ops.name_scope(name, "bessel_i0e", [x]) as name:
+    if isinstance(x, sparse_tensor.SparseTensor):
+      x_i0e = gen_math_ops.bessel_i0e(x.values, name=name)
+      return sparse_tensor.SparseTensor(
+          indices=x.indices, values=x_i0e, dense_shape=x.dense_shape)
+    else:
+      return gen_math_ops.bessel_i0e(x, name=name)
+
+
+@tf_export("math.bessel_i1e")
+def bessel_i1e(x, name=None):
+  """Computes the Bessel i1e function of `x` element-wise.
+
+  Exponentially scaled modified Bessel function of order 1 defined as
+  `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+  This function is faster and numerically stabler than `bessel_i1(x)`.
+
+  Args:
+    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
+      `float32`, `float64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
+
+  @compatibility(scipy)
+  Equivalent to scipy.special.i1e
+  @end_compatibility
+  """
+  with ops.name_scope(name, "bessel_i1e", [x]) as name:
+    if isinstance(x, sparse_tensor.SparseTensor):
+      x_i1e = gen_math_ops.bessel_i1e(x.values, name=name)
+      return sparse_tensor.SparseTensor(
+          indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
+    else:
+      return gen_math_ops.bessel_i1e(x, name=name)
+
 
 # FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
 # 1.0 API so we leave these here for backwards compatibility.

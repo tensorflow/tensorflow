@@ -37,19 +37,17 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
   TF_LITE_ENSURE(context, std::abs(input_product_scale - bias_scale) <=
                               1e-6 * std::min(input_product_scale, bias_scale));
   TF_LITE_ENSURE(context, input_product_scale >= 0);
-  TF_LITE_ENSURE(context, input_product_scale < output_scale);
 
   *multiplier = input_product_scale / output_scale;
 
   return kTfLiteOk;
 }
 
-void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
-                                   TfLiteTensor* output, int32_t* act_min,
-                                   int32_t* act_max) {
-  const int32_t qmin = std::numeric_limits<uint8_t>::min();
-  const int32_t qmax = std::numeric_limits<uint8_t>::max();
-
+namespace {
+void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
+                                           int32_t qmin, int32_t qmax,
+                                           TfLiteTensor* output,
+                                           int32_t* act_min, int32_t* act_max) {
   const auto scale = output->params.scale;
   const auto zero_point = output->params.zero_point;
 
@@ -71,23 +69,38 @@ void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
     *act_max = qmax;
   }
 }
+}  // namespace
 
-void CalculateActivationRangeFloat(TfLiteFusedActivation activation,
-                                   float* activation_min,
-                                   float* activation_max) {
-  if (activation == kTfLiteActRelu) {
-    *activation_min = 0.f;
-    *activation_max = std::numeric_limits<float>::max();
-  } else if (activation == kTfLiteActRelu6) {
-    *activation_min = 0.f;
-    *activation_max = 6.f;
-  } else if (activation == kTfLiteActRelu1) {
-    *activation_min = -1.f;
-    *activation_max = 1.f;
+TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
+                                               TfLiteFusedActivation activation,
+                                               TfLiteTensor* output,
+                                               int32_t* act_min,
+                                               int32_t* act_max) {
+  int32_t qmin = 0;
+  int32_t qmax = 0;
+  if (output->type == kTfLiteUInt8) {
+    qmin = std::numeric_limits<uint8_t>::min();
+    qmax = std::numeric_limits<uint8_t>::max();
+  } else if (output->type == kTfLiteInt16) {
+    qmin = std::numeric_limits<int16_t>::min();
+    qmax = std::numeric_limits<int16_t>::max();
   } else {
-    *activation_min = std::numeric_limits<float>::lowest();
-    *activation_max = std::numeric_limits<float>::max();
+    TF_LITE_ENSURE(context, false);
   }
+
+  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
+                                        act_max);
+  return kTfLiteOk;
+}
+
+void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
+                                   TfLiteTensor* output, int32_t* act_min,
+                                   int32_t* act_max) {
+  const int32_t qmin = std::numeric_limits<uint8_t>::min();
+  const int32_t qmax = std::numeric_limits<uint8_t>::max();
+
+  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
+                                        act_max);
 }
 
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {

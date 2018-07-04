@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from google.protobuf import message
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -101,6 +102,11 @@ def _SanitizedMRO(obj):
   return return_list
 
 
+def _IsProtoClass(obj):
+  """Returns whether the passed obj is a Protocol Buffer class."""
+  return isinstance(obj, type) and issubclass(obj, message.Message)
+
+
 class PythonObjectToProtoVisitor(object):
   """A visitor that summarizes given python objects as protobufs."""
 
@@ -153,6 +159,13 @@ class PythonObjectToProtoVisitor(object):
         # Store the constructed module object.
         self._protos[lib_path] = api_objects_pb2.TFAPIObject(
             path=lib_path, tf_module=module_obj)
+      elif _IsProtoClass(parent):
+        proto_obj = api_objects_pb2.TFAPIProto()
+        parent.DESCRIPTOR.CopyToProto(proto_obj.descriptor)
+
+        # Store the constructed proto object.
+        self._protos[lib_path] = api_objects_pb2.TFAPIObject(
+            path=lib_path, tf_proto=proto_obj)
       elif tf_inspect.isclass(parent):
         # Construct a class.
         class_obj = api_objects_pb2.TFAPIClass()
@@ -161,7 +174,7 @@ class PythonObjectToProtoVisitor(object):
           if name in parent_corner_cases:
             # If we have an empty entry, skip this object.
             if parent_corner_cases[name]:
-              module_obj.member.add(**(parent_corner_cases[name]))
+              class_obj.member.add(**(parent_corner_cases[name]))
           else:
             _AddMember(name, child, class_obj)
 

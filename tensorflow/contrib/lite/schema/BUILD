@@ -65,6 +65,7 @@ cc_test(
     ],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         "//tensorflow/core:lib_platform",

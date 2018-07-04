@@ -26,16 +26,16 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
+#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/notification.h"
-#include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/lib/stacktrace.h"
 #include "tensorflow/stream_executor/lib/static_threadlocal.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 
 bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -204,11 +204,11 @@ string ToString(CUresult result) {
     case 719:
       return "CUDA_ERROR_LAUNCH_FAILED";
 
-    OSTREAM_CUDA_ERROR(CONTEXT_ALREADY_IN_USE)
-    OSTREAM_CUDA_ERROR(PEER_ACCESS_UNSUPPORTED)
-    OSTREAM_CUDA_ERROR(NOT_PERMITTED)
-    OSTREAM_CUDA_ERROR(NOT_SUPPORTED)
-    OSTREAM_CUDA_ERROR(UNKNOWN)  // Unknown internal error to CUDA.
+      OSTREAM_CUDA_ERROR(CONTEXT_ALREADY_IN_USE)
+      OSTREAM_CUDA_ERROR(PEER_ACCESS_UNSUPPORTED)
+      OSTREAM_CUDA_ERROR(NOT_PERMITTED)
+      OSTREAM_CUDA_ERROR(NOT_SUPPORTED)
+      OSTREAM_CUDA_ERROR(UNKNOWN)  // Unknown internal error to CUDA.
     default:
       return port::StrCat("CUresult(", static_cast<int>(result), ")");
   }
@@ -470,7 +470,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
 }
 
 /* static */ port::Status CUDADriver::CreateContext(
-    CUdevice device, DeviceOptions device_options, CudaContext** context) {
+    CUdevice device, const DeviceOptions &device_options,
+    CudaContext **context) {
   *context = nullptr;
 
   int flags = 0;
@@ -481,62 +482,45 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
   CUresult res;
   CUcontext former_context;
   CUcontext new_context;
-  {
-    // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
-    // context creation: see http://b/13248943
 
-#if CUDA_VERSION >= 7000
-    {
-      unsigned int former_primary_context_flags;
-      int former_primary_context_is_active;
-      CHECK_EQ(CUDA_SUCCESS,
-               cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
-                                          &former_primary_context_is_active));
-      if (former_primary_context_flags != flags) {
-        if (former_primary_context_is_active) {
-          LOG(ERROR)
-              << "The primary context is active and has a different flag set ("
-              << former_primary_context_flags << ") than the desired flag set ("
-              << flags << ").";
+  unsigned int former_primary_context_flags;
+  int former_primary_context_is_active;
+  CHECK_EQ(CUDA_SUCCESS,
+           cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
+                                      &former_primary_context_is_active));
+  if (former_primary_context_flags != flags) {
+    if (former_primary_context_is_active) {
+      LOG(ERROR)
+          << "The primary context is active and has a different flag set ("
+          << former_primary_context_flags << ") than the desired flag set ("
+          << flags << ").";
+    } else {
+      CHECK_EQ(CUDA_SUCCESS, cuDevicePrimaryCtxSetFlags(device, flags));
+    }
+  }
+
+  former_context = CUDADriver::CurrentContextOrDie();
+  res = cuDevicePrimaryCtxRetain(&new_context, device);
+  if (former_context != nullptr) {
+    CUdevice former_device;
+    if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
+      if (former_device == device) {
+        if (former_context == new_context) {
+          VLOG(2) << "The primary context " << former_context << " for device "
+                  << device
+                  << " exists before initializing the StreamExecutor.";
         } else {
-          CHECK_EQ(CUDA_SUCCESS, cuDevicePrimaryCtxSetFlags(device, flags));
+          LOG(WARNING) << "A non-primary context " << former_context
+                       << " for device " << device
+                       << " exists before initializing the StreamExecutor. The "
+                       << "primary context is now " << new_context << ". We "
+                       << "haven't verified StreamExecutor works with that.";
         }
       }
+    } else {
+      LOG(ERROR) << "Failed to get the device of the current context "
+                 << former_context;
     }
-
-    former_context = CUDADriver::CurrentContextOrDie();
-    res = cuDevicePrimaryCtxRetain(&new_context, device);
-    if (former_context != nullptr) {
-      CUdevice former_device;
-      if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
-        if (former_device == device) {
-          if (former_context == new_context) {
-            VLOG(2) << "The primary context " << former_context
-                    << " for device " << device
-                    << " exists before initializing the StreamExecutor.";
-          } else {
-            LOG(WARNING)
-                << "A non-primary context " << former_context << " for device "
-                << device
-                << " exists before initializing the StreamExecutor. The "
-                << "primary context is now " << new_context << ". We "
-                << "haven't verified StreamExecutor works with that.";
-          }
-        }
-      } else {
-        LOG(ERROR) << "Failed to get the device of the current context "
-                   << former_context;
-      }
-    }
-#else
-    former_context = CurrentContext();
-    if (former_context != nullptr) {
-      LOG(WARNING)
-          << "creating context when one is currently active; existing: "
-          << former_context;
-    }
-    res = cuCtxCreate(&new_context, flags, device);
-#endif
   }
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(former_context));
 
@@ -548,11 +532,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     return port::Status::OK();
   }
 
-#if CUDA_VERSION >= 7000
   string message = "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
-#else
-  string message = "failed call to cuCtxCreate: " + ToString(res);
-#endif
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
@@ -569,7 +549,6 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
   if (context == nullptr) {
     return;
   }
-#if CUDA_VERSION >= 7000
   CUcontext former_context = CurrentContext();
   CUresult res = cuCtxSetCurrent(context->context());
   CUdevice device;
@@ -577,9 +556,6 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
   cuCtxSetCurrent(former_context);
 
   res = cuDevicePrimaryCtxRelease(device);
-#else
-  CUresult res = cuCtxDestroy(context->context());
-#endif
 
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to release CUDA context; leaking: " << ToString(res);
@@ -945,6 +921,37 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
                << "; result: " << ToString(res);
   } else {
     VLOG(2) << "deallocated " << location << " for context " << context;
+  }
+}
+
+/* static */ void *CUDADriver::UnifiedMemoryAllocate(CudaContext *context,
+                                                     uint64 bytes) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr result = 0;
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  CUresult res = cuMemAllocManaged(&result, bytes, CU_MEM_ATTACH_GLOBAL);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to alloc " << bytes
+               << " bytes unified memory; result: " << ToString(res);
+    return nullptr;
+  }
+  void *ptr = reinterpret_cast<void *>(result);
+  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
+          << bytes << " bytes in unified memory";
+  return ptr;
+}
+
+/* static */ void CUDADriver::UnifiedMemoryDeallocate(CudaContext *context,
+                                                      void *location) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr pointer = port::bit_cast<CUdeviceptr>(location);
+  CUresult res = cuMemFree(pointer);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "failed to free unified memory at " << location
+               << "; result: " << ToString(res);
+  } else {
+    VLOG(2) << "deallocated unified memory at " << location << " for context "
+            << context;
   }
 }
 

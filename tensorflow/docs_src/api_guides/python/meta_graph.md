@@ -22,14 +22,14 @@ protocol buffer. It contains the following fields:
 * [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto) for describing the graph.
 * [`SaverDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/saver.proto) for the saver.
 * [`CollectionDef`](https://www.tensorflow.org/code/tensorflow/core/protobuf/meta_graph.proto)
-map that further describes additional components of the model, such as
+map that further describes additional components of the model such as
 @{$python/state_ops$`Variables`},
-@{tf.train.QueueRunner}, etc.  In order for a Python object to be serialized
+@{tf.train.QueueRunner}, etc.
+
+In order for a Python object to be serialized
 to and from `MetaGraphDef`, the Python class must implement `to_proto()` and
 `from_proto()` methods, and register them with the system using
-`register_proto_function`.
-
-  For example,
+`register_proto_function`. For example:
 
   ```Python
   def to_proto(self, export_scope=None):

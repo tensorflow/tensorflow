@@ -23,6 +23,9 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float Clip(float f, float abs_limit);
 
+// Checks if all entries of vector are zero.
+bool IsZeroVector(const float* vector, int v_size);
+
 // Quantizes a buffer of floating point values using a symmetric quantization
 // (i.e. linear quantization without an offset) to 8-bit signed integers.
 // It also outputs the range (min, max) of the floating point buffer, and the

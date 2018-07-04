@@ -7,6 +7,8 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow/contrib/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
+common_copts = ["-Wall"]
+
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
@@ -26,34 +28,6 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
-)
-
-tf_cc_binary(
-    name = "benchmark_model",
-    srcs = ["benchmark_model.cc"],
-    linkopts = select({
-        "//tensorflow:android": [
-            "-pie",
-            "-landroid",
-            "-lm",
-            "-z defs",
-            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
-        ],
-        "//conditions:default": [],
-    }),
-    deps = [
-        "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite:string_util",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib",
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
-        ],
-    }),
 )
 
 cc_library(
@@ -79,6 +53,7 @@ cc_test(
     ],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":gen_op_registration",
