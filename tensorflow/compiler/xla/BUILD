@@ -254,6 +254,7 @@ tf_cc_test(
         ":types",
         ":util",
         ":xla_data_proto",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
     ],
 )
