@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -47,8 +48,8 @@ class XlaContext : public ResourceBase {
   XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
              bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
              bool is_entry_computation,
-             const std::function<TensorShape(const TensorShape&, DataType)>*
-                 shape_representation_fn);
+             const std::function<xla::StatusOr<TensorShape>(
+                 const TensorShape&, DataType)>* shape_representation_fn);
 
   // Virtual method defined by ResourceBase.
   string DebugString() override;
@@ -101,8 +102,8 @@ class XlaContext : public ResourceBase {
 
   // Returns the XLA shape to be used to represent a variable of TF `shape`
   // and `type`, or of an argument or return value of a top-level computation.
-  TensorShape RepresentationShape(const TensorShape& shape,
-                                  DataType type) const;
+  xla::StatusOr<TensorShape> RepresentationShape(const TensorShape& shape,
+                                                 DataType type) const;
 
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -160,7 +161,7 @@ class XlaContext : public ResourceBase {
   // should be represented in XLA. Parameters/return values will be shaped
   // according to this function, and reshaped back to/from their declared shapes
   // for computations. Must be non-null.
-  const std::function<TensorShape(const TensorShape&, DataType)>*
+  const std::function<xla::StatusOr<TensorShape>(const TensorShape&, DataType)>*
       shape_representation_fn_;
 
   // Cache of prebuilt computations indexed by their type.

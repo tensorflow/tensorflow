@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 
 #include <memory>
+#include <stack>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -24,9 +25,30 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+void InitAndStartTimer(std::stack<std::unique_ptr<se::Timer>>* timers,
+                       se::Stream* stream) {
+  timers->push(MakeUnique<se::Timer>(stream->parent()));
+  stream->InitTimer(timers->top().get()).ThenStartTimer(timers->top().get());
+}
+
+uint64 GetCyclesTaken(
+    std::stack<std::unique_ptr<se::Timer>>* timers,
+    const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
+    se::Stream* stream, double clock_rate_ghz) {
+  CHECK_GT(timers->size(), 0);
+  stream->ThenWaitFor(&sub_streams);
+  stream->ThenStopTimer(timers->top().get());
+  stream->BlockHostUntilDone().IgnoreError();
+  double nanoseconds = timers->top()->Nanoseconds();
+  timers->pop();
+  return static_cast<uint64>(nanoseconds * clock_rate_ghz);
+}
+}  // namespace
 
 HloExecutionProfiler::HloExecutionProfiler(
     bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
@@ -39,11 +61,7 @@ HloExecutionProfiler::HloExecutionProfiler(
       computation_(computation) {
   if (do_profile_) {
     clock_rate_ghz_ = stream->parent()->GetDeviceDescription().clock_rate_ghz();
-    execution_timer_.reset(new se::Timer(stream->parent()));
-    per_op_timer_.reset(new se::Timer(stream->parent()));
-    stream->InitTimer(execution_timer_.get())
-        .ThenStartTimer(execution_timer_.get());
-    stream->InitTimer(per_op_timer_.get());
+    InitAndStartTimer(&timers_, stream);
   }
 }
 
@@ -51,31 +69,46 @@ void HloExecutionProfiler::FinishExecution() {
   CHECK(!finished_execution_) << "Call FinishExecution only once!";
   finished_execution_ = true;
   if (do_profile_) {
-    stream_->ThenWaitFor(&sub_streams_);
-    stream_->ThenStopTimer(execution_timer_.get());
-    stream_->BlockHostUntilDone().IgnoreError();
     profile_->set_total_cycles_executed(
         *computation_,
-        static_cast<uint64>(execution_timer_->Nanoseconds() * clock_rate_ghz_));
+        GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
   }
 }
 
-void HloExecutionProfiler::StartOperation() {
+void HloExecutionProfiler::StartHloComputation() {
   if (do_profile_) {
-    stream_->ThenStartTimer(per_op_timer_.get());
+    InitAndStartTimer(&timers_, stream_);
   }
 }
 
-void HloExecutionProfiler::FinishOperation(
+void HloExecutionProfiler::FinishHloComputation(
+    const HloComputation* computation) {
+  if (do_profile_) {
+    profile_->set_total_cycles_executed(
+        *computation,
+        GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
+  }
+}
+
+void HloExecutionProfiler::StartHloInstruction() {
+  if (do_profile_) {
+    InitAndStartTimer(&timers_, stream_);
+  }
+}
+
+void HloExecutionProfiler::FinishHloInstruction(
     const HloInstruction* hlo_instruction) {
   if (do_profile_) {
-    stream_->ThenWaitFor(&sub_streams_);
-    stream_->ThenStopTimer(per_op_timer_.get());
-    stream_->BlockHostUntilDone().IgnoreError();
     profile_->SetCyclesTakenBy(
         hlo_instruction,
-        static_cast<uint64>(per_op_timer_->Nanoseconds() * clock_rate_ghz_));
+        GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
   }
+}
+
+std::unique_ptr<ScopedInstructionProfiler>
+HloExecutionProfiler::MakeScopedInstructionProfiler(
+    const HloInstruction* hlo_instruction) {
+  return MakeUnique<ScopedInstructionProfiler>(this, hlo_instruction);
 }
 
 }  // namespace gpu

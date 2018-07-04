@@ -463,7 +463,6 @@ predict_results = classifier.predict(predict_input_fn, hooks=hooks)
 ```
 
 [debug_tflearn_iris.py](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_tflearn_iris.py),
-based on [tf-learn's iris tutorial](https://www.tensorflow.org/versions/r1.8/get_started/tflearn),
 contains a full example of how to use the tfdbg with `Estimator`s.
 To run this example, do:
 

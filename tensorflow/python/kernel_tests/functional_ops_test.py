@@ -35,6 +35,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
@@ -1079,6 +1080,58 @@ class PartitionedCallTest(test.TestCase):
       self.assertTrue(compat.as_bytes("CPU:0") in outputs[0].eval())
       self.assertTrue(compat.as_bytes("CPU:1") in outputs[1].eval())
       self.assertTrue(compat.as_bytes("CPU:2") in outputs[2].eval())
+
+  def testAssignAddResourceVariable(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.Defun()
+    def AssignAdd():
+      v.assign_add(1.0)
+
+    op = functional_ops.partitioned_call(
+        args=AssignAdd.captured_inputs, f=AssignAdd)
+    _ = self.evaluate(variables.global_variables_initializer())
+    _ = self.evaluate(op)
+    value = self.evaluate(v.read_value())
+    self.assertEqual(value, 2.0)
+
+  def testFunctionWithResourcesOnDifferentDevices(self):
+    # TODO(akshayka): Remove the `skipTest` once we can whitelist ops as
+    # safe to be invoked with resources on different devices.
+    self.skipTest("The Placer disallows ops with resource inputs "
+                  "on different devices.")
+
+    with ops.device("/cpu:0"):
+      v_cpu_zero = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_cpu_zero")
+
+    with ops.device("/cpu:1"):
+      v_cpu_one = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_cpu_one")
+
+    with ops.device("/gpu:0"):
+      v_gpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_gpu")
+
+    def sum_gather():
+      cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu_zero, [1, 2]))
+      also_cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu_one, [1, 2]))
+      gpu_result = math_ops.reduce_sum(array_ops.gather(v_gpu, [1, 2]))
+      return cpu_result, also_cpu_result, gpu_result
+
+    defined = function.Defun()(sum_gather)
+    with self.test_session(
+        config=config_pb2.ConfigProto(
+            allow_soft_placement=False,
+            log_device_placement=True,
+            device_count={"CPU": 2})) as sess:
+      sess.run(variables.global_variables_initializer())
+      expected = sess.run(sum_gather())
+      result = sess.run(
+          functional_ops.partitioned_call(
+              args=defined.captured_inputs, f=defined))
+      self.assertAllEqual(expected, result)
 
 
 if __name__ == "__main__":

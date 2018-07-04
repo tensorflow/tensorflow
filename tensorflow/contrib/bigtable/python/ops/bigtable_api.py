@@ -49,16 +49,35 @@ class BigtableClient(object):
   `table` method to open a Bigtable Table.
   """
 
-  def __init__(self, project_id, instance_id):
+  def __init__(self, project_id, instance_id, connection_pool_size=None):
     """Creates a BigtableClient that can be used to open connections to tables.
 
     Args:
       project_id: A string representing the GCP project id to connect to.
       instance_id: A string representing the Bigtable instance to connect to.
+      connection_pool_size: (Optional.) A number representing the number of
+        concurrent connections to the Cloud Bigtable service to make.
+
+    Raises:
+      ValueError: if the arguments are invalid (e.g. wrong type, or out of
+        expected ranges (e.g. negative).)
     """
+    if not isinstance(project_id, str):
+      raise ValueError("`project_id` must be a string")
     self._project_id = project_id
+
+    if not isinstance(instance_id, str):
+      raise ValueError("`instance_id` must be a string")
     self._instance_id = instance_id
-    self._resource = gen_bigtable_ops.bigtable_client(project_id, instance_id)
+
+    if connection_pool_size is None:
+      connection_pool_size = -1
+    elif connection_pool_size < 1:
+      raise ValueError("`connection_pool_size` must be positive")
+    self._connection_pool_size = connection_pool_size
+
+    self._resource = gen_bigtable_ops.bigtable_client(project_id, instance_id,
+                                                      connection_pool_size)
 
   def table(self, name, snapshot=None):
     """Opens a table and returns a `BigTable` object.

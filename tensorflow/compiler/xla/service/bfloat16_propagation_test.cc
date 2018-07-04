@@ -434,7 +434,7 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
   HloInstruction* tuple1 =
       builder.AddInstruction(HloInstruction::CreateTuple({param, add1}));
   HloInstruction* sel = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kSelect, pred, tuple0, tuple1));
+      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, sel, 0));
   HloInstruction* gte1 = builder.AddInstruction(

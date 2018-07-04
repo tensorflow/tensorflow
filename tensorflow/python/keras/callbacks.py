@@ -24,6 +24,7 @@ from collections import Iterable
 from collections import OrderedDict
 import csv
 import json
+import math
 import os
 import time
 
@@ -723,8 +724,13 @@ class TensorBoard(Callback):
     self.write_grads = write_grads
     self.write_images = write_images
     self.batch_size = batch_size
+    self._current_batch = 0
+    # abstracted writer class to be able to stub for testing
+    self._writer_class = tf_summary.FileWriter
 
   def set_model(self, model):
+    """Sets Keras model and creates summary ops."""
+
     self.model = model
     self.sess = K.get_session()
     if self.histogram_freq and self.merged is None:
@@ -775,54 +781,41 @@ class TensorBoard(Callback):
     self.merged = tf_summary.merge_all()
 
     if self.write_graph:
-      self.writer = tf_summary.FileWriter(self.log_dir, self.sess.graph)
+      self.writer = self._writer_class(self.log_dir, self.sess.graph)
     else:
-      self.writer = tf_summary.FileWriter(self.log_dir)
+      self.writer = self._writer_class(self.log_dir)
 
-  def on_epoch_end(self, epoch, logs=None):
-    logs = logs or {}
+  def _fetch_callback(self, summary):
+    self.writer.add_summary(
+        summary, self._epoch + self._current_batch / self._batches_per_epoch)
+    self._current_batch += 1
+
+  def on_epoch_begin(self, epoch, logs=None):
+    """Add histogram op to Model test_function callbacks, reset batch count."""
 
     if not self.validation_data and self.histogram_freq:
       raise ValueError('If printing histograms, validation_data must be '
                        'provided, and cannot be a generator.')
-    if self.validation_data and self.histogram_freq:
-      if epoch % self.histogram_freq == 0:
+    if self.histogram_freq and epoch % self.histogram_freq == 0:
+      self._epoch = epoch
+      self._current_batch = 0
+      self._batches_per_epoch = math.ceil(
+          self.validation_data[0].shape[0] / self.batch_size)
+      if self.merged not in self.model.test_function.fetches:
+        self.model.test_function.fetches.append(self.merged)
+        self.model.test_function.fetch_callbacks[
+            self.merged] = self._fetch_callback
 
-        val_data = self.validation_data
-        tensors = (
-            self.model.inputs + self.model.targets + self.model.sample_weights)
+  def on_epoch_end(self, epoch, logs=None):
+    """Checks if summary ops should run next epoch, logs scalar summaries."""
 
-        if self.model.uses_learning_phase:
-          tensors += [K.learning_phase()]
+    logs = logs or {}
 
-        assert len(val_data) == len(tensors)
-        val_size = val_data[0].shape[0]
-        i = 0
-        while i < val_size:
-          step = min(self.batch_size, val_size - i)
-          batch_val = []
-          batch_val.append(val_data[0][i:i + step]
-                           if val_data[0] is not None else None)
-          batch_val.append(val_data[1][i:i + step]
-                           if val_data[1] is not None else None)
-          batch_val.append(val_data[2][i:i + step]
-                           if val_data[2] is not None else None)
-          if self.model.uses_learning_phase:
-            # do not slice the learning phase
-            batch_val = [x[i:i + step] if x is not None else None
-                         for x in val_data[:-1]]
-            batch_val.append(val_data[-1])
-          else:
-            batch_val = [x[i:i + step] if x is not None else None
-                         for x in val_data]
-          feed_dict = {}
-          for key, val in zip(tensors, batch_val):
-            if val is not None:
-              feed_dict[key] = val
-          result = self.sess.run([self.merged], feed_dict=feed_dict)
-          summary_str = result[0]
-          self.writer.add_summary(summary_str, epoch)
-          i += self.batch_size
+    if self.histogram_freq and self.histogram_freq > 1:
+      if self.merged in self.model.test_function.fetches:
+        self.model.test_function.fetches.remove(self.merged)
+      if self.merged in self.model.test_function.fetch_callbacks:
+        self.model.test_function.fetch_callbacks.pop(self.merged)
 
     for name, value in logs.items():
       if name in ['batch', 'size']:

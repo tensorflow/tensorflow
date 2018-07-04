@@ -317,6 +317,27 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
 
+  // Performs in-dimension-style broadcast.
+  //
+  // Operand specifies the input to be broadcast. "shape" is expected output
+  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
+  // Dimension numbers in broadcast_dimensions map to individual dimensions
+  // of the operand, and specify what dimension of the output shape they
+  // should be broadcast.
+  // e.g.
+  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
+  // and dimension of shape is [2,2].
+  // Specifying {1} as brodcast_dimension will generate output
+  // [1 , 2]
+  // [1 , 2]
+  // On the other hand, specifying {0} as broadcast_dimension
+  // will generate output
+  // [1 , 1]
+  // [2 , 2]
+  XlaOp BroadcastInDim(
+      const XlaOp& operand, const Shape& shape,
+      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
   // Enqueues a pad operation onto the computation that pads the given value on
   // the edges as well as between the elements of the input. padding_config
   // specifies the padding amount for each dimension.
@@ -730,16 +751,6 @@ class XlaBuilder {
   // Enqueues an imaginary-part instruction onto the computation.
   XlaOp Imag(const XlaOp& operand);
 
-  // Enqueues a float32 sqrt instruction onto the computation.
-  // (float32 is specified as there is an implicit float32 0.5f constant
-  // exponent).
-  XlaOp SqrtF32(const XlaOp& operand);
-
-  // Enqueues a float32 square instruction onto the computation.
-  // (float32 is specified as there is an implicit float32 2.0f constant
-  // exponent).
-  XlaOp SquareF32(const XlaOp& operand);
-
   // Enqueues a lhs^rhs computation onto the computation.
   XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
             tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
@@ -761,14 +772,6 @@ class XlaBuilder {
   // identical.
   XlaOp BitcastConvertType(const XlaOp& operand,
                            PrimitiveType new_element_type);
-
-  // Enqueues a float32 reciprocal instruction onto the computation.
-  // (float32 is specified as there is an implicit float32 -1.0f constant
-  // exponent).
-  //
-  // TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
-  // shape of the operand.
-  XlaOp ReciprocalF32(const XlaOp& operand);
 
   // Enqueues a negate instruction onto the computation.
   XlaOp Neg(const XlaOp& operand);
@@ -1033,6 +1036,10 @@ class XlaBuilder {
   friend XlaOp Broadcast(const XlaOp& operand,
                          tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
 
+  friend XlaOp BroadcastInDim(
+      const XlaOp& operand, const Shape& shape,
+      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
   friend XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
                    const PaddingConfig& padding_config);
 
@@ -1210,8 +1217,6 @@ class XlaBuilder {
   friend XlaOp Tanh(const XlaOp& operand);
   friend XlaOp Real(const XlaOp& operand);
   friend XlaOp Imag(const XlaOp& operand);
-  friend XlaOp SqrtF32(const XlaOp& operand);
-  friend XlaOp SquareF32(const XlaOp& operand);
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
@@ -1219,7 +1224,6 @@ class XlaBuilder {
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
-  friend XlaOp ReciprocalF32(const XlaOp& operand);
   friend XlaOp Neg(const XlaOp& operand);
   friend XlaOp Transpose(const XlaOp& operand,
                          tensorflow::gtl::ArraySlice<int64> permutation);
@@ -1375,6 +1379,27 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand,
                 tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+
+// Performs in-dimension-style broadcast.
+//
+// Operand specifies the input to be broadcast. "shape" is expected output
+// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
+// Dimension numbers in broadcast_dimensions map to individual dimensions
+// of the operand, and specify what dimension of the output shape they
+// should be broadcast.
+// e.g.
+// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
+// and dimension of shape is [2,2].
+// Specifying {1} as brodcast_dimension will generate output
+// [1 , 2]
+// [1 , 2]
+// On the other hand, specifying {0} as broadcast_dimension
+// will generate output
+// [1 , 1]
+// [2 , 2]
+XlaOp BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
 // Enqueues a pad operation onto the computation that pads the given value on
 // the edges as well as between the elements of the input. padding_config
@@ -1787,16 +1812,6 @@ XlaOp Real(const XlaOp& operand);
 // Enqueues an imaginary-part instruction onto the computation.
 XlaOp Imag(const XlaOp& operand);
 
-// Enqueues a float32 sqrt instruction onto the computation.
-// (float32 is specified as there is an implicit float32 0.5f constant
-// exponent).
-XlaOp SqrtF32(const XlaOp& operand);
-
-// Enqueues a float32 square instruction onto the computation.
-// (float32 is specified as there is an implicit float32 2.0f constant
-// exponent).
-XlaOp SquareF32(const XlaOp& operand);
-
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
@@ -1816,14 +1831,6 @@ XlaOp ConvertElementType(const XlaOp& operand, PrimitiveType new_element_type);
 // bit-widths of the source and destination element types must be
 // identical.
 XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type);
-
-// Enqueues a float32 reciprocal instruction onto the computation.
-// (float32 is specified as there is an implicit float32 -1.0f constant
-// exponent).
-//
-// TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
-// shape of the operand.
-XlaOp ReciprocalF32(const XlaOp& operand);
 
 // Enqueues a negate instruction onto the computation.
 XlaOp Neg(const XlaOp& operand);

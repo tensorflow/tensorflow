@@ -382,11 +382,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // the Eval function.
       // TODO(alanchiao): refactor logic out into dequantize function.
       if (!op_data->float_weights_time_initialized) {
-        const float inv_scale = 1.0 / weights_time->params.scale;
+        const float dequantization_scale = weights_time->params.scale;
         const int8_t* weights_time_ptr =
             reinterpret_cast<int8_t*>(weights_time->data.uint8);
         for (int i = 0; i < NumElements(float_weights_time); ++i) {
-          float_weights_time->data.f[i] = weights_time_ptr[i] * inv_scale;
+          float_weights_time->data.f[i] =
+              weights_time_ptr[i] * dequantization_scale;
         }
         op_data->float_weights_time_initialized = true;
       }

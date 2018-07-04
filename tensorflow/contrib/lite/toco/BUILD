@@ -202,6 +202,7 @@ cc_library(
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
         "graph_transformations/merge_reshape_into_preceding_transpose.cc",
+        "graph_transformations/move_binary_operator_before_reshape.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_default_min_max.cc",

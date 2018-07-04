@@ -204,25 +204,28 @@ bool HloSendRecvInstruction::IdenticalSlowPath(
 
 // Send instruction produces a tuple of {aliased operand, U32 context}.
 HloSendInstruction::HloSendInstruction(HloInstruction* operand,
-                                       int64 channel_id)
+                                       HloInstruction* token, int64 channel_id)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
-          ShapeUtil::MakeTupleShape(
-              {CHECK_NOTNULL(operand)->shape(), ShapeUtil::MakeShape(U32, {})}),
+          ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
+                                     ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
           channel_id) {
   AppendOperand(operand);
+  AppendOperand(token);
 }
 
 std::unique_ptr<HloInstruction> HloSendInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 1);
-  return MakeUnique<HloSendInstruction>(new_operands[0], channel_id());
+  CHECK_EQ(new_operands.size(), 2);
+  return MakeUnique<HloSendInstruction>(new_operands[0], new_operands[1],
+                                        channel_id());
 }
 
 HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand)
-    : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeNil(),
+    : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
                              CHECK_NOTNULL(operand)->channel_id()) {
   AppendOperand(operand);
 }
@@ -238,25 +241,31 @@ HloSendDoneInstruction::CloneWithNewOperandsImpl(
 }
 
 // Recv instruction produces a tuple of {receive buffer, U32 context}.
-HloRecvInstruction::HloRecvInstruction(const Shape& shape, int64 channel_id)
+HloRecvInstruction::HloRecvInstruction(const Shape& shape,
+                                       HloInstruction* token, int64 channel_id)
     : HloSendRecvInstruction(
           HloOpcode::kRecv,
-          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})}),
-          channel_id) {}
+          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
+          channel_id) {
+  AppendOperand(token);
+}
 
 std::unique_ptr<HloInstruction> HloRecvInstruction::CloneWithNewOperandsImpl(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 0);
+  CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloRecvInstruction>(
-      ShapeUtil::GetTupleElementShape(shape, 0), channel_id());
+      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], channel_id());
 }
 
 HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
-          ShapeUtil::GetTupleElementShape(operand->shape(), 0),
+          ShapeUtil::MakeTupleShape(
+              {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
+               ShapeUtil::MakeTokenShape()}),
           CHECK_NOTNULL(operand)->channel_id()) {
   AppendOperand(operand);
 }

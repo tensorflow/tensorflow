@@ -103,6 +103,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kDynamicUpdateSlice:
       return operand_index == 0 || operand_index == 1;
     case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
       return operand_index == 1 || operand_index == 2;
     default:
       break;

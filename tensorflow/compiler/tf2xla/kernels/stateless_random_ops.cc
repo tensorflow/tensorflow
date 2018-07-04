@@ -20,7 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -209,8 +210,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
         RandomUniform(builder, seed, shape, std::nextafter(-1.0f, 0.0f), 1.0);
     // Convert uniform distribution to normal distribution by computing
     // sqrt(2) * erfinv(x)
-    auto normal = xla::Mul(xla::ConstantR0<float>(builder, std::sqrt(2.0)),
-                           ErfInv(uniform));
+    auto normal =
+        xla::ScalarLike(uniform, std::sqrt(2.0)) * xla::ErfInv(uniform);
     ctx->SetOutput(0, normal);
   }
 
@@ -231,8 +232,6 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const DataType dtype = output_type(0);
-
     TensorShape shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
 
@@ -245,7 +244,7 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
 
     auto uniform =
         RandomUniform(b, seed, shape, std::numeric_limits<float>::min(), 1.0);
-    ctx->SetOutput(0, TruncatedNormal(dtype, uniform));
+    ctx->SetOutput(0, TruncatedNormal(uniform));
   }
 
  private:

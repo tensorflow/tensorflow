@@ -1630,7 +1630,8 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   for (HloInstruction* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kRecvDone) {
       const Layout* layout = channel_constraints->ConstrainChannel(
-          instruction->channel_id(), instruction->shape().layout());
+          instruction->channel_id(),
+          ShapeUtil::GetSubshape(instruction->shape(), {0}).layout());
       TF_RET_CHECK(layout == nullptr)
           << instruction->ToString()
           << " cannot constrain layout as it was set to "
@@ -1647,7 +1648,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
           instruction->channel_id(), operand->shape().layout());
       if (layout != nullptr) {
         // We found an already constrained layout which does not match the one
-        // the kSend wants to impose. Eitehr add a new kCopy, or use the
+        // the kSend wants to impose. Either add a new kCopy, or use the
         // existing one to marshal the correct shape.
         Shape shape = operand->shape();
         *shape.mutable_layout() = *layout;

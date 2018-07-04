@@ -65,6 +65,11 @@ from tensorflow.python.training import training_util
 LEARNING_RATE_NAME = 'dnn/regression_head/dnn/learning_rate'
 HIDDEN_WEIGHTS_NAME_PATTERN = 'dnn/hiddenlayer_%d/kernel'
 HIDDEN_BIASES_NAME_PATTERN = 'dnn/hiddenlayer_%d/bias'
+BATCH_NORM_BETA_NAME_PATTERN = 'dnn/hiddenlayer_%d/batchnorm_%d/beta'
+BATCH_NORM_GAMMA_NAME_PATTERN = 'dnn/hiddenlayer_%d/batchnorm_%d/gamma'
+BATCH_NORM_MEAN_NAME_PATTERN = 'dnn/hiddenlayer_%d/batchnorm_%d/moving_mean'
+BATCH_NORM_VARIANCE_NAME_PATTERN = (
+    'dnn/hiddenlayer_%d/batchnorm_%d/moving_variance')
 LOGITS_WEIGHTS_NAME = 'dnn/logits/kernel'
 LOGITS_BIASES_NAME = 'dnn/logits/bias'
 OCCUPATION_EMBEDDING_NAME = ('dnn/input_from_feature_columns/input_layer/'
@@ -89,7 +94,10 @@ def assert_close(expected, actual, rtol=1e-04, message='', name='assert_close'):
         name=scope)
 
 
-def create_checkpoint(weights_and_biases, global_step, model_dir):
+def create_checkpoint(weights_and_biases,
+                      global_step,
+                      model_dir,
+                      batch_norm_vars=None):
   """Create checkpoint file with provided model weights.
 
   Args:
@@ -98,12 +106,20 @@ def create_checkpoint(weights_and_biases, global_step, model_dir):
     model_dir: Directory into which checkpoint is saved.
   """
   weights, biases = zip(*weights_and_biases)
+  if batch_norm_vars:
+    assert len(batch_norm_vars) == len(weights_and_biases) - 1
+    (bn_betas, bn_gammas, bn_means, bn_variances) = zip(*batch_norm_vars)
   model_weights = {}
 
   # Hidden layer weights.
   for i in range(0, len(weights) - 1):
     model_weights[HIDDEN_WEIGHTS_NAME_PATTERN % i] = weights[i]
     model_weights[HIDDEN_BIASES_NAME_PATTERN % i] = biases[i]
+    if batch_norm_vars:
+      model_weights[BATCH_NORM_BETA_NAME_PATTERN % (i, i)] = bn_betas[i]
+      model_weights[BATCH_NORM_GAMMA_NAME_PATTERN % (i, i)] = bn_gammas[i]
+      model_weights[BATCH_NORM_MEAN_NAME_PATTERN % (i, i)] = bn_means[i]
+      model_weights[BATCH_NORM_VARIANCE_NAME_PATTERN % (i, i)] = bn_variances[i]
 
   # Output layer weights.
   model_weights[LOGITS_WEIGHTS_NAME] = weights[-1]
@@ -503,8 +519,13 @@ class BaseDNNLogitFnTest(object):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
-  def _test_logits(self, mode, hidden_units, logits_dimension, inputs,
-                   expected_logits):
+  def _test_logits(self,
+                   mode,
+                   hidden_units,
+                   logits_dimension,
+                   inputs,
+                   expected_logits,
+                   batch_norm=False):
     """Tests that the expected logits are calculated."""
     with ops.Graph().as_default():
       # Global step needed for MonitoredSession, which is in turn used to
@@ -525,7 +546,8 @@ class BaseDNNLogitFnTest(object):
             ],
             activation_fn=nn.relu,
             dropout=None,
-            input_layer_partitioner=input_layer_partitioner)
+            input_layer_partitioner=input_layer_partitioner,
+            batch_norm=batch_norm)
         logits = logit_fn(
             features={'age': constant_op.constant(inputs)}, mode=mode)
         with monitored_session.MonitoredTrainingSession(
@@ -555,6 +577,69 @@ class BaseDNNLogitFnTest(object):
           logits_dimension=1,
           inputs=[[10.]],
           expected_logits=[[-2.08]])
+
+  def test_one_dim_logits_with_batch_norm(self):
+    """Tests one-dimensional logits.
+
+    input_layer = [[10]]
+    hidden_layer_0 = [[relu(0.6*10 +1), relu(0.5*10 -1)]] = [[7, 4]]
+    hidden_layer_0 = [[relu(0.6*20 +1), relu(0.5*20 -1)]] = [[13, 9]]
+
+    batch_norm_0, training (epsilon = 0.001):
+      mean1 = 1/2*(7+13) = 10,
+      variance1 = 1/2*(3^2+3^2) = 9
+      x11 = (7-10)/sqrt(9+0.001) = -0.999944449,
+      x21 = (13-10)/sqrt(9+0.001) = 0.999944449,
+
+      mean2 = 1/2*(4+9) = 6.5,
+      variance2 = 1/2*(2.5^2+.2.5^2) = 6.25
+      x12 = (4-6.5)/sqrt(6.25+0.001) = -0.99992001,
+      x22 = (9-6.5)/sqrt(6.25+0.001) = 0.99992001,
+
+    logits = [[-1*(-0.999944449) + 2*(-0.99992001) + 0.3],
+              [-1*0.999944449 + 2*0.99992001 + 0.3]]
+           = [[-0.699895571],[1.299895571]]
+
+    batch_norm_0, not training (epsilon = 0.001):
+      moving_mean1 = 0, moving_variance1 = 1
+      x11 = (7-0)/sqrt(1+0.001) = 6.996502623,
+      x21 = (13-0)/sqrt(1+0.001) = 12.993504871,
+      moving_mean2 = 0, moving_variance2 = 1
+      x12 = (4-0)/sqrt(1+0.001) = 3.998001499,
+      x22 = (9-0)/sqrt(1+0.001) = 8.995503372,
+
+    logits = [[-1*6.996502623 + 2*3.998001499 + 0.3],
+              [-1*12.993504871 + 2*8.995503372 + 0.3]]
+           = [[1.299500375],[5.297501873]]
+    """
+    base_global_step = 100
+    create_checkpoint(
+        (
+            ([[.6, .5]], [1., -1.]),
+            ([[-1.], [2.]], [.3]),
+        ),
+        base_global_step,
+        self._model_dir,
+        batch_norm_vars=([[0, 0],  # beta.
+                          [1, 1],  # gamma.
+                          [0, 0],  # moving mean.
+                          [1, 1],  # moving variance.
+                         ],))
+    self._test_logits(
+        model_fn.ModeKeys.TRAIN,
+        hidden_units=[2],
+        logits_dimension=1,
+        inputs=[[10.], [20.]],
+        expected_logits=[[-0.699895571], [1.299895571]],
+        batch_norm=True)
+    for mode in [model_fn.ModeKeys.EVAL, model_fn.ModeKeys.PREDICT]:
+      self._test_logits(
+          mode,
+          hidden_units=[2],
+          logits_dimension=1,
+          inputs=[[10.], [20.]],
+          expected_logits=[[1.299500375], [5.297501873]],
+          batch_norm=True)
 
   def test_multi_dim_logits(self):
     """Tests multi-dimensional logits.
@@ -706,7 +791,8 @@ class BaseDNNLogitFnTest(object):
               ],
               activation_fn=nn.relu,
               dropout=None,
-              input_layer_partitioner=input_layer_partitioner)
+              input_layer_partitioner=input_layer_partitioner,
+              batch_norm=False)
           logits = logit_fn(
               features={
                   'age': constant_op.constant(inputs[0]),
