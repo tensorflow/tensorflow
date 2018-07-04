@@ -66,11 +66,16 @@ enum PrimitiveType {
   // in the dimensions field.
   TUPLE = 13;
 
-  // An opaque type used for passing context specific data to a custom
-  // operation.
+  // An opaque type used for passing context-specific data to a custom
+  // operation. Shapes of this primitive type will have empty dimensions and
+  // tuple_shapes fields.
   OPAQUE = 14;
 
-  // Next = 17
+  // A token type threaded between side-effecting operations. Shapes of this
+  // primitive type will have empty dimensions and tuple_shapes fields.
+  TOKEN = 17;
+
+  // Next = 18
 }
 
 // Describes the value held inside padding elements.
@@ -269,12 +274,9 @@ message ExecutionProfile {
   // for the input data transfer since the memory is initialized with the proper
   // values before the execution.
   int64 compute_and_transfer_time_ns = 5;
-}
 
-// Handle given to a user that represents a computation that the user builds up
-// before execution.
-message ComputationHandle {
-  int64 handle = 1;
+  // The size of the binary code in the executable.
+  int64 executable_size_in_bytes = 6;
 }
 
 // Handle given to a user that represents an execution that the user launched
@@ -287,13 +289,6 @@ message ExecutionHandle {
 // Contrast this against a ComputationDataHandle, which is not globally
 // accessible, since it only exists within a specific computation.
 message GlobalDataHandle {
-  int64 handle = 1;
-}
-
-// Handle given to a user that represents a data result in a computation.
-// This is used to pass to subsequent computations that depends upon the data as
-// an operand.
-message ComputationDataHandle {
   int64 handle = 1;
 }
 
@@ -436,44 +431,6 @@ message GatherDimensionNumbers {
   int64 index_vector_dim = 4;
 }
 
-// Operation requests that are all collected as a tagged union with a oneof
-// field in OpRequest.
-
-message ConstantRequest {
-  LiteralProto literal = 2;
-}
-
-message GetTupleElementRequest {
-  ComputationDataHandle operand = 2;
-  int64 index = 3;
-}
-
-message SliceRequest {
-  ComputationDataHandle operand = 2;
-  repeated int64 start_indices = 3;
-  repeated int64 limit_indices = 4;
-  repeated int64 strides = 5;
-}
-
-message DynamicSliceRequest {
-  // Operand from which to slice at dynamic 'start_indices'.
-  ComputationDataHandle operand = 2;
-  // Dynamically computed 'start_indices' for slice operation.
-  ComputationDataHandle start_indices = 3;
-  // Slice sizes for each dimension (note that indices calculations are computed
-  // modulo dimension sizes to avoid out-of-bound array accesses).
-  repeated int64 slice_sizes = 4;
-}
-
-message DynamicUpdateSliceRequest {
-  // Operand on which slice 'update' is to be applied.
-  ComputationDataHandle operand = 2;
-  // The slice update to apply to 'operand'.
-  ComputationDataHandle update = 3;
-  // Dynamically computed start indices for the update slice operation.
-  ComputationDataHandle start_indices = 4;
-}
-
 message ConvolutionDimensionNumbers {
   // The number of the dimension that represents batch in the input.
   int64 input_batch_dimension = 7;
@@ -511,69 +468,12 @@ message ConvolutionDimensionNumbers {
   // Next = 13
 };
 
-message ConvolveRequest {
-  ComputationDataHandle lhs = 2;
-  ComputationDataHandle rhs = 3;  // This is the filter/kernel.
-  Window window = 4;              // Describes the filter/kernel.
-  ConvolutionDimensionNumbers dimension_numbers = 5;
-}
-
 enum FftType {
   FFT = 0;    // Forward FFT; complex in, complex out.
   IFFT = 1;   // Inverse FFT; complex in, complex out.
   RFFT = 2;   // Forward real FFT; real in, fft_length / 2 + 1 complex out
   IRFFT = 3;  // Inverse real FFT; fft_length / 2 + 1 complex in,
               //                   fft_length real out
-}
-
-message FftRequest {
-  FftType fft_type = 1;
-  repeated int64 fft_length = 2;  // Multivalent for higher-order FFT.
-  ComputationDataHandle operand = 3;
-}
-
-message InfeedRequest {
-  // The shape of the data returned by reading the device's infeed buffer.
-  Shape shape = 2;
-
-  // Additional infeed configuration for the backend.
-  bytes config = 3;
-}
-
-message OutfeedRequest {
-  // The shape of the data returned by reading the device's outfeed buffer.
-  Shape shape = 1;
-
-  // Operand to the Outfeed. Supports tuple.
-  ComputationDataHandle operand = 2;
-
-  // Backend-specific information for how to perform the outfeed.
-  bytes outfeed_config = 3;
-}
-
-message CallRequest {
-  ComputationHandle to_apply = 2;
-  repeated ComputationDataHandle operands = 3;
-}
-
-message CustomCallRequest {
-  string call_target_name = 2;
-  repeated ComputationDataHandle operands = 3;
-  Shape shape = 4;
-}
-
-message HostComputeRequest {
-  // Operand to the HostCompute. Supports tuple.
-  repeated ComputationDataHandle operands = 1;
-
-  // Name used to identify HostSend/Recv channels.
-  string channel_name = 2;
-
-  // Cost estimate in nanoseconds.
-  int64 cost_estimate_ns = 3;
-
-  // The shape of any data returned by host.
-  Shape shape = 4;
 }
 
 message DotDimensionNumbers {
@@ -587,297 +487,6 @@ message DotDimensionNumbers {
   repeated int64 rhs_batch_dimensions = 4;
 };
 
-message DotRequest {
-  ComputationDataHandle lhs = 2;
-  ComputationDataHandle rhs = 3;
-  DotDimensionNumbers dimension_numbers = 4;
-}
-
-message MapRequest {
-  repeated ComputationDataHandle operands = 2;
-  ComputationHandle to_apply = 3;
-  repeated ComputationDataHandle static_operands = 4;
-  // The dimensions over which to map.
-  // Example mapping a Dot operation along the batch dimension 0:
-  //   operand0.shape = [2, 2, 2], operand1.shape = [2,2,3]
-  //   Map({operand0, operand1}, Dot, {0})
-  repeated int64 dimensions = 5;
-}
-
-message ReduceRequest {
-  // Operand to the reduction.
-  ComputationDataHandle operand = 2;
-
-  // Initial value for the reduction. This must be consistent with the result
-  // shape of to_apply.
-  ComputationDataHandle init_value = 3;
-
-  // The dimensions to reduce over.
-  repeated int64 dimensions = 4;
-
-  // The computation to apply in the reduction.
-  ComputationHandle to_apply = 5;
-}
-
-message ReduceWindowRequest {
-  ComputationDataHandle operand = 2;
-  ComputationDataHandle init_value = 3;
-  Window window = 4;
-  ComputationHandle to_apply = 5;
-}
-
-message BatchNormTrainingRequest {
-  ComputationDataHandle operand = 1;
-  ComputationDataHandle scale = 2;
-  ComputationDataHandle offset = 3;
-  float epsilon = 4;
-  int64 feature_index = 5;
-}
-
-message BatchNormInferenceRequest {
-  ComputationDataHandle operand = 1;
-  ComputationDataHandle scale = 2;
-  ComputationDataHandle offset = 3;
-  ComputationDataHandle mean = 4;
-  ComputationDataHandle variance = 5;
-  float epsilon = 6;
-  int64 feature_index = 7;
-}
-
-message BatchNormGradRequest {
-  ComputationDataHandle operand = 1;
-  ComputationDataHandle scale = 2;
-  ComputationDataHandle mean = 3;
-  ComputationDataHandle variance = 4;
-  ComputationDataHandle grad_output = 5;
-  float epsilon = 6;
-  int64 feature_index = 7;
-}
-
-message CrossReplicaSumRequest {
-  ComputationDataHandle operand = 2;
-}
-
-message SelectAndScatterRequest {
-  // Operand array on which the windows slide.
-  ComputationDataHandle operand = 2;
-
-  // Source array for the data to scatter.
-  ComputationDataHandle source = 3;
-
-  // Initial scalar value for each element in the output.
-  ComputationDataHandle init_value = 4;
-
-  // Window configuration.
-  Window window = 5;
-
-  // Binary function used to select an element from each window.
-  ComputationHandle select = 6;
-
-  // Binary function used to combine each scattered value from source with the
-  // current output value at the selected location.
-  ComputationHandle scatter = 7;
-}
-
-message ReverseRequest {
-  ComputationDataHandle operand = 2;
-  repeated int64 dimensions = 3;
-}
-
-message BroadcastRequest {
-  ComputationDataHandle operand = 2;
-  repeated int64 broadcast_sizes = 3;
-}
-
-message PadRequest {
-  ComputationDataHandle operand = 2;
-  ComputationDataHandle padding_value = 3;
-  PaddingConfig padding_config = 4;
-}
-
-message ReshapeRequest {
-  ComputationDataHandle operand = 2;
-
-  // The dimension order for collapse (from fastest-changing to slowest).
-  repeated int64 dimensions = 3;
-
-  // The new dimension sizes (from dimension 0 to n-1).
-  repeated int64 new_sizes = 4;
-}
-
-message TransposeRequest {
-  ComputationDataHandle operand = 2;
-
-  // The permutation of the operand's dimensions (in the range 0 to n-1).
-  repeated int64 dimensions = 3;
-}
-
-message ParameterRequest {
-  Shape shape = 2;
-  int64 parameter = 3;
-  string name = 4;
-}
-
-message GetLocalShapeRequest {
-  ComputationHandle computation = 1;
-  ComputationDataHandle operand = 2;
-}
-
-message GetLocalShapeResponse {
-  Shape shape = 1;
-}
-
-message TraceRequest {
-  string tag = 2;
-  ComputationDataHandle operand = 3;
-}
-
-message ConvertRequest {
-  ComputationDataHandle operand = 2;
-  PrimitiveType new_element_type = 3;
-}
-
-message ConcatenateRequest {
-  repeated ComputationDataHandle operands = 2;
-  // The dimension in which we concatenate; e.g. if you had dimension arrays of
-  // [4, 1] and [5, 1], you'd concatenate in dimension 0 to produce a [9, 1].
-  // Attempting to concatenate those in dimension 1 would produce an error, as
-  // 4 != 5 (and there is no ragged array support).
-  int64 dimension = 3;
-}
-
-message ConditionalRequest {
-  ComputationDataHandle predicate = 2;
-  ComputationDataHandle true_operand = 3;
-  ComputationHandle true_computation = 4;
-  ComputationDataHandle false_operand = 5;
-  ComputationHandle false_computation = 6;
-}
-
-message WhileRequest {
-  ComputationHandle condition = 2;
-  ComputationHandle body = 3;
-  ComputationDataHandle init = 4;
-}
-
-enum UnaryOperation {
-  UNOP_INVALID = 0;
-
-  // Elementwise, logical negation on booleans and bitwise negation on ints.
-  UNOP_NOT = 1;
-
-  // Elementwise, computes e^x.
-  UNOP_EXP = 2;
-
-  // Elementwise, computes -x.
-  UNOP_NEGATE = 3;
-
-  // Puts the elements in the operand into sorted order.
-  UNOP_SORT = 4;
-
-  // Elementwise, computes tanh(x).
-  UNOP_TANH = 5;
-
-  // Elementwise, computes the natural logarithm of x.
-  UNOP_LOG = 6;
-
-  // Elementwise, computes the floor of x.
-  UNOP_FLOOR = 7;
-
-  // Elementwise, computes the ceil of x.
-  UNOP_CEIL = 8;
-
-  // Elementwise, computes the abs of x.
-  UNOP_ABS = 9;
-
-  // Elementwise, computes the sign of x.
-  UNOP_SIGN = 10;
-
-  // Elementwise, tests if values are finite (not NaN or inf)
-  UNOP_IS_FINITE = 11;
-
-  // Elementwise, computes the cosine of x.
-  UNOP_COS = 12;
-
-  // Elementwise, computes the sine of x.
-  UNOP_SIN = 13;
-
-  // Elementwise, rounds x to nearest integral value, rounding half-way cases
-  // away from zero.
-  UNOP_ROUND_NEAREST_AFZ = 14;
-
-  // Elementwise, extract real component of complex x.
-  UNOP_REAL = 15;
-
-  // Elementwise, extract real component of complex x.
-  UNOP_IMAG = 16;
-
-  // Elementwise, computes clz(x).
-  UNOP_CLZ = 17;
-
-  // Elementwise, computes exp(x)-1.
-  UNOP_EXPM1 = 18;
-
-  // Elementwise, computes log(x+1).
-  UNOP_LOG1P = 19;
-}
-
-message UnaryOpRequest {
-  UnaryOperation unop = 2;
-  ComputationDataHandle operand = 3;
-}
-
-enum BinaryOperation {
-  BINOP_INVALID = 0;
-
-  // Arithmetic operations.
-  BINOP_ADD = 1;
-  BINOP_DIV = 2;
-  BINOP_MUL = 3;
-  BINOP_SUB = 4;
-
-  // Comparison operators.
-  BINOP_EQ = 5;
-  BINOP_GE = 6;
-  BINOP_GT = 7;
-  BINOP_LE = 8;
-  BINOP_LT = 9;
-  BINOP_NE = 10;
-
-  // Element-wise maximum.
-  BINOP_MAX = 14;
-
-  // Element-wise minimum.
-  BINOP_MIN = 15;
-
-  // Raises the left-hand-side to the right-hand-side power.
-  BINOP_POW = 16;
-
-  // Remainder operation.
-  BINOP_REM = 17;
-
-  // Element-wise, logical operators on booleans and bitwise operators on ints.
-  BINOP_AND = 18;
-  BINOP_OR = 19;
-
-  BINOP_SHIFT_LEFT = 20;
-  BINOP_SHIFT_RIGHT_ARITHMETIC = 21;
-  BINOP_SHIFT_RIGHT_LOGICAL = 22;
-
-  // Complex from real, imag.
-  BINOP_COMPLEX = 23;
-
-  // Computes the 4-quadrant arctangent of the y, x input arguments.
-  BINOP_ATAN2 = 24;
-}
-
-message BinaryOpRequest {
-  BinaryOperation binop = 2;
-  ComputationDataHandle lhs = 3;
-  ComputationDataHandle rhs = 4;
-  repeated int64 broadcast_dimensions = 5;
-}
-
 enum RandomDistribution {
   RNG_INVALID = 0;
 
@@ -890,67 +499,6 @@ enum RandomDistribution {
   RNG_NORMAL = 2;
 
   // Next: 4
-}
-
-message RngRequest {
-  RandomDistribution distribution = 2;
-  repeated ComputationDataHandle parameter = 3;
-  Shape shape = 4;
-}
-
-enum TernaryOperation {
-  TRIOP_INVALID = 0;
-
-  // Given a predicate and two operands, selects operand0 if the predicate is
-  // true and operand1 if the predicate is false.
-  TRIOP_SELECT = 1;
-
-  // Given a min, max and an operand returns the operand if between min and max,
-  // else returns min if operand is less than min or max if operand is greater
-  // than max.
-  TRIOP_CLAMP = 3;
-}
-
-message TernaryOpRequest {
-  TernaryOperation triop = 2;
-  ComputationDataHandle lhs = 3;
-  ComputationDataHandle rhs = 4;
-  ComputationDataHandle ehs = 5;
-}
-
-enum VariadicOperation {
-  VAROP_INVALID = 0;
-
-  // Creates a tuple from its operands.
-  VAROP_TUPLE = 1;
-}
-
-message VariadicOpRequest {
-  VariadicOperation varop = 2;
-  repeated ComputationDataHandle operands = 3;
-}
-
-message ReducePrecisionRequest {
-  ComputationDataHandle operand = 1;
-  int32 exponent_bits = 2;
-  int32 mantissa_bits = 3;
-}
-
-message SendRequest {
-  ComputationDataHandle operand = 1;
-  ChannelHandle channel_handle = 2;
-}
-
-message RecvRequest {
-  Shape shape = 1;
-  ChannelHandle channel_handle = 2;
-}
-
-message GatherRequest {
-  ComputationDataHandle input = 1;
-  ComputationDataHandle gather_indices = 2;
-  GatherDimensionNumbers dimension_numbers = 3;
-  repeated int64 window_bounds = 4;
 }
 
 message OpSharding {
@@ -982,60 +530,4 @@ message OpSharding {
   // applied, this is inferred from the instruction this sharding gets attached
   // to.
   repeated OpSharding tuple_shardings = 5;
-}
-
-message OpRequest {
-  ComputationHandle computation = 1;
-  OpMetadata metadata = 33;
-  OpSharding sharding = 40;
-
-  oneof op {
-    BinaryOpRequest binary_op_request = 2;
-    BroadcastRequest broadcast_request = 3;
-    CallRequest call_request = 4;
-    ConcatenateRequest concatenate_request = 5;
-    ConstantRequest constant_request = 6;
-    ConvertRequest convert_request = 7;
-    ConvolveRequest convolve_request = 8;
-    CrossReplicaSumRequest cross_replica_sum_request = 9;
-    CustomCallRequest custom_call_request = 10;
-    DotRequest dot_request = 43;
-    DynamicSliceRequest dynamic_slice_request = 11;
-    DynamicUpdateSliceRequest dynamic_update_slice_request = 12;
-    GetTupleElementRequest get_tuple_element_request = 13;
-    InfeedRequest infeed_request = 14;
-    MapRequest map_request = 15;
-    PadRequest pad_request = 16;
-    ParameterRequest parameter_request = 17;
-    ReducePrecisionRequest reduce_precision_request = 36;
-    ReduceRequest reduce_request = 18;
-    ReduceWindowRequest reduce_window_request = 19;
-    ReshapeRequest reshape_request = 20;
-    ReverseRequest reverse_request = 21;
-    RngRequest rng_request = 22;
-    SelectAndScatterRequest select_and_scatter_request = 23;
-    SliceRequest slice_request = 24;
-    TernaryOpRequest ternary_op_request = 25;
-    TraceRequest trace_request = 26;
-    TransposeRequest transpose_request = 34;
-    UnaryOpRequest unary_op_request = 27;
-    VariadicOpRequest variadic_op_request = 28;
-    WhileRequest while_request = 29;
-    SendRequest send_request = 30;
-    RecvRequest recv_request = 31;
-    OutfeedRequest outfeed_request = 32;
-    BatchNormTrainingRequest batch_norm_training_request = 35;
-    BatchNormGradRequest batch_norm_grad_request = 37;
-    BatchNormInferenceRequest batch_norm_inference_request = 38;
-    FftRequest fft_request = 41;
-    ConvertRequest bitcast_convert_request = 42;
-    ConditionalRequest conditional_request = 44;
-    HostComputeRequest host_compute_request = 45;
-    GatherRequest gather_request = 46;
-    // Next: 47
-  }
-}
-
-message OpResponse {
-  ComputationDataHandle output = 1;
 }

@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "StringJoin"
+  endpoint {
+    name: "strings.join"
+  }
+  endpoint {
+    name: "string_join"
+    deprecation_message: "tf.string_join is deprecated, please use tf.strings.join instead."
+  }
+}

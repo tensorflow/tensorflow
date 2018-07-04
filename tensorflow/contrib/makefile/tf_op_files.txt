@@ -92,6 +92,7 @@ tensorflow/core/kernels/reduction_ops_common.cc
 tensorflow/core/kernels/reduction_ops_any.cc
 tensorflow/core/kernels/reduction_ops_all.cc
 tensorflow/core/kernels/roll_op.cc
+tensorflow/core/kernels/queue_op.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
@@ -300,7 +301,6 @@ tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
 tensorflow/core/kernels/warn_about_ints.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
-tensorflow/core/kernels/batch_util.cc
 tensorflow/core/ops/audio_ops.cc
 tensorflow/core/kernels/decode_proto_op.cc
 tensorflow/core/kernels/encode_proto_op.cc

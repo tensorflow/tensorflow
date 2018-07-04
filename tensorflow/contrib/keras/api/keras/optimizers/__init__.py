@@ -19,20 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 # Optimizer classes.
-from tensorflow.python.keras._impl.keras.optimizers import Adadelta
-from tensorflow.python.keras._impl.keras.optimizers import Adagrad
-from tensorflow.python.keras._impl.keras.optimizers import Adam
-from tensorflow.python.keras._impl.keras.optimizers import Adamax
-from tensorflow.python.keras._impl.keras.optimizers import Nadam
-from tensorflow.python.keras._impl.keras.optimizers import Optimizer
-from tensorflow.python.keras._impl.keras.optimizers import RMSprop
-from tensorflow.python.keras._impl.keras.optimizers import SGD
+from tensorflow.python.keras.optimizers import Adadelta
+from tensorflow.python.keras.optimizers import Adagrad
+from tensorflow.python.keras.optimizers import Adam
+from tensorflow.python.keras.optimizers import Adamax
+from tensorflow.python.keras.optimizers import Nadam
+from tensorflow.python.keras.optimizers import Optimizer
+from tensorflow.python.keras.optimizers import RMSprop
+from tensorflow.python.keras.optimizers import SGD
 
 # Auxiliary utils.
 # pylint: disable=g-bad-import-order
-from tensorflow.python.keras._impl.keras.optimizers import deserialize
-from tensorflow.python.keras._impl.keras.optimizers import serialize
-from tensorflow.python.keras._impl.keras.optimizers import get
+from tensorflow.python.keras.optimizers import deserialize
+from tensorflow.python.keras.optimizers import serialize
+from tensorflow.python.keras.optimizers import get
 
 del absolute_import
 del division

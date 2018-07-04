@@ -123,6 +123,9 @@ class DotOpEmitter {
 
     // True if the RHS contraction dimension is not 0.
     bool rhs_non_canonical;
+
+    // True if the result matrix is column major.
+    bool target_column_major;
   };
 
   // Get the MatMultDims instance for the dot product this DotOpEmitter
@@ -130,12 +133,36 @@ class DotOpEmitter {
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
 
+  bool EmitExperimentalGebpDotIfEnabled(const MatMultDims& mat_mult_dims);
+
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
   int64 GetGemvTilingFactor() const {
     const int64 kDefaultTilingFactor = 8;
     return options::LlvmIrGemvTilingFactor(hlo_module_config_)
         .value_or(kDefaultTilingFactor);
+  }
+
+  std::tuple<int64, int64, int64> GetGemmTileSize() const {
+    // Tuned for broadwell - Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz
+    //
+    // TODO(b/80093688): Tune for other architectures and centralize this
+    // information in one place.
+    const std::tuple<int64, int64, int64> kDefaultTileSize =
+        std::tuple<int64, int64, int64>(11, 9, 1);
+    return options::LlvmIrGemmTileSize(hlo_module_config_)
+        .value_or(kDefaultTileSize);
+  }
+
+  // Returns true if we should use an experimental implementation of GEMM
+  // (general matrix matrix multiplication) if possible.
+  bool EnableExperimentalLlvmIrGemm() const {
+    return options::EnableExperimentalLlvmIrGemm(hlo_module_config_);
+  }
+
+  // Returns true if we should call into multi-threaded Eigen routines.
+  bool ShouldUseMultiThreadedEigen() {
+    return hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   }
 
   const HloInstruction& dot_;

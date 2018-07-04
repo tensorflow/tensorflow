@@ -45,26 +45,45 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
   // Read start indices from start_indices_generator.
   const int64 rank = ShapeUtil::Rank(output_shape);
-  IrArray::Index start_index(rank);
+  IrArray::Index start_index(ir_builder->getInt64Ty(), rank);
   for (int64 i = 0; i < rank; ++i) {
     IrArray::Index dim_index({ir_builder->getInt64(i)});
     TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(dim_index));
+    llvm::Value* output_dim_size = llvm::ConstantInt::get(
+        start_index[i]->getType(), output_shape.dimensions(i));
+    llvm::Value* update_dim_size = llvm::ConstantInt::get(
+        start_index[i]->getType(), update_shape.dimensions(i));
+
+    // Clamp the start index so that the update region fits in the operand.
+    // start_index = clamp(start_index, 0, output_dim_size - update_dim_size)
+
+    // TODO(b/74360564): This is implementation defined behavior, but is
+    // currently respected by all implementations. Change this if we ever decide
+    // to oficially document different behavior.
+    llvm::Value* max_bound =
+        ir_builder->CreateSub(output_dim_size, update_dim_size);
+    llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
+    start_index[i] = ir_builder->CreateSelect(
+        ir_builder->CreateICmp(llvm::ICmpInst::ICMP_SGE, zero, start_index[i]),
+        zero, start_index[i]);
+
+    start_index[i] = ir_builder->CreateSelect(
+        ir_builder->CreateICmp(llvm::ICmpInst::ICMP_SLE, max_bound,
+                               start_index[i]),
+        max_bound, start_index[i]);
   }
 
   auto loop_body_emitter = [&](const IrArray::Index& update_index) -> Status {
     // Calculate output_index, where we'll write the value from update.  For
     // each dimension,
     //
-    //   output_index[dim] = (start_index[dim] + update_index[dim]) % dim_size.
+    //   output_index[dim] = start_index[dim] + update_index[dim]
     //
-    IrArray::Index output_index(rank);
+    IrArray::Index output_index(start_index.GetType(), rank);
     for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* dim_size = llvm::ConstantInt::get(
-          update_index[i]->getType(), output_shape.dimensions(i));
-      llvm::Value* start_index0 = ir_builder->CreateZExtOrBitCast(
+      llvm::Value* start_index0 = ir_builder->CreateSExtOrBitCast(
           start_index[i], update_index[i]->getType());
-      output_index[i] = ir_builder->CreateURem(
-          ir_builder->CreateAdd(start_index0, update_index[i]), dim_size);
+      output_index[i] = ir_builder->CreateAdd(start_index0, update_index[i]);
     }
 
     // Do output[output_index] = update[update_index].

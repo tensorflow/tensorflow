@@ -22,4 +22,9 @@ namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("PeriodicResample").Device(DEVICE_CPU),
                         PeriodicResampleOp);
 
+
+REGISTER_KERNEL_BUILDER(Name("PeriodicResampleOpGrad")
+                            .Device(DEVICE_CPU),
+                        PeriodicResampleOpGrad);
+
 }  // namespace tensorflow

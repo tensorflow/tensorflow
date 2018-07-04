@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -74,10 +75,9 @@ class UnpackOp : public XlaOpKernel {
     for (int i = 0; i < num; ++i) {
       start_indices[axis] = i;
       limit_indices[axis] = i + 1;
-      auto slice = ctx->builder()->Slice(input, start_indices, limit_indices,
-                                         strides);
+      auto slice = xla::Slice(input, start_indices, limit_indices, strides);
       // Reshape to drop the 'axis' dimension.
-      auto result = ctx->builder()->Reshape(slice, output_shape.dim_sizes());
+      auto result = xla::Reshape(slice, output_shape.dim_sizes());
       ctx->SetOutput(i, result);
     }
   }

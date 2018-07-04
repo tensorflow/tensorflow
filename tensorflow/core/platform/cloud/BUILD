@@ -174,6 +174,7 @@ cc_library(
         "oauth_client.h",
     ],
     copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":curl_http_request",
         ":http_request",

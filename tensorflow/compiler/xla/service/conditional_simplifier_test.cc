@@ -119,10 +119,12 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsSend) {
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
 
   auto* true_computation = conditional->true_computation();
+  auto* token =
+      true_computation->AddInstruction(HloInstruction::CreateAfterAll({}));
   auto* send = true_computation->AddInstruction(HloInstruction::CreateSend(
       true_computation->AddInstruction(
           HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
-      /*channel_id=*/0));
+      token, /*channel_id=*/0));
   true_computation->AddInstruction(HloInstruction::CreateSendDone(send));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
@@ -133,8 +135,10 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsRecv) {
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
 
   auto* true_computation = conditional->true_computation();
+  auto* token =
+      true_computation->AddInstruction(HloInstruction::CreateAfterAll({}));
   auto* recv = true_computation->AddInstruction(HloInstruction::CreateRecv(
-      ShapeUtil::MakeShape(F32, {1}), /*channel_id=*/0));
+      ShapeUtil::MakeShape(F32, {1}), token, /*channel_id=*/0));
   true_computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
@@ -144,8 +148,10 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   auto* conditional = computation->root_instruction();
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
   auto* false_computation = conditional->false_computation();
-  false_computation->AddInstruction(
-      HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
+  auto token =
+      false_computation->AddInstruction(HloInstruction::CreateAfterAll({}));
+  false_computation->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
 

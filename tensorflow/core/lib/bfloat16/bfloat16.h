@@ -354,6 +354,18 @@ struct bfloat16 {
     return x;
   }
 
+  static bfloat16 highest() {
+    bfloat16 x;
+    x.value = 0x7F7F;  // 0x1.FEp127
+    return x;
+  }
+
+  static bfloat16 lowest() {
+    bfloat16 x;
+    x.value = 0xFF7F;  // -0x1.FEp127
+    return x;
+  }
+
   uint16_t value;
 
   // A value that represents "not a number".

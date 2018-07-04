@@ -25,7 +25,6 @@ import tempfile as _tempfile
 from tensorflow.contrib.lite.python import lite_constants
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
-from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -111,37 +110,75 @@ def tensor_name(x):
   return x.name.split(":")[0]
 
 
-def toco_convert(input_data,
-                 input_tensors,
-                 output_tensors,
-                 inference_type=lite_constants.FLOAT,
-                 input_format=lite_constants.TENSORFLOW_GRAPHDEF,
-                 output_format=lite_constants.TFLITE,
-                 quantized_input_stats=None,
-                 drop_control_dependency=True):
-  """Convert a model using TOCO from `input_format` to `output_format`.
+def build_toco_convert_protos(input_tensors,
+                              output_tensors,
+                              inference_type=lite_constants.FLOAT,
+                              inference_input_type=None,
+                              input_format=lite_constants.TENSORFLOW_GRAPHDEF,
+                              output_format=lite_constants.TFLITE,
+                              quantized_input_stats=None,
+                              default_ranges_stats=None,
+                              drop_control_dependency=True,
+                              reorder_across_fake_quant=False,
+                              allow_custom_ops=False,
+                              change_concat_input_ranges=False,
+                              quantize_weights=False,
+                              dump_graphviz_dir=None,
+                              dump_graphviz_video=False):
+  """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
   case the default `input_format` and `output_format` are sufficient.
 
   Args:
-    input_data: Input data (i.e. often `sess.graph_def`).
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.get_shape()` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    inference_type: Currently must be `{FLOAT, QUANTIZED_UINT8}`.
-    input_format: Type of data to read (currently must be TENSORFLOW_GRAPHDEF).
-    output_format: Type of data to write (currently must be TFLITE or
-      GRAPHVIZ_DOT)
-    quantized_input_stats: For each member of input_tensors the mean and
-      std deviation of training data. Only needed if `inference_type` is
-      `QUANTIZED_UINT8`.
-    drop_control_dependency: Drops control dependencies silently. This is due
-      to tf lite not supporting control dependencies.
+    inference_type: Target data type of real-number arrays in the output file.
+      Must be `{FLOAT, QUANTIZED_UINT8}`.  (default FLOAT)
+    inference_input_type: Target data type of real-number input arrays. Allows
+      for a different type for input arrays in the case of quantization.
+      Must be `{FLOAT, QUANTIZED_UINT8}`. (default `inference_type`)
+    input_format: Type of data to read Currently must be
+      `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
+    output_format: Output file format. Currently must be `{TFLITE,
+      GRAPHVIZ_DOT}`. (default TFLITE)
+    quantized_input_stats: List of tuples of integers representing the mean and
+      standard deviation. Each tuple maps to the corresponding input tensor.
+      Only need if `inference_type` is `QUANTIZED_UINT8`. (default None)
+    default_ranges_stats: Tuple of integers representing (min, max) range values
+      for all arrays without a specified range. Intended for experimenting with
+      quantization via "dummy quantization". (default None)
+    drop_control_dependency: Boolean indicating whether to drop control
+      dependencies silently. This is due to TFLite not supporting control
+      dependencies. (default True)
+    reorder_across_fake_quant: Boolean indicating whether to reorder FakeQuant
+      nodes in unexpected locations. Used when the location of the FakeQuant
+      nodes is preventing graph transformations necessary to convert the graph.
+      Results in a graph that differs from the quantized training graph,
+      potentially causing differing arithmetic behavior. (default False)
+    allow_custom_ops: Boolean indicating whether to allow custom operations.
+      When false any unknown operation is an error. When true, custom ops are
+      created for any op that is unknown. The developer will need to provide
+      these to the TensorFlow Lite runtime with a custom resolver.
+      (default False)
+    change_concat_input_ranges: Boolean to change behavior of min/max ranges for
+      inputs and outputs of the concat operator for quantized models. Changes
+      the ranges of concat operator overlap when true. (default False)
+    quantize_weights: Boolean indicating whether to store weights as quantized
+      weights followed by dequantize operations. Computation is still done in
+      float, but reduces model size (at the cost of accuracy and latency).
+      (default False)
+    dump_graphviz_dir: Full filepath of folder to dump the graphs at various
+      stages of processing GraphViz .dot files. Preferred over
+      --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
+      output file. (default None)
+    dump_graphviz_video: Boolean indicating whether to dump the graph after
+      every graph transformation. (default False)
 
   Returns:
-    The converted data. For example if tflite was the destination, then
-    this will be a tflite flatbuffer in a bytes array.
+    model_flags, toco_flags: two protocol buffers describing the conversion
+    process.
 
   Raises:
     ValueError: If the input tensor type is unknown
@@ -151,37 +188,60 @@ def toco_convert(input_data,
   toco = _toco_flags_pb2.TocoFlags()
   toco.input_format = input_format
   toco.output_format = output_format
-  toco.drop_control_dependency = drop_control_dependency
-  model = _model_flags_pb2.ModelFlags()
   toco.inference_type = inference_type
+  if inference_input_type:
+    toco.inference_input_type = inference_input_type
+  toco.drop_control_dependency = drop_control_dependency
+  toco.reorder_across_fake_quant = reorder_across_fake_quant
+  toco.allow_custom_ops = allow_custom_ops
+  toco.quantize_weights = quantize_weights
+  if default_ranges_stats:
+    toco.default_ranges_min = default_ranges_stats[0]
+    toco.default_ranges_max = default_ranges_stats[1]
+  if dump_graphviz_dir:
+    toco.dump_graphviz_dir = dump_graphviz_dir
+  toco.dump_graphviz_include_video = dump_graphviz_video
+
+  model = _model_flags_pb2.ModelFlags()
+  model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
-    if input_tensor.dtype == _dtypes.float32:
-      tflite_input_type = lite_constants.FLOAT
-    elif input_tensor.dtype == _dtypes.int32:
-      tflite_input_type = lite_constants.INT32
-    elif input_tensor.dtype == _dtypes.int64:
-      tflite_input_type = lite_constants.INT64
-    # TODO(aselle): Insert strings when they are available
-    else:
-      raise ValueError("Tensors %s not known type %r" % (input_tensor.name,
-                                                         input_tensor.dtype))
-
     input_array = model.input_arrays.add()
-
     if inference_type == lite_constants.QUANTIZED_UINT8:
-      if tflite_input_type == lite_constants.FLOAT:
-        tflite_input_type = lite_constants.QUANTIZED_UINT8
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
-
     input_array.name = tensor_name(input_tensor)
     input_array.shape.dims.extend(map(int, input_tensor.get_shape()))
 
   for output_tensor in output_tensors:
     model.output_arrays.append(tensor_name(output_tensor))
+  return model, toco
 
-  # TODO(aselle): Consider handling the case of allowing quantized
-  # inputs to be converted to float (via the toco.inference_input_type field).
-  data = toco_convert_protos(model.SerializeToString(),
-                             toco.SerializeToString(),
+
+def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
+  """"Convert a model using TOCO.
+
+  Typically this function is used to convert from TensorFlow GraphDef to TFLite.
+  Conversion can be customized by providing arguments that are forwarded to
+  `build_toco_convert_protos` (see documentation for details).
+
+  Args:
+    input_data: Input data (i.e. often `sess.graph_def`),
+    input_tensors: List of input tensors. Type and shape are computed using
+      `foo.get_shape()` and `foo.dtype`.
+    output_tensors: List of output tensors (only .name is used from this).
+    *args: See `build_toco_convert_protos`,
+    **kwargs: See `build_toco_convert_protos`.
+
+  Returns:
+    The converted data. For example if TFLite was the destination, then
+    this will be a tflite flatbuffer in a bytes array.
+
+  Raises:
+    Defined in `build_toco_convert_protos`.
+  """
+  model_flags, toco_flags = build_toco_convert_protos(input_tensors,
+                                                      output_tensors,
+                                                      *args, **kwargs)
+  data = toco_convert_protos(model_flags.SerializeToString(),
+                             toco_flags.SerializeToString(),
                              input_data.SerializeToString())
   return data

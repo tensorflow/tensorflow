@@ -597,6 +597,10 @@ Status RemoveDeadBranches(const std::unordered_set<string>& nodes_to_preserve,
             }
           }
         }
+      } else if (dead.node->op() == "ControlTrigger") {
+        // Control trigger have different semantic, so don't touch them
+        found_node_to_preserve = true;
+        break;
       } else {
         if (local_dead_nodes.insert(dead.node).second) {
           for (const GraphView::InputPort& dead_fanout :
@@ -651,8 +655,7 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   if (options_.enable_stack_push_removal) {
     TF_RETURN_IF_ERROR(RemoveStackOps(item.NodesToPreserve(), optimized_graph));
   }
-  if (opt_level_ == RewriterConfig::AGGRESSIVE &&
-      options_.enable_dead_branch_removal) {
+  if (options_.enable_dead_branch_removal) {
     TF_RETURN_IF_ERROR(
         RemoveDeadBranches(item.NodesToPreserve(), optimized_graph));
   }

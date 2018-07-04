@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
-
 #include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -310,6 +309,51 @@ TEST_F(HloShardingTest, OstreamTest) {
   std::ostringstream oss;
   oss << sharding;
   EXPECT_EQ(oss.str(), "{f32[3,5,7,11] devices=[1,1,2,2]0,1,2,3}");
+}
+
+TEST_F(HloShardingTest, ParseHloString) {
+  auto check = [](const HloSharding& sharding) {
+    TF_ASSERT_OK_AND_ASSIGN(auto parsed_sharding,
+                            ParseSharding(sharding.ToString()));
+    EXPECT_EQ(sharding, parsed_sharding);
+  };
+  check(HloSharding::Replicate());
+  check(HloSharding::AssignDevice(2));
+  check(HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 1, 3, 7}),
+                          Array4D<int64>({{{{0}, {1}}}})));
+  // Empty tuple. One sharding is required for empty tuples, as we need to be
+  // able to assign sharding to them, even though they have no leaves.
+  check(HloSharding::Tuple(ShapeUtil::MakeTupleShape({}),
+                           {HloSharding::Replicate()}));
+  {
+    // Non-nested tuple.
+    auto tuple_shape =
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 1, 5, 7}),
+                                   ShapeUtil::MakeShape(F32, {3, 5, 7}),
+                                   ShapeUtil::MakeShape(F32, {3, 7})});
+    check(HloSharding::Tuple(
+        tuple_shape, {HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 1, 3, 7}),
+                                        Array4D<int64>({{{{0}, {1}}}})),
+                      HloSharding::Replicate(), HloSharding::AssignDevice(1)}));
+  }
+  {
+    // Nested tuple.
+    auto tuple_shape = ShapeUtil::MakeTupleShape(
+        {ShapeUtil::MakeShape(F32, {3, 1, 5, 7}),
+         ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5, 7}),
+                                    ShapeUtil::MakeShape(F32, {3, 7})})});
+    std::vector<HloSharding> leaf_shardings = {
+        HloSharding::Tile(ShapeUtil::MakeShape(F32, {3, 1, 3, 7}),
+                          Array4D<int64>({{{{0}, {1}}}})),
+        HloSharding::Replicate(), HloSharding::AssignDevice(1)};
+    ShapeTree<HloSharding> sharding_tree(tuple_shape, HloSharding::Replicate());
+    // Assign leaf_shardings to sharding_tree leaves.
+    auto it = leaf_shardings.begin();
+    for (auto& index_to_sharding : sharding_tree.leaves()) {
+      index_to_sharding.second = *it++;
+    }
+    check(HloSharding::Tuple(sharding_tree));
+  }
 }
 
 }  // namespace

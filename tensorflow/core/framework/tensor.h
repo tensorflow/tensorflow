@@ -484,6 +484,7 @@ class Tensor {
   friend class TensorTestHelper;      // For access to set_shape
   friend class OpKernelContext;       // For access to RefCountIsOne().
   friend class ScopedAllocator;       // For access to buf_.
+  friend class XlaTensor;             // For access to RefCountIsOne().
   friend class XlaTensorBuffer;  // For access to the private constructor taking
                                  // the buffer
   template <typename Device, typename T>

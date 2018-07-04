@@ -74,6 +74,26 @@ TEST_F(SymbolicShapesTest, ShapesBroadcastable) {
   EXPECT_TRUE(ShapesBroadcastable(MakeShape({-2, 1}), MakeShape({1, -2})));
   EXPECT_TRUE(ShapesBroadcastable(MakeShape({-2, 1}), MakeShape({1, -3})));
   EXPECT_TRUE(ShapesBroadcastable(MakeShape({-3}), MakeShape({-2, -3})));
+
+  TensorShapeProto output_shape;
+  EXPECT_TRUE(
+      ShapeAfterBroadcast(MakeShape({1, 2}), MakeShape({1, 2}), &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({1, 2}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 2}), MakeShape({-2, 2}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, 2}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 32}), MakeShape({-2, 1}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, 32}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 1}), MakeShape({1, -2}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, -2}), output_shape));
+  EXPECT_TRUE(ShapeAfterBroadcast(MakeShape({-2, 1}), MakeShape({1, -3}),
+                                  &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, -3}), output_shape));
+  EXPECT_TRUE(
+      ShapeAfterBroadcast(MakeShape({-3}), MakeShape({-2, -3}), &output_shape));
+  EXPECT_TRUE(ShapesSymbolicallyEqual(MakeShape({-2, -3}), output_shape));
 }
 
 TEST_F(SymbolicShapesTest, CompareSymbolicallyShapedTensorSizes) {

@@ -256,7 +256,7 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "x" && count++) {
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "two" && count++) {
       EXPECT_EQ("Const", node.op());
@@ -333,7 +333,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
     if (node.name() == "x" || node.name() == "y" || node.name() == "dz") {
       count++;
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "rx" && count++) {
       EXPECT_EQ("BroadcastGradientArgs", node.op());
@@ -402,7 +402,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
     if (node.name() == "x" || node.name() == "y") {
       count++;
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "a0" && count++) {
       EXPECT_EQ("Swap", node.op());
@@ -465,7 +465,7 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
   for (const NodeDef &node : item.function_body().node()) {
     if (node.name() == "in" && count++) {
       EXPECT_EQ("Placeholder", node.op());
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "Linear_func" && count++) {
       EXPECT_EQ("Identity", node.op());
@@ -517,9 +517,9 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
     count++;
     EXPECT_EQ("Placeholder", node.op());
     if (node.name() == "arg3") {
-      EXPECT_EQ(DT_INT32, node.attr().at("T").type());
+      EXPECT_EQ(DT_INT32, node.attr().at("dtype").type());
     } else {
-      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
     }
   }
   EXPECT_EQ(5, count);

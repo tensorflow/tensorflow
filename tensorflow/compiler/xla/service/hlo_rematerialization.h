@@ -17,6 +17,7 @@
 
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -57,6 +58,9 @@ class HloRematerialization {
   //   sizes: Optional outparam that indicates the peak memory usage of the HLO
   //     module before/after rematerialization.
   //
+  //   copy_insertion: If non-null, run the provided copy insertion pass
+  //   before HLO scheduling.
+  //
   // Returns whether any instructions were rematerialized. If memory use is
   // already below the given limit then no instructions are rematerialized and
   // false is returned.
@@ -68,13 +72,15 @@ class HloRematerialization {
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
       SequentialHloOrdering::HloModuleSequence* sequence,
-      RematerializationSizes* sizes = nullptr);
+      RematerializationSizes* sizes, CopyInsertion* copy_insertion = nullptr);
 
  protected:
   HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
-                       const ShapeSizeFunction& size_function)
+                       const ShapeSizeFunction& size_function,
+                       CopyInsertion* copy_insertion)
       : scheduler_algorithm_(scheduler_algorithm),
-        size_function_(size_function) {}
+        size_function_(size_function),
+        copy_insertion_(copy_insertion) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -139,6 +145,9 @@ class HloRematerialization {
   // uses of the original instruction and the original instruction is
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
+
+  // Copy insertion pass that runs before HLO scheduling.
+  CopyInsertion* copy_insertion_;
 };
 
 }  // namespace xla

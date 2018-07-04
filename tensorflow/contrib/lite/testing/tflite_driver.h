@@ -48,6 +48,8 @@ class TfLiteDriver : public TestRunner {
   string ReadOutput(int id) override { return "no-op"; }
 
  private:
+  void ResetLSTMStateTensors();
+
   class Expectation;
 
   bool use_nnapi_ = false;

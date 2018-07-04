@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Log"
+  endpoint {
+    name: "math.log"
+  }
+  endpoint {
+    name: "log"
+    deprecation_message: "tf.log is deprecated, please use tf.math.log instead."
+  }
+}

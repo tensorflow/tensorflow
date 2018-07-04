@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 
 /**
@@ -29,8 +31,21 @@ final class Tensor {
     return new Tensor(nativeHandle);
   }
 
-  /** Reads Tensor content into an array. */
+  /**
+   * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
+   *
+   * @param dst the destination buffer, either an explicitly-typed array or a {@link ByteBuffer}.
+   * @throws IllegalArgumentException if {@code dst} is not compatible with the tensor (for example,
+   *     mismatched data types or shapes).
+   * @throws BufferOverflowException If {@code dst} is a ByteBuffer with insufficient space for the
+   *     data in this tensor.
+   */
   <T> T copyTo(T dst) {
+    if (dst instanceof ByteBuffer) {
+      ByteBuffer dstByteBuffer = (ByteBuffer) dst;
+      dstByteBuffer.put(buffer());
+      return dst;
+    }
     if (NativeInterpreterWrapper.dataTypeOf(dst) != dtype) {
       throw new IllegalArgumentException(
           String.format(
@@ -59,6 +74,12 @@ final class Tensor {
     this.dtype = DataType.fromNumber(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
   }
+
+  private ByteBuffer buffer() {
+    return buffer(nativeHandle).order(ByteOrder.nativeOrder());
+  }
+
+  private static native ByteBuffer buffer(long handle);
 
   private static native int dtype(long handle);
 

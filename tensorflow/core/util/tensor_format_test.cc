@@ -26,9 +26,9 @@ namespace tensorflow {
   { val, #val }
 
 std::pair<TensorFormat, const char*> test_data_formats[] = {
-    EnumStringPair(FORMAT_NHWC),
-    EnumStringPair(FORMAT_NCHW),
-    EnumStringPair(FORMAT_NCHW_VECT_C),
+    EnumStringPair(FORMAT_NHWC),        EnumStringPair(FORMAT_NCHW),
+    EnumStringPair(FORMAT_NCHW_VECT_C), EnumStringPair(FORMAT_NHWC_VECT_W),
+    EnumStringPair(FORMAT_HWNC),        EnumStringPair(FORMAT_HWCN),
 };
 
 std::pair<FilterTensorFormat, const char*> test_filter_formats[] = {
@@ -84,6 +84,16 @@ struct DimMaps {
                                   {  0,   2,   3,   1, {  2,  3, -1 } },
                                   {  0,   3,   4,   1, {  2,  3,  4 } }
                                 };
+  StaCoExTensorDm kTdmHWNC[4] = { kTdmInvalid,
+                                  {  1,  -1,   0,   2, {  0, -1, -1 } },
+                                  {  2,   0,   1,   3, {  0,  1, -1 } },
+                                  {  3,   1,   2,   4, {  0,  1,  2 } }
+                                };
+  StaCoExTensorDm kTdmHWCN[4] = { kTdmInvalid,
+                                  {  2,  -1,   0,   1, {  0, -1, -1 } },
+                                  {  3,   0,   1,   2, {  0,  1, -1 } },
+                                  {  4,   1,   2,   3, {  0,  1,  2 } }
+                                };
 #undef StaCoExTensorDm
 #define StaCoExFilterDm static constexpr FilterDimMap
   //                                'H', 'W', 'I', 'O'    0   1   2
@@ -104,10 +114,13 @@ struct DimMaps {
 inline constexpr const TensorDimMap&
 GetTensorDimMap(const int num_spatial_dims, const TensorFormat format) {
   return
-      (format == FORMAT_NHWC) ? DimMaps::kTdmNHWC[num_spatial_dims] :
+      (format == FORMAT_NHWC ||
+       format == FORMAT_NHWC_VECT_W) ? DimMaps::kTdmNHWC[num_spatial_dims] :
       (format == FORMAT_NCHW ||
-       format == FORMAT_NCHW_VECT_C) ? DimMaps::kTdmNCHW[num_spatial_dims]
-                                     : DimMaps::kTdmInvalid;
+       format == FORMAT_NCHW_VECT_C) ? DimMaps::kTdmNCHW[num_spatial_dims] :
+      (format == FORMAT_HWNC) ? DimMaps::kTdmHWNC[num_spatial_dims] :
+      (format == FORMAT_HWCN) ? DimMaps::kTdmHWCN[num_spatial_dims]
+                              : DimMaps::kTdmInvalid;
 }
 
 inline constexpr const FilterDimMap&
@@ -124,6 +137,8 @@ GetFilterDimMap(const int num_spatial_dims,
 constexpr TensorDimMap DimMaps::kTdmInvalid;
 constexpr TensorDimMap DimMaps::kTdmNHWC[4];
 constexpr TensorDimMap DimMaps::kTdmNCHW[4];
+constexpr TensorDimMap DimMaps::kTdmHWNC[4];
+constexpr TensorDimMap DimMaps::kTdmHWCN[4];
 constexpr FilterDimMap DimMaps::kFdmInvalid;
 constexpr FilterDimMap DimMaps::kFdmHWIO[4];
 constexpr FilterDimMap DimMaps::kFdmOIHW[4];

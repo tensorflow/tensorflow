@@ -14,8 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -32,17 +33,24 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     int64 window_size = 0;
-    int64 stride = 1;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<int64>(ctx, "window_size", &window_size));
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<int64>(ctx, "stride", &stride));
+    int64 stride = 0;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "window_size", &window_size));
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "stride", &stride));
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
-    OP_REQUIRES(
-        ctx, stride > 0 && stride < window_size,
-        errors::InvalidArgument("Stride must be in [1, window_size)."));
+    OP_REQUIRES(ctx, stride > 0,
+                errors::InvalidArgument("Stride must be greater than zero."));
+    if (stride == window_size) {
+      LOG(WARNING) << "stride: " << stride
+                   << " is equal to window_size: " << window_size
+                   << ", to use `batch` instead.";
+    } else if (stride > window_size) {
+      LOG(WARNING) << "stride: " << stride
+                   << " is greater than window_size: " << window_size
+                   << ", you will lose some data.";
+    }
 
     *output = new Dataset(ctx, window_size, stride, input);
   }
@@ -50,8 +58,12 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
  private:
   class Dataset : public GraphDatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 window_size, int64 stride, const DatasetBase* input)
-        : GraphDatasetBase(ctx), window_size_(window_size), stride_(stride), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 window_size, int64 stride,
+            const DatasetBase* input)
+        : GraphDatasetBase(ctx),
+          window_size_(window_size),
+          stride_(stride),
+          input_(input) {
       input_->Ref();
 
       const auto& input_shapes = input_->output_shapes();
@@ -64,7 +76,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           Iterator::Params{this, strings::StrCat(prefix, "::Slide")}));
@@ -78,8 +90,9 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
-      return strings::StrCat("SlideDatasetOp(", window_size_, ", ", stride_, ")::Dataset");
+    string DebugString() const override {
+      return strings::StrCat("SlideDatasetOp(", window_size_, ", ", stride_,
+                             ")::Dataset");
     }
 
    protected:
@@ -101,8 +114,11 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -117,12 +133,15 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
           batch_elements.reserve(window_size);
-          const bool first_call = cache_.empty();
-          if (first_call) {
-            cache_.reserve(window_size);
-          } else {
-            // Reuse cache in the previous iteration.
-            cache_.swap(batch_elements);
+          // Use cache if stride < window_size.
+          if (stride < window_size) {
+            const bool first_call = cache_.empty();
+            if (first_call) {
+              cache_.reserve(window_size);
+            } else {
+              // Reuse cache in the previous iteration.
+              cache_.swap(batch_elements);
+            }
           }
           // Fill up with new elements.
           *end_of_sequence = false;
@@ -142,9 +161,22 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
             DCHECK(*end_of_sequence);
             return Status::OK();
           }
-          // Cache the data used for the next iteration.
-          for (size_t i = stride; i < window_size; ++i) {
-            cache_.emplace_back(batch_elements[i]);
+
+          if (stride < window_size) {
+            // Cache the data used for the next iteration.
+            for (size_t i = stride; i < window_size; ++i) {
+              cache_.emplace_back(batch_elements[i]);
+            }
+          } else if (stride > window_size) {
+            // Drop the data before the next iteration.
+            std::vector<Tensor> batch_element_tuple;
+            for (size_t i = window_size; i < stride && !*end_of_sequence; ++i) {
+              TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &batch_element_tuple,
+                                                      end_of_sequence));
+              if (*end_of_sequence) {
+                input_impl_.reset();
+              }
+            }
           }
         }
 

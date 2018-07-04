@@ -1,112 +1,74 @@
 path: "tensorflow.Event"
-tf_class {
-  is_instance: "<class \'tensorflow.core.util.event_pb2.Event\'>"
-  is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
-  member {
-    name: "DESCRIPTOR"
-    mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
-  }
-  member {
-    name: "Extensions"
-    mtype: "<type \'getset_descriptor\'>"
-  }
-  member {
-    name: "FILE_VERSION_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "GRAPH_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "LOG_MESSAGE_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "META_GRAPH_DEF_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "SESSION_LOG_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "STEP_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "SUMMARY_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TAGGED_RUN_METADATA_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "WALL_TIME_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member_method {
-    name: "ByteSize"
-  }
-  member_method {
-    name: "Clear"
-  }
-  member_method {
-    name: "ClearExtension"
-  }
-  member_method {
-    name: "ClearField"
-  }
-  member_method {
-    name: "CopyFrom"
-  }
-  member_method {
-    name: "DiscardUnknownFields"
-  }
-  member_method {
-    name: "FindInitializationErrors"
-  }
-  member_method {
-    name: "FromString"
-  }
-  member_method {
-    name: "HasExtension"
-  }
-  member_method {
-    name: "HasField"
-  }
-  member_method {
-    name: "IsInitialized"
-  }
-  member_method {
-    name: "ListFields"
-  }
-  member_method {
-    name: "MergeFrom"
-  }
-  member_method {
-    name: "MergeFromString"
-  }
-  member_method {
-    name: "ParseFromString"
-  }
-  member_method {
-    name: "RegisterExtension"
-  }
-  member_method {
-    name: "SerializePartialToString"
-  }
-  member_method {
-    name: "SerializeToString"
-  }
-  member_method {
-    name: "SetInParent"
-  }
-  member_method {
-    name: "WhichOneof"
-  }
-  member_method {
-    name: "__init__"
+tf_proto {
+  descriptor {
+    name: "Event"
+    field {
+      name: "wall_time"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "step"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "file_version"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+      oneof_index: 0
+    }
+    field {
+      name: "graph_def"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_BYTES
+      oneof_index: 0
+    }
+    field {
+      name: "summary"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Summary"
+      oneof_index: 0
+    }
+    field {
+      name: "log_message"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.LogMessage"
+      oneof_index: 0
+    }
+    field {
+      name: "session_log"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SessionLog"
+      oneof_index: 0
+    }
+    field {
+      name: "tagged_run_metadata"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TaggedRunMetadata"
+      oneof_index: 0
+    }
+    field {
+      name: "meta_graph_def"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_BYTES
+      oneof_index: 0
+    }
+    oneof_decl {
+      name: "what"
+    }
   }
 }

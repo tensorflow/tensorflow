@@ -24,7 +24,7 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import numpy as np
 
-from tensorflow.python.keras._impl.keras import layers as keras_layers
+from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util.tf_export import tf_export
@@ -44,7 +44,7 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
         normalized, typically the features axis/axes. For instance, after a
         `Conv2D` layer with `data_format="channels_first"`, set `axis=1`. If a
         list of axes is provided, each axis in `axis` will be normalized
-        simultaneously. Default is `-1` which takes uses last axis. Note: when
+        simultaneously. Default is `-1` which uses the last axis. Note: when
         using multi-axis batch norm, the `beta`, `gamma`, `moving_mean`, and
         `moving_variance` variables are the same rank as the input Tensor, with
         dimension size 1 in all reduced (non-axis) dimensions).
@@ -308,7 +308,6 @@ def batch_normalization(inputs,
       virtual_batch_size=virtual_batch_size,
       adjustment=adjustment,
       name=name,
-      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs, training=training)

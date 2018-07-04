@@ -2,9 +2,11 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts")
+
 common_copts = [
     "-Wall",
-]
+] + tflite_copts()
 
 cc_library(
     name = "profiler",
@@ -29,6 +31,43 @@ cc_library(
     name = "profile_buffer",
     hdrs = ["profile_buffer.h"],
     copts = common_copts,
+    deps = [":time"],
+)
+
+cc_library(
+    name = "time",
+    srcs = ["time.cc"],
+    hdrs = ["time.h"],
+    copts = common_copts,
+)
+
+cc_library(
+    name = "profile_summarizer",
+    srcs = ["profile_summarizer.cc"],
+    hdrs = ["profile_summarizer.h"],
+    copts = common_copts,
+    deps = [
+        ":profiler",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/core:stats_calculator_portable",
+    ],
+)
+
+cc_test(
+    name = "profile_summarizer_test",
+    srcs = ["profile_summarizer_test.cc"],
+    copts = common_copts,
+    deps = [
+        ":profile_summarizer",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:schema_fbs_version",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        "//tensorflow/contrib/lite/kernels:kernel_util",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_test(

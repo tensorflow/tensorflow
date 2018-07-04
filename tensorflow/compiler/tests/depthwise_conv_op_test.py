@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -114,7 +114,7 @@ def CheckGradConfigsToTest():
     yield i, f, o, s, p
 
 
-class DepthwiseConv2DTest(XLATestCase):
+class DepthwiseConv2DTest(xla_test.XLATestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
   # produce the same results.  It also tests that NCHW and NWHC
@@ -153,7 +153,7 @@ class DepthwiseConv2DTest(XLATestCase):
                   dtype=data_type).reshape(filter_in_sizes)
     with self.test_session() as sess:
       if data_type == np.float32:
-        tolerance = 1e-5
+        tolerance = 1e-4
       else:
         self.assertEqual(data_type, np.float64)
         tolerance = 1e-8
@@ -339,7 +339,7 @@ class DepthwiseConv2DTest(XLATestCase):
 
     gpu_value = _GetVal(use_xla=True)
     cpu_value = _GetVal(use_xla=False)
-    self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
+    self.assertAllClose(cpu_value, gpu_value, rtol=1e-3, atol=1e-3)
 
   def testDepthwiseConv2DInputGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,

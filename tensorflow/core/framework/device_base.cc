@@ -13,11 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/device_base.h"
+
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
-DeviceBase::~DeviceBase() {}
+DeviceBase::~DeviceBase() { gtl::STLDeleteElements(&eigen_cpu_devices_); }
 
 const DeviceAttributes& DeviceBase::attributes() const {
   LOG(FATAL) << "Device does not implement attributes()";
@@ -25,6 +31,31 @@ const DeviceAttributes& DeviceBase::attributes() const {
 
 const string& DeviceBase::name() const {
   LOG(FATAL) << "Device does not implement name()";
+}
+
+void DeviceBase::set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
+  // Eigen::ThreadPoolDevice is a very cheap struct (one pointer and
+  // an int).  Therefore, we can afford a pre-allocated array of
+  // Eigen::ThreadPoolDevice.  Here, we ensure that
+  // Eigen::ThreadPoolDevices in eigen_cpu_devices_ has increasingly
+  // larger numThreads.
+  for (int i = 1; i <= d->numThreads(); ++i) {
+    eigen_cpu_devices_.push_back(
+        new Eigen::ThreadPoolDevice(d->getPool(), i /* numThreads() */));
+  }
+}
+
+const Eigen::ThreadPoolDevice* DeviceBase::eigen_cpu_device() {
+  // Based on GetPerThreadMaxParallelism(), we return a different
+  // pre-allocated Eigen::ThreadPoolDevice. All these ThreadPoolDevice
+  // use the same underlying threadpool. But they use different
+  // nominal numThreads() hoping that the user of the returned
+  // Eigen::ThreadPoolDevice may not aggressively occupy all the
+  // threads in the underlying threadpool.
+  const int parallelism = std::max<int>(
+      1,
+      std::min<int>(GetPerThreadMaxParallelism(), eigen_cpu_devices_.size()));
+  return eigen_cpu_devices_[parallelism - 1];
 }
 
 }  // namespace tensorflow

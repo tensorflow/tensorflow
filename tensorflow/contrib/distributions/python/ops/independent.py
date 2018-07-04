@@ -29,7 +29,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import kullback_leibler
-from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Independent(distribution_lib.Distribution):
@@ -95,6 +95,14 @@ class Independent(distribution_lib.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(
       self, distribution, reinterpreted_batch_ndims=None,
       validate_args=False, name=None):
@@ -117,7 +125,7 @@ class Independent(distribution_lib.Distribution):
       ValueError: if `reinterpreted_batch_ndims` exceeds
         `distribution.batch_ndims`
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     name = name or "Independent" + distribution.name
     self._distribution = distribution
     with ops.name_scope(name) as name:
@@ -259,6 +267,14 @@ class Independent(distribution_lib.Distribution):
 
 
 @kullback_leibler.RegisterKL(Independent, Independent)
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _kl_independent(a, b, name="kl_independent"):
   """Batched KL divergence `KL(a || b)` for Independent distributions.
 

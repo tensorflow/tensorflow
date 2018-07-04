@@ -58,6 +58,7 @@ class SlideDatasetTest(test.TestCase):
                      [t.shape.as_list() for t in get_next])
 
     with self.test_session() as sess:
+      # stride < window_size.
       # Slide over a finite input, where the window_size divides the
       # total number of elements.
       sess.run(init_op, feed_dict={count: 20, window_size: 14, stride: 7})
@@ -71,17 +72,50 @@ class SlideDatasetTest(test.TestCase):
                                 result_component[j])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-
       # Slide over a finite input, where the window_size does not
       # divide the total number of elements.
       sess.run(init_op, feed_dict={count: 20, window_size: 17, stride: 9})
-
       num_batches = (20 * 7 - 17) // 9 + 1
       for i in range(num_batches):
         result = sess.run(get_next)
         for component, result_component in zip(components, result):
           for j in range(17):
             self.assertAllEqual(component[(i*9 + j) % 7]**2,
+                                result_component[j])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # stride == window_size.
+      sess.run(init_op, feed_dict={count: 20, window_size: 14, stride: 14})
+      num_batches = 20 * 7 // 14
+      for i in range(num_batches):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(14):
+            self.assertAllEqual(component[(i*14 + j) % 7]**2,
+                                result_component[j])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+      # stride > window_size.
+      sess.run(init_op, feed_dict={count: 20, window_size: 10, stride: 14})
+      num_batches = 20 * 7 // 14
+      for i in range(num_batches):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(10):
+            self.assertAllEqual(component[(i*14 + j) % 7]**2,
+                                result_component[j])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+      # Drop the last batch which is smaller than window_size.
+      sess.run(init_op, feed_dict={count: 20, window_size: 14, stride: 19})
+      num_batches = (20 * 7 - 7) // 19  # = 19 * 7 // 19
+      for i in range(num_batches):
+        result = sess.run(get_next)
+        for component, result_component in zip(components, result):
+          for j in range(14):
+            self.assertAllEqual(component[(i*19 + j) % 7]**2,
                                 result_component[j])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -108,10 +142,6 @@ class SlideDatasetTest(test.TestCase):
       # Invalid stride should be an initialization time error.
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(init_op, feed_dict={count: 14, window_size: 3, stride: 0})
-      with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, window_size: 3, stride: 3})
-      with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, window_size: 3, stride: 5})
 
   def assertSparseValuesEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)

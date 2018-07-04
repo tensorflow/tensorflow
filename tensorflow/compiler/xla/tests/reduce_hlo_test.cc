@@ -15,9 +15,9 @@ limitations under the License.
 
 #include <array>
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
@@ -73,7 +73,7 @@ ENTRY reduce.1 {
 }
 )";
 
-  return tools::Parse(hlo_string);
+  return ParseHloString(hlo_string);
 }
 
 // TODO(b/72454718): XLA:GPU does not support executing code compiled without

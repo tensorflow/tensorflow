@@ -33,6 +33,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saveable_object
 from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
+from tensorflow.python.util import tf_decorator
 
 
 # Key where the object graph proto is saved in a TensorBundle
@@ -340,6 +341,34 @@ _SlotVariableRestoration = collections.namedtuple(
     ])
 
 
+def no_automatic_dependency_tracking(method):
+  """Disables automatic dependency tracking on attribute assignment.
+
+  Use to decorate any method of a Checkpointable object. Attribute assignment in
+  that method will not add dependencies (also respected in Model). Harmless if
+  used in a class which does not do automatic dependency tracking (which means
+  it's safe to use in base classes which may have subclasses which also inherit
+  from Checkpointable).
+
+  Args:
+    method: The method to decorate.
+  Returns:
+    A decorated method which sets and un-sets automatic dependency tracking for
+    the object the method is called on (not thread safe).
+  """
+
+  def _method_wrapper(self, *args, **kwargs):
+    previous_value = getattr(self, "_setattr_tracking", True)
+    self._setattr_tracking = False  # pylint: disable=protected-access
+    try:
+      method(self, *args, **kwargs)
+    finally:
+      self._setattr_tracking = previous_value  # pylint: disable=protected-access
+
+  return tf_decorator.make_decorator(
+      target=method, decorator_func=_method_wrapper)
+
+
 class CheckpointableBase(object):
   """Base class for `Checkpointable` objects without automatic dependencies.
 
@@ -349,6 +378,11 @@ class CheckpointableBase(object):
   checks.
   """
 
+  # CheckpointableBase does not do automatic dependency tracking, but uses the
+  # no_automatic_dependency_tracking decorator so it can avoid adding
+  # dependencies if a subclass is Checkpointable / inherits from Model (both of
+  # which have __setattr__ overrides).
+  @no_automatic_dependency_tracking
   def _maybe_initialize_checkpointable(self):
     """Initialize dependency management.
 
@@ -385,6 +419,10 @@ class CheckpointableBase(object):
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
     self._name_based_restores = set()
+
+  def _no_dependency(self, value):
+    """If automatic dependency tracking is enabled, ignores `value`."""
+    return value
 
   def _name_based_attribute_restore(self, checkpoint):
     """Restore the object's attributes from a name-based checkpoint."""
@@ -463,7 +501,7 @@ class CheckpointableBase(object):
       ValueError: If the variable name is not unique.
     """
     self._maybe_initialize_checkpointable()
-    if not overwrite and self._lookup_dependency(name) is not None:
+    if overwrite and self._lookup_dependency(name) is not None:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
            "Checkpointable._add_variable called to create another with "
@@ -591,11 +629,11 @@ class CheckpointableBase(object):
           self._unconditional_checkpoint_dependencies):
         if name == old_name:
           self._unconditional_checkpoint_dependencies[index] = new_reference
-    else:
+    elif current_object is None:
       self._unconditional_checkpoint_dependencies.append(new_reference)
-
+      self._handle_deferred_dependencies(
+          name=name, checkpointable=checkpointable)
     self._unconditional_dependency_names[name] = checkpointable
-    self._handle_deferred_dependencies(name=name, checkpointable=checkpointable)
     return checkpointable
 
   def _handle_deferred_dependencies(self, name, checkpointable):
@@ -733,86 +771,3 @@ class CheckpointableBase(object):
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(
         PythonStringStateSaveable,
         state_callback=_state_callback)}
-
-
-class NoDependency(object):
-  """Allows attribute assignment to `Checkpointable` objects with no dependency.
-
-  Example usage:
-  ```python
-  obj = Checkpointable()
-  obj.has_dependency = tf.Variable(0., name="dep")
-  obj.no_dependency = NoDependency(tf.Variable(1., name="nodep"))
-  assert obj.no_dependency.name == "nodep:0"
-  ```
-
-  `obj` in this example has a dependency on the variable "dep", and both
-  attributes contain un-wrapped `Variable` objects.
-
-  `NoDependency` also works with `tf.keras.Model`, but only for checkpoint
-  dependencies: wrapping a `Layer` in `NoDependency` will assign the (unwrapped)
-  `Layer` to the attribute without a checkpoint dependency, but the `Model` will
-  still track the `Layer` (so it will appear in `Model.layers`, and its
-  variables will appear in `Model.variables`).
-  """
-
-  def __init__(self, value):
-    self.value = value
-
-
-class NotCheckpointable(object):
-  """Marks instances of child classes as unsaveable using an object-based API.
-
-  Useful for marking objects which would otherwise look checkpointable because
-  of inheritance (e.g. through `Layer`) as not checkpointable. Inheriting from
-  `NotCheckpointable` does not prevent an object from being assigned to any
-  attributes, but will throw an error on save/restore.
-  """
-  pass
-
-
-class Checkpointable(CheckpointableBase):
-  """Manages dependencies on other objects.
-
-  `Checkpointable` objects may have dependencies: other `Checkpointable` objects
-  which should be saved if the object declaring the dependency is saved. A
-  correctly saveable program has a dependency graph such that if changing a
-  global variable affects an object (e.g. changes the behavior of any of its
-  methods) then there is a chain of dependencies from the influenced object to
-  the variable.
-
-  Dependency edges have names, and are created implicitly when a
-  `Checkpointable` object is assigned to an attribute of another
-  `Checkpointable` object. For example:
-
-  ```
-  obj = Checkpointable()
-  obj.v = ResourceVariable(0.)
-  ```
-
-  The `Checkpointable` object `obj` now has a dependency named "v" on a
-  variable.
-
-  `Checkpointable` objects may specify `Tensor`s to be saved and restored
-  directly (e.g. a `Variable` indicating how to save itself) rather than through
-  dependencies on other objects. See
-  `Checkpointable._gather_saveables_for_checkpoint` for details.
-  """
-
-  def __setattr__(self, name, value):
-    """Support self.foo = checkpointable syntax."""
-    # Perform the attribute assignment, and potentially call other __setattr__
-    # overrides such as that for tf.keras.Model.
-    no_dependency = isinstance(value, NoDependency)
-    if no_dependency:
-      value = value.value
-    super(Checkpointable, self).__setattr__(name, value)
-    if not no_dependency and isinstance(value, CheckpointableBase):
-      self._track_checkpointable(
-          value, name=name,
-          # Allow the user to switch the Checkpointable which is tracked by this
-          # name, since assigning a new variable to an attribute has
-          # historically been fine (e.g. Adam did this).
-          # TODO(allenl): Should this be a warning once Checkpointable save/load
-          # is usable?
-          overwrite=True)

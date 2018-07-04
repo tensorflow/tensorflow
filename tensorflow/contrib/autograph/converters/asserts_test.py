@@ -21,11 +21,11 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.converters import asserts
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.platform import test
 
 
-class AssertsTest(converter_test_base.TestCase):
+class AssertsTest(converter_testing.TestCase):
 
   def test_transform(self):
 

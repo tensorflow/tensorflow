@@ -23,7 +23,7 @@ import unittest
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -32,7 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class CholeskyOpTest(XLATestCase):
+class CholeskyOpTest(xla_test.XLATestCase):
 
   # Cholesky defined for float64, float32, complex64, complex128
   # (https://www.tensorflow.org/api_docs/python/tf/cholesky)
