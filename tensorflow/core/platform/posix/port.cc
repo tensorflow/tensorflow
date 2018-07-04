@@ -79,6 +79,20 @@ int NumHyperthreadsPerCore() {
   return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
+bool NUMAEnabled() {
+  // Not yet implemented: coming soon.
+  return false;
+}
+
+int NUMANumNodes() { return 1; }
+
+void NUMASetThreadNodeAffinity(int node) {}
+
+int NUMAGetThreadNodeAffinity() {
+  int node_index = -1;
+  return node_index;
+}
+
 void* AlignedMalloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)
   return memalign(minimum_alignment, size);
@@ -126,6 +140,17 @@ void Free(void* ptr) {
 #else
   free(ptr);
 #endif
+}
+
+void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
+  return AlignedMalloc(size, minimum_alignment);
+}
+
+void NUMAFree(void* ptr, size_t size) { Free(ptr); }
+
+int NUMAGetMemAffinity(const void* addr) {
+  int mode = -1;
+  return mode;
 }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
