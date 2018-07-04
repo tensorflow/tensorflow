@@ -149,11 +149,14 @@ private:
   ParseResult parseCFGFunc();
   ParseResult parseMLFunc();
   ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
-  MLStatement *parseMLStatement(MLFunction *currentFunction);
+  Statement *parseStatement(ParentType parent);
 
   OperationInst *parseCFGOperation(CFGFunctionParserState &functionState);
   TerminatorInst *parseTerminator(CFGFunctionParserState &functionState);
 
+  ForStmt *parseForStmt(ParentType parent);
+  IfStmt *parseIfStmt(ParentType parent);
+  ParseResult parseNestedStatements(NodeStmt *parent);
 };
 } // end anonymous namespace
 
@@ -976,7 +979,7 @@ ParseResult Parser::parseMLFunc() {
 
   // Parse the list of instructions.
   while (!consumeIf(Token::kw_return)) {
-    auto *stmt = parseMLStatement(function);
+    auto *stmt = parseStatement(function);
     if (!stmt)
       return ParseFailure;
     function->stmtList.push_back(stmt);
@@ -991,16 +994,96 @@ ParseResult Parser::parseMLFunc() {
   return ParseSuccess;
 }
 
-/// Parse an MLStatement
-/// TODO
+/// Statement.
 ///
-MLStatement *Parser::parseMLStatement(MLFunction *currentFunction) {
+/// ml-stmt ::= instruction | ml-for-stmt | ml-if-stmt
+/// TODO: fix terminology in MLSpec document. ML functions
+/// contain operation statements, not instructions.
+///
+Statement * Parser::parseStatement(ParentType parent) {
   switch (curToken.getKind()) {
   default:
-    return (emitError("expected ML statement"), nullptr);
+    //TODO: parse OperationStmt
+    return (emitError("expected statement"), nullptr);
 
-  // TODO: add parsing of ML statements
+  case Token::kw_for:
+    return parseForStmt(parent);
+
+  case Token::kw_if:
+    return parseIfStmt(parent);
   }
+}
+
+/// For statement.
+///
+/// ml-for-stmt ::= `for` ssa-id `=` lower-bound `to` upper-bound
+///                (`step` integer-literal)? `{` ml-stmt* `}`
+///
+ForStmt * Parser::parseForStmt(ParentType parent) {
+  consumeToken(Token::kw_for);
+
+  //TODO: parse loop header
+  ForStmt *stmt = new ForStmt(parent);
+  if (parseNestedStatements(stmt)) {
+    delete stmt;
+    return nullptr;
+  }
+  return stmt;
+}
+
+/// If statement.
+///
+/// ml-if-head ::= `if` ml-if-cond `{` ml-stmt* `}`
+///             | ml-if-head `else` `if` ml-if-cond `{` ml-stmt* `}`
+/// ml-if-stmt ::= ml-if-head
+///             | ml-if-head `else` `{` ml-stmt* `}`
+///
+IfStmt * Parser::parseIfStmt(PointerUnion<MLFunction *, NodeStmt *> parent) {
+  consumeToken(Token::kw_if);
+
+  //TODO: parse condition
+  IfStmt *stmt = new IfStmt(parent);
+  if (parseNestedStatements(stmt)) {
+    delete stmt;
+    return nullptr;
+  }
+
+  int clauseNum = 0;
+  while (consumeIf(Token::kw_else)) {
+    if (consumeIf(Token::kw_if)) {
+       //TODO: parse condition
+    }
+    ElseClause * clause = new ElseClause(stmt, clauseNum);
+    ++clauseNum;
+    if (parseNestedStatements(clause)) {
+      delete clause;
+      return nullptr;
+    }
+  }
+
+  return stmt;
+}
+
+///
+/// Parse `{` ml-stmt* `}`
+///
+ParseResult Parser::parseNestedStatements(NodeStmt *parent) {
+  if (!consumeIf(Token::l_brace))
+    return emitError("expected '{' before statement list");
+
+  if (consumeIf(Token::r_brace)) {
+    // TODO: parse OperationStmt
+    return ParseSuccess;
+  }
+
+  while (!consumeIf(Token::r_brace)) {
+    auto *stmt = parseStatement(parent);
+    if (!stmt)
+      return ParseFailure;
+    parent->children.push_back(stmt);
+  }
+
+  return ParseSuccess;
 }
 
 //===----------------------------------------------------------------------===//

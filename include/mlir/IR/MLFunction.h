@@ -23,7 +23,7 @@
 #define MLIR_IR_MLFUNCTION_H_
 
 #include "mlir/IR/Function.h"
-#include "mlir/IR/MLStatements.h"
+#include "mlir/IR/Statements.h"
 #include <vector>
 
 namespace mlir {
@@ -35,7 +35,7 @@ public:
   MLFunction(StringRef name, FunctionType *type);
 
   // FIXME: wrong representation and API, leaks memory etc
-  std::vector<MLStatement*> stmtList;
+  std::vector<Statement*> stmtList;
 
   // TODO: add function arguments and return values once
   // SSA values are implemented

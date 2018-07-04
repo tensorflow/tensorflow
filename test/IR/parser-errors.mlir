@@ -80,4 +80,14 @@ bb40:
 
 extfunc @illegaltype(i0) ; expected-error {{invalid integer width}}
 
+; -----
 
+mlfunc @incomplete_for() {
+  for
+}        ; expected-error {{expected '{' before statement list}}
+
+; -----
+
+mlfunc @non_statement() {
+  asd   ; expected-error {{expected statement}}
+}

@@ -151,9 +151,96 @@ void CFGFunctionState::print(const ReturnInst *inst) {
 }
 
 //===----------------------------------------------------------------------===//
-// print and dump methods
+// ML Function printing
 //===----------------------------------------------------------------------===//
 
+namespace {
+class MLFunctionState {
+public:
+  MLFunctionState(const MLFunction *function, raw_ostream &os);
+
+  const MLFunction *getFunction() const { return function; }
+
+  void print();
+
+  void print(const Statement *stmt);
+  void print(const ForStmt *stmt);
+  void print(const IfStmt *stmt);
+  void print(const ElseClause *stmt, bool isLast);
+
+private:
+  // Print statements nested within this node statement.
+  void printNestedStatements(const NodeStmt *stmt);
+
+  const MLFunction *function;
+  raw_ostream &os;
+  int numSpaces;
+};
+} // end anonymous namespace
+
+MLFunctionState::MLFunctionState(const MLFunction *function, raw_ostream &os)
+    : function(function), os(os), numSpaces(2) {}
+
+void MLFunctionState::print() {
+  os << "mlfunc ";
+  // FIXME: should print argument names rather than just signature
+  printFunctionSignature(function, os);
+  os << " {\n";
+  for (auto *stmt : function->stmtList)
+    print(stmt);
+  os << "  return\n";
+  os << "}\n\n";
+}
+
+void MLFunctionState::print(const Statement *stmt) {
+  os.indent(numSpaces);
+  switch (stmt->getKind()) {
+  case Statement::Kind::Operation: // TODO
+    assert(0 && "Operation statement is not yet implemented");
+  case Statement::Kind::For:
+    return print(cast<ForStmt>(stmt));
+  case Statement::Kind::If:
+    return print(cast<IfStmt>(stmt));
+  case Statement::Kind::Else:
+    return print(cast<ElseClause>(stmt));
+  }
+}
+
+void MLFunctionState::printNestedStatements(const NodeStmt *stmt) {
+  os << "{\n";
+  numSpaces += 2;
+  for (auto * nestedStmt : stmt->children)
+    print(nestedStmt);
+  numSpaces -= 2;
+  os.indent(numSpaces) << "}";
+}
+
+void MLFunctionState::print(const ForStmt *stmt) {
+  os << "for ";
+  printNestedStatements(stmt);
+  os << "\n";
+}
+
+void MLFunctionState::print(const IfStmt *stmt) {
+  os << "if ";
+  printNestedStatements(stmt);
+
+  int numClauses = stmt->elseClauses.size();
+  for (auto e : stmt->elseClauses)
+    print(e, e->getClauseNumber() == numClauses - 1);
+  os << "\n";
+}
+
+void MLFunctionState::print(const ElseClause *stmt, bool isLast) {
+  if (!isLast)
+    os << " if";
+  os << " else ";;
+  printNestedStatements(stmt);
+}
+
+//===----------------------------------------------------------------------===//
+// print and dump methods
+//===----------------------------------------------------------------------===//
 
 void Instruction::print(raw_ostream &os) const {
   CFGFunctionState state(getFunction(), os);
@@ -182,11 +269,12 @@ void BasicBlock::dump() const {
   print(llvm::errs());
 }
 
-void MLStatement::print(raw_ostream &os) const {
-  //TODO
+void Statement::print(raw_ostream &os) const {
+  MLFunctionState state(getFunction(), os);
+  state.print(this);
 }
 
-void MLStatement::dump() const {
+void Statement::dump() const {
   print(llvm::errs());
 }
 void Function::print(raw_ostream &os) const {
@@ -207,15 +295,8 @@ void CFGFunction::print(raw_ostream &os) const {
 }
 
 void MLFunction::print(raw_ostream &os) const {
-  os << "mlfunc ";
-  // FIXME: should print argument names rather than just signature
-  printFunctionSignature(this, os);
-  os << " {\n";
-
-  for (auto *stmt : stmtList)
-    stmt->print(os);
-  os << "    return\n";
-  os << "}\n\n";
+  MLFunctionState state(this, os);
+  state.print();
 }
 
 void Module::print(raw_ostream &os) const {
