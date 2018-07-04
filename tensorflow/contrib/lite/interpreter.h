@@ -224,14 +224,14 @@ class Interpreter {
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
-    if ((size_t)tensor_index >= context_.tensors_size | tensor_index < 0)
+    if (((size_t)tensor_index >= context_.tensors_size) | (tensor_index < 0))
       return nullptr;
     return &context_.tensors[tensor_index];
   }
 
   // Get an immutable tensor data structure.
   const TfLiteTensor* tensor(int tensor_index) const {
-    if ((size_t)tensor_index >= context_.tensors_size | tensor_index < 0)
+    if (((size_t)tensor_index >= context_.tensors_size) | (tensor_index < 0))
       return nullptr;
     return &context_.tensors[tensor_index];
   }
