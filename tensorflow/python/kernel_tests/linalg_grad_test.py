@@ -130,7 +130,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
             c.get_shape().as_list(),
             x_init_value=factor_init,
             delta=delta)
-        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+        self.assertAllClose(theoretical, numerical, atol=tol+0.01, rtol=tol)
 
   return Test
 
