@@ -143,12 +143,11 @@ class HloRematerializationTest : public HloTestBase {
 
   StatusOr<bool> RunHloRematerialization(
       int64 memory_limit_bytes, HloModule* module,
-      SequentialHloOrdering::HloModuleSequence* sequence,
-      CopyInsertion* copy_insertion = nullptr) {
+      SequentialHloOrdering::HloModuleSequence* sequence) {
     TF_EXPECT_OK(verifier().Run(module).status());
     return HloRematerialization::RematerializeAndSchedule(
         ByteSizeOf, memory_limit_bytes, module, DefaultMemoryScheduler,
-        sequence, /*sizes=*/nullptr, copy_insertion);
+        sequence, /*sizes=*/nullptr, /*run_copy_elision=*/false);
   }
 
   // Various shapes used in the canned computations.
@@ -281,41 +280,6 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloRematerialization(
                                             /*memory_limit_bytes=*/15 * 1024,
                                             module.get(), &sequence));
-  EXPECT_TRUE(changed);
-
-  // Both computations should have rematerialized instructions added.
-  EXPECT_EQ(entry_computation->instruction_count(), 9);
-  EXPECT_EQ(body_computation->instruction_count(), 9);
-}
-
-// Similar to RematerializeEntryAndWhileBody, except with copy insertion run
-// after HLO scheduling.
-TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBodyWithCopies) {
-  auto module = CreateNewModule();
-
-  auto cond_builder = HloComputation::Builder(TestName() + ".cond");
-  cond_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, vec1_shape_, "param"));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
-  HloComputation* while_cond =
-      module->AddEmbeddedComputation(cond_builder.Build());
-
-  HloComputation* body_computation = module->AddEmbeddedComputation(
-      MakeRematerializableComputation(/*suffix=*/".body"));
-  HloComputation* entry_computation =
-      module->AddEntryComputation(MakeRematerializableWhileComputation(
-          while_cond, /*while_body=*/body_computation));
-
-  EXPECT_EQ(entry_computation->instruction_count(), 7);
-  EXPECT_EQ(body_computation->instruction_count(), 8);
-
-  SequentialHloOrdering::HloModuleSequence sequence;
-  CopyInsertion copy_insertion;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/15 * 1024, module.get(),
-                              &sequence, &copy_insertion));
   EXPECT_TRUE(changed);
 
   // Both computations should have rematerialized instructions added.
