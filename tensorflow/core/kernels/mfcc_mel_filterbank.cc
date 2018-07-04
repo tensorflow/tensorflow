@@ -165,8 +165,8 @@ bool MfccMelFilterbank::Initialize(int input_length, double input_sample_rate,
   return true;
 }
 
-// Compute the mel spectrum from the squared-magnitude FFT input by taking the
-// square root, then summing FFT magnitudes under triangular integration windows
+// Compute the mel spectrum from the squared(or not)-magnitude FFT input by
+// summing FFT magnitudes under triangular integration windows
 // whose widths increase with frequency.
 void MfccMelFilterbank::Compute(const std::vector<double> &input,
                                 std::vector<double> *output) const {
@@ -184,7 +184,7 @@ void MfccMelFilterbank::Compute(const std::vector<double> &input,
   output->assign(num_channels_, 0.0);
 
   for (int i = start_index_; i <= end_index_; i++) {  // For each FFT bin
-    double spec_val = sqrt(input[i]);
+    double spec_val = abs(input[i]);
     double weighted = spec_val * weights_[i];
     int channel = band_mapper_[i];
     if (channel >= 0)
