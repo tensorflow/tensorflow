@@ -177,6 +177,8 @@ if(WIN32)
     string(REPLACE "/EHsc" "/EHs-c-" ${flag} "${${flag}}")
   endforeach()
   add_definitions(/D_HAS_EXCEPTIONS=0)
+  # Suppress 'noexcept used with no exception handling mode specified' warning
+  add_compile_options(/wd4577)
 
   # Try to avoid flaky failures due to failed generation of generate.stamp files.
   set(CMAKE_SUPPRESS_REGENERATION ON)
