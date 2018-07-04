@@ -186,6 +186,7 @@ def get_win_copts(is_external=False):
         # Bazel to fix this.
         # "/D_HAS_EXCEPTIONS=0",
         # "/EHs-c-",
+        "/wd4577",
         "/DNOGDI",
     ]
     if is_external:
