@@ -56,7 +56,6 @@ public:
     // TODO: MemRef types.
   };
 
-
   /// Return the classification for this type.
   Kind getKind() const {
     return kind;
@@ -127,7 +126,6 @@ public:
 private:
   PrimitiveType(Kind kind, MLIRContext *context);
 };
-
 
 inline PrimitiveType *Type::getAffineInt(MLIRContext *ctx) {
   return PrimitiveType::get(Kind::AffineInt, ctx);
