@@ -18,17 +18,10 @@ cc_library(
         "snappy-stubs-public.h",
     ],
     hdrs = ["snappy.h"],
-    copts = select({
-        "@org_tensorflow//tensorflow:windows": [
-            "/DHAVE_CONFIG_H",
-            "/EHsc",
-        ],
-        "@org_tensorflow//tensorflow:windows_msvc": [
-            "/DHAVE_CONFIG_H",
-            "/EHsc",
-        ],
+    copts = ["-DHAVE_CONFIG_H"] + select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow:windows_msvc": [],
         "//conditions:default": [
-            "-DHAVE_CONFIG_H",
             "-fno-exceptions",
             "-Wno-sign-compare",
             "-Wno-shift-negative-value",

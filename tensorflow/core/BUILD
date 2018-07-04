@@ -2477,13 +2477,11 @@ tf_cuda_library(
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
     copts = tf_copts(),
     linkopts = select({
-        "//tensorflow:freebsd": [],
+        "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
         "//tensorflow:windows_msvc": [],
-        "//conditions:default": ["-ldl"],
-    }) + [
-        "-lm",
-    ],
+        "//conditions:default": ["-ldl", "-lm"],
+    }),
     deps = [
         ":lib",
         ":lib_internal",
