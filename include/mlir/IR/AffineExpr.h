@@ -33,40 +33,34 @@ class MLIRContext;
 /// AffineExpression's are immutable (like Type's)
 class AffineExpr {
  public:
-  enum class Kind {
-    // Add.
-    Add,
-    // Mul.
-    Mul,
-    // Mod.
-    Mod,
-    // Floordiv
-    FloorDiv,
-    // Ceildiv
-    CeilDiv,
+   enum class Kind {
+     Add,
+     Sub,
+     Mul,
+     Mod,
+     FloorDiv,
+     CeilDiv,
 
-    /// This is a marker for the last affine binary op. The range of binary op's
-    /// is expected to be this element and earlier.
-    LAST_AFFINE_BINARY_OP = CeilDiv,
+     /// This is a marker for the last affine binary op. The range of binary
+     /// op's is expected to be this element and earlier.
+     LAST_AFFINE_BINARY_OP = CeilDiv,
 
-    // Unary op negation
-    Neg,
+     // Unary op negation
+     Neg,
 
-    // Constant integer.
-    Constant,
-    // Dimensional identifier.
-    DimId,
-    // Symbolic identifier.
-    SymbolId,
-  };
+     // Constant integer.
+     Constant,
+     // Dimensional identifier.
+     DimId,
+     // Symbolic identifier.
+     SymbolId,
+   };
 
-  /// Return the classification for this type.
-  Kind getKind() const { return kind; }
+   /// Return the classification for this type.
+   Kind getKind() const { return kind; }
 
-  ~AffineExpr() = default;
-
-  void print(raw_ostream &os) const;
-  void dump() const;
+   void print(raw_ostream &os) const;
+   void dump() const;
 
  protected:
   explicit AffineExpr(Kind kind) : kind(kind) {}
@@ -76,12 +70,14 @@ class AffineExpr {
   const Kind kind;
 };
 
+inline raw_ostream &operator<<(raw_ostream &os, const AffineExpr &expr) {
+  expr.print(os);
+  return os;
+}
+
 /// Binary affine expression.
 class AffineBinaryOpExpr : public AffineExpr {
  public:
-  static AffineBinaryOpExpr *get(Kind kind, AffineExpr *lhsOperand,
-                                 AffineExpr *rhsOperand, MLIRContext *context);
-
   AffineExpr *getLeftOperand() const { return lhsOperand; }
   AffineExpr *getRightOperand() const { return rhsOperand; }
 
@@ -91,12 +87,15 @@ class AffineBinaryOpExpr : public AffineExpr {
   }
 
  protected:
-  explicit AffineBinaryOpExpr(Kind kind, AffineExpr *lhsOperand,
-                              AffineExpr *rhsOperand)
-      : AffineExpr(kind), lhsOperand(lhsOperand), rhsOperand(rhsOperand) {}
+   static AffineBinaryOpExpr *get(Kind kind, AffineExpr *lhsOperand,
+                                  AffineExpr *rhsOperand, MLIRContext *context);
 
-  AffineExpr *const lhsOperand;
-  AffineExpr *const rhsOperand;
+   explicit AffineBinaryOpExpr(Kind kind, AffineExpr *lhsOperand,
+                               AffineExpr *rhsOperand)
+       : AffineExpr(kind), lhsOperand(lhsOperand), rhsOperand(rhsOperand) {}
+
+   AffineExpr *const lhsOperand;
+   AffineExpr *const rhsOperand;
 };
 
 /// Binary affine add expression.
@@ -109,34 +108,60 @@ class AffineAddExpr : public AffineBinaryOpExpr {
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::Add;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineAddExpr(AffineExpr *lhsOperand, AffineExpr *rhsOperand)
       : AffineBinaryOpExpr(Kind::Add, lhsOperand, rhsOperand) {}
 };
 
+/// Binary affine sub expression.
+class AffineSubExpr : public AffineBinaryOpExpr {
+public:
+  static AffineSubExpr *get(AffineExpr *lhsOperand, AffineExpr *rhsOperand,
+                            MLIRContext *context);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const AffineExpr *expr) {
+    return expr->getKind() == Kind::Sub;
+  }
+  void print(raw_ostream &os) const;
+
+private:
+  explicit AffineSubExpr(AffineExpr *lhsOperand, AffineExpr *rhsOperand)
+      : AffineBinaryOpExpr(Kind::Sub, lhsOperand, rhsOperand) {}
+};
+
 /// Binary affine mul expression.
 class AffineMulExpr : public AffineBinaryOpExpr {
- public:
+public:
+  static AffineMulExpr *get(AffineExpr *lhsOperand, AffineExpr *rhsOperand,
+                            MLIRContext *context);
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::Mul;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineMulExpr(AffineExpr *lhsOperand, AffineExpr *rhsOperand)
       : AffineBinaryOpExpr(Kind::Mul, lhsOperand, rhsOperand) {}
 };
 
 /// Binary affine mod expression.
 class AffineModExpr : public AffineBinaryOpExpr {
- public:
+public:
+  static AffineModExpr *get(AffineExpr *lhsOperand, AffineExpr *rhsOperand,
+                            MLIRContext *context);
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::Mod;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineModExpr(AffineExpr *lhsOperand, AffineExpr *rhsOperand)
       : AffineBinaryOpExpr(Kind::Mod, lhsOperand, rhsOperand) {}
 };
@@ -144,32 +169,40 @@ class AffineModExpr : public AffineBinaryOpExpr {
 /// Binary affine floordiv expression.
 class AffineFloorDivExpr : public AffineBinaryOpExpr {
  public:
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::FloorDiv;
-  }
+   static AffineFloorDivExpr *get(AffineExpr *lhsOperand,
+                                  AffineExpr *rhsOperand, MLIRContext *context);
 
- private:
+   /// Methods for support type inquiry through isa, cast, and dyn_cast.
+   static bool classof(const AffineExpr *expr) {
+     return expr->getKind() == Kind::FloorDiv;
+  }
+  void print(raw_ostream &os) const;
+
+private:
   explicit AffineFloorDivExpr(AffineExpr *lhsOperand, AffineExpr *rhsOperand)
       : AffineBinaryOpExpr(Kind::FloorDiv, lhsOperand, rhsOperand) {}
 };
 
 /// Binary affine ceildiv expression.
 class AffineCeilDivExpr : public AffineBinaryOpExpr {
- public:
+public:
+  static AffineCeilDivExpr *get(AffineExpr *lhsOperand, AffineExpr *rhsOperand,
+                                MLIRContext *context);
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::CeilDiv;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineCeilDivExpr(AffineExpr *lhsOperand, AffineExpr *rhsOperand)
       : AffineBinaryOpExpr(Kind::CeilDiv, lhsOperand, rhsOperand) {}
 };
 
 /// Unary affine expression.
 class AffineUnaryOpExpr : public AffineExpr {
- public:
+public:
   static AffineUnaryOpExpr *get(const AffineExpr &operand,
                                 MLIRContext *context);
 
@@ -180,17 +213,22 @@ class AffineUnaryOpExpr : public AffineExpr {
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::Neg;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineUnaryOpExpr(Kind kind, AffineExpr *operand)
       : AffineExpr(kind), operand(operand) {}
 
   AffineExpr *operand;
 };
 
-/// A argument identifier appearing in an affine expression
+/// A dimensional identifier appearing in an affine expression.
+///
+/// This is a POD type of int size; so it should be passed around by
+/// value.  The underlying data is owned by MLIRContext and is thus immortal for
+/// almost all clients.
 class AffineDimExpr : public AffineExpr {
- public:
+public:
   static AffineDimExpr *get(unsigned position, MLIRContext *context);
 
   unsigned getPosition() const { return position; }
@@ -199,8 +237,9 @@ class AffineDimExpr : public AffineExpr {
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::DimId;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineDimExpr(unsigned position)
       : AffineExpr(Kind::DimId), position(position) {}
 
@@ -208,7 +247,11 @@ class AffineDimExpr : public AffineExpr {
   unsigned position;
 };
 
-/// A symbolic identifier appearing in an affine expression
+/// A symbolic identifier appearing in an affine expression.
+//
+/// This is a POD type of int size, so it should be passed around by
+/// value.  The underlying data is owned by MLIRContext and is thus immortal for
+/// almost all clients.
 class AffineSymbolExpr : public AffineExpr {
  public:
   static AffineSymbolExpr *get(unsigned position, MLIRContext *context);
@@ -219,8 +262,9 @@ class AffineSymbolExpr : public AffineExpr {
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::SymbolId;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineSymbolExpr(unsigned position)
       : AffineExpr(Kind::SymbolId), position(position) {}
 
@@ -239,8 +283,9 @@ class AffineConstantExpr : public AffineExpr {
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::Constant;
   }
+  void print(raw_ostream &os) const;
 
- private:
+private:
   explicit AffineConstantExpr(int64_t constant)
       : AffineExpr(Kind::Constant), constant(constant) {}
 

@@ -79,9 +79,8 @@ TOK_PUNCTUATION(equal,            "=")
 
 // Operators.
 TOK_OPERATOR(plus,               "+")
+TOK_OPERATOR(minus,              "-")
 TOK_OPERATOR(star,               "*")
-TOK_OPERATOR(ceildiv,            "ceildiv")
-TOK_OPERATOR(floordiv,           "floordiv")
 // TODO: More operator tokens
 
 // Keywords.  These turn "foo" into Token::kw_foo enums.
@@ -101,6 +100,9 @@ TOK_KEYWORD(mlfunc)
 TOK_KEYWORD(return)
 TOK_KEYWORD(tensor)
 TOK_KEYWORD(vector)
+TOK_KEYWORD(mod)
+TOK_KEYWORD(floordiv)
+TOK_KEYWORD(ceildiv)
 
 #undef TOK_MARKER
 #undef TOK_IDENTIFIER

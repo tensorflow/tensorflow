@@ -20,10 +20,7 @@
 
 using namespace mlir;
 
-// TODO(clattner):  make this ctor take an LLVMContext.  This will eventually
-// copy the elements into the context.
-AffineMap::AffineMap(unsigned dimCount, unsigned symbolCount,
-                     ArrayRef<AffineExpr *> exprs)
-  : numDims(dimCount), numSymbols(symbolCount), exprs(exprs) {
-    // TODO(bondhugula)
-}
+AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
+                     AffineExpr *const *results)
+    : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
+      results(results) {}

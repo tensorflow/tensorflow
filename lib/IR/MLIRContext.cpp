@@ -46,20 +46,27 @@ struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType*> {
     return lhs == KeyTy(rhs->getInputs(), rhs->getResults());
   }
 };
+
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
-  // Affine maps are uniqued based on their arguments and affine expressions
-  using KeyTy = std::pair<unsigned, unsigned>;
+  // Affine maps are uniqued based on their dim/symbol counts and affine
+  // expressions.
+  using KeyTy =
+      std::pair<std::pair<unsigned, unsigned>, ArrayRef<AffineExpr *>>;
   using DenseMapInfo<AffineMap *>::getHashValue;
   using DenseMapInfo<AffineMap *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
-    // FIXME(bondhugula): placeholder for now
-    return hash_combine(key.first, key.second);
+    return hash_combine(
+        key.first.first, key.first.second,
+        hash_combine_range(key.second.begin(), key.second.end()));
   }
 
-  static bool isEqual(const KeyTy &lhs, const FunctionType *rhs) {
-    // TODO(bondhugula)
-    return false;
+  static bool isEqual(const KeyTy &lhs, const AffineMap *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == KeyTy(std::pair<unsigned, unsigned>(rhs->getNumDims(),
+                                                      rhs->getNumSymbols()),
+                        rhs->getResults());
   }
 };
 
@@ -119,6 +126,15 @@ public:
   // Affine map uniquing.
   using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
+
+  // Affine binary op expression uniquing. We don't need to unique dimensional
+  // or symbolic identifiers.
+  // std::tuple doesn't work with DesnseMap!
+  // DenseSet<AffineBinaryOpExpr *, AffineBinaryOpExprKeyInfo>;
+  // AffineExprSet affineExprs;
+  DenseMap<std::pair<unsigned, std::pair<AffineExpr *, AffineExpr *>>,
+           AffineBinaryOpExpr *>
+      affineExprs;
 
   /// Integer type uniquing.
   DenseMap<unsigned, IntegerType*> integers;
@@ -325,34 +341,101 @@ UnrankedTensorType *UnrankedTensorType::get(Type *elementType) {
   return existing.first->second = result;
 }
 
-// TODO(bondhugula,andydavis): unique affine maps based on dim list,
-// symbol list and all affine expressions contained
-AffineMap *AffineMap::get(unsigned dimCount,
-                          unsigned symbolCount,
-                          ArrayRef<AffineExpr *> exprs,
+AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
+                          ArrayRef<AffineExpr *> results,
                           MLIRContext *context) {
-  // TODO(bondhugula)
-  return new AffineMap(dimCount, symbolCount, exprs);
+  // The number of results can't be zero.
+  assert(!results.empty());
+
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine map.
+  AffineMapKeyInfo::KeyTy key(
+      std::pair<unsigned, unsigned>(dimCount, symbolCount), results);
+  auto existing = impl.affineMaps.insert_as(nullptr, key);
+
+  // If we already have it, return that value.
+  if (!existing.second)
+    return *existing.first;
+
+  // On the first use, we allocate them into the bump pointer.
+  auto *res = impl.allocator.Allocate<AffineMap>();
+
+  // Copy the results into the bump pointer.
+  results = impl.copyInto(ArrayRef<AffineExpr *>(results));
+
+  // Initialize the memory using placement new.
+  new (res) AffineMap(dimCount, symbolCount, results.size(), results.data());
+
+  // Cache and return it.
+  return *existing.first = res;
 }
 
+// TODO(bondhugula): complete uniqu'ing of remaining AffinExpr sub-classes
 AffineBinaryOpExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind,
                                             AffineExpr *lhsOperand,
                                             AffineExpr *rhsOperand,
                                             MLIRContext *context) {
-  // TODO(bondhugula): allocate this through context
-  // FIXME
-  return new AffineBinaryOpExpr(kind, lhsOperand, rhsOperand);
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine expression.
+  auto key = std::pair<unsigned, std::pair<AffineExpr *, AffineExpr *>>(
+      (unsigned)kind,
+      std::pair<AffineExpr *, AffineExpr *>(lhsOperand, rhsOperand));
+  auto *&result = impl.affineExprs[key];
+
+  // If we already have it, return that value.
+  if (!result) {
+    // On the first use, we allocate them into the bump pointer.
+    result = impl.allocator.Allocate<AffineBinaryOpExpr>();
+
+    // Initialize the memory using placement new.
+    new (result) AffineBinaryOpExpr(kind, lhsOperand, rhsOperand);
+  }
+  return result;
 }
 
 AffineAddExpr *AffineAddExpr::get(AffineExpr *lhsOperand,
                                   AffineExpr *rhsOperand,
                                   MLIRContext *context) {
-  // TODO(bondhugula): allocate this through context
-  // FIXME
-  return new AffineAddExpr(lhsOperand, rhsOperand);
+  return cast<AffineAddExpr>(
+      AffineBinaryOpExpr::get(Kind::Add, lhsOperand, rhsOperand, context));
 }
 
-// TODO(bondhugula): add functions for AffineMulExpr, mod, floordiv, ceildiv
+AffineSubExpr *AffineSubExpr::get(AffineExpr *lhsOperand,
+                                  AffineExpr *rhsOperand,
+                                  MLIRContext *context) {
+  return cast<AffineSubExpr>(
+      AffineBinaryOpExpr::get(Kind::Sub, lhsOperand, rhsOperand, context));
+}
+
+AffineMulExpr *AffineMulExpr::get(AffineExpr *lhsOperand,
+                                  AffineExpr *rhsOperand,
+                                  MLIRContext *context) {
+  return cast<AffineMulExpr>(
+      AffineBinaryOpExpr::get(Kind::Mul, lhsOperand, rhsOperand, context));
+}
+
+AffineFloorDivExpr *AffineFloorDivExpr::get(AffineExpr *lhsOperand,
+                                            AffineExpr *rhsOperand,
+                                            MLIRContext *context) {
+  return cast<AffineFloorDivExpr>(
+      AffineBinaryOpExpr::get(Kind::FloorDiv, lhsOperand, rhsOperand, context));
+}
+
+AffineCeilDivExpr *AffineCeilDivExpr::get(AffineExpr *lhsOperand,
+                                          AffineExpr *rhsOperand,
+                                          MLIRContext *context) {
+  return cast<AffineCeilDivExpr>(
+      AffineBinaryOpExpr::get(Kind::CeilDiv, lhsOperand, rhsOperand, context));
+}
+
+AffineModExpr *AffineModExpr::get(AffineExpr *lhsOperand,
+                                  AffineExpr *rhsOperand,
+                                  MLIRContext *context) {
+  return cast<AffineModExpr>(
+      AffineBinaryOpExpr::get(Kind::Mod, lhsOperand, rhsOperand, context));
+}
 
 AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
   // TODO(bondhugula): complete this

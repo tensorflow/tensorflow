@@ -44,6 +44,26 @@ enum ParseResult {
   ParseFailure
 };
 
+/// Lower precedence ops (all at the same precedence level). LNoOp is false in
+/// the boolean sense.
+enum AffineLowPrecOp {
+  /// Null value.
+  LNoOp,
+  Add,
+  Sub
+};
+
+/// Higher precedence ops - all at the same precedence level. HNoOp is false in
+/// the boolean sense.
+enum AffineHighPrecOp {
+  /// Null value.
+  HNoOp,
+  Mul,
+  FloorDiv,
+  CeilDiv,
+  Mod
+};
+
 /// Main parser implementation.
 class Parser {
 public:
@@ -109,6 +129,10 @@ private:
     return true;
   }
 
+  // Binary affine op parsing
+  AffineLowPrecOp consumeIfLowPrecOp();
+  AffineHighPrecOp consumeIfHighPrecOp();
+
   ParseResult parseCommaSeparatedList(Token::Kind rightToken,
                                const std::function<ParseResult()> &parseElement,
                                       bool allowEmptyList = true);
@@ -129,19 +153,37 @@ private:
   Type *parseType();
   ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
 
-  // Identifiers
-  ParseResult parseDimIdList(SmallVectorImpl<StringRef> &dims,
-                             SmallVectorImpl<StringRef> &symbols);
-  ParseResult parseSymbolIdList(SmallVectorImpl<StringRef> &dims,
-                                SmallVectorImpl<StringRef> &symbols);
-  StringRef parseDimOrSymbolId(SmallVectorImpl<StringRef> &dims,
-                               SmallVectorImpl<StringRef> &symbols,
-                               bool symbol);
+  // Parsing identifiers' lists for polyhedral structures.
+  ParseResult parseDimIdList(AffineMapParserState &state);
+  ParseResult parseSymbolIdList(AffineMapParserState &state);
+  ParseResult parseDimOrSymbolId(AffineMapParserState &state, bool dim);
 
-  // Polyhedral structures
+  // Polyhedral structures.
   ParseResult parseAffineMapDef();
-  AffineMap *parseAffineMapInline(StringRef mapId);
-  AffineExpr *parseAffineExpr(AffineMapParserState &state);
+  ParseResult parseAffineMapInline(StringRef mapId, AffineMap *&affineMap);
+  AffineExpr *parseAffineExpr(const AffineMapParserState &state);
+
+  AffineExpr *parseParentheticalExpr(const AffineMapParserState &state);
+  AffineExpr *parseIntegerExpr(const AffineMapParserState &state);
+  AffineExpr *parseBareIdExpr(const AffineMapParserState &state);
+
+  static AffineBinaryOpExpr *getBinaryAffineOpExpr(AffineHighPrecOp op,
+                                                   AffineExpr *lhs,
+                                                   AffineExpr *rhs,
+                                                   MLIRContext *context);
+  static AffineBinaryOpExpr *getBinaryAffineOpExpr(AffineLowPrecOp op,
+                                                   AffineExpr *lhs,
+                                                   AffineExpr *rhs,
+                                                   MLIRContext *context);
+  ParseResult parseAffineOperandExpr(const AffineMapParserState &state,
+                                     AffineExpr *&result);
+  ParseResult parseAffineLowPrecOpExpr(AffineExpr *llhs, AffineLowPrecOp llhsOp,
+                                       const AffineMapParserState &state,
+                                       AffineExpr *&result);
+  ParseResult parseAffineHighPrecOpExpr(AffineExpr *llhs,
+                                        AffineHighPrecOp llhsOp,
+                                        const AffineMapParserState &state,
+                                        AffineExpr *&result);
 
   // Functions.
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
@@ -482,32 +524,21 @@ namespace {
 /// expression.
 class AffineMapParserState {
  public:
-  explicit AffineMapParserState(ArrayRef<StringRef> dims,
-                                ArrayRef<StringRef> symbols) :
-    dims_(dims), symbols_(symbols) {}
+   explicit AffineMapParserState() {}
 
-  unsigned dimCount() const { return dims_.size(); }
-  unsigned symbolCount() const { return symbols_.size(); }
+   void addDim(StringRef sRef) { dims.insert({sRef, dims.size()}); }
+   void addSymbol(StringRef sRef) { symbols.insert({sRef, symbols.size()}); }
 
-  // Stack operations for affine expression parsing
-  // TODO(bondhugula): all of this will be improved/made more principled
-  void pushAffineExpr(AffineExpr *expr) { exprStack.push(expr); }
-  AffineExpr *popAffineExpr() {
-    auto *t = exprStack.top();
-    exprStack.pop();
-    return t;
-  }
-  AffineExpr *topAffineExpr() { return exprStack.top(); }
+   unsigned getNumDims() const { return dims.size(); }
+   unsigned getNumSymbols() const { return symbols.size(); }
 
-  ArrayRef<StringRef> getDims() const { return dims_; }
-  ArrayRef<StringRef> getSymbols() const { return symbols_; }
+   // TODO(bondhugula): could just use an vector/ArrayRef and scan the numbers.
+   const llvm::StringMap<unsigned> &getDims() const { return dims; }
+   const llvm::StringMap<unsigned> &getSymbols() const { return symbols; }
 
  private:
-  const ArrayRef<StringRef> dims_;
-  const ArrayRef<StringRef> symbols_;
-
-  // TEMP: stack to hold affine expressions
-  std::stack<AffineExpr *> exprStack;
+   llvm::StringMap<unsigned> dims;
+   llvm::StringMap<unsigned> symbols;
 };
 }  // end anonymous namespace
 
@@ -533,16 +564,306 @@ ParseResult Parser::parseAffineMapDef() {
   if (!consumeIf(Token::equal))
     return emitError("expected '=' in affine map outlined definition");
 
-  auto *affineMap = parseAffineMapInline(affineMapId);
-  affineMaps[affineMapId].reset(affineMap);
-  if (!affineMap) return ParseFailure;
+  AffineMap *affineMap = nullptr;
+  if (parseAffineMapInline(affineMapId, affineMap))
+    return ParseFailure;
 
+  // TODO(bondhugula): Disable adding affineMapId to Parser::affineMaps for now;
+  // instead add to module for easy printing.
   module->affineMapList.push_back(affineMap);
-  return affineMap ? ParseSuccess : ParseFailure;
+
+  return ParseSuccess;
 }
 
+/// Create an affine op expression
+AffineBinaryOpExpr *Parser::getBinaryAffineOpExpr(AffineHighPrecOp op,
+                                                  AffineExpr *lhs,
+                                                  AffineExpr *rhs,
+                                                  MLIRContext *context) {
+  switch (op) {
+  case Mul:
+    return AffineMulExpr::get(lhs, rhs, context);
+  case FloorDiv:
+    return AffineFloorDivExpr::get(lhs, rhs, context);
+  case CeilDiv:
+    return AffineCeilDivExpr::get(lhs, rhs, context);
+  case Mod:
+    return AffineModExpr::get(lhs, rhs, context);
+  case HNoOp:
+    llvm_unreachable("can't create affine expression for null high prec op");
+    return nullptr;
+  }
+}
+
+AffineBinaryOpExpr *Parser::getBinaryAffineOpExpr(AffineLowPrecOp op,
+                                                  AffineExpr *lhs,
+                                                  AffineExpr *rhs,
+                                                  MLIRContext *context) {
+  switch (op) {
+  case AffineLowPrecOp::Add:
+    return AffineAddExpr::get(lhs, rhs, context);
+  case AffineLowPrecOp::Sub:
+    return AffineSubExpr::get(lhs, rhs, context);
+  case AffineLowPrecOp::LNoOp:
+    llvm_unreachable("can't create affine expression for null low prec op");
+    return nullptr;
+  }
+}
+
+/// Parses an expression that can be a valid operand of an affine expression
+/// (where associativity may not have been specified through parentheses).
+//  Eg: for an expression without parentheses (like i + j + k + l), each
+//  of the four identifiers is an operand. For: i + j*k + l, j*k is not an
+//  operand expression, it's an op expression and will be parsed via
+//  parseAffineLowPrecOpExpression().
+ParseResult Parser::parseAffineOperandExpr(const AffineMapParserState &state,
+                                           AffineExpr *&result) {
+  result = parseParentheticalExpr(state);
+  if (!result)
+    result = parseBareIdExpr(state);
+  if (!result)
+    result = parseIntegerExpr(state);
+  return result ? ParseSuccess : ParseFailure;
+}
+
+/// Parse a high precedence op expression list: mul, div, and mod are high
+/// precedence binary ops, i.e., parse a
+///   expr_1 op_1 expr_2 op_2 ... expr_n
+/// where op_1, op_2 are all a AffineHighPrecOp (mul, div, mod).
+/// All affine binary ops are left associative.
+/// Given llhs, returns (llhs * lhs) * rhs, or (lhs * rhs) if llhs is null. If
+/// no rhs can be found, returns (llhs * lhs) or lhs if llhs is null.
+//  TODO(bondhugula): check whether mul is w.r.t. a constant - otherwise, the
+/// map is semi-affine.
+ParseResult Parser::parseAffineHighPrecOpExpr(AffineExpr *llhs,
+                                              AffineHighPrecOp llhsOp,
+                                              const AffineMapParserState &state,
+                                              AffineExpr *&result) {
+  // FIXME: Assume for now that llhsOp is mul.
+  AffineExpr *lhs = nullptr;
+  if (parseAffineOperandExpr(state, lhs)) {
+    return ParseFailure;
+  }
+  AffineHighPrecOp op = HNoOp;
+  // Found an LHS. Parse the remaining expression.
+  if ((op = consumeIfHighPrecOp())) {
+    if (llhs) {
+      // TODO(bondhugula): check whether 'lhs' here is a constant (for affine
+      // maps); semi-affine maps allow symbols.
+      AffineExpr *expr =
+          Parser::getBinaryAffineOpExpr(llhsOp, llhs, lhs, context);
+      AffineExpr *subRes = nullptr;
+      if (parseAffineHighPrecOpExpr(expr, op, state, subRes)) {
+        if (!subRes)
+          emitError("missing right operand of multiply op");
+        // In spite of the error, setting result to prevent duplicate errors
+        // messages as the call stack unwinds. All of this due to left
+        // associativity.
+        result = expr;
+        return ParseFailure;
+      }
+      result = subRes ? subRes : expr;
+      return ParseSuccess;
+    }
+    // No LLHS, get RHS
+    AffineExpr *subRes = nullptr;
+    if (parseAffineHighPrecOpExpr(lhs, op, state, subRes)) {
+      // 'product' needs to be checked to prevent duplicate errors messages as
+      // the call stack unwinds. All of this due to left associativity.
+      if (!subRes)
+        emitError("missing right operand of multiply op");
+      return ParseFailure;
+    }
+    result = subRes;
+    return ParseSuccess;
+  }
+
+  // This is the last operand in this expression.
+  if (llhs) {
+    // TODO(bondhugula): check whether lhs here is a constant (for affine
+    // maps); semi-affine maps allow symbols.
+    result = Parser::getBinaryAffineOpExpr(llhsOp, llhs, lhs, context);
+    return ParseSuccess;
+  }
+
+  // No llhs, 'lhs' itself is the expression.
+  result = lhs;
+  return ParseSuccess;
+}
+
+/// Consume this token if it is a lower precedence affine op (there are only two
+/// precedence levels)
+AffineLowPrecOp Parser::consumeIfLowPrecOp() {
+  switch (curToken.getKind()) {
+  case Token::plus:
+    consumeToken(Token::plus);
+    return AffineLowPrecOp::Add;
+  case Token::minus:
+    consumeToken(Token::minus);
+    return AffineLowPrecOp::Sub;
+  default:
+    return AffineLowPrecOp::LNoOp;
+  }
+}
+
+/// Consume this token if it is a higher precedence affine op (there are only
+/// two precedence levels)
+AffineHighPrecOp Parser::consumeIfHighPrecOp() {
+  switch (curToken.getKind()) {
+  case Token::star:
+    consumeToken(Token::star);
+    return Mul;
+  case Token::kw_floordiv:
+    consumeToken(Token::kw_floordiv);
+    return FloorDiv;
+  case Token::kw_ceildiv:
+    consumeToken(Token::kw_ceildiv);
+    return CeilDiv;
+  case Token::kw_mod:
+    consumeToken(Token::kw_mod);
+    return Mod;
+  default:
+    return HNoOp;
+  }
+}
+
+/// Parse affine expressions that are bare-id's, integer constants,
+/// parenthetical affine expressions, and affine op expressions that are a
+/// composition of those.
 ///
-/// Parse a multi-dimensional affine expression
+/// All binary op's associate from left to right.
+///
+/// {add, sub} have lower precedence than {mul, div, and mod}.
+///
+/// Add, sub'are themselves at the same precedence level. mul, div, and mod are
+/// at the same higher precedence level.
+///
+/// llhs: the affine expression appearing on the left of the one being parsed.
+/// This function will return ((llhs + lhs) + rhs) if llhs is non null, and
+/// lhs + rhs otherwise; if there is no rhs, llhs + lhs is returned if llhs is
+/// non-null; otherwise lhs is returned. This is to deal with left
+/// associativity.
+///
+/// Eg: when the expression is e1 + e2*e3 + e4, with e1 as llhs, this function
+/// will return the affine expr equivalent of (e1 + (e2*e3)) + e4.
+///
+//  TODO(bondhugula): add support for unary op negation. Assuming for now that
+//  the op to associate with llhs is add.
+ParseResult Parser::parseAffineLowPrecOpExpr(AffineExpr *llhs,
+                                             AffineLowPrecOp llhsOp,
+                                             const AffineMapParserState &state,
+                                             AffineExpr *&result) {
+  AffineExpr *lhs = nullptr;
+  if (parseAffineOperandExpr(state, lhs))
+    return ParseFailure;
+
+  // Found an LHS. Deal with the ops.
+  AffineLowPrecOp lOp;
+  AffineHighPrecOp rOp;
+  if ((lOp = consumeIfLowPrecOp())) {
+    if (llhs) {
+      AffineExpr *sum =
+          Parser::getBinaryAffineOpExpr(llhsOp, llhs, lhs, context);
+      AffineExpr *recSum = nullptr;
+      parseAffineLowPrecOpExpr(sum, lOp, state, recSum);
+      result = recSum ? recSum : sum;
+      return ParseSuccess;
+    }
+    // No LLHS, get RHS and form the expression.
+    if (parseAffineLowPrecOpExpr(lhs, lOp, state, result)) {
+      if (!result)
+        emitError("missing right operand of add op");
+      return ParseFailure;
+    }
+    return ParseSuccess;
+  } else if ((rOp = consumeIfHighPrecOp())) {
+    // We have a higher precedence op here. Get the rhs operand for the llhs
+    // through parseAffineHighPrecOpExpr.
+    AffineExpr *highRes = nullptr;
+    if (parseAffineHighPrecOpExpr(lhs, rOp, state, highRes)) {
+      // 'product' needs to be checked to prevent duplicate errors messages as
+      // the call stack unwinds. All of this due to left associativity.
+      if (!highRes)
+        emitError("missing right operand of binary op");
+      return ParseFailure;
+    }
+    // If llhs is null, the product forms the first operand of the yet to be
+    // found expression. If non-null, assume for now that the op to associate
+    // with llhs is add.
+    AffineExpr *expr =
+        llhs ? getBinaryAffineOpExpr(llhsOp, llhs, highRes, context) : highRes;
+    // Recurse for subsequent add's after the affine mul expression
+    AffineLowPrecOp nextOp = consumeIfLowPrecOp();
+    if (nextOp) {
+      AffineExpr *sumProd = nullptr;
+      parseAffineLowPrecOpExpr(expr, nextOp, state, sumProd);
+      result = sumProd ? sumProd : expr;
+    } else {
+      result = expr;
+    }
+    return ParseSuccess;
+  } else {
+    // Last operand in the expression list.
+    if (llhs) {
+      result = Parser::getBinaryAffineOpExpr(llhsOp, llhs, lhs, context);
+      return ParseSuccess;
+    }
+    // No llhs, 'lhs' itself is the expression.
+    result = lhs;
+    return ParseSuccess;
+  }
+}
+
+/// Parse an affine expression inside parentheses.
+/// affine-expr ::= `(` affine-expr `)`
+AffineExpr *Parser::parseParentheticalExpr(const AffineMapParserState &state) {
+  if (!consumeIf(Token::l_paren)) {
+    return nullptr;
+  }
+  auto *expr = parseAffineExpr(state);
+  if (!consumeIf(Token::r_paren)) {
+    emitError("expected ')'");
+    return nullptr;
+  }
+  if (!expr)
+    emitError("no expression inside parentheses");
+  return expr;
+}
+
+/// Parse a bare id that may appear in an affine expression.
+/// affine-expr ::= bare-id
+AffineExpr *Parser::parseBareIdExpr(const AffineMapParserState &state) {
+  if (curToken.is(Token::bare_identifier)) {
+    StringRef sRef = curToken.getSpelling();
+    const auto &dims = state.getDims();
+    const auto &symbols = state.getSymbols();
+    if (dims.count(sRef)) {
+      consumeToken(Token::bare_identifier);
+      return AffineDimExpr::get(dims.lookup(sRef), context);
+    }
+    if (symbols.count(sRef)) {
+      consumeToken(Token::bare_identifier);
+      return AffineSymbolExpr::get(symbols.lookup(sRef), context);
+    }
+    return emitError("identifier is neither dimensional nor symbolic"), nullptr;
+  }
+  return nullptr;
+}
+
+/// Parse an integral constant appearing in an affine expression.
+/// affine-expr ::= `-`? integer-literal
+/// TODO(bondhugula): handle negative numbers.
+AffineExpr *Parser::parseIntegerExpr(const AffineMapParserState &state) {
+  if (curToken.is(Token::integer)) {
+    auto *expr = AffineConstantExpr::get(
+        curToken.getUnsignedIntegerValue().getValue(), context);
+    consumeToken(Token::integer);
+    return expr;
+  }
+  return nullptr;
+}
+
+/// Parse an affine expression.
 /// affine-expr ::= `(` affine-expr `)`
 ///              | affine-expr `+` affine-expr
 ///              | affine-expr `-` affine-expr
@@ -552,171 +873,118 @@ ParseResult Parser::parseAffineMapDef() {
 ///              | affine-expr `mod` integer-literal
 ///              | bare-id
 ///              | `-`? integer-literal
-/// multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-///
 /// Use 'state' to check if valid identifiers appear.
-///
-AffineExpr *Parser::parseAffineExpr(AffineMapParserState &state) {
-  // TODO(bondhugula): complete support for this
-  // The code below is all placeholder / it is wrong / not complete
-  // Operator precedence not considered; pure left to right associativity
-  if (curToken.is(Token::comma)) {
-    emitError("expecting affine expression");
-    return nullptr;
+//  TODO(bondhugula): check if mul, mod, div take integral constants
+AffineExpr *Parser::parseAffineExpr(const AffineMapParserState &state) {
+  switch (curToken.getKind()) {
+  case Token::l_paren:
+  case Token::kw_ceildiv:
+  case Token::kw_floordiv:
+  case Token::bare_identifier:
+  case Token::integer: {
+    AffineExpr *result = nullptr;
+    parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp, state, result);
+    return result;
   }
 
-  while (curToken.isNot(Token::comma, Token::r_paren,
-                        Token::eof, Token::error)) {
-    switch (curToken.getKind()) {
-      case Token::bare_identifier: {
-        // TODO(bondhugula): look up state to see if it's a symbol or dim_id and
-        // get its position
-        AffineExpr *expr = AffineDimExpr::get(0, context);
-        state.pushAffineExpr(expr);
-        consumeToken(Token::bare_identifier);
-        break;
-      }
-      case Token::plus: {
-        consumeToken(Token::plus);
-        if (state.topAffineExpr()) {
-          auto lChild = state.popAffineExpr();
-          auto rChild = parseAffineExpr(state);
-          if (rChild) {
-            auto binaryOpExpr = AffineAddExpr::get(lChild, rChild, context);
-            state.popAffineExpr();
-            state.pushAffineExpr(binaryOpExpr);
-          } else {
-            emitError("right operand of + missing");
-          }
-        } else {
-          emitError("left operand of + missing");
-        }
-        break;
-      }
-      case Token::integer: {
-        AffineExpr *expr = AffineConstantExpr::get(
-            curToken.getUnsignedIntegerValue().getValue(), context);
-        state.pushAffineExpr(expr);
-        consumeToken(Token::integer);
-        break;
-      }
-      case Token::l_paren: {
-        consumeToken(Token::l_paren);
-        break;
-      }
-      case Token::r_paren: {
-        consumeToken(Token::r_paren);
-        break;
-      }
-      default: {
-        emitError("affine map expr parse impl incomplete/unexpected token");
-        return nullptr;
-      }
-    }
-  }
-  if (!state.topAffineExpr()) {
-    // An error will be emitted by parse comma separated list on an empty list
+  case Token::plus:
+  case Token::minus:
+  case Token::star:
+    emitError("left operand of binary op missing");
+    return nullptr;
+
+  default:
     return nullptr;
   }
-  return state.topAffineExpr();
 }
 
-// Return empty string if no bare id was found
-StringRef Parser::parseDimOrSymbolId(SmallVectorImpl<StringRef> &dims,
-                                     SmallVectorImpl<StringRef> &symbols,
-                                     bool symbol = false) {
-  if (curToken.isNot(Token::bare_identifier)) {
-    emitError("expected bare identifier");
-    return StringRef();
-  }
-  // TODO(bondhugula): check whether the id already exists in either
-  // state.symbols or state.dims; report error if it does; otherwise create a
-  // new one.
-  StringRef ref = curToken.getSpelling();
+/// Parse a dim or symbol from the lists appearing before the actual expressions
+/// of the affine map. Update state to store the dimensional/symbolic
+/// identifier. 'dim': whether it's the dim list or symbol list that is being
+/// parsed.
+ParseResult Parser::parseDimOrSymbolId(AffineMapParserState &state, bool dim) {
+  if (curToken.isNot(Token::bare_identifier))
+    return emitError("expected bare identifier");
+  auto sRef = curToken.getSpelling();
   consumeToken(Token::bare_identifier);
-  return ref;
+  if (state.getDims().count(sRef) == 1)
+    return emitError("dimensional identifier name reused");
+  if (state.getSymbols().count(sRef) == 1)
+    return emitError("symbolic identifier name reused");
+  if (dim)
+    state.addDim(sRef);
+  else
+    state.addSymbol(sRef);
+  return ParseSuccess;
 }
 
-ParseResult Parser::parseSymbolIdList(SmallVectorImpl<StringRef> &dims,
-                                      SmallVectorImpl<StringRef> &symbols) {
+/// Parse the list of symbolic identifiers to an affine map.
+ParseResult Parser::parseSymbolIdList(AffineMapParserState &state) {
   if (!consumeIf(Token::l_bracket)) return emitError("expected '['");
 
   auto parseElt = [&]() -> ParseResult {
-    auto elt = parseDimOrSymbolId(dims, symbols, true);
-    // FIXME(bondhugula): assuming dim arg for now
-    if (!elt.empty()) {
-      symbols.push_back(elt);
-      return ParseSuccess;
-    }
-    return ParseFailure;
+    return parseDimOrSymbolId(state, false);
   };
   return parseCommaSeparatedList(Token::r_bracket, parseElt);
 }
 
-// TODO(andy,bondhugula)
-ParseResult Parser::parseDimIdList(SmallVectorImpl<StringRef> &dims,
-                                   SmallVectorImpl<StringRef> &symbols) {
+/// Parse the list of dimensional identifiers to an affine map.
+ParseResult Parser::parseDimIdList(AffineMapParserState &state) {
   if (!consumeIf(Token::l_paren))
     return emitError("expected '(' at start of dimensional identifiers list");
 
   auto parseElt = [&]() -> ParseResult {
-    auto elt = parseDimOrSymbolId(dims, symbols, false);
-    if (!elt.empty()) {
-      dims.push_back(elt);
-      return ParseSuccess;
-    }
-    return ParseFailure;
+    return parseDimOrSymbolId(state, true);
   };
-
   return parseCommaSeparatedList(Token::r_paren, parseElt);
 }
 
-/// Affine map definition.
+/// Parse an affine map definition.
 ///
-///  affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
+/// affine-map-inline ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
 ///                        ( `size` `(` dim-size (`,` dim-size)* `)` )?
-///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
+/// dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
-AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
-  SmallVector<StringRef, 4> dims;
-  SmallVector<StringRef, 4> symbols;
+/// multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+ParseResult Parser::parseAffineMapInline(StringRef mapId,
+                                         AffineMap *&affineMap) {
+  AffineMapParserState state;
 
   // List of dimensional identifiers.
-  if (parseDimIdList(dims, symbols)) return nullptr;
+  if (parseDimIdList(state))
+    return ParseFailure;
 
   // Symbols are optional.
   if (curToken.is(Token::l_bracket)) {
-    if (parseSymbolIdList(dims, symbols)) return nullptr;
+    if (parseSymbolIdList(state))
+      return ParseFailure;
   }
   if (!consumeIf(Token::arrow)) {
-    emitError("expected '->' or '['");
-    return nullptr;
+    return (emitError("expected '->' or '['"), ParseFailure);
   }
   if (!consumeIf(Token::l_paren)) {
     emitError("expected '(' at start of affine map range");
-    return nullptr;
+    return ParseFailure;
   }
-
-  AffineMapParserState affState(dims, symbols);
 
   SmallVector<AffineExpr *, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
-    auto elt = parseAffineExpr(affState);
+    auto *elt = parseAffineExpr(state);
     ParseResult res = elt ? ParseSuccess : ParseFailure;
     exprs.push_back(elt);
     return res;
   };
 
   // Parse a multi-dimensional affine expression (a comma-separated list of 1-d
-  // affine expressions)
-  if (parseCommaSeparatedList(Token::r_paren, parseElt, false)) return nullptr;
+  // affine expressions); the list cannot be empty.
+  // Grammar: multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+  if (parseCommaSeparatedList(Token::r_paren, parseElt, false))
+    return ParseFailure;
 
-  // Parsed a valid affine map
-  auto *affineMap =
-      AffineMap::get(affState.dimCount(), affState.symbolCount(), exprs,
-                     context);
-
-  return affineMap;
+  // Parsed a valid affine map.
+  affineMap =
+      AffineMap::get(state.getNumDims(), state.getNumSymbols(), exprs, context);
+  return ParseSuccess;
 }
 
 //===----------------------------------------------------------------------===//
@@ -766,7 +1034,6 @@ ParseResult Parser::parseExtFunc() {
   FunctionType *type = nullptr;
   if (parseFunctionSignature(name, type))
     return ParseFailure;
-
 
   // Okay, the external function definition was parsed correctly.
   module->functionList.push_back(new ExtFunction(name, type));
@@ -1098,7 +1365,7 @@ Module *Parser::parseModule() {
       emitError("expected a top level entity");
       return nullptr;
 
-    // If we got to the end of the file, then we're done.
+      // If we got to the end of the file, then we're done.
     case Token::eof:
       return module.release();
 
@@ -1115,6 +1382,7 @@ Module *Parser::parseModule() {
     case Token::kw_cfgfunc:
       if (parseCFGFunc()) return nullptr;
       break;
+
     case Token::affine_map_identifier:
       if (parseAffineMapDef()) return nullptr;
       break;
@@ -1123,7 +1391,7 @@ Module *Parser::parseModule() {
       if (parseMLFunc()) return nullptr;
       break;
 
-     // TODO: affine entity declarations, etc.
+      // TODO: affine entity declarations, etc.
     }
   }
 }

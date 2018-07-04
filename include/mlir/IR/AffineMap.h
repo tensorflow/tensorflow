@@ -39,28 +39,33 @@ class AffineExpr;
 /// The names used (d0, d1) don't matter - it's the mathematical function that
 /// is unique to this affine map.
 class AffineMap {
- public:
+public:
   static AffineMap *get(unsigned dimCount, unsigned symbolCount,
-                        ArrayRef<AffineExpr *> exprs,
-                        MLIRContext *context);
+                        ArrayRef<AffineExpr *> results, MLIRContext *context);
 
   // Prints affine map to 'os'.
   void print(raw_ostream &os) const;
   void dump() const;
 
-  unsigned dimCount() const { return numDims; }
-  unsigned symbolCount() const { return numSymbols; }
+  unsigned getNumDims() const { return numDims; }
+  unsigned getNumSymbols() const { return numSymbols; }
+  unsigned getNumResults() const { return numResults; }
+
+  ArrayRef<AffineExpr *> getResults() const {
+    return ArrayRef<AffineExpr *>(results, numResults);
+  }
 
  private:
-  AffineMap(unsigned dimCount, unsigned symbolCount,
-            ArrayRef<AffineExpr *> exprs);
+   AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
+             AffineExpr *const *results);
 
-  const unsigned numDims;
-  const unsigned numSymbols;
+   const unsigned numDims;
+   const unsigned numSymbols;
+   const unsigned numResults;
 
-  /// The affine expressions for this (multi-dimensional) map.
-  /// TODO: use trailing objects for these
-  ArrayRef<AffineExpr *> exprs;
+   /// The affine expressions for this (multi-dimensional) map.
+   /// TODO: use trailing objects for this.
+   AffineExpr *const *const results;
 };
 
 }  // end namespace mlir

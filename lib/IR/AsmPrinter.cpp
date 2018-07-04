@@ -251,13 +251,95 @@ void Instruction::dump() const {
   print(llvm::errs());
 }
 
+void AffineExpr::dump() const {
+  print(llvm::errs());
+  llvm::errs() << "\n";
+}
+
+void AffineAddExpr::print(raw_ostream &os) const {
+  os << "(" << *getLeftOperand() << " + " << *getRightOperand() << ")";
+}
+
+void AffineSubExpr::print(raw_ostream &os) const {
+  os << "(" << *getLeftOperand() << " - " << *getRightOperand() << ")";
+}
+
+void AffineMulExpr::print(raw_ostream &os) const {
+  os << "(" << *getLeftOperand() << " * " << *getRightOperand() << ")";
+}
+
+void AffineModExpr::print(raw_ostream &os) const {
+  os << "(" << *getLeftOperand() << " mod " << *getRightOperand() << ")";
+}
+
+void AffineFloorDivExpr::print(raw_ostream &os) const {
+  os << "(" << *getLeftOperand() << " floordiv " << *getRightOperand() << ")";
+}
+
+void AffineCeilDivExpr::print(raw_ostream &os) const {
+  os << "(" << *getLeftOperand() << " ceildiv " << *getRightOperand() << ")";
+}
+
+void AffineSymbolExpr::print(raw_ostream &os) const {
+  os << "s" << getPosition();
+}
+
+void AffineDimExpr::print(raw_ostream &os) const { os << "d" << getPosition(); }
+
+void AffineConstantExpr::print(raw_ostream &os) const { os << getValue(); }
+
 void AffineExpr::print(raw_ostream &os) const {
-  // TODO(bondhugula): print out affine expression
+  switch (getKind()) {
+  case Kind::SymbolId:
+    return cast<AffineSymbolExpr>(this)->print(os);
+  case Kind::DimId:
+    return cast<AffineDimExpr>(this)->print(os);
+  case Kind::Constant:
+    return cast<AffineConstantExpr>(this)->print(os);
+  case Kind::Add:
+    return cast<AffineAddExpr>(this)->print(os);
+  case Kind::Sub:
+    return cast<AffineSubExpr>(this)->print(os);
+  case Kind::Mul:
+    return cast<AffineMulExpr>(this)->print(os);
+  case Kind::FloorDiv:
+    return cast<AffineFloorDivExpr>(this)->print(os);
+  case Kind::CeilDiv:
+    return cast<AffineCeilDivExpr>(this)->print(os);
+  case Kind::Mod:
+    return cast<AffineModExpr>(this)->print(os);
+  default:
+    os << "<unimplemented expr>";
+    return;
+  }
 }
 
 void AffineMap::print(raw_ostream &os) const {
-  // TODO(andydavis) Print out affine map based on dimensionCount and
-  // symbolCount: (d0, d1) [S0, S1] -> (d0 + S0, d1 + S1)
+  // Dimension identifiers.
+  os << "(";
+  for (int i = 0; i < (int)getNumDims() - 1; i++)
+    os << "d" << i << ", ";
+  if (getNumDims() >= 1)
+    os << "d" << getNumDims() - 1;
+  os << ")";
+
+  // Symbolic identifiers.
+  if (getNumSymbols() >= 1) {
+    os << " [";
+    for (int i = 0; i < (int)getNumSymbols() - 1; i++)
+      os << "s" << i << ", ";
+    if (getNumSymbols() >= 1)
+      os << "s" << getNumSymbols() - 1;
+    os << "]";
+  }
+
+  // AffineMap should have at least one result.
+  assert(!getResults().empty());
+  // Result affine expressions.
+  os << " -> (";
+  interleave(getResults(), [&](AffineExpr *expr) { os << *expr; },
+             [&]() { os << ", "; });
+  os << ")\n";
 }
 
 void BasicBlock::print(raw_ostream &os) const {
@@ -300,8 +382,11 @@ void MLFunction::print(raw_ostream &os) const {
 }
 
 void Module::print(raw_ostream &os) const {
-  for (auto *map : affineMapList)
+  unsigned id = 0;
+  for (auto *map : affineMapList) {
+    os << "#" << id++ << " = ";
     map->print(os);
+  }
   for (auto *fn : functionList)
     fn->print(os);
 }
@@ -309,4 +394,3 @@ void Module::print(raw_ostream &os) const {
 void Module::dump() const {
   print(llvm::errs());
 }
-

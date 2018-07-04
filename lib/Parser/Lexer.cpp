@@ -91,7 +91,7 @@ Token Lexer::lexToken() {
       ++curPtr;
       return formToken(Token::arrow, tokStart);
     }
-    return emitError(tokStart, "unexpected character");
+    return formToken(Token::minus, tokStart);
 
   case '?':
     if (*curPtr == '?') {
