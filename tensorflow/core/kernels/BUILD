@@ -2501,6 +2501,7 @@ tf_kernel_library(
     # allow multiple definitions when linking this.
     linkopts = select({
         "//tensorflow:darwin": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
     visibility = [":friends"],
