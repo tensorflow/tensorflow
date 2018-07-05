@@ -74,5 +74,12 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {
+  builder_.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1({})));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla
