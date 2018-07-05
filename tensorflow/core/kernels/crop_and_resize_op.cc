@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/core/kernels/crop_resize_bilinear_core.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -249,39 +250,27 @@ struct CropAndResize<CPUDevice, T> {
             continue;
           }
           if (method_name == "bilinear") {
-            const int top_y_index = floorf(in_y);
-            const int bottom_y_index = ceilf(in_y);
-            const float y_lerp = in_y - top_y_index;
+            CachedInterpolation *interp_x=0l, *interp_y=0l;
+	    int min_ix, max_ix, min_iy, max_iy;
+	    compute_interpolation_weights(crop_width,image_width,x1,x2,min_ix,max_ix,interp_x);
+	    compute_interpolation_weights(crop_height,image_height,y1,y2,min_iy,max_iy,interp_y);
 
-            for (int x = 0; x < crop_width; ++x) {
-              const float in_x = (crop_width > 1)
-                                     ? x1 * (image_width - 1) + x * width_scale
-                                     : 0.5 * (x1 + x2) * (image_width - 1);
-              if (in_x < 0 || in_x > image_width - 1) {
-                for (int d = 0; d < depth; ++d) {
-                  crops(b, y, x, d) = extrapolation_value;
-                }
-                continue;
-              }
-              const int left_x_index = floorf(in_x);
-              const int right_x_index = ceilf(in_x);
-              const float x_lerp = in_x - left_x_index;
+	    // multiply by depth to avoid multiplication in resize_single_image.
+	    for (int i = min_ix;  i <= max_ix;  ++i) {
+		    interp_x[i-min_ix].lower *= depth;
+		    interp_x[i-min_ix].upper *= depth;
+	    }
 
-              for (int d = 0; d < depth; ++d) {
-                const float top_left(static_cast<float>(
-                    image(b_in, top_y_index, left_x_index, d)));
-                const float top_right(static_cast<float>(
-                    image(b_in, top_y_index, right_x_index, d)));
-                const float bottom_left(static_cast<float>(
-                    image(b_in, bottom_y_index, left_x_index, d)));
-                const float bottom_right(static_cast<float>(
-                    image(b_in, bottom_y_index, right_x_index, d)));
-                const float top = top_left + (top_right - top_left) * x_lerp;
-                const float bottom =
-                    bottom_left + (bottom_right - bottom_left) * x_lerp;
-                crops(b, y, x, d) = top + (bottom - top) * y_lerp;
-              }
-            }
+	    crop_resize_single_image<T,float>(
+			    image.data() + (int64)b_in * (int64)image_height * (int64)image_width * (int64)depth,
+			    image_height,image_width,crop_height,crop_width,depth,
+			    min_ix,max_ix,interp_x,
+			    min_iy,max_iy,interp_y,
+			    extrapolation_value,false,false,
+			    crops.data() + (int64)b * (int64)crop_height * (int64)crop_width * (int64)depth);
+
+	    delete [] interp_y;
+	    delete [] interp_x;
           } else {  // method == "nearest"
             for (int x = 0; x < crop_width; ++x) {
               const float in_x = (crop_width > 1)

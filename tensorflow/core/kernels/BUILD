@@ -557,6 +557,12 @@ cc_header_only_library(
     deps = [":image_resizer_state"],
 )
 
+cc_library(
+    name = "crop_resize_bilinear_core",
+    hdrs = ["crop_resize_bilinear_core.h"],
+    visibility = ["//visibility:private"],
+)
+
 # OpKernel libraries ----------------------------------------------------------
 
 ARRAY_DEPS = [
@@ -2129,7 +2135,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -2195,7 +2201,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_bilinear_op",
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
