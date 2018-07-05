@@ -166,11 +166,6 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":bigtable_test_ops",
-        # "//tensorflow/contrib/util:util_py",
-        # "//tensorflow/python:framework_for_generated_wrappers",
-        # "//tensorflow/python:platform",
-        # "//tensorflow/python:util",
-        # "//tensorflow/python/data",
     ],
 )
 
