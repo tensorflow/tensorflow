@@ -27,7 +27,7 @@ from tensorflow.python.platform import tf_logging as logging
 _UNCHANGED_RF_LAYER_OPS = [
     "Add", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor",
     "FusedBatchNorm", "Identity", "Log", "Mul", "Pow", "RealDiv", "Relu",
-    "Relu6", "Round", "Rsqrt", "Softplus", "Sub", "VariableV2"
+    "Relu6", "Round", "Rsqrt", "Softplus", "Sub", "VariableV2", "LRN"
 ]
 
 # Different ways in which padding modes may be spelled.

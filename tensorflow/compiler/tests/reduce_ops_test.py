@@ -22,7 +22,7 @@ import functools
 import itertools
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class ReduceOpsTest(XLATestCase):
+class ReduceOpsTest(xla_test.XLATestCase):
 
   def _testReduction(self,
                      tf_reduce_fn,
@@ -156,7 +156,7 @@ class ReduceOpsTest(XLATestCase):
     self._testReduction(math_ops.reduce_any, np.any, np.bool, self.BOOL_DATA)
 
 
-class ReduceOpPrecisionTest(XLATestCase):
+class ReduceOpPrecisionTest(xla_test.XLATestCase):
 
   def _testReduceSum(self,
                      expected_result,

@@ -62,10 +62,11 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
  public:
   explicit WALSComputePartialLhsAndRhsOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->MatchSignature(
-                                {DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT,
-                                 DT_INT64, DT_FLOAT, DT_INT64, DT_BOOL},
-                                {DT_FLOAT, DT_FLOAT}));
+    OP_REQUIRES_OK(context,
+                   context->MatchSignature(
+                       {DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_INT64,
+                        DT_FLOAT, DT_FLOAT, DT_INT64, DT_BOOL},
+                       {DT_FLOAT, DT_FLOAT}));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -75,8 +76,9 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
     const Tensor& input_weights = context->input(3);
     const Tensor& input_indices = context->input(4);
     const Tensor& input_values = context->input(5);
-    const Tensor& input_block_size = context->input(6);
-    const Tensor& input_is_transpose = context->input(7);
+    const Tensor& entry_weights = context->input(6);
+    const Tensor& input_block_size = context->input(7);
+    const Tensor& input_is_transpose = context->input(8);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(factors.shape()),
                 InvalidArgument("Input factors should be a matrix."));
@@ -89,13 +91,33 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
                 InvalidArgument("Input input_weights should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices.shape()),
                 InvalidArgument("Input input_indices should be a matrix."));
+    OP_REQUIRES(
+        context, input_indices.dim_size(1) == 2,
+        InvalidArgument("Input input_indices should have shape (?, 2)."));
     OP_REQUIRES(context, TensorShapeUtils::IsVector(input_values.shape()),
                 InvalidArgument("Input input_values should be a vector"));
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(entry_weights.shape()),
+                InvalidArgument("Input entry_weights should be a vector"));
+    OP_REQUIRES(context, input_indices.dim_size(0) == input_values.dim_size(0),
+                InvalidArgument("Input input_values' length should match the "
+                                "first dimension of Input input_indices "));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(input_block_size.shape()),
                 InvalidArgument("Input input_block_size should be a scalar."));
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(input_is_transpose.shape()),
         InvalidArgument("Input input_is_transpose should be a scalar."));
+    OP_REQUIRES(
+        context,
+        ((input_weights.dim_size(0) > 0 &&
+          factor_weights.dim_size(0) == factors.dim_size(0) &&
+          entry_weights.dim_size(0) == 0) ||
+         (input_weights.dim_size(0) == 0 && factor_weights.dim_size(0) == 0 &&
+          entry_weights.dim_size(0) == input_indices.dim_size(0))),
+        InvalidArgument("To specify the weights for observed entries, either "
+                        "(1) entry_weights must be set or (2) input_weights "
+                        "and factor_weights must be set, but not both."));
+    // TODO(yifanchen): Deprecate the support of input_weights and
+    // factor_weights.
 
     const int64 factor_dim = factors.dim_size(1);
     const int64 factors_size = factors.dim_size(0);
@@ -105,6 +127,7 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
     const auto& input_weights_vec = input_weights.vec<float>();
     const float w_0 = unobserved_weights.scalar<float>()();
     const auto& input_values_vec = input_values.vec<float>();
+    const auto& entry_weights_vec = entry_weights.vec<float>();
 
     ConstEigenMatrixFloatMap factors_mat(factors.matrix<float>().data(),
                                          factor_dim, factors_size);
@@ -133,6 +156,8 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
     auto get_factor_index = [is_transpose, &indices_mat](int64 i) {
       return is_transpose ? indices_mat(0, i) : indices_mat(1, i);
     };
+
+    const bool use_entry_weights = entry_weights_vec.size() > 0;
 
     // TODO(rmlarsen): In principle, we should be using the SparseTensor class
     // and machinery for iterating over groups, but the fact that class
@@ -195,6 +220,8 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
       // map using the hash of the thread id as the key.
       //
       // TODO(jpoulson): Switch to try_emplace once C++17 is supported
+      // TODO(b/72952120): Check whether the 3 lock-unlock pairs can be
+      // consolidated into just one.
       map_mutex.lock();
       const auto key_count = factor_batch_map.count(id_hash);
       map_mutex.unlock();
@@ -213,6 +240,8 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
       CHECK_LE(shard.second, perm.size());
       CHECK_LE(shard.first, shard.second);
       const int64 input_index = get_input_index(perm[shard.first]);
+      const float input_weight =
+          use_entry_weights ? 1.0 : input_weights_vec(input_index);
       // Accumulate the rhs and lhs terms in the normal equations
       // for the non-zero elements in the row or column of the sparse matrix
       // corresponding to input_index.
@@ -228,7 +257,8 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
         const int64 factor_index = get_factor_index(i);
         const float input_value = input_values_vec(i);
         const float weight =
-            input_weights_vec(input_index) * factor_weights_vec(factor_index);
+            use_entry_weights ? entry_weights_vec(i)
+                              : input_weight * factor_weights_vec(factor_index);
         CHECK_GE(weight, 0);
         factor_batch.col(num_batched) =
             factors_mat.col(factor_index) * std::sqrt(weight);

@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -55,7 +55,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -95,7 +95,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -136,7 +136,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));
@@ -184,7 +184,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           WhileLoopConstantSinking{}.Run(module.get()));

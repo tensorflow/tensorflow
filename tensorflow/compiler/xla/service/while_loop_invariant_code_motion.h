@@ -27,12 +27,28 @@ namespace xla {
 
 class WhileLoopInvariantCodeMotion : public HloPassInterface {
  public:
+  // If `hoist_constants` is true then constants are always hoisted out of while
+  // loop bodies.  Otherwise they are only hoisted out if they enable other
+  // non-trivial computations to be hoisted out.
+  //
+  // Setting `hoist_constants` to false can be help if LICM is run in the mid
+  // level HLO pipeline because hoisting constants out of while loop bodies can
+  // break optimizations like constant folding.
+  explicit WhileLoopInvariantCodeMotion(bool hoist_constants = false)
+      : hoist_constants_(hoist_constants) {}
   ~WhileLoopInvariantCodeMotion() override = default;
 
   tensorflow::StringPiece name() const override {
     return "while-loop-invariant-code-motion";
   }
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  bool NotWorthHoistingIndividually(const HloInstruction& instruction);
+  StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
+      HloInstruction* while_instr);
+
+  bool hoist_constants_;
 };
 }  // namespace xla
 

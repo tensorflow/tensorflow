@@ -873,6 +873,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1244,6 +1245,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1506,6 +1508,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1531,6 +1534,14 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         predictions=predictions,
         loss=regularized_training_loss,
         train_op=train_op)
+
+
+def _append_update_ops(train_op):
+  """Returns `train_op` appending `UPDATE_OPS` collection if present."""
+  update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+  if update_ops:
+    return control_flow_ops.group(train_op, *update_ops)
+  return train_op
 
 
 def _assert_range(labels, n_classes, message=None):

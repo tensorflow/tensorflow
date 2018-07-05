@@ -511,7 +511,6 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library) {
   std::unique_ptr<Graph> graph_out;
   s = EncapsulateSubgraphsInFunctions("_encapsulate", "_outside", *graph,
                                       /*rewrite_subgraph_fn=*/{},
-                                      /*parallel_checking=*/false,
                                       /*reuse_existing_functions=*/false,
                                       &graph_out, lib_def.get());
   if (!s.ok()) return s;
@@ -560,8 +559,9 @@ TEST(EncapsulateSubgraphsTest, OneFunction) {
     Node* b = Input(b1.opts().WithName("B"));
     // Give nodes 'c' and 'd' names that collide after lowercasing.
     Node* c = Unary(a, b1.opts().WithName("C").WithAttr("_encapsulate", "F1"));
-    Node* d = Binary(b, c, b1.opts().WithName("c").WithControlInput(c).WithAttr(
-                               "_encapsulate", "F1"));
+    Node* d = Binary(b, c,
+                     b1.opts().WithName("c").WithControlInput(c).WithAttr(
+                         "_encapsulate", "F1"));
     Binary(a, d, b1.opts().WithName("E"));
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
   }
@@ -614,8 +614,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctions) {
     Node* c =
         Unary(a, b1.opts().WithName("C").WithControlInput(control).WithAttr(
                      "_encapsulate", "F1"));
-    Node* d =
-        Binary(b, c, b1.opts().WithName("D").WithControlInput(control).WithAttr(
+    Node* d = Binary(b, c,
+                     b1.opts().WithName("D").WithControlInput(control).WithAttr(
                          "_encapsulate", "F2"));
     Binary(a, d, b1.opts().WithName("E"));
     TF_EXPECT_OK(b1.ToGraphDef(&graphdef));
@@ -707,7 +707,7 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
   std::unique_ptr<Graph> graph;
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_cluster", "_outside", graph_before_encapsulation,
-      /*rewrite_subgraph_fn=*/{}, /*parallel_checking=*/false,
+      /*rewrite_subgraph_fn=*/{},
       /*reuse_existing_functions=*/false, &graph, &library));
 
   std::vector<string> expected_nodes = {"cluster1", "cluster2", "mul", "x"};
@@ -718,47 +718,6 @@ TEST(EncapsulateSubgraphsTest, InputDeduplication) {
       {"cluster1:0", "mul:0"},
       {"cluster2:0", "mul:1"},
       {"x:0", "cluster1:0"}};
-  EXPECT_EQ(expected_edges, GraphEdges(*graph));
-}
-
-TEST(EncapsulateSubgraphsTest, ParallelChecking) {
-  Scope root = Scope::NewRootScope().ExitOnError().WithDevice(
-      "/job:localhost/replica:0/task:0/cpu:0");
-  auto x1 = ops::Placeholder(root.WithOpName("x1"), DT_FLOAT);
-  auto x2 = ops::Placeholder(root.WithOpName("x2"), DT_FLOAT);
-  auto add1 = ops::Add(root.WithOpName("add1"), x1, x2);
-  add1.node()->AddAttr("_cluster", "cluster1");
-  auto add2 = ops::Add(root.WithOpName("add2"), add1, x2);
-  add2.node()->AddAttr("_cluster", "cluster1");
-  auto out = ops::Mul(root.WithOpName("mul"), x1, add2);
-
-  Graph graph_before_encapsulation(OpRegistry::Global());
-  TF_ASSERT_OK(root.ToGraph(&graph_before_encapsulation));
-
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
-  std::unique_ptr<Graph> graph;
-  TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
-      "_cluster", "_outside", graph_before_encapsulation,
-      /*rewrite_subgraph_fn=*/{}, /*parallel_checking=*/true,
-      /*reuse_existing_functions=*/false, &graph, &library));
-
-  std::vector<string> expected_nodes = {
-      "add1", "add2", "cluster1", "cluster1_parallel_check/_0",
-      "mul",  "x1",   "x2"};
-  EXPECT_EQ(expected_nodes, GraphNodes(*graph));
-
-  std::vector<std::pair<string, string>> expected_edges = {
-      {"add1:0", "add2:0"},
-      {"add2:0", "cluster1_parallel_check/_0:0"},
-      {"cluster1:0", "cluster1_parallel_check/_0:1"},
-      {"cluster1_parallel_check/_0:0", "mul:1"},
-      {"x1:0", "add1:0"},
-      {"x1:0", "cluster1:0"},
-      {"x1:0", "mul:0"},
-      {"x2:0", "add1:1"},
-      {"x2:0", "add2:1"},
-      {"x2:0", "cluster1:1"},
-  };
   EXPECT_EQ(expected_edges, GraphEdges(*graph));
 }
 
@@ -798,7 +757,8 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", "_outside", graph_before,
       /*rewrite_subgraph_fn=*/
-      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+      [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
+                           std::unique_ptr<Graph>* graph_ptr,
                            std::vector<int>* input_permutation,
                            std::vector<int>* output_permutation,
                            NodeDef* call_def) {
@@ -814,7 +774,6 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
         }
         return Status::OK();
       },
-      /*parallel_checking=*/false,
       /*reuse_existing_functions=*/false, &graph_after, &library));
   EXPECT_EQ(2, guaranteed_consts);
 }
@@ -843,7 +802,8 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
   TF_ASSERT_OK(EncapsulateSubgraphsInFunctions(
       "_encapsulate", "_outside", graph_before,
       /*rewrite_subgraph_fn=*/
-      [&guaranteed_consts](std::unique_ptr<Graph>* graph_ptr,
+      [&guaranteed_consts](const std::vector<OutputTensor>& arg_source_tensors,
+                           std::unique_ptr<Graph>* graph_ptr,
                            std::vector<int>* input_permutation,
                            std::vector<int>* output_permutation,
                            NodeDef* call_def) {
@@ -859,7 +819,6 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
         }
         return Status::OK();
       },
-      /*parallel_checking=*/false,
       /*reuse_existing_functions=*/false, &graph_after, &library));
   // Only 1 runtime const, which is const_guarantee_add1. Add2 has one const
   // and another non-const, so overall non-const.
@@ -1050,7 +1009,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
                          .WithAttr("_outside", "O1"));
     Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
                              {DT_FLOAT, DT_FLOAT}, shape2.opts());
-    Node* h = Binary(ops::NodeOut(recv2, 0), e,
+    Node* h = Binary(ops::NodeOut(recv2, 1), e,
                      shape2.opts()
                          .WithName("H")
                          .WithAttr("_encapsulate", "F1")
@@ -1075,7 +1034,7 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
            {"outside_compilation_O1_host_compute"}},
           {{"outside_compilation_O2_host_compute"},
            "XlaHostCompute",
-           {"D:o:0", "F:o:0"},
+           {"F:o:0", "D:o:0"},
            {{"Tinputs", gtl::ArraySlice<DataType>({DT_FLOAT, DT_FLOAT})},
             {"Toutputs", gtl::ArraySlice<DataType>({DT_FLOAT})},
             {"ancestors",
@@ -1123,13 +1082,13 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
 
     Node* recv2 = RecvAtHost(ops::NodeOut(key_constant, 0), "F1", "O2",
                              {DT_FLOAT, DT_FLOAT}, b2.opts());
-    Node* g = Binary(e, ops::NodeOut(recv2, 1),
+    Node* g = Binary(e, ops::NodeOut(recv2, 0),
                      b2.opts()
                          .WithName("G")
                          .WithControlInputs({recv2, e})
                          .WithAttr("_encapsulate", "F1")
                          .WithAttr("_outside", "O2"));
-    Node* h = Binary(ops::NodeOut(recv2, 0), e,
+    Node* h = Binary(ops::NodeOut(recv2, 1), e,
                      b2.opts()
                          .WithName("H")
                          .WithAttr("_encapsulate", "F1")

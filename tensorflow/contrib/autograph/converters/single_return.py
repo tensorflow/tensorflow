@@ -20,21 +20,21 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import ast_util
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
 # TODO(mdan): Move this logic into transformer_base.
-class BodyVisitor(transformer.Base):
+class BodyVisitor(converter.Base):
   """Walks breadth- or depth-first the list-of-nodes bodies of AST nodes."""
 
-  def __init__(self, context, depth_first=False):
+  def __init__(self, ctx, depth_first=False):
+    super(BodyVisitor, self).__init__(ctx)
     self.depth_first = depth_first
     self.changes_made = False
-    super(BodyVisitor, self).__init__(context)
 
   def visit_nodelist(self, nodelist):
     for node in nodelist:
@@ -144,13 +144,13 @@ def contains_return(node):
   return False
 
 
-class LiftReturn(transformer.Base):
+class LiftReturn(converter.Base):
   """Move return statements out of If and With blocks."""
 
-  def __init__(self, context):
+  def __init__(self, ctx):
+    super(LiftReturn, self).__init__(ctx)
     self.changes_made = False
     self.common_return_name = None
-    super(LiftReturn, self).__init__(context)
 
   def visit_If(self, node):
     # Depth-first traversal of if statements
@@ -195,8 +195,8 @@ class LiftReturn(transformer.Base):
     last_return_name = self.common_return_name
     body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     referenced_names = body_scope.referenced
-    self.common_return_name = self.context.namer.new_symbol(
-        'return_', referenced_names)
+    self.common_return_name = self.ctx.namer.new_symbol('return_',
+                                                        referenced_names)
     node = self.generic_visit(node)
     self.common_return_name = last_return_name
     return node
@@ -265,7 +265,7 @@ class DetectReturnInFunctionDef(gast.NodeVisitor):
           'Each function definition should contain at least one return.')
 
 
-def transform(node, context):
+def transform(node, ctx):
   """Ensure a function has only a single return.
 
   This transforms an AST node with multiple returns successively into containing
@@ -280,8 +280,8 @@ def transform(node, context):
    this is an error.
 
   Args:
-     node: an AST node to transform
-     context: a context object
+     node: ast.AST
+     ctx: converter.EntityContext
 
   Returns:
      new_node: an AST with a single return value
@@ -301,10 +301,10 @@ def transform(node, context):
   while True:
 
     # Try to lift all returns out of if statements and with blocks
-    lr = LiftReturn(context)
+    lr = LiftReturn(ctx)
     node = lr.visit(node)
     changes_made = lr.changes_made
-    fe = FoldElse(context)
+    fe = FoldElse(ctx)
     node = fe.visit(node)
     changes_made = changes_made or fe.changes_made
 

@@ -60,15 +60,9 @@ class SaverTest(test.TestCase):
 
   def testSameNameNoClobbering(self):
     with ops.device(self._dev()):
-      # Note that this test purposefully uses Graphs rather than
-      # IsolateTest. Users are more likely to accidentally create the same
-      # variable name this way.
-      first_graph = ops.Graph()
-      with first_graph.as_default():
-        v1_first_graph = resource_variable_ops.ResourceVariable(1.0, name='v1')
-      with ops.Graph().as_default():
-        v1_second_graph = resource_variable_ops.ResourceVariable(2.0, name='v1')
-        saver = _saver.Saver([v1_first_graph, v1_second_graph])
+      v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
+      v2 = resource_variable_ops.ResourceVariable(2.0, name='v1')
+      saver = _saver.Saver([v1, v2])
       ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
       with self.assertRaisesRegexp(ValueError, 'v1'):
         saver.save(ckpt_prefix)
@@ -126,12 +120,11 @@ class SaverTest(test.TestCase):
       saver = _saver.Saver([v1])
       saver.save(ckpt_prefix)
 
-      with ops.Graph().as_default():
-        saver = _saver.Saver([v1])
-        with _saver.restore_variables_on_create(ckpt_prefix):
-          # Value is from checkpoint, but not from argument.
-          ret, _ = model(2.0)
-          self.assertEqual(ret.numpy(), 1.0)
+      saver = _saver.Saver([v1])
+      with _saver.restore_variables_on_create(ckpt_prefix):
+        # Value is from checkpoint, but not from argument.
+        ret, _ = model(2.0)
+        self.assertEqual(ret.numpy(), 1.0)
 
   def testRestoreNotFound(self):
     with ops.device(self._dev()):
@@ -184,17 +177,17 @@ class SaverTest(test.TestCase):
           4, model(array_ops.constant(2, dtype=dtypes.float32)).numpy())
 
       # reset the graph and reload on create, so that 1 + 2 = 3
-      with ops.Graph().as_default():
-        with _saver.restore_variables_on_create(ckpt_prefix):
-          @graph_callable.graph_callable(
-              [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
-          def model2(x):
-            v = variable_scope.get_variable(
-                'v', initializer=init_ops.zeros_initializer(), shape=())
-            return v + x
+      ops.reset_default_graph()
+      with _saver.restore_variables_on_create(ckpt_prefix):
+        @graph_callable.graph_callable(
+            [graph_callable.ShapeAndDtype(shape=(), dtype=dtypes.float32)])
+        def model2(x):
+          v = variable_scope.get_variable(
+              'v', initializer=init_ops.zeros_initializer(), shape=())
+          return v + x
 
-          self.assertEqual(
-              3, model2(array_ops.constant(2, dtype=dtypes.float32)).numpy())
+        self.assertEqual(
+            3, model2(array_ops.constant(2, dtype=dtypes.float32)).numpy())
 
 
 class GetOptimizerTests(test.TestCase):

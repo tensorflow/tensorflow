@@ -21,7 +21,7 @@ limitations under the License.
 #include <unistd.h>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/session.pb.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/env.h"
@@ -33,7 +33,7 @@ namespace xla {
 namespace tools {
 
 void RealMain(const string& mode, const string& path) {
-  SessionModule module;
+  HloSnapshot module;
   tensorflow::Env* env = tensorflow::Env::Default();
   if (mode == "txt2bin") {
     TF_CHECK_OK(tensorflow::ReadTextProto(env, path, &module));

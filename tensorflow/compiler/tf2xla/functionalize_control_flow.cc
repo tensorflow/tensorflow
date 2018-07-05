@@ -166,6 +166,27 @@ StatusOr<Node*> AddNode(const NodeDef& node_def, Graph* graph) {
   return inserted_node;
 }
 
+// Check that the graph has no cycle containing the given node.
+Status CheckNoCycleContains(const Node* node, const int num_nodes) {
+  std::vector<const Node*> ready;
+  ready.push_back(node);
+  std::vector<bool> visited(num_nodes);
+  while (!ready.empty()) {
+    const Node* current_node = ready.back();
+    ready.pop_back();
+    visited[current_node->id()] = true;
+    for (const Edge* out : current_node->out_edges()) {
+      if (out->dst() == node) {
+        return errors::Internal("Detect a cycle: Node \"", node->name(), "\"(",
+                                node->def().op(), ") feeds into itself.");
+      } else if (!visited[out->dst()->id()]) {
+        ready.push_back(out->dst());
+      }
+    }
+  }
+  return Status::OK();
+}
+
 StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
   NodeDef arg_def;
   NodeDefBuilder builder(strings::StrCat(kArgOp, index), kArgOp);
@@ -1407,6 +1428,10 @@ StatusOr<Node*> FunctionalizeCond::ConvertToXlaIf(
   TF_RETURN_IF_ERROR(
       AddInputEdges(cond_arg_nodes, switch_cluster.predicate_edge, if_node));
   TF_RETURN_IF_ERROR(AddOutputEdges(merge_nodes, if_node));
+  // Check that the if_node doesn't feed into itself.
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      CheckNoCycleContains(if_node, graph_->num_node_ids()),
+      "ConvertToXlaIf failed.");
 
   return if_node;
 }
@@ -1438,7 +1463,15 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
   std::vector<ControlFlowInfo> cf_info;
-  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info));
+  std::vector<string> unreachable_nodes;
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes),
+      "FunctionalizeControlFlow failed");
+  if (!unreachable_nodes.empty()) {
+    return errors::InvalidArgument(
+        "The following nodes are unreachable from the source in the graph: ",
+        tensorflow::str_util::Join(unreachable_nodes, ", "));
+  }
 
   // Builds Frames, indexed by name.
   std::unordered_map<string, Frame> frames;
@@ -1458,10 +1491,6 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
       frame.parent = parent;
       frame.name = cf.frame_name;
       ++parent->num_children;
-    } else if (frame.parent != parent) {
-      return errors::InvalidArgument("Mismatched parent frames for ",
-                                     cf.frame->id(), ": ", parent->name, " vs ",
-                                     frame.parent->name);
     }
 
     if (IsEnter(node)) {
@@ -1471,12 +1500,6 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
                                      &arg.is_loop_invariant));
       frame.args.push_back(arg);
     } else if (IsLoopCond(node)) {
-      if (frame.loop_cond) {
-        return errors::InvalidArgument(
-            "Loop ", cf.frame_name,
-            " has more than one LoopCond node: ", node->name(), " and ",
-            frame.loop_cond->name());
-      }
       frame.loop_cond = node;
     }
     frame.nodes.insert(node);
@@ -1506,6 +1529,16 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
     --frame->parent->num_children;
     if (frame->parent->num_children == 0) {
       worklist.push_back(frame->parent);
+    }
+  }
+  // There should be no cycle at this point, since while loops have been removed
+  // from graph.
+  // Check that the newly added XlaWhile nodes don't feed into themselves.
+  for (const Node* node : graph->op_nodes()) {
+    if (node->def().op() == "XlaWhile") {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          CheckNoCycleContains(node, graph->num_node_ids()),
+          "FunctionalizeLoop failed.");
     }
   }
 

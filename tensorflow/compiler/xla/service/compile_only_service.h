@@ -38,24 +38,7 @@ class CompileOnlyService : public Service {
   static StatusOr<std::unique_ptr<CompileOnlyService>> NewService(
       const ServiceOptions& options);
 
-  // A description of a computation to compile using CompileAheadOfTime.
-  struct AotComputationInstance {
-    ComputationHandle computation;
-    std::vector<const Shape*> argument_layouts;
-    const Shape* result_layout = nullptr;
-  };
-
-  // Compiles a list of computations for ahead-of-time execution.  This is
-  // intended for use in static compilation.  See
-  // |CompileOnlyClient::CompileAheadOfTime| for additional details.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
-      const AotCompilationOptions& Options);
-
   // A description of a xla computation to compile using CompileAheadOfTime.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   struct AotXlaComputationInstance {
     HloModuleProto computation;
     std::vector<const Shape*> argument_layouts;
@@ -65,30 +48,20 @@ class CompileOnlyService : public Service {
   // Compiles a list of xla computations for ahead-of-time execution.  This is
   // intended for use in static compilation.  See
   // |CompileOnlyClient::CompileAheadOfTime| for additional details.
-  //
-  // TODO(b/74197823): This is a part of a NOT YET ready refactor.
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
       const AotCompilationOptions& options);
 
-  // Override Service methods that require or imply the existence of an
-  // execute backend.  Note that this does not include TransferToClient, as
-  // computing constants produces global data that we may wish to transfer.
-  Status Execute(const ExecuteRequest* arg, ExecuteResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support execution.");
-  }
-  Status ExecuteParallel(const ExecuteParallelRequest* arg,
-                         ExecuteParallelResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support execution.");
-  }
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(
+      const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+      const AotCompilationOptions& options,
+      std::unique_ptr<AotCompilationMetadata>* metadata);
+
   Status GetDeviceHandles(const GetDeviceHandlesRequest* arg,
                           GetDeviceHandlesResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
-  }
-  Status ExecuteAsync(const ExecuteAsyncRequest* arg,
-                      ExecuteAsyncResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support execution.");
   }
   Status WaitForExecution(const WaitForExecutionRequest* arg,
                           WaitForExecutionResponse* result) override {

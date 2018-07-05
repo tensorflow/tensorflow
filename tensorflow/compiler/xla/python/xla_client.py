@@ -28,6 +28,7 @@ import numpy as np
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
+from tensorflow.compiler.xla.service import hlo_pb2
 
 
 # Most functions are snake_case for consistency with other modules, whereas
@@ -88,18 +89,20 @@ _UNARY_OPS = [
     'Not',
     'Abs',
     'Exp',
+    'Expm1',
     'Floor',
     'Round',
     'Ceil',
     'Log',
+    'Log1p',
     'Sign',
     'Cos',
     'Sin',
     'Tanh',
-    'SqrtF32',
-    'SquareF32',
+    'Sqrt',
+    'Square',
     'IsFinite',
-    'ReciprocalF32',
+    'Reciprocal',
     'Neg',
     'Sort',
 ]
@@ -120,6 +123,7 @@ _BINARY_OPS = [
     'Min',
     'And',
     'Or',
+    'Xor',
     'Pow',
 ]
 
@@ -182,6 +186,14 @@ class LocalBuffer(object):
     if self.c_local_shaped_buffer is not None:
       self._delete(self.c_local_shaped_buffer)
       self.c_local_shaped_buffer = None
+
+  def destructure(self):
+    assert self.c_local_shaped_buffer is not None
+    result = c_api.DestructureLocalShapedBufferTuple(self.c_local_shaped_buffer)
+    self.c_local_shaped_buffer = None
+    size = result.size()
+    destructured = tuple(LocalBuffer(result.Release(i)) for i in xrange(size))
+    return destructured
 
   def is_deleted(self):
     return self.c_local_shaped_buffer is None
@@ -246,9 +258,12 @@ class Shape(object):
             self._dimensions == other._dimensions and
             self._minor_to_major == other._minor_to_major)
 
+  def __ne__(self, other):
+    return not self == other
+
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
-            '_is_tuple={!r}), _minor_to_major={!r}').format(
+            '_is_tuple={!r}, _minor_to_major={!r})').format(
                 self._dtype, self._dimensions, self._is_tuple,
                 self._minor_to_major)
 
@@ -352,6 +367,7 @@ class CompileOptions(object):
   def __init__(self):
     self.generate_hlo_graph = None
     self.dump_optimized_hlo_proto_to = None
+    self.dump_unoptimized_hlo_proto_to = None
     self.dump_per_pass_hlo_proto_to = None
     self.hlo_profile = False
 
@@ -409,6 +425,17 @@ class LocalComputation(object):
     else:
       assert isinstance(c_local_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
+
+  def GetProto(self):
+    """Get the HloModuleProto proto object in this local computation.
+
+    Returns:
+       An HloModuleProto proto object that has the whole-graph information.
+    """
+
+    serialized = self.c_local_computation.GetSerializedProto()
+    proto = hlo_pb2.HloModuleProto.FromString(serialized)
+    return proto
 
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
     """Compiles an un-compiled local computation.
@@ -882,20 +909,19 @@ class ComputationBuilder(object):
     """
     return self._client.Call(computation_to_apply.c_local_computation, operands)
 
-  def Map(self, operands, computation_to_apply, dimensions, static_operands=()):
+  def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
 
     Args:
       operands: an iterable of LocalOp.
       computation_to_apply: a Computation object.
       dimensions: dimensions over which to apply map the function.
-      static_operands: auxiliary arguments passed to the applied computation.
 
     Returns:
       A LocalOp representing the added Map op.
     """
     return self._client.Map(operands, computation_to_apply.c_local_computation,
-                            dimensions, static_operands)
+                            dimensions)
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
     """Enqueues a reduction operation onto the computation.
@@ -1099,6 +1125,61 @@ class ComputationBuilder(object):
     dimension_numbers.kernel_spatial_dimensions.extend(range(2, 2 + nd))
     dimension_numbers.output_spatial_dimensions.extend(range(2, 2 + nd))
     return dimension_numbers
+
+  def ConvGeneralDilated(self, lhs, rhs, window_strides, padding, lhs_dilation,
+                         rhs_dilation, dimension_numbers):
+    """Enqueues a ConvGeneralDilated operation onto the computation.
+
+    Args:
+      lhs: LocalOp for the rank N+2 array of inputs.
+      rhs: LocalOp for the rank N+2 array of kernel weights.
+      window_strides: length-N array-like of integer kernel strides.
+      padding: length-N array-like of pairs of integers of (low, high) padding.
+      lhs_dilation: length-N array-like of integer dilation factors.
+      rhs_dilation: length-N array-like of integer dilation factors.
+      dimension_numbers: either an xla_data_pb2.ConvolutionDimensionNumbers or a
+        triple (lhs_spec, rhs_spec, out_spec) where each element is a string of
+        length N+2 identifying by position (1) batch dimensions in lhs, rhs, and
+        the output with the character 'N', (2) feature dimensions in lhs and the
+        output with the character 'C', (3) input and output feature dimensions
+        in rhs with the characters 'I' and 'O' respectively, and (4) spatial
+        dimension correspondences between lhs, rhs, and the output using any
+        distinct characters. For example, to indicate dimension numbers
+        consistent with the Conv operation with two spatial dimensions, one
+        could use ('NCHW', 'OIHW', 'NCHW'). As another example, to indicate
+        dimension numbers consistent with the TensorFlow Conv2D operation, one
+        could use ('NHWC', 'HWIO', 'NHWC'). When using the latter form of
+        convolution dimension specification, window strides are associated with
+        spatial dimension character labels according to the order in which the
+        labels appear in the rhs_spec string, so that window_strides[0] is
+        matched with the dimension corresponding to the first character
+        appearing in rhs_spec that is not 'I' or 'O'.
+
+    Returns: a LocalOp representing the ConvGenralDilated operation.
+    """
+    if not isinstance(dimension_numbers,
+                      xla_data_pb2.ConvolutionDimensionNumbers):
+      lhs_spec, rhs_spec, out_spec = dimension_numbers
+      dimension_numbers = xla_data_pb2.ConvolutionDimensionNumbers()
+
+      dimension_numbers.input_batch_dimension = lhs_spec.index('N')
+      dimension_numbers.input_feature_dimension = lhs_spec.index('C')
+      dimension_numbers.output_batch_dimension = out_spec.index('N')
+      dimension_numbers.output_feature_dimension = out_spec.index('C')
+      dimension_numbers.kernel_output_feature_dimension = rhs_spec.index('O')
+      dimension_numbers.kernel_input_feature_dimension = rhs_spec.index('I')
+
+      dimension_numbers.kernel_spatial_dimensions.extend(
+          i for i, c in enumerate(rhs_spec) if c not in {'I', 'O'})
+      dimension_numbers.input_spatial_dimensions.extend(
+          sorted((i for i, c in enumerate(lhs_spec) if c not in {'N', 'C'}),
+                 key=lambda i: rhs_spec.index(lhs_spec[i])))
+      dimension_numbers.output_spatial_dimensions.extend(
+          sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
+                 key=lambda i: rhs_spec.index(out_spec[i])))
+    return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
+                                           lhs_dilation, rhs_dilation,
+                                           dimension_numbers)
 
 
 def _forward_methods_to_local_builder():

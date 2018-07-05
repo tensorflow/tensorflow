@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-
+import re
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import export as export_lib
@@ -30,21 +30,24 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.keras._impl.keras import models
-from tensorflow.python.keras._impl.keras import optimizers
-from tensorflow.python.keras._impl.keras.engine.base_layer import Layer
-from tensorflow.python.keras._impl.keras.engine.network import Network
-from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import models
+from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
+
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
@@ -68,7 +71,7 @@ def _convert_tensor(x):
   return x
 
 
-def _any_variable_initalized():
+def _any_variable_initialized():
   """Check if any variable has been initialized in the Keras model.
 
   Returns:
@@ -121,8 +124,8 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'It needs to match one '
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
-      tensors = [_convert_tensor(estimator_io[io_name])
-                 for io_name in keras_io_names]
+    tensors = [_convert_tensor(estimator_io[io_name])
+               for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.
@@ -136,8 +139,9 @@ def _in_place_subclassed_model_reset(model):
   To "instantiate" an identical model in a new TF graph, we reuse the original
   model object, but we clear its state.
 
-  After calling this function on a model intance, you can use the model instance
-  as if it were a model clone (in particular you can use it in a new graph).
+  After calling this function on a model instance, you can use the model
+  instance as if it were a model clone (in particular you can use it in a new
+  graph).
 
   This method clears the state of the input model. It is thus destructive.
   However the original state can be restored fully by calling
@@ -220,7 +224,6 @@ def _in_place_subclassed_model_reset(model):
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
   model._original_attributes_cache = attributes_cache
-
   # Reset built state
   model.built = False
   model.inputs = None
@@ -240,8 +243,17 @@ def _in_place_subclassed_model_state_restoration(model):
   # Restore layers and build attributes
   if (hasattr(model, '_original_attributes_cache') and
       model._original_attributes_cache is not None):
-    model._layers = []
+    # Models have sticky attribute assignment, so we want to be careful to add
+    # back the previous attributes and track Layers by their original names
+    # without adding dependencies on "utility" attributes which Models exempt
+    # when they're constructed.
+    model._layers = data_structures.NoDependency([])
     for name, value in model._original_attributes_cache.items():
+      if not isinstance(value, checkpointable.CheckpointableBase):
+        # If this value is not already checkpointable, it's probably that way
+        # for a reason; we don't want to start tracking data structures that the
+        # original Model didn't.
+        value = data_structures.NoDependency(value)
       setattr(model, name, value)
     model._original_attributes_cache = None
   else:
@@ -340,8 +352,19 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
     """model_fn for keras Estimator."""
     model = _clone_and_build_model(mode, keras_model, custom_objects, features,
                                    labels)
+    model_output_names = []
+    # We need to make sure that the output names of the last layer in the model
+    # is the same for each of the cloned models. This is required for mirrored
+    # strategy when we call regroup.
+    if distribute_lib.has_distribution_strategy():
+      for name in model.output_names:
+        name = re.compile(r'_\d$').sub('', name)
+        model_output_names.append(name)
+    else:
+      model_output_names = model.output_names
+
     # Get inputs to EstimatorSpec
-    predictions = dict(zip(model.output_names, model.outputs))
+    predictions = dict(zip(model_output_names, model.outputs))
 
     loss = None
     train_op = None
@@ -433,7 +456,6 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
         saver.save(sess, os.path.join(estimator.model_dir, 'keras_model.ckpt'))
 
 
-@tf_export('keras.estimator.model_to_estimator')
 def model_to_estimator(keras_model=None,
                        keras_model_path=None,
                        custom_objects=None,
@@ -442,13 +464,17 @@ def model_to_estimator(keras_model=None,
   """Constructs an `Estimator` instance from given keras model.
 
   For usage example, please see
-  @{$programmers_guide/estimators$creating_estimators_from_keras_models}.
+  @{$guide/estimators$creating_estimators_from_keras_models}.
 
   Args:
-    keras_model: Keras model in memory.
-    keras_model_path: Directory to a keras model on disk.
+    keras_model: A compiled Keras model object. This argument is mutually
+      exclusive with `keras_model_path`.
+    keras_model_path: Path to a compiled Keras model saved on disk, in HDF5
+      format, which can be generated with the `save()` method of a Keras model.
+      This argument is mutually exclusive with `keras_model`.
     custom_objects: Dictionary for custom objects.
-    model_dir: Directory to save Estimator model parameters, graph and etc.
+    model_dir: Directory to save Estimator model parameters, graph, summary
+      files for TensorBoard, etc.
     config: Configuration object.
 
   Returns:
@@ -460,7 +486,7 @@ def model_to_estimator(keras_model=None,
     ValueError: if the keras_model_path is a GCS URI.
     ValueError: if keras_model has not been compiled.
   """
-  if (not keras_model) and (not keras_model_path):
+  if not (keras_model or keras_model_path):
     raise ValueError(
         'Either `keras_model` or `keras_model_path` needs to be provided.')
   if keras_model and keras_model_path:
@@ -482,8 +508,9 @@ def model_to_estimator(keras_model=None,
 
   if not hasattr(keras_model, 'optimizer') or not keras_model.optimizer:
     raise ValueError(
-        'The given keras model has not been compiled yet. Please compile first '
-        'before calling `model_to_estimator`.')
+        'The given keras model has not been compiled yet. '
+        'Please compile the model with `model.compile()` '
+        'before calling `model_to_estimator()`.')
 
   if isinstance(config, dict):
     config = run_config_lib.RunConfig(**config)
@@ -493,7 +520,7 @@ def model_to_estimator(keras_model=None,
       keras_model_fn, model_dir=model_dir, config=config)
 
   # Check if we need to call get_weights:
-  if _any_variable_initalized():
+  if _any_variable_initialized():
     keras_weights = keras_model.get_weights()
     # Warn if config passed to estimator tries to update GPUOptions. If a
     # session has already been created, the GPUOptions passed to the first

@@ -195,7 +195,7 @@ class WeightedQuantilesSummary {
   // designed to be cache-friendly.
   void Compress(int64 size_hint, double min_eps = 0) {
     // No-op if we're already within the size requirement.
-    size_hint = std::max(size_hint, 2LL);
+    size_hint = std::max(size_hint, int64{2});
     if (entries_.size() <= size_hint) {
       return;
     }
@@ -267,7 +267,7 @@ class WeightedQuantilesSummary {
     if (entries_.empty()) {
       return output;
     }
-    num_quantiles = std::max(num_quantiles, 2LL);
+    num_quantiles = std::max(num_quantiles, int64{2});
     output.reserve(num_quantiles + 1);
 
     // Make successive rank queries to get boundaries.

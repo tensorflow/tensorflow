@@ -35,6 +35,10 @@ namespace port {
 // software can change it dynamically.
 int NumSchedulableCPUs();
 
+// Returns an estimate of the number of hyperthreads per physical core
+// on the CPU
+int NumHyperthreadsPerCore();
+
 // Mostly ISA related features that we care about
 enum CPUFeature {
   // Do not change numeric assignments.
@@ -106,6 +110,9 @@ int CPUModelNum();
 
 // Returns nominal core processor cycles per second of each processor.
 double NominalCPUFrequency();
+
+// Returns num of hyperthreads per physical core
+int CPUIDNumSMT();
 
 }  // namespace port
 }  // namespace tensorflow

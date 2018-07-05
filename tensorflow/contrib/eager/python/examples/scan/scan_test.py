@@ -36,20 +36,18 @@ class ScanBenchmark(tf.test.Benchmark):
         iters=n,
         wall_time=wall_time)
 
-  def benchmarkScan2000(self):
-    self.runScan(2000)
-
-  def benchmarkScan4000(self):
-    self.runScan(4000)
-
-  def benchmarkScan8000(self):
-    self.runScan(8000)
-
   def benchmarkScan16000(self):
     self.runScan(16000)
 
   def benchmarkScan32000(self):
     self.runScan(32000)
+
+  def benchmarkScan64000(self):
+    self.runScan(64000)
+
+  def benchmarkScan128000(self):
+    self.runScan(128000)
+
 
 if __name__ == '__main__':
   tf.enable_eager_execution()

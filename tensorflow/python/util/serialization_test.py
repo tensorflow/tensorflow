@@ -23,10 +23,10 @@ import json
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras._impl.keras.engine import input_layer
-from tensorflow.python.keras._impl.keras.engine import sequential
-from tensorflow.python.keras._impl.keras.engine import training
-from tensorflow.python.keras._impl.keras.layers import core
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
 from tensorflow.python.platform import test
 from tensorflow.python.util import serialization
 
@@ -47,7 +47,7 @@ class SerializationTests(test.TestCase):
     self.assertIs(round_trip[0], None)
     self.assertEqual(round_trip[1], 2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_serialize_sequential(self):
     model = sequential.Sequential()
     model.add(core.Dense(4))
@@ -61,7 +61,7 @@ class SerializationTests(test.TestCase):
     self.assertAllEqual([1, 1],
                         input_round_trip[0]["config"]["batch_input_shape"])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_serialize_model(self):
     x = input_layer.Input(shape=[3])
     y = core.Dense(10)(x)

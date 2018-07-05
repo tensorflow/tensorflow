@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
 #include <deque>
+#include <vector>
 
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
@@ -100,6 +101,10 @@ class InfeedManager {
   // returns null.
   se::Stream* GetStream(se::StreamExecutor* executor);
 
+  // Registers a callback that will be called when 'enqueued_buffer_' becomes
+  // empty.
+  void RegisterOnEmptyCallback(std::function<void()> callback);
+
  private:
   // TODO(b/30467474): Revisit if this mutex becomes a point of
   // contention.
@@ -122,6 +127,10 @@ class InfeedManager {
 
   // Executor that the host_to_device_stream belongs to. Not owned.
   se::StreamExecutor* host_to_device_executor_;
+
+  // List of callbacks which will be called when 'enqueued_buffer_' becomes
+  // empty.
+  std::vector<std::function<void()>> on_empty_callbacks_;
 };
 
 // Singleton creator-or-accessor: Returns the GPU infeed manager.

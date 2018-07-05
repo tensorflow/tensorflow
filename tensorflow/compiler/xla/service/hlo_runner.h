@@ -102,6 +102,15 @@ class HloRunner {
   static StatusOr<std::unique_ptr<HloModule>> ReadModuleFromHloTextFile(
       const std::string& filename, const DebugOptions& debug_options);
 
+  // Transfers data between the host and device.
+  StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
+  StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
+      const tensorflow::gtl::ArraySlice<const Literal*> literals);
+  StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
+      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> literals);
+  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+      const ShapedBuffer& buffer);
+
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
   //
@@ -109,20 +118,25 @@ class HloRunner {
   // optimization.
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<Literal*> arguments,
-      bool run_hlo_passes = true);
+      const tensorflow::gtl::ArraySlice<const Literal*> arguments,
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<std::unique_ptr<Literal>> Execute(
       std::unique_ptr<HloModule> module,
       const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
-      bool run_hlo_passes = true) {
-    // Construct a vector of plain pointers for the arguments.
-    std::vector<Literal*> argument_pointers;
-    c_transform(
-        arguments, std::back_inserter(argument_pointers),
-        [](const std::unique_ptr<Literal>& literal) { return literal.get(); });
-    return Execute(std::move(module), argument_pointers, run_hlo_passes);
-  }
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+
+  // As Execute(), but accepts and returns device buffers instead of host
+  // buffers.
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      std::unique_ptr<HloModule> module,
+      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      std::unique_ptr<HloModule> module,
+      const tensorflow::gtl::ArraySlice<ScopedShapedBuffer> arguments,
+      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
@@ -137,6 +151,7 @@ class HloRunner {
   // This creates the backend lazily so it's possible to instantiate an
   // HloRunner in a program without any backends linked in.
   Backend& backend();
+  const Backend& backend() const;
 
  private:
   // Creates an executable object given an HLO module. If run_hlo_passes is

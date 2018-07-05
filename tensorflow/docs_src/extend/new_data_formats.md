@@ -45,7 +45,7 @@ Each of these implementations comprises three related classes:
 * A `tensorflow::GraphDatasetBase` subclass (e.g. `TextLineDatasetOp::Dataset`),
   which represents the *immutable* definition of the dataset itself, and tells
   TensorFlow how to construct an iterator object over that dataset, in its
-  `MakeIterator()` method.
+  `MakeIteratorInternal()` method.
 
 * A `tensorflow::DatasetIterator<Dataset>` subclass (e.g.
   `TextLineDatasetOp::Dataset::Iterator`), which represents the *mutable* state
@@ -103,7 +103,7 @@ class MyReaderDatasetOp : public DatasetOpKernel {
    public:
     Dataset(OpKernelContext* ctx) : GraphDatasetBase(ctx) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::MyReader")}));
@@ -124,7 +124,7 @@ class MyReaderDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "MyReaderDatasetOp::Dataset"; }
+    string DebugString() const override { return "MyReaderDatasetOp::Dataset"; }
 
    protected:
     // Optional: Implementation of `GraphDef` serialization for this dataset.

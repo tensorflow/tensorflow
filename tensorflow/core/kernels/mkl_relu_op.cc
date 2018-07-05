@@ -23,11 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/platform/default/logging.h"
-#include "tensorflow/core/util/mkl_util.h"
-
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
@@ -40,7 +35,12 @@ using mkldnn::relu_backward;
 using mkldnn::relu_forward;
 using mkldnn::stream;
 using mkldnn::memory;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 

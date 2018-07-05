@@ -83,16 +83,19 @@ LoopEmitter::LoopEmitter(const ElementGenerator& target_element_generator,
   // Sanity check: In multi-output fusion, all shapes produced must have the
   // same dimensions.
   for (const IrArray& array : target_arrays) {
-    CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()));
+    CHECK(ShapeUtil::SameDimensions(shape_, array.GetShape()))
+        << ": '" << shape_.ShortDebugString() << "' does not match '"
+        << array.GetShape().ShortDebugString() << "'";
   }
 }
 
 std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name) {
+    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+  CHECK_NE(index_type, nullptr);
   if (ShapeUtil::IsScalar(shape_)) {
     // No loop needed, so set exit_bb_ to nullptr.
     exit_bb_ = nullptr;
-    return {IrArray::Index()};
+    return {IrArray::Index(index_type)};
   }
 
   // Create loop nest with one for-loop for each dimension of the target shape.
@@ -100,7 +103,7 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
   ForLoopNest loop_nest(loop_name, ir_builder_);
-  IrArray::Index array_index(shape_.dimensions_size());
+  IrArray::Index array_index(index_type, shape_.dimensions_size());
   for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
     int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest.AddLoop(
@@ -123,9 +126,14 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   return {array_index};
 }
 
-Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name) {
+Status LoopEmitter::EmitLoop(tensorflow::StringPiece loop_name,
+                             llvm::Type* index_type) {
+  if (index_type == nullptr) {
+    index_type = ir_builder_->getInt64Ty();
+  }
+
   for (const IrArray::Index& array_index :
-       EmitIndexAndSetExitBasicBlock(loop_name)) {
+       EmitIndexAndSetExitBasicBlock(loop_name, index_type)) {
     TF_RETURN_IF_ERROR(body_emitter_(array_index));
   }
 

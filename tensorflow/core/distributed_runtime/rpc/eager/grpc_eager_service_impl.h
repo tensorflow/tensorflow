@@ -16,20 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_EAGER_GRPC_EAGER_SERVICE_IMPL_H_
 
-#include "grpc++/alarm.h"
-#include "grpc++/completion_queue.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/alarm.h"
+#include "grpcpp/completion_queue.h"
+#include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 
 namespace tensorflow {
 namespace eager {
 
 // This class is a wrapper that handles communication for gRPC.
-class GrpcEagerServiceImpl {
+class GrpcEagerServiceImpl : public AsyncServiceInterface {
  public:
   template <class RequestMessage, class ResponseMessage>
   using EagerCall = Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
@@ -39,8 +39,8 @@ class GrpcEagerServiceImpl {
                        ::grpc::ServerBuilder* server_builder);
   virtual ~GrpcEagerServiceImpl() {}
 
-  void Start();
-  void Stop();
+  void HandleRPCsLoop() override;
+  void Shutdown() override;
 
  private:
 #define HANDLER(method)                                                        \
@@ -65,8 +65,6 @@ class GrpcEagerServiceImpl {
 #undef HANDLER
 
   EagerServiceImpl local_impl_;
-
-  void DriveCQ();
 
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 

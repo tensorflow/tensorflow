@@ -14,8 +14,8 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
         "//tensorflow/core:lib",
-        "//tensorflow/python:numpy_lib",
-        "//util/python:python_headers",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -27,6 +27,6 @@ tf_py_wrap_cc(
     ],
     deps = [
         ":interpreter_wrapper_lib",
-        "//util/python:python_headers",
+        "//third_party/python_runtime:headers",
     ],
 )

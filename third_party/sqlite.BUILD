@@ -5,6 +5,7 @@ licenses(["unencumbered"])  # Public Domain
 
 SQLITE_COPTS = [
     "-Os",
+    "-DSQLITE_ENABLE_JSON1",
     "-DHAVE_DECL_STRERROR_R=1",
     "-DHAVE_STDINT_H=1",
     "-DHAVE_INTTYPES_H=1",

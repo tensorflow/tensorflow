@@ -116,7 +116,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           {this, strings::StrCat(prefix, "::ParallelInterleave")}));
@@ -129,7 +129,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return "ParallelInterleaveDatasetOp::Dataset";
     }
 
@@ -236,7 +236,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)),
             workers_(dataset()->num_threads()),
             worker_thread_states_(dataset()->num_threads()) {}
 
@@ -247,6 +246,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         for (auto& worker : workers_) {
           worker.cond_var.notify_all();
         }
+      }
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       // It is implemented so that it matches the deterministic interleave

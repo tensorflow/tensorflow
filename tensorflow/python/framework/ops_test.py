@@ -270,7 +270,6 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation(
         ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
         [dtypes.float32_ref, dtypes.float32])
-    g._add_op(op1)
     self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
     self.assertEquals([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
@@ -279,14 +278,12 @@ class OperationTest(test_util.TensorFlowTestCase):
         ops._NodeDef("RefInputFloatInput", "op2"),
         g, [ref_t, nonref_t], [],
         input_types=[dtypes.float32_ref, dtypes.float32])
-    g._add_op(op2)
     self.assertProtoEquals(
         "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
         op2.node_def)
     self.assertEquals([ref_t, nonref_t], list(op2.inputs))
     op3 = ops.Operation(
         ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
-    g._add_op(op3)
     self.assertProtoEquals(
         "op:'TwoFloatInputs' name:'op3' input:'op1' input:'op1:1'",
         op3.node_def)
@@ -1693,7 +1690,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEager(self):
     def future():
       future.calls += 1
@@ -1878,7 +1875,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
 class OpScopeTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNames(self):
     with ops.name_scope("foo") as foo:
       self.assertEqual("foo/", foo)
@@ -1909,7 +1906,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with ops.name_scope("a//b/c") as foo10:
       self.assertEqual("a//b/c/", foo10)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testEagerDefaultScopeName(self):
     with ops.name_scope(None, "default") as scope:
       self.assertEqual(scope, "default/")
@@ -2041,6 +2038,21 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(g2.get_operations()), 0)
     self.assertEqual(len(g1.get_operations()), 0)
     self.assertEqual(len(g0.get_operations()), 1)
+
+  def testPreservesDevices(self):
+    g0 = ops.Graph()
+    with g0.as_default(), ops.device("CPU:0"):
+      g1 = ops.Graph()
+      g1._building_function = True  # pylint: disable=protected-access
+      with g1.as_default(), ops.device("GPU:0"):
+        with ops.init_scope():
+          # init_scope should preserve device set under `g1`.
+          on_gpu = constant_op.constant(1.0)
+          self.assertEqual(on_gpu.device, "/device:GPU:0")
+        still_on_gpu = constant_op.constant(1.0)
+        self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+      on_cpu = constant_op.constant(1.0)
+      self.assertEqual(on_cpu.device, "/device:CPU:0")
 
   def testComposes(self):
     g0 = ops.Graph()
@@ -2209,12 +2221,25 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
-  def testEagerGraphContextsExecuteEagerly(self):
+  def testEnteringGraphFromEagerIsSticky(self):
     with context.eager_mode():
+      g = ops.Graph()
+      with g.as_default():
+        with ops.init_scope():
+          self.assertFalse(context.executing_eagerly())
+          self.assertEqual(g, ops.get_default_graph())
+
+  def testMixGraphEager(self):
+    with context.eager_mode():
+      c = constant_op.constant(1.0)
       with ops.Graph().as_default():
-        with context.graph_mode():
-          with ops.init_scope():
-            self.assertTrue(context.executing_eagerly())
+        with self.assertRaisesRegexp(
+            RuntimeError, "Attempting to capture an EagerTensor"):
+          math_ops.add(c, c)
+        c2 = constant_op.constant(2.0)
+      with self.assertRaisesRegexp(
+          TypeError, "contains objects other than 'EagerTensor'"):
+        math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
@@ -2247,6 +2272,11 @@ class GraphTest(test_util.TensorFlowTestCase):
     with self.assertRaises(AssertionError):
       with g0.as_default():
         ops.reset_default_graph()
+
+  def testGraphContextManagerCancelsEager(self):
+    with context.eager_mode():
+      with ops.Graph().as_default():
+        self.assertFalse(context.executing_eagerly())
 
   def testGraphContextManager(self):
     g0 = ops.Graph()

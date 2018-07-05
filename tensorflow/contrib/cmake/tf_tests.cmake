@@ -212,6 +212,10 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/python/ops/gmm_test.py"
     # Disable following manual tag in BUILD.
     "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/layers/convolutional_test.py"
+    # These tests depend on a .so file
+    ${tensorflow_source_dir}/tensorflow/python/kernel_tests/duplicate_op_test.py
+    ${tensorflow_source_dir}/tensorflow/python/kernel_tests/invalid_op_test.py
+    ${tensorflow_source_dir}/tensorflow/python/kernel_tests/ackermann_test.py
 
   )
   if (WIN32)

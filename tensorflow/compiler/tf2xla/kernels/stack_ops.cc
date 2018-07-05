@@ -144,24 +144,25 @@ class StackPushOp : public XlaOpKernel {
     // Initializes the Stack, if the element shape was not already known.
     OP_REQUIRES_OK(ctx, MaybeInitializeStack(b, resource, dtype_, elem_shape));
 
-    xla::XlaOp ta = b->GetTupleElement(resource->value(), 0);
-    xla::XlaOp index = b->GetTupleElement(resource->value(), 1);
+    xla::XlaOp ta = xla::GetTupleElement(resource->value(), 0);
+    xla::XlaOp index = xla::GetTupleElement(resource->value(), 1);
     xla::XlaOp value = ctx->Input(1);
 
     // start_indices of the DynamicUpdateSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
-               xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
+        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
+                 xla::MakeEdgePaddingConfig({{0, elem_shape.dims()}}));
 
     TensorShape slice_shape = elem_shape;
     slice_shape.InsertDim(0, 1LL);
-    auto update = b->Reshape(value, slice_shape.dim_sizes());
+    auto update = xla::Reshape(value, slice_shape.dim_sizes());
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple(
-                            {b->DynamicUpdateSlice(ta, update, start_indices),
-                             b->Add(index, b->ConstantR0<int32>(1))})));
+    OP_REQUIRES_OK(ctx,
+                   resource->SetValue(xla::Tuple(
+                       b, {xla::DynamicUpdateSlice(ta, update, start_indices),
+                           xla::Add(index, xla::ConstantR0<int32>(b, 1))})));
 
     ctx->SetOutput(0, value);
   }
@@ -197,27 +198,27 @@ class StackPopOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, GetStackShape(b, resource, &stack_shape));
 
     xla::XlaOp state = resource->value();
-    xla::XlaOp ta = b->GetTupleElement(state, 0);
-    xla::XlaOp index = b->GetTupleElement(state, 1);
+    xla::XlaOp ta = xla::GetTupleElement(state, 0);
+    xla::XlaOp index = xla::GetTupleElement(state, 1);
 
-    index = b->Sub(index, b->ConstantR0<int32>(1));
-    OP_REQUIRES_OK(ctx, resource->SetValue(b->Tuple({ta, index})));
+    index = Sub(index, xla::ConstantR0<int32>(b, 1));
+    OP_REQUIRES_OK(ctx, resource->SetValue(xla::Tuple(b, {ta, index})));
 
     // start_indices of the DynamicSlice are [index, 0, 0, ..., 0].
     auto start_indices =
-        b->Pad(b->Reshape(index, {1}), b->ConstantR0<int32>(0),
-               xla::MakeEdgePaddingConfig({{0, stack_shape.dims() - 1}}));
+        xla::Pad(xla::Reshape(index, {1}), xla::ConstantR0<int32>(b, 0),
+                 xla::MakeEdgePaddingConfig({{0, stack_shape.dims() - 1}}));
 
     auto slice_shape = stack_shape.dim_sizes();
     slice_shape[0] = 1LL;
 
     // TODO(phawkins): We don't check the index is in bounds --- there is no
     // error mechanism in XLA.
-    xla::XlaOp read = b->DynamicSlice(ta, start_indices, slice_shape);
+    xla::XlaOp read = xla::DynamicSlice(ta, start_indices, slice_shape);
 
     // Remove the leading '1' dimension.
     std::vector<int64> value_shape(slice_shape.begin() + 1, slice_shape.end());
-    ctx->SetOutput(0, b->Reshape(read, value_shape));
+    ctx->SetOutput(0, xla::Reshape(read, value_shape));
   }
 
  private:

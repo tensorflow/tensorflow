@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Asinh"
+  endpoint {
+    name: "math.asinh"
+  }
+  endpoint {
+    name: "asinh"
+    deprecation_message: "tf.asinh is deprecated, please use tf.math.asinh instead."
+  }
+}

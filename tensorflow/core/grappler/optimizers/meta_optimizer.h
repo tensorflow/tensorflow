@@ -72,6 +72,10 @@ class MetaOptimizer : public GraphOptimizer {
     std::vector<OptimizerResult> results;
   };
 
+  Status RunOptimizer(GraphOptimizer* optimizer, Cluster* cluster,
+                      GrapplerItem* optimized_item, GraphDef* optimized_graph,
+                      GraphOptimizationResult* optimization_result);
+
   std::vector<GraphOptimizationResult> optimization_results_;
 };
 

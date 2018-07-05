@@ -18,31 +18,72 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_options.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace gpu {
 
-// cuDNN convolutions are called with specific layouts on the input, output,
-// and filter:
-//
-//   input: DataLayout::kBatchDepthYX
-//   output: DataLayout::kBatchDepthYX
-//   filter: FilterLayout::kOutputInputYX
-//
-// The order dimensions in the constant name is major-to-minor (eg, the
-// most-major dimension of the input is batch, most-minor is X). The
-// specific dimension numbers these named dimensions correspond to is
-// determined by the ConvolutionDimensionNumbers argument. Y is spatial
-// dimension 0, and X is spatial dimension 1.
-//
-// TODO(b/29399649): Be more flexible about handling layouts of cuDNN calls.
-static Status AddBackendConstraintsToDnnConvCustomCall(
+using stream_executor::dnn::DataLayout;
+using stream_executor::dnn::FilterLayout;
+
+static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
+  int major, minor;
+  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
+                                                                       &minor));
+  return major >= 7;
+}
+
+// Returns (input, filter, output) layouts.
+static std::tuple<DataLayout, FilterLayout, DataLayout>
+HeuristicLayoutAssignment(const HloInstruction* instr,
+                          stream_executor::StreamExecutor* stream_executor) {
+  // DataLayout and FilterLayout uses weird enum names. Translations:
+  //   N <=> Batch or Output
+  //   C <=> Depth or Input
+  //   H <=> Y
+  //   W <=> X
+  //
+  // Therefore kOutputInputYX and kBatchDepthYX mean NCHW.
+
+  // As of today, our empirical evidence is that cudnn 7.0 is faster on V100 x
+  // fp16 with the mostly-NHWC layout. The heuristic may change as cudnn version
+  // changes, as well as the hardware updates.
+  if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
+        IsVoltaOrLater(*stream_executor))) {
+    return std::make_tuple(DataLayout::kBatchDepthYX,
+                           FilterLayout::kOutputInputYX,
+                           DataLayout::kBatchDepthYX);
+  }
+  VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
+  // For BackwardInput that has stride, full NHWC layouts run significantly
+  // slower than (NHWC, NCHW, NCHW) or (NHWC, NCHW, NHWC).
+  //
+  // TODO(timshen): more closely compare (NHWC, NCHW, NCHW) and (NHWC, NCHW,
+  // NHWC).
+  if (instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
+      window_util::HasStride(instr->window())) {
+    return std::make_tuple(DataLayout::kBatchYXDepth,
+                           FilterLayout::kOutputInputYX,
+                           DataLayout::kBatchDepthYX);
+  }
+  return std::make_tuple(DataLayout::kBatchYXDepth,
+                         FilterLayout::kOutputYXInput,
+                         DataLayout::kBatchYXDepth);
+}
+
+// Adds layout constraints on the cudnn custom-call instruction. The layout
+// constraints are represented in terms of minor_to_major fields of both
+// operands and the output shape. Depending on the underlying algorithm, one of
+// { NCHW, NHWC } ^ 3 = 8 different layout combinations may be chosen.
+Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     HloInstruction* instr, LayoutConstraints* constraints) {
   CHECK(IsCustomCallToDnnConvolution(*instr)) << instr->ToString();
   Shape input_shape;
@@ -66,39 +107,25 @@ static Status AddBackendConstraintsToDnnConvCustomCall(
                << instr->custom_call_target();
   }
 
-  // Construct minor-to-major dimension orders for operands and result.
-  // cuDNN's convolution APIs support the BDYX layout for activations/output
-  // and the OIYX layout for weights.
-  // TODO(b/29399649): Be more flexible about handling layouts of cuDNN
-  // calls after we switch to cuDNN v5.
-  const ConvolutionDimensionNumbers& dimension_numbers =
-      instr->convolution_dimension_numbers();
-  std::vector<int64> input_layout;
-  for (int i = dimension_numbers.input_spatial_dimensions_size() - 1; i >= 0;
-       --i) {
-    input_layout.push_back(dimension_numbers.input_spatial_dimensions(i));
-  }
-  input_layout.push_back(dimension_numbers.input_feature_dimension());
-  input_layout.push_back(dimension_numbers.input_batch_dimension());
-  *input_shape.mutable_layout() = LayoutUtil::MakeLayout(input_layout);
+  {
+    DataLayout input;
+    FilterLayout filter;
+    DataLayout output;
+    if (ConvUseLayoutHeuristic(instr->GetModule()->config())) {
+      std::tie(input, filter, output) =
+          HeuristicLayoutAssignment(instr, stream_executor_);
+    } else {
+      input = DataLayout::kBatchDepthYX;
+      filter = FilterLayout::kOutputInputYX;
+      output = DataLayout::kBatchDepthYX;
+    }
 
-  std::vector<int64> filter_layout;
-  for (int i = dimension_numbers.kernel_spatial_dimensions_size() - 1; i >= 0;
-       --i) {
-    filter_layout.push_back(dimension_numbers.kernel_spatial_dimensions(i));
+    TF_ASSIGN_OR_RETURN(
+        std::tie(*input_shape.mutable_layout(), *filter_shape.mutable_layout(),
+                 *output_shape.mutable_layout()),
+        StreamExecutorConvLayoutsToXlaLayouts(
+            instr->convolution_dimension_numbers(), input, filter, output));
   }
-  filter_layout.push_back(dimension_numbers.kernel_input_feature_dimension());
-  filter_layout.push_back(dimension_numbers.kernel_output_feature_dimension());
-  *filter_shape.mutable_layout() = LayoutUtil::MakeLayout(filter_layout);
-
-  std::vector<int64> output_layout;
-  for (int i = dimension_numbers.output_spatial_dimensions_size() - 1; i >= 0;
-       --i) {
-    output_layout.push_back(dimension_numbers.output_spatial_dimensions(i));
-  }
-  output_layout.push_back(dimension_numbers.output_feature_dimension());
-  output_layout.push_back(dimension_numbers.output_batch_dimension());
-  *output_shape.mutable_layout() = LayoutUtil::MakeLayout(output_layout);
 
   // The custom call returns a tuple of (actual_result, scratch_buffer);
   // call_result_buf is the logical buffer for actual_result, the thing that
@@ -132,7 +159,13 @@ static Status AddBackendConstraintsToDnnConvCustomCall(
 
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
-  for (auto* instruction : constraints->computation()->instructions()) {
+  // Add convolution constraints in reverse postorder that the earliest
+  // convolution layout propagates first. This reduces the likelihood of fusion
+  // nodes with copies.
+  auto post_order = constraints->computation()->MakeInstructionPostOrder();
+  for (auto iterator = post_order.rbegin(); iterator != post_order.rend();
+       ++iterator) {
+    HloInstruction* instruction = *iterator;
     if (IsCustomCallToDnnConvolution(*instruction)) {
       TF_RETURN_IF_ERROR(
           AddBackendConstraintsToDnnConvCustomCall(instruction, constraints));

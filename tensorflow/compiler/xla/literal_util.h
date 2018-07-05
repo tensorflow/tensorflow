@@ -277,6 +277,12 @@ class LiteralBase {
   StatusOr<std::unique_ptr<Literal>> Reshape(
       tensorflow::gtl::ArraySlice<int64> dimensions) const;
 
+  // Creates a new literal by broadcasting this literal with `dimensions` to
+  // yield a literal of shape `result_shape`.
+  StatusOr<std::unique_ptr<Literal>> Broadcast(
+      const Shape& result_shape,
+      tensorflow::gtl::ArraySlice<int64> dimensions) const;
+
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
   // in the original literal, and it specifies the order of the new dimensions
@@ -307,6 +313,11 @@ class LiteralBase {
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
+  //
+  // Note: It's an antipattern to use this method then immediately call
+  // Literal::Populate on the result (since that results in zero initialization,
+  // then reinitialization. Conside if a call to MakeUnique<Literal>(shape),
+  // followed by the call to Literal::Populate can be used instead.
   static std::unique_ptr<Literal> CreateFromShape(const Shape& shape);
 
  protected:
@@ -531,6 +542,12 @@ class LiteralBase {
   friend class Literal;
   friend class LiteralSlice;
   friend class BorrowingLiteral;
+
+ private:
+  template <typename NativeT>
+  std::unique_ptr<Literal> SliceInternal(
+      const Shape& result_shape,
+      tensorflow::gtl::ArraySlice<int64> start_indices) const;
 };
 
 // Class representing literal values in XLA.
@@ -900,6 +917,9 @@ class Literal : public LiteralBase {
     return MakeTupleOwned(std::move(v));
   }
 
+  // Create a constant token literal. Token types have no value.
+  static std::unique_ptr<Literal> CreateToken();
+
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
   // elements are moved into the new Literals; no data is copied. Upon return
@@ -1082,8 +1102,10 @@ class BorrowingLiteral : public LiteralBase {
   const Piece& root_piece() const override { return root_piece_; };
   Piece root_piece_;
 
-  // Shape of this literal.
-  const Shape shape_;
+  // Shape of this literal. Stored as unique_ptr so such that the (default)
+  // move construction of this class would be trivially correct: the pointer to
+  // Shape root_piece_ stores will still point to the correct address.
+  std::unique_ptr<Shape> shape_;
 };
 
 template <typename NativeT>
@@ -1437,7 +1459,7 @@ void LiteralBase::EachCell(
     std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
                        NativeT value)>
         per_cell) const {
-  if (ShapeUtil::HasZeroElements(shape())) {
+  if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
   std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);
@@ -1650,7 +1672,7 @@ template <PrimitiveType type, typename T>
     const std::function<T(tensorflow::gtl::ArraySlice<int64>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   TF_RET_CHECK(shape.element_type() == type);
-  std::unique_ptr<Literal> literal = Literal::CreateFromShape(shape);
+  auto literal = MakeUnique<Literal>(shape);
   TF_RETURN_IF_ERROR(literal.get()->Populate<NativeT>(
       [&](tensorflow::gtl::ArraySlice<int64> indexes) {
         return generator(indexes);

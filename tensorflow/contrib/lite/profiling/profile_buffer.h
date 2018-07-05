@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "tensorflow/contrib/lite/profiling/time.h"
+
 namespace tflite {
 namespace profiling {
 
@@ -74,7 +76,7 @@ class ProfileBuffer {
     if (!enabled_) {
       return kInvalidEventHandle;
     }
-    uint64_t timestamp = NowMicros();
+    uint64_t timestamp = time::NowMicros();
     int index = current_index_ % event_buffer_.size();
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
@@ -103,7 +105,7 @@ class ProfileBuffer {
     }
 
     int event_index = event_handle % max_size;
-    event_buffer_[event_index].end_timestamp_us = NowMicros();
+    event_buffer_[event_index].end_timestamp_us = time::NowMicros();
   }
 
   // Returns the size of the buffer.
@@ -134,12 +136,6 @@ class ProfileBuffer {
   }
 
  private:
-  static uint64_t NowMicros() {
-    // TODO(shashishekhar): Refactor this to a separate file.
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
-  }
   bool enabled_;
   uint32_t current_index_;
   std::vector<ProfileEvent> event_buffer_;

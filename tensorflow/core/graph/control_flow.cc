@@ -23,9 +23,66 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+namespace {
+// Information about a loop frame structure.
+struct Frame {
+  string name;
 
-Status BuildControlFlowInfo(const Graph* g,
-                            std::vector<ControlFlowInfo>* info) {
+  // Pointer to the parent frame. The root frame has a pointer to itself.
+  Frame* parent = nullptr;
+
+  // The loop condition of the loop. There should be exactly one loop condition
+  // in every loop.
+  const Node* loop_cond = nullptr;
+};
+
+// Verify that the ControlFlowInfo of the graph has valid loop structure.
+Status ValidateControlFlowInfo(const Graph* graph,
+                               const std::vector<ControlFlowInfo>& cf_info) {
+  std::unordered_map<string, Frame> frames;
+  for (const Node* node : graph->op_nodes()) {
+    const ControlFlowInfo& cf = cf_info[node->id()];
+    if (!cf.frame || !cf.parent_frame) {
+      // Skip nodes unreachable from the source node. They might be pruned
+      // later.
+      continue;
+    }
+
+    Frame& frame = frames[cf.frame_name];
+    Frame* parent = &frames[cf_info[cf.parent_frame->id()].frame_name];
+    if (frame.parent == nullptr) {
+      frame.parent = parent;
+      frame.name = cf.frame_name;
+    } else if (frame.parent != parent) {
+      return errors::InvalidArgument(
+          "Invalid loop structure: Mismatched parent frames for \"",
+          cf.frame_name, "\": \"", parent->name, "\" vs \"", frame.parent->name,
+          "\". This is an internal bug, please file a bug report with "
+          "instructions on how to reproduce the error.");
+    }
+    if (IsLoopCond(node)) {
+      // ForwardLoopCounter runs in the same frame as the forward loop and
+      // BackPropLoopCounter runs in the same frame as the backprop loop. They
+      // are the only cases that multiple loops share the same frame.
+      if (frame.loop_cond &&
+          !str_util::StrContains(frame.loop_cond->name(), "LoopCounter") &&
+          !str_util::StrContains(node->name(), "LoopCounter")) {
+        return errors::InvalidArgument(
+            "Invalid loop structure: Loop \"", cf.frame_name,
+            "\" has more than one LoopCond node: \"", node->name(), "\" and \"",
+            frame.loop_cond->name(),
+            "\". This is an internal bug, please file a bug report with "
+            "instructions on how to reproduce the error.");
+      }
+      frame.loop_cond = node;
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
+Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
+                            std::vector<string>* unreachable_nodes) {
   info->clear();
   info->resize(g->num_node_ids());
 
@@ -114,6 +171,14 @@ Status BuildControlFlowInfo(const Graph* g,
       }
     }
   }
+  if (unreachable_nodes) {
+    for (const Node* node : g->op_nodes()) {
+      if (!parent_nodes[node->id()]) {
+        unreachable_nodes->push_back(node->name());
+      }
+    }
+  }
+  TF_RETURN_IF_ERROR(ValidateControlFlowInfo(g, *info));
   return Status::OK();
 }
 

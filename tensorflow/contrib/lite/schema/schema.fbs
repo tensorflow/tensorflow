@@ -34,6 +34,8 @@ enum TensorType : byte {
   INT64 = 4,
   STRING = 5,
   BOOL = 6,
+  INT16 = 7,
+  COMPLEX64 = 8,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -63,6 +65,8 @@ table Tensor {
   buffer:uint;
   name:string;  // For debugging and importing back into tensorflow.
   quantization:QuantizationParameters;  // Optional.
+
+  is_variable:bool = false;
 }
 
 // A list of builtin operators. Builtin operators are slightly faster than custom
@@ -145,6 +149,17 @@ enum BuiltinOperator : byte {
   SLICE = 65,
   SIN = 66,
   TRANSPOSE_CONV = 67,
+  SPARSE_TO_DENSE = 68,
+  TILE = 69,
+  EXPAND_DIMS = 70,
+  EQUAL = 71,
+  NOT_EQUAL = 72,
+  LOG = 73,
+  SUM=74,
+  SQRT = 75,
+  RSQRT = 76,
+  SHAPE = 77,
+  POW = 78,
 }
 
 // Options for the builtin operators.
@@ -175,7 +190,7 @@ union BuiltinOptions {
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
   TransposeOptions,
-  MeanOptions,
+  ReducerOptions,
   SubOptions,
   DivOptions,
   SqueezeOptions,
@@ -198,6 +213,13 @@ union BuiltinOptions {
   SelectOptions,
   SliceOptions,
   TransposeConvOptions,
+  SparseToDenseOptions,
+  TileOptions,
+  ExpandDimsOptions,
+  EqualOptions,
+  NotEqualOptions,
+  ShapeOptions,
+  PowOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -275,9 +297,18 @@ table BidirectionalSequenceRNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+enum FullyConnectedOptionsWeightsFormat: byte {
+  DEFAULT = 0,
+  SHUFFLED4x16INT8 = 1,
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
+  // Parameters for FullyConnected version 1 or above.
   fused_activation_function:ActivationFunctionType;
+
+  // Parameters for FullyConnected version 2 or above.
+  weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
 }
 
 table SoftmaxOptions {
@@ -309,11 +340,23 @@ table LocalResponseNormalizationOptions {
   beta:float;
 }
 
+enum LSTMKernelType : byte {
+  // Full LSTM kernel which supports peephole and projection.
+  FULL = 0,
+  // Basic LSTM kernels. Equivalent to TensorFlow BasicLSTMCell.
+  BASIC = 1,
+}
+
 // An implementation of TensorFlow LSTMCell and CoupledInputForgetGateLSTMCell
 table LSTMOptions {
+  // Parameters for LSTM version 1 or above.
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
   proj_clip: float; // Optional, 0.0 means no clipping
+
+  // Parameters for LSTM version 2 or above.
+  // Basic kernel is only supported in version 2 or above.
+  kernel_type: LSTMKernelType = FULL;
 }
 
 table ResizeBilinearOptions {
@@ -385,7 +428,7 @@ table TransposeOptions {
 table ExpOptions {
 }
 
-table MeanOptions {
+table ReducerOptions {
   keep_dims: bool;
 }
 
@@ -419,6 +462,9 @@ table DequantizeOptions {
 table MaximumMinimumOptions {
 }
 
+table TileOptions {
+}
+
 table ArgMaxOptions {
   output_type : TensorType;
 }
@@ -448,6 +494,27 @@ table TransposeConvOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+}
+
+table ExpandDimsOptions {
+}
+
+table SparseToDenseOptions {
+  validate_indices:bool;
+}
+
+table EqualOptions {
+}
+
+table NotEqualOptions {
+}
+
+table ShapeOptions {
+  // Optional output type of the operation (int32 or int64). Defaults to int32.
+  out_type : TensorType;
+}
+
+table PowOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -481,6 +548,16 @@ table Operator {
   builtin_options:BuiltinOptions;
   custom_options:[ubyte];
   custom_options_format:CustomOptionsFormat;
+
+  // A list of booleans indicating the input tensors which are being mutated by
+  // this operator.(e.g. used by RNN and LSTM).
+  // For example, if the "inputs" array refers to 5 tensors and the second and
+  // fifth are mutable variables, then this list will contain
+  // [false, true, false, false, true].
+  //
+  // If the list is empty, no variable is mutated in this operator.
+  // The list either has the same length as `inputs`, or is empty.
+  mutating_variable_inputs:[bool];
 }
 
 // The root type, defining a subgraph, which typically represents an entire

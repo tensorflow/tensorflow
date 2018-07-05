@@ -38,20 +38,17 @@ class ScanBenchmark(tf.test.Benchmark):
         iters=n,
         wall_time=wall_time)
 
+  def benchmarkScan16000(self):
+    self.runScan(16000)
+
   def benchmarkScan32000(self):
     self.runScan(32000)
 
-  def benchmarkScan1M(self):
-    self.runScan(1000000)
+  def benchmarkScan64000(self):
+    self.runScan(64000)
 
-  def benchmarkScan2M(self):
-    self.runScan(2000000)
-
-  def benchmarkScan4M(self):
-    self.runScan(4000000)
-
-  def benchmarkScan8M(self):
-    self.runScan(8000000)
+  def benchmarkScan128000(self):
+    self.runScan(128000)
 
 if __name__ == '__main__':
   tf.test.main()
