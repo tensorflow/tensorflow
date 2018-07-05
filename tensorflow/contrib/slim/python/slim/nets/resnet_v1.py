@@ -86,33 +86,38 @@ def bottleneck(inputs,
   extra bottleneck layer.
 
   When putting together two consecutive ResNet blocks that use this unit, one
-  should use stride = 2 in the last unit of the first block.
+  should use stride = 2 in the last unit of the first block.     # important！！！！！！
 
   Args:
-    inputs: A tensor of size [batch, height, width, channels].
-    depth: The depth of the ResNet unit output.
-    depth_bottleneck: The depth of the bottleneck layers.
+    inputs: A tensor of size [batch, height, width, channels].  # https://blog.csdn.net/lemonaha/article/details/72773056
+    depth: The depth of the ResNet unit output.   # https://blog.csdn.net/xuke100/article/details/69525845，https://blog.csdn.net/jacke121/article/details/79259348
+    depth_bottleneck: The depth of the bottleneck layers.    # ？？？？一个bottleneck结构包含的神经网络层数
     stride: The ResNet unit's stride. Determines the amount of downsampling of
-      the units output compared to its input.
-    rate: An integer, rate for atrous convolution.
-    outputs_collections: Collection to add the ResNet unit output.
-    scope: Optional variable_scope.
+      the units output compared to its input.         # 步长
+    rate: An integer, rate for atrous convolution.    # https://www.zhihu.com/question/54149221，atrous == dilated
+    outputs_collections: Collection to add the ResNet unit output. 
+    scope: Optional variable_scope.     # https://blog.csdn.net/u012223913/article/details/78533910?locationNum=8&fps=1，https://blog.csdn.net/u012436149/article/details/53018924
 
   Returns:
     The ResNet unit's output.
   """
   with variable_scope.variable_scope(scope, 'bottleneck_v1', [inputs]) as sc:
     depth_in = utils.last_dimension(inputs.get_shape(), min_rank=4)
+    # shortcut 部分
     if depth == depth_in:
+            # 如果输入tensor通道数等于输出tensor通道数
+            # 降采样输入tensor使之宽高等于输出tensor
       shortcut = resnet_utils.subsample(inputs, stride, 'shortcut')
     else:
+        # 否则，使用尺寸为1*1的卷积核改变其通道数,
+        # 同时调整宽高匹配输出tensor
       shortcut = layers.conv2d(
           inputs,
           depth, [1, 1],
           stride=stride,
           activation_fn=None,
           scope='shortcut')
-
+    # 下面是计算三个连续conv
     residual = layers.conv2d(
         inputs, depth_bottleneck, [1, 1], stride=1, scope='conv1')
     residual = resnet_utils.conv2d_same(
@@ -121,7 +126,7 @@ def bottleneck(inputs,
         residual, depth, [1, 1], stride=1, activation_fn=None, scope='conv3')
 
     output = nn_ops.relu(shortcut + residual)
-
+    # 最后结果是把shortcut 和 residual 加起来，并且把这个bottleneck的输出添加到collections中，以bottleneck's scope name为名字
     return utils.collect_named_outputs(outputs_collections, sc.name, output)
 
 
@@ -165,7 +170,7 @@ def resnet_v1(inputs,
       we return the features before the logit layer.
     is_training: whether batch_norm layers are in training mode.
     global_pool: If True, we perform global average pooling before computing the
-      logits. Set to True for image classification, False for dense prediction.
+      logits. Set to True for image classification, False for dense prediction.   # logits：https://www.zhihu.com/question/60751553
     output_stride: If None, then the output will be computed at the nominal
       network stride. If output_stride is not None, it specifies the requested
       ratio of input to output spatial resolution.
@@ -192,7 +197,7 @@ def resnet_v1(inputs,
   with variable_scope.variable_scope(
       scope, 'resnet_v1', [inputs], reuse=reuse) as sc:
     end_points_collection = sc.original_name_scope + '_end_points'
-    with arg_scope(
+    with arg_scope(                                                         #  关于arg_scope:https://blog.csdn.net/u012436149/article/details/72852849
         [layers.conv2d, bottleneck, resnet_utils.stack_blocks_dense],
         outputs_collections=end_points_collection):
       with arg_scope([layers.batch_norm], is_training=is_training):
@@ -203,8 +208,8 @@ def resnet_v1(inputs,
               raise ValueError('The output_stride needs to be a multiple of 4.')
             output_stride /= 4
           net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
-          net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope='pool1')
-        net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
+          net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope='pool1')  # 这一段参看定义resnet_v1时对include_root_block的注释
+        net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)    # 
         if global_pool:
           # Global average pooling.
           net = math_ops.reduce_mean(net, [1, 2], name='pool5', keepdims=True)
