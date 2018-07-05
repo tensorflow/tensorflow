@@ -3315,6 +3315,7 @@ relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
 linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
+conv1d = convolution1d
 conv2d = convolution2d
 conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose
