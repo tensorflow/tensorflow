@@ -27,14 +27,13 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
-  class FunctionType;
+class FunctionType;
+class MLIRContext;
 
 /// This is the base class for all of the MLIR function types.
 class Function {
 public:
-  enum class Kind {
-    ExtFunc, CFGFunc, MLFunc
-  };
+  enum class Kind { ExtFunc, CFGFunc, MLFunc };
 
   Kind getKind() const { return kind; }
 
@@ -42,9 +41,9 @@ public:
   const std::string &getName() const { return name; }
 
   /// Return the type of this function.
-  FunctionType *getType() const {
-    return type;
-  }
+  FunctionType *getType() const { return type; }
+
+  MLIRContext *getContext() const;
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -52,12 +51,13 @@ public:
 protected:
   Function(StringRef name, FunctionType *type, Kind kind);
   ~Function() {}
+
 private:
   Kind kind;
   std::string name;
   FunctionType *const type;
 
-  void operator=(const Function&) = delete;
+  void operator=(const Function &) = delete;
 };
 
 /// An extfunc declaration is a declaration of a function signature that is

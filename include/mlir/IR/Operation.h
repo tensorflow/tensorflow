@@ -23,8 +23,14 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-  class Attribute;
-  typedef std::pair<Identifier, Attribute*> NamedAttribute;
+class Attribute;
+template <typename OpType> class ConstOpPointer;
+template <typename OpType> class OpPointer;
+
+/// NamedAttribute is a used for operation attribute lists, it holds an
+/// identifier for the name and a value for the attribute.  The attribute
+/// pointer should always be non-null.
+typedef std::pair<Identifier, Attribute*> NamedAttribute;
 
 /// Operations represent all of the arithmetic and other basic computation in
 /// MLIR.  This class is the common implementation details behind OperationInst
@@ -32,6 +38,7 @@ namespace mlir {
 ///
 class Operation {
 public:
+  /// The name of an operation is the key identifier for it.
   Identifier getName() const { return name; }
 
   // TODO: Need to have results and operands.
@@ -64,17 +71,45 @@ public:
     return nullptr;
   }
 
-  void addAttr(Identifier name, Attribute *value) {
-    assert(value && "attributes may never be null");
-    attrs.push_back({name, value});
+  template <typename AttrClass>
+  AttrClass *getAttrOfType(Identifier name) const {
+    return dyn_cast_or_null<AttrClass>(getAttr(name));
   }
 
-  /// Indicate whether removal found a value to remove or not.
+  template <typename AttrClass>
+  AttrClass *getAttrOfType(StringRef name) const {
+    return dyn_cast_or_null<AttrClass>(getAttr(name));
+  }
+
+  /// If the an attribute exists with the specified name, change it to the new
+  /// value.  Otherwise, add a new attribute with the specified name/value.
+  void setAttr(Identifier name, Attribute *value);
+
   enum class RemoveResult {
     Removed, NotFound
   };
 
+  /// Remove the attribute with the specified name if it exists.  The return
+  /// value indicates whether the attribute was present or not.
   RemoveResult removeAttr(Identifier name);
+
+  /// The getAs methods perform a dynamic cast from an Operation (like
+  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
+  /// a null OpPointer on failure.
+  template <typename OpClass>
+  OpPointer<OpClass> getAs() {
+    bool isMatch = getName().is(OpClass::getOperationName());
+    return OpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
+  }
+
+  /// The getAs methods perform a dynamic cast from an Operation (like
+  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
+  /// a null ConstOpPointer on failure.
+  template <typename OpClass>
+  ConstOpPointer<OpClass> getAs() const {
+    bool isMatch = getName().is(OpClass::getOperationName());
+    return ConstOpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
+  }
 
 protected:
   Operation(Identifier name, ArrayRef<NamedAttribute> attrs);

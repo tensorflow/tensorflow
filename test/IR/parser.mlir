@@ -92,6 +92,16 @@ bb42:       ; CHECK: bb0:
   ; CHECK: "foo"(){if: "foo", cfgfunc: [], i123: 7}
   "foo"(){if: "foo", cfgfunc: [], i123: 7}
 
+  return
+}
 
+; CHECK-LABEL: cfgfunc @standard_instrs() {
+cfgfunc @standard_instrs() {
+bb42:       ; CHECK: bb0:
+  ; CHECK: dim xxx, 2 : sometype
+  "dim"(){index: 2}
+
+  ; CHECK: addf xx, yy : sometype
+  "addf"()
   return
 }

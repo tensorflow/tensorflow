@@ -17,12 +17,15 @@
 
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Types.h"
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
 Function::Function(StringRef name, FunctionType *type, Kind kind)
   : kind(kind), name(name.str()), type(type) {
 }
+
+MLIRContext *Function::getContext() const { return getType()->getContext(); }
 
 //===----------------------------------------------------------------------===//
 // ExtFunction implementation.

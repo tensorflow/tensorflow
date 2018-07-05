@@ -22,7 +22,7 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
-  class MLIRContext;
+class MLIRContext;
 
 /// This class represents a uniqued string owned by an MLIRContext.  Strings
 /// represented by this type cannot contain nul characters, and may not have a
@@ -64,8 +64,7 @@ public:
 private:
   /// These are the bytes of the string, which is a nul terminated string.
   const char *pointer;
-
-  Identifier(const char *pointer) : pointer(pointer) {}
+  explicit Identifier(const char *pointer) : pointer(pointer) {}
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, Identifier identifier) {

@@ -20,6 +20,8 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/OperationSet.h"
+#include "mlir/IR/StandardOps.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
@@ -134,6 +136,9 @@ public:
   /// We put immortal objects into this allocator.
   llvm::BumpPtrAllocator allocator;
 
+  /// This is the set of all operations that are registered with the system.
+  OperationSet operationSet;
+
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator&> identifiers;
 
@@ -178,7 +183,9 @@ public:
   ArrayAttrSet arrayAttrs;
 
 public:
-  MLIRContextImpl() : identifiers(allocator) {}
+  MLIRContextImpl() : identifiers(allocator) {
+    registerStandardOperations(operationSet);
+  }
 
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
@@ -197,6 +204,10 @@ MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
 MLIRContext::~MLIRContext() {
 }
 
+/// Return the operation set associated with the specified MLIRContext object.
+OperationSet &OperationSet::get(MLIRContext *context) {
+  return context->getImpl().operationSet;
+}
 
 //===----------------------------------------------------------------------===//
 // Identifier uniquing

@@ -26,6 +26,7 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseMap.h"
@@ -103,12 +104,14 @@ public:
 private:
   const CFGFunction *function;
   raw_ostream &os;
+  const OperationSet &operationSet;
   DenseMap<const BasicBlock*, unsigned> basicBlockIDs;
 };
 } // end anonymous namespace
 
 CFGFunctionState::CFGFunctionState(const CFGFunction *function, raw_ostream &os)
-  : function(function), os(os) {
+    : function(function), os(os),
+      operationSet(OperationSet::get(function->getContext())) {
 
   // Each basic block gets a unique ID per function.
   unsigned blockID = 0;
@@ -148,6 +151,14 @@ void CFGFunctionState::print(const Instruction *inst) {
 }
 
 void CFGFunctionState::print(const OperationInst *inst) {
+  // Check to see if this is a known operation.  If so, use the registered
+  // custom printer hook.
+  if (auto opInfo = operationSet.lookup(inst->getName().str())) {
+    os << "  ";
+    opInfo->printAssembly(inst, os);
+    return;
+  }
+
   // TODO: escape name if necessary.
   os << "  \"" << inst->getName().str() << "\"()";
 
