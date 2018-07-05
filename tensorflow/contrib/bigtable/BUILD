@@ -39,14 +39,17 @@ tf_custom_op_py_library(
     ],
 )
 
+KERNEL_FILES = [
+    "kernels/bigtable_kernels.cc",
+    "kernels/bigtable_lookup_dataset_op.cc",
+    "kernels/bigtable_prefix_key_dataset_op.cc",
+    "kernels/bigtable_range_key_dataset_op.cc",
+    "kernels/bigtable_scan_dataset_op.cc",
+]
+
 tf_custom_op_library(
     name = "python/ops/_bigtable.so",
-    srcs = [
-        "kernels/bigtable_kernels.cc",
-        "kernels/bigtable_lookup_dataset_op.cc",
-        "kernels/bigtable_prefix_key_dataset_op.cc",
-        "kernels/bigtable_range_key_dataset_op.cc",
-        "kernels/bigtable_scan_dataset_op.cc",
+    srcs = KERNEL_FILES + [
         "ops/bigtable_ops.cc",
     ],
     deps = [
@@ -69,13 +72,7 @@ tf_gen_op_libs(
 
 tf_kernel_library(
     name = "bigtable_kernels",
-    srcs = [
-        "kernels/bigtable_kernels.cc",
-        "kernels/bigtable_lookup_dataset_op.cc",
-        "kernels/bigtable_prefix_key_dataset_op.cc",
-        "kernels/bigtable_range_key_dataset_op.cc",
-        "kernels/bigtable_scan_dataset_op.cc",
-    ],
+    srcs = KERNEL_FILES,
     deps = [
         ":bigtable_lib_cc",
         "//tensorflow/core:framework_headers_lib",
