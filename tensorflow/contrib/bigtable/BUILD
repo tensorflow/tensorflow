@@ -44,6 +44,7 @@ KERNEL_FILES = [
     "kernels/bigtable_lookup_dataset_op.cc",
     "kernels/bigtable_prefix_key_dataset_op.cc",
     "kernels/bigtable_range_key_dataset_op.cc",
+    "kernels/bigtable_sample_keys_dataset_op.cc",
     "kernels/bigtable_scan_dataset_op.cc",
 ]
 
