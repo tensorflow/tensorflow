@@ -67,11 +67,18 @@ public:
     return !isAny(k1, k2, others...);
   }
 
+  /// Return true if this is one of the keyword token kinds (e.g. kw_if).
+  bool isKeyword() const;
+
   // Helpers to decode specific sorts of tokens.
 
   /// For an integer token, return its value as an unsigned.  If it doesn't fit,
   /// return None.
   Optional<unsigned> getUnsignedIntegerValue() const;
+
+  /// For an integer token, return its value as an int64_t.  If it doesn't fit,
+  /// return None.
+  Optional<uint64_t> getUInt64IntegerValue() const;
 
   /// For an inttype token, return its bitwidth.
   Optional<unsigned> getIntTypeBitwidth() const;

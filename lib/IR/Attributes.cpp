@@ -38,15 +38,11 @@ void Attribute::print(raw_ostream &os) const {
     break;
   case Kind::Array: {
     auto elts = cast<ArrayAttr>(this)->getValue();
-    if (elts.empty())
-      os << "[]";
-    else {
-      os << "[ ";
-     interleave(elts,
-                 [&](Attribute *attr) { attr->print(os); },
-                 [&]() { os << ", "; });
-      os << " ]";
-    }
+    os << '[';
+    interleave(elts,
+                [&](Attribute *attr) { attr->print(os); },
+                [&]() { os << ", "; });
+    os << ']';
     break;
   }
   }

@@ -78,3 +78,20 @@ mlfunc @ifstmt() {
   }              ; CHECK   }
   return         ; CHECK   return
 }                ; CHECK }
+
+; CHECK-LABEL: cfgfunc @attributes() {
+cfgfunc @attributes() {
+bb42:       ; CHECK: bb0:
+
+  ; CHECK: "foo"()
+  "foo"(){}
+
+  ; CHECK: "foo"(){a: 1, b: -423, c: [true, false]}
+  "foo"(){a: 1, b: -423, c: [true, false] }
+
+  ; CHECK: "foo"(){if: "foo", cfgfunc: [], i123: 7}
+  "foo"(){if: "foo", cfgfunc: [], i123: 7}
+
+
+  return
+}

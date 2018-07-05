@@ -22,6 +22,7 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
@@ -31,6 +32,14 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
+
+void Identifier::print(raw_ostream &os) const {
+  os << str();
+}
+
+void Identifier::dump() const {
+  print(llvm::errs());
+}
 
 //===----------------------------------------------------------------------===//
 // Function printing
@@ -140,7 +149,18 @@ void CFGFunctionState::print(const Instruction *inst) {
 
 void CFGFunctionState::print(const OperationInst *inst) {
   // TODO: escape name if necessary.
-  os << "  \"" << inst->getName().str() << "\"()\n";
+  os << "  \"" << inst->getName().str() << "\"()";
+
+  auto attrs = inst->getAttrs();
+  if (!attrs.empty()) {
+    os << '{';
+    interleave(attrs, [&](NamedAttribute attr) {
+      os << attr.first << ": " << *attr.second;
+    }, [&]() { os << ", "; });
+    os << '}';
+  }
+
+  os << '\n';
 }
 
 void CFGFunctionState::print(const BranchInst *inst) {

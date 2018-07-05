@@ -54,3 +54,10 @@
 ; #hello_world22 = (i, j) -> (i, 3*d0 + j)
 
 ; TODO(bondhugula): Add more tests; coverage of error messages emitted not complete
+
+
+; -----
+
+#ABC = (i,j) -> (i+j)
+#ABC = (i,j) -> (i+j)  // expected-error {{redefinition of affine map id 'ABC'}}
+

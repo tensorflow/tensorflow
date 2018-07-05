@@ -57,13 +57,34 @@ public:
   }
 
   Identifier(const Identifier&) = default;
+  Identifier &operator=(const Identifier &other) = default;
+
+  void print(raw_ostream &os) const;
+  void dump() const;
 private:
   /// These are the bytes of the string, which is a nul terminated string.
   const char *pointer;
 
   Identifier(const char *pointer) : pointer(pointer) {}
-  void operator=(Identifier&) = delete;
 };
+
+inline raw_ostream &operator<<(raw_ostream &os, Identifier identifier) {
+  identifier.print(os);
+  return os;
+}
+
+inline bool operator==(Identifier lhs, Identifier rhs) {
+  return lhs.data() == rhs.data();
+}
+
+inline bool operator!=(Identifier lhs, Identifier rhs) {
+  return lhs.data() != rhs.data();
+}
+
+inline bool operator==(Identifier lhs, StringRef rhs) { return lhs.is(rhs); }
+inline bool operator!=(Identifier lhs, StringRef rhs) { return !lhs.is(rhs); }
+inline bool operator==(StringRef lhs, Identifier rhs) { return rhs.is(lhs); }
+inline bool operator!=(StringRef lhs, Identifier rhs) { return !rhs.is(lhs); }
 
 } // end namespace mlir
 

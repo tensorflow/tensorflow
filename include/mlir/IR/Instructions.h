@@ -24,6 +24,8 @@
 
 #include "mlir/Support/LLVM.h"
 #include "mlir/IR/Identifier.h"
+
+#include "mlir/IR/Operation.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 
@@ -74,19 +76,20 @@ private:
   friend class BasicBlock;
 };
 
+inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
+  inst.print(os);
+  return os;
+}
+
 /// Operations are the main instruction kind in MLIR, which represent all of the
-/// arithmetic and other basic computation that occurs in a CFG function.
+/// arithmetic and other basic computation.
 class OperationInst
-  : public Instruction,
+  : public Operation, public Instruction,
     public llvm::ilist_node_with_parent<OperationInst, BasicBlock> {
 public:
-  explicit OperationInst(Identifier name)
-    : Instruction(Kind::Operation), name(name) {}
+  explicit OperationInst(Identifier name, ArrayRef<NamedAttribute> attrs = {})
+    : Operation(name, attrs), Instruction(Kind::Operation) {}
   ~OperationInst() {}
-
-  Identifier getName() const { return name; }
-
-  // TODO: Need to have results and operands.
 
   /// Unlink this instruction from its BasicBlock and delete it.
   void eraseFromBlock();
@@ -95,8 +98,6 @@ public:
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Operation;
   }
-private:
-  Identifier name;
 };
 
 

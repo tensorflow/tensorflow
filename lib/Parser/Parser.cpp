@@ -18,12 +18,12 @@
 // This file implements the parser for the MLIR textual form.
 //
 //===----------------------------------------------------------------------===//
-#include <stack>
 
 #include "mlir/Parser.h"
 #include "Lexer.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/MLFunction.h"
@@ -92,9 +92,7 @@ private:
   std::unique_ptr<Module> module;
 
   // A map from affine map identifier to AffineMap.
-  // TODO(andydavis) Remove use of unique_ptr when AffineMaps are bump pointer
-  // allocated.
-  llvm::StringMap<std::unique_ptr<AffineMap>> affineMaps;
+  llvm::StringMap<AffineMap*> affineMapDefinitions;
 
 private:
   // Helper methods.
@@ -153,6 +151,10 @@ private:
   Type *parseType();
   ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
 
+  // Attribute parsing.
+  Attribute *parseAttribute();
+  ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
+
   // Parsing identifiers' lists for polyhedral structures.
   ParseResult parseDimIdList(AffineMapParserState &state);
   ParseResult parseSymbolIdList(AffineMapParserState &state);
@@ -160,7 +162,7 @@ private:
 
   // Polyhedral structures.
   ParseResult parseAffineMapDef();
-  ParseResult parseAffineMapInline(StringRef mapId, AffineMap *&affineMap);
+  AffineMap *parseAffineMapInline(StringRef mapId);
   AffineExpr *parseAffineExpr(const AffineMapParserState &state);
 
   AffineExpr *parseParentheticalExpr(const AffineMapParserState &state);
@@ -543,6 +545,110 @@ class AffineMapParserState {
 }  // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
+// Attribute parsing.
+//===----------------------------------------------------------------------===//
+
+
+/// Attribute parsing.
+///
+///  attribute-value ::= bool-literal
+///                    | integer-literal
+///                    | float-literal
+///                    | string-literal
+///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
+///
+Attribute *Parser::parseAttribute() {
+  switch (curToken.getKind()) {
+  case Token::kw_true:
+    consumeToken(Token::kw_true);
+    return BoolAttr::get(true, context);
+  case Token::kw_false:
+    consumeToken(Token::kw_false);
+    return BoolAttr::get(false, context);
+
+  case Token::integer: {
+    auto val = curToken.getUInt64IntegerValue();
+    if (!val.hasValue() || (int64_t)val.getValue() < 0)
+      return (emitError("integer too large for attribute"), nullptr);
+    consumeToken(Token::integer);
+    return IntegerAttr::get((int64_t)val.getValue(), context);
+  }
+
+  case Token::minus: {
+    consumeToken(Token::minus);
+    if (curToken.is(Token::integer)) {
+      auto val = curToken.getUInt64IntegerValue();
+      if (!val.hasValue() || (int64_t)-val.getValue() >= 0)
+        return (emitError("integer too large for attribute"), nullptr);
+      consumeToken(Token::integer);
+      return IntegerAttr::get((int64_t)-val.getValue(), context);
+    }
+
+    return (emitError("expected constant integer or floating point value"),
+            nullptr);
+  }
+
+  case Token::string: {
+    auto val = curToken.getStringValue();
+    consumeToken(Token::string);
+    return StringAttr::get(val, context);
+  }
+
+  case Token::l_bracket: {
+    consumeToken(Token::l_bracket);
+    SmallVector<Attribute*, 4> elements;
+
+    auto parseElt = [&]() -> ParseResult {
+      elements.push_back(parseAttribute());
+      return elements.back() ? ParseSuccess : ParseFailure;
+    };
+
+    if (parseCommaSeparatedList(Token::r_bracket, parseElt))
+      return nullptr;
+    return ArrayAttr::get(elements, context);
+  }
+  default:
+    // TODO: Handle floating point.
+    return (emitError("expected constant attribute value"), nullptr);
+  }
+}
+
+
+/// Attribute dictionary.
+///
+///  attribute-dict ::= `{` `}`
+///                   | `{` attribute-entry (`,` attribute-entry)* `}`
+///  attribute-entry ::= bare-id `:` attribute-value
+///
+ParseResult Parser::parseAttributeDict(
+    SmallVectorImpl<NamedAttribute> &attributes) {
+  consumeToken(Token::l_brace);
+
+  auto parseElt = [&]() -> ParseResult {
+    // We allow keywords as attribute names.
+    if (curToken.isNot(Token::bare_identifier, Token::inttype) &&
+        !curToken.isKeyword())
+      return emitError("expected attribute name");
+    auto nameId = Identifier::get(curToken.getSpelling(), context);
+    consumeToken();
+
+    if (!consumeIf(Token::colon))
+      return emitError("expected ':' in attribute list");
+
+    auto attr = parseAttribute();
+    if (!attr) return ParseFailure;
+
+    attributes.push_back({nameId, attr});
+    return ParseSuccess;
+  };
+
+  if (parseCommaSeparatedList(Token::r_brace, parseElt))
+    return ParseFailure;
+
+  return ParseSuccess;
+}
+
+//===----------------------------------------------------------------------===//
 // Polyhedral structures.
 //===----------------------------------------------------------------------===//
 
@@ -554,24 +660,23 @@ ParseResult Parser::parseAffineMapDef() {
   assert(curToken.is(Token::affine_map_identifier));
 
   StringRef affineMapId = curToken.getSpelling().drop_front();
+
+  // Check for redefinitions.
+  auto *&entry = affineMapDefinitions[affineMapId];
+  if (entry)
+    return emitError("redefinition of affine map id '" + affineMapId + "'");
+
   consumeToken(Token::affine_map_identifier);
 
-  // Check that 'affineMapId' is unique.
-  // TODO(andydavis) Add a unit test for this case.
-  if (affineMaps.count(affineMapId) > 0)
-    return emitError("redefinition of affine map id '" + affineMapId + "'");
   // Parse the '='
   if (!consumeIf(Token::equal))
     return emitError("expected '=' in affine map outlined definition");
 
-  AffineMap *affineMap = nullptr;
-  if (parseAffineMapInline(affineMapId, affineMap))
+  entry = parseAffineMapInline(affineMapId);
+  if (!entry)
     return ParseFailure;
 
-  // TODO(bondhugula): Disable adding affineMapId to Parser::affineMaps for now;
-  // instead add to module for easy printing.
-  module->affineMapList.push_back(affineMap);
-
+  module->affineMapList.push_back(entry);
   return ParseSuccess;
 }
 
@@ -946,25 +1051,24 @@ ParseResult Parser::parseDimIdList(AffineMapParserState &state) {
 /// dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 /// multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-ParseResult Parser::parseAffineMapInline(StringRef mapId,
-                                         AffineMap *&affineMap) {
+AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
   AffineMapParserState state;
 
   // List of dimensional identifiers.
   if (parseDimIdList(state))
-    return ParseFailure;
+    return nullptr;
 
   // Symbols are optional.
   if (curToken.is(Token::l_bracket)) {
     if (parseSymbolIdList(state))
-      return ParseFailure;
+      return nullptr;
   }
   if (!consumeIf(Token::arrow)) {
-    return (emitError("expected '->' or '['"), ParseFailure);
+    return (emitError("expected '->' or '['"), nullptr);
   }
   if (!consumeIf(Token::l_paren)) {
     emitError("expected '(' at start of affine map range");
-    return ParseFailure;
+    return nullptr;
   }
 
   SmallVector<AffineExpr *, 4> exprs;
@@ -979,12 +1083,11 @@ ParseResult Parser::parseAffineMapInline(StringRef mapId,
   // affine expressions); the list cannot be empty.
   // Grammar: multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
   if (parseCommaSeparatedList(Token::r_paren, parseElt, false))
-    return ParseFailure;
+    return nullptr;
 
   // Parsed a valid affine map.
-  affineMap =
-      AffineMap::get(state.getNumDims(), state.getNumSymbols(), exprs, context);
-  return ParseSuccess;
+  return AffineMap::get(state.getNumDims(), state.getNumSymbols(), exprs,
+                        context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1180,14 +1283,20 @@ parseCFGOperation(CFGFunctionParserState &functionState) {
   consumeToken(Token::string);
 
   if (!consumeIf(Token::l_paren))
-    return (emitError("expected '(' in operation"), nullptr);
+    return (emitError("expected '(' to start operand list"), nullptr);
 
   // TODO: Parse operands.
   if (!consumeIf(Token::r_paren))
-    return (emitError("expected '(' in operation"), nullptr);
+    return (emitError("expected ')' in operand list"), nullptr);
+
+  SmallVector<NamedAttribute, 4> attributes;
+  if (curToken.is(Token::l_brace)) {
+    if (parseAttributeDict(attributes))
+      return nullptr;
+  }
 
   auto nameId = Identifier::get(name, context);
-  return new OperationInst(nameId);
+  return new OperationInst(nameId, attributes);
 }
 
 

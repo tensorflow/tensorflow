@@ -83,7 +83,7 @@ class IntegerAttr : public Attribute {
 public:
   static IntegerAttr *get(int64_t value, MLIRContext *context);
 
-  unsigned getValue() const {
+  int64_t getValue() const {
     return value;
   }
 

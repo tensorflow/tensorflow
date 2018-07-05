@@ -91,3 +91,6 @@ mlfunc @incomplete_for() {
 mlfunc @non_statement() {
   asd   ; expected-error {{expected statement}}
 }
+
+; -----
+
