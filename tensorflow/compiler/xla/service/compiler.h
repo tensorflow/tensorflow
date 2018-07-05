@@ -24,9 +24,11 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
@@ -34,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -89,6 +92,19 @@ class AotCompilationOptions {
  private:
   DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
+};
+
+// Abstract superclass describing metadata produced during ahead-of-time
+// compilation.
+class AotCompilationMetadata {
+ public:
+  AotCompilationMetadata(const AotCompilationMetadata&) = delete;
+  AotCompilationMetadata& operator=(AotCompilationMetadata const&) = delete;
+
+  virtual ~AotCompilationMetadata() = default;
+
+ protected:
+  AotCompilationMetadata() = default;
 };
 
 // Abstract compiler interface that is subclassed for compilation on a
@@ -153,11 +169,38 @@ class Compiler {
       std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) = 0;
 
+  // Returns the backend configurations that the backend will consider for the
+  // given HLO. Returns no configurations if the backend does not support
+  // configurations for the given HLO.
+  //
+  // The stream executor is passed in to provide information about the hardware
+  // that the backend configurations would be targeting.
+  virtual std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+  ComputeBackendConfigs(const HloInstruction& hlo,
+                        se::StreamExecutor* executor) const;
+
+  // Returns the backend configuration that the backend chooses by default for
+  // the given HLO. Returns no configuration if the backend does not support
+  // configurations for the given HLO.
+  //
+  // The stream executor is passed in to provide information about the hardware
+  // that the backend configurations would be targeting.
+  virtual std::unique_ptr<tensorflow::protobuf::Message>
+  ComputeDefaultBackendConfig(const HloInstruction& hlo,
+                              se::StreamExecutor* executor) const;
+
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                      const AotCompilationOptions& options) = 0;
+
+  // Similar to CompileAheadOfTime above but AotCompilationMetadata
+  // has an argument that can be populated during compilation.
+  virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+                     const AotCompilationOptions& options,
+                     std::unique_ptr<AotCompilationMetadata>* metadata);
 
   /////
   // The Compiler class also serves as a point to register compiler objects

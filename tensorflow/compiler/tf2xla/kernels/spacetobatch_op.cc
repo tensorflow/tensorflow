@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -73,7 +74,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                   "The product of the block dimensions must be positive"));
 
   xla::XlaOp padded =
-      b->Pad(input, XlaHelpers::Zero(b, input_dtype), padding_config);
+      xla::Pad(input, XlaHelpers::Zero(b, input_dtype), padding_config);
 
   // 2. Reshape `padded` to `reshaped_padded` of shape:
   //
@@ -100,7 +101,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   std::copy(remainder_shape.begin(), remainder_shape.end(),
             reshaped_padded_shape.begin() + 1 + 2 * block_rank);
 
-  xla::XlaOp reshaped_padded = b->Reshape(padded, reshaped_padded_shape);
+  xla::XlaOp reshaped_padded = xla::Reshape(padded, reshaped_padded_shape);
 
   // 3. Permute dimensions of `reshaped_padded` to produce
   //    `permuted_reshaped_padded` of shape:
@@ -120,7 +121,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   std::iota(permutation.begin() + 1 + block_rank * 2, permutation.end(),
             1 + block_rank * 2);
   xla::XlaOp permuted_reshaped_padded =
-      b->Transpose(reshaped_padded, permutation);
+      xla::Transpose(reshaped_padded, permutation);
 
   // 4. Reshape `permuted_reshaped_padded` to flatten `block_shape` into the
   //    batch dimension, producing an output tensor of shape:
@@ -140,7 +141,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
   std::copy(remainder_shape.begin(), remainder_shape.end(),
             output_shape.begin() + 1 + block_rank);
 
-  xla::XlaOp output = b->Reshape(permuted_reshaped_padded, output_shape);
+  xla::XlaOp output = xla::Reshape(permuted_reshaped_padded, output_shape);
   ctx->SetOutput(0, output);
 }
 

@@ -49,13 +49,25 @@ void InfeedManager::EnqueueBuffers(const std::vector<InfeedBuffer*>& buffers) {
 }
 
 InfeedBuffer* InfeedManager::BlockingDequeueBuffer() {
-  tensorflow::mutex_lock l(mu_);
-  while (enqueued_buffer_.empty()) {
-    cv_.wait(l);
+  bool became_empty = false;
+  InfeedBuffer* current_buffer;
+  {
+    tensorflow::mutex_lock l(mu_);
+    while (enqueued_buffer_.empty()) {
+      cv_.wait(l);
+    }
+    current_buffer = enqueued_buffer_.front();
+    enqueued_buffer_.pop_front();
+    dequeued_buffer_.insert(current_buffer);
+    if (enqueued_buffer_.empty()) {
+      became_empty = true;
+    }
   }
-  InfeedBuffer* current_buffer = enqueued_buffer_.front();
-  enqueued_buffer_.pop_front();
-  dequeued_buffer_.insert(current_buffer);
+  if (became_empty) {
+    for (const auto& callback : on_empty_callbacks_) {
+      callback();
+    }
+  }
   return current_buffer;
 }
 
@@ -86,6 +98,10 @@ se::Stream* InfeedManager::GetStream(se::StreamExecutor* executor) {
   }
 
   return host_to_device_stream_.get();
+}
+
+void InfeedManager::RegisterOnEmptyCallback(std::function<void()> callback) {
+  on_empty_callbacks_.push_back(std::move(callback));
 }
 
 InfeedManager* GetOrCreateInfeedManager() {

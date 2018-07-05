@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/traversal.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -1069,9 +1070,11 @@ static bool IdentifySwappingCandidates(
         // ensure that swapping the tensor back in won't recreate the memory
         // bottleneck. Last but not least, we want the tensor to have as few
         // remaining uses as possible.
-        mem_info.fitness = std::pow((earliest_use - peak_time).count(), 2);
-        mem_info.fitness /= std::pow(mem_info.uses_left.size(), 2);
-        mem_info.fitness += std::pow((allocation_time - peak_time).count(), 2);
+        mem_info.fitness =
+            MathUtil::IPow((earliest_use - peak_time).count(), 2);
+        mem_info.fitness /= MathUtil::IPow(mem_info.uses_left.size(), 2);
+        mem_info.fitness +=
+            MathUtil::IPow((allocation_time - peak_time).count(), 2);
         mem_info.fitness = -mem_info.fitness;
         mem_state.push_back(mem_info);
       }

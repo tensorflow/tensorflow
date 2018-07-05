@@ -53,6 +53,9 @@ bool ShapesBroadcastable(const TensorShapeProto& left,
                          const TensorShapeProto& right);
 bool ShapesBroadcastable(const OpInfo::TensorProperties& left,
                          const OpInfo::TensorProperties& right);
+bool ShapeAfterBroadcast(const TensorShapeProto& left,
+                         const TensorShapeProto& right,
+                         TensorShapeProto* output_shape);
 
 // Return true if can prove, that tensor of size 'left' is smaller than tensor
 // of size 'right'. Return false if it's larger or equal, or it's impossible to

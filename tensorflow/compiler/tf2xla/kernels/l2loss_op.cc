@@ -39,12 +39,12 @@ class L2LossOp : public XlaOpKernel {
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(dtype);
     auto t =
         XlaHelpers::ConvertElementType(b, ctx->Input(0), accumulation_type);
-    auto square = b->Mul(t, t);
-    auto reduce = b->Reduce(square, XlaHelpers::Zero(b, accumulation_type),
-                            *ctx->GetOrCreateAdd(accumulation_type), dims);
+    auto square = xla::Mul(t, t);
+    auto reduce = xla::Reduce(square, XlaHelpers::Zero(b, accumulation_type),
+                              *ctx->GetOrCreateAdd(accumulation_type), dims);
     auto deconverted = XlaHelpers::ConvertElementType(b, reduce, dtype);
     auto two = XlaHelpers::IntegerLiteral(b, dtype, 2);
-    ctx->SetOutput(0, b->Div(deconverted, two));
+    ctx->SetOutput(0, xla::Div(deconverted, two));
   }
 };
 

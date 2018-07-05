@@ -201,3 +201,6 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
         stamp_token=stamp_token,
         next_stamp_token=next_stamp_token)
     return result
+
+  def resource(self):
+    return self._quantile_accumulator_handle

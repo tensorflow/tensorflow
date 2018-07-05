@@ -83,8 +83,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                const TfLiteTensor* input1, const TfLiteTensor* input2,
                TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
 #define TF_LITE_SUB(type, opname)                                   \
   type::opname(GetTensorData<float>(input1), GetTensorDims(input1), \
                GetTensorData<float>(input2), GetTensorDims(input2), \
@@ -126,16 +126,19 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 
   int32 input1_multiplier;
   int input1_shift;
-  QuantizeMultiplierSmallerThanOne(real_input1_multiplier, &input1_multiplier,
-                                   &input1_shift);
+  QuantizeMultiplierSmallerThanOneExp(real_input1_multiplier,
+                                      &input1_multiplier, &input1_shift);
+  input1_shift *= -1;
   int32 input2_multiplier;
   int input2_shift;
-  QuantizeMultiplierSmallerThanOne(real_input2_multiplier, &input2_multiplier,
-                                   &input2_shift);
+  QuantizeMultiplierSmallerThanOneExp(real_input2_multiplier,
+                                      &input2_multiplier, &input2_shift);
+  input2_shift *= -1;
   int32 output_multiplier;
   int output_shift;
-  QuantizeMultiplierSmallerThanOne(real_output_multiplier, &output_multiplier,
-                                   &output_shift);
+  QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
+                                      &output_multiplier, &output_shift);
+  output_shift *= -1;
 
   int32 output_activation_min, output_activation_max;
   CalculateActivationRangeUint8(params->activation, output,
@@ -174,8 +177,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
                                output);
   } else {
-    context->ReportError(context,
-                         "Inputs and outputs not all float|uint8 types.");
+    context->ReportError(
+        context, "output type %d is not supported, requires float|uint8 types.",
+        output->type);
     return kTfLiteError;
   }
 

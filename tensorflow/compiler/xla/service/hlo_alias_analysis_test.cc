@@ -654,8 +654,7 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
 }
 
 TEST_F(HloAliasAnalysisTest, TupleSelect) {
-  // Test a kSelect of a tuple value. Non-top-level element flow through the
-  // instruction.
+  // Test a kTupleSelect. Non-top-level element flow through the instruction.
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
@@ -677,13 +676,13 @@ TEST_F(HloAliasAnalysisTest, TupleSelect) {
       builder.AddInstruction(HloInstruction::CreateTuple({constant4}));
   const Shape tuple_shape = tuple1->shape();
   auto select11 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple1));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple1));
   auto select12 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   auto select34 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple3, tuple4));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple3, tuple4));
   auto select1234 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, select12, select34));
+      tuple_shape, HloOpcode::kTupleSelect, pred, select12, select34));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -718,7 +717,7 @@ TEST_F(HloAliasAnalysisTest, TupleSelect) {
 }
 
 TEST_F(HloAliasAnalysisTest, TupleSelectToWhile) {
-  // Test a tuple-shaped kSelect feeding a kWhile instruction. HLO:
+  // Test a tuple-shaped kTupleSelect feeding a kWhile instruction. HLO:
   //
   // body((F32[], F32[]) %tuple_param):
   //   %negate = Negate(%tuple_param{0})
@@ -769,7 +768,7 @@ TEST_F(HloAliasAnalysisTest, TupleSelectToWhile) {
   auto tuple2 =
       builder.AddInstruction(HloInstruction::CreateTuple({constant2}));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   auto xla_while = builder.AddInstruction(
       HloInstruction::CreateWhile(tuple_shape, condition, body, select));
 

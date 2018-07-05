@@ -32,6 +32,25 @@ TEST(uKernels, ClipTest) {
                   {0.0, -0.5, 1.0, -1.5, 2.0, -2.0, 2.0, -2.0, 2.0, -2.0})));
 }
 
+TEST(uKernels, IsZeroTest) {
+  constexpr int kVectorSize = 21;
+  static float zeros[kVectorSize] = {0.0};
+  EXPECT_TRUE(IsZeroVector(zeros, kVectorSize));
+
+  static float nonzeros[kVectorSize] = {
+      1e-6,  1e-7,  1e-8,  1e-9,  1e-10, 1e-11, 1e-12,
+      1e-13, 1e-14, 1e-15, 1e-16, 1e-17, 1e-18, 1e-19,
+      1e-20, 1e-21, 1e-22, 1e-23, 1e-24, 1e-25, 1e-26};
+  EXPECT_FALSE(IsZeroVector(nonzeros, kVectorSize));
+}
+
+TEST(uKernels, GeneratedIsZeroTest) {
+  constexpr int kVectorSize = 39;
+  std::vector<float> input(kVectorSize);
+  ZeroVector(input.data(), kVectorSize);
+  EXPECT_TRUE(IsZeroVector(input.data(), kVectorSize));
+}
+
 TEST(uKernels, SymmetricQuantizeFloatsTest) {
   constexpr int kVectorSize = 9;
   static float input[kVectorSize] = {-640, -635.0, -630, 10.0,  2.0,
@@ -44,7 +63,8 @@ TEST(uKernels, SymmetricQuantizeFloatsTest) {
 
   EXPECT_EQ(min, -640);
   EXPECT_EQ(max, 1000);
-  EXPECT_NEAR(scaling_factor, 0.127, 1e-6);  // EQ won't work due to fpoint.
+  // EQ won't work due to fpoint.
+  EXPECT_NEAR(scaling_factor, 1000 / 127.0, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-81, -81, -80, 1, 0, -1, -1, 0, 127}));
 }
@@ -76,7 +96,7 @@ TEST(uKernels, SymmetricQuantizeFloatsAllAlmostZeroTest) {
 
   EXPECT_NEAR(min, -9e-05, 1e-6);
   EXPECT_NEAR(max, 0.0002, 1e-6);
-  EXPECT_EQ(scaling_factor, 635000);
+  EXPECT_NEAR(scaling_factor, 1.57e-6, 1e-6);
   EXPECT_THAT(output,
               testing::ElementsAreArray({-6, 19, -4, -57, 1, 25, 6, 127, 0}));
 }

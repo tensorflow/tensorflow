@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Tile"
+  endpoint {
+    name: "manip.tile"
+  }
+  endpoint {
+    name: "tile"
+    deprecation_message: "tf.tile is deprecated, please use tf.manip.tile instead."
+  }
+}

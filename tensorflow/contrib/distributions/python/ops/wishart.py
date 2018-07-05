@@ -36,6 +36,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "WishartCholesky",
@@ -73,6 +74,14 @@ class _WishartLinearOperator(distribution.Distribution):
   this class.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                scale_operator,
@@ -107,7 +116,7 @@ class _WishartLinearOperator(distribution.Distribution):
       ValueError: if df < k, where scale operator event shape is
         `(k, k)`
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
     with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[df, scale_operator]):
@@ -501,6 +510,14 @@ class WishartCholesky(_WishartLinearOperator):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                scale,
@@ -530,7 +547,7 @@ class WishartCholesky(_WishartLinearOperator):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[scale]) as name:
       with ops.name_scope("init", values=[scale]):
         scale = ops.convert_to_tensor(scale)
@@ -617,6 +634,14 @@ class WishartFull(_WishartLinearOperator):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                df,
                scale,
@@ -646,7 +671,7 @@ class WishartFull(_WishartLinearOperator):
         more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       with ops.name_scope("init", values=[scale]):
         scale = ops.convert_to_tensor(scale)

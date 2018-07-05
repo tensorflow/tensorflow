@@ -37,7 +37,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import estimator_export
 
 # The default learning rates are a historical artifact of the initial
 # implementation.
@@ -88,7 +88,9 @@ def _dnn_linear_combined_model_fn(features,
                                   dnn_activation_fn=nn.relu,
                                   dnn_dropout=None,
                                   input_layer_partitioner=None,
-                                  config=None):
+                                  config=None,
+                                  batch_norm=False,
+                                  linear_sparse_combiner='sum'):
   """Deep Neural Net and Linear combined model_fn.
 
   Args:
@@ -115,7 +117,10 @@ def _dnn_linear_combined_model_fn(features,
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
     config: `RunConfig` object to configure the runtime settings.
-
+    batch_norm: Whether to use batch normalization after each hidden layer.
+    linear_sparse_combiner: A string specifying how to reduce the linear model
+      if a categorical column is multivalent.  One of "mean", "sqrtn", and
+      "sum".
   Returns:
     An `EstimatorSpec` instance.
 
@@ -164,7 +169,8 @@ def _dnn_linear_combined_model_fn(features,
           feature_columns=dnn_feature_columns,
           activation_fn=dnn_activation_fn,
           dropout=dnn_dropout,
-          input_layer_partitioner=input_layer_partitioner)
+          input_layer_partitioner=input_layer_partitioner,
+          batch_norm=batch_norm)
       dnn_logits = dnn_logit_fn(features=features, mode=mode)
 
   linear_parent_scope = 'linear'
@@ -182,7 +188,8 @@ def _dnn_linear_combined_model_fn(features,
         partitioner=input_layer_partitioner) as scope:
       logit_fn = linear._linear_logit_fn_builder(  # pylint: disable=protected-access
           units=head.logits_dimension,
-          feature_columns=linear_feature_columns)
+          feature_columns=linear_feature_columns,
+          sparse_combiner=linear_sparse_combiner)
       linear_logits = logit_fn(features=features)
       _add_layer_summary(linear_logits, scope.name)
 
@@ -225,7 +232,7 @@ def _dnn_linear_combined_model_fn(features,
       logits=logits)
 
 
-@tf_export('estimator.DNNLinearCombinedClassifier')
+@estimator_export('estimator.DNNLinearCombinedClassifier')
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined classification models.
 
@@ -257,12 +264,19 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       # warm-start settings
       warm_start_from="/path/to/checkpoint/dir")
 
-  # To apply L1 and L2 regularization, you can set optimizers as follows:
+  # To apply L1 and L2 regularization, you can set dnn_optimizer to:
   tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001,
       l2_regularization_strength=0.001)
-  # It is same for FtrlOptimizer.
+  # To apply learning rate decay, you can set dnn_optimizer to a callable:
+  lambda: tf.AdamOptimizer(
+      learning_rate=tf.exponential_decay(
+          learning_rate=0.1,
+          global_step=tf.get_global_step(),
+          decay_steps=10000,
+          decay_rate=0.96)
+  # It is the same for linear_optimizer.
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -292,7 +306,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
   Loss is calculated by using softmax cross entropy.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -311,7 +328,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                input_layer_partitioner=None,
                config=None,
                warm_start_from=None,
-               loss_reduction=losses.Reduction.SUM):
+               loss_reduction=losses.Reduction.SUM,
+               batch_norm=False,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -322,12 +341,16 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. Defaults to FTRL optimizer.
+        the linear part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to FTRL
+        optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. Defaults to Adagrad optimizer.
+        the deep part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to Adagrad
+        optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,
@@ -360,6 +383,12 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
+      batch_norm: Whether to use batch normalization after each hidden layer.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see @{tf.feature_column.linear_model$linear_model}.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -399,14 +428,16 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           dnn_activation_fn=dnn_activation_fn,
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
         warm_start_from=warm_start_from)
 
 
-@tf_export('estimator.DNNLinearCombinedRegressor')
+@estimator_export('estimator.DNNLinearCombinedRegressor')
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined models for regression.
 
@@ -438,12 +469,19 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       # warm-start settings
       warm_start_from="/path/to/checkpoint/dir")
 
-  # To apply L1 and L2 regularization, you can set optimizers as follows:
+  # To apply L1 and L2 regularization, you can set dnn_optimizer to:
   tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001,
       l2_regularization_strength=0.001)
-  # It is same for FtrlOptimizer.
+  # To apply learning rate decay, you can set dnn_optimizer to a callable:
+  lambda: tf.AdamOptimizer(
+      learning_rate=tf.exponential_decay(
+          learning_rate=0.1,
+          global_step=tf.get_global_step(),
+          decay_steps=10000,
+          decay_rate=0.96)
+  # It is the same for linear_optimizer.
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -473,7 +511,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   Loss is calculated by using mean squared error.
 
   @compatibility(eager)
-  Estimators are not compatible with eager execution.
+  Estimators can be used while eager execution is enabled. Note that `input_fn`
+  and all hooks are executed inside a graph context, so they have to be written
+  to be compatible with graph mode. Note that `input_fn` code using `tf.data`
+  generally works in both graph and eager modes.
   @end_compatibility
   """
 
@@ -491,7 +532,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                input_layer_partitioner=None,
                config=None,
                warm_start_from=None,
-               loss_reduction=losses.Reduction.SUM):
+               loss_reduction=losses.Reduction.SUM,
+               batch_norm=False,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -502,12 +545,16 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. Defaults to FTRL optimizer.
+        the linear part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to FTRL
+        optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. Defaults to Adagrad optimizer.
+        the deep part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to Adagrad
+        optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,
@@ -534,6 +581,12 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
+      batch_norm: Whether to use batch normalization after each hidden layer.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see @{tf.feature_column.linear_model$linear_model}.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -564,7 +617,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           dnn_activation_fn=dnn_activation_fn,
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedRegressor, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,

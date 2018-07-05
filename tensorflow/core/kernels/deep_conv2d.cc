@@ -294,11 +294,11 @@ struct TransformFilterRange {
 
     // Compute number of filter shards.
     const int64 residual_row =
-        std::max(0LL, args.filter_rows - base_filter_rows);
+        std::max(int64{0}, args.filter_rows - base_filter_rows);
     const int64 shard_rows = 1 + (residual_row + 2 - 1) / 2;
 
     const int64 residual_col =
-        std::max(0LL, args.filter_cols - base_filter_cols);
+        std::max(int64{0}, args.filter_cols - base_filter_cols);
     const int64 shard_cols = 1 + (residual_col + 2 - 1) / 2;
 
     // Compute strides to be used for input and output IO.
@@ -393,8 +393,9 @@ struct TransformFilters {
 
     // Calculate filter transform batch based on cache/filter sizes.
 
-    // Cache budget (based on L2 cache size).
-    const int64 cache_size = Eigen::l2CacheSize() / sizeof(T);
+    // Cache budget (based on L2 cache size = 256KB).
+    // TODO(andydavis) Read cache size from system.
+    const int64 cache_size = (256LL << 10) / sizeof(T);
 
     // Fixed cost.
     const int64 filter_transform_matrix_size =
@@ -415,8 +416,9 @@ struct TransformFilters {
         filter_total_size + filter_transform_buffer_size + filter_out_buf_size;
 
     // Remove fixed cost and divide by per-filter cost.
-    const int64 num_filters_cache = std::max(
-        1LL, (cache_size - filter_transform_matrix_size) / per_filter_cost);
+    const int64 num_filters_cache =
+        std::max(int64{1},
+                 (cache_size - filter_transform_matrix_size) / per_filter_cost);
     const int64 num_filters_transform = std::min(out_depth, num_filters_cache);
 
     // Allocate buffer for filter transform matrix:
@@ -952,11 +954,11 @@ struct DeepConv2D<CPUDevice, T> {
     const int64 base_filter_rows = transform->filter_shape().rows;
 
     const int64 filter_residual_row =
-        std::max(0LL, args.filter_rows - base_filter_rows);
+        std::max(int64{0}, args.filter_rows - base_filter_rows);
     const int64 filter_shards_row = 1 + (filter_residual_row + 2 - 1) / 2;
 
     const int64 filter_residual_col =
-        std::max(0LL, args.filter_cols - base_filter_rows);
+        std::max(int64{0}, args.filter_cols - base_filter_rows);
     const int64 filter_shards_col = 1 + (filter_residual_col + 2 - 1) / 2;
 
     // Allocate buffer for transformed filters.
@@ -1016,8 +1018,9 @@ struct DeepConv2D<CPUDevice, T> {
       const int64 filter_shard_size = filter_shards_row * filter_shards_col;
       const int64 out_tile_spatial_size = out_tile_rows * out_tile_cols;
 
-      // Cache budget (based on L2 cache size).
-      const int64 cache_size = Eigen::l2CacheSize() / sizeof(T);
+      // Cache budget (based on L2 cache size = 256KB).
+      // TODO(andydavis) Read cache size from the system.
+      const int64 cache_size = (256LL << 10) / sizeof(T);
 
       // Fixed costs.
       const int64 tile_transform_matrix_size =
@@ -1045,8 +1048,8 @@ struct DeepConv2D<CPUDevice, T> {
           buffer1_per_tile_size + buffer2_per_tile_size +
           packed_tile_per_tile_size + gemm_out_per_tile_size;
 
-      const int64 num_tiles_cache =
-          std::max(4LL, (cache_size - total_fixed_cost) / total_per_tile_cost);
+      const int64 num_tiles_cache = std::max(
+          int64{4}, (cache_size - total_fixed_cost) / total_per_tile_cost);
       const int64 num_tiles = std::min(num_tiles_cache, col_tiles);
 
       // Allocate temporary buffer 'buffer1', which is first used for copying

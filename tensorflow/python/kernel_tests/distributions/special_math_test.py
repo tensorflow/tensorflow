@@ -89,7 +89,7 @@ class NdtriTest(test.TestCase):
     all_true = np.ones_like(is_finite, dtype=np.bool)
     self.assertAllEqual(all_true, is_finite)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNdtri(self):
     """Verifies that ndtri computation is correct."""
     with self.test_session():
@@ -138,15 +138,16 @@ class NdtriTest(test.TestCase):
         lambda x: special_math.ndtri(x), p)  # pylint: disable=unnecessary-lambda
     self.assertAllFinite(self.evaluate(grads[0]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNdtriFiniteGradientFloat32(self):
     self._baseNdtriFiniteGradientTest(np.float32)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNdtriFiniteGradientFloat64(self):
     self._baseNdtriFiniteGradientTest(np.float64)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class NdtrTest(test.TestCase):
   _use_log = False
   # Grid min/max chosen to ensure 0 < cdf(x) < 1.

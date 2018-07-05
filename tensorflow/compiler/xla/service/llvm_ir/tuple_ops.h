@@ -59,13 +59,13 @@ namespace llvm_ir {
 // of the address from the corresponding element in either
 // tuple_on_true or tuple_on_false:
 //   output[i] = pred ? tuple_on_true[i] : tuple_on_false[i]
-void EmitTupleSelect(IrArray select, IrArray pred, llvm::Value* on_true,
-                     llvm::Value* on_false, llvm::IRBuilder<>* ir_builder,
-                     llvm::Module* module);
+void EmitTupleSelect(const IrArray& select, const IrArray& pred,
+                     llvm::Value* on_true, llvm::Value* on_false,
+                     llvm::IRBuilder<>* ir_builder, llvm::Module* module);
 
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand.
-void EmitTuple(IrArray tuple,
+void EmitTuple(const IrArray& tuple,
                tensorflow::gtl::ArraySlice<llvm::Value*> operands,
                llvm::IRBuilder<>* ir_builder, llvm::Module* module);
 

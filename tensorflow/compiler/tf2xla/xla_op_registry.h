@@ -203,7 +203,7 @@ class XlaOpRegistry {
   // Map from operator name to OpRegistrations, populated by REGISTER_XLA_OP.
   // Registrations present under the same key must satisfy IsCompatible above,
   // and this is checked during registration.
-  std::unordered_multimap<string, std::unique_ptr<OpRegistration>> ops_
+  std::unordered_map<string, std::vector<std::unique_ptr<OpRegistration>>> ops_
       GUARDED_BY(mutex_);
 
   // Have we already registered the JIT kernels on the JIT devices?

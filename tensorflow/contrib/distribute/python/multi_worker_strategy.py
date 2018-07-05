@@ -121,7 +121,7 @@ class MultiWorkerMirroredStrategy(MirroredStrategy):
           worker: [device_util.canonicalize(worker, '/device:CPU:0')]
           for worker in self._workers
       }
-    self._devices = nest.flatten(self._worker_device_map.values())
+    self._devices = nest.flatten(self._worker_device_map)
 
     super(MultiWorkerMirroredStrategy, self).__init__(
         devices=self._devices, prefetch_on_device=prefetch_on_device)

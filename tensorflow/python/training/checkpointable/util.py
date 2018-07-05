@@ -39,8 +39,11 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saveable_object as saveable_object_lib
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import base as checkpointable_lib
+from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -91,7 +94,7 @@ class _CheckpointRestoreCoordinator(object):
     # use them (for example because of inconsistent references when
     # loading). Used to make status assertions fail when loading checkpoints
     # that don't quite match.
-    self.all_python_objects = weakref.WeakSet()
+    self.all_python_objects = _ObjectIdentityWeakSet()
     self.save_path = save_path
     self.dtype_map = dtype_map
     # When graph building, contains a list of ops to run to restore objects from
@@ -113,7 +116,7 @@ class _CheckpointRestoreCoordinator(object):
         # `node` refers to an `Optimizer`, since only these have slot variables.
         self.slot_restorations.setdefault(
             slot_reference.original_variable_node_id, []).append(
-                checkpointable_lib._SlotVariableRestoration(  # pylint: disable=protected-access
+                base._SlotVariableRestoration(  # pylint: disable=protected-access
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
@@ -257,27 +260,145 @@ def object_metadata(save_path):
   reader = pywrap_tensorflow.NewCheckpointReader(save_path)
   try:
     object_graph_string = reader.get_tensor(
-        checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+        base.OBJECT_GRAPH_PROTO_KEY)
   except errors_impl.NotFoundError:
     raise ValueError(
         ('The specified checkpoint "%s" does not appear to be object-based (it '
          'is missing the key "%s"). Likely it was created with a name-based '
          'saver and does not contain an object dependency graph.') % (
-             save_path, checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+             save_path, base.OBJECT_GRAPH_PROTO_KEY))
   object_graph_proto = (
       checkpointable_object_graph_pb2.CheckpointableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
   return object_graph_proto
 
 
+class _ObjectIdentityWrapper(object):
+  """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
+
+  Since __eq__ is based on object identity, it's safe to also define __hash__
+  based on object ids. This lets us add unhashable types like checkpointable
+  _ListWrapper objects to object-identity collections.
+  """
+
+  def __init__(self, wrapped):
+    self._wrapped = wrapped
+
+  @property
+  def unwrapped(self):
+    return self._wrapped
+
+  def __eq__(self, other):
+    if isinstance(other, _ObjectIdentityWrapper):
+      return self._wrapped is other._wrapped  # pylint: disable=protected-access
+    return self._wrapped is other
+
+  def __hash__(self):
+    # Wrapper id() is also fine for weakrefs. In fact, we rely on
+    # id(weakref.ref(a)) == id(weakref.ref(a)) and weakref.ref(a) is
+    # weakref.ref(a) in _WeakObjectIdentityWrapper.
+    return id(self._wrapped)
+
+
+class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
+
+  def __init__(self, wrapped):
+    super(_WeakObjectIdentityWrapper, self).__init__(weakref.ref(wrapped))
+
+  @property
+  def unwrapped(self):
+    return self._wrapped()
+
+
+class _ObjectIdentityDictionary(collections.MutableMapping):
+  """A mutable mapping data structure which compares using "is".
+
+  This is necessary because we have checkpointable objects (_ListWrapper) which
+  have behavior identical to built-in Python lists (including being unhashable
+  and comparing based on the equality of their contents by default).
+  """
+
+  def __init__(self):
+    self._storage = {}
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
+
+  def __getitem__(self, key):
+    return self._storage[self._wrap_key(key)]
+
+  def __setitem__(self, key, value):
+    self._storage[self._wrap_key(key)] = value
+
+  def __delitem__(self, key):
+    del self._storage[self._wrap_key(key)]
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    for key in self._storage:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakKeyDictionary(_ObjectIdentityDictionary):
+  """Like weakref.WeakKeyDictionary, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
+
+  def __len__(self):
+    # Iterate, discarding old weak refs
+    return len(list(self._storage))
+
+  def __iter__(self):
+    keys = self._storage.keys()
+    for key in keys:
+      unwrapped = key.unwrapped
+      if unwrapped is None:
+        del self[key]
+      else:
+        yield unwrapped
+
+
+class _ObjectIdentityWeakSet(collections.MutableSet):
+  """Like weakref.WeakSet, but compares objects with "is"."""
+
+  def __init__(self):
+    self._storage = set()
+
+  def __contains__(self, key):
+    return _WeakObjectIdentityWrapper(key) in self._storage
+
+  def discard(self, key):
+    self._storage.discard(_WeakObjectIdentityWrapper(key))
+
+  def add(self, key):
+    self._storage.add(_WeakObjectIdentityWrapper(key))
+
+  def __len__(self):
+    # Iterate, discarding old weak refs
+    return len(list(self))
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      unwrapped = key.unwrapped
+      if unwrapped is None:
+        self.discard(key)
+      else:
+        yield unwrapped
+
+
 def _breadth_first_checkpointable_traversal(root_checkpointable):
   """Find shortest paths to all variables owned by dependencies of root."""
   bfs_sorted = []
   to_visit = collections.deque([root_checkpointable])
-  path_to_root = {root_checkpointable: ()}
+  path_to_root = _ObjectIdentityDictionary()
+  path_to_root[root_checkpointable] = ()
   while to_visit:
     current_checkpointable = to_visit.popleft()
-    if isinstance(current_checkpointable, checkpointable_lib.NotCheckpointable):
+    if isinstance(current_checkpointable, tracking.NotCheckpointable):
       raise NotImplementedError(
           ("The object %s does not support object-based saving. File a feature "
            "request if this limitation bothers you. In the meantime, you can "
@@ -335,7 +456,7 @@ def _slot_variable_naming_for_optimizer(optimizer_path):
 def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
   """Gather and name slot variables."""
   non_slot_objects = list(checkpointable_objects)
-  slot_variables = {}
+  slot_variables = _ObjectIdentityDictionary()
   for checkpointable in non_slot_objects:
     if isinstance(checkpointable, optimizer_lib.Optimizer):
       naming_scheme = _slot_variable_naming_for_optimizer(
@@ -498,11 +619,12 @@ def _serialize_object_graph(root_checkpointable, saveables_cache):
   """
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = {
-      obj: _object_prefix_from_path(path)
-      for obj, path in path_to_root.items()}
-  node_ids = {node: node_id for node_id, node
-              in enumerate(checkpointable_objects)}
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
   slot_variables = _serialize_slot_variables(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
@@ -533,11 +655,12 @@ def list_objects(root_checkpointable):
   # to run.
   checkpointable_objects, path_to_root = (
       _breadth_first_checkpointable_traversal(root_checkpointable))
-  object_names = {
-      obj: _object_prefix_from_path(path)
-      for obj, path in path_to_root.items()}
-  node_ids = {node: node_id for node_id, node
-              in enumerate(checkpointable_objects)}
+  object_names = _ObjectIdentityDictionary()
+  for obj, path in path_to_root.items():
+    object_names[obj] = _object_prefix_from_path(path)
+  node_ids = _ObjectIdentityDictionary()
+  for node_id, node in enumerate(checkpointable_objects):
+    node_ids[node] = node_id
   _serialize_slot_variables(
       checkpointable_objects=checkpointable_objects,
       node_ids=node_ids,
@@ -562,6 +685,93 @@ def gather_initializers(root_checkpointable):
   checkpointable_objects = list_objects(root_checkpointable)
   return [c.initializer for c in checkpointable_objects
           if hasattr(c, "initializer") and c.initializer is not None]
+
+
+@tf_contextlib.contextmanager
+def capture_dependencies(template):
+  """Capture variables created within this scope as `Template` dependencies.
+
+  Requires that `template.variable_scope` is active.
+
+  This scope is intended as a compatibility measure, allowing a checkpointable
+  object to add dependencies on variables created in a block of code which is
+  not aware of object-based saving (and instead uses variable names
+  heavily). This is how `Template` objects add dependencies on variables and
+  sub-`Template`s. Where possible, use `tf.make_template` directly.
+
+  Args:
+    template: The `Template` object to register dependencies with.
+
+  Yields:
+    None (when used as a context manager).
+  """
+  name_prefix = template.variable_scope.name
+
+  def _checkpointable_custom_creator(next_creator, name, initial_value,
+                                     checkpointable_parent=None, **kwargs):
+    """A variable creation hook which adds Checkpointable dependencies.
+
+    Set for example during a `Template`'s first wrapped function
+    execution. Ensures that (a) `template` depends on any checkpointable
+    objects using their own `capture_dependencies` scope inside this scope which
+    create variables, and (b) that any variables not in a more deeply nested
+    scope are added as dependencies directly.
+
+    The `checkpointable_parent` argument is passed between custom creators but
+    ignored when the variable object itself is created. This argument indicates
+    (if not `None`) that a more deeply nested scope has already added the
+    variable as a dependency, and that parent scopes should add a dependency on
+    that object rather than on the variable directly.
+
+    Args:
+      next_creator: See `variable_scope.variable_creator_scope`; the next
+        creator in the chain.
+      name: The (full, scope-influenced) name of the variable. The `name_prefix`
+        itself is stripped for the purposes of object-based dependency tracking,
+        but scopes opened within this scope are respected.
+      initial_value: See `variable_scope.variable_creator_scope`. Taken
+        explicitly so the argument can be re-named and used with
+        `Checkpointable._add_variable_with_custom_getter`.
+      checkpointable_parent: If not None, a more deeply nested checkpointable
+        object and its name prefix which were passed to `capture_dependencies`
+        to add a dependency on (rather than depending on the variable directly).
+      **kwargs: Passed through to the next creator.
+
+    Returns:
+      The output of `next_creator`: the fetched/created variable object.
+    """
+    def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
+      inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
+                                # we don't want to propagate.
+      return next_creator(
+          initial_value=initializer,
+          name=name,
+          **inner_kwargs)
+    if name.startswith(name_prefix):
+      scope_stripped_name = name[len(name_prefix) + 1:]
+      if not checkpointable_parent:
+        return template._add_variable_with_custom_getter(  # pylint: disable=protected-access
+            initializer=initial_value,
+            name=scope_stripped_name,
+            getter=_call_next_creator_renaming_initializer,
+            # Disable error checking for Checkpointable. Exceptions are instead
+            # raised if necessary when the object-based saver tries to
+            # save/restore the object.
+            overwrite=True,
+            checkpointable_parent=(template, name_prefix),
+            **kwargs)
+      else:
+        parent_object, parent_name_prefix = checkpointable_parent
+        template._track_checkpointable(  # pylint: disable=protected-access
+            parent_object,
+            name=parent_name_prefix[len(name_prefix) + 1:],
+            overwrite=True)
+    return next_creator(
+        name=name, initial_value=initial_value,
+        checkpointable_parent=(template, name_prefix), **kwargs)
+
+  with variable_scope.variable_creator_scope(_checkpointable_custom_creator):
+    yield
 
 
 class _NoRestoreSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
@@ -899,7 +1109,7 @@ class CheckpointableSaver(object):
     else:
       # Maps Checkpointable objects -> attribute names -> SaveableObjects, to
       # avoid re-creating SaveableObjects when graph building.
-      self._saveable_object_cache = weakref.WeakKeyDictionary()
+      self._saveable_object_cache = _ObjectIdentityWeakKeyDictionary()
 
   @property
   def _root_checkpointable(self):
@@ -950,11 +1160,11 @@ class CheckpointableSaver(object):
       with ops.device("/cpu:0"):
         object_graph_tensor = constant_op.constant(
             graph_proto.SerializeToString(), dtype=dtypes.string)
-    assert checkpointable_lib.OBJECT_GRAPH_PROTO_KEY not in named_variables
+    assert base.OBJECT_GRAPH_PROTO_KEY not in named_variables
     named_variables.append(
         _NoRestoreSaveable(
             tensor=object_graph_tensor,
-            name=checkpointable_lib.OBJECT_GRAPH_PROTO_KEY))
+            name=base.OBJECT_GRAPH_PROTO_KEY))
     if (self._last_save_object_graph != graph_proto
         # When executing eagerly, we need to re-create SaveableObjects each time
         # save() is called so they pick up new Tensors passed to their
@@ -1044,7 +1254,7 @@ class CheckpointableSaver(object):
       dtype_map = reader.get_variable_to_dtype_map()
     try:
       object_graph_string = reader.get_tensor(
-          checkpointable_lib.OBJECT_GRAPH_PROTO_KEY)
+          base.OBJECT_GRAPH_PROTO_KEY)
     except errors_impl.NotFoundError:
       # The object graph proto does not exist in this checkpoint. Try the
       # name-based compatibility mode.
@@ -1090,7 +1300,7 @@ class CheckpointableSaver(object):
               "file a feature request if this limitation bothers you.")
         self._last_restore_checkpoint = checkpoint
         self._last_restore_object_graph = object_graph_proto
-    checkpointable_lib._CheckpointPosition(  # pylint: disable=protected-access
+    base._CheckpointPosition(  # pylint: disable=protected-access
         checkpoint=checkpoint, proto_id=0).restore(self._root_checkpointable)
     load_status = CheckpointLoadStatus(
         checkpoint,
@@ -1100,7 +1310,7 @@ class CheckpointableSaver(object):
 
 
 @tf_export("train.Checkpoint")
-class Checkpoint(checkpointable_lib.Checkpointable):
+class Checkpoint(tracking.Checkpointable):
   """Groups checkpointable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
@@ -1202,7 +1412,7 @@ class Checkpoint(checkpointable_lib.Checkpointable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, checkpointable_lib.CheckpointableBase):
+      if not isinstance(v, base.CheckpointableBase):
         raise ValueError(
             ("`Checkpoint` was expecting a checkpointable object (an object "
              "derived from `CheckpointableBase`), got %s. If you believe this "
@@ -1221,7 +1431,7 @@ class Checkpoint(checkpointable_lib.Checkpointable):
       with ops.device("/cpu:0"):
         # add_variable creates a dependency named "save_counter"; NoDependency
         # prevents creating a second dependency named "_save_counter".
-        self._save_counter = checkpointable_lib.NoDependency(
+        self._save_counter = data_structures.NoDependency(
             add_variable(self, name="save_counter", initializer=0,
                          dtype=dtypes.int64))
 

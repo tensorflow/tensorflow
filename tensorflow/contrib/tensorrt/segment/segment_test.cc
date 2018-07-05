@@ -275,13 +275,13 @@ TEST_F(SegmentTest, Multiple) {
   // Expect two subgraphs
   EXPECT_EQ(segments.size(), 2);
 
-  std::vector<string> expected0{"add0", "add1", "add2", "add3"};
+  std::vector<string> expected0{"add6", "add8"};
   for (const auto& ex : expected0) {
     EXPECT_TRUE(segments[0].first.find(ex) != segments[0].first.end())
         << "Missing expected node " << ex;
   }
 
-  std::vector<string> expected1{"add6", "add8"};
+  std::vector<string> expected1{"add0", "add1", "add2", "add3"};
   for (const auto& ex : expected1) {
     EXPECT_TRUE(segments[1].first.find(ex) != segments[1].first.end())
         << "Missing expected node " << ex;

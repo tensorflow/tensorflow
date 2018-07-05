@@ -23,29 +23,26 @@ import functools
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis import cfg
 from tensorflow.python.platform import test
 
 
 class CFGTest(test.TestCase):
 
-  def _parse_and_analyze(self, test_fn, namespace, arg_types=None):
-    arg_types = arg_types or {}
+  def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn)
-    ctx = context.EntityContext(
-        namer=None,
+    entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
-        namespace=namespace,
+        namespace={},
         arg_values=None,
-        arg_types=arg_types,
-        owner_type=None,
-        recursive=True)
+        arg_types=None,
+        owner_type=None)
     node = qual_names.resolve(node)
-    return node, ctx
+    return node, entity_info
 
   def _check_anno_matches(self, node, anno_name, var_names):
     if isinstance(var_names, str):
@@ -73,7 +70,7 @@ class CFGTest(test.TestCase):
         x = x
       return x
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.ReachingDefinitions(ctx))
     body = node.body[0].body
     # Only the argument reaches the expression
@@ -106,7 +103,7 @@ class CFGTest(test.TestCase):
         y = 2  # pylint: disable=unused-variable
       return x
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Defined(ctx))
     body = node.body[0].body
     # only x is for sure defined at the end
@@ -115,19 +112,26 @@ class CFGTest(test.TestCase):
     if_body = body[0].body
     self._check_anno_matches(if_body[0], 'defined_out', ('x', 'y'))
 
-  # TODO(alexbw): b/73926938 split this test up
-  def test_live(self):
+  def _get_live_annotated_fnbody(self, f):
+    node, ctx = self._parse_and_analyze(f)
+    cfg.run_analyses(node, cfg.Liveness(ctx))
+    body = node.body[0].body
+    return body
 
-    def get_live_annotated_fnbody(f):
-      node, ctx = self._parse_and_analyze(f, {})
-      cfg.run_analyses(node, cfg.Liveness(ctx))
-      body = node.body[0].body
-      return body
+  def test_live_straightline(self):
 
     def f1(x):
       a = g(x)  # pylint: disable=undefined-variable
       b = h(a)  # pylint: disable=undefined-variable, unused-variable
       return x
+
+    body = self._get_live_annotated_fnbody(f1)
+    self._check_anno_matches(body[1], 'live_in', ('a', 'h', 'x'))
+    self._check_anno_matches(body[2], 'live_in', ('x'))
+    self._check_anno_matches(body[0], 'live_in', ('g', 'h', 'x'))
+    self._check_anno_matches(body[2], 'live_out', ())
+
+  def test_live_stacked_conds_with_else(self):
 
     def f2(x, a):  # pylint: disable=unused-argument
       if a > 0:  # x should not be live
@@ -137,6 +141,12 @@ class CFGTest(test.TestCase):
       else:
         x = 2
 
+    body = self._get_live_annotated_fnbody(f2)
+    self._check_anno_matches(body[0], 'live_in', ('a'))
+    self._check_anno_matches(body[1], 'live_in', ('a'))
+
+  def test_live_stacked_conds(self):
+
     def f3(x, a):
       if a > 0:  # x and a should be live
         x = 0
@@ -144,58 +154,58 @@ class CFGTest(test.TestCase):
         x = 1
       return x  # x should be live
 
+    body = self._get_live_annotated_fnbody(f3)
+    self._check_anno_matches(body[0], 'live_in', ('a', 'x'))
+    self._check_anno_matches(body[1], 'live_in', ('a', 'x'))
+    self._check_anno_matches(body[2], 'live_in', ('x'))
+
+  def test_live_possibly_unused_cond(self):
+
     def f4(x, a):
       if a > 0:  # x should be live
         x = 0
       x += 1
+
+    body = self._get_live_annotated_fnbody(f4)
+    self._check_anno_matches(body[0], 'live_in', ('x', 'a'))
+    self._check_anno_matches(body[1], 'live_in', ('x'))
+
+  def test_live_attribute_in_cond(self):
 
     def f5(x, a):
       if a > 0:  # x.y should be live
         x.y = 0
       return x.y
 
+    body = self._get_live_annotated_fnbody(f5)
+    self._check_anno_matches(body[0], 'live_in', ('x', 'x.y', 'a'))
+
+  def test_live_noop(self):
+
     def f6(x):
       return x  # should this cause x.* to be live?
+
+    body = self._get_live_annotated_fnbody(f6)
+    self._check_anno_matches(body[0], 'live_in', ('x'))
+
+  def test_live_loop(self):
 
     def f7(x, n):
       for i in range(n):
         x += i
       return x
 
+    body = self._get_live_annotated_fnbody(f7)
+    self._check_anno_matches(body[0], 'live_in', ('x', 'n', 'range'))
+    self._check_anno_matches(body[1], 'live_in', ('x'))
+
+  def test_live_context_manager(self):
+
     def f8(x, f):
       with f:
         x += 1
 
-    body = get_live_annotated_fnbody(f1)
-    self._check_anno_matches(body[1], 'live_in', ('a', 'h', 'x'))
-    self._check_anno_matches(body[2], 'live_in', ('x'))
-    self._check_anno_matches(body[0], 'live_in', ('g', 'h', 'x'))
-    self._check_anno_matches(body[2], 'live_out', ())
-
-    body = get_live_annotated_fnbody(f2)
-    self._check_anno_matches(body[0], 'live_in', ('a'))
-    self._check_anno_matches(body[1], 'live_in', ('a'))
-
-    body = get_live_annotated_fnbody(f3)
-    self._check_anno_matches(body[0], 'live_in', ('a', 'x'))
-    self._check_anno_matches(body[1], 'live_in', ('a', 'x'))
-    self._check_anno_matches(body[2], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f4)
-    self._check_anno_matches(body[0], 'live_in', ('x', 'a'))
-    self._check_anno_matches(body[1], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f5)
-    self._check_anno_matches(body[0], 'live_in', ('x', 'x.y', 'a'))
-
-    body = get_live_annotated_fnbody(f6)
-    self._check_anno_matches(body[0], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f7)
-    self._check_anno_matches(body[0], 'live_in', ('x', 'n', 'range'))
-    self._check_anno_matches(body[1], 'live_in', ('x'))
-
-    body = get_live_annotated_fnbody(f8)
+    body = self._get_live_annotated_fnbody(f8)
     self._check_anno_matches(body[0], 'live_in', ('f', 'x'))
 
   def test_node_equality(self):
@@ -213,7 +223,7 @@ class CFGTest(test.TestCase):
 
       return g(x)
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Defined(ctx))
 
     body = node.body[0].body
@@ -240,7 +250,7 @@ class CFGTest(test.TestCase):
 
       return g()  # y is not defined here
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Defined(ctx))
     body = node.body[0].body
     self.assertEqual(
@@ -269,7 +279,7 @@ class CFGTest(test.TestCase):
       return x, y
 
     for f in (for_orelse, while_orelse):
-      node, ctx = self._parse_and_analyze(f, {})
+      node, ctx = self._parse_and_analyze(f)
       cfg.run_analyses(node, cfg.ReachingDefinitions(ctx))
       body = node.body[0].body
       return_node = body[-1]

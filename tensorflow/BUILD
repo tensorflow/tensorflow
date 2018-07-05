@@ -19,6 +19,10 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_binary_deps",
 )
+load(
+    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "gen_api_init_files",  # @unused
+)
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -151,6 +155,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_s390x",
+    values = {"cpu": "s390x"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "debug",
     values = {
         "compilation_mode": "dbg",
@@ -206,8 +216,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support",
+    define_values = {"with_aws_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -234,8 +244,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support_windows_override",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support_windows_override",
+    define_values = {"with_aws_support": "true"},
     values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
 )
@@ -243,6 +253,13 @@ config_setting(
 config_setting(
     name = "with_kafka_support_windows_override",
     define_values = {"with_kafka_support": "true"},
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_cuda_support_windows_override",
+    define_values = {"using_cuda_nvcc": "true"},
     values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
 )
@@ -262,8 +279,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support_android_override",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support_android_override",
+    define_values = {"with_aws_support": "true"},
     values = {"crosstool_top": "//external:android/crosstool"},
     visibility = ["//visibility:public"],
 )
@@ -283,8 +300,8 @@ config_setting(
 )
 
 config_setting(
-    name = "with_s3_support_ios_override",
-    define_values = {"with_s3_support": "true"},
+    name = "with_aws_support_ios_override",
+    define_values = {"with_aws_support": "true"},
     values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
     visibility = ["//visibility:public"],
 )
@@ -394,6 +411,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "-//third_party/tensorflow/python/estimator",
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
@@ -418,6 +436,22 @@ filegroup(
 filegroup(
     name = "docs_src",
     data = glob(["docs_src/**/*.md"]),
+)
+
+cc_library(
+    name = "grpc",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc_unsecure"],
+        "//conditions:default": ["@grpc"],
+    }),
+)
+
+cc_library(
+    name = "grpc++",
+    deps = select({
+        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@grpc//:grpc++"],
+    }),
 )
 
 # A shared object which includes registration mechanisms for ops and
@@ -447,6 +481,15 @@ filegroup(
 tf_cc_shared_object(
     name = "libtensorflow_framework.so",
     framework_so = [],
+    linkopts = select({
+        "//tensorflow:darwin": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//conditions:default": [
+            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
+            "$(location //tensorflow:tf_framework_version_script.lds)",
+        ],
+    }),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
@@ -456,6 +499,7 @@ tf_cc_shared_object(
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
 )
 
@@ -471,7 +515,7 @@ tf_cc_shared_object(
 # excludes all but a subset of function names.
 # On MacOS, the linker does not support version_script, but has an
 # an "-exported_symbols_list" command.  -z defs disallows undefined
-# symbols in object files and -s strips the output.
+# symbols in object files.
 
 tf_cc_shared_object(
     name = "libtensorflow.so",
@@ -485,7 +529,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow/c:version_script.lds)",
         ],
@@ -511,7 +554,6 @@ tf_cc_shared_object(
         "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
-            "-s",
             "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
             "$(location //tensorflow:tf_version_script.lds)",
         ],
@@ -536,13 +578,28 @@ exports_files(
     ],
 )
 
+gen_api_init_files(
+    name = "tensorflow_python_api_gen",
+    srcs = ["api_template.__init__.py"],
+    root_init_template = "api_template.__init__.py",
+)
+
 py_library(
     name = "tensorflow_py",
-    srcs = ["__init__.py"],
+    srcs = ["//tensorflow/python/estimator/api:estimator_python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python",
-        "//tensorflow/tools/api/generator:python_api",
+        ":tensorflow_py_no_contrib",
+        "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/estimator:estimator_py",
     ],
+)
+
+py_library(
+    name = "tensorflow_py_no_contrib",
+    srcs = [":tensorflow_python_api_gen"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:no_contrib"],
 )

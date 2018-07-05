@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
@@ -73,6 +73,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
+#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -160,11 +162,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
-          /*rewrite_grad_op=*/true,
-          /*use_fusion=*/false);
-
-      // Rewrite gather ops into smaller ones.
-      pass.AddPass<GatherExpander>();
+          /*rewrite_grad_op=*/true);
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
@@ -174,6 +172,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*is_layout_sensitive=*/false,
           [](const Shape&, const Shape&) { return false; });
       pass.AddPass<TupleSimplifier>();
+      pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
       pass.AddPass<HloDCE>();
       pass.AddPass<ReshapeMover>();
@@ -200,18 +199,28 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>();
     pipeline.AddPass<CudnnConvolutionRewriter>();
     pipeline.AddPass<PadInsertion>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("layout_assignment");
+    pipeline.AddPass<GpuLayoutAssignment>(
+        hlo_module->mutable_entry_computation_layout(), stream_exec);
+
+    // The LayoutAssignment pass may leave behind kCopy instructions which are
+    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        /*is_layout_sensitive=*/true,
+        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
+          return true;
+        });
 
     // Choose the fastest algorithm for each conv.
     //
-    // In theory doing this here is way too early: It needs to happen after
-    // layout assignment, because the layout of the inputs/outputs affects the
-    // speed of the conv.  But currently we only allow only one input/output
-    // layout when calling cudnn, so there's no ambiguity.
-    //
-    // We pick the algorithm at this early stage so we can generate better HLO.
-    // After CudnnConvolutionRewriter, our convolutions are CustomCalls which
-    // return a tuple (conv_result, scratch_memory), and the each conv uses 0
-    // bytes of scratch:
+    // We pick the algorithm before fusion so we can generate better HLO. After
+    // CudnnConvolutionRewriter, our convolutions are CustomCalls which return a
+    // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
+    // scratch:
     //
     //   customcall = (f32[...], f32[0])
     //   return gte(customcall, 0)
@@ -227,35 +236,15 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // The new tuple and gte instructions then be simplified away, because
     // nobody is expected to use the scratch value.
     //
-    // However, if we were to run CudnnConvolutionAlgorithmPicker after layout
-    // assignment, fusion would already have run, and the gte(customcall, 0)
-    // would probably already be into a fusion node.  We can't simplify across
-    // HloComputation boundaries, so in this case we wouldn't be able to
-    // simplify away the new_tuple bits.
-    //
-    // We'll need to revisit this if we ever allow multiple layouts for the
-    // inputs/outputs of a cudnn convolution.
+    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // the gte(customcall, 0) would probably already be into a fusion node.  We
+    // can't simplify across HloComputation boundaries, so in this case we
+    // wouldn't be able to simplify away the new_tuple bits.
     pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
                                                       device_allocator);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<HloDCE>();
 
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
-
-  {
-    HloPassPipeline pipeline("layout_assignment");
-    pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->device_entry_computation_layout());
-
-    // The LayoutAssignment pass may leave behind kCopy instructions which are
-    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        /*is_layout_sensitive=*/true,
-        /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
-          return true;
-        });
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -266,6 +255,9 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
+    fusion.AddPass<GpuMultiOutputFusion>();
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
@@ -281,6 +273,15 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // fuse the new ReducePrecision operations.
       TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
     }
+  }
+
+  {
+    // Do an aggressive LICM pass over while loops.  In particular, this hoists
+    // constants that were sunk by WhileLoopConstantSinking.  Leaving them in
+    // the while loop may result in unnecessary copies.
+    HloPassPipeline pipeline("while-loop-licm");
+    pipeline.AddPass<WhileLoopInvariantCodeMotion>(true);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return Status::OK();
 }

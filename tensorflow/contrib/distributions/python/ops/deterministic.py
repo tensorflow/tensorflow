@@ -32,7 +32,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import distribution
-from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Deterministic",
@@ -44,6 +44,14 @@ __all__ = [
 class _BaseDeterministic(distribution.Distribution):
   """Base class for Deterministic distributions."""
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                atol=None,
@@ -87,7 +95,7 @@ class _BaseDeterministic(distribution.Distribution):
     Raises:
       ValueError:  If `loc` is a scalar.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[loc, atol, rtol]) as name:
       loc = ops.convert_to_tensor(loc, name="loc")
       if is_vector and validate_args:
@@ -204,6 +212,14 @@ class Deterministic(_BaseDeterministic):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                atol=None,
@@ -309,6 +325,14 @@ class VectorDeterministic(_BaseDeterministic):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                atol=None,

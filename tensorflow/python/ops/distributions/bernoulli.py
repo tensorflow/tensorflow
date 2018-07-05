@@ -71,7 +71,7 @@ class Bernoulli(distribution.Distribution):
     Raises:
       ValueError: If p and logits are passed, or if neither are passed.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       self._logits, self._probs = distribution_util.get_logits_and_probs(
           logits=logits,

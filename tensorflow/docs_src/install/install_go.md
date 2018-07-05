@@ -6,7 +6,7 @@ a Go application. This guide explains how to install and set up the
 [TensorFlow Go package](https://godoc.org/github.com/tensorflow/tensorflow/tensorflow/go).
 
 Warning: The TensorFlow Go API is *not* covered by the TensorFlow
-[API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
+[API stability guarantees](../guide/version_semantics.md).
 
 
 ## Supported Platforms
@@ -38,7 +38,7 @@ steps to install this library and enable TensorFlow for Go:
          TF_TYPE="cpu" # Change to "gpu" for GPU support
          TARGET_DIRECTORY='/usr/local'
          curl -L \
-           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.8.0.tar.gz" |
+           "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.9.0-rc0.tar.gz" |
          sudo tar -C $TARGET_DIRECTORY -xz
 
      The `tar` command extracts the TensorFlow C library into the `lib`

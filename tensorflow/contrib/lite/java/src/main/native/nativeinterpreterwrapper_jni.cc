@@ -387,7 +387,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
   jlong capacity = env->GetDirectBufferCapacity(model_buffer);
   if (!VerifyModel(buf, capacity)) {
     throwException(env, kIllegalArgumentException,
-                   "MappedByteBuffer is not a valid flatbuffer model");
+                   "ByteBuffer is not a valid flatbuffer model");
     return 0;
   }
 
@@ -395,8 +395,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
       buf, static_cast<size_t>(capacity), error_reporter);
   if (!model) {
     throwException(env, kIllegalArgumentException,
-                   "MappedByteBuffer does not encode a valid "
-                   "TensorFlowLite model: %s",
+                   "ByteBuffer does not encode a valid model: %s",
                    error_reporter->CachedErrorMessage());
     return 0;
   }
@@ -426,7 +425,8 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
   status = interpreter->AllocateTensors();
   if (status != kTfLiteOk) {
     throwException(env, kNullPointerException,
-                   "Internal error: Cannot allocate memory for the interpreter",
+                   "Internal error: Cannot allocate memory for the interpreter:"
+                   " %s",
                    error_reporter->CachedErrorMessage());
     return 0;
   }
@@ -559,6 +559,38 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputDataType(
   TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
   int type = getDataType(target->type);
   return static_cast<jint>(type);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationZeroPoint(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return 0;
+  const int idx = static_cast<int>(output_idx);
+  if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
+    throwException(env, kIllegalArgumentException,
+                   "Failed to get %d-th output out of %d outputs", output_idx,
+                   interpreter->outputs().size());
+    return 0;
+  }
+  TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
+  return static_cast<jint>(target->params.zero_point);
+}
+
+JNIEXPORT jfloat JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_getOutputQuantizationScale(
+    JNIEnv* env, jclass clazz, jlong handle, jint output_idx) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return 1.0f;
+  const int idx = static_cast<int>(output_idx);
+  if (output_idx < 0 || output_idx >= interpreter->outputs().size()) {
+    throwException(env, kIllegalArgumentException,
+                   "Failed to get %d-th output out of %d outputs", output_idx,
+                   interpreter->outputs().size());
+    return 1.0f;
+  }
+  TfLiteTensor* target = interpreter->tensor(interpreter->outputs()[idx]);
+  return static_cast<jfloat>(target->params.scale);
 }
 
 JNIEXPORT jboolean JNICALL

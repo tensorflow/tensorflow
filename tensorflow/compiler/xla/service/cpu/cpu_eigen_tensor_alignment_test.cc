@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace cpu {
@@ -40,7 +40,7 @@ ENTRY DotOperation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloInstruction* dot = module->entry_computation()->root_instruction();
 
@@ -71,7 +71,7 @@ ENTRY ConvOperation {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          tools::Parse(hlo_string));
+                          ParseHloString(hlo_string));
 
   HloInstruction* conv = module->entry_computation()->root_instruction();
 

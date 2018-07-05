@@ -68,7 +68,8 @@ message ProfileRequest {
 }
 
 message ProfileToolData {
-  // The tool's name which this data is associated. (e.g. "input_pipeline".)
+  // The file name which this data is associated (e.g. "input_pipeline.json",
+  // "cluster_xxx.memory_viewer.json").
   string name = 1;
 
   // The data payload (likely json) for the specific tool.

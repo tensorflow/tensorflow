@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -557,8 +558,7 @@ XLA_TEST_F(FusionTest, ReshapeNegate) {
                              *ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 
-// TODO(b/64070202): Investigate failure.
-XLA_TEST_F(FusionTest, DISABLED_ON_GPU(TransposeNegate)) {
+XLA_TEST_F(FusionTest, TransposeNegate) {
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
@@ -765,6 +765,39 @@ XLA_TEST_F(FusionTest, Clamp2D) {
   TestElementwise2D<float, 3>(HloOpcode::kClamp);
 }
 
+// TODO(b/73903144): Enable on interpreter once interpreter supports bitcast.
+XLA_TEST_F(FusionTest, DISABLED_ON_INTERPRETER(FusionWithLayout)) {
+  const string hlo_text = R"(
+HloModule Cluster
+
+fusion_c {
+  fusion.arg = f32[2,2]{1,0} parameter(0)
+  bitcast.0 = f32[2,2,1]{2,1,0} bitcast(fusion.arg)
+  tanh.0 = f32[2,2,1]{0,2,1} tanh(bitcast.0)
+  ROOT bitcast.2 = f32[2,2,1]{1,2,0} bitcast(tanh.0)
+}
+
+ENTRY main {
+  arg = f32[2,2]{1,0} parameter(0)
+  ROOT fusion = f32[2,2,1]{1,2,0} fusion(arg), kind=kLoop, calls=fusion_c
+}
+)";
+
+  std::unique_ptr<Literal> operand =
+      Literal::CreateR2<float>({{0., 0.}, {1., 0.}});
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text, config));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      test_runner_.Execute(std::move(module), {operand.get()},
+                           /*run_hlo_passes=*/false));
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      *Literal::CreateR3<float>({{{0.}, {0.76159415595}}, {{0.}, {0.}}}),
+      *result));
+}
+
 void BM_ParallelFusion(int num_iters) {
   // Simple element-wise computation to benchmark parallel task partitioning.
   tensorflow::testing::StopTiming();
@@ -793,14 +826,14 @@ void BM_ParallelFusion(int num_iters) {
   // Create computation.
   XlaBuilder builder("ParallelFusion");
   Shape shape0 = ShapeUtil::MakeShape(F32, {param0_dim0, param0_dim1});
-  auto param0 = builder.Parameter(0, shape0, "param0");
+  auto param0 = Parameter(&builder, 0, shape0, "param0");
   Shape shape1 = ShapeUtil::MakeShape(F32, {param1_dim0, param1_dim1});
-  auto param1 = builder.Parameter(1, shape1, "param1");
+  auto param1 = Parameter(&builder, 1, shape1, "param1");
   Shape shape2 = ShapeUtil::MakeShape(F32, {param2_dim0, param2_dim1});
-  auto param2 = builder.Parameter(2, shape2, "param2");
+  auto param2 = Parameter(&builder, 2, shape2, "param2");
 
-  auto x = builder.Mul(param0, param1);
-  auto y = builder.Add(x, param2);
+  auto x = Mul(param0, param1);
+  Add(x, param2);
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Transfer literals to device.

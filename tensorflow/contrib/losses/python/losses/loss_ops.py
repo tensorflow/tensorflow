@@ -482,9 +482,12 @@ def hinge_loss(logits, labels=None, scope=None):
   """Method that returns the loss tensor for hinge loss.
 
   Args:
-    logits: The logits, a float tensor.
+    logits: The logits, a float tensor. Note that logits are assumed to be
+      unbounded and 0-centered. A value > 0 (resp. < 0) is considered a positive
+      (resp. negative) binary prediction.
     labels: The ground truth output tensor. Its shape should match the shape of
-      logits. The values of the tensor are expected to be 0.0 or 1.0.
+      logits. The values of the tensor are expected to be 0.0 or 1.0. Internally
+      the {0,1} labels are converted to {-1,1} when calculating the hinge loss.
     scope: The scope for the operations performed in computing the loss.
 
   Returns:

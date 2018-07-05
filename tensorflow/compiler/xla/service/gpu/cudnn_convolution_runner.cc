@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
+#include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -113,8 +115,17 @@ Status RunCudnnConvolution(
 
   // cuDNN's convolution APIs support the BDYX layout for activations/output and
   // the OIYX layout for weights.
+  DataLayout input_dl;
+  FilterLayout filter_dl;
+  DataLayout output_dl;
+
+  TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
+                      XlaConvLayoutsToStreamExecutorLayouts(
+                          dnums, input_shape.layout(), filter_shape.layout(),
+                          output_shape.layout()));
+
   BatchDescriptor input_descriptor(effective_num_dimensions);
-  input_descriptor.set_layout(DataLayout::kBatchDepthYX)
+  input_descriptor.set_layout(input_dl)
       .set_feature_map_count(
           input_shape.dimensions(dnums.input_feature_dimension()))
       .set_count(input_shape.dimensions(dnums.input_batch_dimension()));
@@ -126,7 +137,7 @@ Status RunCudnnConvolution(
   }
 
   FilterDescriptor filter_descriptor(effective_num_dimensions);
-  filter_descriptor.set_layout(FilterLayout::kOutputInputYX)
+  filter_descriptor.set_layout(filter_dl)
       .set_input_feature_map_count(
           filter_shape.dimensions(dnums.kernel_input_feature_dimension()))
       .set_output_feature_map_count(
@@ -149,7 +160,7 @@ Status RunCudnnConvolution(
   }
 
   BatchDescriptor output_descriptor(effective_num_dimensions);
-  output_descriptor.set_layout(DataLayout::kBatchDepthYX)
+  output_descriptor.set_layout(output_dl)
       .set_feature_map_count(
           output_shape.dimensions(dnums.output_feature_dimension()))
       .set_count(output_shape.dimensions(dnums.output_batch_dimension()));

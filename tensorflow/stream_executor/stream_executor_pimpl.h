@@ -190,6 +190,16 @@ class StreamExecutor {
   // activated.
   void GetMemAllocs(std::map<void *, AllocRecord> *records_out);
 
+  // Allocates unified memory space of the given size, if supported.
+  // See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-unified-memory-programming-hd
+  // for more details on unified memory.
+  void *UnifiedMemoryAllocate(uint64 bytes);
+
+  // Deallocates unified memory space previously allocated with
+  // UnifiedMemoryAllocate.
+  void UnifiedMemoryDeallocate(void *location);
+
   // Allocates a region of host memory and registers it with the platform API.
   // Memory allocated in this manner (or allocated and registered with
   // HostMemoryRegister() is required for use in asynchronous memcpy operations,

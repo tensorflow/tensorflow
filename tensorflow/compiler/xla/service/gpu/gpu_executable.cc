@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -40,77 +40,6 @@ namespace gpu {
 namespace {
 
 using tensorflow::tracing::ScopedAnnotation;
-
-// A helper class for profiling HLO in the course of GPU program execution.
-// All of the profiling is guarded internally, to avoid the caller needing to
-// have lots of conditionals sprinkled around.
-class HloExecutionProfiler {
- public:
-  // If profiling is enabled, start an execution timer running.
-  explicit HloExecutionProfiler(
-      bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
-      const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
-      const HloComputation* computation)
-      : do_profile_(do_profile),
-        profile_(profile),
-        stream_(stream),
-        sub_streams_(sub_streams),
-        computation_(computation) {
-    if (do_profile_) {
-      clock_rate_ghz_ =
-          stream->parent()->GetDeviceDescription().clock_rate_ghz();
-      execution_timer_.reset(new se::Timer(stream->parent()));
-      per_op_timer_.reset(new se::Timer(stream->parent()));
-      stream->InitTimer(execution_timer_.get())
-          .ThenStartTimer(execution_timer_.get());
-      stream->InitTimer(per_op_timer_.get());
-    }
-  }
-
-  // If profiling is enabled, sets the total cycle count on the profile from the
-  // execution timer.
-  void FinishExecution() {
-    CHECK(!finished_execution_) << "Call FinishExecution only once!";
-    finished_execution_ = true;
-    if (do_profile_) {
-      stream_->ThenWaitFor(&sub_streams_);
-      stream_->ThenStopTimer(execution_timer_.get());
-      stream_->BlockHostUntilDone().IgnoreError();
-      profile_->set_total_cycles_executed(
-          *computation_, execution_timer_->Nanoseconds() * clock_rate_ghz_);
-    }
-  }
-
-  // If profiling is enabled, starts the per-operation timer.
-  void StartOperation() {
-    if (do_profile_) {
-      stream_->ThenStartTimer(per_op_timer_.get());
-    }
-  }
-
-  // If profiling is enabled, stops the per-operation timer and records the time
-  // that the hlo_instruction took to execute in the profile.
-  void FinishOperation(const HloInstruction* hlo_instruction) {
-    if (do_profile_) {
-      stream_->ThenWaitFor(&sub_streams_);
-      stream_->ThenStopTimer(per_op_timer_.get());
-      stream_->BlockHostUntilDone().IgnoreError();
-      profile_->SetCyclesTakenBy(
-          hlo_instruction, per_op_timer_->Nanoseconds() * clock_rate_ghz_);
-    }
-  }
-
- private:
-  const bool do_profile_;
-  double clock_rate_ghz_;
-  HloExecutionProfile* profile_;
-  se::Stream* stream_;
-  const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams_;
-  const HloComputation* computation_;
-  std::unique_ptr<se::Timer> execution_timer_;
-  std::unique_ptr<se::Timer> per_op_timer_;
-  bool finished_execution_ = false;
-};
 
 }  // namespace
 
@@ -207,18 +136,17 @@ Status GpuExecutable::ExecuteThunks(
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
-    profiler.StartOperation();
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
+    TF_RETURN_IF_ERROR(
+        thunk->ExecuteOnStream(buffer_allocations, stream, &profiler));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = MakeUnique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);
     }
-    profiler.FinishOperation(thunk->hlo_instruction());
   }
 
   main_stream->ThenWaitFor(&sub_streams);

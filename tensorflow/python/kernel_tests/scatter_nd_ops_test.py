@@ -144,7 +144,9 @@ class StatefulScatterNdTest(test.TestCase):
         self.assertAllClose(new, ref_var.eval())
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64, np.complex64, np.complex128):
+    for vtype in (np.int32,
+                  np.float32, np.float64,
+                  np.complex64, np.complex128):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
@@ -221,7 +223,7 @@ class StatefulScatterNdTest(test.TestCase):
   #   self._VariableRankTests(_NumpyDiv, state_ops.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
-    for vtype in (np.float32, np.float64):
+    for vtype in (np.int32, np.float32, np.float64):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
@@ -367,7 +369,7 @@ class ScatterNdTest(test.TestCase):
     del input_  # input_ is not used in scatter_nd
     return array_ops.scatter_nd(indices, updates, shape)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidShape(self):
     # TODO(apassos) figure out how to unify these errors
     with self.assertRaises(errors.InvalidArgumentError

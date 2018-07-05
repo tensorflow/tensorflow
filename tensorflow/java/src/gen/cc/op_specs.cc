@@ -97,6 +97,7 @@ Type TypeResolver::TypeOf(const OpDef_ArgDef& arg_def,
     *iterable_out = true;
     visited_attrs_.insert(std::make_pair(arg_def.number_attr(), Type::Int()));
   }
+
   Type type = Type::Wildcard();
   if (arg_def.type() != DataType::DT_INVALID) {
     // resolve type from DataType
@@ -376,7 +377,7 @@ EndpointSpec CreateEndpoint(const OpDef& op_def, const ApiDef& api_def,
     package = name_tokens.at(0);
     name = name_tokens.at(1);
   } else {
-    package = "core";  // generate unclassified ops in the 'core' package
+    package = kDefaultEndpointPackage;
     name = name_tokens.at(0);
   }
   return EndpointSpec(package,

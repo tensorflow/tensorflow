@@ -31,7 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
-from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Logistic(distribution.Distribution):
@@ -92,6 +92,14 @@ class Logistic(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -120,7 +128,7 @@ class Logistic(distribution.Distribution):
     Raises:
       TypeError: if loc and scale are different dtypes.
     """
-    parameters = distribution_util.parent_frame_arguments()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)] if
                                     validate_args else []):

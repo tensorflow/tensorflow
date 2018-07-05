@@ -9,6 +9,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "sycl_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 
 # CPU only tests should use tf_py_test, GPU tests use cuda_py_test
 # Please avoid the py_tests and cuda_py_tests (plural) while we
@@ -892,6 +893,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
+        "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
 )
@@ -2334,6 +2336,9 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 2,
+    tags = [
+        "no_gpu",  #  Flaky: b/80127739
+    ],
 )
 
 cuda_py_test(
@@ -2750,6 +2755,7 @@ cuda_py_test(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
@@ -3025,4 +3031,80 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
+)
+
+# Custom op tests
+tf_custom_op_library(
+    name = "ackermann_op.so",
+    srcs = ["ackermann_op.cc"],
+)
+
+tf_py_test(
+    name = "ackermann_test",
+    size = "small",
+    srcs = ["ackermann_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+    ],
+    data = [":ackermann_op.so"],
+    tags = ["no_pip"],
+)
+
+tf_custom_op_library(
+    name = "duplicate_op.so",
+    srcs = ["duplicate_op.cc"],
+)
+
+tf_py_test(
+    name = "duplicate_op_test",
+    size = "small",
+    srcs = ["duplicate_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    data = [":duplicate_op.so"],
+    tags = ["no_pip"],
+)
+
+tf_custom_op_library(
+    name = "invalid_op.so",
+    srcs = ["invalid_op.cc"],
+)
+
+tf_py_test(
+    name = "invalid_op_test",
+    size = "small",
+    srcs = ["invalid_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+    ],
+    data = [":invalid_op.so"],
+    tags = ["no_pip"],
+)
+
+tf_py_test(
+    name = "cond_v2_test",
+    size = "small",
+    srcs = ["cond_v2_test.py"],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:training",
+    ],
+    grpc_enabled = True,
 )
