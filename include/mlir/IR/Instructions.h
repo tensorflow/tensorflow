@@ -87,8 +87,9 @@ class OperationInst
   : public Operation, public Instruction,
     public llvm::ilist_node_with_parent<OperationInst, BasicBlock> {
 public:
-  explicit OperationInst(Identifier name, ArrayRef<NamedAttribute> attrs = {})
-    : Operation(name, attrs), Instruction(Kind::Operation) {}
+  explicit OperationInst(Identifier name, ArrayRef<NamedAttribute> attrs,
+                         MLIRContext *context)
+      : Operation(name, attrs, context), Instruction(Kind::Operation) {}
   ~OperationInst() {}
 
   /// Unlink this instruction from its BasicBlock and delete it.

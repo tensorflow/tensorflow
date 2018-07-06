@@ -16,10 +16,14 @@
 // =============================================================================
 
 #include "mlir/IR/Operation.h"
+#include "AttributeListStorage.h"
 using namespace mlir;
 
-Operation::Operation(Identifier name, ArrayRef<NamedAttribute> attrs)
-  : name(name), attrs(attrs.begin(), attrs.end()) {
+Operation::Operation(Identifier name, ArrayRef<NamedAttribute> attrs,
+                     MLIRContext *context)
+    : name(name) {
+  this->attrs = AttributeListStorage::get(attrs, context);
+
 #ifndef NDEBUG
   for (auto elt : attrs)
     assert(elt.second != nullptr && "Attributes cannot have null entries");
@@ -29,27 +33,46 @@ Operation::Operation(Identifier name, ArrayRef<NamedAttribute> attrs)
 Operation::~Operation() {
 }
 
+ArrayRef<NamedAttribute> Operation::getAttrs() const {
+  if (!attrs)
+    return {};
+  return attrs->getElements();
+}
+
 /// If an attribute exists with the specified name, change it to the new
 /// value.  Otherwise, add a new attribute with the specified name/value.
-void Operation::setAttr(Identifier name, Attribute *value) {
+void Operation::setAttr(Identifier name, Attribute *value,
+                        MLIRContext *context) {
   assert(value && "attributes may never be null");
+  auto origAttrs = getAttrs();
+
+  SmallVector<NamedAttribute, 8> newAttrs(origAttrs.begin(), origAttrs.end());
+
   // If we already have this attribute, replace it.
-  for (auto &elt : attrs)
+  for (auto &elt : newAttrs)
     if (elt.first == name) {
       elt.second = value;
+      attrs = AttributeListStorage::get(newAttrs, context);
       return;
     }
 
   // Otherwise, add it.
-  attrs.push_back({name, value});
+  newAttrs.push_back({name, value});
+  attrs = AttributeListStorage::get(newAttrs, context);
 }
 
 /// Remove the attribute with the specified name if it exists.  The return
 /// value indicates whether the attribute was present or not.
-auto Operation::removeAttr(Identifier name) -> RemoveResult {
-  for (unsigned i = 0, e = attrs.size(); i != e; ++i) {
-    if (attrs[i].first == name) {
-      attrs.erase(attrs.begin()+i);
+auto Operation::removeAttr(Identifier name, MLIRContext *context)
+    -> RemoveResult {
+  auto origAttrs = getAttrs();
+  for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
+    if (origAttrs[i].first == name) {
+      SmallVector<NamedAttribute, 8> newAttrs;
+      newAttrs.reserve(origAttrs.size() - 1);
+      newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
+      newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
+      attrs = AttributeListStorage::get(newAttrs, context);
       return RemoveResult::Removed;
     }
   }

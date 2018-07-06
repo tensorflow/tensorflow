@@ -89,7 +89,7 @@ bb42:       ; CHECK: bb0:
   ; CHECK: "foo"(){a: 1, b: -423, c: [true, false]}
   "foo"(){a: 1, b: -423, c: [true, false] }
 
-  ; CHECK: "foo"(){if: "foo", cfgfunc: [], i123: 7}
+  ; CHECK: "foo"(){cfgfunc: [], i123: 7, if: "foo"}
   "foo"(){if: "foo", cfgfunc: [], i123: 7}
 
   return

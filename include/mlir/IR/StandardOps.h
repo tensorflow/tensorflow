@@ -37,8 +37,7 @@ class OperationSet;
 ///   %2 = addf %0, %1 : f32
 ///
 class AddFOp
-    : public OpImpl::Storage,
-      public OpImpl::Base<AddFOp, OpImpl::TwoOperands, OpImpl::OneResult> {
+    : public OpImpl::Base<AddFOp, OpImpl::TwoOperands, OpImpl::OneResult> {
 public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "addf"; }
@@ -47,7 +46,7 @@ public:
 
 private:
   friend class Operation;
-  explicit AddFOp(const Operation *state) : Storage(state) {}
+  explicit AddFOp(const Operation *state) : Base(state) {}
 };
 
 /// The "dim" builtin takes a memref or tensor operand and returns an
@@ -57,8 +56,7 @@ private:
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>
 ///
 class DimOp
-    : public OpImpl::Storage,
-      public OpImpl::Base<DimOp, OpImpl::OneOperand, OpImpl::OneResult> {
+    : public OpImpl::Base<DimOp, OpImpl::OneOperand, OpImpl::OneResult> {
 public:
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
@@ -72,7 +70,7 @@ public:
 
 private:
   friend class Operation;
-  explicit DimOp(const Operation *state) : Storage(state) {}
+  explicit DimOp(const Operation *state) : Base(state) {}
 };
 
 /// Install the standard operations in the specified operation set.

@@ -19,6 +19,7 @@
 #define MLIR_IR_IDENTIFIER_H
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace mlir {
@@ -61,6 +62,16 @@ public:
 
   void print(raw_ostream &os) const;
   void dump() const;
+
+  static Identifier getEmptyKey() {
+    return Identifier(
+        (const char *)llvm::DenseMapInfo<const void *>::getEmptyKey());
+  }
+  static Identifier getTombstoneKey() {
+    return Identifier(
+        (const char *)llvm::DenseMapInfo<const void *>::getTombstoneKey());
+  }
+
 private:
   /// These are the bytes of the string, which is a nul terminated string.
   const char *pointer;
@@ -85,6 +96,28 @@ inline bool operator!=(Identifier lhs, StringRef rhs) { return !lhs.is(rhs); }
 inline bool operator==(StringRef lhs, Identifier rhs) { return rhs.is(lhs); }
 inline bool operator!=(StringRef lhs, Identifier rhs) { return !rhs.is(lhs); }
 
+// Make identifiers hashable.
+inline llvm::hash_code hash_value(Identifier arg) {
+  return llvm::hash_value(arg.str());
+}
+
 } // end namespace mlir
 
+namespace llvm {
+// Identifiers hash just like pointers, there is no need to hash the bytes.
+template <> struct DenseMapInfo<mlir::Identifier> {
+  static mlir::Identifier getEmptyKey() {
+    return mlir::Identifier::getEmptyKey();
+  }
+  static mlir::Identifier getTombstoneKey() {
+    return mlir::Identifier::getTombstoneKey();
+  }
+  static unsigned getHashValue(mlir::Identifier Val) {
+    return DenseMapInfo<const void *>::getHashValue(Val.data());
+  }
+  static bool isEqual(mlir::Identifier LHS, mlir::Identifier RHS) {
+    return LHS == RHS;
+  }
+};
+} // end namespace llvm
 #endif

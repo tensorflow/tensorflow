@@ -1296,7 +1296,7 @@ parseCFGOperation(CFGFunctionParserState &functionState) {
   }
 
   auto nameId = Identifier::get(name, context);
-  return new OperationInst(nameId, attributes);
+  return new OperationInst(nameId, attributes, context);
 }
 
 

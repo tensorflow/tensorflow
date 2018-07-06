@@ -24,6 +24,7 @@
 
 namespace mlir {
 class Attribute;
+class AttributeListStorage;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 
@@ -52,20 +53,18 @@ public:
   // (maybe a dozen or so, but not hundreds or thousands) so we use linear
   // searches for everything.
 
-  ArrayRef<NamedAttribute> getAttrs() const {
-    return attrs;
-  }
+  ArrayRef<NamedAttribute> getAttrs() const;
 
   /// Return the specified attribute if present, null otherwise.
   Attribute *getAttr(Identifier name) const {
-    for (auto elt : attrs)
+    for (auto elt : getAttrs())
       if (elt.first == name)
         return elt.second;
     return nullptr;
   }
 
   Attribute *getAttr(StringRef name) const {
-    for (auto elt : attrs)
+    for (auto elt : getAttrs())
       if (elt.first.is(name))
         return elt.second;
     return nullptr;
@@ -83,7 +82,7 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute *value);
+  void setAttr(Identifier name, Attribute *value, MLIRContext *context);
 
   enum class RemoveResult {
     Removed, NotFound
@@ -91,7 +90,7 @@ public:
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
-  RemoveResult removeAttr(Identifier name);
+  RemoveResult removeAttr(Identifier name, MLIRContext *context);
 
   /// The getAs methods perform a dynamic cast from an Operation (like
   /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
@@ -112,14 +111,15 @@ public:
   }
 
 protected:
-  Operation(Identifier name, ArrayRef<NamedAttribute> attrs);
+  Operation(Identifier name, ArrayRef<NamedAttribute> attrs,
+            MLIRContext *context);
   ~Operation();
 private:
   Operation(const Operation&) = delete;
   void operator=(const Operation&) = delete;
 
   Identifier name;
-  std::vector<NamedAttribute> attrs;
+  AttributeListStorage *attrs;
 };
 
 } // end namespace mlir

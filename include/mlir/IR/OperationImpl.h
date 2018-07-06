@@ -72,9 +72,11 @@ public:
 
 namespace OpImpl {
 
-/// Every op should subclass this class to provide the basic storage of the
-/// Operation*.
-class Storage {
+/// This provides public APIs that all operations should have.  The template
+/// argument 'ConcreteType' should be the concrete type by CRTP and the others
+/// are base classes by the policy pattern.
+template <typename ConcreteType, typename... Traits>
+class Base : public Traits... {
 public:
   /// Return the operation that this refers to.
   const Operation *getOperation() const { return state; }
@@ -88,31 +90,24 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute *value) {
-    state->setAttr(name, value);
+  void setAttr(Identifier name, Attribute *value, MLIRContext *context) {
+    state->setAttr(name, value, context);
   }
 
-protected:
-  /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
-  /// so we can cast it away here.
-  explicit Storage(const Operation *state)
-      : state(const_cast<Operation *>(state)) {}
-
-private:
-  Operation *state;
-};
-
-/// This provides public APIs that all operations should have.  The template
-/// argument 'ConcreteType' should be the concrete type by CRTP and the others
-/// are base classes by the policy pattern.
-template <typename ConcreteType, typename... Traits>
-class Base : public Traits... {
-public:
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
   static void printAssembly(const Operation *op, raw_ostream &os) {
     op->getAs<ConcreteType>()->print(os);
   }
+
+protected:
+  /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
+  /// so we can cast it away here.
+  explicit Base(const Operation *state)
+      : state(const_cast<Operation *>(state)) {}
+
+private:
+  Operation *state;
 };
 
 /// This class provides the API for ops that are known to have exactly one
