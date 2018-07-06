@@ -26,8 +26,10 @@ from tensorflow.python.framework import tensor_shape
 
 
 class IgniteDataset(Dataset):
-  """An Ignite  Dataset.
+  """An Ignite Dataset.
+
   This dataset reads data from specified cache from Apache Ignite.
+  This implementation uses 'fat' client (see https://apacheignite-cpp.readme.io/docs).
   For now (as long as connection is made with 'fat' client) only caches
   with integer keys and string values are supported.
   To configure 'fat' client some environment variables should be set:
@@ -40,7 +42,7 @@ class IgniteDataset(Dataset):
   """
 
   def __init__(self, cache):
-    """Create a IgniteReader.
+    """Create a IgniteDataset.
 
     Args:
       cache: A `tf.string` tensor containing cache name.

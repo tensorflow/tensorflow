@@ -66,7 +66,7 @@ namespace tensorflow {
         protected:
             Status AsGraphDefInternal(DatasetGraphDefBuilder *b,
                                       Node **output) const override {
-                return Status::OK();
+                return errors::Unimplemented();
             }
 
         private:
@@ -111,11 +111,11 @@ namespace tensorflow {
 
             protected:
                 Status SaveInternal(IteratorStateWriter *writer) override {
-                    return Status::OK();
+                    return error::Unimplemented();
                 }
 
                 Status RestoreInternal(IteratorContext *ctx, IteratorStateReader *reader) override {
-                    return Status::OK();
+                    return error::Unimplemented();
                 }
             };
         };
