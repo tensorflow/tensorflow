@@ -181,7 +181,7 @@ Take the following steps to install TensorFlow for Java on Windows:
      [TensorFlow for Java on Windows](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-windows-x86_64-1.9.0.zip).
   3. Extract this .zip file.
 
-
+__Note__: The native library (`tensorflow_jni.dll`) requires `msvcp140.dll` at runtime, which is included in the [Visual C++ 2015 Redistributable](https://www.microsoft.com/en-us/download/details.aspx?id=48145) package. 
 
 ### Validate the installation
 
