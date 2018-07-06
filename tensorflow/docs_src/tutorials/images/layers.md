@@ -1,4 +1,4 @@
-# A Guide to TF Layers: Building a Convolutional Neural Network
+# Build a Convolutional Neural Network using Estimators
 
 The TensorFlow @{tf.layers$`layers` module} provides a high-level API that makes
 it easy to construct a neural network. It provides methods that facilitate the
@@ -470,51 +470,18 @@ as the loss metric. The following code calculates cross entropy when the model
 runs in either `TRAIN` or `EVAL` mode:
 
 ```python
-onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-loss = tf.losses.softmax_cross_entropy(
-    onehot_labels=onehot_labels, logits=logits)
+loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 ```
 
 Let's take a closer look at what's happening above.
 
-Our `labels` tensor contains a list of predictions for our examples, e.g. `[1,
-9, ...]`. In order to calculate cross-entropy, first we need to convert `labels`
-to the corresponding
-[one-hot encoding](https://www.quora.com/What-is-one-hot-encoding-and-when-is-it-used-in-data-science):
+Our `labels` tensor contains a list of prediction indices for our examples, e.g. `[1,
+9, ...]`. `logits` contains the linear outputs of our last layer. 
 
-```none
-[[0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
- [0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
- ...]
-```
+`tf.losses.sparse_softmax_cross_entropy`, calculates the softmax crossentropy
+(aka: categorical crossentropy, negative log-likelihood) from these two inputs
+in an efficient, numerically stable way.
 
-We use the @{tf.one_hot} function
-to perform this conversion. `tf.one_hot()` has two required arguments:
-
-*   `indices`. The locations in the one-hot tensor that will have "on
-    values"—i.e., the locations of `1` values in the tensor shown above.
-*   `depth`. The depth of the one-hot tensor—i.e., the number of target classes.
-    Here, the depth is `10`.
-
-The following code creates the one-hot tensor for our labels, `onehot_labels`:
-
-```python
-onehot_labels = tf.one_hot(indices=tf.cast(labels, tf.int32), depth=10)
-```
-
-Because `labels` contains a series of values from 0–9, `indices` is just our
-`labels` tensor, with values cast to integers. The `depth` is `10` because we
-have 10 possible target classes, one for each digit.
-
-Next, we compute cross-entropy of `onehot_labels` and the softmax of the
-predictions from our logits layer. `tf.losses.softmax_cross_entropy()` takes
-`onehot_labels` and `logits` as arguments, performs softmax activation on
-`logits`, calculates cross-entropy, and returns our `loss` as a scalar `Tensor`:
-
-```python
-loss = tf.losses.softmax_cross_entropy(
-    onehot_labels=onehot_labels, logits=logits)
-```
 
 ### Configure the Training Op
 

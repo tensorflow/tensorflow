@@ -339,9 +339,7 @@ Docker will download the TensorFlow binary image the first time you launch it.
 
 #### GPU support
 
-Prior to installing TensorFlow with GPU support, ensure that your system meets all
-[NVIDIA software requirements](#NVIDIARequirements).  To launch a Docker container
-with NVidia GPU support, enter a command of the following format:
+To launch a Docker container with NVidia GPU support, enter a command of the following format (this [does not require any local CUDA installation](https://github.com/nvidia/nvidia-docker/wiki/CUDA#requirements)):
 
 <pre>
 $ <b>nvidia-docker run -it</b> <i>-p hostPort:containerPort TensorFlowGPUImage</i>
@@ -491,7 +489,7 @@ TensorFlow programs:
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 <a name="NVIDIARequirements"></a>
 ## TensorFlow GPU support

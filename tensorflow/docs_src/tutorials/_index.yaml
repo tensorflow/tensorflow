@@ -75,11 +75,11 @@ landing_page:
               <a href="/guide/keras">TensorFlow Keras guide</a>.
             </p>
             <ol style="padding-left:20px;">
-              <li><a href="/get_started/basic_classification">Basic classification</a></li>
-              <li><a href="/get_started/basic_text_classification">Text classification</a></li>
-              <li><a href="/get_started/basic_regression">Regression</a></li>
-              <li><a href="/get_started/overfit_and_underfit">Overfitting and underfitting</a></li>
-              <li><a href="/get_started/save_and_restore_models">Save and load</a></li>
+              <li><a href="./keras/basic_classification">Basic classification</a></li>
+              <li><a href="./keras/basic_text_classification">Text classification</a></li>
+              <li><a href="./keras/basic_regression">Regression</a></li>
+              <li><a href="./keras/overfit_and_underfit">Overfitting and underfitting</a></li>
+              <li><a href="./keras/save_and_restore_models">Save and load</a></li>
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons" style="margin-top:0;">
@@ -109,7 +109,7 @@ landing_page:
         model.evaluate(x_test, y_test)
         </pre>
         {% dynamic if request.tld != 'cn' %}
-        <a class="colab-button" target="_blank" href="https://colab.sandbox.google.com/github/tensorflow/models/blob/master/samples/core/get_started/_index.ipynb">Run in a <span>Notebook</span></a>
+        <a class="colab-button" target="_blank" href="https://colab.research.google.com/github/tensorflow/models/blob/master/samples/core/get_started/_index.ipynb">Run in a <span>Notebook</span></a>
         {% dynamic endif %}
 
   - items:
@@ -124,38 +124,38 @@ landing_page:
             <ol style="padding-left:20px;">
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/1_basics.ipynb" class="external">Eager execution basics</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/1_basics.ipynb" class="external">Eager execution basics</a>
+                <a href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb" class="external">Eager execution basics</a>
                 {% dynamic endif %}
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/2_gradients.ipynb" class="external">Automatic differentiation and gradient tapes</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb" class="external">Automatic differentiation and gradient tape</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/2_gradients.ipynb" class="external">Automatic differentiation and gradient tapes</a>
+                <a href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb" class="external">Automatic differentiation and gradient tape</a>
                 {% dynamic endif %}
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/3_training_models.ipynb" class="external">Variables, models, and training</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb" class="external">Custom training: basics</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/3_training_models.ipynb" class="external">Variables, models, and training</a>
+                <a href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb" class="external">Custom training: basics</a>
                 {% dynamic endif %}
               </li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
-                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/4_high_level.ipynb" class="external">Custom layers</a>
+                <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb" class="external">Custom layers</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/4_high_level.ipynb" class="external">Custom layers</a>
+                <a href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb" class="external">Custom layers</a>
                 {% dynamic endif %}
               </li>
-              <li><a href="/get_started/eager">Custom training walkthrough</a></li>
+              <li><a href="./eager/custom_training_walkthrough">Custom training: walkthrough</a></li>
               <li>
                 {% dynamic if request.tld == 'cn' %}
                 <a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb" class="external">Example: Neural machine translation w/ attention</a>
                 {% dynamic else %}
-                <a href="https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb" class="external">Example: Neural machine translation w/ attention</a>
+                <a href="https://colab.research.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb" class="external">Example: Neural machine translation w/ attention</a>
                 {% dynamic endif %}
               </li>
             </ol>
@@ -170,13 +170,15 @@ landing_page:
           <div class="devsite-landing-row-item-description-content">
             <p>
               Estimators can train large models on multiple machines in a
-              production environment. Try the examples below and read the
-              <a href="/guide/estimators">Estimators guide</a>.
+              production environment. Read the
+              <a href="/guide/estimators">Estimators guide</a> for details.
             </p>
             <ol style="padding-left: 20px;">
-              <li><a href="/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
+              <li><a href="/tutorials/images/layers">Build a Convolutional Neural Network using Estimators</a></li>
+              <li><a href="/hub/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>
               <li><a href="https://github.com/tensorflow/models/tree/master/official/boosted_trees">Classifying Higgs boson processes</a></li>
-              <li><a href="/tutorials/wide_and_deep">Wide and deep learning using estimators</a></li>
+              <li><a href="/tutorials/representation/wide_and_deep">Wide and deep learning using Estimators</a></li>
+              <li><a href="/tutorials/representation/linear">Large-scale linear models</a></li>
             </ol>
           </div>
           <div class="devsite-landing-row-item-buttons">
@@ -187,7 +189,7 @@ landing_page:
   - description: >
       <h2 class="hide-from-toc">Google Colab&#58; An easy way to learn and use TensorFlow</h2>
       <p>
-        <a href="https://colab.sandbox.google.com/notebooks/welcome.ipynb" class="external">Colaboratory</a>
+        <a href="https://colab.research.google.com/notebooks/welcome.ipynb" class="external">Colaboratory</a>
         is a Google research project created to help disseminate machine learning
         education and research. It's a Jupyter notebook environment that requires
         no setup to use and runs entirely in the cloud.
