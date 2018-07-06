@@ -51,7 +51,7 @@ class InitializableLookupTable : public LookupInterface {
         "Insert not supported by InitializableLookupTable implementations");
   }
 
-  Status ExportValues(OpKernelContext* context) {
+  Status ExportValues(OpKernelContext* context) override {
     return errors::Unimplemented(
         "ExportValues not supported by InitializableLookupTable "
         "implementations");
