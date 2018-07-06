@@ -1097,10 +1097,8 @@ class PartitionedCallTest(test.TestCase):
     self.assertEqual(value, 2.0)
 
   def testFunctionWithResourcesOnDifferentDevices(self):
-    # TODO(akshayka): Remove the `skipTest` once we can whitelist ops as
-    # safe to be invoked with resources on different devices.
-    self.skipTest("The Placer disallows ops with resource inputs "
-                  "on different devices.")
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPUs available.")
 
     with ops.device("/cpu:0"):
       v_cpu_zero = resource_variable_ops.ResourceVariable(

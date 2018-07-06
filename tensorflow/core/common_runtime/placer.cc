@@ -631,9 +631,6 @@ class ColocationGraph {
   // Ensures that the devices of 'dst's resource and reference match the device
   // specified for 'src', which is an input of 'dst' with a partially or fully
   // specified device.
-  //
-  // TODO(akshayka): Consider adding a way to whitelist ops that want to be
-  // exempt from this check.
   Status VerifyResourceAndRefInputsCanBeColocated(
       const Node* dst, const Node* src,
       const DeviceNameUtils::ParsedName& src_parsed_name) {
@@ -683,6 +680,15 @@ bool IsGeneratorNode(const Node* node) {
          !IsRefType(node->output_type(0));
 }
 
+bool IsExemptFromResourceInputColocation(const Node* node) {
+  // Note: Partitioned function calls, which place and partition their
+  // function bodies, are exempt from this check: they forward resource and
+  // ref inputs to operations that are appropriately placed, instead of
+  // dereferencing them.
+  const string& op_type = node->op_def().name();
+  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall";
+}
+
 }  // namespace
 
 Placer::Placer(Graph* graph, const DeviceSet* devices,
@@ -717,8 +723,8 @@ Status Placer::Run() {
   // 2. Enumerate the constraint edges, and use them to update the disjoint
   // node set.
 
-  // If `node` has an input edge with reference type, add an
-  // edge from the source of that edge to `node`.
+  // If `node` has an input edge with reference type, add an edge from the
+  // source of that edge to `node`.
   for (const Edge* edge : graph_->edges()) {
     if (edge->IsControlEdge()) {
       continue;
@@ -726,7 +732,10 @@ Status Placer::Run() {
     Node* src = edge->src();
     Node* dst = edge->dst();
     DataType input_type = dst->input_type(edge->dst_input());
-    if (input_type == DT_RESOURCE || IsRefType(input_type)) {
+    if ((input_type == DT_RESOURCE || IsRefType(input_type)) &&
+        !IsExemptFromResourceInputColocation(dst)) {
+      // Colocate `src` and `dst` to maintain the invariant that nodes connected
+      // by reference edges are colocated.
       int src_root_id = colocation_graph.FindRoot(src->id());
       int dst_root_id = colocation_graph.FindRoot(dst->id());
       auto& src_root = colocation_graph.members_[src_root_id];
