@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/core/lib/core/casts.h"
@@ -1316,7 +1317,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 parent_->GetEvaluatedLiteralFor(operand);
 
             auto curr_val = arg_literal.Get<NativeT>(multi_index);
-            auto curr_val_literal = Literal::CreateR0<NativeT>(curr_val);
+            auto curr_val_literal = LiteralUtil::CreateR0<NativeT>(curr_val);
 
             arg_literals.push_back(std::move(curr_val_literal));
           }
@@ -1504,8 +1505,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
             // Evaluate computation with specified literal operands.
-            auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
-            auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
+            auto curr_val_literal = LiteralUtil::CreateR0<ReturnT>(curr_val);
+            auto result_val_literal =
+                LiteralUtil::CreateR0<ReturnT>(result_val);
 
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator
@@ -1583,10 +1585,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // Used in the dual IterateThroughWindow lambdas below. Hoisted to avoid
     // dynamic memory allocations.
-    auto curr_val_literal = Literal::CreateR0<ReturnT>(ReturnT());
-    auto selected_val_literal = Literal::CreateR0<ReturnT>(ReturnT());
-    auto source_literal_scatter = Literal::CreateR0<ReturnT>(ReturnT());
-    auto scattered_literal = Literal::CreateR0<ReturnT>(ReturnT());
+    auto curr_val_literal = LiteralUtil::CreateR0<ReturnT>(ReturnT());
+    auto selected_val_literal = LiteralUtil::CreateR0<ReturnT>(ReturnT());
+    auto source_literal_scatter = LiteralUtil::CreateR0<ReturnT>(ReturnT());
+    auto scattered_literal = LiteralUtil::CreateR0<ReturnT>(ReturnT());
     do {
       // For each element in `source`, we place a window in `operand`. For each
       // window placement, we iterate inside the window twice:
@@ -1707,9 +1709,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
                 // Evaluate computation with specified literal operands.
                 const auto curr_val_literal =
-                    Literal::CreateR0<ReturnT>(curr_val);
+                    LiteralUtil::CreateR0<ReturnT>(curr_val);
                 const auto result_val_literal =
-                    Literal::CreateR0<ReturnT>(result_val);
+                    LiteralUtil::CreateR0<ReturnT>(result_val);
                 std::unique_ptr<Literal> computed_result =
                     embedded_evaluator
                         .Evaluate<const Literal*>(
@@ -1754,7 +1756,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return operand_literal.Get<ReturnT>(operand_index);
     };
 
-    auto result = Literal::CreateFromDimensions(
+    auto result = LiteralUtil::CreateFromDimensions(
         shape.element_type(), AsInt64Slice(shape.dimensions()));
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);

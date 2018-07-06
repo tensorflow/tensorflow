@@ -17,7 +17,6 @@
 
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -58,8 +57,11 @@ class HloRematerialization {
   //   sizes: Optional outparam that indicates the peak memory usage of the HLO
   //     module before/after rematerialization.
   //
-  //   copy_insertion: If non-null, run the provided copy insertion pass
-  //   before HLO scheduling.
+  //   run_copy_elision: Enable copy elision. This pass is used to eliminate
+  //     copies that were inserted before HLO scheduling.
+  //
+  // TODO(b/80249101): Remove the 'run_copy_elision' parameter when copy
+  // insertion is integrated with HLO scheduling.
   //
   // Returns whether any instructions were rematerialized. If memory use is
   // already below the given limit then no instructions are rematerialized and
@@ -72,15 +74,13 @@ class HloRematerialization {
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
       HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
       SequentialHloOrdering::HloModuleSequence* sequence,
-      RematerializationSizes* sizes, CopyInsertion* copy_insertion = nullptr);
+      RematerializationSizes* sizes, bool run_copy_elision = true);
 
  protected:
   HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
-                       const ShapeSizeFunction& size_function,
-                       CopyInsertion* copy_insertion)
+                       const ShapeSizeFunction& size_function)
       : scheduler_algorithm_(scheduler_algorithm),
-        size_function_(size_function),
-        copy_insertion_(copy_insertion) {}
+        size_function_(size_function) {}
   ~HloRematerialization() {}
 
   // Runs rematerialization on the given module. Returns whether the module was
@@ -89,7 +89,8 @@ class HloRematerialization {
   // contains the memory-minimizing order in which to emit the HLO instructions.
   StatusOr<bool> Run(HloModule* module,
                      SequentialHloOrdering::HloModuleSequence* sequence,
-                     int64 memory_limit, RematerializationSizes* sizes);
+                     int64 memory_limit, RematerializationSizes* sizes,
+                     bool run_copy_elision);
 
   // Rematerializes instructions within the given computation. 'order' is the
   // order in which the computation's instructions will be emitted in the
@@ -145,9 +146,6 @@ class HloRematerialization {
   // uses of the original instruction and the original instruction is
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
-
-  // Copy insertion pass that runs before HLO scheduling.
-  CopyInsertion* copy_insertion_;
 };
 
 }  // namespace xla

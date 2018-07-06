@@ -1126,12 +1126,41 @@ Status ForEachMutableSubshapeHelper(
   for (auto dim : Permute(permutation, shape.dimensions())) {
     new_shape.add_dimensions(dim);
   }
+
+  // If `shape` has a layout, by contract we choose a new layout such that the
+  // transpose defined by this permutation is a bitcast.
+  //
+  // Some formalism helps to understand the correct way to do this.  We're going
+  // to do algebra in the group of permutations of the dimensions of `shape`.
+  //
+  // Since the order of `shape`'s dimensions is not permuted relative to itself,
+  // `shape`'s list of dimensions is isomorphic to the identity I.
+  //
+  // Let `shape`'s layout be L.  A layout is a permutation which maps a
+  // minor-to-major physical layout to the order of a shape's logical dims.
+  // Therefore inverse of a layout maps from logical to physical dims, and so
+  // the physical layout of I is simply L'.I = L', where L' is the inverse of L.
+  //
+  // Let the argument `permutation` be P.  This is a permutation over `shape`'s
+  // dimensions, so our return value will be a shape with dims P.I = P.  Our
+  // goal is to construct a layout permutation L* that we can apply to P such
+  // that that the physical dimension ordering of the returned shape is the same
+  // as that of the original shape, namely L'.
+  //
+  // Our returned shape has dims P and layout L*, so its in-memory layout is
+  // L*'.P.  Setting this equal to L' and solving for L*, we get:
+  //
+  //   L*'.P = L'    =>
+  //   L*'   = L'P'  =>
+  //   L*    = P.L
+  //
   if (shape.has_layout()) {
     CHECK(LayoutUtil::IsDenseArray(shape));
     Layout* new_layout = new_shape.mutable_layout();
     new_layout->set_format(DENSE);
     new_layout->clear_minor_to_major();
-    for (auto index : Permute(permutation, shape.layout().minor_to_major())) {
+    for (auto index : ComposePermutations(
+             permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
       new_layout->add_minor_to_major(index);
     }
     if (shape.layout().padded_dimensions_size() > 0) {
@@ -1141,6 +1170,13 @@ Status ForEachMutableSubshapeHelper(
         new_layout->add_padded_dimensions(dim);
       }
     }
+    // The permutation accepted by TransposeIsBitcast is the inverse of the
+    // permutation here.
+    CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
+        << "shape=" << HumanStringWithLayout(shape)
+        << ", new_shape=" << HumanStringWithLayout(new_shape)
+        << ", permutation={" << tensorflow::str_util::Join(permutation, ",")
+        << "}";
   }
   return new_shape;
 }

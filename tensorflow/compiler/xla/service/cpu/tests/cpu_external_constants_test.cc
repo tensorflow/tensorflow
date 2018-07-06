@@ -40,7 +40,7 @@ class CpuExternalConstantsTest : public CpuCodegenTest {
 
     HloInstruction* constant =
         builder.AddInstruction(HloInstruction::CreateConstant(
-            Literal::CreateR2FromArray2D(backing_array)));
+            LiteralUtil::CreateR2FromArray2D(backing_array)));
     HloInstruction* param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
     builder.AddInstruction(

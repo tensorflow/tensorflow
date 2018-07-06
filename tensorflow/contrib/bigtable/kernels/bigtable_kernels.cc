@@ -240,6 +240,12 @@ class ToBigtableOp : public AsyncOpKernel {
         grpc::Status mutation_status;
         std::vector<::google::cloud::bigtable::FailedMutation> failures =
             resource->table().BulkApply(std::move(mutation), mutation_status);
+        if (!mutation_status.ok()) {
+          LOG(ERROR) << "Failure applying mutation: "
+                     << mutation_status.error_code() << " - "
+                     << mutation_status.error_message() << " ("
+                     << mutation_status.error_details() << ").";
+        }
         if (!failures.empty()) {
           for (const auto& failure : failures) {
             LOG(ERROR) << "Failure applying mutation on row ("

@@ -30,10 +30,14 @@ WhileThunk::WhileThunk(
     const HloInstruction* hlo)
     : Thunk(Kind::kWhile, hlo),
       condition_result_buffer_index_(condition_result_buffer_index),
+      // Pass nullptr as the HloInstruction* to the condition_thunk_sequence_
+      // and body_thunk_sequence_ constructors because these SequentialThunks
+      // are logically "part of" this WhileThunk, and shouldn't be profiled
+      // separately from it.
       condition_thunk_sequence_(MakeUnique<SequentialThunk>(
-          std::move(*condition_thunk_sequence), hlo)),
-      body_thunk_sequence_(
-          MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
+          std::move(*condition_thunk_sequence), nullptr)),
+      body_thunk_sequence_(MakeUnique<SequentialThunk>(
+          std::move(*body_thunk_sequence), nullptr)) {}
 
 Status WhileThunk::Initialize(const GpuExecutable& executable,
                               se::StreamExecutor* executor) {

@@ -94,13 +94,13 @@ xla::XlaOp ArgMinMax(xla::XlaOp input, xla::PrimitiveType output_type, int axis,
 xla::XlaOp XlaHelpers::Zero(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return xla::ConstantLiteral(b, xla::Literal::Zero(type));
+  return xla::ConstantLiteral(b, xla::LiteralUtil::Zero(type));
 }
 
 xla::XlaOp XlaHelpers::One(xla::XlaBuilder* b, DataType data_type) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
-  return xla::ConstantLiteral(b, xla::Literal::One(type));
+  return xla::ConstantLiteral(b, xla::LiteralUtil::One(type));
 }
 
 xla::XlaOp XlaHelpers::IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
