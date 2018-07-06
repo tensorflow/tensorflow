@@ -273,13 +273,16 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
       transformations.Add(new toco::MergeLstmCellInputs);
     }
   }
-  if (toco_flags.quantize_weights()) {
-    transformations.Add(new QuantizeWeights);
-  }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
 
+  if (toco_flags.quantize_weights()) {
+    // Run the quantize weights transformation after batchnorms have been
+    // folded into the weights.
+    RunGraphTransformations(model, "quantize weights transformation",
+                            {new QuantizeWeights});
+  }
   if (quantize_output) {
     if (toco_flags.propagate_fake_quant_num_bits()) {
       RunGraphTransformations(model,
