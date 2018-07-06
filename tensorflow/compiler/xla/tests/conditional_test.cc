@@ -344,8 +344,8 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfScalars) {
 
   ComputeAndCompareTuple(
       &builder,
-      *Literal::MakeTuple({Literal::CreateR0<float>(12.0f).get(),
-                           Literal::CreateR0<float>(25.0f).get()}),
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR0<float>(12.0f).get(),
+                               LiteralUtil::CreateR0<float>(25.0f).get()}),
       {}, error_spec_);
 }
 
@@ -361,8 +361,9 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleOfArrays) {
 
   ComputeAndCompareTuple(
       &builder,
-      *Literal::MakeTuple({Literal::CreateR1<float>({13.0f, 16.0f}).get(),
-                           Literal::CreateR1<float>({26.0f, 30.0f}).get()}),
+      *LiteralUtil::MakeTuple(
+          {LiteralUtil::CreateR1<float>({13.0f, 16.0f}).get(),
+           LiteralUtil::CreateR1<float>({26.0f, 30.0f}).get()}),
       {}, error_spec_);
 }
 
@@ -399,9 +400,10 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
 
   ComputeAndCompareTuple(
       &builder,
-      *Literal::MakeTuple({Literal::CreateR0<bool>(true).get(),
-                           Literal::CreateR0<float>(12.2f).get(),
-                           Literal::CreateR1<float>({12.8f, 14.6f}).get()}),
+      *LiteralUtil::MakeTuple(
+          {LiteralUtil::CreateR0<bool>(true).get(),
+           LiteralUtil::CreateR0<float>(12.2f).get(),
+           LiteralUtil::CreateR1<float>({12.8f, 14.6f}).get()}),
       {}, error_spec_);
 }
 
@@ -443,12 +445,14 @@ XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
 
   ComputeAndCompareTuple(
       &builder,
-      *Literal::MakeTuple(
-          {Literal::MakeTuple({Literal::CreateR0<float>(46.6f).get(),
-                               Literal::CreateR1<float>({54.4f, 58.4f}).get()})
+      *LiteralUtil::MakeTuple(
+          {LiteralUtil::MakeTuple(
+               {LiteralUtil::CreateR0<float>(46.6f).get(),
+                LiteralUtil::CreateR1<float>({54.4f, 58.4f}).get()})
                .get(),
-           Literal::MakeTuple({Literal::CreateR1<float>({62.1f, 67.4f}).get(),
-                               Literal::CreateR0<float>(9.3f).get()})
+           LiteralUtil::MakeTuple(
+               {LiteralUtil::CreateR1<float>({62.1f, 67.4f}).get(),
+                LiteralUtil::CreateR0<float>(9.3f).get()})
                .get()}),
       {}, error_spec_);
 }
@@ -607,8 +611,8 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
 
     ComputeAndCompareTuple(
         &builder,
-        *Literal::MakeTuple({Literal::CreateR0<float>(a).get(),
-                             Literal::CreateR0<float>(b).get()}),
+        *LiteralUtil::MakeTuple({LiteralUtil::CreateR0<float>(a).get(),
+                                 LiteralUtil::CreateR0<float>(b).get()}),
         {}, error_spec_);
   };
 

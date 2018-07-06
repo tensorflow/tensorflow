@@ -63,24 +63,29 @@ class SampleRowKeysResponse : public grpc::ClientReaderInterface<
 
   bool NextMessageSize(uint32_t* sz) override {
     mutex_lock l(mu_);
-    if (sent_first_message_) {
-      return false;
+    mutex_lock l2(client_->mu_);
+    if (num_messages_sent_ * 2 < client_->table_.rows.size()) {
+      *sz = 10000;  // A sufficiently high enough value to not worry about.
+      return true;
     }
-    *sz = 10000;  // A sufficiently high enough value to not worry about.
-    return true;
+    return false;
   }
 
   bool Read(google::bigtable::v2::SampleRowKeysResponse* resp) override {
+    // Send every other key from the table.
     mutex_lock l(mu_);
-    if (sent_first_message_) {
-      return false;
-    }
-    sent_first_message_ = true;
-
     mutex_lock l2(client_->mu_);
     *resp = google::bigtable::v2::SampleRowKeysResponse();
-    resp->set_row_key(client_->table_.rows.begin()->first);
-    resp->set_offset_bytes(0);
+    auto itr = client_->table_.rows.begin();
+    for (uint64 i = 0; i < 2 * num_messages_sent_; ++i) {
+      ++itr;
+      if (itr == client_->table_.rows.end()) {
+        return false;
+      }
+    }
+    resp->set_row_key(itr->first);
+    resp->set_offset_bytes(100 * num_messages_sent_);
+    num_messages_sent_++;
     return true;
   }
 
@@ -90,7 +95,7 @@ class SampleRowKeysResponse : public grpc::ClientReaderInterface<
 
  private:
   mutex mu_;
-  bool sent_first_message_ GUARDED_BY(mu_) = false;
+  int64 num_messages_sent_ GUARDED_BY(mu_) = 0;
   BigtableTestClient* client_;  // Not owned.
 };
 

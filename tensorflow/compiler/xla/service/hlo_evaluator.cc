@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -134,7 +135,6 @@ StatusOr<std::unique_ptr<Literal>> Compare<complex64>(
 }
 
 }  // namespace
-
 
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
@@ -382,7 +382,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
         ShapeUtil::GetDimension(operand_shape, concat_dim);
   }
 
-  auto result_literal = Literal::CreateFromDimensions(
+  auto result_literal = LiteralUtil::CreateFromDimensions(
       reference_shape.element_type(), concat_dimensions);
   DimensionVector source_indices(rank, 0);
   DimensionVector dest_indices(concat_dimensions.size(), 0);
@@ -533,7 +533,7 @@ Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
     operand_literals.push_back(&GetEvaluatedLiteralFor(operand));
   }
 
-  evaluated_[tuple] = Literal::MakeTuple(operand_literals);
+  evaluated_[tuple] = LiteralUtil::MakeTuple(operand_literals);
   return Status::OK();
 }
 
@@ -903,7 +903,7 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
 }
 
 Status HloEvaluator::HandleAfterAll(HloInstruction* token) {
-  evaluated_[token] = Literal::CreateToken();
+  evaluated_[token] = LiteralUtil::CreateToken();
   return Status::OK();
 }
 
@@ -1119,7 +1119,7 @@ std::unique_ptr<Literal> EvaluateSortInternal(HloInstruction* sort,
   auto result_values_literal = MakeUnique<Literal>(sort->operand(1)->shape());
   result_values_literal->PopulateR1(
       tensorflow::gtl::ArraySlice<ValueType>(result_values));
-  auto result_tuple = Literal::MakeTuple(
+  auto result_tuple = LiteralUtil::MakeTuple(
       {result_keys_literal.get(), result_values_literal.get()});
   VLOG(3) << "HandleSort result_tuple: " << result_tuple->ToString();
   return result_tuple;

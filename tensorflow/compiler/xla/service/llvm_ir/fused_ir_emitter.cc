@@ -119,7 +119,23 @@ Status FusedIrEmitter::HandleGetTupleElement(
 }
 
 Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
-  generators_[parameter] = [=](const IrArray::Index& index) {
+  generators_[parameter] = [=](const IrArray::Index& index) -> llvm::Value* {
+    if (tiled_parameter_info_) {
+      llvm::Value* param_buffer = tiled_parameter_info_->GetBufferForParameter(
+          parameter->parameter_number());
+      if (param_buffer) {
+        VLOG(3) << "Use buffer for " << parameter->ToString();
+        llvm::Instruction* load_from_buffer = ir_builder_->CreateLoad(
+            ir_builder_->CreateGEP(
+                param_buffer,
+                {index.GetConstantWithIndexType(0), tiled_parameter_info_->x(),
+                 tiled_parameter_info_->y()}),
+            "tiled_buffer");
+        parameter_arrays_[parameter->parameter_number()]
+            .AnnotateBufferLoadStoreInstructionWithMetadata(load_from_buffer);
+        return load_from_buffer;
+      }
+    }
     return parameter_arrays_[parameter->parameter_number()]
         .EmitReadArrayElement(index, ir_builder_);
   };

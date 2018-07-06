@@ -55,39 +55,39 @@ XLA_TEST_P(ReshapeTest, CollapseTrivial1x1) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(1, 1);
   input_array.Fill(1.0f);
-  auto input_literal = Literal::CreateR2FromArray2D(input_array);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "parameter",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0, 1});
 
-  auto expected_literal = Literal::CreateR1<float>({1.0f});
+  auto expected_literal = LiteralUtil::CreateR1<float>({1.0f});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
 
 XLA_TEST_P(ReshapeTest, CollapseTrivialR1EmptyDims) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateR1<float>({1.0f});
+  auto input_literal = LiteralUtil::CreateR1<float>({1.0f});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "parameter",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{});
 
-  auto expected_literal = Literal::CreateR1<float>({1.0f});
+  auto expected_literal = LiteralUtil::CreateR1<float>({1.0f});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
 
 XLA_TEST_P(ReshapeTest, CollapseTrivialR1OnlyDim) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateR1<float>({1.0f});
+  auto input_literal = LiteralUtil::CreateR1<float>({1.0f});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "parameter",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0});
 
-  auto expected_literal = Literal::CreateR1<float>({1.0f});
+  auto expected_literal = LiteralUtil::CreateR1<float>({1.0f});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -97,7 +97,7 @@ XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(1, 1);
   input_array.Fill(1.0f);
-  auto input_literal = Literal::CreateR2FromArray2D(input_array);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "parameter",
                                                  &builder, &parameter);
@@ -105,7 +105,7 @@ XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
                          /*new_sizes=*/{});
   auto new_shape = builder.GetShape(reshape).ConsumeValueOrDie();
 
-  auto expected_literal = Literal::CreateR0<float>(1.0f);
+  auto expected_literal = LiteralUtil::CreateR0<float>(1.0f);
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -113,14 +113,14 @@ XLA_TEST_P(ReshapeTest, SingleElementArrayToScalar) {
 XLA_TEST_P(ReshapeTest, ScalarToSingleElementArray) {
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> param0_literal = Literal::CreateR0<float>(1.0f);
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(1.0f);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *param0_literal, "param0",
                                                  &builder, &parameter);
   auto a = Neg(parameter);
   Reshape(/*operand=*/a, /*dimensions=*/{}, /*new_sizes=*/{1});
 
-  auto expected_literal = Literal::CreateR1<float>({-1.0f});
+  auto expected_literal = LiteralUtil::CreateR1<float>({-1.0f});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -128,12 +128,12 @@ XLA_TEST_P(ReshapeTest, ScalarToSingleElementArray) {
 XLA_TEST_P(ReshapeTest, Trivial0x3) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(0, 3);
-  auto input_literal = Literal::CreateR2FromArray2D(input_array);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0, 1});
-  auto expected_literal = Literal::CreateR1<float>({});
+  auto expected_literal = LiteralUtil::CreateR1<float>({});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -142,12 +142,12 @@ XLA_TEST_P(ReshapeTest, Trivial0x3WithParameter) {
   XlaBuilder builder(TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      Literal::CreateR2FromArray2D<float>(Array2D<float>(0, 3));
+      LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(0, 3));
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *param0_literal, "param0",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0, 1});
-  auto expected_literal = Literal::CreateR1<float>({});
+  auto expected_literal = LiteralUtil::CreateR1<float>({});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -155,12 +155,12 @@ XLA_TEST_P(ReshapeTest, Trivial0x3WithParameter) {
 XLA_TEST_P(ReshapeTest, Trivial3x0) {
   XlaBuilder builder(TestName());
   Array2D<float> input_array(3, 0);
-  auto input_literal = Literal::CreateR2FromArray2D(input_array);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input_array);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0, 1});
-  auto expected_literal = Literal::CreateR1<float>({});
+  auto expected_literal = LiteralUtil::CreateR1<float>({});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -168,12 +168,12 @@ XLA_TEST_P(ReshapeTest, Trivial3x0) {
 // Collapses a 2-dimensional row vector to 1 dimension.
 XLA_TEST_P(ReshapeTest, Trivial1x3) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateR2<float>({{1.0f, 2.0f, 3.0f}});
+  auto input_literal = LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f}});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0, 1});
-  auto expected_literal = Literal::CreateR1<float>({1.0f, 2.0f, 3.0f});
+  auto expected_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -181,12 +181,12 @@ XLA_TEST_P(ReshapeTest, Trivial1x3) {
 // Collapses a 2-dimensional column vector to 1 dimension.
 XLA_TEST_P(ReshapeTest, Trivial3x1) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateR2<float>({{1.0f}, {2.0f}, {3.0f}});
+  auto input_literal = LiteralUtil::CreateR2<float>({{1.0f}, {2.0f}, {3.0f}});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{0, 1});
-  auto expected_literal = Literal::CreateR1<float>({1.0f, 2.0f, 3.0f});
+  auto expected_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -194,13 +194,13 @@ XLA_TEST_P(ReshapeTest, Trivial3x1) {
 // Splits an empty vector into an empty matrix.
 XLA_TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateR1<float>({});
+  auto input_literal = LiteralUtil::CreateR1<float>({});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0},
           /*new_sizes=*/{2, 0});
-  auto expected_literal = Literal::CreateR2<float>({{}, {}});
+  auto expected_literal = LiteralUtil::CreateR2<float>({{}, {}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -209,14 +209,14 @@ XLA_TEST_P(ReshapeTest, R1ToR2_0_To_2x0) {
 XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
   XlaBuilder builder(TestName());
   auto input_literal =
-      Literal::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0},
           /*new_sizes=*/{2, 3});
   auto expected_literal =
-      Literal::CreateR2<float>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}});
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -224,13 +224,13 @@ XLA_TEST_P(ReshapeTest, R1ToR2_6_To_2x3) {
 // Transposes a 2x0 array to a 0x2 array.
 XLA_TEST_P(ReshapeTest, Reshape0x2To2x0) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 2));
+  auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(0, 2));
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
           /*new_sizes=*/{2, 0});
-  auto expected_literal = Literal::CreateR2<float>({{}, {}});
+  auto expected_literal = LiteralUtil::CreateR2<float>({{}, {}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -239,7 +239,7 @@ XLA_TEST_P(ReshapeTest, Reshape0x2To2x0) {
 XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
   XlaBuilder builder(TestName());
   auto simple = MakeLinspaceArray2D(1.0f, 3.0f, 1, 3);
-  auto input_literal = Literal::CreateFromArray(*simple);
+  auto input_literal = LiteralUtil::CreateFromArray(*simple);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
@@ -247,7 +247,7 @@ XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
           /*new_sizes=*/{3, 1});
 
   auto expected = ReferenceUtil::TransposeArray2D(*simple);
-  auto expected_literal = Literal::CreateFromArray(*expected);
+  auto expected_literal = LiteralUtil::CreateFromArray(*expected);
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -256,7 +256,7 @@ XLA_TEST_P(ReshapeTest, ReshapeRowToCol) {
 XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
-  auto input_literal = Literal::CreateFromArray(*a4x3);
+  auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
@@ -264,7 +264,7 @@ XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
           /*new_sizes=*/{3, 4});
 
   auto expected = ReferenceUtil::TransposeArray2D(*a4x3);
-  auto expected_literal = Literal::CreateFromArray(*expected);
+  auto expected_literal = LiteralUtil::CreateFromArray(*expected);
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -272,12 +272,12 @@ XLA_TEST_P(ReshapeTest, TransposeAsReshape) {
 // Transposes a 0x4 array with XlaBuilder::Transpose.
 XLA_TEST_P(ReshapeTest, Transpose0x4) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 4));
+  auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(0, 4));
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Transpose(parameter, {1, 0});
-  auto expected_literal = Literal::CreateR2<float>({{}, {}, {}, {}});
+  auto expected_literal = LiteralUtil::CreateR2<float>({{}, {}, {}, {}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -286,14 +286,14 @@ XLA_TEST_P(ReshapeTest, Transpose0x4) {
 XLA_TEST_P(ReshapeTest, Transpose4x3) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
-  auto input_literal = Literal::CreateFromArray(*a4x3);
+  auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Transpose(parameter, {1, 0});
 
   auto expected = ReferenceUtil::TransposeArray2D(*a4x3);
-  auto expected_literal = Literal::CreateFromArray(*expected);
+  auto expected_literal = LiteralUtil::CreateFromArray(*expected);
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -302,26 +302,27 @@ XLA_TEST_P(ReshapeTest, Transpose4x3) {
 // rearrangement of the originals (split), but no reordering (no shuffle).
 XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffleZeroElements) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(Array2D<float>(6, 0));
+  auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(6, 0));
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1},
           /*new_sizes=*/{2, 3, 0, 0});
-  auto expected_literal = Literal::CreateFromArray(Array4D<float>(2, 3, 0, 0));
+  auto expected_literal =
+      LiteralUtil::CreateFromArray(Array4D<float>(2, 3, 0, 0));
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
 
 XLA_TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(Array4D<float>(2, 3, 4, 0));
+  auto input_literal = LiteralUtil::CreateFromArray(Array4D<float>(2, 3, 4, 0));
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2, 3},
           /*new_sizes=*/{24, 0});
-  auto expected_literal = Literal::CreateFromArray(Array2D<float>(24, 0));
+  auto expected_literal = LiteralUtil::CreateFromArray(Array2D<float>(24, 0));
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -331,7 +332,7 @@ XLA_TEST_P(ReshapeTest, ReshapeR4ToR2ZeroElements) {
 XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
-  auto input_literal = Literal::CreateFromArray(*a4x3);
+  auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
@@ -339,20 +340,20 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitNoShuffle) {
           /*new_sizes=*/{2, 6});
 
   auto expected = MakeLinspaceArray2D(1.0f, 12.0f, 2, 6);
-  auto expected_literal = Literal::CreateFromArray(*expected);
+  auto expected_literal = LiteralUtil::CreateFromArray(*expected);
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
 
 XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(Array2D<float>(0, 6));
+  auto input_literal = LiteralUtil::CreateFromArray(Array2D<float>(0, 6));
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{1, 0},
           /*new_sizes=*/{3, 0});
-  auto expected_literal = Literal::CreateFromArray(Array2D<float>(3, 0));
+  auto expected_literal = LiteralUtil::CreateFromArray(Array2D<float>(3, 0));
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -362,7 +363,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffleZeroElements) {
 XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffle) {
   XlaBuilder builder(TestName());
   auto a4x3 = MakeLinspaceArray2D(1.0f, 12.0f, 4, 3);
-  auto input_literal = Literal::CreateFromArray(*a4x3);
+  auto input_literal = LiteralUtil::CreateFromArray(*a4x3);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
@@ -370,7 +371,7 @@ XLA_TEST_P(ReshapeTest, ReshapeSplitAndShuffle) {
           /*new_sizes=*/{2, 6});
   Array2D<float> expected({{1.0f, 4.0f, 7.0f, 10.0f, 2.0f, 5.0f},
                            {8.0f, 11.0f, 3.0f, 6.0f, 9.0f, 12.0f}});
-  auto expected_literal = Literal::CreateFromArray(expected);
+  auto expected_literal = LiteralUtil::CreateFromArray(expected);
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -388,13 +389,13 @@ static Array3D<float> ArrayForDocR3Tests() {
 
 XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_012) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(ArrayForDocR3Tests());
+  auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2},
           /*new_sizes=*/{24});
-  auto expected_literal = Literal::CreateR1<float>(
+  auto expected_literal = LiteralUtil::CreateR1<float>(
       {10, 11, 12, 15, 16, 17, 20, 21, 22, 25, 26, 27,
        30, 31, 32, 35, 36, 37, 40, 41, 42, 45, 46, 47});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
@@ -403,33 +404,33 @@ XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_012) {
 
 XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_012_Refine_83) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(ArrayForDocR3Tests());
+  auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{0, 1, 2},
           /*new_sizes=*/{8, 3});
-  auto expected_literal = Literal::CreateR2<float>({{10, 11, 12},
-                                                    {15, 16, 17},
-                                                    {20, 21, 22},
-                                                    {25, 26, 27},
-                                                    {30, 31, 32},
-                                                    {35, 36, 37},
-                                                    {40, 41, 42},
-                                                    {45, 46, 47}});
+  auto expected_literal = LiteralUtil::CreateR2<float>({{10, 11, 12},
+                                                        {15, 16, 17},
+                                                        {20, 21, 22},
+                                                        {25, 26, 27},
+                                                        {30, 31, 32},
+                                                        {35, 36, 37},
+                                                        {40, 41, 42},
+                                                        {45, 46, 47}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
 
 XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_120) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(ArrayForDocR3Tests());
+  auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{1, 2, 0},
           /*new_sizes=*/{24});
-  auto expected_literal = Literal::CreateR1<float>(
+  auto expected_literal = LiteralUtil::CreateR1<float>(
       {10, 20, 30, 40, 11, 21, 31, 41, 12, 22, 32, 42,
        15, 25, 35, 45, 16, 26, 36, 46, 17, 27, 37, 47});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
@@ -438,33 +439,33 @@ XLA_TEST_P(ReshapeTest, DocR3_R1_Collapse_120) {
 
 XLA_TEST_P(ReshapeTest, DocR3_R2_Collapse_120_Refine_83) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(ArrayForDocR3Tests());
+  auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{1, 2, 0},
           /*new_sizes=*/{8, 3});
-  auto expected_literal = Literal::CreateR2<float>({{10, 20, 30},
-                                                    {40, 11, 21},
-                                                    {31, 41, 12},
-                                                    {22, 32, 42},
-                                                    {15, 25, 35},
-                                                    {45, 16, 26},
-                                                    {36, 46, 17},
-                                                    {27, 37, 47}});
+  auto expected_literal = LiteralUtil::CreateR2<float>({{10, 20, 30},
+                                                        {40, 11, 21},
+                                                        {31, 41, 12},
+                                                        {22, 32, 42},
+                                                        {15, 25, 35},
+                                                        {45, 16, 26},
+                                                        {36, 46, 17},
+                                                        {27, 37, 47}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
 
 XLA_TEST_P(ReshapeTest, DocR3_R3_Collapse_120_Refine_262) {
   XlaBuilder builder(TestName());
-  auto input_literal = Literal::CreateFromArray(ArrayForDocR3Tests());
+  auto input_literal = LiteralUtil::CreateFromArray(ArrayForDocR3Tests());
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Reshape(/*operand=*/parameter, /*dimensions=*/{1, 2, 0},
           /*new_sizes=*/{2, 6, 2});
-  auto expected_literal = Literal::CreateR3<float>(
+  auto expected_literal = LiteralUtil::CreateR3<float>(
       {{{10, 20}, {30, 40}, {11, 21}, {31, 41}, {12, 22}, {32, 42}},
        {{15, 25}, {35, 45}, {16, 26}, {36, 46}, {17, 27}, {37, 47}}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
@@ -491,12 +492,12 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapse) {
   Array4D<float> t2x2x2x3(2, 2, 2, 3);
   auto filler2x3 = MakeLinspaceArray2D(1.0f, 6.0f, 2, 3);
   t2x2x2x3.FillWithYX(*filler2x3);
-  auto input_literal = Literal::CreateFromArray(t2x2x2x3);
+  auto input_literal = LiteralUtil::CreateFromArray(t2x2x2x3);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
   Collapse(/*operand=*/parameter, /*dimensions=*/{1, 2, 3});
-  auto expected_literal = Literal::CreateR2<float>(
+  auto expected_literal = LiteralUtil::CreateR2<float>(
       {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
        {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f,
         6.0f}});
@@ -516,7 +517,7 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
   t(1, 0, 0, 1) = 5;
   t(1, 0, 1, 0) = 6;
   t(1, 0, 1, 1) = 7;
-  auto input_literal = Literal::CreateFromArray(t);
+  auto input_literal = LiteralUtil::CreateFromArray(t);
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input",
                                                  &builder, &parameter);
@@ -524,7 +525,7 @@ XLA_TEST_P(ReshapeTest, FullyConnectedCollapseDesugared) {
           /*new_sizes=*/{2, 4});
 
   auto expected_literal =
-      Literal::CreateR2<float>({{0, 1, 2, 3}, {4, 5, 6, 7}});
+      LiteralUtil::CreateR2<float>({{0, 1, 2, 3}, {4, 5, 6, 7}});
   ComputeAndCompareLiteral(&builder, *expected_literal, {input.get()},
                            zero_error_spec_);
 }
@@ -545,7 +546,7 @@ XLA_TEST_P(ReshapeTest, ToScalar) {
                                                    &b, &parameter);
     Reshape(parameter, dimensions, {});
 
-    auto expected_literal = Literal::CreateR0<float>(83.0f);
+    auto expected_literal = LiteralUtil::CreateR0<float>(83.0f);
     ComputeAndCompareLiteral(&b, *expected_literal, {input.get()},
                              zero_error_spec_);
   }
@@ -553,7 +554,7 @@ XLA_TEST_P(ReshapeTest, ToScalar) {
 
 XLA_TEST_P(ReshapeTest, BadDimensions) {
   XlaBuilder b(TestName());
-  auto input_literal = Literal::CreateR1<float>({1.0f});
+  auto input_literal = LiteralUtil::CreateR1<float>({1.0f});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input", &b,
                                                  &parameter);
@@ -565,7 +566,7 @@ XLA_TEST_P(ReshapeTest, BadDimensions) {
 
 XLA_TEST_P(ReshapeTest, BadNewSizes) {
   XlaBuilder b(TestName());
-  auto input_literal = Literal::CreateR1<float>({1.0f, 2.0f});
+  auto input_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f});
   XlaOp parameter;
   auto input = CreateParameterAndTransferLiteral(0, *input_literal, "input", &b,
                                                  &parameter);
@@ -577,7 +578,8 @@ XLA_TEST_P(ReshapeTest, BadNewSizes) {
 XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   XlaBuilder builder(TestName());
   // clang-format off
-  auto input_literal = Literal::CreateR4FromArray4DWithLayout(Array4D<float>{
+  auto input_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
+      Array4D<float>{
     {
       {
         {0, 1},
@@ -622,16 +624,16 @@ XLA_TEST_P(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
           ->ExecuteAndTransfer(computation, {input.get()}, &execution_options)
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<float>(expected_array);
+      LiteralUtil::CreateR2FromArray2D<float>(expected_array);
   if (use_bfloat16()) {
-    expected = Literal::ConvertF32ToBF16(*expected);
+    expected = LiteralUtil::ConvertF32ToBF16(*expected);
   }
   EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *actual));
 }
 
 XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
   XlaBuilder builder(TestName());
-  std::unique_ptr<Literal> input_literal = Literal::CreateR2<float>({
+  std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR2<float>({
       {0, 1, 2, 3, 4, 5, 6, 7},
       {100, 101, 102, 103, 104, 105, 106, 107},
       {200, 201, 202, 203, 204, 205, 206, 207},
@@ -642,7 +644,7 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
   Reshape(parameter, /*dimensions=*/{0, 1}, /*new_sizes=*/{3, 2, 1, 4});
 
   // clang-format off
-  auto expected_literal = Literal::CreateR4<float>({
+  auto expected_literal = LiteralUtil::CreateR4<float>({
     {{{0, 1, 2, 3}},
      {{4, 5, 6, 7}}},
     {{{100, 101, 102, 103}},
@@ -658,7 +660,7 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4) {
 // Tests R2->R4 reshape with the reshape dimensions {1, 0}.
 XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
   XlaBuilder builder(TestName());
-  std::unique_ptr<Literal> input_literal = Literal::CreateR2<float>({
+  std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR2<float>({
       {0, 1, 2, 3, 4, 5, 6, 7},
       {100, 101, 102, 103, 104, 105, 106, 107},
       {200, 201, 202, 203, 204, 205, 206, 207},
@@ -669,7 +671,7 @@ XLA_TEST_P(ReshapeTest, R2ToR4_3x8_To_3x2x1x4_Dimensions_10) {
   Reshape(parameter, /*dimensions=*/{1, 0}, /*new_sizes=*/{3, 2, 1, 4});
 
   // clang-format off
-  auto expected_literal = Literal::CreateR4<float>({
+  auto expected_literal = LiteralUtil::CreateR4<float>({
     {{{0, 100, 200, 1}},
      {{101, 201, 2, 102}}},
     {{{202, 3, 103, 203}},
@@ -691,7 +693,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp parameter;
   auto input_data = CreateParameterAndTransferLiteral(
@@ -699,7 +701,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x1x1_To_2x1) {
   Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{2, 1});
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice({2, 1}, {1, 0}, *input_literal);
+      LiteralUtil::ReshapeSlice({2, 1}, {1, 0}, *input_literal);
   ComputeAndCompareLiteral(&builder, *expected, {input_data.get()},
                            zero_error_spec_);
 }
@@ -713,7 +715,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp parameter;
   auto input_data = CreateParameterAndTransferLiteral(
@@ -721,7 +723,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_2x1x4x1_To_4x2) {
   Reshape(parameter, /*dimensions=*/{0, 1, 2, 3}, /*new_sizes=*/{4, 2});
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice({4, 2}, {1, 0}, *input_literal);
+      LiteralUtil::ReshapeSlice({4, 2}, {1, 0}, *input_literal);
   ComputeAndCompareLiteral(&builder, *expected, {input_data.get()},
                            zero_error_spec_);
 }
@@ -736,7 +738,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaOp parameter;
   auto input_data = CreateParameterAndTransferLiteral(
@@ -749,7 +751,7 @@ XLA_TEST_P(ReshapeTest, R4ToR2_5x10x2x3_To_5x60_Dimensions_0213) {
     expected_array(indices[0], indices[2] * 30 + indices[1] * 3 + indices[3]) =
         *cell;
   });
-  auto expected = Literal::CreateR2FromArray2D(expected_array);
+  auto expected = LiteralUtil::CreateR2FromArray2D(expected_array);
   ComputeAndCompareLiteral(&builder, *expected, {input_data.get()},
                            zero_error_spec_);
 }
@@ -763,7 +765,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input_array, LayoutUtil::MakeLayout({1, 2, 3, 0}));
   XlaOp parameter;
   auto input_data = CreateParameterAndTransferLiteral(
@@ -785,7 +787,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
   // Since the reshape is a no-op, verify that it does not change the underlying
   // data.
   if (use_bfloat16()) {
-    auto expected = Literal::ConvertF32ToBF16(*input_literal);
+    auto expected = LiteralUtil::ConvertF32ToBF16(*input_literal);
     EXPECT_EQ(expected->data<bfloat16>(), output_literal->data<bfloat16>());
   } else {
     EXPECT_EQ(input_literal->data<float>(), output_literal->data<float>());
@@ -794,7 +796,7 @@ XLA_TEST_P(ReshapeTest, NoopReshape) {
 
 XLA_TEST_P(ReshapeTest, R4ToR4Reshape_Trivial) {
   XlaBuilder builder(TestName());
-  auto literal_1x2x3x4 = Literal::CreateR4<float>(
+  auto literal_1x2x3x4 = LiteralUtil::CreateR4<float>(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
 
@@ -808,7 +810,7 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape_Trivial) {
 }
 
 XLA_TEST_P(ReshapeTest, R4ToR4Reshape) {
-  auto literal_1x2x3x4 = Literal::CreateR4<float>(
+  auto literal_1x2x3x4 = LiteralUtil::CreateR4<float>(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
 
@@ -820,7 +822,7 @@ XLA_TEST_P(ReshapeTest, R4ToR4Reshape) {
           /*new_sizes=*/{2, 4, 3, 1});
 
   // clang-format off
-  auto expected_2x4x3x1 = Literal::CreateR4<float>(
+  auto expected_2x4x3x1 = LiteralUtil::CreateR4<float>(
       {{{{1}, {5}, {9}},
         {{2}, {6}, {10}},
         {{3}, {7}, {11}},
@@ -844,7 +846,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaBuilder builder(TestName());
   XlaOp parameter;
@@ -854,7 +856,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeSimple) {
           /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
+      LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -873,7 +875,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaBuilder builder(TestName());
   XlaOp parameter;
@@ -883,7 +885,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstEffectiveR2) {
           /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
+      LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -902,7 +904,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaBuilder builder(TestName());
   XlaOp parameter;
@@ -912,7 +914,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1) {
           /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
+      LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -932,7 +934,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({3, 2, 1, 0}));
   XlaBuilder builder(TestName());
   XlaOp parameter;
@@ -942,7 +944,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeMajorFirstMinorEffectiveR1InR2) {
           /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
+      LiteralUtil::ReshapeSlice(new_bounds, {2, 3, 1, 0}, *input_literal)
           ->Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
 
   // Specify the requested output shape explicitly to ensure that this reshape
@@ -961,7 +963,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
       [&rng, &distribution](tensorflow::gtl::ArraySlice<int64> /* indices */,
                             float* cell) { *cell = distribution(rng); });
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4DWithLayout(
+      LiteralUtil::CreateR4FromArray4DWithLayout(
           input, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   XlaBuilder builder(TestName());
   XlaOp parameter;
@@ -971,7 +973,7 @@ XLA_TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
           /*new_sizes=*/new_bounds);
 
   std::unique_ptr<Literal> expected =
-      Literal::ReshapeSlice(new_bounds, {1, 0, 2, 3}, *input_literal)
+      LiteralUtil::ReshapeSlice(new_bounds, {1, 0, 2, 3}, *input_literal)
           ->Relayout(input_literal->shape().layout());
 
   // Specify the requested output shape explicitly to ensure that this reshape

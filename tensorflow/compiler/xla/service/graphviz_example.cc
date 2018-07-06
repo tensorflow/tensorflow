@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -47,7 +48,7 @@ HloComputation* AddScalarConstantComputation(int64 addend, HloModule* module) {
   auto x_value = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {}), "x_value"));
   auto half = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.5)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       half->shape(), HloOpcode::kAdd, x_value, half));
   return module->AddEmbeddedComputation(builder.Build());
@@ -122,7 +123,7 @@ std::unique_ptr<HloModule> MakeBigGraph() {
   auto rng = builder.AddInstruction(
       HloInstruction::CreateRng(vshape, RNG_UNIFORM, {param_m, param_m}));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_computation = ScalarSumComputation(module.get());
   builder.AddInstruction(
       HloInstruction::CreateReduce(vshape, rng, one, {1}, add_computation));

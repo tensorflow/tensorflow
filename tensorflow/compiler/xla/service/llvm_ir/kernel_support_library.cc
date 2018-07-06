@@ -56,10 +56,11 @@ Status KernelSupportLibrary::For(
 }
 
 Status KernelSupportLibrary::If(
-    llvm::Value* condition, const std::function<Status()>& true_block_generator,
+    tensorflow::StringPiece name, llvm::Value* condition,
+    const std::function<Status()>& true_block_generator,
     const std::function<Status()>& false_block_generator) {
   llvm_ir::LlvmIfData if_data =
-      llvm_ir::EmitIfThenElse(condition, "", ir_builder_);
+      llvm_ir::EmitIfThenElse(condition, name, ir_builder_);
   ir_builder_->SetInsertPoint(&if_data.true_block->back());
   TF_RETURN_IF_ERROR(true_block_generator());
   ir_builder_->SetInsertPoint(&if_data.false_block->back());

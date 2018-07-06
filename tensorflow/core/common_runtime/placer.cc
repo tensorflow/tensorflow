@@ -628,6 +628,43 @@ class ColocationGraph {
     return parent;
   }
 
+  // Ensures that the devices of 'dst's resource and reference match the device
+  // specified for 'src', which is an input of 'dst' with a partially or fully
+  // specified device.
+  //
+  // TODO(akshayka): Consider adding a way to whitelist ops that want to be
+  // exempt from this check.
+  Status VerifyResourceAndRefInputsCanBeColocated(
+      const Node* dst, const Node* src,
+      const DeviceNameUtils::ParsedName& src_parsed_name) {
+    std::vector<const Edge*> edges;
+    TF_RETURN_IF_ERROR(dst->input_edges(&edges));
+    for (const Edge* edge : edges) {
+      DataType input_type = dst->input_type(edge->dst_input());
+      if (input_type == DT_RESOURCE || IsRefType(input_type)) {
+        const Node* input_node = edge->src();
+        if (input_node == src) {
+          continue;
+        }
+        const auto& input_root = members_[FindRoot(input_node->id())];
+        const auto& input_parsed_name = input_root.device_name;
+        if (DeviceNameUtils::HasSomeDetails(input_parsed_name) &&
+            !DeviceNameUtils::AreCompatibleDevNames(input_parsed_name,
+                                                    src_parsed_name)) {
+          return AttachDef(
+              errors::InvalidArgument(
+                  "Could not colocate node with its "
+                  "resource and reference inputs; devices ",
+                  DeviceNameUtils::ParsedNameToString(input_parsed_name),
+                  " and ", DeviceNameUtils::ParsedNameToString(src_parsed_name),
+                  " are not compatible."),
+              *dst);
+        }
+      }
+    }
+    return Status::OK();
+  }
+
   Graph* const graph_;  // Not owned.
   std::vector<Member> members_;
   const DeviceSet* device_set_;  // Not owned.
@@ -706,6 +743,9 @@ Status Placer::Run() {
         // incompatible.
         if (!DeviceNameUtils::AreCompatibleDevNames(source_parsed_name,
                                                     dest_parsed_name)) {
+          TF_RETURN_IF_ERROR(
+              colocation_graph.VerifyResourceAndRefInputsCanBeColocated(
+                  dst, src, source_parsed_name));
           if (log_device_placement_) {
             LOG(INFO) << "Ignoring device specification "
                       << DeviceNameUtils::ParsedNameToString(dest_parsed_name)
