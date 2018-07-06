@@ -17,6 +17,10 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/context.h"
 
+namespace EigenForTFLite {
+class ThreadPoolDevice;
+}
+
 namespace tflite {
 namespace eigen_support {
 
@@ -27,6 +31,9 @@ void IncrementUsageCounter(TfLiteContext* context);
 // Let the framework know that the op stopped using Eigen. If there are no more
 // usages all temporary Eigen objects will be deleted.
 void DecrementUsageCounter(TfLiteContext* context);
+
+const EigenForTFLite::ThreadPoolDevice* GetThreadPoolDevice(
+    TfLiteContext* context);
 
 }  // namespace eigen_support
 }  // namespace tflite

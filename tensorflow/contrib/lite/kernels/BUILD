@@ -46,11 +46,17 @@ cc_library(
     hdrs = [
         "eigen_support.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + [
+        "-Wno-error=reorder",
+    ] + select({
+        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
+        "//conditions:default": [
+        ],
+    }),
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "//third_party/eigen3",
+        "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
 
