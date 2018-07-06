@@ -25,6 +25,7 @@
 namespace mlir {
 class Attribute;
 class AttributeListStorage;
+class AbstractOperation;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 
@@ -91,6 +92,12 @@ public:
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
   RemoveResult removeAttr(Identifier name, MLIRContext *context);
+
+  /// If this operation has a registered operation description in the
+  /// OperationSet, return it.  Otherwise return null.
+  /// TODO: Shouldn't have to pass a Context here, Operation should eventually
+  /// be able to get to its own parent.
+  const AbstractOperation *getAbstractOperation(MLIRContext *context) const;
 
   /// The getAs methods perform a dynamic cast from an Operation (like
   /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns

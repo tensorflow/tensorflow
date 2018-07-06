@@ -100,6 +100,15 @@ public:
     op->getAs<ConcreteType>()->print(os);
   }
 
+  /// This is the hook used by the Verifier to check out this instruction.  It
+  /// delegates to the Traits for their policy implementations, and allows the
+  /// user to specify their own verify() method.
+  static const char *verifyInvariants(const Operation *op) {
+    if (auto error = BaseVerifier<Traits...>::verifyBase(op))
+      return error;
+    return op->getAs<ConcreteType>()->verify();
+  }
+
 protected:
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -107,6 +116,22 @@ protected:
       : state(const_cast<Operation *>(state)) {}
 
 private:
+  template <typename First, typename... Rest>
+  struct BaseVerifier {
+    static const char *verifyBase(const Operation *op) {
+      if (auto error = First::verifyBase(op))
+        return error;
+      return BaseVerifier<Rest...>::verifyBase(op);
+    }
+  };
+
+  template <typename First>
+  struct BaseVerifier<First> {
+    static const char *verifyBase(const Operation *op) {
+      return First::verifyBase(op);
+    }
+  };
+
   Operation *state;
 };
 
@@ -120,6 +145,11 @@ public:
   void setOperand() {
     /// TODO.
   }
+
+  static const char *verifyBase(const Operation *op) {
+    // TODO: Check that op has one operand.
+    return nullptr;
+  }
 };
 
 /// This class provides the API for ops that are known to have exactly two
@@ -132,12 +162,23 @@ public:
   void setOperand() {
     /// TODO.
   }
+
+  static const char *verifyBase(const Operation *op) {
+    // TODO: Check that op has two operands.
+    return nullptr;
+  }
 };
 
 /// This class provides return value APIs for ops that are known to have a
 /// single result.
 class OneResult {
+public:
   // TODO: Implement results!
+
+  static const char *verifyBase(const Operation *op) {
+    // TODO: Check that op has one result.
+    return nullptr;
+  }
 };
 
 } // end namespace OpImpl

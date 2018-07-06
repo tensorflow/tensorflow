@@ -24,8 +24,29 @@ void AddFOp::print(raw_ostream &os) const {
   os << "addf xx, yy : sometype\n";
 }
 
+// Return an error message on failure.
+const char *AddFOp::verify() const {
+  // TODO: Check that the types of the LHS and RHS match.
+  // TODO: This should be a refinement of TwoOperands.
+  // TODO: There should also be a OneResultWhoseTypeMatchesFirstOperand.
+  return nullptr;
+}
+
 void DimOp::print(raw_ostream &os) const {
   os << "dim xxx, " << getIndex() << " : sometype\n";
+}
+
+const char *DimOp::verify() const {
+  // TODO: Check that the operand has tensor or memref type.
+
+  // Check that we have an integer index operand.
+  auto indexAttr = getAttrOfType<IntegerAttr>("index");
+  if (!indexAttr)
+    return "'dim' op requires an integer attribute named 'index'";
+
+  // TODO: Check that the index is in range.
+
+  return nullptr;
 }
 
 /// Install the standard operations in the specified operation set.

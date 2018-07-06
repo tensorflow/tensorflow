@@ -25,8 +25,9 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/Module.h"
 #include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Module.h"
+#include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Types.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace mlir;
@@ -1243,9 +1244,17 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
 
   // Parse the list of operations that make up the body of the block.
   while (curToken.isNot(Token::kw_return, Token::kw_br)) {
+    auto loc = curToken.getLoc();
     auto *inst = parseCFGOperation(functionState);
     if (!inst)
       return ParseFailure;
+
+    // We just parsed an operation.  If it is a recognized one, verify that it
+    // is structurally as we expect.  If not, produce an error with a reasonable
+    // source location.
+    if (auto *opInfo = inst->getAbstractOperation(context))
+      if (auto error = opInfo->verifyInvariants(inst))
+        return emitError(loc, error);
 
     block->getOperations().push_back(inst);
   }
@@ -1516,7 +1525,14 @@ void mlir::defaultErrorReporter(const llvm::SMDiagnostic &error) {
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
 Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
                               SMDiagnosticHandlerTy errorReporter) {
-  return Parser(sourceMgr, context,
-                errorReporter ? std::move(errorReporter) : defaultErrorReporter)
-      .parseModule();
+  auto *result =
+      Parser(sourceMgr, context,
+             errorReporter ? std::move(errorReporter) : defaultErrorReporter)
+          .parseModule();
+
+  // Make sure the parse module has no other structural problems detected by the
+  // verifier.
+  if (result)
+    result->verify();
+  return result;
 }

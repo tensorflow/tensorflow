@@ -94,3 +94,10 @@ mlfunc @non_statement() {
 
 ; -----
 
+cfgfunc @malformed_dim() {
+bb42:
+  "dim"(){index: "xyz"}  ; expected-error {{'dim' op requires an integer attribute named 'index'}}
+  return
+}
+
+; -----

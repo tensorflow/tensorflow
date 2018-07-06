@@ -232,6 +232,14 @@ OperationSet &OperationSet::get(MLIRContext *context) {
   return context->getImpl().operationSet;
 }
 
+/// If this operation has a registered operation description in the
+/// OperationSet, return it.  Otherwise return null.
+/// TODO: Shouldn't have to pass a Context here.
+const AbstractOperation *
+Operation::getAbstractOperation(MLIRContext *context) const {
+  return OperationSet::get(context).lookup(getName().str());
+}
+
 //===----------------------------------------------------------------------===//
 // Identifier uniquing
 //===----------------------------------------------------------------------===//

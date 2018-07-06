@@ -42,6 +42,7 @@ public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "addf"; }
 
+  const char *verify() const;
   void print(raw_ostream &os) const;
 
 private:
@@ -66,6 +67,8 @@ public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "dim"; }
 
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
   void print(raw_ostream &os) const;
 
 private:

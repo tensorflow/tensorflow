@@ -38,7 +38,8 @@ class AbstractOperation {
 public:
   template <typename T>
   static AbstractOperation get() {
-    return AbstractOperation(T::getOperationName(), T::printAssembly);
+    return AbstractOperation(T::getOperationName(), T::printAssembly,
+                             T::verifyInvariants);
   }
 
   /// This is the name of the operation.
@@ -47,12 +48,18 @@ public:
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(const Operation *op, raw_ostream &os);
 
-  // TODO: Parsing and verifier hooks.
+  /// This hook implements the verifier for this operation.  It should return
+  /// an error message if a problem is detected or return null on success.
+  const char *(&verifyInvariants)(const Operation *op);
+
+  // TODO: Parsing hook.
 
 private:
   AbstractOperation(StringRef name,
-                    void (&printAssembly)(const Operation *op, raw_ostream &os))
-      : name(name), printAssembly(printAssembly) {}
+                    void (&printAssembly)(const Operation *op, raw_ostream &os),
+                    const char *(&verifyInvariants)(const Operation *op))
+      : name(name), printAssembly(printAssembly),
+        verifyInvariants(verifyInvariants) {}
 };
 
 /// An instance of OperationSet is owned and maintained by MLIRContext.  It

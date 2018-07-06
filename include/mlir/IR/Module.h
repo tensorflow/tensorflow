@@ -22,8 +22,8 @@
 #ifndef MLIR_IR_MODULE_H
 #define MLIR_IR_MODULE_H
 
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Function.h"
+#include <vector>
 
 namespace mlir {
 
@@ -34,11 +34,16 @@ public:
   explicit Module();
 
   // FIXME: wrong representation and API.
+  // TODO(someone): This should switch to llvm::iplist<Function>.
   std::vector<Function*> functionList;
 
   // FIXME: wrong representation and API.
   // These affine maps are immutable
   std::vector<const AffineMap *> affineMapList;
+
+  /// Perform (potentially expensive) checks of invariants, used to detect
+  /// compiler bugs.  This aborts on failure.
+  void verify() const;
 
   void print(raw_ostream &os) const;
   void dump() const;
