@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <set>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -118,7 +118,7 @@ TEST_F(HloComputationTest, PostOrderSingleton) {
   // Test GetInstructionPostOrder for a computation with one instruction.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(), ElementsAre(constant));
@@ -129,7 +129,7 @@ TEST_F(HloComputationTest, PostOrderSimple) {
   // instructions.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto negate1 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto negate2 = builder.AddInstruction(
@@ -144,7 +144,7 @@ TEST_F(HloComputationTest, PostOrderTrace) {
   // Test GetInstructionPostOrder for a computation with a trace instruction.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto negate1 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto trace =
@@ -163,13 +163,13 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
   // which are not connected.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant4 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
@@ -181,11 +181,11 @@ TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
   // which are not connected.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant2));
   auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -205,11 +205,11 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
   // computation has multiple roots (dead code).
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   // Add three disconnected add expressions.
   builder.AddInstruction(HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                                       constant1, constant2));
@@ -256,7 +256,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
   // Test that DeepCopyInstruction properly copies an array.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
@@ -268,9 +268,9 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   // Test that DeepCopyInstruction properly copies a tuple.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
@@ -289,7 +289,7 @@ TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
   // copy are specified.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
   auto computation = builder.Build();
 
   {
@@ -314,9 +314,9 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
   // specified by the given indices.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1.0, 2.0, 3.0})));
+      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto computation = builder.Build();
@@ -390,7 +390,7 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
   auto module = CreateNewModule();
@@ -407,7 +407,7 @@ TEST_F(HloComputationTest, CycleDetection) {
   // Test whether the visitor can detect cycles in the graph.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto add = builder.AddInstruction(
@@ -433,7 +433,7 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   // twice.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto dead_negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto dead_add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -456,9 +456,9 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
 TEST_F(HloComputationTest, CloneWithControlDependency) {
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant2));
 
@@ -502,9 +502,9 @@ TEST_F(HloComputationTest, Reachability) {
   // There is a control dependency from 'add' to 'exp'.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant2));
   auto negate = builder.AddInstruction(

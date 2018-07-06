@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -31,7 +32,7 @@ class MathTest : public ClientLibraryTestBase {
 
 XLA_TEST_F(MathTest, SqrtF32) {
   XlaBuilder builder(TestName());
-  Literal zero_literal = Literal::Zero(PrimitiveType::F32);
+  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
 
   std::unique_ptr<GlobalData> zero_data =
       client_->TransferToServer(zero_literal).ConsumeValueOrDie();

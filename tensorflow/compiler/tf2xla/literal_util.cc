@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {

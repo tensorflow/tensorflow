@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -766,7 +767,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
 HloTraceInstruction::HloTraceInstruction(const string& tag,
                                          HloInstruction* operand)
     : HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()),
-      literal_(Literal::CreateR1U8(tag)) {
+      literal_(LiteralUtil::CreateR1U8(tag)) {
   AppendOperand(operand);
   operand->set_tracing(this);
 }

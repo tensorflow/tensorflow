@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -207,7 +207,7 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
     std::unique_ptr<Literal> expected_literal =
-        Literal::CreateR1<int32>({4, 6});
+        LiteralUtil::CreateR1<int32>({4, 6});
     EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
@@ -221,7 +221,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
 
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
-    std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
+    std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR0<int32>(5);
     EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
   }
 }
@@ -242,8 +242,8 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
                              &b, &layout_proto));
 
       std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
-                                             LayoutUtil::MakeLayout(layout));
+          LiteralUtil::CreateR2WithLayout<int32>(
+              {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(layout));
       ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
           expected_literal->shape(), computed->shape()));
       EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));

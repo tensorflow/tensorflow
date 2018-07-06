@@ -78,7 +78,7 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     tags = [
-        "no_pip",
+        "no_pip",  # depends on blocks_test, which is not available in pip package
         "optonly",
     ],
 )

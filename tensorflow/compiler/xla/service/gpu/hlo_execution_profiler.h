@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <stack>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -74,6 +75,9 @@ class HloExecutionProfiler {
   const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams_;
   const HloComputation* computation_;
   std::stack<std::unique_ptr<se::Timer>> timers_;
+  // Contains the HLO instructions for which we are currently measuring the
+  // time.
+  std::unordered_set<const HloInstruction*> hlo_instructions_;
   bool finished_execution_ = false;
 };
 

@@ -39,7 +39,7 @@ class ExhaustiveF32ElementwiseOpTest
     XlaBuilder builder(TestName());
 
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateFromDimensions(F32, {input_size});
+        LiteralUtil::CreateFromDimensions(F32, {input_size});
     for (int64 i = begin; i < end; i++) {
       if (i >= known_incorrect_range.first &&
           i < known_incorrect_range.second) {

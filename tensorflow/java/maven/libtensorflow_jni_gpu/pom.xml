@@ -6,7 +6,7 @@
   <parent>
     <groupId>org.tensorflow</groupId>
     <artifactId>parentpom</artifactId>
-    <version>1.9.0-rc1</version>
+    <version>1.9.0-rc2</version>
     <relativePath>../</relativePath>
   </parent>
   <artifactId>libtensorflow_jni_gpu</artifactId>
