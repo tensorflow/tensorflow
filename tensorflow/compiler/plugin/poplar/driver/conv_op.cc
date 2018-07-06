@@ -110,9 +110,8 @@ StatusOr<popconv::ConvParams> GetConvolutionParameters(
   return params;
 }
 
-static const HloInstruction*
-FindConvolutionOp(const HloInstruction* root,
-                  const CompilerAnnotations& annotations) {
+static const HloInstruction* FindConvolutionOp(
+    const HloInstruction* root, const CompilerAnnotations& annotations) {
   const HloInstruction* inst = root;
   while (inst->opcode() == HloOpcode::kCall) {
     inst = annotations.fusion_map.at(inst->to_apply());
@@ -388,6 +387,11 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   poplar::Tensor out =
       popconv::convolution(graph, in, kernel, params, false, prog,
                            GetDebugName(conv), opts, &res.convolution_cache);
+
+  // Move 'G' parts of the B back to I
+  out = out.reshapePartial(1, 2, {n_g, out.dim(1) / n_g});
+  out = out.dimShufflePartial({1}, {0});
+  out = out.reshapePartial(0, 2, {in.dim(0) * in.dim(1)});
 
   TF_ASSIGN_OR_RETURN(out, ShuffleConvolutionOutputToTensorflow(conv, out));
 

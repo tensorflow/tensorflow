@@ -46,11 +46,6 @@ static FusedGraphInfo fuse_info[] = {
     {"avgpool", 1},
     {"avgpool", 1},
     {"avgpool", 1},
-    {"depthwise_conv", 0},
-    {"depthwise_conv", 0},
-    {"conv_with_reverse", 0},
-    {"conv_with_reverse", 0},
-    {"depthwise_filter", 13},
     {"bias_apply", 0},
     {"reduction_no_convert", 1},
     {"reduction_no_convert", 1},
@@ -153,7 +148,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     // BiasAdd on convolution (w/ broadcast)
     {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kCall, false, 0, IsPoplarConvolution, {}},
+     {HloOpcode::kCall, false, 0, IsPopOpsConvolution, {}},
      {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
 
     // BiasAdd on convolution (w/ broadcast)
@@ -297,81 +292,6 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
-    // Depthwise convolution (forward pass)
-    {{HloOpcode::kConvolution, true, 0, nullptr, {14, 1}},
-     {HloOpcode::kSelect, true, 0, nullptr, {6, 4, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kReshape, true, 0, nullptr, {15}},
-     {HloOpcode::kEq, true, 0, nullptr, {9, 7}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {8}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {10}},
-     {HloOpcode::kDivide, true, 0, nullptr, {13, 11}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {12}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // Depthwise convolution (forward pass, multiplier=1)
-    {{HloOpcode::kConvolution, true, 0, nullptr, {10, 1}},
-     {HloOpcode::kSelect, true, 0, nullptr, {6, 4, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kReshape, true, 0, nullptr, {11}},
-     {HloOpcode::kEq, true, 0, nullptr, {7, 8}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // Depthwise convolution (backward pass, input)
-    {{HloOpcode::kConvolution, true, 0, nullptr, {15, 1}},
-     {HloOpcode::kReverse, true, 0, IsConvFilterTranspose, {2}},
-     {HloOpcode::kSelect, true, 0, nullptr, {7, 5, 3}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {6}},
-     {HloOpcode::kReshape, true, 0, nullptr, {16}},
-     {HloOpcode::kEq, true, 0, nullptr, {10, 8}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {11}},
-     {HloOpcode::kDivide, true, 0, nullptr, {14, 12}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {13}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // Backprop input convolution
-    {{HloOpcode::kConvolution, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kReverse, true, 0, IsConvFilterTranspose, {3}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
-    // Depthwise backprop filter convolution
-    {{HloOpcode::kReshape, true, 0, nullptr, {1}},
-     {HloOpcode::kReduce, true, 0, nullptr, {2, 4}},
-     {HloOpcode::kSelect, true, 0, nullptr, {5, 13, 3}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kEq, true, 0, nullptr, {8, 6}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {7}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {9}},
-     {HloOpcode::kDivide, true, 0, nullptr, {12, 10}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {11}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConvolution, true, 0, nullptr, {14, 15}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
-
     // Bias reduction and application
     {{HloOpcode::kSubtract, true, 0, IsOutputFeed, {1, 2}},
      {HloOpcode::kParameter, false, 0, IsTrueParameter, {}},
@@ -404,8 +324,8 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
 };
 
-FuseOpsLate::FuseOpsLate(struct CompilerAnnotations& annotations) :
-    HloMatcher(patterns, annotations, false) {}
+FuseOpsLate::FuseOpsLate(struct CompilerAnnotations& annotations)
+    : HloMatcher(patterns, annotations, false) {}
 
 ReplacedInstructions FuseOpsLate::ReplaceNodes(int pattern,
                                                const HloMatcherMatched& match) {

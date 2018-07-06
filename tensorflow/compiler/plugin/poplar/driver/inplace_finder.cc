@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -73,8 +73,7 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       break;
     }
     case HloOpcode::kGetTupleElement: {
-      if (inst->tuple_index() == stack.back() ||
-          stack.back() == -1) {
+      if (inst->tuple_index() == stack.back() || stack.back() == -1) {
         new_stack = stack;
         tuple_stack_modified = true;
         new_stack.pop_back();
@@ -99,7 +98,6 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
 }
 
 StatusOr<bool> InplaceFinder::Run(HloModule* module) {
-
   for (auto* comp : module->computations()) {
     if (tensorflow::str_util::StartsWith(comp->name(), "_pop_op")) {
       continue;

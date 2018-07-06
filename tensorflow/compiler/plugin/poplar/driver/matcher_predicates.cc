@@ -3,6 +3,7 @@
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -182,6 +183,28 @@ bool IsPopOpsConvolution(const HloInstruction *inst) {
   if (inst->to_apply()->name().substr(0, 24) == "_pop_op_depthwise_filter")
     return true;
   return false;
+}
+
+bool IsOpWithWindowNoBaseDilation(const HloInstruction *inst) {
+  switch (inst->opcode()) {
+    case HloOpcode::kConvolution:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+      return !window_util::HasBaseDilation(inst->window());
+    default:
+      return false;
+  }
+}
+
+bool IsOpWithWindowNoStride(const HloInstruction *inst) {
+  switch (inst->opcode()) {
+    case HloOpcode::kConvolution:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+      return !window_util::HasStride(inst->window());
+    default:
+      return false;
+  }
 }
 
 }  // namespace poplarplugin

@@ -30,7 +30,9 @@ namespace {
 // If this computation has only one caller, and the callsite is a kCall
 // operation, then merge with the calling computation.
 Status FlattenNode(const CallGraphNode &node) {
-  if (node.caller_callsites().size() == 1) {
+  if (node.caller_callsites().size() == 1 &&
+      !tensorflow::str_util::StartsWith(node.computation()->name(),
+                                        "_pop_op")) {
     CallSite call_site = node.caller_callsites()[0];
     if (call_site.instruction()->opcode() == HloOpcode::kCall) {
       CallInliner::InlinedInstructionMap map;

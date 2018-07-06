@@ -244,8 +244,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['depthwise/call.*clone/Conv_1x1',
-            'Copy_partials_to_depthwise',
-            'add/call/addToChannel']
+            'add/call.*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
   def testDepthwiseConv3x1(self):
@@ -285,7 +284,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['depthwise/call.*clone/Conv_1x1',
             'Copy_partials_to_depthwise/call',
-            'add/call/addToChannel']
+            'add/call.*/addToChannel']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 
@@ -350,7 +349,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['DepthwiseConv2dNativeBackpropInput/call.clone/Conv_1x1']
+      ok = ['Copy_XLA_Args/arg0.*_to_bwdWeights/',
+            'DepthwiseConv2dNativeBackpropInput/convolution.*.clone/Conv_1x1']
 
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
@@ -413,6 +413,39 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
       ok = ['Copy_XLA_Args/arg0.*_to',
             'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testDepthwiseConvBackpropFilter1x1WithRelu(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [1,6,6,3], name="a")
+      pb = constant_op.constant([1,1,3,2], dtype=np.int32) # filter sizes
+      pc = array_ops.placeholder(np.float32, [1,6,6,6], name="c")
+      c = nn.depthwise_conv2d_native_backprop_filter(pa, pb, pc,
+                                                        strides=[1,1,1,1],
+                                                        padding="SAME")
+      c = nn.relu(c)
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      sess.run(report)
+
+      fd = {
+        pa: np.zeros([1,6,6,3]),
+        pc: np.zeros([1,6,6,6])
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, np.zeros([1,1,3,2]))
+
+      result = sess.run(report)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['Copy_XLA_Args/arg0.*_to',
+            'DepthwiseConv2dNativeBackpropFilter/convolution.*.clone/Conv_6x6',
+            'Relu/call.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 
