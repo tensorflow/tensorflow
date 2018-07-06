@@ -36,39 +36,33 @@ _ANDROID_NDK_REPO_TEMPLATE = """
 """
 
 def _android_autoconf_impl(repository_ctx):
-    """Implementation of the android_autoconf repository rule."""
-    sdk_home = repository_ctx.os.environ.get(_ANDROID_SDK_HOME)
-    sdk_api_level = repository_ctx.os.environ.get(_ANDROID_SDK_API_VERSION)
-    build_tools_version = repository_ctx.os.environ.get(
-        _ANDROID_BUILD_TOOLS_VERSION,
-    )
-    ndk_home = repository_ctx.os.environ.get(_ANDROID_NDK_HOME)
-    ndk_api_level = repository_ctx.os.environ.get(_ANDROID_NDK_API_VERSION)
+  """Implementation of the android_autoconf repository rule."""
+  sdk_home = repository_ctx.os.environ.get(_ANDROID_SDK_HOME)
+  sdk_api_level = repository_ctx.os.environ.get(_ANDROID_SDK_API_VERSION)
+  build_tools_version = repository_ctx.os.environ.get(
+      _ANDROID_BUILD_TOOLS_VERSION)
+  ndk_home = repository_ctx.os.environ.get(_ANDROID_NDK_HOME)
+  ndk_api_level = repository_ctx.os.environ.get(_ANDROID_NDK_API_VERSION)
 
-    sdk_rule = "pass"
-    if all([sdk_home, sdk_api_level, build_tools_version]):
-        sdk_rule = _ANDROID_SDK_REPO_TEMPLATE % (
-            sdk_home,
-            sdk_api_level,
-            build_tools_version,
-        )
+  sdk_rule = "pass"
+  if all([sdk_home, sdk_api_level, build_tools_version]):
+    sdk_rule = _ANDROID_SDK_REPO_TEMPLATE % (
+        sdk_home, sdk_api_level, build_tools_version)
 
-    ndk_rule = "pass"
-    if all([ndk_home, ndk_api_level]):
-        ndk_rule = _ANDROID_NDK_REPO_TEMPLATE % (ndk_home, ndk_api_level)
+  ndk_rule = "pass"
+  if all([ndk_home, ndk_api_level]):
+    ndk_rule = _ANDROID_NDK_REPO_TEMPLATE % (ndk_home, ndk_api_level)
 
-    repository_ctx.template(
-        "BUILD",
-        Label("//third_party/android:android_configure.BUILD.tpl"),
-    )
-    repository_ctx.template(
-        "android.bzl",
-        Label("//third_party/android:android.bzl.tpl"),
-        substitutions = {
-            "MAYBE_ANDROID_SDK_REPOSITORY": sdk_rule,
-            "MAYBE_ANDROID_NDK_REPOSITORY": ndk_rule,
-        },
-    )
+  repository_ctx.template(
+      "BUILD",
+      Label("//third_party/android:android_configure.BUILD.tpl"))
+  repository_ctx.template(
+      "android.bzl",
+      Label("//third_party/android:android.bzl.tpl"),
+      substitutions={
+          "MAYBE_ANDROID_SDK_REPOSITORY": sdk_rule,
+          "MAYBE_ANDROID_NDK_REPOSITORY": ndk_rule,
+      })
 
 android_configure = repository_rule(
     implementation = _android_autoconf_impl,

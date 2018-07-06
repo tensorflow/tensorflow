@@ -17,48 +17,46 @@ load(
 # and then archive those source files into
 #     ops/gen_sources.srcjar
 #
-def tf_java_op_gen_srcjar(
-        name,
-        gen_tool,
-        base_package,
-        api_def_srcs = [],
-        out_dir = "ops/",
-        out_src_dir = "src/main/java/",
-        visibility = ["//tensorflow/java:__pkg__"]):
-    gen_cmds = ["rm -rf $(@D)"]  # Always start from fresh when generating source files
-    srcs = api_def_srcs[:]
+def tf_java_op_gen_srcjar(name,
+                          gen_tool,
+                          base_package,
+                          api_def_srcs=[],
+                          out_dir="ops/",
+                          out_src_dir="src/main/java/",
+                          visibility=["//tensorflow/java:__pkg__"]):
 
-    if not api_def_srcs:
-        api_def_args_str = ","
-    else:
-        api_def_args = []
-        for api_def_src in api_def_srcs:
-            # Add directory of the first ApiDef source to args.
-            # We are assuming all ApiDefs in a single api_def_src are in the
-            # same directory.
-            api_def_args.append(
-                "$$(dirname $$(echo $(locations " + api_def_src +
-                ") | cut -d\" \" -f1))",
-            )
-        api_def_args_str = ",".join(api_def_args)
+  gen_cmds = ["rm -rf $(@D)"]  # Always start from fresh when generating source files
+  srcs = api_def_srcs[:]
 
-    gen_cmds += ["$(location " + gen_tool + ")" +
-                 " --output_dir=$(@D)/" + out_src_dir +
-                 " --base_package=" + base_package +
-                 " --api_dirs=" + api_def_args_str]
+  if not api_def_srcs:
+    api_def_args_str = ","
+  else:
+    api_def_args = []
+    for api_def_src in api_def_srcs:
+      # Add directory of the first ApiDef source to args.
+      # We are assuming all ApiDefs in a single api_def_src are in the
+      # same directory.
+      api_def_args.append(
+          "$$(dirname $$(echo $(locations " + api_def_src +
+          ") | cut -d\" \" -f1))")
+    api_def_args_str = ",".join(api_def_args)
 
-    # Generate a source archive containing generated code for these ops.
-    gen_srcjar = out_dir + name + ".srcjar"
-    gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) src"]
+  gen_cmds += ["$(location " + gen_tool + ")" +
+               " --output_dir=$(@D)/" + out_src_dir +
+               " --base_package=" + base_package +
+               " --api_dirs=" + api_def_args_str]
 
-    native.genrule(
-        name = name,
-        srcs = srcs,
-        outs = [gen_srcjar],
-        tools = [
-            "@local_jdk//:jar",
-            "@local_jdk//:jdk",
-            gen_tool,
-        ] + tf_binary_additional_srcs(),
-        cmd = " && ".join(gen_cmds),
-    )
+  # Generate a source archive containing generated code for these ops.
+  gen_srcjar = out_dir + name + ".srcjar"
+  gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) src"]
+
+  native.genrule(
+      name=name,
+      srcs=srcs,
+      outs=[gen_srcjar],
+      tools=[
+          "@local_jdk//:jar",
+          "@local_jdk//:jdk",
+          gen_tool
+      ] + tf_binary_additional_srcs(),
+      cmd=" && ".join(gen_cmds))
