@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <string>
 #include <netinet/in.h>
+#include "tensorflow/core/lib/core/status.h"
 
 namespace ignite {
 
@@ -22,8 +23,9 @@ class Client {
  public:
   Client(std::string host, int port);
 
-  void Connect();
-  void Disconnect();
+  tensorflow::Status Connect();
+  tensorflow::Status Disconnect();
+  bool IsConnected();
 
   char ReadByte();
   short ReadShort();

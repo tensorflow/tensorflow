@@ -58,9 +58,11 @@ class IgniteDatasetIterator
   bool last_page;
   long cursor_id;
 
-  void Handshake();
-  void ScanQuery();
-  void LoadNextPage();
+  tensorflow::Status EstablishConnection();
+  tensorflow::Status CloseConnection();
+  tensorflow::Status Handshake();
+  tensorflow::Status ScanQuery();
+  tensorflow::Status LoadNextPage();
   int JavaHashCode(std::string str);
 };
 

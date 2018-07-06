@@ -26,45 +26,33 @@ limitations under the License.
 
 #include <iostream>
 
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/lib/core/errors.h"
+
 namespace ignite {
 
-Client::Client(std::string host, int port) {
-  this->host = host;
-  this->port = port;
-  this->sock = -1;
-}
+Client::Client(std::string host, int port) :
+  host(host),
+  port(port),
+  sock(-1) {}
 
-void Client::Connect() {
-  // create socket if it is not already created
+tensorflow::Status Client::Connect() {
   if (sock == -1) {
-    // Create socket
     sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1) {
-      perror("Could not create socket");
-    }
-  } else {
-    /* OK , nothing */
+    if (sock == -1)
+      return tensorflow::errors::Internal("Failed not create socket");
   }
 
-  // setup address structure
   if (inet_addr(host.c_str()) == -1) {
     struct hostent *he;
     struct in_addr **addr_list;
 
-    // resolve the hostname, its not an ip address
-    if ((he = gethostbyname(host.c_str())) == NULL) {
-      perror("Failed to resolve hostname");
-      return;
-    }
+    if ((he = gethostbyname(host.c_str())) == NULL)
+      return tensorflow::errors::Internal("Failed to resolve hostname \"", host, "\"");
 
-    // Cast the h_addr_list to in_addr , since h_addr_list also has the ip
-    // address in long format only
     addr_list = (struct in_addr **)he->h_addr_list;
-
     for (int i = 0; addr_list[i] != NULL; i++) {
-      // strcpy(ip , inet_ntoa(*addr_list[i]) );
       server.sin_addr = *addr_list[i];
-
       break;
     }
   } else {
@@ -74,13 +62,26 @@ void Client::Connect() {
   server.sin_family = AF_INET;
   server.sin_port = htons(port);
 
-  // Connect to remote server
-  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
-    perror("connect failed. Error");
-  }
+  if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) 
+    return tensorflow::errors::Internal("Failed to connect to \"", host, ":", port, "\"");
+
+  LOG(INFO) << "Connection to \"" << host << ":" << port << "\" established";
+
+  return tensorflow::Status::OK();
 }
 
-void Client::Disconnect() {}
+tensorflow::Status Client::Disconnect() {
+  int close_res = close(sock);
+  sock = -1;
+
+  LOG(INFO) << "Connection to \"" << host << ":" << port << "\" is closed";
+ 
+  return close_res == 0 ? tensorflow::Status::OK() : tensorflow::errors::Internal("Failed to correctly close connection");
+}
+
+bool Client::IsConnected() {
+  return sock != -1;
+}
 
 char Client::ReadByte() {
   char res;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "ignite_binary_object_parser.h"
+//#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace ignite {
@@ -110,6 +111,16 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       break;
     }
+    case 11: {
+       // date
+       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
+                                 tensorflow::DT_INT64, {});
+       tensor.scalar<tensorflow::int64>()() = *((long*)ptr);
+       ptr += 8;
+       out_tensors->emplace_back(std::move(tensor));
+
+       break;
+    }
     case 12: {
       // byte arr
       int length = *((int*)ptr);
@@ -120,9 +131,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       unsigned char* arr = (unsigned char*)ptr;
       ptr += length;
-      for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::uint8>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<tensorflow::uint8>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -136,9 +146,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       short* arr = (short*)ptr;
       ptr += length * 2;
-      for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::int16>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<tensorflow::int16>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -151,9 +160,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       int* arr = (int*)ptr;
       ptr += length * 4;
-      for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::int32>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<tensorflow::int32>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -166,9 +174,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       long* arr = (long*)ptr;
       ptr += length * 8;
-      for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::int64>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<tensorflow::int64>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -182,8 +189,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       float* arr = (float*)ptr;
       ptr += 4 * length;
-      for (int i = 0; i < length; i++) tensor.vec<float>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<float>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -197,8 +204,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       double* arr = (double*)ptr;
       ptr += 8 * length;
-      for (int i = 0; i < length; i++) tensor.vec<double>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<double>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -212,9 +219,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       unsigned char* arr = (unsigned char*)ptr;
       ptr += length * 2;
-      for (int i = 0; i < length; i++)
-        tensor.vec<tensorflow::uint16>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<tensorflow::uint16>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -228,8 +234,8 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       bool* arr = (bool*)ptr;
       ptr += length;
-      for (int i = 0; i < length; i++) tensor.vec<bool>()(i) = arr[i];
 
+      std::copy_n(arr, length, tensor.flat<bool>().data());
       out_tensors->emplace_back(std::move(tensor));
       break;
     }
@@ -251,6 +257,20 @@ char* BinaryObjectParser::Parse(char* ptr,
 
       out_tensors->emplace_back(std::move(tensor));
       break;
+    }
+    case 22: {
+       // date arr
+       int length =  *((int*)ptr);
+       ptr += 4;
+       tensorflow::Tensor tensor(tensorflow::cpu_allocator(),
+                                 tensorflow::DT_INT64,
+                                 tensorflow::TensorShape({length}));
+       long* arr = (long*)ptr;
+       ptr += length * 8;
+
+       std::copy_n(arr, length, tensor.flat<tensorflow::int64>().data());
+       out_tensors->emplace_back(std::move(tensor));
+       break;
     }
     case 27: {
       int byte_arr_size = *((int*)ptr);

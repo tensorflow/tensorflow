@@ -292,7 +292,14 @@ class IgniteClient(TcpClient):
         res = self.read_byte()
 
         if res != 1:
-            raise Exception("Handshake failed [result=%d]" % res)
+            serv_ver_major = self.read_short()
+            serv_ver_minor = self.read_short()
+            serv_ver_patch = self.read_short()
+            err_msg = self.__parse_string()
+            if err_msg is None:
+                raise Exception("Handshake Error [result=%d, version=%d.%d.%d]" % (res, serv_ver_major, serv_ver_minor, serv_ver_patch))
+            else:
+                raise Exception("Handshake Error [result=%d, version=%d.%d.%d, message='%s']" % (res, serv_ver_major, serv_ver_minor, serv_ver_patch, err_msg))
             
     def get_cache_type(self, cache_name):
         """Collects type information about objects stored in the specified cache."""
@@ -312,13 +319,17 @@ class IgniteClient(TcpClient):
         status = self.read_int()
         
         if status != 0:
-            raise Exception("Scan query completed with error [status=%s]" % status)
+            err_msg = self.__parse_string()
+            if err_msg is None:
+                raise Exception("Scan Query Error [status=%s]" % status)
+            else:
+                raise Exception("Scan Query Error [status=%s, message='%s']" % (status, err_msg))
 
         cursor_id = self.read_long()
         row_count = self.read_int()
         
         if row_count == 0:
-            raise Exception("Scan query returned empty result")
+            raise Exception("Scan Query returned empty result, so it's impossible to derive the cache type")
 
         payload = DataBuffer(self.read_data(result_length - 25))
 
@@ -388,6 +399,16 @@ class IgniteClient(TcpClient):
             data.skip(length)
             return TypeTreeNode(field_name, type_id)
         
+        # UUID scalar.
+        elif type_id == 10:
+            data.skip(16)
+            return TypeTreeNode(field_name, type_id)
+
+        # Date scalar.
+        elif type_id == 11:        
+            data.skip(8)
+            return TypeTreeNode(field_name, type_id)    
+
         # Byte array.
         elif type_id == 12:
             length = data.read_int()
@@ -450,6 +471,18 @@ class IgniteClient(TcpClient):
                      raise Exception("Unknown binary type when expected string [type_id=%d]" % header)
             return TypeTreeNode(field_name, type_id)
 
+        # UUID array.
+        elif type_id == 21:
+            length = data.read_int()
+            data.skip(length * 16) # TODO: support NULL values.
+            return TypeTreeNode(field_name, type_id)
+
+        # Date array.
+        elif type_id == 22:
+            length = data.read_int()
+            data.skip(length * 8)
+            return TypeTreeNode(field_name, type_id)
+
         # Wrapped Binary Object.
         elif type_id == 27:
             length = data.read_int()
@@ -497,7 +530,11 @@ class IgniteClient(TcpClient):
         status = self.read_int()
         
         if status != 0:
-            raise Exception("Get binary type completed with error [status=%d]" % status)
+            err_msg = self.__parse_string()
+            if err_msg is None:
+                raise Exception("Get Binary Type Error [status=%d, message='%s']" % (status, err_msg))
+            else:
+                raise Exception("Get Binary Type Error [status=%d]" % status)
 
         binary_type_exists = self.read_byte()
         
