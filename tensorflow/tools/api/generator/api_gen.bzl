@@ -134,7 +134,7 @@ def gen_api_init_files(
         package_dep = "//tensorflow/python:no_contrib"):
     root_init_template_flag = ""
     if root_init_template:
-      root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
+        root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
 
     api_gen_binary_target = "create_" + package + "_api"
     native.py_binary(
@@ -154,8 +154,9 @@ def gen_api_init_files(
         outs = output_files,
         cmd = (
             "$(location :" + api_gen_binary_target + ") " +
-            root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"),
+            root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"
+        ),
         srcs = srcs,
-        tools = [":" + api_gen_binary_target ],
+        tools = [":" + api_gen_binary_target],
         visibility = ["//tensorflow:__pkg__"],
     )
