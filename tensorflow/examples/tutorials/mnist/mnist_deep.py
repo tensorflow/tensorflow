@@ -170,7 +170,9 @@ def main(_):
     accuracy_l = []
     for _ in range(20):
       batch = mnist.test.next_batch(500, shuffle=False)
-      accuracy_l.append(accuracy.eval(feed_dict={x: batch[0], y_: batch[1], keep_prob: 1.0}))
+      accuracy_l.append(accuracy.eval(feed_dict={x: batch[0], 
+                                                 y_: batch[1], 
+                                                 keep_prob: 1.0}))
     print('test accuracy %g' % numpy.mean(accuracy_l))
 
 
