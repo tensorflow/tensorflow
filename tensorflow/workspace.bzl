@@ -107,11 +107,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/e5e305a158a0.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/e5e305a158a0.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/fd6845384b86.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/fd6845384b86.tar.gz",
       ],
-      sha256 = "8bbe676d69e7f59070c83a949454b8b6344034e0ebbf686b337528e5dc04c7de",
-      strip_prefix = "eigen-eigen-e5e305a158a0",
+      sha256 = "d956415d784fa4e42b6a2a45c32556d6aec9d0a3d8ef48baee2522ab762556a9",
+      strip_prefix = "eigen-eigen-fd6845384b86",
       build_file = clean_dep("//third_party:eigen.BUILD"),
   )
 
@@ -449,13 +449,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/d184fa229d75d336aedea0041bd59cb93e7e267f.tar.gz",
-          "https://github.com/grpc/grpc/archive/d184fa229d75d336aedea0041bd59cb93e7e267f.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/v1.13.0.tar.gz",
+          "https://github.com/grpc/grpc/archive/v1.13.0.tar.gz",
       ],
-      sha256 = "895b31310e718a61f7335759a778c068a6edde1c089883598a0830cbb7075673",
-      strip_prefix = "grpc-d184fa229d75d336aedea0041bd59cb93e7e267f",
+      sha256 = "50db9cf2221354485eb7c3bd55a4c27190caef7048a2a1a15fbe60a498f98b44",
+      strip_prefix = "grpc-1.13.0",
   )
-
 
   tf_http_archive(
       name = "linenoise",

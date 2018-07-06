@@ -142,7 +142,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     auto n = infer_graph->mutable_node(i);
     if (n->op() == "TRTEngineOp") {
       VLOG(1) << "Processing " << n->name();
-      string container_name = n->attr().at("segment_funcdef_name").s();
+      const string& container_name = n->attr().at("segment_funcdef_name").s();
       TRTCalibrationResource* cres = nullptr;
       auto status = calib_rm->Lookup(container_name, "Calibrator", &cres);
       if (!status.ok()) {
@@ -152,7 +152,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Need to run graph with calibration data first!");
       }
       if (cres->calibrator_) {
-        cres->calibrator_->setDone();
+        cres->calibrator_->waitAndSetDone();
         cres->thr_->join();
         const auto& calibration_table =
             cres->calibrator_->getCalibrationTableAsString();
@@ -168,6 +168,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Can't get TRTCalibrator from resource manager!");
       }
       cres->Unref();
+      calib_rm->Cleanup(container_name);
     }
   }
   return tensorflow::Status::OK();

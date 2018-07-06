@@ -1449,7 +1449,7 @@ def main():
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_S3'] = '0'
+    environ_cp['TF_NEED_AWS'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -1473,8 +1473,8 @@ def main():
                 'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
                 'with_hdfs_support', True, 'hdfs')
-  set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
-                'with_s3_support', True, 's3')
+  set_build_var(environ_cp, 'TF_NEED_AWS', 'Amazon AWS Platform',
+                'with_aws_support', True, 'aws')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',

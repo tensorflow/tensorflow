@@ -1987,6 +1987,8 @@ py_library(
         ":math_ops",
         ":platform",
         ":resource_variable_ops",
+        ":sparse_ops",
+        ":tensor_shape",
         ":variables",
     ],
 )

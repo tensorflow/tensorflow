@@ -54,10 +54,11 @@ both floating point and quantized inference.
 ### Train a custom model
 
 A developer may choose to train a custom model using Tensorflow (see the
-@{$tutorials} for examples of building and training models). If you have already
-written a model, the first step is to export this to a @{tf.GraphDef} file. This
-is required because some formats do not store the model structure outside the
-code, and we must communicate with other parts of the framework. See
+[TensorFlow tutorials](../../tutorials/) for examples of building and training
+models). If you have already written a model, the first step is to export this
+to a @{tf.GraphDef} file. This is required because some formats do not store the
+model structure outside the code, and we must communicate with other parts of the
+framework. See
 [Exporting the Inference Graph](https://github.com/tensorflow/models/blob/master/research/slim/README.md)
 to create .pb file for the custom model.
 
