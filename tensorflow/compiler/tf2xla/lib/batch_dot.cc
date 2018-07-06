@@ -84,7 +84,7 @@ xla::XlaOp BatchDot(xla::XlaOp x, xla::XlaOp y, bool transpose_x,
       dimensions.push_back(y_shape.dimensions(y_outer_dim));
       return xla::Broadcast(
           xla::ConstantLiteral(builder,
-                               xla::Literal::Zero(x_shape.element_type())),
+                               xla::LiteralUtil::Zero(x_shape.element_type())),
           dimensions);
     }
 

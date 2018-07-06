@@ -82,6 +82,7 @@ xla_test(
     tags = ["enable_for_xla_interpreter"],
     deps = [
         ":math",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -123,7 +124,7 @@ cc_library(
     hdrs = ["testing.h"],
     deps = [
         "//tensorflow/compiler/xla:execution_options_util",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

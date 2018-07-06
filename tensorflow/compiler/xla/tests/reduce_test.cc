@@ -67,12 +67,12 @@ class ReduceTest : public ClientLibraryTestBase {
   ReduceTest() {
     // Implementation note: laid out z >> y >> x by default.
     // clang-format off
-    literal_2d_ = Literal::CreateR2<float>({
+    literal_2d_ = LiteralUtil::CreateR2<float>({
       // x0   x1   x2
       { 1.f, 2.f, 3.f},  // y0
       { 4.f, 5.f, 6.f},  // y1
     });
-    literal_3d_ = Literal::CreateR3Projected<float>({
+    literal_3d_ = LiteralUtil::CreateR3Projected<float>({
       // x0   x1   x2
       { 1.f, 2.f, 3.f},  // y0
       { 4.f, 5.f, 6.f},  // y1
@@ -101,7 +101,7 @@ class ReduceTest : public ClientLibraryTestBase {
       }
     }
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateR1(AsSlice(input_data));
+        LiteralUtil::CreateR1(AsSlice(input_data));
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -133,7 +133,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Reduce(pred_values, init_value, reduce,
            /*dimensions_to_reduce=*/{0});
 
-    std::unique_ptr<Literal> input_literal = Literal::CreateR1(input_data);
+    std::unique_ptr<Literal> input_literal = LiteralUtil::CreateR1(input_data);
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -175,7 +175,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Array2D<uint8> input_data(rows, cols);
     input_data.FillRandom(0, 1);
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateR2FromArray2D(input_data);
+        LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
@@ -209,7 +209,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Array2D<float> input_data(rows, cols);
     input_data.FillRandom(3.14f, 0.04);
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateR2FromArray2D(input_data);
+        LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
@@ -237,7 +237,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Array2D<float> input_data(rows, cols);
     input_data.FillRandom(3.14f, 0.04);
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateR2FromArray2D(input_data);
+        LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
@@ -295,7 +295,7 @@ class ReduceTest : public ClientLibraryTestBase {
     Array2D<NativeT> input_data(rows, cols);
     input_data.FillUnique(initial_value);
     std::unique_ptr<Literal> input_literal =
-        Literal::CreateR2FromArray2D(input_data);
+        LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
     std::unique_ptr<GlobalData> input_global_data =
@@ -450,7 +450,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   Array2D<float> input_data(rows, cols);
   input_data.FillRandom(3.14f, 0.04);
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR2FromArray2D(input_data);
+      LiteralUtil::CreateR2FromArray2D(input_data);
   input_literal = input_literal->Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -482,7 +482,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   Array2D<float> input_data(rows, cols);
   input_data.FillRandom(3.14f, 0.04);
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR2FromArray2D(input_data);
+      LiteralUtil::CreateR2FromArray2D(input_data);
   input_literal = input_literal->Relayout(LayoutUtil::MakeLayout({0, 1}));
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -531,7 +531,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   Array3D<float> input_data(rows, 2, cols / 2);
   input_data.FillRandom(3.14f, 0.04);
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR3FromArray3D(input_data);
+      LiteralUtil::CreateR3FromArray3D(input_data);
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -594,7 +594,7 @@ XLA_TEST_F(ReduceTest, MaxReduce2DToR0) {
   auto max = CreateScalarMaxComputation(F32, &builder);
   Array2D<float> input(300, 250);
   input.FillRandom(214.0f);
-  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
   Reduce(ConstantLiteral(&builder, *input_literal),
          ConstantR0<float>(&builder, FLT_MIN), max, {0, 1});
   auto input_max = FLT_MIN;
@@ -609,7 +609,7 @@ XLA_TEST_F(ReduceTest, MinReduce2DToR0) {
   auto min = CreateScalarMinComputation(F32, &builder);
   Array2D<float> input(150, 130);
   input.FillRandom(214.0f);
-  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
   Reduce(ConstantLiteral(&builder, *input_literal),
          ConstantR0<float>(&builder, FLT_MAX), min, {0, 1});
 
@@ -623,7 +623,7 @@ XLA_TEST_F(ReduceTest, UnsignedInt_MinReduce) {
   XlaBuilder builder(TestName());
   Array2D<uint32> input({{1}, {2}});
   auto min = CreateScalarMinComputation(U32, &builder);
-  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
   auto initial_value =
       ConstantR0<uint32>(&builder, std::numeric_limits<uint32>::max());
 
@@ -635,7 +635,7 @@ XLA_TEST_F(ReduceTest, UnsignedInt_MaxReduce) {
   XlaBuilder builder(TestName());
   Array2D<uint32> input({{1}, {2}});
   auto max = CreateScalarMaxComputation(U32, &builder);
-  auto input_literal = Literal::CreateR2FromArray2D(input);
+  auto input_literal = LiteralUtil::CreateR2FromArray2D(input);
   auto initial_value =
       ConstantR0<uint32>(&builder, std::numeric_limits<uint32>::min());
 
@@ -818,7 +818,7 @@ XLA_TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   //  input_array.FillRandom(3.14f, 0.05);
   input_array.Fill(1.0f);
 
-  auto input_literal = Literal::CreateR3FromArray3D(input_array);
+  auto input_literal = LiteralUtil::CreateR3FromArray3D(input_array);
   input_literal =
       input_literal->Relayout(LayoutUtil::MakeLayout(GetParam().layout));
   std::unique_ptr<GlobalData> input_data =
@@ -872,7 +872,8 @@ XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
   auto a = ConstantR0<float>(&builder, 2.0f);
   auto a2 = Abs(a);
 
-  std::unique_ptr<Literal> b_literal = Literal::CreateR1<float>({1.0f, 4.0f});
+  std::unique_ptr<Literal> b_literal =
+      LiteralUtil::CreateR1<float>({1.0f, 4.0f});
   std::unique_ptr<GlobalData> b_data =
       client_->TransferToServer(*b_literal).ConsumeValueOrDie();
   auto b = Parameter(&builder, 0, b_literal->shape(), "b");
@@ -900,7 +901,7 @@ class ReduceInitializerTest : public ReduceTest {
 
     auto init = ConstantR0<T>(&builder, initializer);
     std::vector<T> input_arr(num_elems, std::numeric_limits<T>::lowest());
-    auto input_literal = Literal::CreateR1<T>(input_arr);
+    auto input_literal = LiteralUtil::CreateR1<T>(input_arr);
     auto input_data =
         client_->TransferToServer(*input_literal).ConsumeValueOrDie();
     Reduce(Parameter(&builder, 0, input_literal->shape(), "input"), init,
@@ -950,10 +951,11 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
   float operand[] = {42.0f};
   float init = 58.5f;
   float expected = 42.0f;
-  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(operand);
+  std::unique_ptr<Literal> input_literal =
+      LiteralUtil::CreateR1<float>(operand);
   std::unique_ptr<GlobalData> input_global_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
-  std::unique_ptr<Literal> input_literal2 = Literal::CreateR0<float>(init);
+  std::unique_ptr<Literal> input_literal2 = LiteralUtil::CreateR0<float>(init);
   std::unique_ptr<GlobalData> input_global_data2 =
       client_->TransferToServer(*input_literal2).ConsumeValueOrDie();
   ComputeAndCompareR0<float>(

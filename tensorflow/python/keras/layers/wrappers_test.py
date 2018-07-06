@@ -190,14 +190,70 @@ class TimeDistributedTest(test.TestCase):
     x = keras.layers.Input(shape=(3, 2))
     layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
     _ = layer(x)
-    assert len(layer.updates) == 2
-    assert len(layer.trainable_weights) == 2
+    self.assertEquals(len(layer.updates), 2)
+    self.assertEquals(len(layer.trainable_weights), 2)
     layer.trainable = False
     assert not layer.updates
     assert not layer.trainable_weights
     layer.trainable = True
     assert len(layer.updates) == 2
     assert len(layer.trainable_weights) == 2
+
+  def test_TimeDistributed_with_masked_embedding_and_unspecified_shape(self):
+    with self.test_session():
+      # test with unspecified shape and Embeddings with mask_zero
+      model = keras.models.Sequential()
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.Embedding(5, 6, mask_zero=True),
+          input_shape=(None, None)))  # N by t_1 by t_2 by 6
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.SimpleRNN(7, return_sequences=True)))
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.SimpleRNN(8, return_sequences=False)))
+      model.add(keras.layers.SimpleRNN(1, return_sequences=False))
+      model.compile(optimizer='rmsprop', loss='mse')
+      model_input = np.random.randint(low=1, high=5, size=(10, 3, 4),
+                                      dtype='int32')
+      for i in range(4):
+        model_input[i, i:, i:] = 0
+      model.fit(model_input,
+                np.random.random((10, 1)), epochs=1, batch_size=10)
+      mask_outputs = [model.layers[0].compute_mask(model.input)]
+      for layer in model.layers[1:]:
+        mask_outputs.append(layer.compute_mask(layer.input, mask_outputs[-1]))
+      func = keras.backend.function([model.input], mask_outputs[:-1])
+      mask_outputs_val = func([model_input])
+      ref_mask_val_0 = model_input > 0         # embedding layer
+      ref_mask_val_1 = ref_mask_val_0          # first RNN layer
+      ref_mask_val_2 = np.any(ref_mask_val_1, axis=-1)     # second RNN layer
+      ref_mask_val = [ref_mask_val_0, ref_mask_val_1, ref_mask_val_2]
+      for i in range(3):
+        self.assertAllEqual(mask_outputs_val[i], ref_mask_val[i])
+      self.assertIs(mask_outputs[-1], None)  # final layer
+
+  def test_TimeDistributed_with_masking_layer(self):
+    with self.test_session():
+      # test with Masking layer
+      model = keras.models.Sequential()
+      model.add(keras.layers.TimeDistributed(keras.layers.Masking(
+          mask_value=0.,), input_shape=(None, 4)))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(5)))
+      model.compile(optimizer='rmsprop', loss='mse')
+      model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
+      for i in range(4):
+        model_input[i, i:, :] = 0.
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.fit(model_input,
+                np.random.random((10, 3, 5)), epochs=1, batch_size=6)
+      mask_outputs = [model.layers[0].compute_mask(model.input)]
+      mask_outputs += [model.layers[1].compute_mask(model.layers[1].input,
+                                                    mask_outputs[-1])]
+      func = keras.backend.function([model.input], mask_outputs)
+      mask_outputs_val = func([model_input])
+      self.assertEqual((mask_outputs_val[0]).all(),
+                       model_input.all())
+      self.assertEqual((mask_outputs_val[1]).all(),
+                       model_input.all())
 
 
 class BidirectionalTest(test.TestCase):
