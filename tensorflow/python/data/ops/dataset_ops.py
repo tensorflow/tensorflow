@@ -1425,7 +1425,11 @@ class StructuredFunctionWrapper(object):
           flat_shapes.append(component)
           flat_types.append(component)
         else:
-          t = ops.convert_to_tensor(t)
+          try:
+            t = ops.convert_to_tensor(t)
+          except (ValueError, TypeError):
+            raise TypeError("Unsupported return value from function passed to "
+                            "%s: %s." % (transformation_name, t))
           flat_ret.append(t)
           flat_classes.append(ops.Tensor)
           flat_shapes.append(t.get_shape())
