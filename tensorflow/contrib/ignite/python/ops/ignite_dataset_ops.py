@@ -120,7 +120,15 @@ class TcpClient(Readable):
     
     def read_data(self, length):
         """Reads the specified number of bytes and returns them as a buffer."""
-        data_buffer = self.sock.recv(length)
+        data_buffer = None
+        rem = length
+        while rem > 0:
+            buf = self.sock.recv(rem)
+            rem = rem - len(buf)
+            if data_buffer is None:
+                data_buffer = buf
+            else:
+                data_buffer.append(buf)
         return data_buffer
         
     def __write(self, value, data_type):
