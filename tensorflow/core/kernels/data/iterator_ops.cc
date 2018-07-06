@@ -1150,9 +1150,18 @@ class DeserializeIteratorOp : public OpKernel {
 
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU),
+                        IteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_GPU),
+                        IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name("MakeIterator").Device(DEVICE_GPU).HostMemory("dataset"),
+    MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_CPU),
+                        AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_GPU),
                         AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
@@ -1160,11 +1169,25 @@ REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU),
+                        IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
+                        IteratorGetNextSyncOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_GPU),
                         IteratorGetNextSyncOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("string_handle"),
+                        IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
+                        IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2").Device(DEVICE_CPU),
+                        IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("string_handle"),
                         IteratorFromStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);

@@ -644,6 +644,14 @@ REGISTER_OP("Iterator")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("IteratorV2")
+    .Output("handle: resource")
+    .Attr("shared_name: string")
+    .Attr("container: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("AnonymousIterator")
     .Output("handle: resource")
     .Attr("output_types: list(type) >= 1")
@@ -715,6 +723,13 @@ REGISTER_OP("IteratorToStringHandle")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("IteratorFromStringHandle")
+    .Input("string_handle: string")
+    .Output("resource_handle: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("IteratorFromStringHandleV2")
     .Input("string_handle: string")
     .Output("resource_handle: resource")
     .Attr("output_types: list(type) >= 0 = []")

@@ -24,6 +24,7 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
@@ -107,8 +108,12 @@ class Dataset(object):
           "execution is enabled.")
     if shared_name is None:
       shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="", shared_name=shared_name, **flat_structure(self))
+    if compat.forward_compatible(2018, 8, 3):
+      iterator_resource = gen_dataset_ops.iterator_v2(
+          container="", shared_name=shared_name, **flat_structure(self))
+    else:
+      iterator_resource = gen_dataset_ops.iterator(
+          container="", shared_name=shared_name, **flat_structure(self))
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(self._as_variant_tensor(),
                                                   iterator_resource)
