@@ -1265,8 +1265,13 @@ void InsertCopyOperator(Model* model, const string& source_array_name,
   auto* copy_op = new TensorFlowReshapeOperator;
   copy_op->inputs = {
       source_array_name,
-      CreateInt32Array(model, target_array_name + "_copy_shape", shape)};
+      CreateInt32Array(
+          model, AvailableArrayName(*model, target_array_name + "_copy_shape"),
+          shape)};
   copy_op->outputs = {target_array_name};
+  if (target_array.has_shape()) {
+    copy_op->shape = target_array.shape().dims();
+  }
   model->operators.emplace_back(copy_op);
 }
 
