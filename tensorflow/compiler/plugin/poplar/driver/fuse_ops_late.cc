@@ -162,7 +162,7 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
-    // Random truncated normal without post scale and add
+    // Random truncated normal mean 0 sd 1
     {{HloOpcode::kMultiply, true, 0, IsTruncatedNormal, {1, 2}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kMultiply, true, 0, nullptr, {3, 60}},

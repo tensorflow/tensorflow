@@ -17,8 +17,8 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
-#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
+#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -88,10 +88,9 @@ class RandomShuffleOp : public XlaOpKernel {
       xla::XlaOp indices = xla::Iota(builder, xla::S32, n);
 
       // Swap the indices at i and swaps[i].
-      auto swap_body_fn = [&](xla::XlaOp i,
-                              gtl::ArraySlice<xla::XlaOp> loop_vars,
-                              xla::XlaBuilder* builder)
-          -> xla::StatusOr<std::vector<xla::XlaOp>> {
+      auto swap_body_fn = [&](
+          xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+          xla::XlaBuilder* builder) -> xla::StatusOr<std::vector<xla::XlaOp>> {
         auto swaps = loop_vars[0];
         auto indices = loop_vars[1];
         i = xla::Reshape(i, {1});
@@ -215,9 +214,7 @@ class TruncatedNormalOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("TruncatedNormal")
-                    .CompileTimeConstInput("shape")
-                    .TypeConstraint("dtype", DT_FLOAT),
+REGISTER_XLA_OP(Name("TruncatedNormal").CompileTimeConstInput("shape"),
                 TruncatedNormalOp);
 
 }  // anonymous namespace
