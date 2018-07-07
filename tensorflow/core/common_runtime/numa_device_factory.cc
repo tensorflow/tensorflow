@@ -13,61 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Register a factory that provides CPU devices.
-
+// Register a factory that provides NUMA devices.
 #include "tensorflow/core/common_runtime/numa_device.h"
-#include "tensorflow/core/common_runtime/threadpool_device.h"
 
 #include <vector>
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/numa_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 
 namespace tensorflow {
 
 // TODO(zhifengc/tucker): Figure out the bytes of available RAM.
-class ThreadPoolDeviceFactory : public DeviceFactory {
+class NumaDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<Device*>* devices) override {
     // TODO(zhifengc/tucker): Figure out the number of available CPUs
     // and/or NUMA configuration.
-    int n = 1;
-    auto iter = options.config.device_count().find("CPU");
+    int n = 0;
+    auto iter = options.config.device_count().find("NUMA");
     if (iter != options.config.device_count().end()) {
       n = iter->second;
     }
-
     int32 intra_op_parallelism_threads =
-        options.config.intra_op_parallelism_threads();
-    std::vector<int>  proc_set[1];
-    /*if(intra_op_parallelism_threads == 56) {
-     for(int i=0; i<intra_op_parallelism_threads; i++){
-        proc_set[0].push_back(i+56);
-      }
-      std::cout << "Create CPU device, bound to cores:\n";
-      for(int i=0; i<proc_set[0].size(); i++)
-        std::cout << proc_set[0][i] << " ";
-      std::cout << "\n";
-      for (int i = 0; i < n; i++) {
-        string name = strings::StrCat(name_prefix, "/device:CPU:", i);
-        devices->push_back(new NumaDevice(
-            options, name, Bytes(256 << 20), DeviceLocality(), new MklCPUAllocator(), proc_set[i]));
-      }
+        options.config.intra_op_parallelism_threads()/2;
+    std::vector<int>  proc_set[2];
+    for(int i=0; i<intra_op_parallelism_threads; i++){
+      proc_set[0].push_back(i+56);
+      proc_set[1].push_back(i+28+56);
     }
-    else */{
-      for (int i = 0; i < n; i++) {
-        string name = strings::StrCat(name_prefix, "/device:CPU:", i);
-        devices->push_back(new ThreadPoolDevice(
-            options, name, Bytes(256 << 20), DeviceLocality(), new MklCPUAllocator()));
-      }
+
+    for (int i = 0; i < n; i++) {
+      string name = strings::StrCat(name_prefix, "/device:NUMA:", i);
+      devices->push_back(new NumaDevice(
+          options, name, Bytes(256 << 20), DeviceLocality(), new NumaAllocator(i), proc_set[i]));
     }
 
     return Status::OK();
   }
 };
 
-REGISTER_LOCAL_DEVICE_FACTORY("CPU", ThreadPoolDeviceFactory, 60);
+REGISTER_LOCAL_DEVICE_FACTORY("NUMA", NumaDeviceFactory, 65);
 
 }  // namespace tensorflow

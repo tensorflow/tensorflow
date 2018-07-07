@@ -22,6 +22,7 @@ cc_library(
     srcs = [
         "lib/libiomp5.so",
         "lib/libmklml_intel.so",
+        "lib/libnuma.so"
     ],
     visibility = ["//visibility:public"],
 )
