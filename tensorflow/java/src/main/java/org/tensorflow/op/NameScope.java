@@ -57,7 +57,7 @@ final class NameScope {
     return fullyQualify(makeUnique(actualName));
   }
   
-  String prefix() {
+  String opPrefix() {
     return opPrefix;
   }
 

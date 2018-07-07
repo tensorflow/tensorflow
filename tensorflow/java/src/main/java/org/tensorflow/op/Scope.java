@@ -165,7 +165,7 @@ public final class Scope {
    * }</pre>
    */
   public String prefix() {
-    return nameScope.prefix();
+    return nameScope.opPrefix();
   }
 
   private Scope(Graph graph, NameScope nameScope) {
