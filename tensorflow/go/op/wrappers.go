@@ -3114,6 +3114,107 @@ func DeepCopy(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// PackAttr is an optional argument to Pack.
+type PackAttr func(optionalAttr)
+
+// PackAxis sets the optional axis attribute to value.
+//
+// value: Dimension along which to pack.  Negative values wrap around, so the
+// valid range is `[-(R+1), R+1)`.
+// If not specified, defaults to 0
+func PackAxis(value int64) PackAttr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
+//
+// Packs the `N` tensors in `values` into a tensor with rank one higher than each
+// tensor in `values`, by packing them along the `axis` dimension.
+// Given a list of tensors of shape `(A, B, C)`;
+//
+// if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
+// if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
+// Etc.
+//
+// For example:
+//
+// ```
+// # 'x' is [1, 4]
+// # 'y' is [2, 5]
+// # 'z' is [3, 6]
+// pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+// pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+// ```
+//
+// This is the opposite of `unpack`.
+//
+// Arguments:
+//	values: Must be of same shape and type.
+//
+// Returns The packed tensor.
+func Pack(scope *Scope, values []tf.Output, optional ...PackAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Pack",
+		Input: []tf.Input{
+			tf.OutputList(values),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Concatenates a list of `N` tensors along the first dimension.
+//
+// The input tensors are all required to have size 1 in the first dimension.
+//
+// For example:
+//
+// ```
+// # 'x' is [[1, 4]]
+// # 'y' is [[2, 5]]
+// # 'z' is [[3, 6]]
+// parallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
+// ```
+//
+// The difference between concat and parallel_concat is that concat requires all
+// of the inputs be computed before the operation will begin but doesn't require
+// that the input shapes be known during graph construction.  Parallel concat
+// will copy pieces of the input into the output as they become available, in
+// some situations this can provide a performance benefit.
+//
+// Arguments:
+//	values: Tensors to be concatenated. All must have size 1 in the first dimension
+// and same shape.
+//	shape: the final shape of the result; should be equal to the shapes of any input
+// but with the number of input values in the first dimension.
+//
+// Returns The concatenated tensor.
+func ParallelConcat(scope *Scope, values []tf.Output, shape tf.Shape) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shape": shape}
+	opspec := tf.OpSpec{
+		Type: "ParallelConcat",
+		Input: []tf.Input{
+			tf.OutputList(values),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
@@ -14313,65 +14414,6 @@ func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths
 		Input: []tf.Input{
 			handle, value, lengths, flow_in,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// PackAttr is an optional argument to Pack.
-type PackAttr func(optionalAttr)
-
-// PackAxis sets the optional axis attribute to value.
-//
-// value: Dimension along which to pack.  Negative values wrap around, so the
-// valid range is `[-(R+1), R+1)`.
-// If not specified, defaults to 0
-func PackAxis(value int64) PackAttr {
-	return func(m optionalAttr) {
-		m["axis"] = value
-	}
-}
-
-// Packs a list of `N` rank-`R` tensors into one rank-`(R+1)` tensor.
-//
-// Packs the `N` tensors in `values` into a tensor with rank one higher than each
-// tensor in `values`, by packing them along the `axis` dimension.
-// Given a list of tensors of shape `(A, B, C)`;
-//
-// if `axis == 0` then the `output` tensor will have the shape `(N, A, B, C)`.
-// if `axis == 1` then the `output` tensor will have the shape `(A, N, B, C)`.
-// Etc.
-//
-// For example:
-//
-// ```
-// # 'x' is [1, 4]
-// # 'y' is [2, 5]
-// # 'z' is [3, 6]
-// pack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-// pack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
-// ```
-//
-// This is the opposite of `unpack`.
-//
-// Arguments:
-//	values: Must be of same shape and type.
-//
-// Returns The packed tensor.
-func Pack(scope *Scope, values []tf.Output, optional ...PackAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Pack",
-		Input: []tf.Input{
-			tf.OutputList(values),
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -30667,46 +30709,4 @@ func DecodeWav(scope *Scope, contents tf.Output, optional ...DecodeWavAttr) (aud
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// Concatenates a list of `N` tensors along the first dimension.
-//
-// The input tensors are all required to have size 1 in the first dimension.
-//
-// For example:
-//
-// ```
-// # 'x' is [[1, 4]]
-// # 'y' is [[2, 5]]
-// # 'z' is [[3, 6]]
-// parallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-// ```
-//
-// The difference between concat and parallel_concat is that concat requires all
-// of the inputs be computed before the operation will begin but doesn't require
-// that the input shapes be known during graph construction.  Parallel concat
-// will copy pieces of the input into the output as they become available, in
-// some situations this can provide a performance benefit.
-//
-// Arguments:
-//	values: Tensors to be concatenated. All must have size 1 in the first dimension
-// and same shape.
-//	shape: the final shape of the result; should be equal to the shapes of any input
-// but with the number of input values in the first dimension.
-//
-// Returns The concatenated tensor.
-func ParallelConcat(scope *Scope, values []tf.Output, shape tf.Shape) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"shape": shape}
-	opspec := tf.OpSpec{
-		Type: "ParallelConcat",
-		Input: []tf.Input{
-			tf.OutputList(values),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
