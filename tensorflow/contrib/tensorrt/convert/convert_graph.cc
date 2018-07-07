@@ -168,7 +168,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Can't get TRTCalibrator from resource manager!");
       }
       cres->Unref();
-      calib_rm->Cleanup(container_name);
+      TF_RETURN_IF_ERROR(calib_rm->Cleanup(container_name));
     }
   }
   return tensorflow::Status::OK();
