@@ -34,13 +34,13 @@ extfunc @memrefs(memref<1x?x4x?x?xaffineint>, memref<i8>)
 extfunc @functions((memref<1x?x4x?x?xaffineint>, memref<i8>) -> (), ()->())
 
 
-; CHECK-LABEL: cfgfunc @simpleCFG() {
-cfgfunc @simpleCFG() {
-bb42:       ; CHECK: bb0:
-  "foo"()   ; CHECK: "foo"()
-  "bar"()   ; CHECK: "bar"()
-  return    ; CHECK: return
-}           ; CHECK: }
+; CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) {
+cfgfunc @simpleCFG(i32, f32) {
+bb42(%0: i32, %f: f32):     ; CHECK: bb0:
+  %1 = "foo"(%0)            ; CHECK: "foo"()
+  "bar"(%1, %f)             ; CHECK: "bar"()
+  return                    ; CHECK: return
+}                           ; CHECK: }
 
 ; CHECK-LABEL: cfgfunc @multiblock() -> i32 {
 cfgfunc @multiblock() -> i32 {
@@ -99,7 +99,7 @@ bb42:       ; CHECK: bb0:
 cfgfunc @standard_instrs() {
 bb42:       ; CHECK: bb0:
   ; CHECK: dim xxx, 2 : sometype
-  "dim"(){index: 2}
+  %a = "dim"(%42){index: 2}
 
   ; CHECK: addf xx, yy : sometype
   "addf"()

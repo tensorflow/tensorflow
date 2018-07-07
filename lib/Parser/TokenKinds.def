@@ -50,9 +50,10 @@ TOK_MARKER(eof)
 TOK_MARKER(error)
 
 // Identifiers.
-TOK_IDENTIFIER(bare_identifier)         // foo
-TOK_IDENTIFIER(at_identifier)           // @foo
-TOK_IDENTIFIER(affine_map_identifier)   // #foo
+TOK_IDENTIFIER(bare_identifier)    // foo
+TOK_IDENTIFIER(at_identifier)      // @foo
+TOK_IDENTIFIER(hash_identifier)    // #foo
+TOK_IDENTIFIER(percent_identifier) // %foo
 // TODO: @@foo, etc.
 
 // Literals

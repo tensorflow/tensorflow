@@ -103,7 +103,10 @@ Token Lexer::lexToken() {
 
   case ';': return lexComment();
   case '@': return lexAtIdentifier(tokStart);
-  case '#': return lexAffineMapId(tokStart);
+  case '#':
+    LLVM_FALLTHROUGH;
+  case '%':
+    return lexPrefixedIdentifier(tokStart);
   case '"': return lexString(tokStart);
 
   case '0': case '1': case '2': case '3': case '4':
@@ -182,14 +185,28 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
   return formToken(Token::at_identifier, tokStart);
 }
 
-/// Lex an '#foo' identifier.
+/// Lex an identifier that starts with a prefix followed by suffix-id.
 ///
 ///   affine-map-id ::= `#` suffix-id
+///   ssa-id        ::= '%' suffix-id
 ///   suffix-id ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
 ///
-// TODO(andydavis) Consider moving suffix-id parsing to a shared function
-// so it can be re-used to parse %suffix-id.
-Token Lexer::lexAffineMapId(const char *tokStart) {
+Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
+  Token::Kind kind;
+  StringRef errorKind;
+  switch (*tokStart) {
+  case '#':
+    kind = Token::hash_identifier;
+    errorKind = "invalid affine map name";
+    break;
+  case '%':
+    kind = Token::percent_identifier;
+    errorKind = "invalid SSA name";
+    break;
+  default:
+    llvm_unreachable("invalid caller");
+  }
+
   // Parse suffix-id.
   if (isdigit(*curPtr)) {
     // If suffix-id starts with a digit, the rest must be digits.
@@ -201,9 +218,10 @@ Token Lexer::lexAffineMapId(const char *tokStart) {
       ++curPtr;
     } while (isalpha(*curPtr) || isdigit(*curPtr) || isPunct(*curPtr));
   } else {
-    return emitError(curPtr-1, "invalid affine map id");
+    return emitError(curPtr - 1, errorKind);
   }
-  return formToken(Token::affine_map_identifier, tokStart);
+
+  return formToken(kind, tokStart);
 }
 
 /// Lex an integer literal.

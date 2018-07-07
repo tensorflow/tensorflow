@@ -188,17 +188,23 @@ private:
                                         const AffineMapParserState &state,
                                         AffineExpr *&result);
 
+  // SSA
+  ParseResult parseSSAUse();
+  ParseResult parseOptionalSSAUseList(Token::Kind endToken);
+  ParseResult parseSSAUseAndType();
+  ParseResult parseOptionalSSAUseAndTypeList(Token::Kind endToken);
+
   // Functions.
   ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
   ParseResult parseExtFunc();
   ParseResult parseCFGFunc();
-  ParseResult parseMLFunc();
   ParseResult parseBasicBlock(CFGFunctionParserState &functionState);
   Statement *parseStatement(ParentType parent);
 
   OperationInst *parseCFGOperation(CFGFunctionParserState &functionState);
   TerminatorInst *parseTerminator(CFGFunctionParserState &functionState);
 
+  ParseResult parseMLFunc();
   ForStmt *parseForStmt(ParentType parent);
   IfStmt *parseIfStmt(ParentType parent);
   ParseResult parseNestedStatements(NodeStmt *parent);
@@ -658,7 +664,7 @@ ParseResult Parser::parseAttributeDict(
 ///  affine-map-def ::= affine-map-id `=` affine-map-inline
 ///
 ParseResult Parser::parseAffineMapDef() {
-  assert(curToken.is(Token::affine_map_identifier));
+  assert(curToken.is(Token::hash_identifier));
 
   StringRef affineMapId = curToken.getSpelling().drop_front();
 
@@ -667,7 +673,7 @@ ParseResult Parser::parseAffineMapDef() {
   if (entry)
     return emitError("redefinition of affine map id '" + affineMapId + "'");
 
-  consumeToken(Token::affine_map_identifier);
+  consumeToken(Token::hash_identifier);
 
   // Parse the '='
   if (!consumeIf(Token::equal))
@@ -1092,9 +1098,67 @@ AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
 }
 
 //===----------------------------------------------------------------------===//
-// Functions
+// SSA
 //===----------------------------------------------------------------------===//
 
+/// Parse a SSA operand for an instruction or statement.
+///
+///   ssa-use ::= ssa-id | ssa-constant
+///
+ParseResult Parser::parseSSAUse() {
+  if (curToken.is(Token::percent_identifier)) {
+    StringRef name = curToken.getSpelling().drop_front();
+    consumeToken(Token::percent_identifier);
+    // TODO: Return this use.
+    (void)name;
+    return ParseSuccess;
+  }
+
+  // TODO: Parse SSA constants.
+
+  return emitError("expected SSA operand");
+}
+
+/// Parse a (possibly empty) list of SSA operands.
+///
+///   ssa-use-list ::= ssa-use (`,` ssa-use)*
+///   ssa-use-list-opt ::= ssa-use-list?
+///
+ParseResult Parser::parseOptionalSSAUseList(Token::Kind endToken) {
+  // TODO: Build and return this.
+  return parseCommaSeparatedList(
+      endToken, [&]() -> ParseResult { return parseSSAUse(); });
+}
+
+/// Parse an SSA use with an associated type.
+///
+///   ssa-use-and-type ::= ssa-use `:` type
+ParseResult Parser::parseSSAUseAndType() {
+  if (parseSSAUse())
+    return ParseFailure;
+
+  if (!consumeIf(Token::colon))
+    return emitError("expected ':' and type for SSA operand");
+
+  if (!parseType())
+    return ParseFailure;
+
+  return ParseSuccess;
+}
+
+/// Parse a (possibly empty) list of SSA operands with types.
+///
+///   ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
+///
+ParseResult Parser::parseOptionalSSAUseAndTypeList(Token::Kind endToken) {
+  // TODO: Build and return this.
+  return parseCommaSeparatedList(
+      endToken, [&]() -> ParseResult { return parseSSAUseAndType(); });
+}
+
+//===----------------------------------------------------------------------===//
+// Functions
+//===----------------------------------------------------------------------===//
 
 /// Parse a function signature, starting with a name and including the parameter
 /// list.
@@ -1237,7 +1301,13 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
   // Add the block to the function.
   functionState.function->push_back(block);
 
-  // TODO: parse bb argument list.
+  // If an argument list is present, parse it.
+  if (consumeIf(Token::l_paren)) {
+    if (parseOptionalSSAUseAndTypeList(Token::r_paren))
+      return ParseFailure;
+
+    // TODO: attach it.
+  }
 
   if (!consumeIf(Token::colon))
     return emitError("expected ':' after basic block name");
@@ -1280,7 +1350,13 @@ ParseResult Parser::parseBasicBlock(CFGFunctionParserState &functionState) {
 OperationInst *Parser::
 parseCFGOperation(CFGFunctionParserState &functionState) {
 
-  // TODO: parse ssa-id.
+  StringRef resultID;
+  if (curToken.is(Token::percent_identifier)) {
+    resultID = curToken.getSpelling().drop_front();
+    consumeToken();
+    if (!consumeIf(Token::equal))
+      return (emitError("expected '=' after SSA name"), nullptr);
+  }
 
   if (curToken.isNot(Token::string))
     return (emitError("expected operation name in quotes"), nullptr);
@@ -1294,9 +1370,8 @@ parseCFGOperation(CFGFunctionParserState &functionState) {
   if (!consumeIf(Token::l_paren))
     return (emitError("expected '(' to start operand list"), nullptr);
 
-  // TODO: Parse operands.
-  if (!consumeIf(Token::r_paren))
-    return (emitError("expected ')' in operand list"), nullptr);
+  // Parse the operand list.
+  parseOptionalSSAUseList(Token::r_paren);
 
   SmallVector<NamedAttribute, 4> attributes;
   if (curToken.is(Token::l_brace)) {
@@ -1304,6 +1379,7 @@ parseCFGOperation(CFGFunctionParserState &functionState) {
       return nullptr;
   }
 
+  // TODO: Don't drop result name and operand names on the floor.
   auto nameId = Identifier::get(name, context);
   return new OperationInst(nameId, attributes, context);
 }
@@ -1334,6 +1410,7 @@ TerminatorInst *Parser::parseTerminator(CFGFunctionParserState &functionState) {
       return (emitError("expected basic block name"), nullptr);
     return new BranchInst(destBB);
   }
+    // TODO: cond_br.
   }
 }
 
@@ -1501,7 +1578,7 @@ Module *Parser::parseModule() {
       if (parseCFGFunc()) return nullptr;
       break;
 
-    case Token::affine_map_identifier:
+    case Token::hash_identifier:
       if (parseAffineMapDef()) return nullptr;
       break;
 
