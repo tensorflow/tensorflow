@@ -59,12 +59,12 @@ public class Gradients implements Op, Iterable<Operand<?>> {
      * @param dx partial derivatives of some loss function {@code L} w.r.t. {@code y}
      * @return this option builder
      */
-    public Options dx(Iterable<Operand<?>> dx) {
+    public Options dx(Iterable<? extends Operand<?>> dx) {
       this.dx = dx;
       return this;
     }
     
-    private Iterable<Operand<?>> dx;
+    private Iterable<? extends Operand<?>> dx;
     
     private Options() {
     }
@@ -79,7 +79,7 @@ public class Gradients implements Op, Iterable<Operand<?>> {
    * @param options carries optional attributes values
    * @return a new instance of {@code Gradients}
    */
-  public static Gradients create(Scope scope, Iterable<Operand<?>> y, Iterable<Operand<?>> x, Options... options) {
+  public static Gradients create(Scope scope, Iterable<? extends Operand<?>> y, Iterable<? extends Operand<?>> x, Options... options) {
     Output<?>[] dx = null;
     if (options != null) {
       for (Options opts : options) {
@@ -105,7 +105,7 @@ public class Gradients implements Op, Iterable<Operand<?>> {
    * @return a new instance of {@code Gradients}
    */
   @SuppressWarnings({"unchecked", "rawtypes"})
-  public static Gradients create(Scope scope, Operand<?> y, Iterable<Operand<?>> x, Options... options) {
+  public static Gradients create(Scope scope, Operand<?> y, Iterable<? extends Operand<?>> x, Options... options) {
     return create(scope, (Iterable) Arrays.asList(y), x, options);
   }
 
@@ -113,7 +113,7 @@ public class Gradients implements Op, Iterable<Operand<?>> {
    * @param dx partial derivatives of some loss function {@code L} w.r.t. {@code y}
    * @return builder to add more options to this operation
    */
-  public Options dx(Iterable<Operand<?>> dx) {
+  public static Options dx(Iterable<? extends Operand<?>> dx) {
     return new Options().dx(dx);
   }
 
@@ -135,7 +135,7 @@ public class Gradients implements Op, Iterable<Operand<?>> {
    * <p>
    * Warning: Does not check that the type of the tensor matches T. It is recommended to call
    * this method with an explicit type parameter rather than letting it be inferred, e.g. {@code
-   * gradients.<Integer>dy(0)}
+   * gradients.<Float>dy(0)}
    *
    * @param <T> The expected element type of the tensors produced by this output.
    * @param index The index of the output among the gradients added by this operation
