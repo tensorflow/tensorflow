@@ -227,7 +227,7 @@ void MLFunctionState::print(const Statement *stmt) {
   os.indent(numSpaces);
   switch (stmt->getKind()) {
   case Statement::Kind::Operation: // TODO
-    assert(0 && "Operation statement is not yet implemented");
+    llvm_unreachable("Operation statement is not yet implemented");
   case Statement::Kind::For:
     return print(cast<ForStmt>(stmt));
   case Statement::Kind::If:
