@@ -80,6 +80,15 @@ class HloSharding {
   static HloSharding Tuple(const Shape& tuple_shape,
                            tensorflow::gtl::ArraySlice<HloSharding> shardings);
 
+  // Creates a new sharding for a tuple type, with a single input sharding
+  // repeated on each leaf.
+  static HloSharding SingleTuple(const Shape& tuple_shape,
+                                 const HloSharding& sharding);
+
+  // If shape is an array, returns sharding, otherwise returns the tuple shaped
+  // sharding with all the leaf nodes having the same input sharding.
+  static HloSharding Single(const Shape& shape, const HloSharding& sharding);
+
   // Create a new sharding from a protobuf OpSharding.
   static StatusOr<HloSharding> FromProto(const OpSharding& proto);
 
