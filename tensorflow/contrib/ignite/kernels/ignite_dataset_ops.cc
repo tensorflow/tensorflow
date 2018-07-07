@@ -66,7 +66,7 @@ namespace tensorflow {
         protected:
             Status AsGraphDefInternal(DatasetGraphDefBuilder *b,
                                       Node **output) const override {
-                return errors::Unimplemented();
+                return errors::Unimplemented("IgniteDataset does not support 'AsGraphDefInternal')");
             }
 
         private:
@@ -111,11 +111,11 @@ namespace tensorflow {
 
             protected:
                 Status SaveInternal(IteratorStateWriter *writer) override {
-                    return errors::Unimplemented();
+                    return errors::Unimplemented("Iterator for IgniteDataset does not support 'SaveInternal'");
                 }
 
                 Status RestoreInternal(IteratorContext *ctx, IteratorStateReader *reader) override {
-                    return errors::Unimplemented();
+                    return errors::Unimplemented("Iterator for IgniteDataset does not support 'RestoreInternal')");
                 }
             };
         };
