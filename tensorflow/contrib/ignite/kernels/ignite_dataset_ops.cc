@@ -111,11 +111,11 @@ namespace tensorflow {
 
             protected:
                 Status SaveInternal(IteratorStateWriter *writer) override {
-                    return error::Unimplemented();
+                    return errors::Unimplemented();
                 }
 
                 Status RestoreInternal(IteratorContext *ctx, IteratorStateReader *reader) override {
-                    return error::Unimplemented();
+                    return errors::Unimplemented();
                 }
             };
         };
