@@ -1,5 +1,5 @@
 op {
-  graph_op_name: "IdentityDataset"
+  graph_op_name: "SinkDataset"
   visibility: HIDDEN
   in_arg {
     name: "input_dataset"

@@ -563,15 +563,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "identity_dataset_op",
-    srcs = ["identity_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:framework",
-    ],
-)
-
-tf_kernel_library(
     name = "optimize_dataset_op",
     srcs = ["optimize_dataset_op.cc"],
     deps = [
@@ -619,7 +610,6 @@ tf_kernel_library(
         ":generator_dataset_op",
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
-        ":identity_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_and_batch_dataset_op",
