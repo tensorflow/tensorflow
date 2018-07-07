@@ -21,8 +21,8 @@ using namespace ignite;
 class IgniteHolder {
 public:
     static IgniteHolder &Instance() {
-        static IgniteHolder s;
-        return s;
+        static IgniteHolder* s = new IgniteHolder;
+        return *s;
     }
 
     Ignite& getIgnite() {
