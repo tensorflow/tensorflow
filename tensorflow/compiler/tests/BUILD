@@ -924,7 +924,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "sort_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["sort_ops_test.py"],
     # Times out in fastbuild mode.
     tags = ["optonly"],

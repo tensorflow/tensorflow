@@ -205,6 +205,18 @@ class BigTable(object):
     """
     return _BigtablePrefixKeyDataset(self, prefix)
 
+  def sample_keys(self):
+    """Retrieves a sampling of row keys from the Bigtable table.
+
+    This dataset is most often used in conjunction with
+    @{tf.contrib.data.parallel_interleave} to construct a set of ranges for
+    scanning in parallel.
+
+    Returns:
+      A @{tf.data.Dataset} returning string row keys.
+    """
+    return _BigtableSampleKeysDataset(self)
+
   def scan_prefix(self, prefix, probability=None, columns=None, **kwargs):
     """Retrieves row (including values) from the Bigtable service.
 
@@ -427,6 +439,20 @@ class _BigtableRangeKeyDataset(_BigtableKeyDataset):
         table=self._table._resource,  # pylint: disable=protected-access
         start_key=self._start,
         end_key=self._end)
+
+
+class _BigtableSampleKeysDataset(_BigtableKeyDataset):
+  """_BigtableSampleKeysDataset represents a sampling of row keys.
+  """
+
+  # TODO(saeta): Expose the data size offsets into the keys.
+
+  def __init__(self, table):
+    super(_BigtableSampleKeysDataset, self).__init__(table)
+
+  def _as_variant_tensor(self):
+    return gen_bigtable_ops.bigtable_sample_keys_dataset(
+        table=self._table._resource)    # pylint: disable=protected_access
 
 
 class _BigtableLookupDataset(dataset_ops.Dataset):

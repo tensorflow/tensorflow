@@ -3069,6 +3069,51 @@ func InplaceSub(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Outpu
 	return op.Output(0)
 }
 
+//     Updates specified rows with values in `v`.
+//
+//     Computes `x[i, :] = v; return x`.
+//
+// Arguments:
+//	x: A tensor of type `T`.
+//	i: A vector. Indices into the left-most dimension of `x`.
+//	v: A `Tensor` of type T. Same dimension sizes as x except the first dimension, which must be the same as i's size.
+//
+// Returns A `Tensor` of type T. An alias of `x`. The content of `y` is undefined if there are duplicates in `i`.
+func InplaceUpdate(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InplaceUpdate",
+		Input: []tf.Input{
+			x, i, v,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Makes a copy of `x`.
+//
+// Arguments:
+//	x: The source tensor of type `T`.
+//
+// Returns     y: A `Tensor` of type `T`. A copy of `x`. Guaranteed that `y`
+//       is not an alias of `x`.
+func DeepCopy(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DeepCopy",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
@@ -8109,27 +8154,6 @@ func CollectiveBcastSend(scope *Scope, input tf.Output, group_size int64, group_
 			input,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Makes a copy of `x`.
-//
-// Arguments:
-//	x: The source tensor of type `T`.
-//
-// Returns     y: A `Tensor` of type `T`. A copy of `x`. Guaranteed that `y`
-//       is not an alias of `x`.
-func DeepCopy(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DeepCopy",
-		Input: []tf.Input{
-			x,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -15006,30 +15030,6 @@ func Sigmoid(scope *Scope, x tf.Output) (y tf.Output) {
 		Type: "Sigmoid",
 		Input: []tf.Input{
 			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-//     Updates specified rows with values in `v`.
-//
-//     Computes `x[i, :] = v; return x`.
-//
-// Arguments:
-//	x: A tensor of type `T`.
-//	i: A vector. Indices into the left-most dimension of `x`.
-//	v: A `Tensor` of type T. Same dimension sizes as x except the first dimension, which must be the same as i's size.
-//
-// Returns A `Tensor` of type T. An alias of `x`. The content of `y` is undefined if there are duplicates in `i`.
-func InplaceUpdate(scope *Scope, x tf.Output, i tf.Output, v tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InplaceUpdate",
-		Input: []tf.Input{
-			x, i, v,
 		},
 	}
 	op := scope.AddOperation(opspec)

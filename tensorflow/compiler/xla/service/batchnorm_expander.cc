@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -97,7 +98,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
         add_instruction(HloInstruction::CreateConvert(
             ShapeUtil::MakeShape(operand->shape().element_type(), {}),
             add_instruction(HloInstruction::CreateConstant(
-                Literal::CreateR0<float>(-0.5f))))),
+                LiteralUtil::CreateR0<float>(-0.5f))))),
         {}));
     return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kPower,
                                         operand, exponent);
@@ -113,7 +114,7 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
             add_instruction(HloInstruction::CreateConvert(
                 ShapeUtil::MakeShape(operand->shape().element_type(), {}),
                 add_instruction(HloInstruction::CreateConstant(
-                    Literal::CreateR0<float>(1.0 / element_count))))),
+                    LiteralUtil::CreateR0<float>(1.0 / element_count))))),
             {}));
     return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kMultiply,
                                         operand, elem_count_recip);
@@ -200,11 +201,11 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   HloInstruction* offset = batch_norm->mutable_operand(2);
   const Shape feature_shape = scale->shape();
 
-  auto zero_literal = Literal::CreateR0(0.0f);
+  auto zero_literal = LiteralUtil::CreateR0(0.0f);
   TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
-  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
   TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon = add(HloInstruction::CreateBroadcast(
       operand_shape,
@@ -320,7 +321,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   HloInstruction* var = batch_norm->mutable_operand(4);
   const Shape feature_shape = scale->shape();
 
-  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
   TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
       operand_shape,
@@ -447,11 +448,11 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   const int64 feature_count = activation_shape.dimensions(feature_index);
   const int64 elements_per_feature_int64 = size_in_elements / feature_count;
 
-  auto zero_literal = Literal::CreateR0(0.0f);
+  auto zero_literal = LiteralUtil::CreateR0(0.0f);
   TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
-  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
   TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
@@ -542,7 +543,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       Mean(elements_per_feature_int64, scale_times_rsqrt_var_add_epsilon, add));
 
   auto elements_per_feature_literal =
-      Literal::CreateR0<float>(elements_per_feature_int64);
+      LiteralUtil::CreateR0<float>(elements_per_feature_int64);
   TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
                       elements_per_feature_literal->Convert(ptype));
   auto elements_per_feature = add(

@@ -31,7 +31,7 @@ XLA_TEST_F(ExecutionProfileTest, ExecuteWithExecutionProfile) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> input,
       client_->TransferToServer(
-          *Literal::CreateR2F32Linspace(1e0, 1e5, 256, 256)));
+          *LiteralUtil::CreateR2F32Linspace(1e0, 1e5, 256, 256)));
 
   XlaBuilder b(TestName() + ".add");
   Dot(Parameter(&b, 0, shape, "param_0"), Parameter(&b, 1, shape, "param_1"));

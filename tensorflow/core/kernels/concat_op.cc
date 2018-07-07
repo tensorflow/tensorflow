@@ -113,7 +113,7 @@ class ConcatBaseOp : public OpKernel {
     int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      const auto in = values[i];
+      const auto& in = values[i];
       const bool in_is_scalar = IsLegacyScalar(in.shape());
       OP_REQUIRES(
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),

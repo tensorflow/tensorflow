@@ -157,7 +157,7 @@ TEST_F(WhileLoopSimplifierTest,
   auto* while_op = computation->root_instruction();
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* true_op = while_op->while_body()->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   TF_ASSERT_OK(true_op->AddControlDependencyTo(
       while_op->while_body()->root_instruction()));
   ASSERT_TRUE(WhileLoopSimplifier().Run(the_module).ValueOrDie());
@@ -178,7 +178,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithSendNotSimplified) {
   auto* token = while_body->AddInstruction(HloInstruction::CreateAfterAll({}));
   auto* send = while_body->AddInstruction(HloInstruction::CreateSend(
       while_body->AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true))),
       token,
       /*channel_id=*/0));
   while_body->AddInstruction(HloInstruction::CreateSendDone(send));

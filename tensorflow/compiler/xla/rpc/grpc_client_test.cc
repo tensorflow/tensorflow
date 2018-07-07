@@ -97,7 +97,7 @@ TEST_F(GRPCClientTestBase, AxpyTenValues) {
       1.85840735, -1.85840735, 2.28318531,   -2.28318531,  -6.42477796,
       6.42477796, 10.56637061, -10.56637061, -14.70796327, 14.70796327};
   std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR1<float>(expected);
+      LiteralUtil::CreateR1<float>(expected);
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto result_literal, client_->ExecuteAndTransfer(
                                                    computation, {}, nullptr));
