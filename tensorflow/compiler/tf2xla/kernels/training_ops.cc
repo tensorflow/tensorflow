@@ -640,5 +640,109 @@ class ResourceApplyAdadelta : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ResourceApplyAdadelta").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAdadelta);
 
+class ResourceApplySignBase : public XlaOpKernel {
+ public:
+  explicit ResourceApplySignBase(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, m_shape;
+    xla::XlaOp var, m;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, dtype_, &m_shape, &m));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        m_shape.DebugString()));
+    TensorShape grad_shape = ctx->InputShape(6);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+    CheckScalarParams(ctx);
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp alpha = ctx->Input(3);
+    xla::XlaOp sign_decay = ctx->Input(4);
+    xla::XlaOp beta = ctx->Input(5);
+    xla::XlaOp grad = ctx->Input(6);
+
+    m = m * beta + grad * (xla::ScalarLike(beta, 1.0) - beta);
+    xla::XlaOp decay = xla::Sign(grad) * xla::Sign(m) * sign_decay;
+
+    xla::XlaOp grad_scale = ComputeGradientScale(alpha, decay);
+    var = var - lr * grad_scale * grad;
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m));
+  }
+
+  virtual void CheckScalarParams(XlaOpKernelContext* ctx) {
+    TensorShape lr_shape = ctx->InputShape(2);
+    TensorShape sign_decay_shape = ctx->InputShape(4);
+    TensorShape beta_shape = ctx->InputShape(5);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(sign_decay_shape),
+                errors::InvalidArgument("sign_decay is not a scalar: ",
+                                        sign_decay_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta_shape),
+                errors::InvalidArgument("beta is not a scalar: ",
+                                        beta_shape.DebugString()));
+  }
+
+  virtual xla::XlaOp ComputeGradientScale(xla::XlaOp alpha,
+                                          xla::XlaOp decay) = 0;
+
+ private:
+  DataType dtype_;
+};
+
+class ResourceApplyAddSign : public ResourceApplySignBase {
+ public:
+  explicit ResourceApplyAddSign(OpKernelConstruction* ctx)
+      : ResourceApplySignBase(ctx) {}
+
+  void CheckScalarParams(XlaOpKernelContext* ctx) override {
+    ResourceApplySignBase::CheckScalarParams(ctx);
+    TensorShape alpha_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
+                errors::InvalidArgument("alpha is not a scalar: ",
+                                        alpha_shape.DebugString()));
+  }
+
+  xla::XlaOp ComputeGradientScale(xla::XlaOp alpha, xla::XlaOp decay) override {
+    return alpha + decay;
+  }
+};
+// TODO(b/111123982): Use kFloatTypes once the bug is fixed.
+REGISTER_XLA_OP(Name("ResourceApplyAddSign")
+                    .TypeConstraint("T", {DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}),
+                ResourceApplyAddSign);
+
+class ResourceApplyPowerSign : public ResourceApplySignBase {
+ public:
+  explicit ResourceApplyPowerSign(OpKernelConstruction* ctx)
+      : ResourceApplySignBase(ctx) {}
+
+  void CheckScalarParams(XlaOpKernelContext* ctx) override {
+    ResourceApplySignBase::CheckScalarParams(ctx);
+    TensorShape logbase_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(logbase_shape),
+                errors::InvalidArgument("logbase is not a scalar: ",
+                                        logbase_shape.DebugString()));
+  }
+
+  xla::XlaOp ComputeGradientScale(xla::XlaOp alpha, xla::XlaOp decay) override {
+    return xla::Exp(alpha * decay);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceApplyPowerSign").TypeConstraint("T", kFloatTypes),
+                ResourceApplyPowerSign);
+
 }  // namespace
 }  // namespace tensorflow
