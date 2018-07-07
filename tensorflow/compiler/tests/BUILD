@@ -112,6 +112,34 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "addsign_test",
+    size = "small",
+    srcs = ["addsign_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "powersign_test",
+    size = "small",
+    srcs = ["powersign_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "argminmax_test",
     size = "small",
     srcs = ["argminmax_test.py"],
