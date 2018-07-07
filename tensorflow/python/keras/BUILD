@@ -720,6 +720,7 @@ py_test(
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # TODO(b/110990716) reenable
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
