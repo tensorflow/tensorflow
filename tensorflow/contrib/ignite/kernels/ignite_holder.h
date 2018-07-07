@@ -19,29 +19,31 @@ limitations under the License.
 using namespace ignite;
 
 class IgniteHolder {
-public:
-    static IgniteHolder &Instance() {
-        static IgniteHolder* s = new IgniteHolder;
-        return *s;
-    }
+ public:
+  static IgniteHolder &Instance() {
+    static IgniteHolder *s = new IgniteHolder;
+    return *s;
+  }
 
-    Ignite& getIgnite() {
-        return ignite;
-    }
+  Ignite &getIgnite() {
+    return ignite;
+  }
 
-private:
-    Ignite ignite;
-    IgniteHolder() {
-        IgniteConfiguration cfg;
-        std::string path(std::getenv("TF_IGNITE_CLIENT_CONFIG"));
-        cfg.springCfgPath = path;
-        ignite = Ignition::Start(cfg);
-    }
+ private:
+  Ignite ignite;
 
-    ~IgniteHolder() {
-        Ignition::Stop(ignite.GetName(), false);
-    }
+  IgniteHolder() {
+    IgniteConfiguration cfg;
+    std::string path(std::getenv("TF_IGNITE_CLIENT_CONFIG"));
+    cfg.springCfgPath = path;
+    ignite = Ignition::Start(cfg);
+  }
 
-    IgniteHolder(IgniteHolder const &);
-    IgniteHolder &operator=(IgniteHolder const &);
+  ~IgniteHolder() {
+    Ignition::Stop(ignite.GetName(), false);
+  }
+
+  IgniteHolder(IgniteHolder const &);
+
+  IgniteHolder &operator=(IgniteHolder const &);
 };
