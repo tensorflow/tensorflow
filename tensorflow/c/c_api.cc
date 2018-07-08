@@ -2387,7 +2387,12 @@ void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
 
 void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
 
-void TF_AddGradients(TF_Graph* g, const char* scope_name, TF_Output* y,
+void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
+                     TF_Output* dx, TF_Status* status, TF_Output* dy) {
+  TF_AddGradientsWithPrefix(g, nullptr, y, ny, x, nx, dx, status, dy);
+}
+
+void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
                      int ny, TF_Output* x, int nx, TF_Output* dx,
                      TF_Status* status, TF_Output* dy) {
 #ifdef __ANDROID__
@@ -2408,7 +2413,7 @@ void TF_AddGradients(TF_Graph* g, const char* scope_name, TF_Output* y,
 
     tensorflow::Scope scope =
         NewInternalScope(&g->graph, &status->status, &g->refiner)
-            .NewSubScope(scope_name != nullptr ? scope_name : "gradients");
+            .NewSubScope(prefix != nullptr ? prefix : "gradients");
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg = OutputsFromTFOutputs(dx, ny);
