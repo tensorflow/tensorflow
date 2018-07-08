@@ -44,14 +44,16 @@ class Basic(NoValue):
       'be indented below it. The annotation contains a tuple '
       '(new_body, name_map), where `new_body` is the new indented block and '
       '`name_map` allows renaming symbols.')
+  ORIGIN = ('Contains OriginInfo objects specific to the annotated node. See '
+            'origin_information.py for definition.')
 
 
 FAIL = object()
 
 
 def getanno(node, key, default=FAIL, field_name='___pyct_anno'):
-  if (default is FAIL or
-      (hasattr(node, field_name) and (key in getattr(node, field_name)))):
+  if (default is FAIL or (hasattr(node, field_name) and
+                          (key in getattr(node, field_name)))):
     return getattr(node, field_name)[key]
   else:
     return default

@@ -40,7 +40,16 @@ class BigtableClientOp : public OpKernel {
     if (connection_pool_size_ == -1) {
       connection_pool_size_ = 100;
     }
-    OP_REQUIRES(ctx, connection_pool_size_ > 0,
+
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_receive_message_size",
+                                     &max_receive_message_size_));
+    // If left unset by the client code, set it to a default of 100. Note: the
+    // cloud-cpp default of 4 concurrent connections is far too low for high
+    // performance streaming.
+    if (max_receive_message_size_ == -1) {
+      max_receive_message_size_ = 1 << 24;  // 16 MBytes
+    }
+    OP_REQUIRES(ctx, max_receive_message_size_ > 0,
                 errors::InvalidArgument("connection_pool_size must be > 0"));
   }
 
@@ -68,6 +77,12 @@ class BigtableClientOp : public OpKernel {
               [this, ctx](
                   BigtableClientResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                 auto client_options = google::cloud::bigtable::ClientOptions();
+                client_options.set_connection_pool_size(connection_pool_size_);
+                auto channel_args = client_options.channel_arguments();
+                channel_args.SetMaxReceiveMessageSize(
+                    max_receive_message_size_);
+                channel_args.SetUserAgentPrefix("tensorflow");
+                client_options.set_channel_arguments(channel_args);
                 std::shared_ptr<google::cloud::bigtable::DataClient> client =
                     google::cloud::bigtable::CreateDefaultDataClient(
                         project_id_, instance_id_, std::move(client_options));
@@ -87,6 +102,7 @@ class BigtableClientOp : public OpKernel {
   string project_id_;
   string instance_id_;
   int64 connection_pool_size_;
+  int32 max_receive_message_size_;
 
   mutex mu_;
   ContainerInfo cinfo_ GUARDED_BY(mu_);

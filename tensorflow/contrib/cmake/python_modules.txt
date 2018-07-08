@@ -14,6 +14,7 @@ tensorflow/examples/tutorials
 tensorflow/examples/tutorials/mnist
 tensorflow/python
 tensorflow/python/client
+tensorflow/python/compat
 tensorflow/python/data
 tensorflow/python/data/ops
 tensorflow/python/data/util

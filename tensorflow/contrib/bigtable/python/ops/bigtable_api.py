@@ -49,7 +49,11 @@ class BigtableClient(object):
   `table` method to open a Bigtable Table.
   """
 
-  def __init__(self, project_id, instance_id, connection_pool_size=None):
+  def __init__(self,
+               project_id,
+               instance_id,
+               connection_pool_size=None,
+               max_receive_message_size=None):
     """Creates a BigtableClient that can be used to open connections to tables.
 
     Args:
@@ -57,6 +61,8 @@ class BigtableClient(object):
       instance_id: A string representing the Bigtable instance to connect to.
       connection_pool_size: (Optional.) A number representing the number of
         concurrent connections to the Cloud Bigtable service to make.
+      max_receive_message_size: (Optional.) The maximum bytes received in a
+        single gRPC response.
 
     Raises:
       ValueError: if the arguments are invalid (e.g. wrong type, or out of
@@ -74,10 +80,16 @@ class BigtableClient(object):
       connection_pool_size = -1
     elif connection_pool_size < 1:
       raise ValueError("`connection_pool_size` must be positive")
+
+    if max_receive_message_size is None:
+      max_receive_message_size = -1
+    elif max_receive_message_size < 1:
+      raise ValueError("`max_receive_message_size` must be positive")
+
     self._connection_pool_size = connection_pool_size
 
-    self._resource = gen_bigtable_ops.bigtable_client(project_id, instance_id,
-                                                      connection_pool_size)
+    self._resource = gen_bigtable_ops.bigtable_client(
+        project_id, instance_id, connection_pool_size, max_receive_message_size)
 
   def table(self, name, snapshot=None):
     """Opens a table and returns a `BigTable` object.
@@ -452,7 +464,7 @@ class _BigtableSampleKeysDataset(_BigtableKeyDataset):
 
   def _as_variant_tensor(self):
     return gen_bigtable_ops.bigtable_sample_keys_dataset(
-        table=self._table._resource)    # pylint: disable=protected_access
+        table=self._table._resource)  # pylint: disable=protected-access
 
 
 class _BigtableLookupDataset(dataset_ops.Dataset):

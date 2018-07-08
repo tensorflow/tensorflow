@@ -25,6 +25,7 @@ py_library(
         "cfg.py",
         "compiler.py",
         "inspect_utils.py",
+        "origin_info.py",
         "parser.py",
         "pretty_printer.py",
         "qual_names.py",

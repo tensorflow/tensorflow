@@ -156,14 +156,8 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
   // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices. This method throws an
-  // error if any two resource inputs live on different devices.
-  //
-  // TODO(akshayka): Remove the single-device constraint once we have a
-  // mechanism for telling the Placer that an op supports heterogeneous
-  // devices among its input resources.
+  // access these resources to the appropriate devices.
   Status PinResourceArgs(Graph* graph, const OpInputList& args) {
-    string device;
     for (Node* node : graph->op_nodes()) {
       string node_type = node->type_string();
       if (node_type == FunctionLibraryDefinition::kArgOp) {
@@ -174,15 +168,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         DataType dtype = attr_value->type();
         if (dtype == DT_RESOURCE) {
           ResourceHandle handle = args[index].flat<ResourceHandle>()(0);
-          const string& handle_device = handle.device();
-          if (device.empty()) {
-            device = handle_device;
-          } else if (device != handle_device) {
-            return errors::Internal(
-                "Resources must reside on a single device; observed devices ",
-                device, " and ", handle_device);
-          }
-          node->set_assigned_device_name(handle_device);
+          node->set_assigned_device_name(handle.device());
         }
       }
     }
