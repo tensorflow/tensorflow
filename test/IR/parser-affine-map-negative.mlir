@@ -48,10 +48,11 @@
 ; -----
 #hello_world15 = (i, j) [s0, s1] -> (i, *j+5) ; expected-error {{left operand of binary op missing}}
 
-; FIXME(bondhugula) This one leads to two errors: the first on identifier being
-; neither dimensional nor symbolic and then the right operand missing.
 ;-----
-; #hello_world22 = (i, j) -> (i, 3*d0 + j)
+
+#hello_world22 = (i, j) -> (i, 3*d0 + j)
+; expected-error@-1 {{identifier is neither dimensional nor symbolic}}
+; expected-error@-2 {{missing right operand of binary op}}
 
 ; TODO(bondhugula): Add more tests; coverage of error messages emitted not complete
 

@@ -25,10 +25,10 @@
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/Regex.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 using namespace mlir;
 using namespace llvm;
@@ -98,87 +98,87 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
   SourceMgr fileSourceMgr;
   fileSourceMgr.AddNewSourceBuffer(std::move(buffer), SMLoc());
 
+  // Record the expected errors's position, substring and whether it was seen.
+  struct ExpectedError {
+    int lineNo;
+    StringRef substring;
+    SMLoc fileLoc;
+    bool matched;
+  };
+
   // Tracks offset of subbuffer into original buffer.
   const char *fileOffset =
       fileSourceMgr.getMemoryBuffer(fileSourceMgr.getMainFileID())
           ->getBufferStart();
 
-  // Create error checker that uses the helper function to relate the reported
-  // error to the file being parsed.
-  SMDiagnosticHandlerTy checker = [&](const SMDiagnostic &err) {
-    const auto &sourceMgr = *err.getSourceMgr();
-    const char *bufferStart =
-        sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID())->getBufferStart();
-
-    StringRef line = err.getLineContents();
-    size_t offset = err.getLoc().getPointer() - bufferStart;
-    SMLoc loc = SMLoc::getFromPointer(fileOffset + offset);
-
-    // Extract expected substring using regex and check simple containment in
-    // error message.
-    llvm::Regex expected("expected-error {{(.*)}}");
-    SmallVector<StringRef, 2> matches;
-    bool matched = expected.match(line, &matches);
-    if (matches.size() != 2) {
-      fileSourceMgr.PrintMessage(
-          loc, SourceMgr::DK_Error,
-          "unexpected error: " + err.getMessage());
-      opt_result = OptFailure;
-      return;
-    }
-
-    matched = err.getMessage().contains(matches[1]);
-    if (!matched) {
-      const char checkPrefix[] = "expected-error {{";
-      loc = SMLoc::getFromPointer(fileOffset + offset + line.find(checkPrefix) -
-                                  err.getColumnNo() + strlen(checkPrefix));
-      fileSourceMgr.PrintMessage(
-          loc, SourceMgr::DK_Error,
-          "\"" + err.getMessage() + "\" did not contain expected substring \"" +
-              matches[1] + "\"");
-      opt_result = OptFailure;
-      return;
-    }
-  };
-
-  for (auto& subbuffer : sourceBuffers) {
+  for (auto &subbuffer : sourceBuffers) {
     SourceMgr sourceMgr;
     // Tell sourceMgr about this buffer, which is what the parser will pick up.
     sourceMgr.AddNewSourceBuffer(MemoryBuffer::getMemBufferCopy(subbuffer),
                                  SMLoc());
 
-    int expectedCount = subbuffer.count("expected-error");
-    if (expectedCount > 1) {
-      size_t expectedOffset = subbuffer.find("expected-error");
-      expectedOffset = subbuffer.find("expected-error", expectedOffset);
-      SMLoc loc = SMLoc::getFromPointer(fileOffset + expectedOffset);
-      fileSourceMgr.PrintMessage(loc, SourceMgr::DK_Error,
-                                 "too many errors expected: unable to verify "
-                                 "more than one error per group");
-      fileOffset += subbuffer.size() + strlen(marker);
-      opt_result = OptFailure;
-      continue;
+    // Extracing the expected errors.
+    llvm::Regex expected("expected-error(@[+-][0-9]+)? {{(.*)}}");
+    SmallVector<ExpectedError, 2> expectedErrors;
+    SmallVector<StringRef, 100> lines;
+    subbuffer.split(lines, '\n');
+    size_t bufOffset = 0;
+    for (int lineNo = 0; lineNo < lines.size(); ++lineNo) {
+      SmallVector<StringRef, 3> matches;
+      if (expected.match(lines[lineNo], &matches)) {
+        // Point to the start of expected-error.
+        SMLoc errorStart =
+            SMLoc::getFromPointer(fileOffset + bufOffset +
+                                  lines[lineNo].size() - matches[2].size() - 2);
+        ExpectedError expErr{lineNo + 1, matches[2], errorStart, false};
+        int offset;
+        if (!matches[1].empty() &&
+            !matches[1].drop_front().getAsInteger(0, offset)) {
+          expErr.lineNo += offset;
+        }
+        expectedErrors.push_back(expErr);
+      }
+      bufOffset += lines[lineNo].size() + 1;
     }
+
+    // Error checker that verifies reported error was expected.
+    auto checker = [&](const SMDiagnostic &err) {
+      for (auto &e : expectedErrors) {
+        if (err.getLineNo() == e.lineNo &&
+            err.getMessage().contains(e.substring)) {
+          e.matched = true;
+          return;
+        }
+      }
+      // Report error if no match found.
+      const auto &sourceMgr = *err.getSourceMgr();
+      const char *bufferStart =
+          sourceMgr.getMemoryBuffer(sourceMgr.getMainFileID())
+              ->getBufferStart();
+
+      size_t offset = err.getLoc().getPointer() - bufferStart;
+      SMLoc loc = SMLoc::getFromPointer(fileOffset + offset);
+      fileSourceMgr.PrintMessage(loc, SourceMgr::DK_Error,
+                                 "unexpected error: " + err.getMessage());
+      opt_result = OptFailure;
+    };
 
     // Parse the input file.
     MLIRContext context;
     std::unique_ptr<Module> module(
         parseSourceFile(sourceMgr, &context, checker));
-    bool parsed = module != nullptr;
-    if (parsed && expectedCount != 0) {
-      llvm::Regex expected(".*expected-error {{(.*)}}");
-      SmallVector<StringRef, 2> matches;
-      expected.match(subbuffer, &matches);
 
-      // Highlight expected-error clause of unexpectedly passing test case.
-      size_t expectedOffset = subbuffer.find("expected-error");
-      size_t endOffset = matches[0].size();
-      SMLoc loc = SMLoc::getFromPointer(fileOffset + expectedOffset);
-      SMRange range(loc, SMLoc::getFromPointer(fileOffset + endOffset));
-      fileSourceMgr.PrintMessage(
-          loc, SourceMgr::DK_Error,
-          "expected error \"" + matches[1] + "\" was not produced", range);
-      opt_result = OptFailure;
+    // Verify that all expected errors were seen.
+    for (auto err : expectedErrors) {
+      if (!err.matched) {
+        SMRange range(err.fileLoc,
+                      SMLoc::getFromPointer(err.fileLoc.getPointer() +
+                                            err.substring.size()));
+        fileSourceMgr.PrintMessage(
+            err.fileLoc, SourceMgr::DK_Error,
+            "expected error \"" + err.substring + "\" was not produced", range);
+        opt_result = OptFailure;
+      }
     }
 
     fileOffset += subbuffer.size() + strlen(marker);
