@@ -188,6 +188,8 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
     scaffold = training.Scaffold(
         init_fn=feed_variables, copy_from_scaffold=self._scaffold)
 
+    self._timer.update_last_triggered_step(self._iter_count)
+    
     with self._graph.as_default():
       return self._estimator._evaluate_run(
           checkpoint_path=None,
@@ -196,8 +198,6 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
           eval_dict=self._eval_dict,
           all_hooks=self._all_hooks,
           output_dir=self._eval_dir)
-
-    self._timer.update_last_triggered_step(self._iter_count)
 
   def after_run(self, run_context, run_values):  # pylint: disable=unused-argument
     """Runs evaluator."""
