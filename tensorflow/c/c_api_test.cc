@@ -1475,16 +1475,16 @@ class CApiGradientsTest : public ::testing::Test {
   }
 
   void TestGradientsSuccess(bool grad_inputs_provided,
-      const char* scope_name = nullptr) {
+      const char* prefix = nullptr) {
     TF_Output inputs[2];
     TF_Output outputs[1];
     TF_Output grad_outputs[2];
     TF_Output expected_grad_outputs[2];
 
     BuildSuccessGraph(inputs, outputs);
-    BuildExpectedGraph(grad_inputs_provided, scope_name, expected_grad_outputs);
+    BuildExpectedGraph(grad_inputs_provided, prefix, expected_grad_outputs);
 
-    AddGradients(grad_inputs_provided, scope_name, inputs, 2, outputs, 1,
+    AddGradients(grad_inputs_provided, prefix, inputs, 2, outputs, 1,
                  grad_outputs);
 
     EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
@@ -1552,7 +1552,7 @@ class CApiGradientsTest : public ::testing::Test {
     EXPECT_EQ(*a_data, *b_data);
   }
 
-  void AddGradients(bool grad_inputs_provided, const char* scope_name,
+  void AddGradients(bool grad_inputs_provided, const char* prefix,
                     TF_Output* inputs, int ninputs, TF_Output* outputs,
                     int noutputs, TF_Output* grad_outputs) {
     if (grad_inputs_provided) {
@@ -1561,11 +1561,11 @@ class CApiGradientsTest : public ::testing::Test {
       TF_Operation* grad_inputs_op =
           FloatConst2x2(graph_, s_, grad_inputs_val, "GradInputs");
       grad_inputs[0] = TF_Output{grad_inputs_op, 0};
-      TF_AddGradients(graph_, scope_name, outputs, noutputs, inputs, ninputs,
-                      grad_inputs, s_, grad_outputs);
+      TF_AddGradientsWithPrefix(graph_, prefix, outputs, noutputs, inputs,
+                                ninputs, grad_inputs, s_, grad_outputs);
     } else {
-      TF_AddGradients(graph_, scope_name, outputs, noutputs, inputs, ninputs,
-                      nullptr, s_, grad_outputs);
+      TF_AddGradientsWithPrefix(graph_, prefix, outputs, noutputs, inputs,
+                                ninputs, nullptr, s_, grad_outputs);
     }
   }
 
@@ -1604,7 +1604,7 @@ class CApiGradientsTest : public ::testing::Test {
   }
 
   void BuildExpectedGraph(bool grad_inputs_provided,
-                          const char* grad_scope_name,
+                          const char* grad_prefix,
                           TF_Output* expected_grad_outputs) {
     // The expected graph looks like this if grad_inputs_provided.
     // If grad_inputs_provided is false, Const_0 will be a OnesLike op.
@@ -1633,9 +1633,9 @@ class CApiGradientsTest : public ::testing::Test {
     //
     const float const0_val[] = {1.0, 2.0, 3.0, 4.0};
     const float const1_val[] = {1.0, 0.0, 0.0, 1.0};
-    const char* grad_prefix = grad_scope_name;
-    if (grad_scope_name == nullptr) {
-      grad_prefix = "gradients";
+    const char* prefix = grad_prefix;
+    if (prefix == nullptr) {
+      prefix = "gradients";
     }
     TF_Operation* const0 =
         FloatConst2x2(expected_graph_, s_, const0_val, "Const_0");
@@ -1650,13 +1650,13 @@ class CApiGradientsTest : public ::testing::Test {
       const3 = FloatConst2x2(expected_graph_, s_, const3_val, "GradInputs");
     } else {
       const3 = OnesLike(expected_graph_, s_, matmul,
-          strings::StrCat(grad_prefix, "/OnesLike").c_str());
+          strings::StrCat(prefix, "/OnesLike").c_str());
     }
 
     TF_Operation* matmul1 = MatMul(expected_graph_, s_, const3, const1,
-        strings::StrCat(grad_prefix, "/MatMul").c_str(), false, true);
+        strings::StrCat(prefix, "/MatMul").c_str(), false, true);
     TF_Operation* matmul2 = MatMul(expected_graph_, s_, const0, const3,
-        strings::StrCat(grad_prefix, "/MatMul_1").c_str(), true, false);
+        strings::StrCat(prefix, "/MatMul_1").c_str(), true, false);
     expected_grad_outputs[0] = {matmul1, 0};
     expected_grad_outputs[1] = {matmul2, 0};
   }
@@ -1757,11 +1757,11 @@ TEST_F(CApiGradientsTest, MultipleCallsToAddGradients) {
 
   TF_Output outputs[1] = {{xy, 0}};
   TF_Output inputs[1] = {{x, 0}};
-  TF_AddGradients(graph_, nullptr, outputs, 1, inputs, 1, nullptr, s_, &dxy_dx);
+  TF_AddGradients(graph_, outputs, 1, inputs, 1, nullptr, s_, &dxy_dx);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
   inputs[0] = {y, 0};
-  TF_AddGradients(graph_, nullptr, outputs, 1, inputs, 1, nullptr, s_, &dxy_dy);
+  TF_AddGradients(graph_, outputs, 1, inputs, 1, nullptr, s_, &dxy_dy);
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
   TF_SessionOptions* opts = TF_NewSessionOptions();

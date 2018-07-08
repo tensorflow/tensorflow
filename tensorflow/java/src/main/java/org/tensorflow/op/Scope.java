@@ -156,7 +156,7 @@ public final class Scope {
   }
   
   /**
-   * The name prefix of this scope
+   * The name prefix of this scope.
    * <p>
    * This value is the combination of the name of this scope and all of its parents, seperated by a '/', e.g.
    * <pre>{@code
