@@ -136,7 +136,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
-        "arg_max.cc",
+        "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
@@ -296,9 +296,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "arg_max_test",
+    name = "arg_min_max_test",
     size = "small",
-    srcs = ["arg_max_test.cc"],
+    srcs = ["arg_min_max_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],

@@ -41,6 +41,7 @@ namespace optimized_ops {
 
 // Unoptimized reference ops:
 using reference_ops::ArgMax;
+using reference_ops::ArgMinMax;
 using reference_ops::BroadcastGreater;
 using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
