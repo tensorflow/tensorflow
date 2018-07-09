@@ -727,9 +727,8 @@ class LookupTableContainOp : public OpKernel {
     // Input 0 could be a STRING_REF or a RESOURCE
     DataType expected_input_0 =
         (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
-    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
-                                      table->value_dtype()};
-    DataTypeVector expected_outputs = {table->value_dtype()};
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype()};
+    DataTypeVector expected_outputs = {DT_BOOL};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& key = ctx->input(1);
@@ -749,6 +748,8 @@ REGISTER_KERNEL_BUILDER(Name("LookupTableContain").Device(DEVICE_CPU),
                         LookupTableContainOp);
 REGISTER_KERNEL_BUILDER(Name("LookupTableContainV2").Device(DEVICE_CPU),
                         LookupTableContainOp);
+
+#undef REGISTER_KERNEL
 
 // Table insert op.
 class LookupTableInsertOp : public OpKernel {

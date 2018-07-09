@@ -109,9 +109,9 @@ WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("LookupTableFindV2");
 REGISTER_OP("LookupTableContain")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tin")
-    .Output("values: Tout")
+    .Output("flags: Tout")
     .Attr("Tin: type")
-    .Attr("Tout: type")
+    .Attr("Tout: { bool } = DT_BOOL")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
@@ -125,9 +125,9 @@ REGISTER_OP("LookupTableContain")
 REGISTER_OP("LookupTableContainV2")
     .Input("table_handle: resource")
     .Input("keys: Tin")
-    .Output("values: Tout")
+    .Output("flags: Tout")
     .Attr("Tin: type")
-    .Attr("Tout: type")
+    .Attr("Tout: { bool } = DT_BOOL")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
@@ -138,9 +138,8 @@ REGISTER_OP("LookupTableContainV2")
 REGISTER_OP("LookupTableInsert")
     .Input("table_handle: Ref(string)")
     .Input("keys: Tin")
-    .Input("values: Tout")
+    .Input("values: bool")
     .Attr("Tin: type")
-    .Attr("Tout: type")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle handle;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
