@@ -204,6 +204,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       writer_cache.FileWriterCache.clear()
       gfile.DeleteRecursively(self._config.model_dir)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_train_with_tf_optimizer(self):
     for model_type in ['sequential', 'functional']:
       keras_model, (_, _), (
@@ -231,6 +232,7 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
       writer_cache.FileWriterCache.clear()
       gfile.DeleteRecursively(self._config.model_dir)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_train_with_subclassed_model(self):
     keras_model, (_, _), (
         _, _), train_input_fn, eval_input_fn = get_resource_for_simple_model(
