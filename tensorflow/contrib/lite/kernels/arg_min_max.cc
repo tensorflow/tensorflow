@@ -23,7 +23,7 @@ limitations under the License.
 namespace tflite {
 namespace ops {
 namespace builtin {
-namespace arg_max {
+namespace arg_min_max {
 
 constexpr int kInputTensor = 0;
 constexpr int kAxis = 1;
@@ -80,30 +80,39 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
+template <typename T>
+std::function<bool(T, T)> GetComparefunction(bool is_arg_max) {
+  if (is_arg_max) {
+    return std::greater<T>();
+  } else {
+    return std::less<T>();
+  }
+}
+
 // The current impl actually ignores the axis argument.
 // Only determine the index of the maximum value in the last dimension.
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis = GetInput(context, node, kAxis);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-#define TF_LITE_ARG_MAX(data_type, axis_type, output_type)                     \
-  optimized_ops::ArgMax(GetTensorData<axis_type>(axis),                        \
-                        GetTensorData<data_type>(input), GetTensorDims(input), \
-                        GetTensorData<output_type>(output),                    \
-                        GetTensorDims(output))
+#define TF_LITE_ARG_MIN_MAX(data_type, axis_type, output_type)         \
+  optimized_ops::ArgMinMax(                                            \
+      GetTensorData<axis_type>(axis), GetTensorData<data_type>(input), \
+      GetTensorDims(input), GetTensorData<output_type>(output),        \
+      GetTensorDims(output), GetComparefunction<data_type>(is_arg_max))
   if (axis->type == kTfLiteInt32) {
     switch (output->type) {
       case kTfLiteInt32: {
         switch (input->type) {
           case kTfLiteFloat32:
-            TF_LITE_ARG_MAX(float, int32_t, int32_t);
+            TF_LITE_ARG_MIN_MAX(float, int32_t, int32_t);
             break;
           case kTfLiteUInt8:
-            TF_LITE_ARG_MAX(uint8_t, int32_t, int32_t);
+            TF_LITE_ARG_MIN_MAX(uint8_t, int32_t, int32_t);
             break;
           case kTfLiteInt32:
-            TF_LITE_ARG_MAX(int32_t, int32_t, int32_t);
+            TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int32_t);
             break;
           default:
             return kTfLiteError;
@@ -112,13 +121,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteInt64: {
         switch (input->type) {
           case kTfLiteFloat32:
-            TF_LITE_ARG_MAX(float, int32_t, int64_t);
+            TF_LITE_ARG_MIN_MAX(float, int32_t, int64_t);
             break;
           case kTfLiteUInt8:
-            TF_LITE_ARG_MAX(uint8_t, int32_t, int64_t);
+            TF_LITE_ARG_MIN_MAX(uint8_t, int32_t, int64_t);
             break;
           case kTfLiteInt32:
-            TF_LITE_ARG_MAX(int32_t, int32_t, int64_t);
+            TF_LITE_ARG_MIN_MAX(int32_t, int32_t, int64_t);
             break;
           default:
             return kTfLiteError;
@@ -132,13 +141,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteInt32: {
         switch (input->type) {
           case kTfLiteFloat32:
-            TF_LITE_ARG_MAX(float, int64_t, int32_t);
+            TF_LITE_ARG_MIN_MAX(float, int64_t, int32_t);
             break;
           case kTfLiteUInt8:
-            TF_LITE_ARG_MAX(uint8_t, int64_t, int32_t);
+            TF_LITE_ARG_MIN_MAX(uint8_t, int64_t, int32_t);
             break;
           case kTfLiteInt32:
-            TF_LITE_ARG_MAX(int32_t, int64_t, int32_t);
+            TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int32_t);
             break;
           default:
             return kTfLiteError;
@@ -147,13 +156,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteInt64: {
         switch (input->type) {
           case kTfLiteFloat32:
-            TF_LITE_ARG_MAX(float, int64_t, int64_t);
+            TF_LITE_ARG_MIN_MAX(float, int64_t, int64_t);
             break;
           case kTfLiteUInt8:
-            TF_LITE_ARG_MAX(uint8_t, int64_t, int64_t);
+            TF_LITE_ARG_MIN_MAX(uint8_t, int64_t, int64_t);
             break;
           case kTfLiteInt32:
-            TF_LITE_ARG_MAX(int32_t, int64_t, int64_t);
+            TF_LITE_ARG_MIN_MAX(int32_t, int64_t, int64_t);
             break;
           default:
             return kTfLiteError;
@@ -163,16 +172,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   }
-#undef TF_LITE_ARG_MAX
+#undef TF_LITE_ARG_MIN_MAX
 
   return kTfLiteOk;
 }
 
-}  // namespace arg_max
+TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, true);
+}
+
+}  // namespace arg_min_max
 
 TfLiteRegistration* Register_ARG_MAX() {
-  static TfLiteRegistration r = {nullptr, nullptr, arg_max::Prepare,
-                                 arg_max::Eval};
+  static TfLiteRegistration r = {nullptr, nullptr, arg_min_max::Prepare,
+                                 arg_min_max::ArgMaxEval};
   return &r;
 }
 
