@@ -1296,7 +1296,7 @@ class AutomaticControlDependencies(object):
     # Ensures the merge always runs
     ops_which_must_run.add(new_merge[0].op)
     if inp in last_op_using_resource_tensor:
-      # Ensures the switch exectutes after the previous op using the resource.
+      # Ensures the switch executes after the previous op using the resource.
       switch_op._add_control_input(last_op_using_resource_tensor[inp])  # pylint: disable=protected-access
     # Ensure the next op outside the cond happens after the merge.
     last_op_using_resource_tensor[inp] = new_merge[0].op
