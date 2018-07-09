@@ -59,6 +59,7 @@ from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
@@ -99,6 +100,45 @@ class TPUEmbedding(embeddings.Embedding):
     return math_ops.tensordot(inputs, self.embeddings, 1)
 
 
+class KerasCrossShardOptimizer(keras_optimizers.Optimizer):
+  """An optimizer that averages gradients across TPU shards."""
+
+  def __init__(self, opt, name='KerasCrossShardOptimizer'):
+    """Construct a new cross-shard optimizer.
+
+    Args:
+      opt: An existing `Optimizer` to encapsulate.
+      name: Optional name prefix for the operations created when applying
+        gradients. Defaults to "KerasCrossShardOptimizer".
+
+    Raises:
+      ValueError: If reduction is not a valid cross-shard reduction.
+    """
+    super(KerasCrossShardOptimizer, self).__init__()
+    self._name = name
+    self._opt = opt
+
+  def get_updates(self, loss, params):
+    logging.info('Get updates: %s', loss)
+    self._opt.get_gradients = self.get_gradients
+    return self._opt.get_updates(loss, params)
+
+  def get_gradients(self, loss, params):
+    num_shards = tpu_function.get_tpu_context().number_of_shards
+    grads = super(KerasCrossShardOptimizer, self).get_gradients(loss, params)
+    return [tpu_ops.cross_replica_sum(grad) / num_shards for grad in grads]
+
+  def set_weights(self, weights):
+    self._opt.set_weights()
+
+  def get_weights(self):
+    return self._opt.get_weights()
+
+  @property
+  def lr(self):
+    return self._opt.lr
+
+
 class TPUModelOp(
     collections.namedtuple('TPUModelOp', [
         'compile_op', 'execute_op', 'infeed_tensors', 'infeed_op', 'outfeed_op'
@@ -113,8 +153,13 @@ def _valid_name(tensor_name):
 
 def _replicated_optimizer(opt):
   """Wrap the optimizer `opt` with CrossShardOptimizer if applicable."""
-  return keras_optimizers.TFOptimizer(
-      optimizer=tpu_optimizer.CrossShardOptimizer(opt.optimizer))
+  if tpu_function.get_tpu_context().number_of_shards == 1:
+    return opt
+
+  if isinstance(opt, keras_optimizers.TFOptimizer):
+    return tpu_optimizer.CrossShardOptimizer(opt.optimizer)
+  else:
+    return KerasCrossShardOptimizer(opt)
 
 
 class TPURewriteContext(object):
@@ -195,6 +240,12 @@ class TPUFunction(object):
     self._compilation_cache = {}
     self._cloned_model = None
 
+    # Copy optimizer configuration.  This is done prior to `_specialize_model`
+    # as the configuration may require evaluating variables in the CPU session.
+    self._optimizer_config = None
+    if not isinstance(self.model.optimizer, keras_optimizers.TFOptimizer):
+      self._optimizer_config = self.model.optimizer.get_config()
+
   def _specialize_model(self, input_specs):
     """Specialize `self.model` (a Keras model) for the given input shapes."""
     # Re-create our input and output layers inside our subgraph.  They will be
@@ -238,9 +289,19 @@ class TPUFunction(object):
       with TPURewriteContext(tpu_input_map):
         self._cloned_model = models.clone_model(self.model)
 
+      # Create a copy of the optimizer for this graph.
+      if isinstance(self.model.optimizer, keras_optimizers.TFOptimizer):
+        cloned_optimizer = keras_optimizers.TFOptimizer(
+            self.model.optimizer.optimizer)
+      else:
+        logging.info('Cloning %s %s', self.model.optimizer.__class__.__name__,
+                     self._optimizer_config)
+        cloned_optimizer = self.model.optimizer.__class__.from_config(
+            self._optimizer_config)
+
       if is_training or is_test:
         self._cloned_model.compile(
-            optimizer=_replicated_optimizer(self.model.optimizer),
+            optimizer=_replicated_optimizer(cloned_optimizer),
             loss=self.model.loss,
             loss_weights=self.model.loss_weights,
             metrics=self.model.metrics,
@@ -365,8 +426,7 @@ class TPUFunction(object):
     batch_size = inputs[0].shape[0]
     assert batch_size % self._strategy.num_towers == 0, (
         'batch_size must be divisible by strategy.num_towers (%s vs %s)' %
-        (batch_size, self._strategy.num_towers)
-    )
+        (batch_size, self._strategy.num_towers))
     shard_size = batch_size // self._strategy.num_towers
     input_list = []
     for index in range(self._strategy.num_towers):
@@ -438,9 +498,8 @@ class TPUFunction(object):
       outputs_per_replica = len(self._outfeed_spec)
 
       for i in range(self._strategy.num_towers):
-        output_group = outfeed_outputs[
-            i * outputs_per_replica:(i+1) * outputs_per_replica
-        ]
+        output_group = outfeed_outputs[i * outputs_per_replica:(i + 1) *
+                                       outputs_per_replica]
         for j in range(outputs_per_replica):
           outputs[j].append(output_group[j])
 
@@ -528,11 +587,6 @@ class KerasTPUModel(models.Model):
       self._cpu_model.compile(optimizer, loss, metrics, loss_weights,
                               sample_weight_mode, weighted_metrics,
                               target_tensors, **kwargs)
-
-    # Keras optimizers are not compatible with TPU rewrite
-    if not isinstance(self.optimizer, keras_optimizers.TFOptimizer):
-      raise ValueError(
-          'Optimizer must be a TFOptimizer, got: %s' % self.optimizer)
 
   def _make_train_function(self):
     if not self.train_function:
@@ -687,6 +741,10 @@ def tpu_model(model, tpu_name_or_address=None, strategy=None):
   Returns:
     A new `KerasTPUModel` instance.
   """
+  # Force initialization of the CPU model.
+  model.get_weights()
+  model.reset_states()
+
   _validate_shapes(model)
   # TODO(xiejw): Validate TPU model. TPUModel only?
   # TODO(xiejw): Validate replicas. Full or 1. Shall we allow subset?
