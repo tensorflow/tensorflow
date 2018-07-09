@@ -33,6 +33,7 @@ from tensorflow.python.ops import array_ops as aops
 from tensorflow.python.ops import nn as nn
 from tensorflow.python.ops import nn_ops as nn_ops
 
+
 class BaseUnitTest(object):
   """Base class for unit tests in TF-TRT"""
 
@@ -54,42 +55,55 @@ class BaseUnitTest(object):
     self.check_node_count = False
 
   def run(self, run_test_context):
-    run_test_context.run_test(self.get_network, self.static_mode_list, self.dynamic_mode_list, self.dummy_input, self.ckpt)
+    run_test_context.run_test(self.get_network, self.static_mode_list,
+                              self.dynamic_mode_list, self.dummy_input,
+                              self.ckpt)
     return self.log_result(run_test_context)
 
   def log_result(self, run_test_result):
     log = open(self.log_file, 'a')
-    log.write(("================= model: %s\n")%(self.test_name))
+    log.write(("================= model: %s\n") % (self.test_name))
 
     if self.debug:
-      open(self.test_name+"_native.pb", 'wb').write(run_test_result.native_network.SerializeToString())
+      open(self.test_name + "_native.pb",
+           'wb').write(run_test_result.native_network.SerializeToString())
     all_success = True
     if len(run_test_result.tftrt_conversion_flag) != 0:
       log.write("  -- static_mode\n")
     for static_mode in run_test_result.tftrt_conversion_flag:
       if self.debug:
-        open(self.test_name+"_"+static_mode+".pb", 'wb').write(run_test_result.tftrt[static_mode].SerializeToString())
+        open(self.test_name + "_" + static_mode + ".pb",
+             'wb').write(run_test_result.tftrt[static_mode].SerializeToString())
       log.write("     ----\n")
-      log.write(("     mode: [%s]\n")%(static_mode))
+      log.write(("     mode: [%s]\n") % (static_mode))
       if run_test_result.tftrt_conversion_flag[static_mode]:
         if run_test_result.tftrt_nb_nodes[static_mode] != self.expect_nb_nodes:
-          log.write(("[WARNING]: converted node number does not match (%d,%d,%d)!!!\n")%(run_test_result.tftrt_nb_nodes[static_mode], self.expect_nb_nodes, run_test_result.native_nb_nodes))
+          log.write(
+              ("[WARNING]: converted node number does not match (%d,%d,%d)!!!\n"
+              ) % (run_test_result.tftrt_nb_nodes[static_mode],
+                   self.expect_nb_nodes, run_test_result.native_nb_nodes))
           if self.check_node_count:
             all_success = False
 
-        if np.array_equal(run_test_result.tftrt_result[static_mode], run_test_result.native_result):
+        if np.array_equal(run_test_result.tftrt_result[static_mode],
+                          run_test_result.native_result):
           log.write("     output: equal\n")
-        elif np.allclose(run_test_result.tftrt_result[static_mode], run_test_result.native_result, atol=self.allclose_atol, rtol=self.allclose_rtol, equal_nan=self.allclose_equal_nan):
+        elif np.allclose(
+            run_test_result.tftrt_result[static_mode],
+            run_test_result.native_result,
+            atol=self.allclose_atol,
+            rtol=self.allclose_rtol,
+            equal_nan=self.allclose_equal_nan):
           log.write("     output: allclose\n")
         else:
-          diff = run_test_result.tftrt_result[static_mode]-run_test_result.native_result
+          diff = run_test_result.tftrt_result[static_mode] - run_test_result.native_result
           log.write("[ERROR]: output does not match!!!\n")
-          log.write( "max diff: " +str(np.max(diff)))
-          log.write( "\ntftrt:\n")
+          log.write("max diff: " + str(np.max(diff)))
+          log.write("\ntftrt:\n")
           log.write(str(run_test_result.tftrt_result[static_mode]))
-          log.write( "\nnative:\n")
+          log.write("\nnative:\n")
           log.write(str(run_test_result.native_result))
-          log.write( "\ndiff:\n")
+          log.write("\ndiff:\n")
           log.write(str(diff))
           all_success = False
       else:
@@ -100,11 +114,13 @@ class BaseUnitTest(object):
       log.write("  -- dynamic_mode\n")
     for dynamic_mode in run_test_result.tftrt_dynamic_conversion_flag:
       log.write("\n     ----\n")
-      log.write(("     mode: [%s]\n")%(dynamic_mode))
+      log.write(("     mode: [%s]\n") % (dynamic_mode))
       if run_test_result.tftrt_dynamic_conversion_flag[dynamic_mode]:
-        if np.array_equal(run_test_result.tftrt_dynamic_result[dynamic_mode], run_test_result.native_result):
+        if np.array_equal(run_test_result.tftrt_dynamic_result[dynamic_mode],
+                          run_test_result.native_result):
           log.write("     output: equal\n")
-        elif np.allclose(run_test_result.tftrt_dynamic_result[dynamic_mode], run_test_result.native_result):
+        elif np.allclose(run_test_result.tftrt_dynamic_result[dynamic_mode],
+                         run_test_result.native_result):
           log.write("     output: allclose\n")
         else:
           log.write("[ERROR]: output does not match!!!\n")

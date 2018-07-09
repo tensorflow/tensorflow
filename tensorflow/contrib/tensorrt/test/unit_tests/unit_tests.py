@@ -14,20 +14,24 @@
 # ==============================================================================
 """Script to execute and log all integration tests."""
 
-from BatchMatMulTest import BatchMatMulTest
-from BiasaddMatMulTest import BiasaddMatMulTest 
-from BinaryTensorWeightBroadcastTest import BinaryTensorWeightBroadcastTest
-from ConcatenationTest import ConcatenationTest
-from ConvElewiseFusionFailTest import ConvElewiseFusionFailTest
-from GatherV2FailTest import GatherV2FailTest
-from MultiConnectionNeighborEngineTest import MultiConnectionNeighborEngineTest
-from NeighboringEngineTest import NeighboringEngineTest
-from UnaryTest import UnaryTest
-from VGGBlockNCHWTest import VGGBlockNCHWTest
-from VGGBlockTest import VGGBlockTest
-from ConstBroadcastTest import ConstBroadcastTest
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-from run_test import RunTest
+import tensorflow.contrib.tensorrt.test
+
+from tensorflow.contrib.tensorrt.test.unit_tests.BatchMatMulTest import BatchMatMulTest
+from tensorflow.contrib.tensorrt.test.unit_tests.BiasaddMatMulTest import BiasaddMatMulTest
+from tensorflow.contrib.tensorrt.test.unit_tests.BinaryTensorWeightBroadcastTest import BinaryTensorWeightBroadcastTest
+from tensorflow.contrib.tensorrt.test.unit_tests.ConcatenationTest import ConcatenationTest
+from tensorflow.contrib.tensorrt.test.unit_tests.MultiConnectionNeighborEngineTest import MultiConnectionNeighborEngineTest
+from tensorflow.contrib.tensorrt.test.unit_tests.NeighboringEngineTest import NeighboringEngineTest
+from tensorflow.contrib.tensorrt.test.unit_tests.UnaryTest import UnaryTest
+from tensorflow.contrib.tensorrt.test.unit_tests.VGGBlockNCHWTest import VGGBlockNCHWTest
+from tensorflow.contrib.tensorrt.test.unit_tests.VGGBlockTest import VGGBlockTest
+from tensorflow.contrib.tensorrt.test.unit_tests.ConstBroadcastTest import ConstBroadcastTest
+
+from tensorflow.contrib.tensorrt.test.unit_tests.run_test import RunTest
 
 tests = 0
 passed_test = 0
@@ -47,12 +51,12 @@ test_list.append(MultiConnectionNeighborEngineTest())
 test_list.append(ConstBroadcastTest())
 
 for test in test_list:
-  test.debug = True 
-  test.check_node_count = False 
+  test.debug = True
+  test.check_node_count = False
   with RunTest() as context:
-    tests+=1
+    tests += 1
     if test.run(context):
-      passed_test +=1
+      passed_test += 1
     else:
       failed_list.append(test.test_name)
       print("Failed test: %s\n", test.test_name)
@@ -60,6 +64,6 @@ for test in test_list:
 if passed_test == tests:
   print("Passed\n")
 else:
-  print(("%d out of %d passed\n  -- failed list:")%(passed_test, tests))
+  print(("%d out of %d passed\n  -- failed list:") % (passed_test, tests))
   for test in failed_list:
     print("      - " + test)

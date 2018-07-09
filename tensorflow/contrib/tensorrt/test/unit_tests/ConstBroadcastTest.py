@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import argparse
 import numpy as np
-import tensorflow as tf
 
 from tensorflow.contrib import tensorrt as trt
 from tensorflow.core.protobuf import config_pb2 as cpb2
@@ -42,8 +41,9 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import core
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class ConstBroadcastTest(BaseUnitTest):
   """Testing Constant broadcasting in TF-TRT"""
@@ -51,14 +51,14 @@ class ConstBroadcastTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(ConstBroadcastTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (5, 12, 12, 2)
     self.dummy_input = np.random.random_sample(self.inp_dims)
     self.get_network = self.conv_broadcast
     self.expect_nb_nodes = 7
     self.log_file = log_file
-    self.test_name = self.__class__.__name__ 
+    self.test_name = self.__class__.__name__
     self.allclose_rtol = 0.05
     self.allclose_atol = 0.05
 
@@ -69,14 +69,23 @@ class ConstBroadcastTest(BaseUnitTest):
     with g.as_default():
       x = array_ops.placeholder(
           dtype=dtypes.float32, shape=self.inp_dims, name="input")
-      filt1 = tf.constant(1, shape=(3,3,2,1), dtype=tf.float32, name='filt1')
-      y1 = tf.nn.conv2d(x, filt1, strides=[1,1, 1, 1], padding='SAME', name='y1')
-      z1 = tf.nn.relu(y1, name='z1')
-      filt2 = tf.constant(np.random.randn(9), shape=(3,3,1,1), dtype=tf.float32, name='filt2')
-      y2 = tf.nn.conv2d(z1, filt2, strides=[1,1, 1, 1], padding='SAME', name='y2')
-      z2 = tf.nn.relu(y2, name='z')
-      filt3 = tf.constant(np.random.randn(3,3,1,1), shape=(3,3,1,1), dtype=tf.float32, name='filt3')
-      y3 = tf.nn.conv2d(z2, filt3, strides=[1,1, 1, 1], padding='SAME', name='y3')
-      z = tf.nn.relu(y3, name='output')
+      filt1 = constant_op.constant(
+          1, shape=(3, 3, 2, 1), dtype=dtypes.float32, name='filt1')
+      y1 = nn.conv2d(x, filt1, strides=[1, 1, 1, 1], padding='SAME', name='y1')
+      z1 = nn.relu(y1, name='z1')
+      filt2 = constant_op.constant(
+          np.random.randn(9),
+          shape=(3, 3, 1, 1),
+          dtype=dtypes.float32,
+          name='filt2')
+      y2 = nn.conv2d(z1, filt2, strides=[1, 1, 1, 1], padding='SAME', name='y2')
+      z2 = nn.relu(y2, name='z')
+      filt3 = constant_op.constant(
+          np.random.randn(3, 3, 1, 1),
+          shape=(3, 3, 1, 1),
+          dtype=dtypes.float32,
+          name='filt3')
+      y3 = nn.conv2d(z2, filt3, strides=[1, 1, 1, 1], padding='SAME', name='y3')
+      z = nn.relu(y3, name='output')
 
     return g.as_graph_def()

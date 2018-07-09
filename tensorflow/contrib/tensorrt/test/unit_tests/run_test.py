@@ -33,11 +33,12 @@ from tensorflow.python.ops import nn as nn
 from tensorflow.python.ops import nn_ops as nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
 
 OUTPUT_NODE = "output"
 INPUT_NODE = "input"
-CALIB_COUNT = 5 # calibration iteration
+CALIB_COUNT = 5  # calibration iteration
+
 
 class RunTest:
   """base class to run TR-TRT conversion and execution"""
@@ -61,14 +62,20 @@ class RunTest:
     self.check_file = None
     self.native_network = None
 
-  def run_test(self, network, static_mode_list, dynamic_mode_list, dummy_input, file_name=None):
+  def run_test(self,
+               network,
+               static_mode_list,
+               dynamic_mode_list,
+               dummy_input,
+               file_name=None):
     self.native_network = network()
     success = True
     initialization = False
-    if file_name!=None:
+    if file_name != None:
       initialization = True
       self.check_file = file_name
-    self.native_result, self.native_nb_nodes = self.execute_graph(self.native_network, dummy_input, initialization)
+    self.native_result, self.native_nb_nodes = self.execute_graph(
+        self.native_network, dummy_input, initialization)
     for mode in static_mode_list:
       try:
         self.run_static_convert_network(mode, dummy_input, initialization)
@@ -79,7 +86,7 @@ class RunTest:
     for mode in dynamic_mode_list:
       try:
         self.run_dynamic_convert_network(mode, dummy_input, initialization)
-        self.tftrt_dynamic_conversion_flag[mode] = True 
+        self.tftrt_dynamic_conversion_flag[mode] = True
       except Exception as inst:
         self.tftrt_dynamic_conversion_flag[mode] = False
         success = False
@@ -122,17 +129,18 @@ class RunTest:
     inp_dims = dummy_input.shape
     if mode == "FP32" or mode == "FP16" or mode == "INT8":
       trt_graph = trt.create_inference_graph(
-        input_graph_def=self.native_network,
-        outputs=[OUTPUT_NODE],
-        max_batch_size=inp_dims[0],
-        max_workspace_size_bytes=1 << 25,
-        precision_mode=mode,  # TRT Engine precision "FP32","FP16" or "INT8"
-        minimum_segment_size=2  # minimum number of nodes in an engine
+          input_graph_def=self.native_network,
+          outputs=[OUTPUT_NODE],
+          max_batch_size=inp_dims[0],
+          max_workspace_size_bytes=1 << 25,
+          precision_mode=mode,  # TRT Engine precision "FP32","FP16" or "INT8"
+          minimum_segment_size=2  # minimum number of nodes in an engine
       )
       if mode == "INT8":
         _ = self.execute_calibration(trt_graph, dummy_input, initialization)
         trt_graph = trt.calib_graph_to_infer_graph(trt_graph)
-      trt_result, nb_nodes = self.execute_graph(trt_graph, dummy_input, initialization)
+      trt_result, nb_nodes = self.execute_graph(trt_graph, dummy_input,
+                                                initialization)
       self.tftrt[mode] = trt_graph
       self.tftrt_nb_nodes[mode] = nb_nodes
       self.tftrt_result[mode] = trt_result

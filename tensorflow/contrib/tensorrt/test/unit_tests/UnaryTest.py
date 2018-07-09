@@ -41,8 +41,9 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import core
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class UnaryTest(BaseUnitTest):
   """Unit tests for unary operations in TF-TRT"""
@@ -50,14 +51,14 @@ class UnaryTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(UnaryTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (12, 5, 8, 1, 1, 12)
     self.dummy_input = np.random.random_sample(self.inp_dims)
     self.get_network = self.unary_test
     self.expect_nb_nodes = 17
     self.log_file = log_file
-    self.test_name = self.__class__.__name__ 
+    self.test_name = self.__class__.__name__
     self.ckpt = "./tmp.ckpt"
 
   def unary_test(self):
@@ -82,8 +83,7 @@ class UnaryTest(BaseUnitTest):
       q = q + 3.0
       a = gen_math_ops.reciprocal(q)
 
-      x = constant_op.constant(
-          np.random.randn(5, 8, 12), dtype=dtypes.float32)
+      x = constant_op.constant(np.random.randn(5, 8, 12), dtype=dtypes.float32)
       q = math_ops.abs(x)
       q = q + 2.0
       q = gen_math_ops.exp(q)
@@ -98,7 +98,10 @@ class UnaryTest(BaseUnitTest):
       b = gen_math_ops.reciprocal(q)
 
       # TODO(jie): this one will break, broadcasting on batch.
-      x = variable_scope.get_variable("test", [12, 40, 12], dtype=dtypes.float32, initializer=init_ops.truncated_normal_initializer)
+      x = variable_scope.get_variable(
+          "test", [12, 40, 12],
+          dtype=dtypes.float32,
+          initializer=init_ops.truncated_normal_initializer)
       x = gen_array_ops.reshape(x, [12, 5, 8, 1, 12, 1, 1])
       q = math_ops.abs(x)
       q = q + 5.0

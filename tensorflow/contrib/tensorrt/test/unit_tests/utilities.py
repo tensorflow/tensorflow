@@ -21,10 +21,11 @@ from __future__ import print_function
 from tensorflow.python.ops import variables
 from tensorflow.python.training import training
 
+
 def get_all_variables(sess):
   var_names = sess.run(variables.report_uninitialized_variables())
   names_var_list = {}
   for name in var_names:
-    names_var_list[name] = sess.graph.get_tensor_by_name(name+":0")
+    names_var_list[name] = sess.graph.get_tensor_by_name(name + ":0")
     print(var_names)
   return names_var_list

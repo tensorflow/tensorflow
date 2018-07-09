@@ -41,8 +41,9 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.layers import core
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class BatchMatMulTest(BaseUnitTest):
   """Testing BatchMatMul in TF-TRT conversion"""
@@ -50,14 +51,14 @@ class BatchMatMulTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(BatchMatMulTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (12, 5, 8, 12)
     self.dummy_input = np.random.random_sample(self.inp_dims)
     self.get_network = self.matmul_test
     self.expect_nb_nodes = 16
     self.log_file = log_file
-    self.test_name = self.__class__.__name__ 
+    self.test_name = self.__class__.__name__
     self.ckpt = "./tmp.ckpt"
     sess = csess.Session()
 
@@ -72,22 +73,25 @@ class BatchMatMulTest(BaseUnitTest):
       b = constant_op.constant(
           np.random.randn(12, 5, 12, 7), dtype=dtypes.float32)
       x1 = math_ops.matmul(x, b)
-      b = constant_op.constant(
-          np.random.randn(5, 1, 1), dtype=dtypes.float32)
+      b = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtypes.float32)
       x1 = x1 + b
 
-      var = variable_scope.get_variable("test", [12, 5, 12, 7], dtype=dtypes.float32, initializer=init_ops.truncated_normal_initializer)
+      var = variable_scope.get_variable(
+          "test", [12, 5, 12, 7],
+          dtype=dtypes.float32,
+          initializer=init_ops.truncated_normal_initializer)
       x2 = math_ops.matmul(x, var)
-      b = constant_op.constant(
-          np.random.randn(5, 1, 1), dtype=dtypes.float32)
+      b = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtypes.float32)
       x2 = x2 * b
 
-      var = variable_scope.get_variable("test2", [12, 84], dtype=dtypes.float32, initializer=init_ops.truncated_normal_initializer)
+      var = variable_scope.get_variable(
+          "test2", [12, 84],
+          dtype=dtypes.float32,
+          initializer=init_ops.truncated_normal_initializer)
       c = gen_array_ops.reshape(x, [12, 40, 12])
       b = gen_array_ops.reshape(var, [12, 12, 7])
       x3 = math_ops.matmul(c, b)
-      b = constant_op.constant(
-          np.random.randn(40, 1), dtype=dtypes.float32)
+      b = constant_op.constant(np.random.randn(40, 1), dtype=dtypes.float32)
       x3 = x3 + b
       x3 = gen_array_ops.reshape(x3, [12, 5, 8, 7])
 
