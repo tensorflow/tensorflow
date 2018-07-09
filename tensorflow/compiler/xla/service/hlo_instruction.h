@@ -687,10 +687,18 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
-  // Creates a token instruction used for joining or creating new values of
-  // token type which thread through side-effecting operations.
+  // Creates a Afterall instruction used for joining or creating new values of
+  // token type which thread through side-effecting operations. Operands must
+  // all be tokens, and there must be at least one operand.
   static std::unique_ptr<HloInstruction> CreateAfterAll(
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+
+  // Creates an AfterAll instruction which creates a token type out of thin air
+  // (no operands). This is a separate method from CreateAfterAll to facility
+  // the removal of operand-less AfterAll instructions.
+  // TODO(b/110532604): Remove this capability of creating a token from nothing
+  // when we plumb a primordial token from the entry computation.
+  static std::unique_ptr<HloInstruction> CreateToken();
 
   // Creates an instance of GatherDimensionNumbers.
   static GatherDimensionNumbers MakeGatherDimNumbers(

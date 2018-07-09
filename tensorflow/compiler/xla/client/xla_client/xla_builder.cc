@@ -1117,6 +1117,35 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
   });
 }
 
+XlaOp XlaBuilder::InfeedWithToken(const XlaOp& token, const Shape& shape,
+                                  const string& config) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (!LayoutUtil::HasLayout(shape)) {
+      return InvalidArgument("Given shape to Infeed must have a layout");
+    }
+    const Shape infeed_instruction_shape =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
+    *instr.mutable_shape() = infeed_instruction_shape;
+    instr.set_infeed_config(config);
+
+    if (ShapeUtil::IsArray(shape) && sharding() &&
+        sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
+      // TODO(b/110793772): Support tiled array-shaped infeeds.
+      return InvalidArgument(
+          "Tiled sharding is not yet supported for array-shaped infeeds");
+    }
+
+    if (sharding() &&
+        sharding()->type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
+      return InvalidArgument(
+          "Replicated sharding is not yet supported for infeeds");
+    }
+
+    return AddInstruction(std::move(instr), HloOpcode::kInfeed, {token});
+  });
+}
+
 void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
                          const string& outfeed_config) {
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -1159,6 +1188,53 @@ void XlaBuilder::Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
           AddInstruction(std::move(tuple_instr), HloOpcode::kTuple, {}));
       return empty_tuple;
     }
+  });
+}
+
+XlaOp XlaBuilder::OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
+                                   const Shape& shape_with_layout,
+                                   const string& outfeed_config) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+
+    *instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+
+    // Check and set outfeed shape.
+    if (!LayoutUtil::HasLayout(shape_with_layout)) {
+      return InvalidArgument("Given shape to Outfeed must have a layout");
+    }
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    if (!ShapeUtil::Compatible(operand_shape, shape_with_layout)) {
+      return InvalidArgument(
+          "Outfeed shape %s must be compatible with operand shape %s",
+          ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str(),
+          ShapeUtil::HumanStringWithLayout(operand_shape).c_str());
+    }
+    *instr.mutable_outfeed_shape() = shape_with_layout;
+
+    instr.set_outfeed_config(outfeed_config);
+
+    return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
+                          {operand, token});
+  });
+}
+
+XlaOp XlaBuilder::CreateToken() {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    return AddInstruction(std::move(instr), HloOpcode::kAfterAll);
+  });
+}
+
+XlaOp XlaBuilder::AfterAll(tensorflow::gtl::ArraySlice<XlaOp> tokens) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (tokens.empty()) {
+      return InvalidArgument("AfterAll requires at least one operand");
+    }
+    HloInstructionProto instr;
+    *instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    return AddInstruction(std::move(instr), HloOpcode::kAfterAll, tokens);
   });
 }
 
@@ -1877,6 +1953,28 @@ void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
   });
 }
 
+XlaOp XlaBuilder::SendWithToken(const XlaOp& operand, const XlaOp& token,
+                                const ChannelHandle& handle) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Send instruction produces a tuple of {aliased operand, U32 context,
+    // token}.
+    HloInstructionProto send_instr;
+    TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
+    *send_instr.mutable_shape() = ShapeUtil::MakeTupleShape(
+        {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()});
+    send_instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp send,
+                        AddInstruction(std::move(send_instr), HloOpcode::kSend,
+                                       {operand, token}));
+
+    HloInstructionProto send_done_instr;
+    *send_done_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    send_done_instr.set_channel_id(handle.handle());
+    return AddInstruction(std::move(send_done_instr), HloOpcode::kSendDone,
+                          {send});
+  });
+}
+
 XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     // Recv HLO takes a single token operand. Generate the token to pass into
@@ -1914,6 +2012,27 @@ XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
     recv_data.set_tuple_index(0);
     return AddInstruction(std::move(recv_data), HloOpcode::kGetTupleElement,
                           {recv_done});
+  });
+}
+
+XlaOp XlaBuilder::RecvWithToken(const XlaOp& token, const Shape& shape,
+                                const ChannelHandle& handle) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    // Recv instruction produces a tuple of {receive buffer, U32 context,
+    // token}.
+    HloInstructionProto recv_instr;
+    *recv_instr.mutable_shape() = ShapeUtil::MakeTupleShape(
+        {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()});
+    recv_instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp recv, AddInstruction(std::move(recv_instr),
+                                                   HloOpcode::kRecv, {token}));
+
+    HloInstructionProto recv_done_instr;
+    *recv_done_instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
+    recv_done_instr.set_channel_id(handle.handle());
+    return AddInstruction(std::move(recv_done_instr), HloOpcode::kRecvDone,
+                          {recv});
   });
 }
 
@@ -2622,6 +2741,34 @@ void Send(const XlaOp& operand, const ChannelHandle& handle) {
 XlaOp Recv(XlaBuilder* builder, const Shape& shape,
            const ChannelHandle& handle) {
   return builder->Recv(shape, handle);
+}
+
+XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
+                    const ChannelHandle& handle) {
+  return operand.builder()->SendWithToken(operand, token, handle);
+}
+
+XlaOp RecvWithToken(const XlaOp& token, const Shape& shape,
+                    const ChannelHandle& handle) {
+  return token.builder()->RecvWithToken(token, shape, handle);
+}
+
+XlaOp InfeedWithToken(const XlaOp& token, const Shape& shape,
+                      const string& config) {
+  return token.builder()->InfeedWithToken(token, shape, config);
+}
+
+XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
+                       const Shape& shape_with_layout,
+                       const string& outfeed_config) {
+  return operand.builder()->OutfeedWithToken(operand, token, shape_with_layout,
+                                             outfeed_config);
+}
+
+XlaOp CreateToken(XlaBuilder* builder) { return builder->CreateToken(); }
+
+XlaOp AfterAll(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> tokens) {
+  return builder->AfterAll(tokens);
 }
 
 XlaOp BatchNormTraining(const XlaOp& operand, const XlaOp& scale,

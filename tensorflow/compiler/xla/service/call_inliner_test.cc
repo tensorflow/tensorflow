@@ -148,7 +148,7 @@ TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   HloComputation::Builder outfeeder(TestName() + ".outfeeder");
   auto value = outfeeder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
-  auto token = outfeeder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = outfeeder.AddInstruction(HloInstruction::CreateToken());
   outfeeder.AddInstruction(
       HloInstruction::CreateOutfeed(f32, value, token, /*outfeed_config=*/""));
 

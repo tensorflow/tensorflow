@@ -375,7 +375,7 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   // Test that DeepCopyInstruction properly handles tokens which should not be
   // copied.
   auto builder = HloComputation::Builder(TestName());
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
@@ -388,7 +388,7 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
   // Test that DeepCopyInstruction properly handles tokens which should not be
   // copied.
   auto builder = HloComputation::Builder(TestName());
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple =
