@@ -330,6 +330,24 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateElementwiseUnaryOp(
   return result;
 }
 
+StatusOr<std::unique_ptr<Literal>> HloEvaluator::EvaluateDotOp(
+    const DotDimensionNumbers& dim_numbers, const Literal& lhs,
+    const Literal& rhs) {
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(lhs.CloneToUnique());
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(rhs.CloneToUnique());
+
+  TF_ASSIGN_OR_RETURN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs.shape(), rhs.shape(), dim_numbers));
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateDot(dot_shape, lhs_instr.get(), rhs_instr.get(),
+                                dim_numbers);
+  return Evaluate(cloned_instruction.get());
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];

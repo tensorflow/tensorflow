@@ -562,6 +562,11 @@ void EraseAt(C* c, int64 index) {
   c->erase(c->begin() + index);
 }
 
+template <typename T>
+std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
+  return std::vector<T>(slice.begin(), slice.end());
+}
+
 template <typename T, int N>
 std::vector<T> InlinedVectorToVector(
     const tensorflow::gtl::InlinedVector<T, N>& inlined_vector) {
