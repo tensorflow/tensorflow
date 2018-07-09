@@ -622,8 +622,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+      if (operands.empty()) {
+        instruction = builder->AddInstruction(HloInstruction::CreateToken());
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+      }
       break;
     }
     case HloOpcode::kSort: {

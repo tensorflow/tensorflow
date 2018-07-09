@@ -273,7 +273,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
   HloComputation::Builder builder(TestName());
   auto* scalar_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_s32, "param"));
-  auto* token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
@@ -323,7 +323,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
   HloComputation::Builder builder(TestName());
   auto* scalar_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_s32, "param"));
-  auto* token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   auto* init_value = builder.AddInstruction(
       HloInstruction::CreateTuple({scalar_param, scalar_param, token}));
   auto* while_inst = builder.AddInstruction(HloInstruction::CreateWhile(

@@ -271,7 +271,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         // converted to take tokens.
         instruction = CreateInfeed(data_shape, proto.infeed_config());
       } else {
-        CHECK_EQ(proto.operand_ids_size(), 2);
+        CHECK_EQ(proto.operand_ids_size(), 1);
         instruction =
             CreateInfeed(data_shape, operands(0), proto.infeed_config());
       }
@@ -684,12 +684,18 @@ HloInstruction::CreateCrossReplicaSum(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAfterAll(
     tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  CHECK(!operands.empty());
   auto instruction = WrapUnique(
       new HloInstruction(HloOpcode::kAfterAll, ShapeUtil::MakeTokenShape()));
   for (auto operand : operands) {
     instruction->AppendOperand(operand);
   }
   return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateToken() {
+  return WrapUnique(
+      new HloInstruction(HloOpcode::kAfterAll, ShapeUtil::MakeTokenShape()));
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateWhile(
@@ -1223,7 +1229,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                        user_side_metadata_->Clone());
       break;
     case HloOpcode::kAfterAll:
-      clone = CreateAfterAll(new_operands);
+      if (new_operands.empty()) {
+        clone = CreateToken();
+      } else {
+        clone = CreateAfterAll(new_operands);
+      }
       break;
     case HloOpcode::kSort:
       CHECK(new_operands.size() == 1 || new_operands.size() == 2)
