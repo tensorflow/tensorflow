@@ -35,12 +35,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
 namespace {
+
+using tensorflow::gtl::optional;
 
 // BatchNormExpanderVisitor traverses the HLO computation and rewrites BatchNorm
 // operations into smaller operations.
@@ -289,16 +292,22 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
+    const HloSharding& sharding = batch_norm->sharding();
     HloSharding operand_sharding =
-        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
+        sharding.GetAsShapeTree(batch_norm->shape()).element({0});
+    optional<int64> unique_device = batch_norm->sharding_unique_device();
+    HloSharding default_sharding =
+        unique_device.has_value()
+            ? HloSharding::AssignDevice(unique_device.value())
+            : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
         inst->set_sharding(operand_sharding);
       } else {
-        inst->set_sharding(HloSharding::Replicate());
+        inst->set_sharding(default_sharding);
       }
     }
-    tuple->set_sharding(batch_norm->sharding());
+    tuple->set_sharding(sharding);
   }
   TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
   return Status::OK();
@@ -389,14 +398,20 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   CHECK_EQ(instruction_count_after,
            instruction_count_before + added_instructions.size());
   if (batch_norm->has_sharding()) {
+    const HloSharding& sharding = batch_norm->sharding();
+    optional<int64> unique_device = batch_norm->sharding_unique_device();
+    HloSharding default_sharding =
+        unique_device.has_value()
+            ? HloSharding::AssignDevice(unique_device.value())
+            : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
-        inst->set_sharding(batch_norm->sharding());
+        inst->set_sharding(sharding);
       } else {
-        inst->set_sharding(HloSharding::Replicate());
+        inst->set_sharding(default_sharding);
       }
     }
-    shifted_normalized->set_sharding(batch_norm->sharding());
+    shifted_normalized->set_sharding(sharding);
   }
   TF_CHECK_OK(
       ReplaceWithNewInstruction(batch_norm, std::move(shifted_normalized)));
@@ -563,19 +578,25 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   auto tuple =
       HloInstruction::CreateTuple({grad_activation, grad_scale, grad_beta});
   if (batch_norm->has_sharding()) {
+    const HloSharding& sharding = batch_norm->sharding();
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
     HloSharding activation_sharding =
-        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
+        sharding.GetAsShapeTree(batch_norm->shape()).element({0});
+    auto unique_device = batch_norm->sharding_unique_device();
+    HloSharding default_sharding =
+        unique_device.has_value()
+            ? HloSharding::AssignDevice(unique_device.value())
+            : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), activation_shape)) {
         inst->set_sharding(activation_sharding);
       } else {
-        inst->set_sharding(HloSharding::Replicate());
+        inst->set_sharding(default_sharding);
       }
     }
-    tuple->set_sharding(batch_norm->sharding());
+    tuple->set_sharding(sharding);
   }
 
   TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
