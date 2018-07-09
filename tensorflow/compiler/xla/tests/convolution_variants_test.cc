@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -1333,17 +1333,17 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding1D) {
 XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
   XlaBuilder builder(TestName());
 
-  auto gradients_flat = Literal::CreateR1<float>({1});
+  auto gradients_flat = LiteralUtil::CreateR1<float>({1});
   auto gradients_literal =
       gradients_flat->Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
   auto gradients = ConstantLiteral(&builder, *gradients_literal);
 
-  auto weights_flat = Literal::CreateR1<float>({1, 10, 100});
+  auto weights_flat = LiteralUtil::CreateR1<float>({1, 10, 100});
   auto weights_literal =
       weights_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
   auto weights = ConstantLiteral(&builder, *weights_literal);
 
-  auto expected_flat = Literal::CreateR1<float>({10});
+  auto expected_flat = LiteralUtil::CreateR1<float>({10});
   auto expected_literal =
       expected_flat->Reshape({1, 1, 1, 1, 1}).ConsumeValueOrDie();
 
@@ -1357,17 +1357,17 @@ XLA_TEST_F(ConvolutionVariantsTest, BackwardInputEvenPadding3D) {
 XLA_TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
   XlaBuilder builder(TestName());
 
-  auto activations_flat = Literal::CreateR1<float>({1, 2, 3, 4});
+  auto activations_flat = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
   auto activations_literal =
       activations_flat->Reshape({1, 1, 1, 1, 4}).ConsumeValueOrDie();
   auto activations = ConstantLiteral(&builder, *activations_literal);
 
-  auto gradients_flat = Literal::CreateR1<float>({100, 10, 1});
+  auto gradients_flat = LiteralUtil::CreateR1<float>({100, 10, 1});
   auto gradients_literal =
       gradients_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
   auto gradients = ConstantLiteral(&builder, *gradients_literal);
 
-  auto expected_flat = Literal::CreateR1<float>({13, 24, 130});
+  auto expected_flat = LiteralUtil::CreateR1<float>({13, 24, 130});
   auto expected_literal =
       expected_flat->Reshape({1, 1, 1, 1, 3}).ConsumeValueOrDie();
 

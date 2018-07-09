@@ -133,9 +133,9 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   array_b.FillUnique(10.0f);
 
   HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateFromArray(array_a)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateFromArray(array_a)));
   HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateFromArray(array_b)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateFromArray(array_b)));
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kDot, a, b));
 
@@ -150,10 +150,10 @@ TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {
   EXPECT_EQ(dot->operand(0)->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(dot->operand(1)->opcode(), HloOpcode::kConstant);
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_a)),
+      *LiteralUtil::ConvertF32ToBF16(*LiteralUtil::CreateFromArray(array_a)),
       dot->operand(0)->literal()));
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *Literal::ConvertF32ToBF16(*Literal::CreateFromArray(array_b)),
+      *LiteralUtil::ConvertF32ToBF16(*LiteralUtil::CreateFromArray(array_b)),
       dot->operand(1)->literal()));
 }
 
@@ -434,7 +434,7 @@ TEST_F(BFloat16PropagationTest, SelectOverTuples) {
   HloInstruction* tuple1 =
       builder.AddInstruction(HloInstruction::CreateTuple({param, add1}));
   HloInstruction* sel = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple0->shape(), HloOpcode::kSelect, pred, tuple0, tuple1));
+      tuple0->shape(), HloOpcode::kTupleSelect, pred, tuple0, tuple1));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, sel, 0));
   HloInstruction* gte1 = builder.AddInstruction(

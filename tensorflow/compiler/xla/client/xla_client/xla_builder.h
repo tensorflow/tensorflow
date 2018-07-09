@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -316,6 +317,27 @@ class XlaBuilder {
   //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
   XlaOp Broadcast(const XlaOp& operand,
                   tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+
+  // Performs in-dimension-style broadcast.
+  //
+  // Operand specifies the input to be broadcast. "shape" is expected output
+  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
+  // Dimension numbers in broadcast_dimensions map to individual dimensions
+  // of the operand, and specify what dimension of the output shape they
+  // should be broadcast.
+  // e.g.
+  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
+  // and dimension of shape is [2,2].
+  // Specifying {1} as brodcast_dimension will generate output
+  // [1 , 2]
+  // [1 , 2]
+  // On the other hand, specifying {0} as broadcast_dimension
+  // will generate output
+  // [1 , 1]
+  // [2 , 2]
+  XlaOp BroadcastInDim(
+      const XlaOp& operand, const Shape& shape,
+      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
   // Enqueues a pad operation onto the computation that pads the given value on
   // the edges as well as between the elements of the input. padding_config
@@ -730,16 +752,6 @@ class XlaBuilder {
   // Enqueues an imaginary-part instruction onto the computation.
   XlaOp Imag(const XlaOp& operand);
 
-  // Enqueues a float32 sqrt instruction onto the computation.
-  // (float32 is specified as there is an implicit float32 0.5f constant
-  // exponent).
-  XlaOp SqrtF32(const XlaOp& operand);
-
-  // Enqueues a float32 square instruction onto the computation.
-  // (float32 is specified as there is an implicit float32 2.0f constant
-  // exponent).
-  XlaOp SquareF32(const XlaOp& operand);
-
   // Enqueues a lhs^rhs computation onto the computation.
   XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
             tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
@@ -761,14 +773,6 @@ class XlaBuilder {
   // identical.
   XlaOp BitcastConvertType(const XlaOp& operand,
                            PrimitiveType new_element_type);
-
-  // Enqueues a float32 reciprocal instruction onto the computation.
-  // (float32 is specified as there is an implicit float32 -1.0f constant
-  // exponent).
-  //
-  // TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
-  // shape of the operand.
-  XlaOp ReciprocalF32(const XlaOp& operand);
 
   // Enqueues a negate instruction onto the computation.
   XlaOp Neg(const XlaOp& operand);
@@ -1033,6 +1037,10 @@ class XlaBuilder {
   friend XlaOp Broadcast(const XlaOp& operand,
                          tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
 
+  friend XlaOp BroadcastInDim(
+      const XlaOp& operand, const Shape& shape,
+      const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+
   friend XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
                    const PaddingConfig& padding_config);
 
@@ -1210,8 +1218,6 @@ class XlaBuilder {
   friend XlaOp Tanh(const XlaOp& operand);
   friend XlaOp Real(const XlaOp& operand);
   friend XlaOp Imag(const XlaOp& operand);
-  friend XlaOp SqrtF32(const XlaOp& operand);
-  friend XlaOp SquareF32(const XlaOp& operand);
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
@@ -1219,7 +1225,6 @@ class XlaBuilder {
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
-  friend XlaOp ReciprocalF32(const XlaOp& operand);
   friend XlaOp Neg(const XlaOp& operand);
   friend XlaOp Transpose(const XlaOp& operand,
                          tensorflow::gtl::ArraySlice<int64> permutation);
@@ -1375,6 +1380,27 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand,
                 tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+
+// Performs in-dimension-style broadcast.
+//
+// Operand specifies the input to be broadcast. "shape" is expected output
+// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
+// Dimension numbers in broadcast_dimensions map to individual dimensions
+// of the operand, and specify what dimension of the output shape they
+// should be broadcast.
+// e.g.
+// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
+// and dimension of shape is [2,2].
+// Specifying {1} as brodcast_dimension will generate output
+// [1 , 2]
+// [1 , 2]
+// On the other hand, specifying {0} as broadcast_dimension
+// will generate output
+// [1 , 1]
+// [2 , 2]
+XlaOp BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
 // Enqueues a pad operation onto the computation that pads the given value on
 // the edges as well as between the elements of the input. padding_config
@@ -1787,16 +1813,6 @@ XlaOp Real(const XlaOp& operand);
 // Enqueues an imaginary-part instruction onto the computation.
 XlaOp Imag(const XlaOp& operand);
 
-// Enqueues a float32 sqrt instruction onto the computation.
-// (float32 is specified as there is an implicit float32 0.5f constant
-// exponent).
-XlaOp SqrtF32(const XlaOp& operand);
-
-// Enqueues a float32 square instruction onto the computation.
-// (float32 is specified as there is an implicit float32 2.0f constant
-// exponent).
-XlaOp SquareF32(const XlaOp& operand);
-
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions = {});
@@ -1816,14 +1832,6 @@ XlaOp ConvertElementType(const XlaOp& operand, PrimitiveType new_element_type);
 // bit-widths of the source and destination element types must be
 // identical.
 XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type);
-
-// Enqueues a float32 reciprocal instruction onto the computation.
-// (float32 is specified as there is an implicit float32 -1.0f constant
-// exponent).
-//
-// TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
-// shape of the operand.
-XlaOp ReciprocalF32(const XlaOp& operand);
 
 // Enqueues a negate instruction onto the computation.
 XlaOp Neg(const XlaOp& operand);
@@ -1936,12 +1944,12 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR0(NativeT value) {
-  return ConstantLiteral(*Literal::CreateR0<NativeT>(value));
+  return ConstantLiteral(*LiteralUtil::CreateR0<NativeT>(value));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR1(tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantLiteral(*Literal::CreateR1<NativeT>(values));
+  return ConstantLiteral(*LiteralUtil::CreateR1<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -1953,44 +1961,44 @@ XlaOp XlaBuilder::ConstantR1(int64 length, NativeT value) {
 }
 
 inline XlaOp XlaBuilder::ConstantR1(const tensorflow::core::Bitmap& values) {
-  return ConstantLiteral(*Literal::CreateR1(values));
+  return ConstantLiteral(*LiteralUtil::CreateR1(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantLiteral(*Literal::CreateR2<NativeT>(values));
+  return ConstantLiteral(*LiteralUtil::CreateR2<NativeT>(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantFromArrayWithLayout(const Array<NativeT>& values,
                                               const Layout& layout) {
   return ConstantLiteral(
-      *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
+      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantFromArray(const Array<NativeT>& values) {
-  return ConstantLiteral(*Literal::CreateFromArray<NativeT>(values));
+  return ConstantLiteral(*LiteralUtil::CreateFromArray<NativeT>(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
   return ConstantLiteral(
-      *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
+      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR2FromArray2D(const Array2D<NativeT>& values) {
-  return ConstantLiteral(*Literal::CreateR2FromArray2D<NativeT>(values));
+  return ConstantLiteral(*LiteralUtil::CreateR2FromArray2D<NativeT>(values));
 }
 
 template <typename NativeT>
 XlaOp XlaBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
   return ConstantLiteral(
-      *Literal::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
+      *LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
@@ -2013,13 +2021,13 @@ XlaOp XlaBuilder::ConstantR4FromArray4D(const Array4D<NativeT>& values) {
 
 template <typename NativeT>
 XlaOp ConstantR0(XlaBuilder* builder, NativeT value) {
-  return ConstantLiteral(builder, *Literal::CreateR0<NativeT>(value));
+  return ConstantLiteral(builder, *LiteralUtil::CreateR0<NativeT>(value));
 }
 
 template <typename NativeT>
 XlaOp ConstantR1(XlaBuilder* builder,
                  tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantLiteral(builder, *Literal::CreateR1<NativeT>(values));
+  return ConstantLiteral(builder, *LiteralUtil::CreateR1<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2032,13 +2040,13 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value) {
 
 inline XlaOp ConstantR1(XlaBuilder* builder,
                         const tensorflow::core::Bitmap& values) {
-  return ConstantLiteral(builder, *Literal::CreateR1(values));
+  return ConstantLiteral(builder, *LiteralUtil::CreateR1(values));
 }
 
 template <typename NativeT>
 XlaOp ConstantR2(XlaBuilder* builder,
                  std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantLiteral(builder, *Literal::CreateR2<NativeT>(values));
+  return ConstantLiteral(builder, *LiteralUtil::CreateR2<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2046,12 +2054,14 @@ XlaOp ConstantFromArrayWithLayout(XlaBuilder* builder,
                                   const Array<NativeT>& values,
                                   const Layout& layout) {
   return ConstantLiteral(
-      builder, *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
+      builder,
+      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp ConstantFromArray(XlaBuilder* builder, const Array<NativeT>& values) {
-  return ConstantLiteral(builder, *Literal::CreateFromArray<NativeT>(values));
+  return ConstantLiteral(builder,
+                         *LiteralUtil::CreateFromArray<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2059,14 +2069,15 @@ XlaOp ConstantR2FromArray2DWithLayout(XlaBuilder* builder,
                                       const Array2D<NativeT>& values,
                                       const Layout& layout) {
   return ConstantLiteral(
-      builder, *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
+      builder,
+      *LiteralUtil::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 XlaOp ConstantR2FromArray2D(XlaBuilder* builder,
                             const Array2D<NativeT>& values) {
   return ConstantLiteral(builder,
-                         *Literal::CreateR2FromArray2D<NativeT>(values));
+                         *LiteralUtil::CreateR2FromArray2D<NativeT>(values));
 }
 
 template <typename NativeT>
@@ -2075,7 +2086,7 @@ XlaOp ConstantR3FromArray3DWithLayout(XlaBuilder* builder,
                                       const Layout& layout) {
   return ConstantLiteral(
       builder,
-      *Literal::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
+      *LiteralUtil::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>

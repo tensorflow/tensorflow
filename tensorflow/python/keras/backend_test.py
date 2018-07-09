@@ -276,6 +276,36 @@ class BackendUtilsTest(test.TestCase):
       self.assertEqual(
           keras.backend.get_session().run(fetches=[x, y]), [30., 40.])
 
+  def test_function_fetch_callbacks(self):
+
+    class CallbackStub(object):
+
+      def __init__(self):
+        self.times_called = 0
+        self.callback_result = 0
+
+      def _fetch_callback(self, result):
+        self.times_called += 1
+        self.callback_result = result
+
+    with self.test_session():
+      callback = CallbackStub()
+      x_placeholder = keras.backend.placeholder(shape=())
+      y_placeholder = keras.backend.placeholder(shape=())
+
+      callback_op = x_placeholder * y_placeholder
+
+      f = keras.backend.function(
+          inputs=[x_placeholder, y_placeholder],
+          outputs=[x_placeholder + y_placeholder])
+      f.fetches.append(callback_op)
+      f.fetch_callbacks[callback_op] = callback._fetch_callback
+
+      _ = f([10., 20.])
+
+      self.assertEqual(callback.times_called, 1)
+      self.assertEqual(callback.callback_result, 200)
+
 
 class BackendVariableTest(test.TestCase):
 

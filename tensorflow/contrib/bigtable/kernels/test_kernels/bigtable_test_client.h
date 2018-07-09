@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-class BigtableTestClient : public ::bigtable::DataClient {
+class BigtableTestClient : public ::google::cloud::bigtable::DataClient {
  public:
   std::string const& project_id() const override { return project_id_; }
   std::string const& instance_id() const override { return instance_id_; }

@@ -109,7 +109,7 @@ limitations under the License.
 // Must be included first
 #include "tensorflow/python/lib/core/numpy.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -1002,11 +1002,11 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Cos;
 %unignore xla::swig::LocalComputationBuilder::Sin;
 %unignore xla::swig::LocalComputationBuilder::Tanh;
-%unignore xla::swig::LocalComputationBuilder::SqrtF32;
-%unignore xla::swig::LocalComputationBuilder::SquareF32;
+%unignore xla::swig::LocalComputationBuilder::Sqrt;
+%unignore xla::swig::LocalComputationBuilder::Square;
 %unignore xla::swig::LocalComputationBuilder::Pow;
 %unignore xla::swig::LocalComputationBuilder::IsFinite;
-%unignore xla::swig::LocalComputationBuilder::ReciprocalF32;
+%unignore xla::swig::LocalComputationBuilder::Reciprocal;
 %unignore xla::swig::LocalComputationBuilder::Neg;
 %unignore xla::swig::LocalComputationBuilder::Sort;
 %unignore xla::swig::DestructureLocalShapedBufferTuple;

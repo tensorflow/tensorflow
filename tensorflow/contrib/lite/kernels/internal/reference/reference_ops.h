@@ -3717,9 +3717,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-template <typename T1, typename T2, typename T3>
-void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
-            T2* output_data, const Dims<4>& output_dims) {
+template <typename T1, typename T2, typename T3, typename Cmp>
+void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+               T2* output_data, const Dims<4>& output_dims, const Cmp& cmp) {
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
 
@@ -3732,17 +3732,26 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
   const int depth = ArraySize(input_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
-    auto max_value = input_data[i * depth];
-    int max_index = 0;
+    auto min_max_value = input_data[i * depth];
+    int min_max_index = 0;
     for (int d = 1; d < depth; ++d) {
       const auto& curr_value = input_data[i * depth + d];
-      if (curr_value > max_value) {
-        max_value = curr_value;
-        max_index = d;
+      if (cmp(curr_value, min_max_value)) {
+        min_max_value = curr_value;
+        min_max_index = d;
       }
     }
-    output_data[i] = max_index;
+    output_data[i] = min_max_index;
   }
+}
+
+// TODO(renjieliu): Remove this one.
+template <typename T1, typename T2, typename T3>
+void ArgMax(const T3* axis, const T1* input_data,
+            const tflite::Dims<4>& input_dims, T2* output_data,
+            const tflite::Dims<4>& output_dims) {
+  ArgMinMax(axis, input_data, input_dims, output_data, output_dims,
+            std::greater<T1>());
 }
 
 template <typename T>

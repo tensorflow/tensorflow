@@ -361,7 +361,7 @@ class _ListFetchMapper(_FetchMapper):
     for m, vi in zip(self._mappers, self._value_indices):
       results.append(m.build_results([values[j] for j in vi]))
     # Return a value of the original type of the fetches.
-    if self._fetch_type == list:
+    if issubclass(self._fetch_type, list):
       return results
     elif self._fetch_type == tuple:
       return tuple(results)

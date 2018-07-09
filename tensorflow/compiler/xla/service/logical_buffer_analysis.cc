@@ -131,18 +131,23 @@ Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction*) {
-  // RecvDone doesn't create a new buffer but rather aliases its input (Recv)
-  // tuple element at {0} to its output.
+Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
+  // RecvDone produces a two-element tuple containing the data value (which
+  // aliases part of its operand) and a token. Only the tuple index table and
+  // the token are defined by the RecvDone.
+  NewLogicalBuffer(recv_done, /*index=*/{});
+  NewLogicalBuffer(recv_done, /*index=*/{1});
   return Status::OK();
 }
 
 Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
-  // Send creates new buffers for the top-level tuple and the context (tuple
-  // element at {1}). Tuple element at {0} is an alias of the Send operand, so
-  // we don't need to create a new Logical Buffer for that.
+  // Send creates new buffers for the top-level tuple, the context (tuple
+  // element at {1}), and the token (tuple element at {2}). Tuple element at {0}
+  // is an alias of the Send operand, so we don't need to create a new Logical
+  // Buffer for that.
   NewLogicalBuffer(send, /*index=*/{});
   NewLogicalBuffer(send, /*index=*/{1});
+  NewLogicalBuffer(send, /*index=*/{2});
   return Status::OK();
 }
 
@@ -152,10 +157,10 @@ Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select) {
+Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
-  NewLogicalBuffer(select, /*index=*/{});
+  NewLogicalBuffer(tuple_select, /*index=*/{});
   return Status::OK();
 }
 

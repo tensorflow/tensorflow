@@ -100,8 +100,9 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
     std::vector<xla::XlaOp> updated_values;
     updated_values.reserve(values.size());
     updated_values.push_back(xla::Add(
-        iteration, xla::ConstantLiteral(
-                       body_builder, xla::Literal::One(num_iterations_type))));
+        iteration,
+        xla::ConstantLiteral(body_builder,
+                             xla::LiteralUtil::One(num_iterations_type))));
 
     values.remove_prefix(1);
     TF_ASSIGN_OR_RETURN(std::vector<xla::XlaOp> body_outputs,
@@ -113,8 +114,8 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
 
   std::vector<xla::XlaOp> values;
   values.reserve(initial_values.size() + 1);
-  values.push_back(
-      xla::ConstantLiteral(builder, xla::Literal::Zero(num_iterations_type)));
+  values.push_back(xla::ConstantLiteral(
+      builder, xla::LiteralUtil::Zero(num_iterations_type)));
   values.insert(values.end(), initial_values.begin(), initial_values.end());
 
   TF_ASSIGN_OR_RETURN(values, XlaWhileLoop(while_cond_fn, while_body_fn, values,

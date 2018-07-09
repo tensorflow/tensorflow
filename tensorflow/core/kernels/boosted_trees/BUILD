@@ -45,6 +45,11 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tree_helper",
+    hdrs = ["tree_helper.h"],
+)
+
 tf_kernel_library(
     name = "resource_ops",
     srcs = ["resource_ops.cc"],
@@ -61,6 +66,7 @@ tf_kernel_library(
     name = "stats_ops",
     srcs = ["stats_ops.cc"],
     deps = [
+        ":tree_helper",
         "//tensorflow/core:boosted_trees_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -72,6 +78,7 @@ tf_kernel_library(
     srcs = ["training_ops.cc"],
     deps = [
         ":resources",
+        ":tree_helper",
         "//tensorflow/core:boosted_trees_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

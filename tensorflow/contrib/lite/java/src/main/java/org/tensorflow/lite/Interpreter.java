@@ -135,7 +135,8 @@ public final class Interpreter implements AutoCloseable {
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
    *     input data. When {@link ByteBuffer} is used, its content should remain unchanged until
    *     model inference is done.
-   * @param output a multidimensional array of output data.
+   * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
+   *     types including int, float, long, and byte.
    */
   public void run(@NonNull Object input, @NonNull Object output) {
     Object[] inputs = {input};
@@ -155,8 +156,9 @@ public final class Interpreter implements AutoCloseable {
    *     primitive types including int, float, long, and byte. {@link ByteBuffer} is the preferred
    *     way to pass large input data. When {@link ByteBuffer} is used, its content should remain
    *     unchanged until model inference is done.
-   * @param outputs a map mapping output indices to multidimensional arrays of output data. It only
-   *     needs to keep entries for the outputs to be used.
+   * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
+   *     ByteBuffer}s of primitive types including int, float, long, and byte. It only needs to keep
+   *     entries for the outputs to be used.
    */
   public void runForMultipleInputsOutputs(
       @NonNull Object[] inputs, @NonNull Map<Integer, Object> outputs) {

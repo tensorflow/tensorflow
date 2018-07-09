@@ -145,7 +145,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
       static_cast<int64>(0x8000008000000000LL),
       static_cast<int64>(0x8000010000000000LL),
   };
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<int64>({arg});
+  std::unique_ptr<Literal> arg_literal = LiteralUtil::CreateR1<int64>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
@@ -164,7 +164,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   std::vector<uint32> arg{0,          1,          0x1000,     0x7fffffff,
                           0x80000000, 0x80000001, 0x80000002, 0x80000003,
                           0x80000080, 0x80000081, 0x80000082, 0xFFFFFFFF};
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<uint32>({arg});
+  std::unique_ptr<Literal> arg_literal = LiteralUtil::CreateR1<uint32>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
@@ -182,7 +182,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
   XlaBuilder builder(TestName());
   std::vector<float> arg{0.0f,        1.0f,          16777216.0f,
                          16777218.0f, 2147483647.0f, 4294967040.0f};
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<float>({arg});
+  std::unique_ptr<Literal> arg_literal = LiteralUtil::CreateR1<float>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
@@ -199,7 +199,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
 XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   XlaBuilder builder(TestName());
   std::vector<uint32> arg{0, 1, 0x1000, 0x7fffffff, 0x80000082, 0xFFFFFFFF};
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<uint32>({arg});
+  std::unique_ptr<Literal> arg_literal = LiteralUtil::CreateR1<uint32>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
@@ -216,7 +216,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
 XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   XlaBuilder builder(TestName());
   std::vector<int32> arg{0, 1, 0x1000, -1, -0x1000};
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<int32>({arg});
+  std::unique_ptr<Literal> arg_literal = LiteralUtil::CreateR1<int32>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
@@ -253,7 +253,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
                          9223370937343148032.f,
                          -9223371487098961920.f,
                          -9223370937343148032.f};
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<float>({arg});
+  std::unique_ptr<Literal> arg_literal = LiteralUtil::CreateR1<float>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal->shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
       client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
@@ -391,7 +391,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> dot_lhs_handle,
-      client_->TransferToServer(*Literal::CreateR1<half>(input)));
+      client_->TransferToServer(*LiteralUtil::CreateR1<half>(input)));
 
   XlaBuilder builder(TestName());
   ConvertElementType(
@@ -411,7 +411,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> dot_lhs_handle,
-      client_->TransferToServer(*Literal::CreateR1<float>(input)));
+      client_->TransferToServer(*LiteralUtil::CreateR1<float>(input)));
 
   XlaBuilder builder(TestName());
   ConvertElementType(

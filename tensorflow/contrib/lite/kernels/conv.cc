@@ -418,6 +418,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         filter_data = GetTensorData<float>(filter);
       }
       multithreaded_ops::Conv(
+          *eigen_support::GetThreadPoolDevice(context),
           GetTensorData<float>(input), GetTensorDims(input), filter_data,
           GetTensorDims(filter), GetTensorData<float>(bias),
           GetTensorDims(bias), params->stride_width, params->stride_height,

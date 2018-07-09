@@ -284,9 +284,8 @@ void HloComputation::set_root_instruction(
   if (!IsFusionComputation()) {
     CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
                                 root_instruction_->shape()))
-        << new_root_instruction->shape().ShortDebugString()
-        << " is incompatible with "
-        << root_instruction_->shape().ShortDebugString();
+        << new_root_instruction->shape() << " is incompatible with "
+        << root_instruction_->shape();
   }
   bool root_found = false;
   for (auto& instruction : instructions_) {
@@ -664,7 +663,7 @@ std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
     inputs.assign(hlo->operands().begin(), hlo->operands().end());
     inputs.insert(inputs.end(), hlo->control_predecessors().begin(),
                   hlo->control_predecessors().end());
-    result->SetReachabilityToUnion(inputs, hlo);
+    result->FastSetReachabilityToUnion(inputs, hlo);
   }
   return result;
 }

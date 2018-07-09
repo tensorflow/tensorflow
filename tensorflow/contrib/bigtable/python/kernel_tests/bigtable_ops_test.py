@@ -23,6 +23,7 @@ from tensorflow.contrib.bigtable.ops import gen_bigtable_ops
 from tensorflow.contrib.bigtable.ops import gen_bigtable_test_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -126,6 +127,27 @@ class BigtableOpsTest(test.TestCase):
             compat.as_bytes(elem[1]), compat.as_bytes(output[1]),
             "Unequal values at step %d: want: %s, got: %s" %
             (i, compat.as_bytes(elem[1]), compat.as_bytes(output[1])))
+
+  def testSampleKeys(self):
+    ds = self._table.sample_keys()
+    itr = ds.make_initializable_iterator()
+    n = itr.get_next()
+    expected_key = self.COMMON_ROW_KEYS[0]
+    with self.test_session() as sess:
+      self._writeCommonValues(sess)
+      sess.run(itr.initializer)
+      output = sess.run(n)
+      self.assertEqual(
+          compat.as_bytes(self.COMMON_ROW_KEYS[0]), compat.as_bytes(output),
+          "Unequal keys: want: %s, got: %s" % (compat.as_bytes(
+              self.COMMON_ROW_KEYS[0]), compat.as_bytes(output)))
+      output = sess.run(n)
+      self.assertEqual(
+          compat.as_bytes(self.COMMON_ROW_KEYS[2]), compat.as_bytes(output),
+          "Unequal keys: want: %s, got: %s" % (compat.as_bytes(
+              self.COMMON_ROW_KEYS[2]), compat.as_bytes(output)))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(n)
 
 
 if __name__ == "__main__":

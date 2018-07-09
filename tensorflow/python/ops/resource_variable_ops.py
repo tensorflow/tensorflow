@@ -867,6 +867,19 @@ class ResourceVariable(variables.Variable):
 
   __array_priority__ = 100
 
+  def is_initialized(self, name=None):
+    """Checks whether a resource variable has been initialized.
+
+    Outputs boolean scalar indicating whether the tensor has been initialized.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor` of type `bool`.
+    """
+    return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
+
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     """Subtracts a value from this variable.
 

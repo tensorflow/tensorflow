@@ -46,11 +46,17 @@ cc_library(
     hdrs = [
         "eigen_support.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + [
+        "-Wno-error=reorder",
+    ] + select({
+        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
+        "//conditions:default": [
+        ],
+    }),
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "//third_party/eigen3",
+        "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
 
@@ -130,7 +136,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
-        "arg_max.cc",
+        "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
@@ -290,9 +296,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "arg_max_test",
+    name = "arg_min_max_test",
     size = "small",
-    srcs = ["arg_max_test.cc"],
+    srcs = ["arg_min_max_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],
@@ -964,6 +970,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

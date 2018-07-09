@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -551,7 +552,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     }
     // Ternary ops.
     case HloOpcode::kClamp:
-    case HloOpcode::kSelect: {
+    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect: {
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
         return false;
@@ -670,12 +672,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kRecv: {
       optional<tensorflow::int64> channel_id;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateRecv(shape.tuple_shapes(0), *channel_id));
+      instruction = builder->AddInstruction(HloInstruction::CreateRecv(
+          shape.tuple_shapes(0), operands[0], *channel_id));
       break;
     }
     case HloOpcode::kRecvDone: {
@@ -695,12 +697,12 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     case HloOpcode::kSend: {
       optional<tensorflow::int64> channel_id;
       attrs["channel_id"] = {/*required=*/true, AttrTy::kInt64, &channel_id};
-      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(
-          HloInstruction::CreateSend(operands[0], *channel_id));
+          HloInstruction::CreateSend(operands[0], operands[1], *channel_id));
       break;
     }
     case HloOpcode::kSendDone: {
@@ -1200,8 +1202,8 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateDomain(
-          shape, operands[0], std::move(domain.entry_metadata),
-          std::move(domain.exit_metadata)));
+          shape, operands[0], std::move(domain.exit_metadata),
+          std::move(domain.entry_metadata)));
       break;
     }
     case HloOpcode::kTrace:
@@ -1608,7 +1610,7 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
       }
     }
   }
-  *literal = Literal::MakeTupleOwned(std::move(elements));
+  *literal = LiteralUtil::MakeTupleOwned(std::move(elements));
   return ParseToken(TokKind::kRparen,
                     StrCat("expects ')' at the end of the tuple with ",
                            ShapeUtil::TupleElementCount(shape), "elements"));
@@ -1636,8 +1638,8 @@ bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
   }
 
   // Create a literal with the given shape in default layout.
-  *literal = Literal::CreateFromDimensions(shape.element_type(),
-                                           AsInt64Slice(shape.dimensions()));
+  *literal = LiteralUtil::CreateFromDimensions(
+      shape.element_type(), AsInt64Slice(shape.dimensions()));
   tensorflow::int64 nest_level = 0;
   tensorflow::int64 linear_index = 0;
   // elems_seen_per_dim[i] is how many elements or sub-arrays we have seen for

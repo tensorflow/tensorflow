@@ -65,6 +65,7 @@ cc_library(
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -88,6 +89,7 @@ cc_library(
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_comparison",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test",
@@ -179,6 +181,7 @@ cc_library(
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -302,7 +305,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -345,7 +348,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -406,7 +409,7 @@ xla_test(
     tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -435,7 +438,7 @@ xla_test(
     tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -531,6 +534,7 @@ xla_test(
     srcs = ["scalar_computations_test.cc"],
     shard_count = 32,
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -573,7 +577,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -599,7 +603,7 @@ xla_test(
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -645,7 +649,7 @@ xla_test(
     tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -764,6 +768,7 @@ xla_test(
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:local_client",
@@ -780,7 +785,7 @@ xla_test(
 CONVOLUTION_TEST_DEPS = [
     "//tensorflow/compiler/xla:array2d",
     "//tensorflow/compiler/xla:array4d",
-    "//tensorflow/compiler/xla:literal_util",
+    "//tensorflow/compiler/xla:literal",
     "//tensorflow/compiler/xla:reference_util",
     "//tensorflow/compiler/xla:shape_util",
     "//tensorflow/compiler/xla:statusor",
@@ -827,7 +832,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:local_client",
@@ -874,7 +879,7 @@ xla_test(
         ":test_utils",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -886,6 +891,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo",
@@ -906,7 +912,7 @@ xla_test(
         ":test_utils",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -939,7 +945,7 @@ xla_test(
     ],
     deps = [
         ":test_utils",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1030,6 +1036,7 @@ xla_test(
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1078,6 +1085,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1148,7 +1156,7 @@ xla_test(
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1175,7 +1183,7 @@ xla_test(
     deps = [
         ":client_library_test_base",
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
@@ -1227,6 +1235,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1245,6 +1254,7 @@ xla_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -1290,6 +1300,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -1367,7 +1378,7 @@ xla_test(
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1390,7 +1401,7 @@ xla_test(
     name = "prng_test",
     srcs = ["prng_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:util",
@@ -1415,6 +1426,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1529,7 +1541,7 @@ xla_test(
     name = "cross_replica_sum_test",
     srcs = ["cross_replica_sum_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1573,7 +1585,7 @@ xla_test(
     name = "compilation_cache_test",
     srcs = ["compilation_cache_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1613,7 +1625,7 @@ xla_test(
     name = "compute_constant_test",
     srcs = ["compute_constant_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -1688,7 +1700,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1713,7 +1725,7 @@ xla_test(
         "enable_for_xla_interpreter",
     ],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1730,6 +1742,7 @@ tf_cc_test(
     srcs = ["llvm_compiler_test.cc"],
     tags = ["requires-gpu-sm35"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -1750,7 +1763,7 @@ xla_test(
     name = "round_trip_packed_literal_test",
     srcs = ["round_trip_packed_literal_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:packed_literal_reader",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -1773,7 +1786,7 @@ xla_test(
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1782,6 +1795,7 @@ xla_test(
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -1800,7 +1814,7 @@ xla_test(
     srcs = ["multioutput_fusion_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1840,7 +1854,7 @@ xla_test(
     name = "local_client_allocation_test",
     srcs = ["local_client_allocation_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
@@ -1863,7 +1877,7 @@ xla_test(
     shard_count = 30,
     tags = ["optonly"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
@@ -1909,7 +1923,7 @@ xla_test(
     srcs = ["round_trip_transfer_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1930,7 +1944,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array4d",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:reference_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1978,7 +1992,7 @@ xla_test(
         ":literal_test_util",
         ":local_client_test_base",
         ":xla_internal_test_main",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",

@@ -686,30 +686,45 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx,
           dataset->MakeIterator(&iter_ctx, "SingleElementIterator", &iterator),
           done);
+
+      // NOTE(jsimsa): We must destroy the iterator before calling `done()`, to
+      // avoid destruction races.
+      IteratorBase* raw_iterator = iterator.release();
+      auto cleanup = gtl::MakeCleanup([ctx, raw_iterator, done] {
+        delete raw_iterator;
+        done();
+      });
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
-      bool end_of_sequence;
+      bool end_of_sequence = false;
 
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(ctx, !end_of_sequence,
-                        errors::InvalidArgument("Dataset was empty."), done);
-
+      Status s =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+      if (!s.ok()) {
+        ctx->SetStatus(s);
+        return;
+      }
+      if (end_of_sequence) {
+        ctx->SetStatus(errors::InvalidArgument("Dataset was empty."));
+        return;
+      }
       for (int i = 0; i < components.size(); ++i) {
         // TODO(mrry): Check that the shapes match the shape attrs.
         ctx->set_output(i, components[i]);
       }
 
       components.clear();
-      OP_REQUIRES_OK_ASYNC(
-          ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-          done);
-      OP_REQUIRES_ASYNC(
-          ctx, end_of_sequence,
-          errors::InvalidArgument("Dataset had more than one element."), done);
-
-      done();
+      Status s2 =
+          raw_iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+      if (!s2.ok()) {
+        ctx->SetStatus(s2);
+        return;
+      }
+      if (!end_of_sequence) {
+        ctx->SetStatus(
+            errors::InvalidArgument("Dataset had more than one element."));
+        return;
+      }
     });
   }
 
@@ -1135,9 +1150,18 @@ class DeserializeIteratorOp : public OpKernel {
 
 
 REGISTER_KERNEL_BUILDER(Name("Iterator").Device(DEVICE_CPU), IteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_CPU),
+                        IteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE_GPU),
+                        IteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("MakeIterator").Device(DEVICE_CPU),
                         MakeIteratorOp);
+REGISTER_KERNEL_BUILDER(
+    Name("MakeIterator").Device(DEVICE_GPU).HostMemory("dataset"),
+    MakeIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_CPU),
+                        AnonymousIteratorHandleOp);
+REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE_GPU),
                         AnonymousIteratorHandleOp);
 REGISTER_KERNEL_BUILDER(Name("DatasetToSingleElement").Device(DEVICE_CPU),
                         ToSingleElementOp);
@@ -1145,11 +1169,25 @@ REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_GPU),
+                        IteratorGetNextOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
+                        IteratorGetNextSyncOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_GPU),
                         IteratorGetNextSyncOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("string_handle"),
+                        IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
+                        IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2").Device(DEVICE_CPU),
+                        IteratorFromStringHandleOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandleV2")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("string_handle"),
                         IteratorFromStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("SerializeIterator").Device(DEVICE_CPU),
                         SerializeIteratorOp);

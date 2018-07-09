@@ -48,6 +48,7 @@ int64 GetUniqueId() {
 // computation.
 bool CanBeRoot(HloOpcode opcode) {
   switch (opcode) {
+    case HloOpcode::kAfterAll:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kOutfeed:
@@ -532,6 +533,14 @@ XlaOp XlaBuilder::Broadcast(
   });
 }
 
+XlaOp XlaBuilder::BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return InDimBroadcast(shape, operand, broadcast_dimensions);
+  });
+}
+
 StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, const XlaOp& operand) {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -727,14 +736,22 @@ void XlaBuilder::Trace(const string& tag, const XlaOp& operand) {
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = ShapeUtil::MakeNil();
-    *instr.mutable_literal() = Literal::CreateR1U8(tag)->ToProto();
+    *instr.mutable_literal() = LiteralUtil::CreateR1U8(tag)->ToProto();
     return AddInstruction(std::move(instr), HloOpcode::kTrace, {operand});
   });
 }
 
 XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
                          const XlaOp& on_false) {
-  return TernaryOp(HloOpcode::kSelect, pred, on_true, on_false);
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& true_shape, GetShape(on_true));
+    TF_ASSIGN_OR_RETURN(const Shape& false_shape, GetShape(on_false));
+    TF_RET_CHECK(ShapeUtil::IsTuple(true_shape) ==
+                 ShapeUtil::IsTuple(false_shape));
+    HloOpcode opcode = ShapeUtil::IsTuple(true_shape) ? HloOpcode::kTupleSelect
+                                                      : HloOpcode::kSelect;
+    return TernaryOp(opcode, pred, on_true, on_false);
+  });
 }
 
 XlaOp XlaBuilder::Tuple(tensorflow::gtl::ArraySlice<XlaOp> elements) {
@@ -1369,11 +1386,6 @@ XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
   });
 }
 
-XlaOp XlaBuilder::SqrtF32(const XlaOp& operand) {
-  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(0.5),
-                  /*broadcast_dimensions=*/{});
-}
-
 XlaOp XlaBuilder::Pow(const XlaOp& lhs, const XlaOp& rhs,
                       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   return BinaryOp(HloOpcode::kPower, lhs, rhs, broadcast_dimensions);
@@ -1402,16 +1414,6 @@ XlaOp XlaBuilder::BitcastConvertType(const XlaOp& operand,
     return AddInstruction(std::move(instr), HloOpcode::kBitcastConvert,
                           {operand});
   });
-}
-
-XlaOp XlaBuilder::SquareF32(const XlaOp& operand) {
-  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(2.0),
-                  /*broadcast_dimensions=*/{});
-}
-
-XlaOp XlaBuilder::ReciprocalF32(const XlaOp& operand) {
-  return BinaryOp(HloOpcode::kPower, operand, ConstantR0<float>(-1.0),
-                  /*broadcast_dimensions=*/{});
 }
 
 XlaOp XlaBuilder::Neg(const XlaOp& operand) {
@@ -1593,6 +1595,7 @@ XlaOp XlaBuilder::Reduce(
     TF_ASSIGN_OR_RETURN(const Shape& init_shape, GetShape(init_value));
     TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
                         computation.GetProgramShape());
+
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferReduceShape(
                             operand_shape, init_shape, dimensions_to_reduce,
@@ -1846,19 +1849,28 @@ XlaOp XlaBuilder::ReducePrecision(const XlaOp& operand, const int exponent_bits,
 
 void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
   ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
+    // Send HLO takes two operands: a data operand and a token. Generate the
+    // token to pass into the send.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
 
-    // Send instruction produces a tuple of {aliased operand, U32 context}.
+    // Send instruction produces a tuple of {aliased operand, U32 context,
+    // token}.
+    HloInstructionProto send_instr;
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
-    *instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
-    instr.set_channel_id(handle.handle());
-    TF_ASSIGN_OR_RETURN(
-        XlaOp send,
-        AddInstruction(std::move(instr), HloOpcode::kSend, {operand}));
+    *send_instr.mutable_shape() = ShapeUtil::MakeTupleShape(
+        {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()});
+    send_instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp send,
+                        AddInstruction(std::move(send_instr), HloOpcode::kSend,
+                                       {operand, token}));
 
     HloInstructionProto send_done_instr;
-    *send_done_instr.mutable_shape() = ShapeUtil::MakeNil();
+    *send_done_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
     send_done_instr.set_channel_id(handle.handle());
     return AddInstruction(std::move(send_done_instr), HloOpcode::kSendDone,
                           {send});
@@ -1867,20 +1879,41 @@ void XlaBuilder::Send(const XlaOp& operand, const ChannelHandle& handle) {
 
 XlaOp XlaBuilder::Recv(const Shape& shape, const ChannelHandle& handle) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
+    // Recv HLO takes a single token operand. Generate the token to pass into
+    // the Recv and RecvDone instructions.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto token_instr;
+    *token_instr.mutable_shape() = ShapeUtil::MakeTokenShape();
+    TF_ASSIGN_OR_RETURN(XlaOp token, AddInstruction(std::move(token_instr),
+                                                    HloOpcode::kAfterAll, {}));
 
-    // Recv instruction produces a tuple of {receive buffer, U32 context}.
-    *instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {})});
-    instr.set_channel_id(handle.handle());
-    TF_ASSIGN_OR_RETURN(XlaOp recv,
-                        AddInstruction(std::move(instr), HloOpcode::kRecv, {}));
+    // Recv instruction produces a tuple of {receive buffer, U32 context,
+    // token}.
+    HloInstructionProto recv_instr;
+    *recv_instr.mutable_shape() = ShapeUtil::MakeTupleShape(
+        {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()});
+    recv_instr.set_channel_id(handle.handle());
+    TF_ASSIGN_OR_RETURN(XlaOp recv, AddInstruction(std::move(recv_instr),
+                                                   HloOpcode::kRecv, {token}));
 
     HloInstructionProto recv_done_instr;
-    *recv_done_instr.mutable_shape() = shape;
+    *recv_done_instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
     recv_done_instr.set_channel_id(handle.handle());
-    return AddInstruction(std::move(recv_done_instr), HloOpcode::kRecvDone,
-                          {recv});
+    TF_ASSIGN_OR_RETURN(XlaOp recv_done,
+                        AddInstruction(std::move(recv_done_instr),
+                                       HloOpcode::kRecvDone, {recv}));
+
+    // The RecvDone instruction produces a tuple of the data and a token
+    // type. Return XLA op containing the data.
+    // TODO(b/80000000): Remove this when clients have been updated to handle
+    // tokens.
+    HloInstructionProto recv_data;
+    *recv_data.mutable_shape() = shape;
+    recv_data.set_tuple_index(0);
+    return AddInstruction(std::move(recv_data), HloOpcode::kGetTupleElement,
+                          {recv_done});
   });
 }
 
@@ -2137,6 +2170,13 @@ XlaOp ConstantLiteral(XlaBuilder* builder, const LiteralSlice& literal) {
 XlaOp Broadcast(const XlaOp& operand,
                 tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   return operand.builder()->Broadcast(operand, broadcast_sizes);
+}
+
+XlaOp BroadcastInDim(
+    const XlaOp& operand, const Shape& shape,
+    const tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
+  return operand.builder()->BroadcastInDim(operand, shape,
+                                           broadcast_dimensions);
 }
 
 XlaOp Pad(const XlaOp& operand, const XlaOp& padding_value,
@@ -2497,14 +2537,6 @@ XlaOp Real(const XlaOp& operand) { return operand.builder()->Real(operand); }
 
 XlaOp Imag(const XlaOp& operand) { return operand.builder()->Imag(operand); }
 
-XlaOp SqrtF32(const XlaOp& operand) {
-  return operand.builder()->SqrtF32(operand);
-}
-
-XlaOp SquareF32(const XlaOp& operand) {
-  return operand.builder()->SquareF32(operand);
-}
-
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
   return lhs.builder()->Pow(lhs, rhs, broadcast_dimensions);
@@ -2520,10 +2552,6 @@ XlaOp ConvertElementType(const XlaOp& operand, PrimitiveType new_element_type) {
 
 XlaOp BitcastConvertType(const XlaOp& operand, PrimitiveType new_element_type) {
   return operand.builder()->BitcastConvertType(operand, new_element_type);
-}
-
-XlaOp ReciprocalF32(const XlaOp& operand) {
-  return operand.builder()->ReciprocalF32(operand);
 }
 
 XlaOp Neg(const XlaOp& operand) { return operand.builder()->Neg(operand); }

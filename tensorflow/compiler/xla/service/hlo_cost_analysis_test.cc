@@ -338,13 +338,13 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
     //   tuple = Tuple({sub, sub, mul, C1})
     HloComputation::Builder builder(TestName());
     auto c1 = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
             /*from=*/0.0f, /*to=*/1.0f, /*rows=*/2, /*cols=*/2)));
     auto c2 = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
             /*from=*/1.0f, /*to=*/2.0f, /*rows=*/2, /*cols=*/2)));
     auto c3 = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR2F32Linspace(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(
             /*from=*/2.0f, /*to=*/3.0f, /*rows=*/2, /*cols=*/2)));
     auto add = builder.AddInstruction(
         HloInstruction::CreateBinary(r2f32, HloOpcode::kAdd, c1, c2));
@@ -391,9 +391,9 @@ TEST_F(FusionCostAnalysis, NoLayout) {
 
   HloComputation::Builder builder(TestName());
   auto c1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR4FromArray4D(Array4D<float>(2, 3, 4, 5))));
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(2, 3, 4, 5))));
   auto c2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3})));
 
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(shape_without_layout, c2, {1}));

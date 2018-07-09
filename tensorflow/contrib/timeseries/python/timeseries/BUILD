@@ -184,6 +184,7 @@ py_test(
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

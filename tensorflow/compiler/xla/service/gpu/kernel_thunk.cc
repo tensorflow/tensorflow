@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -75,7 +76,8 @@ void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
 }
 
 Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                    se::Stream* stream) {
+                                    se::Stream* stream,
+                                    HloExecutionProfiler* profiler) {
   // Load the kernel.
   se::StreamExecutor* executor = stream->parent();
   LaunchDimensions launch_dimensions;
@@ -100,6 +102,7 @@ Status KernelThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     VLOG(3) << "  Arg: alloc #" << arg->index() << ": " << buf.opaque() << " ("
             << buf.size() << "B)";
   }
+  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   if (!stream->parent()->Launch(
           stream, se::ThreadDim(launch_dimensions.threads_per_block()),
           se::BlockDim(launch_dimensions.block_count()), *kernel,

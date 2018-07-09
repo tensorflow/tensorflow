@@ -34,6 +34,7 @@ See @{$guide/datasets$Importing Data} for an overview.
 @@batch_and_drop_remainder
 @@bucket_by_sequence_length
 @@choose_from_datasets
+@@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
 
@@ -86,6 +87,7 @@ from tensorflow.contrib.data.python.ops.interleave_ops import sample_from_datase
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
+from tensorflow.contrib.data.python.ops.prefetching_ops import copy_to_device
 from tensorflow.contrib.data.python.ops.prefetching_ops import prefetch_to_device
 from tensorflow.contrib.data.python.ops.random_ops import RandomDataset
 from tensorflow.contrib.data.python.ops.readers import CsvDataset

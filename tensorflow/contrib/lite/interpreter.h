@@ -410,6 +410,8 @@ class Interpreter {
   }
 
  private:
+  friend class InterpreterTest;
+
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
@@ -522,6 +524,18 @@ class Interpreter {
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
+  // Retrieve an existing external context by type.
+  TfLiteExternalContext* GetExternalContext(TfLiteExternalContextType type);
+  static TfLiteExternalContext* GetExternalContext(
+      struct TfLiteContext* context, TfLiteExternalContextType type);
+
+  // Set the value of an external context.
+  void SetExternalContext(TfLiteExternalContextType type,
+                          TfLiteExternalContext* ctx);
+  static void SetExternalContext(struct TfLiteContext* context,
+                                 TfLiteExternalContextType type,
+                                 TfLiteExternalContext* ctx);
+
   // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
   // capacity. Calling this function may invalidate existing pointers to
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
@@ -612,6 +626,9 @@ class Interpreter {
 
   // Profiler for this interpreter instance.
   profiling::Profiler* profiler_;
+
+  // List of active external contexts.
+  TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
 };
 
 }  // namespace tflite

@@ -756,11 +756,10 @@ class MklConcatOp : public OpKernel {
       }
 
       std::vector<primitive::at> inputs;
-      std::vector<primitive> net;
       if (isMklReorderNeeded) {
         for (int k = 0; k < input_tensors.size(); k++) {
           if (input_tensors[k].NumElements() > 0) {
-            srcs[k].CheckReorderToOpMem(srcs_pd[k], &net);
+            srcs[k].CheckReorderToOpMem(srcs_pd[k]);
           }
         }
       }
@@ -806,6 +805,7 @@ class MklConcatOp : public OpKernel {
       dst.SetUsrMem(dst_md, dst_tensor);
 
       auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
+      std::vector<primitive> net;
       net.push_back(concat_op);
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {

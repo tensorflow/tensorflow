@@ -4340,6 +4340,34 @@ op {
   }
 }
 op {
+  name: "BoostedTreesCenterBias"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mean_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "mean_hessians"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "continue_centering"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesCreateEnsemble"
   input_arg {
     name: "tree_ensemble_handle"
@@ -11457,7 +11485,9 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -11513,7 +11543,9 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -12342,29 +12374,6 @@ op {
   }
 }
 op {
-  name: "IdentityDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
   name: "IdentityN"
   input_arg {
     name: "input"
@@ -12457,7 +12466,6 @@ op {
     name: "Tout"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "then_branch"
@@ -13237,6 +13245,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandleV2"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -13293,6 +13331,34 @@ op {
   output_arg {
     name: "string_handle"
     type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorV2"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -27339,6 +27405,17 @@ op {
   }
 }
 op {
+  name: "SinkDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "Size"
   input_arg {
     name: "input"
@@ -30138,6 +30215,54 @@ op {
   }
 }
 op {
+  name: "SparseSliceGrad"
+  input_arg {
+    name: "backprop_val_grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "input_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "input_start"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "val_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+}
+op {
   name: "SparseSoftmax"
   input_arg {
     name: "sp_indices"
@@ -31166,6 +31291,32 @@ op {
     default_value {
       s: ""
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatefulPartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
   }
   is_stateful: true
 }
@@ -35068,6 +35219,33 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "WindowDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "window_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "WriteAudioSummary"
