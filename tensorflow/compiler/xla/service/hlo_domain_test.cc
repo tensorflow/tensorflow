@@ -436,6 +436,44 @@ ENTRY entry {
                                               HloSharding::AssignDevice(0)}));
 }
 
+TEST_F(HloDomainTest, EmptyRootDomain) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  %param = f32[1] parameter(0), sharding={maximal device=0}
+  %tuple = (f32[1]) tuple(%param),
+    sharding={maximal device=1}
+  ROOT %gte = f32[1] get-tuple-element(%tuple), index=0,
+    sharding={maximal device=1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModule * module, ParseModule(hlo_string));
+
+  HloDomainIsolator isolator(CreateShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
+  EXPECT_TRUE(isolator_changed);
+
+  EXPECT_TRUE(HasDomainEdge(module, "tuple", "param"));
+  EXPECT_FALSE(HasDomainEdge(module, "gte", "tuple"));
+
+  // Remove %tuple and %gte (tuple simplification)
+  HloInstruction* gte = FindInstruction(module, "gte");
+  HloInstruction* tuple = FindInstruction(module, "tuple");
+  module->entry_computation()->set_root_instruction(tuple->mutable_operand(0));
+  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(gte));
+  TF_EXPECT_OK(module->entry_computation()->RemoveInstruction(tuple));
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module));
+  EXPECT_TRUE(remover_changed);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(root->has_sharding());
+  EXPECT_EQ(root->sharding(), HloSharding::AssignDevice(1));
+}
+
 // Tests that text dumps of domain instructions can be parsed back, in the
 // specific case of null shardings.
 TEST_F(HloDomainTest, DumpParseNullSharding) {
