@@ -1714,8 +1714,7 @@ TEST(DirectSessionTest, LocalDeviceManager) {
 // y = tf.square(x)
 GraphDef CreateGraphForYEqualsXSquared() {
   GraphDef graph_def;
-  QCHECK(protobuf::TextFormat::ParseFromString(
-      R"EOF(
+  const char* text_proto = R"EOF(
 node {
   name: "x"
   op: "Placeholder"
@@ -1731,8 +1730,9 @@ node {
 versions {
   producer: 26
 }
-  )EOF",
-      &graph_def));
+  )EOF";
+
+  QCHECK(protobuf::TextFormat::ParseFromString(text_proto, &graph_def));
   return graph_def;
 }
 
