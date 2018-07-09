@@ -17,8 +17,8 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
-#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
