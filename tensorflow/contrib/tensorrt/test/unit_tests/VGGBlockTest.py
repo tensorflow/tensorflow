@@ -40,8 +40,9 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class VGGBlockTest(BaseUnitTest):
   """single vgg layer test in TF-TRT conversion"""
@@ -49,14 +50,14 @@ class VGGBlockTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(VGGBlockTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (5, 8, 8, 2)
     self.dummy_input = np.random.random_sample(self.inp_dims)
     self.get_network = self.get_simple_graph_def
     self.expect_nb_nodes = 7
-    self.log_file = log_file 
-    self.test_name = self.__class__.__name__ 
+    self.log_file = log_file
+    self.test_name = self.__class__.__name__
 
   def get_simple_graph_def(self):
     g = ops.Graph()
@@ -65,11 +66,15 @@ class VGGBlockTest(BaseUnitTest):
     with g.as_default():
       x = array_ops.placeholder(
           dtype=dtypes.float32, shape=self.inp_dims, name="input")
-      x, mean_x, var_x = nn_impl.fused_batch_norm(x, np.random.randn(2).astype(np.float32), np.random.randn(2).astype(np.float32), mean=np.random.randn(2).astype(np.float32), variance=np.random.randn(2).astype(np.float32), is_training=False)
+      x, mean_x, var_x = nn_impl.fused_batch_norm(
+          x,
+          np.random.randn(2).astype(np.float32),
+          np.random.randn(2).astype(np.float32),
+          mean=np.random.randn(2).astype(np.float32),
+          variance=np.random.randn(2).astype(np.float32),
+          is_training=False)
       e = constant_op.constant(
-          np.random.randn(1,1,2,6),
-          name="weights",
-          dtype=dtypes.float32)
+          np.random.randn(1, 1, 2, 6), name="weights", dtype=dtypes.float32)
       conv = nn.conv2d(
           input=x, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
       b = constant_op.constant(

@@ -40,8 +40,9 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class MultiConnectionNeighborEngineTest(BaseUnitTest):
   """Multi connection neighboring nodes wiring tests in TF-TRT"""
@@ -49,14 +50,14 @@ class MultiConnectionNeighborEngineTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(MultiConnectionNeighborEngineTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (2, 3, 7, 5)
     self.dummy_input = np.random.normal(1.0, 0.5, self.inp_dims)
     self.get_network = self.neighboring_tensor_test
     self.expect_nb_nodes = 7
     self.log_file = log_file
-    self.test_name = self.__class__.__name__ 
+    self.test_name = self.__class__.__name__
     self.allclose_rtol = 0.05
     self.allclose_atol = 0.05
 
@@ -68,27 +69,40 @@ class MultiConnectionNeighborEngineTest(BaseUnitTest):
       x = array_ops.placeholder(
           dtype=dtypes.float32, shape=self.inp_dims, name="input")
       e = constant_op.constant(
-          np.random.normal(.05, .005, [3,2,3,4]),
+          np.random.normal(.05, .005, [3, 2, 3, 4]),
           name="weights",
           dtype=dtypes.float32)
       conv = nn.conv2d(
-          input=x, filter=e, data_format="NCHW",strides=[1, 1, 1, 1], padding="VALID", name="conv")
+          input=x,
+          filter=e,
+          data_format="NCHW",
+          strides=[1, 1, 1, 1],
+          padding="VALID",
+          name="conv")
       b = constant_op.constant(
-          np.random.normal(2.0, 1.0, [1,4,1,1]), name="bias", dtype=dtypes.float32)
-      t = conv+b
+          np.random.normal(2.0, 1.0, [1, 4, 1, 1]),
+          name="bias",
+          dtype=dtypes.float32)
+      t = conv + b
 
       b = constant_op.constant(
-          np.random.normal(5.0, 1.0, [1,4,1,1]), name="bias", dtype=dtypes.float32)
-      q = conv-b
+          np.random.normal(5.0, 1.0, [1, 4, 1, 1]),
+          name="bias",
+          dtype=dtypes.float32)
+      q = conv - b
       edge = math_ops.sigmoid(q)
 
       b = constant_op.constant(
-          np.random.normal(5.0, 1.0, [1,4,1,1]), name="bias", dtype=dtypes.float32)
-      d = b+conv
+          np.random.normal(5.0, 1.0, [1, 4, 1, 1]),
+          name="bias",
+          dtype=dtypes.float32)
+      d = b + conv
       edge3 = math_ops.sigmoid(d)
 
       c = constant_op.constant(
-          np.random.normal(1.0, 1.0, [1,4,1,1]), name="bias", dtype=dtypes.float32)
+          np.random.normal(1.0, 1.0, [1, 4, 1, 1]),
+          name="bias",
+          dtype=dtypes.float32)
       edge1 = gen_math_ops.tan(conv)
       t = t - edge1
       q = q + edge

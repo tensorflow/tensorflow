@@ -40,8 +40,9 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class ConcatenationTest(BaseUnitTest):
   """Testing Concatenation in TF-TRT conversion"""
@@ -49,14 +50,14 @@ class ConcatenationTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(ConcatenationTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (2, 3, 3, 1)
     self.dummy_input = np.random.random_sample(self.inp_dims)
     self.get_network = self.get_simple_graph_def
     self.expect_nb_nodes = 4
-    self.log_file = log_file 
-    self.test_name = self.__class__.__name__ 
+    self.log_file = log_file
+    self.test_name = self.__class__.__name__
 
   def get_simple_graph_def(self):
     g = ops.Graph()
@@ -91,10 +92,10 @@ class ConcatenationTest(BaseUnitTest):
       r11 = x * a
       a = constant_op.constant(np.random.randn(1), dtype=dtypes.float32)
       r12 = a * x
-      concat1 = array_ops.concat([r1,r2,r3,r4,r5,r6], axis=-1)
-      concat2 = array_ops.concat([r7,r8,r9,r10,r11,r12], axis=3)
+      concat1 = array_ops.concat([r1, r2, r3, r4, r5, r6], axis=-1)
+      concat2 = array_ops.concat([r7, r8, r9, r10, r11, r12], axis=3)
       x = array_ops.concat([concat1, concat2], axis=-1)
 
-      gen_array_ops.reshape(x, [2, -1] , name="output")
+      gen_array_ops.reshape(x, [2, -1], name="output")
 
     return g.as_graph_def()

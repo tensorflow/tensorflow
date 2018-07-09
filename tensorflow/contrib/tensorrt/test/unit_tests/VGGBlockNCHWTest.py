@@ -40,8 +40,9 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training
-from base_unit_test import BaseUnitTest
-from utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+
 
 class VGGBlockNCHWTest(BaseUnitTest):
   """single vgg layer in NCHW unit tests in TF-TRT"""
@@ -49,14 +50,14 @@ class VGGBlockNCHWTest(BaseUnitTest):
   def __init__(self, log_file='log.txt'):
     super(VGGBlockNCHWTest, self).__init__()
     self.static_mode_list = {"FP32", "FP16"}
-    self.debug=True
+    self.debug = True
     self.dynamic_mode_list = {}
     self.inp_dims = (5, 2, 8, 8)
     self.dummy_input = np.random.random_sample(self.inp_dims)
     self.get_network = self.get_simple_graph_def
     self.expect_nb_nodes = 3
-    self.log_file = log_file 
-    self.test_name = self.__class__.__name__ 
+    self.log_file = log_file
+    self.test_name = self.__class__.__name__
 
   def get_simple_graph_def(self):
     g = ops.Graph()
@@ -65,20 +66,33 @@ class VGGBlockNCHWTest(BaseUnitTest):
     with g.as_default():
       x = array_ops.placeholder(
           dtype=dtypes.float32, shape=self.inp_dims, name="input")
-      x, mean_x, var_x = nn_impl.fused_batch_norm(x, np.random.randn(2).astype(np.float32), np.random.randn(2).astype(np.float32), mean=np.random.randn(2).astype(np.float32), variance=np.random.randn(2).astype(np.float32), data_format="NCHW", is_training=False)
+      x, mean_x, var_x = nn_impl.fused_batch_norm(
+          x,
+          np.random.randn(2).astype(np.float32),
+          np.random.randn(2).astype(np.float32),
+          mean=np.random.randn(2).astype(np.float32),
+          variance=np.random.randn(2).astype(np.float32),
+          data_format="NCHW",
+          is_training=False)
       e = constant_op.constant(
-          np.random.randn(1,1,2,6),
-          name="weights",
-          dtype=dtypes.float32)
+          np.random.randn(1, 1, 2, 6), name="weights", dtype=dtypes.float32)
       conv = nn.conv2d(
-          input=x, filter=e, data_format="NCHW",strides=[1, 1, 2, 2], padding="SAME", name="conv")
+          input=x,
+          filter=e,
+          data_format="NCHW",
+          strides=[1, 1, 2, 2],
+          padding="SAME",
+          name="conv")
       b = constant_op.constant(
           np.random.randn(6), name="bias", dtype=dtypes.float32)
       t = nn.bias_add(conv, b, data_format="NCHW", name="biasAdd")
       relu = nn.relu(t, "relu")
       idty = array_ops.identity(relu, "ID")
       v = nn_ops.max_pool(
-          idty, [1, 1, 2, 2], [1, 1, 2, 2], "VALID", data_format="NCHW", name="max_pool")
+          idty, [1, 1, 2, 2], [1, 1, 2, 2],
+          "VALID",
+          data_format="NCHW",
+          name="max_pool")
       array_ops.squeeze(v, name="output")
 
     return g.as_graph_def()

@@ -1619,11 +1619,10 @@ tensorflow::Status ConvertConst(Converter& ctx,
       std::fill_n((float*)dst, GetShapeSize(scalar_shape),
                   *weights_tensor.float_val().begin());
     } else {
+      //  make a local copy first to flatten doesn't have to be contigous
       std::vector<float> tensor_data(
           weights_tensor.float_val().begin(),
-          weights_tensor.float_val()
-              .end());  //  make a local copy first to flatten
-                        //  doesn't have to be contigous
+          weights_tensor.float_val().end());
       memcpy(dst, tensor_data.data(), len_data);  // store into weight store
     }
     VLOG(2) << "create shape details: ";
@@ -1665,11 +1664,10 @@ tensorflow::Status ConvertConst(Converter& ctx,
       std::fill_n((int*)dst, GetShapeSize(scalar_shape),
                   *weights_tensor.int_val().begin());
     } else {
+  //  make a local copy first to flatten doesn't have to be contigous
       std::vector<int32> tensor_data(
           weights_tensor.int_val().begin(),
-          weights_tensor.int_val()
-              .end());  //  make a local copy first to flatten
-                        //  doesn't have to be contigous
+          weights_tensor.int_val().end());
       memcpy(dst, tensor_data.data(), len_tensor);  // store into weight store
     }
     weights = TRT_ShapedWeights(dtype, dst, scalar_shape);
@@ -1901,9 +1899,7 @@ tensorflow::Status ConvertReducePool(
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
-#endif
-
-#if NV_TENSORRT_MAJOR > 3
+#elif NV_TENSORRT_MAJOR > 3
 tensorflow::Status ConvertReduce(Converter& ctx,
                                  const tensorflow::NodeDef& node_def,
                                  const std::vector<TRT_TensorOrWeights>& inputs,
