@@ -53,24 +53,24 @@ limitations under the License.
 //  would work!
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
-#define TFTRT_RETURN_ERROR_IF_FALSE(ptr, node)                             \
-  do {                                                                     \
-    if (ptr == false) {                                                    \
-      return tensorflow::errors::Internal(                                 \
-                                          string("TFTRT::"), __FUNCTION__, \
-                                          "failed to add TRT layer, at: ", \
-                                          node);                           \
-    }                                                                      \
+#define TFTRT_RETURN_ERROR_IF_FALSE(ptr, node) \
+  do {                                         \
+    if (ptr == false) {                        \
+      return tensorflow::errors::Internal(     \
+          string("TFTRT::"), __FUNCTION__,     \
+          "failed to add TRT layer, at: ",     \
+          node);                               \
+    }                                          \
   } while (0)
 
-#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node)                           \
-  do {                                                                     \
-    if (ptr == nullptr) {                                                  \
-      return tensorflow::errors::Internal(                                 \
-                                          string("TFTRT::"), __FUNCTION__, \
-                                          "failed to add TRT layer, at: ", \
-                                          node);                           \
-    }                                                                      \
+#define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
+  do {                                           \
+    if (ptr == nullptr) {                        \
+      return tensorflow::errors::Internal(       \
+          string("TFTRT::"), __FUNCTION__,       \
+          "failed to add TRT layer, at: ",       \
+          node);                                 \
+    }                                            \
   } while (0)
 
 #define TFTRT_RETURN_IF_OK(status)     \
@@ -125,7 +125,9 @@ bool TensorRTGetBroadcastShape(const nvinfer1::Dims& operand_l,
     TensorRT Elementwise op supports broadcast but requires both tensor to be of
     Identical rank
 
-    We consider case of: i. Tensor op Const; ii. Tensor op Tensor
+    We consider case of:
+      1. operand_l to be a Tensor & operand_r to be a Const;
+      2. operand_l to be a Tensor & operand_r to be a Tensor;
     note: const op const (constant folding) should fallback to TensorFlow
 
     broadcast scheme:
@@ -143,7 +145,7 @@ bool TensorRTGetBroadcastShape(const nvinfer1::Dims& operand_l,
     -> T: 1 1 1 -1 3 5 1
     -> W: 1 1 1  1 3 5 1
   *******************************************************************************/
-  static const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
+  const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
   const size_t element_size = sizeof(operand_l.d[0]);
 
   // fill in dimensions
@@ -923,11 +925,9 @@ tensorflow::Status BinaryCompute(const TRT_ShapedWeights& iweights_l,
 tensorflow::Status BinaryTensorOpWeight(
     Converter& ctx, const tensorflow::NodeDef& node_def,
     const nvinfer1::ITensor* tensor, TRT_ShapedWeights weights,
-    std::vector<TRT_TensorOrWeights>* outputs, bool swapped_inputs) {
-  // FIXME assume type matches input weights
-  // Get trt type & shape
-  // Maybe this part has to be moved into the block of rsqrt later
-
+    bool swapped_inputs, std::vector<TRT_TensorOrWeights>* outputs) {
+  // tensor is the left operand while weights is the right operand;
+  // when swapped_inputs set to true, those two are swapped.
   if (node_def.op() != "Sub" && node_def.op() != "Add" &&
       node_def.op() != "Mul" && node_def.op() != "Div" &&
       node_def.op() != "RealDiv") {
@@ -1232,9 +1232,10 @@ tensorflow::Status ConvertConv2DHelper(
                                            node_def.name());
 }
 
+// Helper function converts input into tensor with shape specified by dims.
 bool PrepareTensorForShape(Converter& ctx, const TRT_TensorOrWeights& input,
-                           const nvinfer1::ITensor** tensor,
-                           const nvinfer1::Dims& dims) {
+                           const nvinfer1::Dims& dims,
+                           const nvinfer1::ITensor** tensor) {
   if (input.is_tensor()) {
     if (DimsEqual(input.shape(), dims)) {
       *tensor = input.tensor();
@@ -1266,7 +1267,7 @@ bool PrepareTensorForShape(Converter& ctx, const TRT_TensorOrWeights& input,
 
 tensorflow::Status BinaryTensorOpTensor(
     Converter& ctx, const tensorflow::NodeDef& node_def,
-    const TRT_TensorOrWeights operand_l, const TRT_TensorOrWeights operand_r,
+    const TRT_TensorOrWeights& operand_l, const TRT_TensorOrWeights& operand_r,
     std::vector<TRT_TensorOrWeights>* outputs) {
   static const std::unordered_map<string, nvinfer1::ElementWiseOperation> ops{
       {"Add", nvinfer1::ElementWiseOperation::kSUM},
@@ -1293,9 +1294,9 @@ tensorflow::Status BinaryTensorOpTensor(
   }
 
   TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, operand_l, &tensor_l, dim_l), node_def.name());
+      PrepareTensorForShape(ctx, operand_l, dim_l, &tensor_l), node_def.name());
   TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, operand_r, &tensor_r, dim_r), node_def.name());
+      PrepareTensorForShape(ctx, operand_r, dim_r, &tensor_r), node_def.name());
 
   // get trt type & shape
   TFAttrs attrs(node_def);
@@ -1727,7 +1728,7 @@ tensorflow::Status ConvertBinary(Converter& ctx,
   // (BinaryTensorOpTensor)
   if (inputs.at(0).is_tensor() && inputs.at(1).is_weights()) {
     auto status = BinaryTensorOpWeight(ctx, node_def, inputs.at(0).tensor(),
-                                       inputs.at(1).weights(), outputs, false);
+                                       inputs.at(1).weights(), false, outputs);
 #if NV_TENSORRT_MAJOR == 3
     TF_RETURN_IF_ERROR(status);
 #else
@@ -1737,7 +1738,7 @@ tensorflow::Status ConvertBinary(Converter& ctx,
 
   if (inputs.at(0).is_weights() && inputs.at(1).is_tensor()) {
     auto status = BinaryTensorOpWeight(ctx, node_def, inputs.at(1).tensor(),
-                                       inputs.at(0).weights(), outputs, true);
+                                       inputs.at(0).weights(), true, outputs);
 #if NV_TENSORRT_MAJOR == 3
     TF_RETURN_IF_ERROR(status);
 #else
@@ -1781,7 +1782,7 @@ tensorflow::Status ConvertUnary(Converter& ctx,
   // TODO(jie): check type
   const nvinfer1::ITensor* tensor;
   TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(0), &tensor, inputs.at(0).shape()),
+      PrepareTensorForShape(ctx, inputs.at(0), inputs.at(0).shape(), &tensor),
       node_def.name());
 
   nvinfer1::IUnaryLayer* layer;
@@ -2300,7 +2301,7 @@ tensorflow::Status ConvertFusedBatchNorm(
 tensorflow::Status ConvertMatMulHelper(
     Converter& ctx, TRT_TensorOrWeights tensor_input,
     TRT_ShapedWeights weights_raw, bool transpose_weight,
-    std::vector<TRT_TensorOrWeights>* outputs, string node_name) {
+    string node_name, std::vector<TRT_TensorOrWeights>* outputs) {
   nvinfer1::ITensor* output_tensor;
   if (!tensor_input.is_tensor()) {
     return tensorflow::errors::InvalidArgument("Input 0 expects tensor");
@@ -2324,7 +2325,7 @@ tensorflow::Status ConvertMatMulHelper(
     input_dim.d[input_dim.nbDims++] = 1;
   }
   TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, tensor_input, &tensor, input_dim), node_name);
+      PrepareTensorForShape(ctx, tensor_input, input_dim, &tensor), node_name);
 
   nvinfer1::IFullyConnectedLayer* layer = ctx.network()->addFullyConnected(
       *const_cast<nvinfer1::ITensor*>(tensor), noutput, weights, biases);
@@ -2336,7 +2337,7 @@ tensorflow::Status ConvertMatMulHelper(
   output_dim.nbDims = 1;
   TFTRT_RETURN_ERROR_IF_FALSE(
       PrepareTensorForShape(ctx, TRT_TensorOrWeights(output_tensor),
-                            &temp_tensor, output_dim),
+                            output_dim, &temp_tensor),
       node_name);
   output_tensor = const_cast<nvinfer1::ITensor*>(temp_tensor);
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -2383,7 +2384,7 @@ tensorflow::Status ConvertMatMul(Converter& ctx,
         node_def.op() + "), at: " + node_def.name());
   }
   return ConvertMatMulHelper(ctx, inputs.at(0), inputs.at(1).weights(),
-                             transpose_b, outputs, node_def.name());
+                             transpose_b, node_def.name(), outputs);
 }
 
 tensorflow::Status ConvertBatchMatMul(
@@ -2409,7 +2410,7 @@ tensorflow::Status ConvertBatchMatMul(
     if (transpose_a == false && inputs.at(0).is_tensor() &&
         inputs.at(1).is_weights()) {
       return ConvertMatMulHelper(ctx, inputs.at(0), inputs.at(1).weights(),
-                                 transpose_b, outputs, node_def.name());
+                                 transpose_b, node_def.name(), outputs);
     } else {
       return tensorflow::errors::InvalidArgument(
           "Invalid configuration for MatMul, at: " + node_def.name());
@@ -2446,10 +2447,10 @@ tensorflow::Status ConvertBatchMatMul(
   }
 
   TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(0), &tensor_l, dims_l),
+      PrepareTensorForShape(ctx, inputs.at(0), dims_l, &tensor_l),
       node_def.name());
   TFTRT_RETURN_ERROR_IF_FALSE(
-      PrepareTensorForShape(ctx, inputs.at(1), &tensor_r, dims_r),
+      PrepareTensorForShape(ctx, inputs.at(1), dims_r, &tensor_r),
       node_def.name());
 
   nvinfer1::IMatrixMultiplyLayer* layer = ctx.network()->addMatrixMultiply(
