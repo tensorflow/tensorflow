@@ -682,12 +682,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   tf_http_archive(
       name = "cython",
-      sha256 = "05e3eb7f06043f5ff2028338370329e71c29f57315e95f4dc6ad7c4971dd4c6f",
+      sha256 = "bccc9aa050ea02595b2440188813b936eaf345e85fb9692790cecfe095cf91aa",
       urls = [
-          "https://mirror.bazel.build/github.com/cython/cython/archive/0.28.3.tar.gz",
-          "https://github.com/cython/cython/archive/0.28.3.tar.gz",
+          "https://mirror.bazel.build/github.com/cython/cython/archive/0.28.4.tar.gz",
+          "https://github.com/cython/cython/archive/0.28.4.tar.gz",
       ],
-      strip_prefix = "cython-0.28.3",
+      strip_prefix = "cython-0.28.4",
       build_file = clean_dep("//third_party:cython.BUILD"),
       delete = ["BUILD.bazel"],
   )
