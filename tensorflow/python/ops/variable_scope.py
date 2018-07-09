@@ -255,7 +255,7 @@ class _VariableStore(object):
                    initializer=None,
                    regularizer=None,
                    reuse=None,
-                   trainable=True,
+                   trainable=None,
                    collections=None,
                    caching_device=None,
                    partitioner=None,
@@ -300,6 +300,8 @@ class _VariableStore(object):
         forced to be False.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+        `trainable` defaults to `True` unless `synchronization` is
+        set to `ON_READ`.
       collections: List of graph collections keys to add the `Variable` to.
         Defaults to `[GraphKeys.GLOBAL_VARIABLES]` (see `tf.Variable`).
       caching_device: Optional device string or function describing where the
@@ -341,7 +343,8 @@ class _VariableStore(object):
         aggregated. Accepted values are constants defined in the class
         @{tf.VariableSynchronization}. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize.
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         @{tf.VariableAggregation}.
@@ -404,7 +407,7 @@ class _VariableStore(object):
         initializer=None,
         regularizer=None,
         reuse=None,
-        trainable=True,
+        trainable=None,
         collections=None,
         caching_device=None,
         partitioner=None,
@@ -477,6 +480,10 @@ class _VariableStore(object):
           synchronization=synchronization,
           aggregation=aggregation)
 
+    # Set trainable value based on synchronization value.
+    trainable = _get_trainable_value(
+        synchronization=synchronization, trainable=trainable)
+
     if custom_getter is not None:
       # Handle backwards compatibility with getter arguments that were added
       # to the API after users started writing custom getters.
@@ -519,11 +526,20 @@ class _VariableStore(object):
           synchronization=synchronization,
           aggregation=aggregation)
 
-  def _get_partitioned_variable(
-      self, name, partitioner, shape=None, dtype=dtypes.float32,
-      initializer=None, regularizer=None, reuse=None,
-      trainable=True, collections=None, caching_device=None,
-      validate_shape=True, use_resource=None, constraint=None):
+  def _get_partitioned_variable(self,
+                                name,
+                                partitioner,
+                                shape=None,
+                                dtype=dtypes.float32,
+                                initializer=None,
+                                regularizer=None,
+                                reuse=None,
+                                trainable=None,
+                                collections=None,
+                                caching_device=None,
+                                validate_shape=True,
+                                use_resource=None,
+                                constraint=None):
     """Gets or creates a sharded variable list with these parameters.
 
     The `partitioner` must be a callable that accepts a fully defined
@@ -773,7 +789,7 @@ class _VariableStore(object):
                            regularizer=None,
                            partition_info=None,
                            reuse=None,
-                           trainable=True,
+                           trainable=None,
                            collections=None,
                            caching_device=None,
                            validate_shape=True,
@@ -1136,7 +1152,7 @@ class VariableScope(object):
                    initializer=None,
                    regularizer=None,
                    reuse=None,
-                   trainable=True,
+                   trainable=None,
                    collections=None,
                    caching_device=None,
                    partitioner=None,
@@ -1207,7 +1223,7 @@ class VariableScope(object):
                                 dtype=None,
                                 initializer=None,
                                 regularizer=None,
-                                trainable=True,
+                                trainable=None,
                                 collections=None,
                                 caching_device=None,
                                 partitioner=None,
@@ -1422,7 +1438,7 @@ def get_variable(name,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
-                 trainable=True,
+                 trainable=None,
                  collections=None,
                  caching_device=None,
                  partitioner=None,
@@ -2334,11 +2350,28 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   return slice_dim, slice_shape
 
 
+def _get_trainable_value(synchronization, trainable):
+  """Computes the trainable value based on the given arguments."""
+  if synchronization == VariableSynchronization.ON_READ:
+    if trainable:
+      raise ValueError(
+          "Synchronization value can be set to "
+          "VariableSynchronization.ON_READ only for non-trainable variables. "
+          "You have specified trainable=True and "
+          "synchronization=VariableSynchronization.ON_READ.")
+    else:
+      # Set trainable to be false when variable is to be synced on read.
+      trainable = False
+  elif trainable is None:
+    trainable = True
+  return trainable
+
+
 def default_variable_creator(next_creator=None, **kwargs):
   """Default variable creator."""
   assert next_creator is None
   initial_value = kwargs.get("initial_value", None)
-  trainable = kwargs.get("trainable", True)
+  trainable = kwargs.get("trainable", None)
   collections = kwargs.get("collections", None)
   validate_shape = kwargs.get("validate_shape", True)
   caching_device = kwargs.get("caching_device", None)
@@ -2347,10 +2380,10 @@ def default_variable_creator(next_creator=None, **kwargs):
   constraint = kwargs.get("constraint", None)
   use_resource = kwargs.get("use_resource", None)
 
-  # Enforce `ON_READ` variables to be not trainable.
+  # Set trainable value based on synchronization value.
   synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
-  if synchronization == VariableSynchronization.ON_READ:
-    trainable = False
+  trainable = _get_trainable_value(
+      synchronization=synchronization, trainable=trainable)
 
   if use_resource is None:
     use_resource = get_variable_scope().use_resource
@@ -2379,7 +2412,7 @@ def _make_getter(captured_getter, captured_previous):
 
 
 def variable(initial_value=None,
-             trainable=True,
+             trainable=None,
              collections=None,
              validate_shape=True,
              caching_device=None,
@@ -2441,6 +2474,8 @@ def variable_creator_scope(variable_creator):
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.
+        `trainable` defaults to `True` unless `synchronization` is
+        set to `ON_READ`.
       collections: List of graph collections keys. The new variable is added to
         these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
       validate_shape: If `False`, allows the variable to be initialized with a
@@ -2463,7 +2498,8 @@ def variable_creator_scope(variable_creator):
         aggregated. Accepted values are constants defined in the class
         @{tf.VariableSynchronization}. By default the synchronization is set to
         `AUTO` and the current `DistributionStrategy` chooses
-        when to synchronize.
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
       aggregation: Indicates how a distributed variable will be aggregated.
         Accepted values are constants defined in the class
         @{tf.VariableAggregation}.
