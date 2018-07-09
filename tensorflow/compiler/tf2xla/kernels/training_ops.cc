@@ -719,9 +719,7 @@ class ResourceApplyAddSign : public ResourceApplySignBase {
     return alpha + decay;
   }
 };
-// TODO(b/111123982): Use kFloatTypes once the bug is fixed.
-REGISTER_XLA_OP(Name("ResourceApplyAddSign")
-                    .TypeConstraint("T", {DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}),
+REGISTER_XLA_OP(Name("ResourceApplyAddSign").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAddSign);
 
 class ResourceApplyPowerSign : public ResourceApplySignBase {

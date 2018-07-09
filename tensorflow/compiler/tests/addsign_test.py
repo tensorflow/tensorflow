@@ -64,9 +64,6 @@ class AddSignTest(xla_test.XLATestCase):
                  alpha=1.0,
                  beta=0.9):
     for dtype in self.float_types:
-      # TODO(b/111123982): remove once the bug is fixed.
-      if dtype == dtypes.float16:
-        continue
       with self.test_session(), self.test_scope():
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
@@ -128,7 +125,8 @@ class AddSignTest(xla_test.XLATestCase):
           )
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(
+              var0_np, var0.eval(), half_rtol=1e-2)
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testDense(self):
