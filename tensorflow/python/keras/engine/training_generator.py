@@ -85,10 +85,15 @@ def fit_generator(model,
 
   # prepare callbacks
   model.history = cbks.History()
-  callbacks = [cbks.BaseLogger()] + (callbacks or []) + [model.history]
+  _callbacks = [cbks.BaseLogger(
+    stateful_metrics=model.stateful_metric_names)]
   if verbose:
-    callbacks += [cbks.ProgbarLogger(count_mode='steps')]
-  callbacks = cbks.CallbackList(callbacks)
+    _callbacks.append(
+      cbks.ProgbarLogger(
+        count_mode='steps',
+        stateful_metrics=model.stateful_metric_names))
+  _callbacks += (callbacks or []) + [model.history]
+  callbacks = cbks.CallbackList(_callbacks)
 
   # it's possible to callback a different model than self:
   if hasattr(model, 'callback_model') and model.callback_model:
