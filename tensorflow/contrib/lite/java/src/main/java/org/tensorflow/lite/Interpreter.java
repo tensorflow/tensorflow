@@ -251,8 +251,10 @@ public final class Interpreter implements AutoCloseable {
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
-    wrapper.close();
-    wrapper = null;
+    if (wrapper != null) {
+      wrapper.close();
+      wrapper = null;
+    }
   }
 
   @Override

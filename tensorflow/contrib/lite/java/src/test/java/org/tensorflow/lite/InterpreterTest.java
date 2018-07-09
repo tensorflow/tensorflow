@@ -329,4 +329,11 @@ public final class InterpreterTest {
     interpreter.close();
     fileChannel.close();
   }
+
+  @Test
+  public void testRedundantClose() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    interpreter.close();
+    interpreter.close();
+  }
 }
