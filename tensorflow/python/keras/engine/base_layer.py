@@ -460,14 +460,18 @@ class Layer(checkpointable.CheckpointableBase):
     """Alias for `add_weight`."""
     return self.add_weight(*args, **kwargs)
 
-  def add_weight(self, name, shape,
+  def add_weight(self,
+                 name,
+                 shape,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
-                 trainable=True,
+                 trainable=None,
                  constraint=None,
                  partitioner=None,
                  use_resource=None,
+                 synchronization=vs.VariableSynchronization.AUTO,
+                 aggregation=vs.VariableAggregation.NONE,
                  getter=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
@@ -482,10 +486,20 @@ class Layer(checkpointable.CheckpointableBase):
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
         Note, if the current variable scope is marked as non-trainable
         then this parameter is ignored and any added variables are also
-        marked as non-trainable.
+        marked as non-trainable. `trainable` defaults to `True` unless
+        `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
       partitioner: Partitioner to be passed to the `Checkpointable` API.
       use_resource: Whether to use `ResourceVariable`.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        @{tf.VariableAggregation}.
       getter: Variable getter argument to be passed to the `Checkpointable` API.
 
     Returns:
@@ -496,7 +510,8 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
-      ValueError: When giving unsupported dtype and no initializer.
+      ValueError: When giving unsupported dtype and no initializer or when
+        trainable has been set to True with synchronization set as `ON_READ`.
     """
     if dtype is None:
       dtype = self.dtype or backend.floatx()
@@ -504,6 +519,19 @@ class Layer(checkpointable.CheckpointableBase):
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
     constraint = constraints.get(constraint)
+
+    if synchronization == vs.VariableSynchronization.ON_READ:
+      if trainable:
+        raise ValueError(
+            'Synchronization value can be set to '
+            'VariableSynchronization.ON_READ only for non-trainable variables. '
+            'You have specified trainable=True and '
+            'synchronization=VariableSynchronization.ON_READ.')
+      else:
+        # Set trainable to be false when variable is to be synced on read.
+        trainable = False
+    elif trainable is None:
+      trainable = True
 
     # Initialize variable when no initializer provided
     if initializer is None:
@@ -532,7 +560,9 @@ class Layer(checkpointable.CheckpointableBase):
         constraint=constraint,
         trainable=trainable and self.trainable,
         partitioner=partitioner,
-        use_resource=use_resource)
+        use_resource=use_resource,
+        synchronization=synchronization,
+        aggregation=aggregation)
 
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
@@ -1806,11 +1836,13 @@ def make_variable(name,
                   dtype=dtypes.float32,
                   initializer=None,
                   partition_info=None,
-                  trainable=True,
+                  trainable=None,
                   caching_device=None,
                   validate_shape=True,
                   constraint=None,
                   use_resource=None,
+                  synchronization=vs.VariableSynchronization.AUTO,
+                  aggregation=vs.VariableAggregation.NONE,
                   partitioner=None):  # pylint: disable=unused-argument
   """Temporary util to create a variable (relies on `variable_scope.variable`).
 
@@ -1836,11 +1868,21 @@ def make_variable(name,
       or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
       Note, if the current variable scope is marked as non-trainable
       then this parameter is ignored and any added variables are also
-      marked as non-trainable.
+      marked as non-trainable. `trainable` defaults to `True` unless
+      `synchronization` is set to `ON_READ`.
     caching_device: Passed to `vs.variable`.
     validate_shape: Passed to `vs.variable`.
     constraint: Constraint instance (callable).
     use_resource: Whether to use a `ResourceVariable`.
+    synchronization: Indicates when a distributed a variable will be
+      aggregated. Accepted values are constants defined in the class
+      @{tf.VariableSynchronization}. By default the synchronization is set to
+      `AUTO` and the current `DistributionStrategy` chooses
+      when to synchronize. If `synchronization` is set to `ON_READ`,
+      `trainable` must not be set to `True`.
+    aggregation: Indicates how a distributed variable will be aggregated.
+      Accepted values are constants defined in the class
+      @{tf.VariableAggregation}.
     partitioner: Not handled at this time.
 
   Returns:
@@ -1872,5 +1914,7 @@ def make_variable(name,
       dtype=variable_dtype,
       validate_shape=validate_shape,
       constraint=constraint,
-      use_resource=use_resource)
+      use_resource=use_resource,
+      synchronization=synchronization,
+      aggregation=aggregation)
   return v
