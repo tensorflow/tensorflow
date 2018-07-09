@@ -18,6 +18,4 @@
 #include "mlir/IR/Module.h"
 using namespace mlir;
 
-Module::Module() {
-}
-
+Module::Module(MLIRContext *context) : context(context) {}

@@ -69,7 +69,7 @@ public:
   void dump() const;
 
   // Convenience factories.
-  static IntegerType *getInt(unsigned width, MLIRContext *ctx);
+  static IntegerType *getInteger(unsigned width, MLIRContext *ctx);
   static PrimitiveType *getAffineInt(MLIRContext *ctx);
   static PrimitiveType *getBF16(MLIRContext *ctx);
   static PrimitiveType *getF16(MLIRContext *ctx);
@@ -162,11 +162,9 @@ private:
   IntegerType(unsigned width, MLIRContext *context);
 };
 
-inline IntegerType *Type::getInt(unsigned width, MLIRContext *ctx) {
+inline IntegerType *Type::getInteger(unsigned width, MLIRContext *ctx) {
   return IntegerType::get(width, ctx);
 }
-
-
 
 /// Function types map from a list of inputs to a list of results.
 class FunctionType : public Type {

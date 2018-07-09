@@ -31,7 +31,9 @@ class AffineMap;
 
 class Module {
 public:
-  explicit Module();
+  explicit Module(MLIRContext *context);
+
+  MLIRContext *getContext() const { return context; }
 
   // FIXME: wrong representation and API.
   // TODO(someone): This should switch to llvm::iplist<Function>.
@@ -47,6 +49,9 @@ public:
 
   void print(raw_ostream &os) const;
   void dump() const;
+
+private:
+  MLIRContext *context;
 };
 } // end namespace mlir
 
