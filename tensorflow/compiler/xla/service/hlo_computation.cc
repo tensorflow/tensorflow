@@ -528,8 +528,10 @@ HloInstruction* HloComputation::CreateFusionInstruction(
 }
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
-    HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
-    ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
+    HloInstruction* instruction, ShapeIndex* index,
+    const std::function<
+        HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
+                        HloComputation* computation)>& copy_leaf) {
   if (ShapeUtil::IsTuple(instruction->shape())) {
     std::vector<HloInstruction*> elements;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
@@ -540,9 +542,8 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
               instruction, i));
 
       index->push_back(i);
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * element,
-          DeepCopyHelper(gte, indices_to_copy, copies_added, index));
+      TF_ASSIGN_OR_RETURN(HloInstruction * element,
+                          DeepCopyHelper(gte, index, copy_leaf));
       elements.push_back(element);
       index->pop_back();
     }
@@ -556,19 +557,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
 
   // Array shape.
   TF_RET_CHECK(ShapeUtil::IsArray(instruction->shape()));
-  if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
-    // Use kCopy to copy array elements
-    HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
-        instruction->shape(), HloOpcode::kCopy, instruction));
-    if (copies_added != nullptr) {
-      *copies_added->mutable_element(*index) = copy;
-    }
-    return copy;
-  } else {
-    // Elements which are not to be copied are passed through
-    // transparently.
-    return instruction;
-  }
+  return copy_leaf(instruction, *index, this);
 }
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
@@ -590,7 +579,36 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   }
 
   ShapeIndex index;
-  return DeepCopyHelper(instruction, indices_to_copy, copies_added, &index);
+  auto copy_leaf = [indices_to_copy, copies_added](
+                       HloInstruction* leaf, const ShapeIndex& leaf_index,
+                       HloComputation* computation) {
+    if (indices_to_copy == nullptr || indices_to_copy->element(leaf_index)) {
+      HloInstruction* copy = computation->AddInstruction(
+          HloInstruction::CreateUnary(leaf->shape(), HloOpcode::kCopy, leaf));
+      if (copies_added != nullptr) {
+        *copies_added->mutable_element(leaf_index) = copy;
+      }
+      return copy;
+    }
+    // Elements which are not to be copied are passed through
+    // transparently.
+    return leaf;
+  };
+  return DeepCopyHelper(instruction, &index, copy_leaf);
+}
+
+StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
+    HloInstruction* instruction,
+    const std::function<
+        HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
+                        HloComputation* computation)>& copy_leaf) {
+  if (instruction->parent() != this) {
+    return FailedPrecondition(
+        "Can't deep copy instruction %s: instruction is not in computation %s",
+        instruction->name().c_str(), name().c_str());
+  }
+  ShapeIndex index;
+  return DeepCopyHelper(instruction, &index, copy_leaf);
 }
 
 ProgramShape HloComputation::ComputeProgramShape() const {
