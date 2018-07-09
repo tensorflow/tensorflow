@@ -196,6 +196,8 @@ ReduceWithLayoutTest POPLAR // Some layout issue
 
 ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
 
+TupleTest.TuplesInAMap POPLAR // Don't support complex mapping
+
 HloProfileTest POPLAR // Don't support profiling
 
 ArrayElementwiseOpTest.ShiftLeftS32 POPLAR // Shifting > word length
@@ -241,6 +243,7 @@ HloTestBase.ReduceWindowS32 POPLAR
 ReduceWindowTest.NonstandardReduceFunction POPLAR
 
 MultiOutputFusionTest POPLAR // Don't support fusion
+FusionTest.FusionWithLayout POPLAR
 
 ReduceTest.AddReduce2DScalarToR0 POPLAR // Reduction is too big for poplibs CPU mode
 ReduceTest.MaxReduce2DScalarToR0 POPLAR

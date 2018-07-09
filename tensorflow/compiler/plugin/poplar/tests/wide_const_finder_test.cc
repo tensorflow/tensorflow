@@ -34,10 +34,10 @@ TEST_F(WideConstFinderTest, ReplaceWideConstants) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "i1"));
   auto i2 =
       builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "i2"));
-  auto c1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<int>({{0, 0}, {0, 0}})));
+  auto c1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<int>({{0, 0}, {0, 0}})));
   auto c2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{0, 0}, {0, 0}})));
+      LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}})));
   auto add1 = builder.AddInstruction(
       HloInstruction::CreateBinary(s1, HloOpcode::kAdd, i1, c1));
   auto add2 = builder.AddInstruction(
@@ -84,9 +84,9 @@ TEST_F(WideConstFinderTest, DontReplaceScalars) {
   auto in =
       builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "input"));
   auto c1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)));
   auto c2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
   auto add1 = builder.AddInstruction(
       HloInstruction::CreateBinary(s1, HloOpcode::kAdd, in, c1));
   auto add2 = builder.AddInstruction(

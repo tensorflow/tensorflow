@@ -163,77 +163,77 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kParameter, false, 0, nullptr, {}}},
 
     // Random truncated normal mean 0 sd 1
-    {{HloOpcode::kMultiply, true, 0, IsTruncatedNormal, {1, 2}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {3, 60}},
-     {HloOpcode::kAdd, true, 0, nullptr, {50, 4}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {5, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {47, 6}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {7, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {44, 8}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {9, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {41, 10}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {11, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {38, 12}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {13, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {35, 14}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {15, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {32, 16}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {17, 19}},
-     {HloOpcode::kAdd, true, 0, nullptr, {29, 18}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {26, 19}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 24, 20}},
-     {HloOpcode::kAdd, true, 0, nullptr, {22, 21}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kPower, true, 0, nullptr, {55, 23}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kAdd, true, 0, nullptr, {55, 25}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 27, 28}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 30, 31}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 33, 34}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 36, 37}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 39, 40}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 42, 43}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 45, 46}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 48, 49}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kSelect, true, 0, nullptr, {53, 51, 52}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kLt, true, 0, nullptr, {55, 54}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kNegate, true, 0, nullptr, {56}},
-     {HloOpcode::kLog, true, 0, nullptr, {57}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {59, 58}},
-     {HloOpcode::kAdd, true, 0, nullptr, {60, 70}},
-     {HloOpcode::kSubtract, true, 0, nullptr, {70, 60}},
-     {HloOpcode::kAdd, true, 0, nullptr, {62, 61}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {64, 63}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kAdd, true, 0, nullptr, {66, 65}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {67, 68}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kRng, true, 0, nullptr, {69, 70}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, IsConstantOne, {}}},
+    {{HloOpcode::kMultiply, true, 0, IsTruncatedNormal, {70,1}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {2,59}},
+     {HloOpcode::kAdd, true, 0, nullptr, {49,3}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {4,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {46,5}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {6,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {43,7}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {8,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {40,9}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {10,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {37,11}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {12,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {34,13}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {14,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {31,15}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {16,18}},
+     {HloOpcode::kAdd, true, 0, nullptr, {28,17}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {25,18}},
+     {HloOpcode::kSelect, true, 0, nullptr, {52,23,19}},
+     {HloOpcode::kAdd, true, 0, nullptr, {21,20}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -3
+     {HloOpcode::kPower, true, 0, nullptr, {54,22}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.5
+     {HloOpcode::kAdd, true, 0, nullptr, {54,24}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -2.5
+     {HloOpcode::kSelect, true, 0, nullptr, {52,27,26}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -0.000200214257
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 2.81022636e-08
+     {HloOpcode::kSelect, true, 0, nullptr, {52,30,29}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.000100950558
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 3.43273939e-07
+     {HloOpcode::kSelect, true, 0, nullptr, {52,33,32}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.00134934322
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -3.5233877e-06
+     {HloOpcode::kSelect, true, 0, nullptr, {52,36,35}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -0.00367342844
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -4.39150654e-06
+     {HloOpcode::kSelect, true, 0, nullptr, {52,39,38}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.00573950773
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.00021858087
+     {HloOpcode::kSelect, true, 0, nullptr, {52,42,41}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -0.0076224613
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -0.00125372503
+     {HloOpcode::kSelect, true, 0, nullptr, {52,45,44}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.00943887047
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -0.00417768164
+     {HloOpcode::kSelect, true, 0, nullptr, {52,48,47}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 1.00167406
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.246640727
+     {HloOpcode::kSelect, true, 0, nullptr, {52,51,50}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 2.83297682
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 1.50140941
+     {HloOpcode::kLt, true, 0, nullptr, {54,53}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 5
+     {HloOpcode::kNegate, true, 0, nullptr, {55}},
+     {HloOpcode::kLog, true, 0, nullptr, {56}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {58,57}},
+     {HloOpcode::kAdd, true, 0, nullptr, {59,69}},
+     {HloOpcode::kSubtract, true, 0, nullptr, {69,59}},
+     {HloOpcode::kAdd, true, 0, nullptr, {61,60}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // -1
+     {HloOpcode::kMultiply, true, 0, nullptr, {68,62}},
+     {HloOpcode::kAdd, true, 0, nullptr, {64,63}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.0227501318
+     {HloOpcode::kMultiply, true, 0, nullptr, {67,65}},
+     {HloOpcode::kRng, true, 0, nullptr, {66,69}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 1.17549435e-38
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 0.954499722
+     {HloOpcode::kConstant, true, 0, nullptr, {}}, // 2
+     {HloOpcode::kConstant, true, 0, IsConstantOne, {}}, // 1
+     {HloOpcode::kConstant, true, 0, nullptr, {}}}, // 1.41421354
 
     // Random normal with post scale and add
     {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},

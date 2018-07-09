@@ -49,6 +49,8 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleSelect(HloInstruction* inst) override;
 
+  Status HandleTupleSelect(HloInstruction* inst) override;
+
   Status HandleConcatenate(HloInstruction* inst) override;
 
   Status HandleBitcastConvert(HloInstruction* inst) override;

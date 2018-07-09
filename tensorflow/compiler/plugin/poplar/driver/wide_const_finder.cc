@@ -36,8 +36,9 @@ StatusOr<bool> WideConstFinder::Run(HloModule* module) {
           if (inst->IsConstant() && ShapeUtil::ElementsIn(inst->shape()) > 1) {
             const Literal& literal = inst->literal();
             if (literal.IsAll(0)) {
+              const auto element_type = inst->shape().element_type();
               auto zero =
-                  Literal::Zero(inst->shape().element_type()).CloneToUnique();
+                  LiteralUtil::Zero(element_type).CloneToUnique();
               HloInstruction* c = comp->AddInstruction(
                   HloInstruction::CreateConstant(std::move(zero)));
 

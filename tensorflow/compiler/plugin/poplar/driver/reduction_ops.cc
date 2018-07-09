@@ -8,6 +8,7 @@
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -118,18 +119,18 @@ static Literal GetIdentityConstantLiteral(const HloInstruction* root) {
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     default:
-      return Literal::Zero(root->shape().element_type());
+      return LiteralUtil::Zero(root->shape().element_type());
     case HloOpcode::kMultiply:
     case HloOpcode::kOr:
-      return Literal::One(root->shape().element_type());
+      return LiteralUtil::One(root->shape().element_type());
     case HloOpcode::kMaximum:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
-      return Literal::MinValue(root->shape().element_type());
+      return LiteralUtil::MinValue(root->shape().element_type());
     case HloOpcode::kMinimum:
     case HloOpcode::kLe:
     case HloOpcode::kLt:
-      return Literal::MaxValue(root->shape().element_type());
+      return LiteralUtil::MaxValue(root->shape().element_type());
   }
 }
 

@@ -584,7 +584,7 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
     auto tuple = builder_cond.AddInstruction(
         HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
     auto limit = builder_cond.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<int32>(10)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
     auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
@@ -606,7 +606,7 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
     auto w = builder_body.AddInstruction(
         HloInstruction::CreateGetTupleElement(weight_shape, tuple, 2));
     auto one = builder_body.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
     auto new_c = builder_body.AddInstruction(
         HloInstruction::CreateBinary(c->shape(), HloOpcode::kAdd, c, one));
 

@@ -324,7 +324,7 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
   auto i1 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
   auto i2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::One(F32).CloneToUnique()));
+      HloInstruction::CreateConstant(LiteralUtil::One(F32).CloneToUnique()));
   auto sub1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, i2));
   auto add1 = builder.AddInstruction(

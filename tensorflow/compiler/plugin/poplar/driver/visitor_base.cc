@@ -148,6 +148,15 @@ Status BaseVisitor::HandleSelect(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status BaseVisitor::HandleTupleSelect(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog, CreateSelectOp(graph_, resources_, inst,
+                                           GetOutputShape(inst), tensor_map));
+  sequence.add(prog);
+  return Status::OK();
+}
+
 Status BaseVisitor::HandleConcatenate(HloInstruction* inst) {
   return Unimplemented(inst);
 }

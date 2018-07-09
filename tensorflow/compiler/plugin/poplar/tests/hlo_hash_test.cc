@@ -35,9 +35,9 @@ void CreateWhileLoop(HloModule* module, std::string test_name) {
     auto tuple = builder_cond.AddInstruction(
         HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
     auto limit0 = builder_cond.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(10)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(10)));
     auto limit1 = builder_cond.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(12)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12)));
     auto c0 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(F32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -63,7 +63,7 @@ void CreateWhileLoop(HloModule* module, std::string test_name) {
     auto c1 = builder_body.AddInstruction(
         HloInstruction::CreateGetTupleElement(scalar_shape, tuple, 1));
     auto one = builder_body.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1)));
     auto new_c0 = builder_body.AddInstruction(
         HloInstruction::CreateBinary(c0->shape(), HloOpcode::kAdd, c0, one));
     auto new_c1 = builder_body.AddInstruction(
@@ -77,9 +77,9 @@ void CreateWhileLoop(HloModule* module, std::string test_name) {
   /* Create main computation */
   auto builder_main = HloComputation::Builder(test_name);
   auto c0 = builder_main.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
   auto c1 = builder_main.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
 
   auto init =
       builder_main.AddInstruction(HloInstruction::CreateTuple({c0, c1}));
