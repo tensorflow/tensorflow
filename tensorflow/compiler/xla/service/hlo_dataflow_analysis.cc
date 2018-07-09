@@ -466,6 +466,24 @@ bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
+  // Domain instructions just forward their operand. Given that domains can have
+  // a tuple operand, we iterate through its indexes, like for copies.
+  // Unlike copies though we also propagate the top-level value.
+  CHECK_EQ(domain->opcode(), HloOpcode::kDomain);
+  bool changed = false;
+  for (auto& pair : GetInstructionValueSet(domain)) {
+    const ShapeIndex& index = pair.first;
+    HloValueSet& value_set = pair.second;
+    HloValueSet& operand_value_set = GetValueSet(domain->operand(0), index);
+    if (value_set != operand_value_set) {
+      value_set = operand_value_set;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
   CHECK_EQ(gte->opcode(), HloOpcode::kGetTupleElement);
   bool changed = false;
@@ -626,6 +644,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kSlice:
       return UpdateSliceValueSet(instruction);
+    case HloOpcode::kDomain:
+      return UpdateDomainValueSet(instruction);
     case HloOpcode::kCopy:
       return UpdateCopyValueSet(instruction);
     case HloOpcode::kGetTupleElement:
@@ -804,6 +824,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
         case HloOpcode::kCall:
         case HloOpcode::kConditional:
         case HloOpcode::kGetTupleElement:
+        case HloOpcode::kDomain:
           // These instructions define no values. The values in their output
           // flow from their operands or from cross computation dataflow.
           break;

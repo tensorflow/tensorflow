@@ -72,11 +72,13 @@ gpu_py_test(
     size = "large",
     srcs = ["revnet_test.py"],
     additional_deps = [
+        ":blocks_test",
         ":config",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],
     tags = [
+        "no_pip",
         "optonly",
     ],
 )
@@ -87,7 +89,6 @@ py_library(
     srcs = ["cifar_input.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":revnet",
         "//tensorflow:tensorflow_py",
     ],
 )

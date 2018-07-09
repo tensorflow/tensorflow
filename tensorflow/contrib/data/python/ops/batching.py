@@ -175,7 +175,7 @@ def unbatch():
   return _apply_fn
 
 
-def filter_irregular_batches(batch_size):
+def _filter_irregular_batches(batch_size):
   """Transformation that filters out batches that are not of size batch_size."""
 
   def _apply_fn(dataset):
@@ -254,7 +254,7 @@ def batch_and_drop_remainder(batch_size):
     # TODO(jsimsa): Switch to using `batch(..., drop_remainder=True)` any time
     # after 6/30/2018.
     batched = dataset.batch(batch_size)
-    return filter_irregular_batches(batch_size)(batched)
+    return _filter_irregular_batches(batch_size)(batched)
 
   return _apply_fn
 
@@ -293,7 +293,7 @@ def padded_batch_and_drop_remainder(batch_size,
     # any time after 6/30/2018.
     batched = dataset.padded_batch(
         batch_size, padded_shapes=padded_shapes, padding_values=padding_values)
-    return filter_irregular_batches(batch_size)(batched)
+    return _filter_irregular_batches(batch_size)(batched)
 
   return _apply_fn
 

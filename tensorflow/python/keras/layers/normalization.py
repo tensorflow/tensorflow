@@ -34,6 +34,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util.tf_export import tf_export
@@ -182,7 +183,8 @@ class BatchNormalization(Layer):
 
   def _add_tower_local_variable(self, *args, **kwargs):
     tower_context = distribute_lib.get_tower_context()
-    with tower_context.tower_local_var_scope('mean'):
+    with tower_context.tower_local_var_scope(
+        variable_scope.VariableAggregation.MEAN):
       return self.add_weight(*args, **kwargs)
 
   def build(self, input_shape):

@@ -237,7 +237,8 @@ class BaseGPUDevice::StreamGroupFactory {
   // This function is thread safe.
   BaseGPUDevice::StreamGroup* GetOrCreate(TfGpuId tf_gpu_id,
                                           int stream_group_within_gpu,
-                                          se::StreamExecutor* executor) {
+                                          se::StreamExecutor* executor,
+                                          const GPUOptions& options) {
     mutex_lock guard(lock_);
     StreamGroup* group =
         &streams_[key_type(tf_gpu_id.value(), stream_group_within_gpu)];
@@ -257,10 +258,21 @@ class BaseGPUDevice::StreamGroupFactory {
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_gpu
               << "] = " << group->device_to_host;
 
-      group->device_to_device = new se::Stream(executor);
-      group->device_to_device->Init();
-      VLOG(2) << "Created device_to_device_stream[" << stream_group_within_gpu
-              << "] = " << group->device_to_host;
+      int num_d2d_streams =
+          options.experimental().num_dev_to_dev_copy_streams();
+      if (num_d2d_streams < 1 || num_d2d_streams > 4) {
+        LOG(ERROR)
+            << "Illegal GPUOptions.experimental.num_dev_to_dev_copy_streams="
+            << num_d2d_streams << " set to 1 instead.";
+        num_d2d_streams = 1;
+      }
+      for (int i = 0; i < num_d2d_streams; ++i) {
+        se::Stream* stream = new se::Stream(executor);
+        stream->Init();
+        group->device_to_device.push_back(stream);
+        VLOG(2) << "Created device_to_device_stream[" << stream_group_within_gpu
+                << "] = " << group->device_to_device.back();
+      }
     }
     return group;
   }
@@ -323,8 +335,8 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
 
   // Create the specified number of GPU streams
   for (int i = 0; i < max_streams_; i++) {
-    streams_.push_back(
-        StreamGroupFactory::Global().GetOrCreate(tf_gpu_id_, i, executor_));
+    streams_.push_back(StreamGroupFactory::Global().GetOrCreate(
+        tf_gpu_id_, i, executor_, options.config.gpu_options()));
 
     size_t scratch_buffer_size = EIGEN_GPU_SCRATCH_SIZE + sizeof(unsigned int);
     void* scratch_buffer = gpu_allocator_->AllocateRaw(

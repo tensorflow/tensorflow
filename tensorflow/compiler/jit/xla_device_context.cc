@@ -56,9 +56,9 @@ XlaTransferManager::XlaTransferManager(
       transfer_as_literal_(transfer_as_literal),
       shape_representation_fn_(std::move(shape_representation_fn)) {
   if (!shape_representation_fn_) {
-    shape_representation_fn_ = [](const TensorShape& shape, DataType dtype) {
-      return shape;
-    };
+    shape_representation_fn_ =
+        [](const TensorShape& shape,
+           DataType dtype) -> xla::StatusOr<TensorShape> { return shape; };
   }
 }
 
@@ -67,36 +67,53 @@ Status XlaTransferManager::TransferLiteralToDevice(
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
                                            host_tensor.shape(), &xla_shape));
-  xla::BorrowingLiteral literal(
+  // Create a reference to hold onto host_tensor until after the literal has
+  // been transferred. Also make sure the literal exists until the function
+  // asynchronously completes, as it will be wrapped in an xla::LiteralSlice.
+  TensorReference ref(host_tensor);
+  auto literal = std::make_shared<xla::BorrowingLiteral>(
       static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
 
   const xla::ShapedBuffer& shaped_buffer =
       XlaTensor::FromTensor(device_tensor)->shaped_buffer();
-  VLOG(1) << "Transfer to device as literal: " << literal.ToString() << " "
+  VLOG(1) << "Transfer to device as literal: " << literal->ToString() << " "
           << shaped_buffer.ToString();
-  return transfer_manager_->TransferLiteralToDevice(stream_, literal,
-                                                    shaped_buffer);
+  TF_RETURN_IF_ERROR(transfer_manager_->TransferLiteralToDeviceAsync(
+      stream_, *literal, shaped_buffer));
+  // Unref the host tensor, and capture the literal shared_ptr too so it goes
+  // out of scope when the lambda completes.
+  stream_->ThenDoHostCallback([ref, literal]() { ref.Unref(); });
+  return Status::OK();
 }
 
-Status XlaTransferManager::TransferLiteralFromDevice(
-    Tensor* host_tensor, const Tensor& device_tensor) const {
+void XlaTransferManager::TransferLiteralFromDevice(
+    Tensor* host_tensor, const Tensor& device_tensor,
+    const StatusCallback& done) const {
   const xla::ShapedBuffer& shaped_buffer =
       XlaTensor::FromTensor(&device_tensor)->shaped_buffer();
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::Literal> literal,
-      transfer_manager_->TransferLiteralFromDevice(stream_, shaped_buffer));
-  VLOG(1) << "Transfer from device as literal: " << literal->ToString() << " "
-          << shaped_buffer.ToString();
-  Tensor tensor;
-  TF_RETURN_IF_ERROR(
-      LiteralToHostTensor(*literal, host_tensor->dtype(), &tensor));
-  // Reshape the tensor back to its declared shape.
-  if (!host_tensor->CopyFrom(tensor, device_tensor.shape())) {
-    return errors::Internal(
-        "Tensor::CopyFrom failed when copying from XLA device to CPU");
-  }
-  return Status::OK();
+  TensorReference ref(device_tensor);
+  transfer_manager_->TransferLiteralFromDevice(
+      stream_, shaped_buffer,
+      [=, &shaped_buffer](
+          xla::StatusOr<std::unique_ptr<xla::Literal> > literal_or) {
+        ref.Unref();
+        done([&]() -> Status {
+          TF_ASSIGN_OR_RETURN(auto literal, std::move(literal_or));
+          VLOG(1) << "Transfer from device as literal: " << literal->ToString()
+                  << " " << shaped_buffer.ToString();
+          Tensor tensor;
+          TF_RETURN_IF_ERROR(
+              LiteralToHostTensor(*literal, host_tensor->dtype(), &tensor));
+          // Reshape the tensor back to its declared shape.
+          Status status;
+          if (!host_tensor->CopyFrom(tensor, device_tensor.shape())) {
+            status = errors::Internal(
+                "Tensor::CopyFrom failed when copying from XLA device to CPU");
+          }
+          return status;
+        }());
+      });
 }
 
 void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
@@ -119,19 +136,23 @@ void XlaTransferManager::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
     CHECK(xla_tensor);
 
-    TensorShape shape = shape_representation_fn_(device_tensor->shape(),
-                                                 device_tensor->dtype());
+    Status status;
+    xla::StatusOr<TensorShape> shape_or_status = shape_representation_fn_(
+        device_tensor->shape(), device_tensor->dtype());
+    if (!shape_or_status.ok()) {
+      done(shape_or_status.status());
+      return;
+    }
+    TensorShape shape = shape_or_status.ValueOrDie();
     if (!xla_tensor->has_shaped_buffer()) {
-      Status s = xla_tensor->AllocateShapedBuffer(
+      status = xla_tensor->AllocateShapedBuffer(
           device_tensor->dtype(), shape, client_,
           stream_->parent()->device_ordinal());
-      if (!s.ok()) {
-        done(s);
-        return;
+      if (!status.ok()) {
+        return done(status);
       }
     }
 
-    Status status;
     if (transfer_as_literal_) {
       Tensor reshaped_cpu_tensor;
       if (!reshaped_cpu_tensor.CopyFrom(*cpu_tensor, shape)) {
@@ -184,7 +205,8 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
 
     Status status;
     if (transfer_as_literal_) {
-      status = TransferLiteralFromDevice(cpu_tensor, *device_tensor);
+      TransferLiteralFromDevice(cpu_tensor, *device_tensor, done);
+      return;
     } else {
       stream_->ThenMemcpy(dst_ptr, dev_src_ptr, total_bytes);
       // TODO(hpucha): Make this asynchronous.
@@ -194,9 +216,8 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
             "Failed to complete data transfer on stream %p: %s", stream_,
             block_status.error_message().c_str());
       }
+      done(status);
     }
-
-    done(status);
     return;
   }
 
@@ -207,8 +228,8 @@ void XlaTransferManager::CopyDeviceTensorToCPU(const Tensor* device_tensor,
 void XlaTransferManager::CopyDeviceTensorToDevice(const Tensor& src_tensor,
                                                   Tensor* dst_tensor,
                                                   const StatusCallback& done) {
-  // TODO(phawkins): replace this code with an asynchronous implementation.
-  auto body = [&]() {
+  // Perform memory allocation now, and enqueue the device-to-device transfer.
+  Status status = [&]() -> Status {
     if (src_tensor.NumElements() == 0) {
       return Status::OK();
     }
@@ -217,27 +238,27 @@ void XlaTransferManager::CopyDeviceTensorToDevice(const Tensor& src_tensor,
     CHECK(xla_src && xla_dst)
         << "Missing destination tensor for device-to-device copy";
     if (!xla_dst->has_shaped_buffer()) {
-      TensorShape shape =
-          shape_representation_fn_(src_tensor.shape(), src_tensor.dtype());
+      TF_ASSIGN_OR_RETURN(
+          TensorShape shape,
+          shape_representation_fn_(src_tensor.shape(), src_tensor.dtype()));
       TF_RETURN_IF_ERROR(
           xla_dst->AllocateShapedBuffer(src_tensor.dtype(), shape, client_,
                                         stream_->parent()->device_ordinal()));
     }
-    TF_RETURN_IF_ERROR(
-        xla_dst->shaped_buffer().buffers().ForEachMutableElementWithStatus(
-            [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
-              const se::DeviceMemoryBase& from_buffer =
-                  xla_src->shaped_buffer().buffers().element(index);
-              CHECK_EQ(buffer->size(), from_buffer.size());
-              if (!stream_->parent()->SynchronousMemcpy(buffer, from_buffer,
-                                                        buffer->size())) {
-                return errors::Internal("Device to device memcpy failed");
-              }
-              return Status::OK();
-            }));
+    auto from_iter = xla_src->shaped_buffer().buffers().begin();
+    auto to_iter = xla_dst->shaped_buffer().buffers().begin();
+    for (auto end_iter = xla_src->shaped_buffer().buffers().end();
+         from_iter != end_iter; ++from_iter, ++to_iter) {
+      stream_->ThenMemcpyD2D(&to_iter->second, from_iter->second,
+                             to_iter->second.size());
+    }
     return Status::OK();
-  };
-  done(body());
+  }();
+  if (!status.ok()) {
+    return done(status);
+  } else {
+    stream_->ThenDoHostCallback([=]() { done(Status::OK()); });
+  }
 }
 
 XlaDeviceContext::XlaDeviceContext(

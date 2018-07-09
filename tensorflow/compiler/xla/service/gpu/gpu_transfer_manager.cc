@@ -63,33 +63,28 @@ Status GpuTransferManager::TransferLiteralToInfeed(
     return TransferBufferToInfeed(executor, size, literal.untyped_data());
   }
 
-  if (ShapeUtil::IsNestedTuple(shape)) {
-    return Unimplemented(
-        "Infeed with a nested tuple shape is not supported: %s",
-        ShapeUtil::HumanString(literal.shape()).c_str());
-  }
-
   // For a tuple, we transfer each of its elements to the device and
   // enqueue the resulting destination device addresses with the
   // infeed manager.
   std::vector<gpu::InfeedBuffer*> buffers;
-  buffers.reserve(ShapeUtil::TupleElementCount(shape));
   auto cleanup = tensorflow::gtl::MakeCleanup([buffers]() {
     for (gpu::InfeedBuffer* b : buffers) {
       b->Done();
     }
   });
 
-  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-    const Shape& tuple_element_shape =
-        ShapeUtil::GetTupleElementShape(shape, i);
-    int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
-    TF_ASSIGN_OR_RETURN(
-        gpu::InfeedBuffer * buffer,
-        TransferBufferToInfeedInternal(executor, tuple_element_size,
-                                       literal.untyped_data({i})));
-    buffers.push_back(buffer);
-  }
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      shape, [&](const Shape& literal_subshape, const ShapeIndex& index) {
+        if (ShapeUtil::IsArray(literal_subshape)) {
+          int64 tuple_element_size = GetByteSizeRequirement(literal_subshape);
+          TF_ASSIGN_OR_RETURN(
+              gpu::InfeedBuffer * buffer,
+              TransferBufferToInfeedInternal(executor, tuple_element_size,
+                                             literal.untyped_data(index)));
+          buffers.push_back(buffer);
+        }
+        return Status::OK();
+      }));
 
   cleanup.release();
   return EnqueueBuffersToInfeed(executor, buffers);

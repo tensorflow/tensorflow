@@ -40,9 +40,8 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(
         ctx, window_size > 0,
         errors::InvalidArgument("Window size must be greater than zero."));
-    OP_REQUIRES(
-        ctx, stride > 0,
-        errors::InvalidArgument("Stride must be greater than zero."));
+    OP_REQUIRES(ctx, stride > 0,
+                errors::InvalidArgument("Stride must be greater than zero."));
     if (stride == window_size) {
       LOG(WARNING) << "stride: " << stride
                    << " is equal to window_size: " << window_size

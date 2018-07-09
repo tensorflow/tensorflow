@@ -37,6 +37,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
+                    int dev_to_dev_stream_index,
                     const StatusCallback& done) override;
 
   void StartAbort(const Status& s) override;

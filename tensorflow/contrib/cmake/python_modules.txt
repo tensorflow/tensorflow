@@ -86,6 +86,8 @@ tensorflow/contrib/batching/python/ops
 tensorflow/contrib/bayesflow
 tensorflow/contrib/bayesflow/python
 tensorflow/contrib/bayesflow/python/ops
+# tensorflow/contrib/bigtable/python
+# tensorflow/contrib/bigtable/python/ops
 tensorflow/contrib/boosted_trees
 tensorflow/contrib/boosted_trees/estimator_batch
 tensorflow/contrib/boosted_trees/kernels
@@ -238,6 +240,8 @@ tensorflow/contrib/keras/api/keras/wrappers/scikit_learn
 tensorflow/contrib/kernel_methods
 tensorflow/contrib/kernel_methods/python
 tensorflow/contrib/kernel_methods/python/mappers
+tensorflow/contrib/kinesis/python
+tensorflow/contrib/kinesis/python/ops
 tensorflow/contrib/kfac
 tensorflow/contrib/kfac/examples
 tensorflow/contrib/kfac/python

@@ -180,7 +180,7 @@ def get_api_init_text(package, api_name):
   for module in list(sys.modules.values()):
     # Only look at tensorflow modules.
     if (not module or not hasattr(module, '__name__') or
-        package not in module.__name__):
+        module.__name__ is None or package not in module.__name__):
       continue
     # Do not generate __init__.py files for contrib modules for now.
     if '.contrib.' in module.__name__ or module.__name__.endswith('.contrib'):

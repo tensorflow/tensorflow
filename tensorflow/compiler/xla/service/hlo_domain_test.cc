@@ -340,10 +340,12 @@ TEST_F(HloDomainTest, CheckNormalizationOnInfeedTuple) {
 HloModule Module
 
 ENTRY entry {
-  infeed = (f32[4], f32[4]) infeed(),
-    sharding={{maximal device=1}, {maximal device=0}}
-  gte0 = f32[4] get-tuple-element(infeed), index=0
-  gte1 = f32[4] get-tuple-element(infeed), index=1
+  token = token[] after-all()
+  infeed = ((f32[4], f32[4]), token[]) infeed(token),
+    sharding={{maximal device=1}, {maximal device=0}, {maximal device=0}}
+  infeed.data = (f32[4], f32[4]) get-tuple-element(infeed), index=0
+  gte0 = f32[4] get-tuple-element(infeed.data), index=0
+  gte1 = f32[4] get-tuple-element(infeed.data), index=1
   copy0 = f32[4] copy(gte0)
   copy1 = f32[4] copy(gte1)
   ROOT add = f32[4] add(copy0, copy1)
@@ -357,8 +359,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module));
   EXPECT_TRUE(isolator_changed);
 
-  EXPECT_TRUE(HasDomainEdge(module, "gte0", "infeed"));
-  EXPECT_TRUE(HasDomainEdge(module, "gte1", "infeed"));
+  EXPECT_TRUE(HasDomainEdge(module, "infeed.data", "infeed"));
   EXPECT_FALSE(HasDomainEdge(module, "copy0", "gte0"));
   EXPECT_FALSE(HasDomainEdge(module, "copy1", "gte1"));
 
@@ -366,6 +367,8 @@ ENTRY entry {
   // HLO passes adding unexpected instructions.
   //
   //            infeed
+  //              |
+  //          infeed.data (tuple element 0 of infeed)
   //           /      \
   //         GTE0    GTE1
   //         /          \
@@ -374,26 +377,31 @@ ENTRY entry {
   //           \       /
   //             TUPLE
   //               |
-  //             DOMAIN
   HloInstruction* infeed = FindInstruction(module, "infeed");
   ASSERT_NE(infeed, nullptr);
-  auto infeed_users = infeed->users();
-  HloInstruction* new_gte0 =
+  HloInstruction* infeed_data =
       infeed->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetTupleElementShape(infeed->shape(), 0), infeed, 0));
+
+  auto infeed_data_users = infeed_data->users();
+  HloInstruction* new_gte0 = infeed_data->parent()->AddInstruction(
+      HloInstruction::CreateGetTupleElement(
+          ShapeUtil::GetTupleElementShape(infeed_data->shape(), 0), infeed_data,
+          0));
   HloInstruction* new_copy0 =
-      infeed->parent()->AddInstruction(HloInstruction::CreateUnary(
+      infeed_data->parent()->AddInstruction(HloInstruction::CreateUnary(
           new_gte0->shape(), HloOpcode::kCopy, new_gte0));
-  HloInstruction* new_gte1 =
-      infeed->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::GetTupleElementShape(infeed->shape(), 1), infeed, 1));
+  HloInstruction* new_gte1 = infeed_data->parent()->AddInstruction(
+      HloInstruction::CreateGetTupleElement(
+          ShapeUtil::GetTupleElementShape(infeed_data->shape(), 1), infeed_data,
+          1));
   HloInstruction* new_copy1 =
-      infeed->parent()->AddInstruction(HloInstruction::CreateUnary(
+      infeed_data->parent()->AddInstruction(HloInstruction::CreateUnary(
           new_gte1->shape(), HloOpcode::kCopy, new_gte1));
-  HloInstruction* new_tuple = infeed->parent()->AddInstruction(
+  HloInstruction* new_tuple = infeed_data->parent()->AddInstruction(
       HloInstruction::CreateTuple({new_copy0, new_copy1}));
-  for (HloInstruction* user : infeed_users) {
-    TF_EXPECT_OK(infeed->ReplaceUseWith(user, new_tuple));
+  for (HloInstruction* user : infeed_data_users) {
+    TF_EXPECT_OK(infeed_data->ReplaceUseWith(user, new_tuple));
   }
 
   HloDomainRemover remover(ShardingMetadata::KindName(),
@@ -412,7 +420,7 @@ ENTRY entry {
   };
   for (auto& assignment : assignments) {
     auto device = assignment.instruction->sharding_unique_device();
-    EXPECT_TRUE(device.has_value());
+    ASSERT_TRUE(device.has_value());
     EXPECT_EQ(*device, assignment.device);
   }
   EXPECT_TRUE(new_tuple->has_sharding());
@@ -420,6 +428,27 @@ ENTRY entry {
       new_tuple->sharding(),
       HloSharding::Tuple(new_tuple->shape(), {HloSharding::AssignDevice(1),
                                               HloSharding::AssignDevice(0)}));
+}
+
+// Tests that text dumps of domain instructions can be parsed back, in the
+// specific case of null shardings.
+TEST_F(HloDomainTest, DumpParseNullSharding) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  auto sharding_md_0 = MakeUnique<ShardingMetadata>(nullptr);
+  auto sharding_md_1 = MakeUnique<ShardingMetadata>(nullptr);
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  HloInstruction* domain = builder.AddInstruction(HloInstruction::CreateDomain(
+      shape, param, std::move(sharding_md_0), std::move(sharding_md_1)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, domain, domain));
+
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto hlo_string = module->ToString();
+  ASSERT_TRUE(ParseModule(hlo_string).status().ok());
 }
 
 }  // namespace

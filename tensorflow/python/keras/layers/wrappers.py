@@ -175,7 +175,10 @@ class TimeDistributed(Wrapper):
     self.input_spec = InputSpec(shape=input_shape)
     child_input_shape = [input_shape[0]] + input_shape[2:]
     if not self.layer.built:
-      self.layer.build(child_input_shape)
+      # The base layer class calls a conversion function on the input shape to
+      # convert it to a TensorShape. The conversion function requires a
+      # tuple which is why we cast the shape.
+      self.layer.build(tuple(child_input_shape))
       self.layer.built = True
     super(TimeDistributed, self).build()
     self.built = True

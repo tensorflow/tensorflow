@@ -203,6 +203,30 @@ REGISTER_OP("BoostedTreesPredict")
       return Status::OK();
     });
 
+REGISTER_OP("BoostedTreesExampleDebugOutputs")
+    .Input("tree_ensemble_handle: resource")
+    .Input("bucketized_features: num_bucketized_features * int32")
+    .Attr("num_bucketized_features: int >= 1")  // Inferred.
+    .Attr("logits_dimension: int")
+    .Output("examples_debug_outputs_serialized: string")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle feature_shape;
+      int num_bucketized_features;
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("num_bucketized_features", &num_bucketized_features));
+      shape_inference::ShapeHandle unused_input;
+      for (int i = 0; i < num_bucketized_features; ++i) {
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i + 1), 1, &feature_shape));
+        // Check that the shapes of all bucketized features are the same.
+        TF_RETURN_IF_ERROR(c->Merge(c->input(1), feature_shape, &unused_input));
+      }
+
+      // Multi-class will be supported by modifying the proto.
+      auto batch_size = c->MakeShape({c->Dim(feature_shape, 0)});
+      c->set_output(0, batch_size);
+      return Status::OK();
+    });
+
 REGISTER_OP("BoostedTreesSerializeEnsemble")
     .Input("tree_ensemble_handle: resource")
     .Output("stamp_token: int64")

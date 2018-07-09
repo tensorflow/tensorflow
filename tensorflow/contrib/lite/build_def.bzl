@@ -233,6 +233,7 @@ def generated_test_models():
         "pad",
         "padv2",
         # "prelu",
+        "pow",
         "relu",
         "relu1",
         "relu6",

@@ -92,8 +92,17 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteSequenceRNNParams;
 
+typedef enum {
+  kTfLiteFullyConnectedWeightsFormatDefault = 0,
+  kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8 = 1,
+} TfLiteFullyConnectedWeightsFormat;
+
 typedef struct {
+  // Parameters for FullyConnected version 1 or above.
   TfLiteFusedActivation activation;
+
+  // Parameters for FullyConnected version 2 or above.
+  TfLiteFullyConnectedWeightsFormat weights_format;
 } TfLiteFullyConnectedParams;
 
 typedef enum {

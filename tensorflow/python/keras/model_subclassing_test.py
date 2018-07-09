@@ -31,7 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -679,8 +679,8 @@ class ModelSubclassingTest(test.TestCase):
       def __init__(self):
         super(Foo, self).__init__()
         self.isdep = keras.layers.Dense(1)
-        self.notdep = checkpointable.NoDependency(keras.layers.Dense(2))
-        self.notdep_var = checkpointable.NoDependency(
+        self.notdep = data_structures.NoDependency(keras.layers.Dense(2))
+        self.notdep_var = data_structures.NoDependency(
             resource_variable_ops.ResourceVariable(1., name='notdep_var'))
 
     m = Foo()

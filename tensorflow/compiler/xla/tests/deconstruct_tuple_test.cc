@@ -54,9 +54,9 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
 
 TEST_F(DeconstructTupleTest, DeconstructTuple) {
   XlaBuilder builder(TestName());
-  auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
-  builder.Tuple({const1, const2});
+  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
+  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
+  Tuple(&builder, {const1, const2});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
   auto result_status = client_->DeconstructTuple(*global_data);
@@ -73,9 +73,9 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
 
 TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   XlaBuilder builder(TestName());
-  auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
-  builder.Tuple({const1, const2});
+  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
+  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
+  Tuple(&builder, {const1, const2});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
   auto result_status1 = client_->DeconstructTuple(*global_data);
@@ -103,9 +103,9 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   XlaBuilder builder(TestName());
-  auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
-  builder.Tuple({const1, const2, const2, const1});
+  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
+  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
+  Tuple(&builder, {const1, const2, const2, const1});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
   auto result_status = client_->DeconstructTuple(*global_data);
@@ -129,9 +129,9 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
 
 TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
   XlaBuilder builder(TestName());
-  auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
-  builder.Tuple({const1, const2, const1});
+  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
+  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
+  Tuple(&builder, {const1, const2, const1});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
   auto result_status = client_->DeconstructTuple(*global_data);
@@ -159,7 +159,7 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
 
 TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
   XlaBuilder builder(TestName());
-  builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
+  ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
   auto result_status = client_->DeconstructTuple(*global_data);
@@ -174,8 +174,8 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
       Literal::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
-  auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "param0");
-  builder.Tuple({p});
+  auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
+  Tuple(&builder, {p});
   auto global_data = ExecuteAndCheckTransfer(&builder, {param0_data.get()});
 
   auto result_status = client_->DeconstructTuple(*global_data);
@@ -186,9 +186,9 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
   XlaBuilder builder(TestName());
-  auto const1 = builder.ConstantR1<float>({1.0, 2.0, 3.0, 4.0});
-  auto const2 = builder.ConstantR1<float>({2.0, 4.0, 6.0, 8.0});
-  builder.Tuple({builder.Tuple({const1, const2}), const1});
+  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
+  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
+  Tuple(&builder, {Tuple(&builder, {const1, const2}), const1});
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
   auto result_status = client_->DeconstructTuple(*global_data);

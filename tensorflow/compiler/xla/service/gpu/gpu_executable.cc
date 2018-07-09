@@ -126,18 +126,17 @@ Status GpuExecutable::ExecuteThunks(
       TF_RETURN_IF_ERROR(main_stream->BlockHostUntilDone());
     }
 
-    profiler.StartOperation();
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
+    TF_RETURN_IF_ERROR(
+        thunk->ExecuteOnStream(buffer_allocations, stream, &profiler));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = MakeUnique<se::Event>(main_stream->parent());
       finish_event->Init();
       stream->ThenRecordEvent(finish_event.get());
       thunk_to_finish_event[thunk] = std::move(finish_event);
     }
-    profiler.FinishOperation(thunk->hlo_instruction());
   }
 
   main_stream->ThenWaitFor(&sub_streams);

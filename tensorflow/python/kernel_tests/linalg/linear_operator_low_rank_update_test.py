@@ -68,7 +68,7 @@ class BaseLinearOperatorLowRankUpdatetest(object):
         build_info((3, 4, 4)),
         build_info((2, 1, 4, 4))]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     # Recall A = L + UDV^H
     shape = list(build_info.shape)
     diag_shape = shape[:-1]
@@ -80,17 +80,17 @@ class BaseLinearOperatorLowRankUpdatetest(object):
     # operator, with condition number as high as 1e4.
     base_diag = linear_operator_test_util.random_uniform(
         diag_shape, minval=1e-4, maxval=1., dtype=dtype)
-    base_diag_ph = array_ops.placeholder(dtype=dtype)
+    lin_op_base_diag = base_diag
 
     # U
     u = linear_operator_test_util.random_normal_correlated_columns(
         u_perturbation_shape, dtype=dtype)
-    u_ph = array_ops.placeholder(dtype=dtype)
+    lin_op_u = u
 
     # V
     v = linear_operator_test_util.random_normal_correlated_columns(
         u_perturbation_shape, dtype=dtype)
-    v_ph = array_ops.placeholder(dtype=dtype)
+    lin_op_v = v
 
     # D
     if self._is_diag_update_positive:
@@ -99,42 +99,25 @@ class BaseLinearOperatorLowRankUpdatetest(object):
     else:
       diag_update = linear_operator_test_util.random_normal(
           diag_update_shape, stddev=1e-4, dtype=dtype)
-    diag_update_ph = array_ops.placeholder(dtype=dtype)
+    lin_op_diag_update = diag_update
 
     if use_placeholder:
-      # Evaluate here because (i) you cannot feed a tensor, and (ii)
-      # values are random and we want the same value used for both mat and
-      # feed_dict.
-      base_diag = base_diag.eval()
-      u = u.eval()
-      v = v.eval()
-      diag_update = diag_update.eval()
+      lin_op_base_diag = array_ops.placeholder_with_default(
+          base_diag, shape=None)
+      lin_op_u = array_ops.placeholder_with_default(u, shape=None)
+      lin_op_v = array_ops.placeholder_with_default(v, shape=None)
+      lin_op_diag_update = array_ops.placeholder_with_default(
+          diag_update, shape=None)
 
-      # In all cases, set base_operator to be positive definite.
-      base_operator = linalg.LinearOperatorDiag(
-          base_diag_ph, is_positive_definite=True)
+    base_operator = linalg.LinearOperatorDiag(
+        lin_op_base_diag, is_positive_definite=True)
 
-      operator = linalg.LinearOperatorLowRankUpdate(
-          base_operator,
-          u=u_ph,
-          v=v_ph if self._use_v else None,
-          diag_update=diag_update_ph if self._use_diag_update else None,
-          is_diag_update_positive=self._is_diag_update_positive)
-      feed_dict = {
-          base_diag_ph: base_diag,
-          u_ph: u,
-          v_ph: v,
-          diag_update_ph: diag_update}
-    else:
-      base_operator = linalg.LinearOperatorDiag(
-          base_diag, is_positive_definite=True)
-      operator = linalg.LinearOperatorLowRankUpdate(
-          base_operator,
-          u,
-          v=v if self._use_v else None,
-          diag_update=diag_update if self._use_diag_update else None,
-          is_diag_update_positive=self._is_diag_update_positive)
-      feed_dict = None
+    operator = linalg.LinearOperatorLowRankUpdate(
+        base_operator,
+        lin_op_u,
+        v=lin_op_v if self._use_v else None,
+        diag_update=lin_op_diag_update if self._use_diag_update else None,
+        is_diag_update_positive=self._is_diag_update_positive)
 
     # The matrix representing L
     base_diag_mat = array_ops.matrix_diag(base_diag)
@@ -146,28 +129,28 @@ class BaseLinearOperatorLowRankUpdatetest(object):
     if self._use_v and self._use_diag_update:
       # In this case, we have L + UDV^H and it isn't symmetric.
       expect_use_cholesky = False
-      mat = base_diag_mat + math_ops.matmul(
+      matrix = base_diag_mat + math_ops.matmul(
           u, math_ops.matmul(diag_update_mat, v, adjoint_b=True))
     elif self._use_v:
       # In this case, we have L + UDV^H and it isn't symmetric.
       expect_use_cholesky = False
-      mat = base_diag_mat + math_ops.matmul(u, v, adjoint_b=True)
+      matrix = base_diag_mat + math_ops.matmul(u, v, adjoint_b=True)
     elif self._use_diag_update:
       # In this case, we have L + UDU^H, which is PD if D > 0, since L > 0.
       expect_use_cholesky = self._is_diag_update_positive
-      mat = base_diag_mat + math_ops.matmul(
+      matrix = base_diag_mat + math_ops.matmul(
           u, math_ops.matmul(diag_update_mat, u, adjoint_b=True))
     else:
       # In this case, we have L + UU^H, which is PD since L > 0.
       expect_use_cholesky = True
-      mat = base_diag_mat + math_ops.matmul(u, u, adjoint_b=True)
+      matrix = base_diag_mat + math_ops.matmul(u, u, adjoint_b=True)
 
     if expect_use_cholesky:
       self.assertTrue(operator._use_cholesky)
     else:
       self.assertFalse(operator._use_cholesky)
 
-    return operator, mat, feed_dict
+    return operator, matrix
 
 
 class LinearOperatorLowRankUpdatetestWithDiagUseCholesky(

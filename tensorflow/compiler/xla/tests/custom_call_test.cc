@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
@@ -135,8 +136,8 @@ class CustomCallClientAPITest : public ClientLibraryTestBase {};
 // are reserved for internal use.
 XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   XlaBuilder builder(TestName());
-  builder.CustomCall("$illegal", /*operands=*/{},
-                     ShapeUtil::MakeShape(F32, {1}));
+  CustomCall(&builder, "$illegal", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {1}));
 
   StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});

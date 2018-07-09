@@ -24,15 +24,22 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/kernels/eigen_support.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
+#endif
 #include "tensorflow/contrib/lite/memory_planner.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 #include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
+#ifdef TFLITE_MCU
+class NNAPIDelegate {};
+#endif
 
 namespace {
 
@@ -359,10 +366,13 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteBool:
       *bytes = sizeof(bool) * count;
       break;
+    case kTfLiteComplex64:
+      *bytes = sizeof(std::complex<float>) * count;
+      break;
     default:
       ReportError(&context_,
-                  "Only float32, int16, int32, int64, uint8, bool supported "
-                  "currently.");
+                  "Only float32, int16, int32, int64, uint8, bool, complex64 "
+                  "supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -528,7 +538,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
 TfLiteStatus Interpreter::PrepareOpsAndTensors() {
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this))));
+        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
+        /*preserve_inputs=*/true));
     memory_planner_->PlanAllocations();
   }
 
@@ -554,6 +565,7 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   TfLiteStatus status = kTfLiteOk;
+#ifndef TFLITE_MCU
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -567,6 +579,7 @@ TfLiteStatus Interpreter::Invoke() {
       return kTfLiteError;
     }
   }
+#endif
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
@@ -823,6 +836,7 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Interpreter::UseNNAPI(bool enable) {
+#ifndef TFLITE_MCU
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
@@ -832,6 +846,7 @@ void Interpreter::UseNNAPI(bool enable) {
   } else if (!nnapi_delegate_) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
+#endif
 }
 
 void Interpreter::SetNumThreads(int num_threads) {
@@ -839,8 +854,10 @@ void Interpreter::SetNumThreads(int num_threads) {
 
   // TODO(ahentz): find a way to avoid this. It causes gemmlowp and eigen to
   // be required in order to compile the framework.
+#ifndef TFLITE_MCU
   gemm_support::SetNumThreads(&context_, num_threads);
   eigen_support::SetNumThreads(&context_, num_threads);
+#endif
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,

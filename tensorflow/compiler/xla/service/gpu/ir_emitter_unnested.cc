@@ -592,6 +592,8 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
             output_shape_index = {i};
           }
           if (inst->opcode() == HloOpcode::kReduce) {
+            CHECK(IsReductionToVector(*inst))
+                << "Only reductions to vector are supported";
             // Shapes, layouts and dimensions must be the same for all reduces
             // inside of this fusion.
             CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
@@ -1505,7 +1507,7 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   for (element_id_in_tile : range(x_tile_size)) {
   //     int x = x_in_tiles * x_tile_size + element_id_in_tile;
   //     if (x < width)
-  //       partial_result = reducer(partial_result, input[z][y][z]);
+  //       partial_result = reducer(partial_result, input[z][y][x]);
   //   }
   //   AtomicReducer(&output[y], partial_result);
   // }
@@ -1559,10 +1561,11 @@ Status IrEmitterUnnested::EmitRowReduction(
   //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
   //          ++element_id_in_z_tile) {
   //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
+  //       int tx = x;
   //       for (int element_id_in_x_tile = 0;
   //            element_id_in_x_tile < x_tile_size;
-  //            ++element_id_in_x_tile, x += warpSize) {
-  //         partial_result = Reducer(partial_result, input[z][y][x]);
+  //            ++element_id_in_x_tile, tx += warpSize) {
+  //         partial_result = Reducer(partial_result, input[z][y][tx]);
   //       }
   //     }
   //   } else {
@@ -1570,10 +1573,11 @@ Status IrEmitterUnnested::EmitRowReduction(
   //     for (int element_id_in_z_tile = 0; element_id_in_z_tile < z_tile_size;
   //          ++element_id_in_z_tile) {
   //       z = z_in_tiles * z_tile_size + element_id_in_z_tile;
+  //       int tx = x;
   //       for (int element_id_in_x_tile = 0; element_id_in_x_tile <
-  //            x_tile_size; ++element_id_in_tile, x += warpSize) {
-  //         if (x < width)
-  //           partial_result = Reducer(partial_result, input[z][y][x]);
+  //            x_tile_size; ++element_id_in_tile, tx += warpSize) {
+  //         if (tx < width)
+  //           partial_result = Reducer(partial_result, input[z][y][tx]);
   //       }
   //     }
   //   }
@@ -1812,15 +1816,17 @@ Status IrEmitterUnnested::EmitRowReduction(
                                              reduce_output_shapes[i]),
                       &ir_builder_),
                   &ir_builder_, "output_element_address");
-      if (x_tile_size * z_tile_size < depth * width) {
-        TF_RETURN_IF_ERROR(EmitAtomicOperationForNestedComputation(
-            *reducers[i], output_address,
-            partial_reduction_result_addresses[i]));
-      } else {
+      // We don't need to emit atomic operations if there is only one tile of
+      // results. 'depth' is the z dimension, 'width' is the x dimension.
+      if (z_tile_size >= depth && x_tile_size >= width) {
         TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
             *reducers[i],
             {output_address, partial_reduction_result_addresses[i]},
             output_address));
+      } else {
+        TF_RETURN_IF_ERROR(EmitAtomicOperationForNestedComputation(
+            *reducers[i], output_address,
+            partial_reduction_result_addresses[i]));
       }
     }
     return Status::OK();
@@ -1946,10 +1952,8 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   HloComputation* reducer = reduce->to_apply();
   // HandleReduce specializes reduction from a multi-dimensional array to a 1D
   // array. The specialized version requires an initializer thunk that
-  // ingitializes the output array to the initial value of the reduce.
-  if (IsReductionToVector(*reduce) &&
-      // NVPTX backend can't do atomic cmpxchg any narrower than 32 bits
-      32 <= primitive_util::BitWidth(reduce->shape().element_type())) {
+  // initializes the output array to the initial value of the reduce.
+  if (IsReductionToVector(*reduce)) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
                         BuildInitializerThunk(reduce));
     std::vector<std::unique_ptr<Thunk>> thunks;
@@ -2287,7 +2291,7 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleGenerateToken(HloInstruction* gen_token) {
+Status IrEmitterUnnested::HandleAfterAll(HloInstruction* gen_token) {
   return Status::OK();
 }
 
@@ -2539,17 +2543,14 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
 
-  std::vector<BufferAllocation::Slice> tuple_element_buffers;
-  for (int64 i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
-    BufferAllocation::Slice buffer = ir_emitter_context_->buffer_assignment()
-                                         .GetUniqueSlice(inst, {i})
-                                         .ConsumeValueOrDie();
-    tuple_element_buffers.push_back(buffer);
-  }
-
-  return MakeUnique<InfeedThunk>(
-      tuple_element_buffers,
-      /*destination_buffer=*/GetAllocationSlice(*inst), inst);
+  ShapeTree<BufferAllocation::Slice> slices(inst->shape());
+  slices.ForEachMutableElement(
+      [this, inst](const ShapeIndex& index, BufferAllocation::Slice* slice) {
+        *slice = ir_emitter_context_->buffer_assignment()
+                     .GetUniqueSlice(inst, index)
+                     .ConsumeValueOrDie();
+      });
+  return MakeUnique<InfeedThunk>(slices, inst);
 }
 
 namespace {
@@ -2694,7 +2695,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
         uint8 b = literal_bytes.front();
         pattern16 = uint16{b} | (uint16{b} << 8);
       } else {
-        pattern16 = literal_bytes.front();
+        memcpy(&pattern16, literal_bytes.data(), sizeof(pattern16));
       }
       uint32 pattern32 = uint32{pattern16} | (uint32{pattern16} << 16);
       return {MakeUnique<Memset32BitValueThunk>(

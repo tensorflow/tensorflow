@@ -72,9 +72,9 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                        Padding padding) {
     auto init =
         CreateConstantFromLiteral(*Literal::CreateR0<float>(0.0f), &builder_);
-    builder_.ReduceWindow(input, init,
-                          CreateScalarAddComputation(FloatType(), &builder_),
-                          window_dimensions, window_strides, padding);
+    ReduceWindow(input, init,
+                 CreateScalarAddComputation(FloatType(), &builder_),
+                 window_dimensions, window_strides, padding);
   }
 
   void ReduceWindowMax(const XlaOp& input,
@@ -82,9 +82,9 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
     auto init = CreateConstantFromLiteral(Literal::MinValue(F32), &builder_);
-    builder_.ReduceWindow(input, init,
-                          CreateScalarMaxComputation(FloatType(), &builder_),
-                          window_dimensions, window_strides, padding);
+    ReduceWindow(input, init,
+                 CreateScalarMaxComputation(FloatType(), &builder_),
+                 window_dimensions, window_strides, padding);
   }
 
   void ReduceWindowMin(const XlaOp& input,
@@ -92,9 +92,9 @@ class ReduceWindowTest : public ::testing::WithParamInterface<bool>,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
     auto init = CreateConstantFromLiteral(Literal::MaxValue(F32), &builder_);
-    builder_.ReduceWindow(input, init,
-                          CreateScalarMinComputation(FloatType(), &builder_),
-                          window_dimensions, window_strides, padding);
+    ReduceWindow(input, init,
+                 CreateScalarMinComputation(FloatType(), &builder_),
+                 window_dimensions, window_strides, padding);
   }
 
   XlaBuilder builder_;
@@ -106,10 +106,10 @@ TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
   const auto init_value =
       CreateConstantFromLiteral(*Literal::CreateR0<float>(0), &builder_);
   TF_ASSERT_OK(builder_.first_error());
-  builder_.ReduceWindow(input, init_value,
-                        CreateScalarAddComputation(FloatType(), &builder_),
-                        /*window_dimensions=*/{1, 2},
-                        /*window_strides=*/{1}, Padding::kValid);
+  ReduceWindow(input, init_value,
+               CreateScalarAddComputation(FloatType(), &builder_),
+               /*window_dimensions=*/{1, 2},
+               /*window_strides=*/{1}, Padding::kValid);
   ASSERT_EQ(builder_.first_error().code(), tensorflow::error::INVALID_ARGUMENT)
       << builder_.first_error();
   ASSERT_THAT(builder_.first_error().error_message(),
@@ -122,10 +122,9 @@ TEST_P(ReduceWindowTest, R0ReduceWindow) {
       CreateConstantFromLiteral(*Literal::CreateR0<float>(42.0), &builder_);
   const auto init =
       CreateConstantFromLiteral(*Literal::CreateR0<float>(1.0), &builder_);
-  builder_.ReduceWindow(input, init,
-                        CreateScalarAddComputation(FloatType(), &builder_),
-                        /*window_dimensions=*/{},
-                        /*window_strides=*/{}, Padding::kSame);
+  ReduceWindow(input, init, CreateScalarAddComputation(FloatType(), &builder_),
+               /*window_dimensions=*/{},
+               /*window_strides=*/{}, Padding::kSame);
   ComputeAndCompareLiteral(&builder_, *Literal::CreateR0<float>(43.0), {},
                            ErrorSpec(0.00001));
 }
@@ -306,13 +305,13 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
   Padding padding = Padding::kValid;
   const Shape scalar = ShapeUtil::MakeShape(FloatType(), {});
   auto b = builder_.CreateSubBuilder("unusual");
-  auto lhs = b->Parameter(0, scalar, "lhs");
-  auto rhs = b->Parameter(1, scalar, "rhs");
-  b->Min(b->Add(lhs, rhs),
-         CreateConstantFromLiteral(*Literal::CreateR0<float>(8.0f), b.get()));
+  auto lhs = Parameter(b.get(), 0, scalar, "lhs");
+  auto rhs = Parameter(b.get(), 1, scalar, "rhs");
+  Min(Add(lhs, rhs),
+      CreateConstantFromLiteral(*Literal::CreateR0<float>(8.0f), b.get()));
   XlaComputation reduce_fn = b->BuildAndNoteError();
 
-  builder_.ReduceWindow(
+  ReduceWindow(
       input,
       CreateConstantFromLiteral(*Literal::CreateR0<float>(0.0f), &builder_),
       reduce_fn,
@@ -542,7 +541,7 @@ TEST_P(ReduceWindowTest, R2ReduceWindowInceptionFromBroadcast) {
 
 TEST_P(ReduceWindowTest, R2ReduceWindowNonOverlappingFromBroadcast) {
   Array2D<float> input_array(6, 4, 1.0f);
-  XlaOp input = builder_.Broadcast(
+  XlaOp input = Broadcast(
       CreateConstantFromLiteral(Literal::One(F32), &builder_), {6, 4});
 
   Padding padding = Padding::kSame;
@@ -627,7 +626,7 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
     auto computation = param.reducer == kAdd
                            ? CreateScalarAddComputation(FloatType(), &b)
                            : CreateScalarMaxComputation(FloatType(), &b);
-    b.ReduceWindowWithGeneralPadding(
+    ReduceWindowWithGeneralPadding(
         /*operand=*/parameter,
         /*init_value=*/init_value,
         /*computation=*/computation,
@@ -968,11 +967,11 @@ TEST_P(R3ReduceWindowTest, Add) {
                                                      &b, &parameter);
   auto init_value =
       CreateConstantFromLiteral(*Literal::CreateR0(kInitValue), &b);
-  b.ReduceWindow(/*operand=*/parameter,
-                 /*init_value=*/init_value,
-                 /*computation=*/CreateScalarAddComputation(FloatType(), &b),
-                 /*window_dimensions=*/param.window_bounds,
-                 /*window_strides=*/param.strides, /*padding=*/param.padding);
+  ReduceWindow(/*operand=*/parameter,
+               /*init_value=*/init_value,
+               /*computation=*/CreateScalarAddComputation(FloatType(), &b),
+               /*window_dimensions=*/param.window_bounds,
+               /*window_strides=*/param.strides, /*padding=*/param.padding);
 
   auto expected = ReferenceUtil::ReduceWindow3DAdd(
       /*operand=*/input, /*init=*/kInitValue, /*window=*/param.window_bounds,
@@ -1109,7 +1108,7 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
                            : CreateScalarMaxComputation(FloatType(), &b);
     auto init_value =
         CreateConstantFromLiteral(*Literal::CreateR0(kInitValue), &b);
-    b.ReduceWindowWithGeneralPadding(
+    ReduceWindowWithGeneralPadding(
         /*operand=*/parameter,
         /*init_value=*/init_value,
         /*computation=*/computation,
@@ -1306,7 +1305,7 @@ TEST_P(R1ReduceWindowTest, DoIt) {
                          : CreateScalarMaxComputation(FloatType(), &b);
   auto init_value =
       CreateConstantFromLiteral(*Literal::CreateR0(kInitValue), &b);
-  b.ReduceWindowWithGeneralPadding(
+  ReduceWindowWithGeneralPadding(
       /*operand=*/parameter,
       /*init_value=*/init_value,
       /*computation=*/computation,

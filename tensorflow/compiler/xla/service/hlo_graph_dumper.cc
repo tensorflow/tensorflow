@@ -984,7 +984,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
-    case HloOpcode::kGenerateToken:
+    case HloOpcode::kAfterAll:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:

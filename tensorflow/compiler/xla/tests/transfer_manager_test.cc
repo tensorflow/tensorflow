@@ -256,6 +256,18 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
   EXPECT_TRUE(LiteralTestUtil::Equal(*literal, *result));
 }
 
+XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
+  // "Copy" a token from the device. The token has no physical representation so
+  // no copying is actually performed, but it shouldn't fail.
+  // TODO(b/110532604): Add transferring the token to device when this is
+  // supported.
+  auto device_buffer = AllocateDeviceBuffer(ShapeUtil::MakeTokenShape());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Literal> result,
+      transfer_manager_->TransferLiteralFromDevice(stream_, device_buffer));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*Literal::CreateToken(), *result));
+}
+
 XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   const int64 kIterationCount = 5000;
   std::unique_ptr<Literal> literal1 = Literal::MakeTuple(

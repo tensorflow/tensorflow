@@ -66,9 +66,7 @@ landing_page:
         }
         </style>
         <div class="devsite-landing-row-item-description">
-          <a href="#">
-            <h3 class="hide-from-toc">Learn and use ML</h3>
-          </a>
+          <h3 class="hide-from-toc">Learn and use ML</h3>
           <div class="devsite-landing-row-item-description-content">
             <p>
               The high-level Keras API provides building blocks to create and
@@ -117,9 +115,7 @@ landing_page:
   - items:
     - custom_html: >
         <div class="devsite-landing-row-item-description" style="border-right: 2px solid #eee;">
-          <a href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples/notebooks">
-            <h3 class="hide-from-toc">Research and experimentation</h3>
-          </a>
+          <h3 class="hide-from-toc">Research and experimentation</h3>
           <div class="devsite-landing-row-item-description-content">
             <p>
               Eager execution provides an imperative, define-by-run interface for advanced operations. Write custom layers, forward passes, and training loops with auto‑differentiation. Start with
@@ -170,9 +166,7 @@ landing_page:
         </div>
     - custom_html: >
         <div class="devsite-landing-row-item-description">
-          <a href="#">
-            <h3 class="hide-from-toc">ML at production scale</h3>
-          </a>
+          <h3 class="hide-from-toc">ML at production scale</h3>
           <div class="devsite-landing-row-item-description-content">
             <p>
               Estimators can train large models on multiple machines in a

@@ -454,6 +454,17 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "debug_keras",
+    srcs = ["examples/debug_keras.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_py",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_test(
     name = "common_test",
     size = "small",
@@ -1086,6 +1097,7 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1096,6 +1108,7 @@ sh_test(
     data = [
         ":debug_errors",
         ":debug_fibonacci",
+        ":debug_keras",
         ":debug_mnist",
         ":debug_tflearn_iris",
         ":offline_analyzer",
