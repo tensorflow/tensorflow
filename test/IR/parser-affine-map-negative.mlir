@@ -48,19 +48,19 @@
 #hello_world = (i, j) [s0, s1] -> () ; expected-error {{expected list element}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (+i, j) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (+i, j) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (i, *j) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (i, *j) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (floordiv i 2, j) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (floordiv i 2, j) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (ceildiv i 2, j) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (ceildiv i 2, j) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (mod i 2, j) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (mod i 2, j) ; expected-error {{missing left operand of binary op}}
 
 ; -----
 #hello_world = (i, j) [s0, s1] -> (-(), j)
@@ -68,16 +68,16 @@
 ; expected-error@-2 {{missing operand of negation}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (i, *j+5) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (i, *j+5) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (i, floordiv j+5) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (i, floordiv j+5) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (i, ceildiv j+5) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (i, ceildiv j+5) ; expected-error {{missing left operand of binary op}}
 
 ; -----
-#hello_world = (i, j) [s0, s1] -> (i, mod j+5) ; expected-error {{left operand of binary op missing}}
+#hello_world = (i, j) [s0, s1] -> (i, mod j+5) ; expected-error {{missing left operand of binary op}}
 
 ; -----
 #hello_world = (i, j) [s0, s1] -> (i*j, j) ; expected-error {{non-affine expression: at least one of the multiply operands has to be either a constant or symbolic}}

@@ -883,9 +883,9 @@ AffineExpr *Parser::parseIntegerExpr(const AffineMapParserState &state) {
 }
 
 /// Parses an expression that can be a valid operand of an affine expression.
-/// lhs: if non-null, an affine expression that is the lhs of a binary operator,
-/// the rhs of which is being parsed. This is used to determine whether an error
-/// should be emitted for a missing right operand.
+/// lhs: if non-null, lhs is an affine expression that is the lhs of a binary
+/// operator, the rhs of which is being parsed. This is used to determine
+/// whether an error should be emitted for a missing right operand.
 //  Eg: for an expression without parentheses (like i + j + k + l), each
 //  of the four identifiers is an operand. For i + j*k + l, j*k is not an
 //  operand expression, it's an op expression and will be parsed via
@@ -902,9 +902,19 @@ AffineExpr *Parser::parseAffineOperandExpr(AffineExpr *lhs,
     return parseParentheticalExpr(state);
   case Token::minus:
     return parseNegateExpression(lhs, state);
+  case Token::kw_ceildiv:
+  case Token::kw_floordiv:
+  case Token::kw_mod:
+  case Token::plus:
+  case Token::star:
+    if (lhs)
+      emitError("missing right operand of binary operator");
+    else
+      emitError("missing left operand of binary operator");
+    return nullptr;
   default:
     if (lhs)
-      emitError("missing right operand of binary op");
+      emitError("missing right operand of binary operator");
     else
       emitError("expected affine expression");
     return nullptr;
@@ -919,8 +929,9 @@ AffineExpr *Parser::parseAffineOperandExpr(AffineExpr *lhs,
 ///
 /// {add, sub} have lower precedence than {mul, div, and mod}.
 ///
-/// Add, sub'are themselves at the same precedence level, mul, div, and mod are
-/// at the same higher precedence level.
+/// Add, sub'are themselves at the same precedence level. Mul, floordiv,
+/// ceildiv, and mod are at the same higher precedence level. Negation has
+/// higher precedence than any binary op.
 ///
 /// llhs: the affine expression appearing on the left of the one being parsed.
 /// This function will return ((llhs llhsOp lhs) op rhs) if llhs is non null,
@@ -934,8 +945,8 @@ AffineExpr *Parser::parseAffineOperandExpr(AffineExpr *lhs,
 AffineExpr *
 Parser::parseAffineLowPrecOpExpr(AffineExpr *llhs, AffineLowPrecOp llhsOp,
                                  const AffineMapParserState &state) {
-  AffineExpr *lhs = parseAffineOperandExpr(llhs, state);
-  if (!lhs)
+  AffineExpr *lhs;
+  if (!(lhs = parseAffineOperandExpr(llhs, state)))
     return nullptr;
 
   // Found an LHS. Deal with the ops.
@@ -990,25 +1001,7 @@ Parser::parseAffineLowPrecOpExpr(AffineExpr *llhs, AffineLowPrecOp llhsOp,
 /// operand for floordiv, ceildiv, and mod has to be a positive integer.
 /// Use 'state' to check if valid identifiers appear in the expressoins.
 AffineExpr *Parser::parseAffineExpr(const AffineMapParserState &state) {
-  switch (curToken.getKind()) {
-  case Token::l_paren:
-  case Token::bare_identifier:
-  case Token::minus:
-  case Token::integer:
-    return parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp, state);
-
-  case Token::kw_ceildiv:
-  case Token::kw_floordiv:
-  case Token::kw_mod:
-  case Token::plus:
-  case Token::star:
-    emitError("left operand of binary op missing");
-    return nullptr;
-
-  default:
-    emitError("expected affine expression");
-    return nullptr;
-  }
+  return parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp, state);
 }
 
 /// Parse a dim or symbol from the lists appearing before the actual expressions

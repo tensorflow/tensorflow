@@ -71,6 +71,9 @@ class AffineExpr {
   explicit AffineExpr(Kind kind) : kind(kind) {}
 
  private:
+  AffineExpr(const AffineExpr&) = delete;
+  void operator=(const AffineExpr&) = delete;
+
   /// Classification of the subclass
   const Kind kind;
 };

@@ -56,16 +56,19 @@ public:
   }
 
  private:
-   AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-             AffineExpr *const *results);
+  AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
+            AffineExpr *const *results);
 
-   const unsigned numDims;
-   const unsigned numSymbols;
-   const unsigned numResults;
+  AffineMap(const AffineMap&) = delete;
+  void operator=(const AffineMap&) = delete;
 
-   /// The affine expressions for this (multi-dimensional) map.
-   /// TODO: use trailing objects for this.
-   AffineExpr *const *const results;
+  const unsigned numDims;
+  const unsigned numSymbols;
+  const unsigned numResults;
+
+  /// The affine expressions for this (multi-dimensional) map.
+  /// TODO: use trailing objects for this.
+  AffineExpr *const *const results;
 };
 
 }  // end namespace mlir
