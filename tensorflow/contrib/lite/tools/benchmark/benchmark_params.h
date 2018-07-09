@@ -47,10 +47,12 @@ class BenchmarkParam {
   virtual ~BenchmarkParam() {}
   BenchmarkParam(ParamType type) : type_(type) {}
 
- private:
-  static void AssertHasSameType(ParamType a, ParamType b);
+ protected:
   template <typename T>
   static ParamType GetValueType();
+
+ private:
+  static void AssertHasSameType(ParamType a, ParamType b);
 
   const ParamType type_;
 };
