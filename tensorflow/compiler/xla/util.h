@@ -505,7 +505,7 @@ auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
 }
 
 template <typename C, typename Pred>
-auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+auto c_find_if(C& c, Pred&& pred) -> decltype(std::begin(c)) {
   return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
