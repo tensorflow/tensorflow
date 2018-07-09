@@ -18,7 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/mman.h>
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(__FreeBSD__)
 #include <sys/sendfile.h>
 #endif
 #include <sys/stat.h>
