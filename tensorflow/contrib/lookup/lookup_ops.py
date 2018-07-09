@@ -325,7 +325,7 @@ class MutableHashTable(LookupInterface, checkpointable.CheckpointableBase):
       default_value: The value to use if a key is missing in the table.
       shared_name: If non-empty, this table will be shared under
         the given name across multiple sessions.
-      name: A name for the operation (optional).
+      name: A name for the operation (optional) and uniquified automatically.
       checkpoint: if True, the contents of the table are saved to and restored
         from checkpoints. If `shared_name` is empty for a checkpointed table, it
         is shared using the table node name.
@@ -336,6 +336,7 @@ class MutableHashTable(LookupInterface, checkpointable.CheckpointableBase):
     Raises:
       ValueError: If checkpoint is True and no name was specified.
     """
+    self._name = ops.get_default_graph().unique_name(name)
     self._default_value = ops.convert_to_tensor(default_value,
                                                 dtype=value_dtype)
     self._value_shape = self._default_value.get_shape()
@@ -357,7 +358,7 @@ class MutableHashTable(LookupInterface, checkpointable.CheckpointableBase):
           use_node_name_sharing=use_node_name_sharing,
           key_dtype=key_dtype,
           value_dtype=value_dtype,
-          name=name)
+          name=self._name)
     else:
       self._table_ref = gen_lookup_ops.mutable_hash_table_of_tensors_v2(
           shared_name=shared_name,
@@ -365,16 +366,18 @@ class MutableHashTable(LookupInterface, checkpointable.CheckpointableBase):
           key_dtype=key_dtype,
           value_dtype=value_dtype,
           value_shape=self._default_value.get_shape(),
-          name=name)
+          name=self._name)
+
     if executing_eagerly:
       op_name = None
     else:
       op_name = self._table_ref.op.name.split("/")[-1]
+
     super(MutableHashTable, self).__init__(key_dtype, value_dtype,
                                            op_name)
 
     if checkpoint:
-      saveable = MutableHashTable._Saveable(self, name)
+      saveable = MutableHashTable._Saveable(self, self._name)
       ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def size(self, name=None):
@@ -534,7 +537,7 @@ class MutableDenseHashTable(LookupInterface, checkpointable.CheckpointableBase):
       initial_num_buckets: the initial number of buckets.
       shared_name: If non-empty, this table will be shared under
         the given name across multiple sessions.
-      name: A name for the operation (optional).
+      name: A name for the operation (optional) and uniquified automatically.
       checkpoint: if True, the contents of the table are saved to and restored
         from checkpoints. If `shared_name` is empty for a checkpointed table, it
         is shared using the table node name.
@@ -545,6 +548,7 @@ class MutableDenseHashTable(LookupInterface, checkpointable.CheckpointableBase):
     Raises:
       ValueError: If checkpoint is True and no name was specified.
     """
+    self._name = ops.get_default_graph().unique_name(name)
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=value_dtype, name="default_value")
     self._value_shape = self._default_value.get_shape()
@@ -569,16 +573,18 @@ class MutableDenseHashTable(LookupInterface, checkpointable.CheckpointableBase):
         value_dtype=value_dtype,
         value_shape=self._value_shape,
         initial_num_buckets=initial_num_buckets,
-        name=name)
+        name=self._name)
+
     if executing_eagerly:
       op_name = None
     else:
       op_name = self._table_ref.op.name.split("/")[-1]
+
     super(MutableDenseHashTable, self).__init__(
         key_dtype, value_dtype, op_name)
 
     if checkpoint:
-      saveable = MutableDenseHashTable._Saveable(self, name)
+      saveable = MutableDenseHashTable._Saveable(self, self._name)
       ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
   def size(self, name=None):
