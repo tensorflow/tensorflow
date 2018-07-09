@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import os
 
 import numpy as np
@@ -35,7 +34,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
@@ -933,50 +931,6 @@ class DropoutWrapperTest(test.TestCase):
     self.assertAllClose(res0[0], res1[0])
     self.assertAllClose(res0[1].c, res1[1].c)
     self.assertAllClose(res0[1].h, res1[1].h)
-
-
-class SlimRNNCellTest(test.TestCase):
-
-  def testBasicRNNCell(self):
-    with self.test_session() as sess:
-      with variable_scope.variable_scope(
-          "root", initializer=init_ops.constant_initializer(0.5)):
-        x = array_ops.zeros([1, 2])
-        m = array_ops.zeros([1, 2])
-        my_cell = functools.partial(basic_rnn_cell, num_units=2)
-        # pylint: disable=protected-access
-        g, _ = rnn_cell_impl._SlimRNNCell(my_cell)(x, m)
-        # pylint: enable=protected-access
-        sess.run([variables_lib.global_variables_initializer()])
-        res = sess.run([g], {
-            x.name: np.array([[1., 1.]]),
-            m.name: np.array([[0.1, 0.1]])
-        })
-        self.assertEqual(res[0].shape, (1, 2))
-
-  def testBasicRNNCellMatch(self):
-    batch_size = 32
-    input_size = 100
-    num_units = 10
-    with self.test_session() as sess:
-      with variable_scope.variable_scope(
-          "root", initializer=init_ops.constant_initializer(0.5)):
-        inputs = random_ops.random_uniform((batch_size, input_size))
-        _, initial_state = basic_rnn_cell(inputs, None, num_units)
-        rnn_cell = rnn_cell_impl.BasicRNNCell(num_units)
-        outputs, state = rnn_cell(inputs, initial_state)
-        variable_scope.get_variable_scope().reuse_variables()
-        my_cell = functools.partial(basic_rnn_cell, num_units=num_units)
-        # pylint: disable=protected-access
-        slim_cell = rnn_cell_impl._SlimRNNCell(my_cell)
-        # pylint: enable=protected-access
-        slim_outputs, slim_state = slim_cell(inputs, initial_state)
-        self.assertEqual(slim_outputs.get_shape(), outputs.get_shape())
-        self.assertEqual(slim_state.get_shape(), state.get_shape())
-        sess.run([variables_lib.global_variables_initializer()])
-        res = sess.run([slim_outputs, slim_state, outputs, state])
-        self.assertAllClose(res[0], res[2])
-        self.assertAllClose(res[1], res[3])
 
 
 def basic_rnn_cell(inputs, state, num_units, scope=None):
