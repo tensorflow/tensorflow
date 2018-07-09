@@ -24,7 +24,6 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.contrib.opt.python.training import addsign
 from tensorflow.contrib.opt.python.training import sign_decay
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
