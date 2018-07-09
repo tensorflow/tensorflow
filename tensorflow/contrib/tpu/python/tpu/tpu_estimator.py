@@ -1986,7 +1986,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
       if (config.tpu_config.per_host_input_for_training is
           tpu_config.InputPipelineConfig.PER_SHARD_V1 and
-          config.tpu_config.computation_shape):
+          config.tpu_config.num_cores_per_replica):
         raise ValueError(
             'Model parallelism only supports per host input for training. '
             'Please adjust TPURunconfig.per_host_input_for_training.')
