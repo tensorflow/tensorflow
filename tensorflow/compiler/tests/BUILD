@@ -98,6 +98,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "adagrad_da_test",
+    size = "small",
+    srcs = ["adagrad_da_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "adam_test",
     size = "small",
     srcs = ["adam_test.py"],
@@ -107,6 +120,20 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "adamax_test",
+    size = "small",
+    srcs = ["adamax_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:training",
     ],
 )

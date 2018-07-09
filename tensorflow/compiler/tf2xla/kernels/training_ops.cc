@@ -268,6 +268,83 @@ REGISTER_XLA_OP(
     Name("ResourceApplyProximalAdagrad").TypeConstraint("T", kFloatTypes),
     ResourceApplyProximalAdagrad);
 
+class ResourceApplyAdagradDA : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdagradDA(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, accum_shape, squared_accum_shape;
+    xla::XlaOp var, accum, squared_accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(1, dtype_, &accum_shape, &accum));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype_, &squared_accum_shape,
+                                               &squared_accum));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, var_shape.IsSameSize(squared_accum_shape),
+        errors::InvalidArgument(
+            "var and squared accum do not have the same shape",
+            var_shape.DebugString(), " ", squared_accum_shape.DebugString()));
+
+    TensorShape grad_shape = ctx->InputShape(3);
+    TensorShape lr_shape = ctx->InputShape(4);
+    TensorShape l1_shape = ctx->InputShape(5);
+    TensorShape l2_shape = ctx->InputShape(6);
+    TensorShape global_step_shape = ctx->InputShape(7);
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1_shape),
+                errors::InvalidArgument("l1 is not a scalar: ",
+                                        l1_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2_shape),
+                errors::InvalidArgument("l2 is not a scalar: ",
+                                        l2_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step_shape),
+                errors::InvalidArgument("global step is not a scalar: ",
+                                        global_step_shape.DebugString()));
+
+    xla::XlaOp grad = ctx->Input(3);
+    xla::XlaOp lr = ctx->Input(4);
+    xla::XlaOp l1 = ctx->Input(5);
+    xla::XlaOp l2 = ctx->Input(6);
+    xla::XlaBuilder* const b = ctx->builder();
+    xla::XlaOp global_step =
+        XlaHelpers::ConvertElementType(b, ctx->Input(7), dtype_);
+
+    accum = accum + grad;
+    squared_accum = squared_accum + xla::Square(grad);
+    xla::XlaOp zero = xla::ScalarLike(lr, 0.0);
+    xla::XlaOp denominator = global_step * lr * l2 + xla::Sqrt(squared_accum);
+    xla::XlaOp l1_le_zero = -lr * accum / denominator;
+    xla::XlaOp l1_gt_zero = -lr * xla::Sign(accum) *
+                            xla::Max(xla::Abs(accum) - global_step * l1, zero) /
+                            denominator;
+
+    var = xla::Select(xla::Gt(l1, zero), l1_gt_zero, l1_le_zero);
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, accum));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, dtype_, squared_accum));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyAdagradDA").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdagradDA);
+
 class ResourceApplyAdam : public XlaOpKernel {
  public:
   explicit ResourceApplyAdam(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -352,6 +429,77 @@ class ResourceApplyAdam : public XlaOpKernel {
 };
 REGISTER_XLA_OP(Name("ResourceApplyAdam").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAdam);
+
+class ResourceApplyAdaMax : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdaMax(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, m_shape, v_shape;
+    xla::XlaOp var, m, v;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, dtype_, &m_shape, &m));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype_, &v_shape, &v));
+
+    TensorShape beta1_power_shape = ctx->InputShape(3);
+    TensorShape lr_shape = ctx->InputShape(4);
+    TensorShape beta1_shape = ctx->InputShape(5);
+    TensorShape beta2_shape = ctx->InputShape(6);
+    TensorShape epsilon_shape = ctx->InputShape(7);
+    TensorShape grad_shape = ctx->InputShape(8);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_shape),
+                errors::InvalidArgument("beta1_power is not a scalar: ",
+                                        beta1_power_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar : ",
+                                        lr_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_shape),
+                errors::InvalidArgument("beta1 is not a scalar: ",
+                                        beta1_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_shape),
+                errors::InvalidArgument("beta2 is not a scalar: ",
+                                        beta2_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        m_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(v_shape),
+                errors::InvalidArgument("var and v do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        v_shape.DebugString()));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::XlaOp beta1_power = ctx->Input(3);
+    xla::XlaOp lr = ctx->Input(4);
+    xla::XlaOp beta1 = ctx->Input(5);
+    xla::XlaOp beta2 = ctx->Input(6);
+    xla::XlaOp epsilon = ctx->Input(7);
+    xla::XlaOp grad = ctx->Input(8);
+
+    xla::XlaOp one = xla::ScalarLike(lr, 1.0);
+    m = beta1 * m + (one - beta1) * grad;
+    v = xla::Max(beta2 * v, xla::Abs(grad));
+    var = var - lr / (one - beta1_power) * (m / (v + epsilon));
+
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, dtype_, v));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyAdaMax").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdaMax);
 
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
