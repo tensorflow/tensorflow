@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/AffineExpr.h"
 #include "llvm/ADT/StringRef.h"
 
 using namespace mlir;
@@ -24,3 +25,15 @@ AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
                      AffineExpr *const *results)
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
       results(results) {}
+
+AffineExpr *AffineAddExpr::simplify(AffineExpr *lhs, AffineExpr *rhs,
+                                    MLIRContext *context) {
+  AffineConstantExpr *l, *r;
+  if ((l = dyn_cast<AffineConstantExpr>(lhs)) &&
+      (r = dyn_cast<AffineConstantExpr>(rhs)))
+    return AffineConstantExpr::get(l->getValue() + r->getValue(), context);
+  return nullptr;
+  // TODO(someone): implement more simplification.
+}
+
+// TODO(bondhugula): implement simplify for remaining affine binary op expr's

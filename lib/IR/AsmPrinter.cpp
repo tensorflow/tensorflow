@@ -282,6 +282,8 @@ void Instruction::dump() const {
   print(llvm::errs());
 }
 
+void AffineMap::dump() const { print(llvm::errs()); }
+
 void AffineExpr::dump() const {
   print(llvm::errs());
   llvm::errs() << "\n";
@@ -339,9 +341,6 @@ void AffineExpr::print(raw_ostream &os) const {
     return cast<AffineCeilDivExpr>(this)->print(os);
   case Kind::Mod:
     return cast<AffineModExpr>(this)->print(os);
-  default:
-    os << "<unimplemented expr>";
-    return;
   }
 }
 

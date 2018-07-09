@@ -171,8 +171,7 @@ public:
 
   // Affine binary op expression uniquing. Figure out uniquing of dimensional
   // or symbolic identifiers.
-  DenseMap<std::tuple<unsigned, AffineExpr *, AffineExpr *>,
-           AffineBinaryOpExpr *>
+  DenseMap<std::tuple<unsigned, AffineExpr *, AffineExpr *>, AffineExpr *>
       affineExprs;
 
   /// Integer type uniquing.
@@ -583,68 +582,132 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
   return *existing.first = res;
 }
 
-AffineBinaryOpExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind,
-                                            AffineExpr *lhsOperand,
-                                            AffineExpr *rhsOperand,
-                                            MLIRContext *context) {
+AffineExpr *AffineAddExpr::get(AffineExpr *lhsOperand, AffineExpr *rhsOperand,
+                               MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Check if we already have this affine expression.
-  auto keyValue = std::make_tuple((unsigned)kind, lhsOperand, rhsOperand);
+  auto keyValue = std::make_tuple((unsigned)Kind::Add, lhsOperand, rhsOperand);
   auto *&result = impl.affineExprs[keyValue];
 
   // If we already have it, return that value.
+  if (result)
+    return result;
+
+  // Use the simplified expression if it can be simplified.
+  result = AffineAddExpr::simplify(lhsOperand, rhsOperand, context);
+
   if (!result) {
     // On the first use, we allocate them into the bump pointer.
-    result = impl.allocator.Allocate<AffineBinaryOpExpr>();
+    result = impl.allocator.Allocate<AffineAddExpr>();
 
     // Initialize the memory using placement new.
-    new (result) AffineBinaryOpExpr(kind, lhsOperand, rhsOperand);
+    new (result) AffineAddExpr(lhsOperand, rhsOperand);
   }
   return result;
-}
-
-// TODO(bondhugula): complete uniquing of remaining AffineExpr sub-classes.
-AffineAddExpr *AffineAddExpr::get(AffineExpr *lhsOperand,
-                                  AffineExpr *rhsOperand,
-                                  MLIRContext *context) {
-  return cast<AffineAddExpr>(
-      AffineBinaryOpExpr::get(Kind::Add, lhsOperand, rhsOperand, context));
 }
 
 AffineSubExpr *AffineSubExpr::get(AffineExpr *lhsOperand,
                                   AffineExpr *rhsOperand,
                                   MLIRContext *context) {
-  return cast<AffineSubExpr>(
-      AffineBinaryOpExpr::get(Kind::Sub, lhsOperand, rhsOperand, context));
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine expression.
+  auto keyValue = std::make_tuple((unsigned)Kind::Sub, lhsOperand, rhsOperand);
+  auto *&result = impl.affineExprs[keyValue];
+
+  // If we already have it, return that value.
+  if (!result) {
+    // On the first use, we allocate them into the bump pointer.
+    result = impl.allocator.Allocate<AffineSubExpr>();
+
+    // Initialize the memory using placement new.
+    new (result) AffineSubExpr(lhsOperand, rhsOperand);
+  }
+  return cast<AffineSubExpr>(result);
 }
 
 AffineMulExpr *AffineMulExpr::get(AffineExpr *lhsOperand,
                                   AffineExpr *rhsOperand,
                                   MLIRContext *context) {
-  return cast<AffineMulExpr>(
-      AffineBinaryOpExpr::get(Kind::Mul, lhsOperand, rhsOperand, context));
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine expression.
+  const auto keyValue =
+      std::make_tuple((unsigned)Kind::Mul, lhsOperand, rhsOperand);
+  auto *&result = impl.affineExprs[keyValue];
+
+  // If we already have it, return that value.
+  if (!result) {
+    // On the first use, we allocate them into the bump pointer.
+    result = impl.allocator.Allocate<AffineMulExpr>();
+
+    // Initialize the memory using placement new.
+    new (result) AffineMulExpr(lhsOperand, rhsOperand);
+  }
+  return cast<AffineMulExpr>(result);
 }
 
 AffineFloorDivExpr *AffineFloorDivExpr::get(AffineExpr *lhsOperand,
                                             AffineExpr *rhsOperand,
                                             MLIRContext *context) {
-  return cast<AffineFloorDivExpr>(
-      AffineBinaryOpExpr::get(Kind::FloorDiv, lhsOperand, rhsOperand, context));
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine expression.
+  auto keyValue =
+      std::make_tuple((unsigned)Kind::FloorDiv, lhsOperand, rhsOperand);
+  auto *&result = impl.affineExprs[keyValue];
+
+  // If we already have it, return that value.
+  if (!result) {
+    // On the first use, we allocate them into the bump pointer.
+    result = impl.allocator.Allocate<AffineFloorDivExpr>();
+
+    // Initialize the memory using placement new.
+    new (result) AffineFloorDivExpr(lhsOperand, rhsOperand);
+  }
+  return cast<AffineFloorDivExpr>(result);
 }
 
 AffineCeilDivExpr *AffineCeilDivExpr::get(AffineExpr *lhsOperand,
                                           AffineExpr *rhsOperand,
                                           MLIRContext *context) {
-  return cast<AffineCeilDivExpr>(
-      AffineBinaryOpExpr::get(Kind::CeilDiv, lhsOperand, rhsOperand, context));
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine expression.
+  auto keyValue =
+      std::make_tuple((unsigned)Kind::CeilDiv, lhsOperand, rhsOperand);
+  auto *&result = impl.affineExprs[keyValue];
+
+  // If we already have it, return that value.
+  if (!result) {
+    // On the first use, we allocate them into the bump pointer.
+    result = impl.allocator.Allocate<AffineCeilDivExpr>();
+
+    // Initialize the memory using placement new.
+    new (result) AffineCeilDivExpr(lhsOperand, rhsOperand);
+  }
+  return cast<AffineCeilDivExpr>(result);
 }
 
 AffineModExpr *AffineModExpr::get(AffineExpr *lhsOperand,
                                   AffineExpr *rhsOperand,
                                   MLIRContext *context) {
-  return cast<AffineModExpr>(
-      AffineBinaryOpExpr::get(Kind::Mod, lhsOperand, rhsOperand, context));
+  auto &impl = context->getImpl();
+
+  // Check if we already have this affine expression.
+  auto keyValue = std::make_tuple((unsigned)Kind::Mod, lhsOperand, rhsOperand);
+  auto *&result = impl.affineExprs[keyValue];
+
+  // If we already have it, return that value.
+  if (!result) {
+    // On the first use, we allocate them into the bump pointer.
+    result = impl.allocator.Allocate<AffineModExpr>();
+
+    // Initialize the memory using placement new.
+    new (result) AffineModExpr(lhsOperand, rhsOperand);
+  }
+  return cast<AffineModExpr>(result);
 }
 
 AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
