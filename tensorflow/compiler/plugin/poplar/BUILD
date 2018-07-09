@@ -245,6 +245,14 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "test_utils",
+    srcs = [],
+    hdrs = [
+        "tests/test_utils.h",
+    ],
+)
+
 tf_cc_test(
     name = "graph_compile_io_map_test",
     srcs = ["tests/graph_compile_io_map_test.cc"],
@@ -329,6 +337,7 @@ tf_cc_test(
     srcs = ["tests/expression_outliner_test.cc"],
     deps = [
         ":optimizers",
+        ":test_utils",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
     ],

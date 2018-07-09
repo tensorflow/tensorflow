@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
+#include "tensorflow/compiler/plugin/poplar/tests/test_utils.h"
 
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
@@ -173,10 +174,10 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeInDAG) {
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, in3, in4));
   auto sin = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kSin, add_in1_in2));
-  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kAdd, add_in1_in2, add_in3_in4));
   auto sub = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, sin, mul));
+      HloInstruction::CreateBinary(shape, HloOpcode::kSubtract, sin, add));
   builder.AddInstruction(HloInstruction::CreateTuple({sub}));
 
   auto computation = builder.Build();
@@ -194,8 +195,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeInDAG) {
   EXPECT_THAT(comp->instruction_count(), 7);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(0)->operand_count(), 3);
-  EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
-  EXPECT_THAT(inst->operand(0)->operand(2)->opcode(), HloOpcode::kAdd);
+  EXPECT_TRUE(HasOperand(inst->operand(0), add_in1_in2));
 }
 
 // Don't outline op 'b' where 'X' is not part of the outline (only outline c+d)
