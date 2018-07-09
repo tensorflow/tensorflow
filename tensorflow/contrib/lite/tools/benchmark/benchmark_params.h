@@ -31,6 +31,8 @@ class TypedBenchmarkParam;
 class BenchmarkParam {
  protected:
   enum class ParamType { TYPE_INT32, TYPE_FLOAT, TYPE_BOOL, TYPE_STRING };
+  template <typename T>
+  static ParamType GetValueType();
 
  public:
   template <typename T>
@@ -46,8 +48,6 @@ class BenchmarkParam {
   }
   virtual ~BenchmarkParam() {}
   BenchmarkParam(ParamType type) : type_(type) {}
-  template <typename T>
-  static ParamType GetValueType();
 
  private:
   static void AssertHasSameType(ParamType a, ParamType b);
