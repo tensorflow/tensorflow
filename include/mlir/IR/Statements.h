@@ -24,6 +24,9 @@
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/PointerUnion.h"
+
+#include "mlir/IR/Operation.h"
+
 #include <vector>
 
 namespace mlir {
@@ -62,6 +65,19 @@ protected:
 private:
   Kind kind;
   ParentType parent;
+};
+
+/// Operation statements represent operations inside ML functions.
+class OperationStmt : public Operation, public Statement {
+public:
+  explicit OperationStmt(ParentType parent, Identifier name,
+                         ArrayRef<NamedAttribute> attrs, MLIRContext *context)
+      : Operation(name, attrs, context), Statement(Kind::Operation, parent) {}
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Statement *stmt) {
+    return stmt->getKind() == Kind::Operation;
+  }
 };
 
 /// Node statement represents a statement that may contain other statements.
