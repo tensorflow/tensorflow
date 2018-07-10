@@ -706,7 +706,7 @@ class _EagerTensorBase(Tensor):
     """
     if self.dtype == dtypes.resource:
       raise ValueError("Resource handles are not convertible to numpy.")
-    return self.cpu()._numpy()  # pylint: disable=protected-access
+    return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
 
   # __int__ and  __float__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
@@ -780,8 +780,8 @@ class _EagerTensorBase(Tensor):
   def _override_operator(name, func):
     setattr(_EagerTensorBase, name, func)
 
-  def _copy(self, ctx=None, device_name=None):
-    """Copies tensor to dest device."""
+  def _copy_nograd(self, ctx=None, device_name=None):
+    """Copies tensor to dest device, but doesn't record the operation."""
     # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
@@ -793,7 +793,11 @@ class _EagerTensorBase(Tensor):
       new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
+    return new_tensor
 
+  def _copy(self, ctx=None, device_name=None):
+    """Copies tensor to dest device."""
+    new_tensor = self._copy_nograd(ctx, device_name)
     # Record the copy on tape and define backprop copy as well.
     if context.executing_eagerly():
       self_device = self.device
@@ -823,6 +827,16 @@ class _EagerTensorBase(Tensor):
   def ndim(self):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
+
+  def _cpu_nograd(self):
+    """A copy of this Tensor with contents backed by host memory.
+
+    The copy cannot be differentiated through.
+
+    Returns:
+      A CPU-memory backed Tensor object with the same contents as this Tensor.
+    """
+    return self._copy_nograd(context.context(), "CPU:0")
 
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
