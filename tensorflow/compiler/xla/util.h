@@ -500,7 +500,7 @@ bool c_is_sorted(const C& c, Compare&& comp) {
 }
 
 template <typename C>
-auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
+auto c_adjacent_find(C& c) -> decltype(std::begin(c)) {
   return std::adjacent_find(std::begin(c), std::end(c));
 }
 
@@ -510,7 +510,7 @@ auto c_find_if(C& c, Pred&& pred) -> decltype(std::begin(c)) {
 }
 
 template <typename C, typename Value>
-auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
+auto c_find(C& c, Value&& value) -> decltype(std::begin(c)) {
   return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
 }
 
