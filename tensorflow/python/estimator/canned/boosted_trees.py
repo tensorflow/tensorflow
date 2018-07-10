@@ -669,6 +669,8 @@ def _bt_model_fn(
                   name='wait_until_n_batches_for_bias_accumulated')
 
               return center_bias_op
+            else:
+              return control_flow_ops.no_op()
 
         def grow_not_in_mem():
           """Accumulates the data and grows a layer when ready."""
@@ -715,6 +717,8 @@ def _bt_model_fn(
                   name='wait_until_n_batches_accumulated')
 
               return grow_model
+            else:
+              return control_flow_ops.no_op()
 
         update_model = control_flow_ops.cond(
             center_bias_var, center_bias_not_in_mem, grow_not_in_mem)
