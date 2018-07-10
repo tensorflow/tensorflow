@@ -282,22 +282,24 @@ class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
-class FakeQuant : public CustomOperator<FakeQuantOperator> {
+class FakeQuant
+    : public BuiltinOperator<FakeQuantOperator, ::tflite::FakeQuantOptions,
+                             ::tflite::BuiltinOptions_FakeQuantOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Float("min", op.minmax->min);
-    fbb->Float("max", op.minmax->max);
-    fbb->Int("num_bits", op.num_bits);
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateFakeQuantOptions(*builder, op.minmax->min,
+                                            op.minmax->max, op.num_bits);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
     auto* minmax = new MinMax;
-    minmax->min = m["min"].AsFloat();
-    minmax->max = m["max"].AsFloat();
+    minmax->min = options.min();
+    minmax->max = options.max();
     op->minmax.reset(minmax);
-    const auto& num_bits = m["num_bits"];
-    op->num_bits = num_bits.IsInt() ? num_bits.AsInt32() : 8;
+    op->num_bits = options.num_bits();
   }
 
   int GetVersion(const Operator& op) const override { return 1; }
@@ -1205,11 +1207,12 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                      OperatorType::kSparseToDense));
   ops.emplace_back(
       new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
+  ops.emplace_back(new FakeQuant(::tflite::BuiltinOperator_FAKE_QUANT,
+                                 OperatorType::kFakeQuant));
 
   // Custom Operators.
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
-  ops.emplace_back(new FakeQuant("FAKE_QUANT", OperatorType::kFakeQuant));
   ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
                                              OperatorType::kUnsupported));
 

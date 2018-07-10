@@ -103,6 +103,7 @@ TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
 TfLiteRegistration* Register_POW();
+TfLiteRegistration* Register_FAKE_QUANT();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -189,6 +190,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
+  AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

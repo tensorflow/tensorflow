@@ -161,6 +161,7 @@ enum BuiltinOperator : byte {
   SHAPE = 77,
   POW = 78,
   ARG_MIN = 79,
+  FAKE_QUANT = 80,
 }
 
 // Options for the builtin operators.
@@ -222,6 +223,7 @@ union BuiltinOptions {
   ShapeOptions,
   PowOptions,
   ArgMinOptions,
+  FakeQuantOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -521,6 +523,12 @@ table ShapeOptions {
 }
 
 table PowOptions {
+}
+
+table FakeQuantOptions {
+  min:float;
+  max:float;
+  num_bits:int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
