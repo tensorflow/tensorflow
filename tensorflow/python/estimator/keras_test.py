@@ -480,6 +480,12 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         'DepthwiseConv2D': mobilenet.DepthwiseConv2D
     }
 
+    with self.assertRaisesRegexp(ValueError, 'DepthwiseConv2D'):
+      with self.test_session():
+        keras_lib.model_to_estimator(
+            keras_model=keras_mobile,
+            model_dir=tempfile.mkdtemp(dir=self._base_dir))
+
     with self.test_session():
       keras_lib.model_to_estimator(
           keras_model=keras_mobile,
