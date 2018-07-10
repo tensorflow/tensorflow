@@ -1528,7 +1528,6 @@ bool HloInstruction::IdenticalSlowPath(
       return true;
 
     // These opcodes have complex or special behavior so just return false.
-    case HloOpcode::kDomain:
     case HloOpcode::kWhile:
     case HloOpcode::kAfterAll:
       return false;
@@ -1549,6 +1548,10 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());
+
+    case HloOpcode::kDomain:
+      return operand_side_metadata().Matches(other.operand_side_metadata()) &&
+             user_side_metadata().Matches(other.user_side_metadata());
 
     // Ops migrated to subclasses should never come to this line.
     // TODO(b/80131774): Remove this switch when migration is complete.
