@@ -882,7 +882,6 @@ tf_kernel_library(
         "tile_functor_gpu.cu.cc",
     ],
     prefix = "tile_ops",
-    textual_hdrs = ["tile_ops_gpu_impl.h"],
     deps = ARRAY_DEPS,
 )
 
