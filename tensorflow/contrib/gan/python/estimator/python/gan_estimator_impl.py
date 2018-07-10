@@ -53,9 +53,6 @@ _summary_type_map = {
 }
 
 
-# TODO(joelshor): For now, this only supports 1:1 generator:discriminator
-# training sequentially. Find a nice way to expose options to the user without
-# exposing internals.
 class GANEstimator(estimator.Estimator):
   """An estimator for Generative Adversarial Networks (GANs).
 
@@ -217,14 +214,11 @@ def _gan_model_fn(
   real_data = labels
   generator_inputs = features
 
-  if mode == model_fn_lib.ModeKeys.TRAIN:
-    gan_model = _make_train_gan_model(
+  if (mode == model_fn_lib.ModeKeys.TRAIN or
+      mode == model_fn_lib.ModeKeys.EVAL):
+    gan_model = _make_gan_model(
         generator_fn, discriminator_fn, real_data, generator_inputs,
-        generator_scope_name, add_summaries)
-  elif mode == model_fn_lib.ModeKeys.EVAL:
-    gan_model = _make_eval_gan_model(
-        generator_fn, discriminator_fn, real_data, generator_inputs,
-        generator_scope_name, add_summaries)
+        generator_scope_name, add_summaries, mode)
   else:
     if real_data is not None:
       raise ValueError('`labels` must be `None` when mode is `predict`. '
@@ -262,22 +256,6 @@ def _make_gan_model(generator_fn, discriminator_fn, real_data,
         _summary_type_map[summary_type](gan_model)
 
   return gan_model
-
-
-def _make_train_gan_model(generator_fn, discriminator_fn, real_data,
-                          generator_inputs, generator_scope, add_summaries):
-  """Make a `GANModel` for training."""
-  return _make_gan_model(generator_fn, discriminator_fn, real_data,
-                         generator_inputs, generator_scope, add_summaries,
-                         model_fn_lib.ModeKeys.TRAIN)
-
-
-def _make_eval_gan_model(generator_fn, discriminator_fn, real_data,
-                         generator_inputs, generator_scope, add_summaries):
-  """Make a `GANModel` for evaluation."""
-  return _make_gan_model(generator_fn, discriminator_fn, real_data,
-                         generator_inputs, generator_scope, add_summaries,
-                         model_fn_lib.ModeKeys.EVAL)
 
 
 def _make_prediction_gan_model(generator_inputs, generator_fn, generator_scope):
