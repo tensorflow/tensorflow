@@ -87,6 +87,7 @@ from tensorflow.python.keras.layers import Dropout
 from tensorflow.python.keras.layers import GlobalAveragePooling2D
 from tensorflow.python.keras.layers import GlobalMaxPooling2D
 from tensorflow.python.keras.layers import Input
+from tensorflow.python.keras.layers import ReLU
 from tensorflow.python.keras.layers import Reshape
 from tensorflow.python.keras.layers import ZeroPadding2D
 from tensorflow.python.keras.models import Model
@@ -98,10 +99,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 BASE_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.6/'
-
-
-def relu6(x):
-  return K.relu(x, max_value=6)
 
 
 @tf_export('keras.applications.mobilenet.preprocess_input')
@@ -129,12 +126,6 @@ def MobileNet(input_shape=None,
               pooling=None,
               classes=1000):
   """Instantiates the MobileNet architecture.
-
-  To load a MobileNet model via `load_model`, import the custom
-  objects `relu6` and pass them to the `custom_objects` parameter.
-  E.g.
-  model = load_model('mobilenet.h5', custom_objects={
-                     'relu6': mobilenet.relu6})
 
   Arguments:
       input_shape: optional shape tuple, only to be specified
@@ -412,7 +403,7 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
       strides=strides,
       name='conv1')(x)
   x = BatchNormalization(axis=channel_axis, name='conv1_bn')(x)
-  return Activation(relu6, name='conv1_relu')(x)
+  return ReLU(6, name='conv1_relu')(x)
 
 
 def _depthwise_conv_block(inputs,
@@ -479,7 +470,7 @@ def _depthwise_conv_block(inputs,
       use_bias=False,
       name='conv_dw_%d' % block_id)(x)
   x = BatchNormalization(axis=channel_axis, name='conv_dw_%d_bn' % block_id)(x)
-  x = Activation(relu6, name='conv_dw_%d_relu' % block_id)(x)
+  x = ReLU(6, name='conv_dw_%d_relu' % block_id)(x)
 
   x = Conv2D(
       pointwise_conv_filters, (1, 1),
@@ -489,4 +480,4 @@ def _depthwise_conv_block(inputs,
       name='conv_pw_%d' % block_id)(
           x)
   x = BatchNormalization(axis=channel_axis, name='conv_pw_%d_bn' % block_id)(x)
-  return Activation(relu6, name='conv_pw_%d_relu' % block_id)(x)
+  return ReLU(6, name='conv_pw_%d_relu' % block_id)(x)
