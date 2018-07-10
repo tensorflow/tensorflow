@@ -103,6 +103,57 @@ def _SparseTensorDenseAddGrad(op, out_grad):
   return (None, array_ops.gather_nd(out_grad, sp_indices), None, out_grad)
 
 
+def _SparseReduceMinOrMaxGrad(op, out_grad):
+  sp_indices = op.inputs[0]
+  sp_values = op.inputs[1]
+  sp_shape = op.inputs[2]
+  reduction_axes = op.inputs[3]
+  output = op.outputs[0]
+    
+  # Handle keepdims
+  output_shape_kept_dims = math_ops.reduced_shape(sp_shape, op.inputs[3])
+  out_grad = array_ops.reshape(out_grad, output_shape_kept_dims)
+  output = array_ops.reshape(output, output_shape_kept_dims)
+    
+  # Map input and output coefficients
+  scale = sp_shape // math_ops.to_int64(output_shape_kept_dims)
+  scaled_indices = sp_indices // scale
+    
+  # Map pooled values with corresponding max/min values
+  sp_max_val = array_ops.gather_nd(output, scaled_indices)
+  indicators = math_ops.cast(math_ops.equal(sp_values, sp_max_val), out_grad.dtype)
+  grad_values = array_ops.gather_nd(out_grad, scaled_indices)
+    
+  # Compute the number of selected (maximum or minimum) elements in each
+  # reduction dimension. If there are multiple minimum or maximum elements
+  # then the gradient will be divided between them. 
+  # (same as for MaxGrad)
+  sp_indicators = sparse_tensor.SparseTensor(sp_indices,
+                                             indicators,
+                                             sp_shape)
+  num_selected = array_ops.gather_nd(
+      sparse_ops.sparse_reduce_sum(sp_indicators,
+                                   axis=reduction_axes,
+                                   keep_dims=True),
+      scaled_indices
+  )
+    
+  # (input_indices, input_values, input_shape, reduction_axes)
+  return [None,
+          math_ops.div(indicators, math_ops.maximum(num_selected, 1)) * grad_values,
+          None, None]
+
+
+@ops.RegisterGradient("SparseReduceMin")
+def _SpareReduceMinGrad(op, out_grad):
+  return _SparseReduceMinOrMaxGrad(op, out_grad)
+
+
+@ops.RegisterGradient("SparseReduceMax")
+def _SpareReduceMaxGrad(op, out_grad):
+  return _SparseReduceMinOrMaxGrad(op, out_grad)
+
+
 @ops.RegisterGradient("SparseReduceSum")
 def _SparseReduceSumGrad(op, out_grad):
   """Similar to gradient for the Sum Op (i.e. tf.reduce_sum())."""
