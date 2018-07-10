@@ -267,6 +267,12 @@ typedef struct {
   TfLiteType out_type;
 } TfLiteShapeParams;
 
+typedef struct {
+  float min;
+  float max;
+  int num_bits;
+} TfLiteFakeQuantParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

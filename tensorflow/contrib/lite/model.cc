@@ -709,6 +709,16 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
     }
+    case BuiltinOperator_FAKE_QUANT: {
+      auto* params = MallocPOD<TfLiteFakeQuantParams>();
+      if (auto* schema_params = op->builtin_options_as_FakeQuantOptions()) {
+        params->min = schema_params->min();
+        params->max = schema_params->max();
+        params->num_bits = schema_params->num_bits();
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
