@@ -1404,6 +1404,10 @@ class PartitionedVariable(object):
   def dtype(self):
     return self._dtype
 
+  @property
+  def shape(self):
+    return self.get_shape()
+
   def get_shape(self):
     return self._shape
 
