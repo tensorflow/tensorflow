@@ -72,13 +72,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import constraints
-from tensorflow.python.keras import initializers
-from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras.applications.imagenet_utils import decode_predictions
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.layers import Activation
 from tensorflow.python.keras.layers import BatchNormalization
 from tensorflow.python.keras.layers import Conv2D
@@ -91,7 +87,6 @@ from tensorflow.python.keras.layers import ReLU
 from tensorflow.python.keras.layers import Reshape
 from tensorflow.python.keras.layers import ZeroPadding2D
 from tensorflow.python.keras.models import Model
-from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
