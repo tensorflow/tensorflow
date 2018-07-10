@@ -31,11 +31,19 @@ REGISTER_OP("SymbolicGradient")
       if (c->num_inputs() < c->num_outputs()) {
         return errors::InvalidArgument("len(inputs) < len(outputs)");
       }
+      std::vector<DataType> types;
+      TF_RETURN_IF_ERROR(c->GetAttr("Tin", &types));
       // Say, (u, v) = f(x, y, z), _symbolic_gradient(f) is a function of
       // (x, y, z, du, dv) -> (dx, dy, dz). Therefore, shapes of its
       // outputs (dx, dy, dz) are the same as (x, y, z).
       for (int i = 0; i < c->num_outputs(); ++i) {
-        c->set_output(i, c->input(i));
+        if (types[i] == DT_RESOURCE) {
+          const std::vector<shape_inference::ShapeAndType>* handle_type =
+              c->input_handle_shapes_and_types(i);
+          c->set_output(i, handle_type->at(0).shape);
+        } else {
+          c->set_output(i, c->input(i));
+        }
       }
       return Status::OK();
     });
@@ -83,7 +91,7 @@ REGISTER_OP("If")
     .Output("output: Tout")
     .Attr("Tcond: type")
     .Attr("Tin: list(type) >= 0")
-    .Attr("Tout: list(type)")
+    .Attr("Tout: list(type) >= 0")
     .Attr("then_branch: func")
     .Attr("else_branch: func")
     .SetShapeFn(shape_inference::UnknownShape);
@@ -145,13 +153,21 @@ REGISTER_OP("For")
     .Attr("body: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
-// TODO(b/73826847, b/37549631) Mark as stateful.
 REGISTER_OP("PartitionedCall")
     .Input("args: Tin")
     .Output("output: Tout")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("StatefulPartitionedCall")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("f: func")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
 // This op is used as a placeholder in If branch functions. It doesn't provide a

@@ -22,69 +22,112 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
+#include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
+
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
+static const char* kInputPHName = "InputPH_";
+static const char* kOutputPHName = "OutputPH_";
 namespace convert {
 
+// TODO(aaroey): use an enum instead.
 const int FP32MODE = 0;
 const int FP16MODE = 1;
 const int INT8MODE = 2;
 
-struct SubGraphParams {
-  SubGraphParams(
-      tensorflow::Graph& inp_graph,
-      const std::set<int>& subgraph_node_id_numbers,
-      const std::vector<std::pair<int, int>>& input_indices,
-      const std::vector<std::pair<int, int>>& output_indices,
-      size_t max_supported_batch_size, size_t max_consumed_workspace_size_bytes,
-      const tensorflow::grappler::GraphProperties& current_graph_properties,
-      std::unordered_map<string, std::pair<int, string>>* output_edges,
-      tensorflow::NodeDef* constructed_trt_node,
-      int engine_precision_mode = FP32MODE, const string& device_name = "",
-      std::shared_ptr<nvinfer1::IGpuAllocator> allocator = nullptr,
-      int cuda_gpu_id = 0)
-      : graph(inp_graph),
-        subgraph_node_ids(subgraph_node_id_numbers),
-        input_inds(input_indices),
-        output_inds(output_indices),
-        max_batch_size(max_supported_batch_size),
-        max_workspace_size_bytes(max_consumed_workspace_size_bytes),
-        graph_properties(current_graph_properties),
-        output_edge_map(output_edges),
-        trt_node(constructed_trt_node),
-        precision_mode(engine_precision_mode),
-        device_name_(device_name),
-        allocator_(allocator),
-        cuda_gpu_id_(cuda_gpu_id) {}
+struct EngineConnection {
+  EngineConnection(const string& outside, int out_id, int out_port,
+                   const string& inside, int in_id, int in_port,
+                   bool input_edge, int port)
+      : outside_node_name(outside),
+        outside_id(out_id),
+        outside_port(out_port),
+        inside_node_name(inside),
+        inside_id(in_id),
+        inside_port(in_port),
+        is_input_edge(input_edge),
+        port_number(port) {}
 
-  tensorflow::Graph& graph;
-  const std::set<int>& subgraph_node_ids;
-  const std::vector<std::pair<int, int>>& input_inds;   // {node_id, output_idx}
-  const std::vector<std::pair<int, int>>& output_inds;  // {node_id, output_idx}
-  size_t max_batch_size;
-  size_t max_workspace_size_bytes;
-  const tensorflow::grappler::GraphProperties& graph_properties;
-  std::unordered_map<string, std::pair<int, string>>* output_edge_map;
-  tensorflow::NodeDef* trt_node;
-  const int precision_mode;
-  const string device_name_;
-  std::shared_ptr<nvinfer1::IGpuAllocator> allocator_;
-  const int cuda_gpu_id_;
+  const string outside_node_name;
+  const int outside_id;
+  const int outside_port;
+  tensorflow::PartialTensorShape outside_shape;
+
+  const string inside_node_name;
+  const int inside_id;
+  const int inside_port;
+  tensorflow::PartialTensorShape inside_shape;
+
+  tensorflow::DataType connection_type;
+  bool is_input_edge;
+
+  // The port number of the TRT node connecting to this edge.
+  int port_number;
 };
 
-// TODO(sami): Replace references with const reference or pointers
-tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
-tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
-tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
-                                                      tensorflow::Node* c_node);
+struct EngineInfo {
+  EngineInfo()
+      : engine_type(EngineType::TRTStatic),
+        max_workspace_size_bytes(0),
+        precision_mode(FP32MODE) {}
+
+  string engine_name;
+  string device;
+  tensorflow::GraphDef segment_graph_def;
+
+  // The segment nodes that are on one side of the edges are topological sorted.
+  std::vector<EngineConnection> connections;
+
+  enum class EngineType { TRTStatic = 0, TRTDynamic = 1 };
+  EngineType engine_type;
+  int64 max_workspace_size_bytes;
+  int maximum_cached_engines;
+  std::vector<int> cached_engine_batches;
+  int precision_mode;
+};
+
+// Constructs a graphdef from the segment in the given graph. Adds placeholder
+// nodes for input edges (InputPH_*) and identity nodes for output edges
+// (OutputPH_*). This function needs to be called before TensorRT nodes
+// inserted in order to correctly get sizes from the original graph.
+//
+// - subgraph_node_ids: the node ids of the subgraph, must be sorted in
+//   topological order.
+// - segment_def: the output GraphDef, whose non-input/output nodedefs will be
+//   sorted in topological order.
+tensorflow::Status ConvertSegmentToGraphDef(
+    const tensorflow::Graph* graph,
+    const tensorflow::grappler::GraphProperties& graph_properties,
+    const std::vector<int>& subgraph_node_ids,
+    std::vector<EngineConnection>* connections,
+    tensorflow::GraphDef* segment_def, string* common_scope);
+
+// Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
+// 'builder' successfully build the engine. If the result is not ok, 'engine'
+// will be set to nullptr
+// Once returned, 'builder' is not needed any more and can be safely detroyed.
+//
+// - convert_successfully: indicates whether the converson to TensorRT network
+//   is successful. This is different than successfully building the engine:
+//   building can still fail afterwards.
+tensorflow::Status ConvertGraphDefToEngine(
+    const tensorflow::GraphDef& gdef, int precision_mode, int max_batch_size,
+    size_t max_workspace_size_bytes,
+    const std::vector<tensorflow::PartialTensorShape>& input_shapes,
+    Logger* logger, nvinfer1::IGpuAllocator* allocator,
+    TRTInt8Calibrator* calibrator,
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
+    bool* convert_successfully);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

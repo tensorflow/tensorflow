@@ -520,7 +520,12 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
         }
       } else {
         any_gradient_nonzero = true;
-        auto new_gradients = vspace.AggregateGradients(grad_it->second);
+        Gradient* new_gradients = nullptr;
+        if (grad_it->second.size() == 1) {
+          new_gradients = grad_it->second.at(0);
+        } else {
+          new_gradients = vspace.AggregateGradients(grad_it->second);
+        }
         if (sources_set.find(grad_it->first) == sources_set.end()) {
           gradients.erase(grad_it);
         } else {

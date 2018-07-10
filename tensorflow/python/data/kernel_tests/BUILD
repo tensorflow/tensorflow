@@ -349,6 +349,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
+        "//tensorflow/python/compat:compat",
     ],
     grpc_enabled = True,
 )

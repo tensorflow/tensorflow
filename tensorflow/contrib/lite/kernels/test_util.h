@@ -126,8 +126,10 @@ class SingleOpModel {
   SingleOpModel& operator=(const SingleOpModel&) = delete;
 
   // Add a TensorType input tensor and return its index.
-  int AddInput(TensorType type) { return AddInput(TensorData{type}); }
-  int AddInput(const TensorData& t);
+  int AddInput(TensorType type, bool is_variable = false) {
+    return AddInput(TensorData{type}, is_variable);
+  }
+  int AddInput(const TensorData& t, bool is_variable = false);
 
   // Templated version of AddConstInput().
   template <typename T>
@@ -146,20 +148,18 @@ class SingleOpModel {
   int AddOutput(const TensorData& t);
 
   template <typename T>
-  void QuantizeAndPopulate(int index, std::initializer_list<float> data) {
+  void QuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto q = Quantize<T>(data, t->params.scale, t->params.zero_point);
     PopulateTensor(index, 0, q.data(), q.data() + q.size());
   }
 
-  void SymmetricQuantizeAndPopulate(int index,
-                                    std::initializer_list<float> data) {
+  void SymmetricQuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
-    std::vector<float> values(data);
-    const int length = values.size();
+    const int length = data.size();
     std::vector<int8_t> q(length);
     float min, max, scaling_factor;
-    tensor_utils::SymmetricQuantizeFloats(values.data(), length, q.data(), &min,
+    tensor_utils::SymmetricQuantizeFloats(data.data(), length, q.data(), &min,
                                           &max, &scaling_factor);
     // Update quantization params.
     t->params.scale = scaling_factor;
@@ -196,8 +196,22 @@ class SingleOpModel {
   }
 
   // Populate the tensor given its index.
+  // TODO(b/110696148) clean up and merge with vector-taking variant below.
   template <typename T>
-  void PopulateTensor(int index, std::initializer_list<T> data) {
+  void PopulateTensor(int index, const std::initializer_list<T>& data) {
+    T* v = interpreter_->typed_tensor<T>(index);
+    CHECK(v) << "No tensor with index '" << index << "'.";
+    for (T f : data) {
+      *v = f;
+      ++v;
+    }
+  }
+
+  // Populate the tensor given its index.
+  // TODO(b/110696148) clean up and merge with initializer_list-taking variant
+  // above.
+  template <typename T>
+  void PopulateTensor(int index, const std::vector<T>& data) {
     T* v = interpreter_->typed_tensor<T>(index);
     CHECK(v) << "No tensor with index '" << index << "'.";
     for (T f : data) {
@@ -260,7 +274,8 @@ class SingleOpModel {
   }
 
   template <typename T>
-  int AddTensor(TensorData t, std::initializer_list<T> data) {
+  int AddTensor(TensorData t, std::initializer_list<T> data,
+                bool is_variable = false) {
     int id = tensors_.size();
 
     // This is slightly different depending on whether we are adding a
@@ -277,6 +292,9 @@ class SingleOpModel {
         } else if (t.type == TensorType_INT32) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int32_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT16) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int16_t>(t.min, t.max);
         } else {
           LOG(FATAL) << "No support for the requested quantized type";
         }
@@ -309,7 +327,7 @@ class SingleOpModel {
     tensors_.push_back(CreateTensor(builder_,
                                     builder_.CreateVector<int>(t.shape), t.type,
                                     /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params));
+                                    /*name=*/0, q_params, is_variable));
 
     tensor_data_[id] = t;
 

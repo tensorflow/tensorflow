@@ -1093,12 +1093,13 @@ void MaybeDumpModule(const string& message, const HloModule& module) {
 }  // namespace
 
 Status RemoveUnnecessaryCopies(
-    const HloOrdering& ordering,
-    const tensorflow::gtl::FlatSet<int>& copies_to_exclude, HloModule* module) {
+    const HloOrdering& ordering, HloModule* module,
+    const HloDataflowAnalysis::FusionCanShareBufferFunction&
+        fusion_can_share_buffer) {
   MaybeDumpModule("after adding copies to resolve interference", *module);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module));
+                      HloAliasAnalysis::Run(module, fusion_can_share_buffer));
   CopyRemover copy_remover(*alias_analysis, ordering, module);
   XLA_VLOG_LINES(3, copy_remover.ToString());
 
@@ -1106,7 +1107,6 @@ Status RemoveUnnecessaryCopies(
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kCopy &&
-          !ContainsKey(copies_to_exclude, instruction->unique_id()) &&
           instruction->CopyElisionAllowed()) {
         TF_RETURN_IF_ERROR(copy_remover.TryElideCopy(instruction).status());
       }
@@ -1150,16 +1150,13 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         "Call graph must be flattened before copy insertion.");
   }
 
-  // Gather Ids of existing kCopy instructions in the module. We avoid removing
-  // these copies (except via DCE in TupleSimplifier) because they may have been
-  // added for reasons not considered by copy insertion (eg, layout assignment).
-  // Instruction id is used instead of HloInstruction* because the pointer
-  // values may be recycled.
-  tensorflow::gtl::FlatSet<int> existing_copies;
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCopy) {
-        existing_copies.insert(instruction->unique_id());
+  int64 num_existing_copies = 0;
+  if (VLOG_IS_ON(1)) {
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kCopy) {
+          ++num_existing_copies;
+        }
       }
     }
   }
@@ -1179,8 +1176,7 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   TF_DCHECK_OK(VerifyNoLiveRangeInterference(module));
 
   DependencyHloOrdering ordering(module);
-  TF_RETURN_IF_ERROR(
-      RemoveUnnecessaryCopies(ordering, existing_copies, module));
+  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, module));
 
   TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, module));
 
@@ -1201,7 +1197,7 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         }
       }
     }
-    VLOG(1) << "Num copies before copy-insertion: " << existing_copies.size();
+    VLOG(1) << "Num copies before copy-insertion: " << num_existing_copies;
     VLOG(1) << "Num copies after copy-insertion: " << num_total_copies;
   }
 

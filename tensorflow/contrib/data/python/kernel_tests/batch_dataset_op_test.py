@@ -23,7 +23,6 @@ import time
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import batching
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
@@ -294,7 +293,7 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
               ph2: np.arange(8).astype(np.int32)
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        print(sess.run(next_element))
+        sess.run(next_element)
 
       # No 0th dimension (i.e. scalar value) for one component.
       sess.run(
@@ -304,7 +303,7 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
               ph2: 7
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        print(sess.run(next_element))
+        sess.run(next_element)
 
   def testBatchAndDropRemainder(self):
     components = (np.arange(7),
@@ -642,173 +641,79 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
                                    "number of elements does not match"):
         sess.run(get_next)
 
+  def testMapAndBatchImplicitDispose(self):
+    # Tests whether a map and batch dataset will be cleaned up correctly when
+    # the pipeline does not run it until exhaustion.
+    # The pipeline is TensorSliceDataset -> RepeatDataset(1000) ->
+    # MapAndBatchDataset(f=square_3, batch_size=100).
+    components = (np.arange(1000),
+                  np.array([[1, 2, 3]]) * np.arange(1000)[:, np.newaxis],
+                  np.array(37.0) * np.arange(1000))
 
-class BatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
-    components = (
-        np.arange(tensor_slice_len),
-        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
-        np.array(multiplier) * np.arange(tensor_slice_len))
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
+        1000).apply(batching.map_and_batch(_map_fn, batch_size=100))
+    dataset = dataset.prefetch(5)
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
 
-    return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
+    with self.test_session() as sess:
+      for _ in range(3):
+        sess.run(get_next)
 
-  def testCore(self):
-    tensor_slice_len = 8
-    batch_size = 2
-    num_outputs = tensor_slice_len // batch_size
-    self.run_core_tests(
-        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
-        num_outputs)
+  @parameterized.parameters(0, 5, 10, 90, 95, 99)
+  def testMapAndBatchOutOfRangeError(self, threshold):
 
-  def _build_dataset_dense_to_sparse(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).map(
-        lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12]))
+    def raising_py_fn(i):
+      if i >= threshold:
+        raise StopIteration()
+      else:
+        return i
 
-  def testDenseToSparseBatchDatasetCore(self):
-    components = np.random.randint(5, size=(40,)).astype(np.int32)
-    diff_comp = np.random.randint(2, size=(100,)).astype(np.int32)
+    iterator = (
+        dataset_ops.Dataset.range(100).apply(
+            batching.map_and_batch(
+                lambda x: script_ops.py_func(raising_py_fn, [x], dtypes.int64),
+                batch_size=10)).make_one_shot_iterator())
+    get_next = iterator.get_next()
 
-    num_outputs = len(components) // 4
-    self.run_core_tests(lambda: self._build_dataset_dense_to_sparse(components),
-                        lambda: self._build_dataset_dense_to_sparse(diff_comp),
-                        num_outputs)
+    with self.test_session() as sess:
+      for i in range(threshold // 10):
+        self.assertAllEqual([i * 10 + j for j in range(10)], sess.run(get_next))
+      if threshold % 10 != 0:
+        self.assertAllEqual(
+            [threshold // 10 * 10 + j for j in range(threshold % 10)],
+            sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
-  def _sparse(self, i):
-    return sparse_tensor.SparseTensorValue(
-        indices=[[0]], values=(i * [1]), dense_shape=[1])
+  @parameterized.parameters(
+      (False, dtypes.bool),
+      (-42, dtypes.int8),
+      (-42, dtypes.int16),
+      (-42, dtypes.int32),
+      (-42, dtypes.int64),
+      (42, dtypes.uint8),
+      (42, dtypes.uint16),
+      (42.0, dtypes.float16),
+      (42.0, dtypes.float32),
+      (42.0, dtypes.float64),
+      (b"hello", dtypes.string),
+  )
+  def testMapAndBatchTypes(self, element, dtype):
+    def gen():
+      yield element
 
-  def _build_dataset_sparse(self, batch_size=5):
-    return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
+    dataset = dataset_ops.Dataset.from_generator(gen, dtype).repeat(100).apply(
+        batching.map_and_batch(lambda x: x, batch_size=10))
 
-  def testSparseCore(self):
-    self.run_core_tests(self._build_dataset_sparse,
-                        lambda: self._build_dataset_sparse(2), 2)
+    get_next = dataset.make_one_shot_iterator().get_next()
 
-  def _build_dataset_nested_sparse(self):
-    return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
-
-  def testNestedSparseCore(self):
-    self.run_core_tests(self._build_dataset_nested_sparse, None, 1)
-
-
-class UnbatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
-    components = (
-        np.arange(tensor_slice_len),
-        np.array([[1, 2, 3]]) * np.arange(tensor_slice_len)[:, np.newaxis],
-        np.array(multiplier) * np.arange(tensor_slice_len))
-
-    return dataset_ops.Dataset.from_tensor_slices(components).batch(
-        batch_size).apply(batching.unbatch())
-
-  def testCore(self):
-    tensor_slice_len = 8
-    batch_size = 2
-    num_outputs = tensor_slice_len
-    self.run_core_tests(
-        lambda: self.build_dataset(15.0, tensor_slice_len, batch_size),
-        lambda: self.build_dataset(20.0, tensor_slice_len, batch_size),
-        num_outputs)
-
-
-class MapAndBatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def testNumParallelBatches(self):
-    range_size = 11
-    num_repeats = 2
-    batch_size = 5
-    total_outputs = range_size * num_repeats
-    num_outputs_drop_remainder = total_outputs // batch_size
-    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
-    num_parallel_batches = 2
-
-    def build_ds(range_start, drop_remainder=False):
-
-      def _map_fn(x):
-        return math_ops.square(x)
-
-      return dataset_ops.Dataset.range(
-          range_start, range_start + range_size).repeat(num_repeats).apply(
-              batching.map_and_batch(
-                  map_func=_map_fn,
-                  batch_size=batch_size,
-                  num_parallel_batches=num_parallel_batches,
-                  drop_remainder=drop_remainder))
-
-    self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),
-                        num_outputs_keep_remainder)
-    self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
-                        num_outputs_drop_remainder)
-
-  def testNumParallelCalls(self):
-    range_size = 11
-    num_repeats = 2
-    batch_size = 5
-    total_outputs = range_size * num_repeats
-    num_outputs_drop_remainder = total_outputs // batch_size
-    num_outputs_keep_remainder = int(math.ceil(total_outputs / batch_size))
-    num_parallel_calls = 7
-
-    def build_ds(range_start, drop_remainder=False):
-
-      def _map_fn(x):
-        return math_ops.square(x)
-
-      return dataset_ops.Dataset.range(
-          range_start, range_start + range_size).repeat(num_repeats).apply(
-              batching.map_and_batch(
-                  map_func=_map_fn,
-                  batch_size=batch_size,
-                  num_parallel_calls=num_parallel_calls,
-                  drop_remainder=drop_remainder))
-
-    self.run_core_tests(lambda: build_ds(10), lambda: build_ds(15),
-                        num_outputs_keep_remainder)
-    self.run_core_tests(lambda: build_ds(10, True), lambda: build_ds(15, True),
-                        num_outputs_drop_remainder)
-
-
-class PaddedBatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
-
-  def testPaddedBatch(self):
-
-    def build_dataset(seq_lens):
-      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
-          lambda x: array_ops.fill([x], x)).padded_batch(
-              4, padded_shapes=[-1])
-
-    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
-    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
-    self.run_core_tests(lambda: build_dataset(seq_lens1),
-                        lambda: build_dataset(seq_lens2), 8)
-
-  def testPaddedBatchNonDefaultPadding(self):
-
-    def build_dataset(seq_lens):
-
-      def fill_tuple(x):
-        filled = array_ops.fill([x], x)
-        return (filled, string_ops.as_string(filled))
-
-      padded_shape = [-1]
-      return dataset_ops.Dataset.from_tensor_slices(seq_lens).map(
-          fill_tuple).padded_batch(
-              4,
-              padded_shapes=(padded_shape, padded_shape),
-              padding_values=(-1, "<end>"))
-
-    seq_lens1 = np.random.randint(1, 20, size=(32,)).astype(np.int32)
-    seq_lens2 = np.random.randint(21, 40, size=(32,)).astype(np.int32)
-    self.run_core_tests(lambda: build_dataset(seq_lens1),
-                        lambda: build_dataset(seq_lens2), 8)
+    with self.test_session() as sess:
+      for _ in range(10):
+        self.assertAllEqual([element for _ in range(10)], sess.run(get_next))
 
 
 class RestructuredDatasetTest(test.TestCase):

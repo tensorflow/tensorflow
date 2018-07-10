@@ -260,14 +260,14 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
         }
         continue;
       }
+      // Replace a normal input with a control input.
       const string ctrl_input = ConstantFolding::AddControlDependency(
           old_input, optimized_graph_, node_map_.get());
-      if (ctrl_inputs.insert(ctrl_input).second) {
-        node->set_input(pos, ctrl_input);
-        node_map_->UpdateInput(node_name, old_input, ctrl_input);
-        const NodeDef* old_input_node = node_map_->GetNode(old_input);
-        nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
-      }
+      ctrl_inputs.insert(ctrl_input);
+      node->set_input(pos, ctrl_input);
+      node_map_->UpdateInput(node_name, old_input, ctrl_input);
+      const NodeDef* old_input_node = node_map_->GetNode(old_input);
+      nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
       ++pos;
     }
     node->set_op("NoOp");

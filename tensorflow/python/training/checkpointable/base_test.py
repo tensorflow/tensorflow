@@ -17,33 +17,25 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import base
 
 
 class InterfaceTests(test.TestCase):
 
-  def testMultipleAssignment(self):
-    root = checkpointable.Checkpointable()
-    root.leaf = checkpointable.Checkpointable()
-    root.leaf = root.leaf
-    duplicate_name_dep = checkpointable.Checkpointable()
+  def testOverwrite(self):
+    root = base.CheckpointableBase()
+    leaf = base.CheckpointableBase()
+    root._track_checkpointable(leaf, name="leaf")
+    (current_name, current_dependency), = root._checkpoint_dependencies
+    self.assertIs(leaf, current_dependency)
+    self.assertEqual("leaf", current_name)
+    duplicate_name_dep = base.CheckpointableBase()
     with self.assertRaises(ValueError):
       root._track_checkpointable(duplicate_name_dep, name="leaf")
-    # No error; we're overriding __setattr__, so we can't really stop people
-    # from doing this while maintaining backward compatibility.
-    root.leaf = duplicate_name_dep
     root._track_checkpointable(duplicate_name_dep, name="leaf", overwrite=True)
-
-  def testNoDependency(self):
-    root = checkpointable.Checkpointable()
-    hasdep = checkpointable.Checkpointable()
-    root.hasdep = hasdep
-    nodep = checkpointable.Checkpointable()
-    root.nodep = checkpointable.NoDependency(nodep)
-    self.assertEqual(1, len(root._checkpoint_dependencies))
-    self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
-    self.assertIs(root.hasdep, hasdep)
-    self.assertIs(root.nodep, nodep)
+    (current_name, current_dependency), = root._checkpoint_dependencies
+    self.assertIs(duplicate_name_dep, current_dependency)
+    self.assertEqual("leaf", current_name)
 
 if __name__ == "__main__":
   test.main()

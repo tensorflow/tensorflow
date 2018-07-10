@@ -85,6 +85,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "window_dataset_op",
+    srcs = ["window_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        ":window_dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "slide_dataset_op",
     srcs = ["slide_dataset_op.cc"],
     deps = [
@@ -550,15 +563,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "identity_dataset_op",
-    srcs = ["identity_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:framework",
-    ],
-)
-
-tf_kernel_library(
     name = "optimize_dataset_op",
     srcs = ["optimize_dataset_op.cc"],
     deps = [
@@ -606,7 +610,6 @@ tf_kernel_library(
         ":generator_dataset_op",
         ":group_by_reducer_dataset_op",
         ":group_by_window_dataset_op",
-        ":identity_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_and_batch_dataset_op",
@@ -634,6 +637,7 @@ tf_kernel_library(
         ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
         ":unbatch_dataset_op",
+        ":window_dataset_op",
         ":writer_ops",
         ":zip_dataset_op",
     ],

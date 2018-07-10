@@ -39,6 +39,7 @@ py_library(
         "datasets/imdb.py",
         "datasets/mnist.py",
         "datasets/reuters.py",
+        "estimator/__init__.py",
         "preprocessing/__init__.py",
         "preprocessing/image.py",
         "preprocessing/sequence.py",
@@ -135,7 +136,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/data",
-        "//tensorflow/python/training/checkpointable:data_structures_base",
+        "//tensorflow/python/training/checkpointable:data_structures",
         "@six_archive//:six",
     ],
 )
@@ -549,7 +550,7 @@ py_test(
 
 py_test(
     name = "gru_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/gru_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/62136390
@@ -719,6 +720,7 @@ py_test(
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # TODO(b/110990716) reenable
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -858,7 +860,7 @@ py_test(
 
 py_test(
     name = "backend_test",
-    size = "small",
+    size = "medium",
     srcs = ["backend_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -866,6 +868,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

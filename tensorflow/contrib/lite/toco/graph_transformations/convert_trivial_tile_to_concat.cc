@@ -23,7 +23,7 @@ namespace toco {
 
 bool ConvertTrivialTileToConcat::Run(Model* model, std::size_t op_index) {
   auto tile_it = model->operators.begin() + op_index;
-  if (tile_it->get()->type != OperatorType::kTensorFlowTile) {
+  if (tile_it->get()->type != OperatorType::kTile) {
     return false;
   }
   auto* tile_op = static_cast<TransposeOperator*>(tile_it->get());

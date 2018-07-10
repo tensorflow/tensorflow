@@ -167,11 +167,14 @@ def assert_same_structure(nest1, nest2, check_types=True):
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
-    check_types: if `True` (default) types of sequences are checked as
-        well, including the keys of dictionaries. If set to `False`, for example
-        a list and a tuple of objects will look the same if they have the same
+    check_types: if `True` (default) types of sequences are checked as well,
+        including the keys of dictionaries. If set to `False`, for example a
+        list and a tuple of objects will look the same if they have the same
         size. Note that namedtuples with identical name and fields are always
-        considered to have the same shallow structure.
+        considered to have the same shallow structure. Two types will also be
+        considered the same if they are both list subtypes (which allows "list"
+        and "_ListWrapper" from checkpointable dependency tracking to compare
+        equal).
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or

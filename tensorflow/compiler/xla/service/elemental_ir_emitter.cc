@@ -1164,6 +1164,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
+    case HloOpcode::kXor:
+      return ir_builder_->CreateXor(lhs_value, rhs_value);
 
     // Shifting out bits >= the number of bits in the type being shifted
     // produces a poison value in LLVM which is basically "deferred undefined
@@ -1220,25 +1222,32 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
   const Shape& operand_shape = hlo.operand(operand_no)->shape();
   // If the operand is scalar, the source index is always {}.
   if (ShapeUtil::IsScalar(operand_shape)) {
-    return llvm_ir::IrArray::Index();
+    return llvm_ir::IrArray::Index(target_index.GetType());
   }
 
   // If no implicit broadcast is needed for this operand, returns the target
   // index as the source index.
-  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape())) {
+  //
+  // `IrArray::Index` may contain a physical linear which we can propagate to
+  // our operand only if our layouts match.  "only if" is a bit strong since
+  // e.g. we can still forward the linear index if the operand shape is
+  // [5,1,1,5]{3,2,1,0} and the HLO shape is[5,1,1,5]{3,1,2,0}, but those cases
+  // are probably not worth handling here for now.
+  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape()) &&
+      LayoutUtil::Equal(operand_shape.layout(), hlo.shape().layout())) {
     return target_index;
   }
 
   // If implicit broadcast is needed, the source dimensions that are broadcast
   // have index 0.
   CHECK_EQ(ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(hlo.shape()));
-  llvm_ir::IrArray::Index source_index;
+  llvm_ir::IrArray::Index source_index(target_index.GetType());
   for (int64 i = 0; i < ShapeUtil::Rank(hlo.shape()); ++i) {
     if (hlo.shape().dimensions(i) == operand_shape.dimensions(i)) {
       source_index.push_back(target_index[i]);
     } else {
       CHECK_EQ(1, operand_shape.dimensions(i));
-      source_index.push_back(ir_builder_->getInt64(0));
+      source_index.push_back(target_index.GetConstantWithIndexType(0));
     }
   }
   return source_index;
@@ -1540,9 +1549,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   // Emit IR to read dynamic start indices from hlo->operand(1).
   const HloInstruction* input_hlo = hlo->operand(0);
   const int64 rank = ShapeUtil::Rank(input_hlo->shape());
-  llvm_ir::IrArray::Index slice_start_index(rank);
+  // Use the same index type for all tensor accesses in the same kernel.
+  llvm::Type* index_type = index.GetType();
+  llvm_ir::IrArray::Index slice_start_index(index_type, rank);
   for (int64 i = 0; i < rank; ++i) {
-    llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
+    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+      return llvm::ConstantInt::get(index_type, c);
+    };
+    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
     TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                         operand_to_generator.at(hlo->operand(1))(dim_index));
 
@@ -1552,17 +1566,17 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
     // to oficially document different behavior.
-    start_index_value = ir_builder_->CreateSExtOrBitCast(start_index_value,
-                                                         index[i]->getType());
-    llvm::Value* operand_dim_size = llvm::ConstantInt::get(
-        start_index_value->getType(), input_hlo->shape().dimensions(i));
-    llvm::Value* output_dim_size = llvm::ConstantInt::get(
-        start_index_value->getType(), hlo->shape().dimensions(i));
+    start_index_value =
+        ir_builder_->CreateSExtOrTrunc(start_index_value, index_type);
+    llvm::Value* operand_dim_size =
+        index_typed_const(input_hlo->shape().dimensions(i));
+    llvm::Value* output_dim_size =
+        index_typed_const(hlo->shape().dimensions(i));
 
     start_index_value = EmitIntegralMin(
         ir_builder_->CreateSub(operand_dim_size, output_dim_size),
-        EmitIntegralMax(llvm::ConstantInt::get(start_index_value->getType(), 0),
-                        start_index_value, /*is_signed=*/true),
+        EmitIntegralMax(index_typed_const(0), start_index_value,
+                        /*is_signed=*/true),
         /*is_signed=*/true);
 
     start_index_value->setName(
@@ -1570,7 +1584,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     slice_start_index[i] = start_index_value;
   }
 
-  llvm_ir::IrArray::Index input_index(rank);
+  llvm_ir::IrArray::Index input_index(index_type, rank);
   for (int64 i = 0; i < rank; ++i) {
     // Emit IR which computes:
     //   input_index = start_index + offset_index
@@ -1594,17 +1608,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   const llvm_ir::ElementGenerator& indices_generator =
       operand_to_generator.at(hlo->operand(1));
 
+  llvm::Type* index_type = index.GetType();
   // This is the index into `operand` that holds the element we want to
   // generate.  This index "unsafe" as in the components in here may be
   // out of bounds.
-  IrArray::Index unsafe_operand_index;
+  IrArray::Index unsafe_operand_index(index_type);
 
   // First copy in the window indices to unsafe_operand_index.
   for (int64 i = 0, e = operand_shape.dimensions_size(),
              unsafe_operand_index_dim = 0;
        i < e; i++) {
     if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
-      unsafe_operand_index.push_back(ir_builder_->getInt64(0));
+      unsafe_operand_index.push_back(index.GetConstantWithIndexType(0));
     } else {
       unsafe_operand_index.push_back(
           index[dim_numbers.output_window_dims(unsafe_operand_index_dim++)]);
@@ -1612,7 +1627,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   }
 
   // This is the index of the index vector in the gather_indices tensor.
-  IrArray::Index gather_index_index;
+  IrArray::Index gather_index_index(index_type);
   {
     std::vector<llvm::Value*> gather_index_index_components;
     for (int64 i = 0, e = output_shape.dimensions_size(); i < e; i++) {
@@ -1628,8 +1643,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
 
   auto add_to_unsafe_operand_index = [&](llvm::Value* index_component,
                                          int64 dim) {
-    llvm::Value* gather_dim_component_extended = ir_builder_->CreateSExtOrTrunc(
-        index_component, ir_builder_->getInt64Ty());
+    llvm::Value* gather_dim_component_extended =
+        ir_builder_->CreateSExtOrTrunc(index_component, index_type);
     unsafe_operand_index[dim_numbers.gather_dims_to_operand_dims(dim)] =
         ir_builder_->CreateAdd(
             unsafe_operand_index[dim_numbers.gather_dims_to_operand_dims(dim)],
@@ -1645,18 +1660,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
         indices_shape.dimensions(dim_numbers.index_vector_dim());
     for (int64 i = 0; i < index_vector_size; i++) {
       gather_index_index[dim_numbers.index_vector_dim()] =
-          ir_builder_->getInt64(i);
+          index.GetConstantWithIndexType(i);
       TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                           indices_generator(gather_index_index));
       add_to_unsafe_operand_index(gather_dim_component, i);
     }
   }
 
-  IrArray::Index safe_operand_index;
+  IrArray::Index safe_operand_index(index_type);
   for (int64 i = 0, e = unsafe_operand_index.size(); i < e; i++) {
     safe_operand_index.push_back(ir_builder_->CreateURem(
         unsafe_operand_index[i],
-        ir_builder_->getInt64(operand_shape.dimensions(i))));
+        index.GetConstantWithIndexType(operand_shape.dimensions(i))));
   }
 
   return operand_generator(safe_operand_index);
@@ -1671,14 +1686,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
   const int64 rank = ShapeUtil::Rank(input_hlo->shape());
-  llvm_ir::IrArray::Index slice_start_index(rank);
-  llvm_ir::IrArray::Index slice_limit_index(rank);
+  llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
+  llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = ir_builder_->getTrue();
 
   for (int64 i = 0; i < rank; ++i) {
-    llvm_ir::IrArray::Index dim_index(1, ir_builder_->getInt64(i));
+    llvm::Type* index_type = index[0]->getType();
+    auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+      return llvm::ConstantInt::get(index_type, c);
+    };
+    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
     TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
                         operand_to_generator.at(start_hlo)(dim_index));
 
@@ -1688,18 +1707,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
     // to oficially document different behavior.
-    start_index_value = ir_builder_->CreateSExtOrBitCast(start_index_value,
-                                                         index[i]->getType());
-    llvm::Value* input_dim_size = llvm::ConstantInt::get(
-        index[i]->getType(), input_hlo->shape().dimensions(i));
-    llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        index[i]->getType(), update_hlo->shape().dimensions(i));
+    start_index_value =
+        ir_builder_->CreateSExtOrTrunc(start_index_value, index_type);
+    llvm::Value* input_dim_size =
+        index_typed_const(input_hlo->shape().dimensions(i));
+    llvm::Value* update_dim_size =
+        index_typed_const(update_hlo->shape().dimensions(i));
 
-    start_index_value = EmitIntegralMin(
-        ir_builder_->CreateSub(input_dim_size, update_dim_size),
-        EmitIntegralMax(llvm::ConstantInt::get(start_index_value->getType(), 0),
-                        start_index_value, /*is_signed=*/true),
-        /*is_signed=*/true);
+    start_index_value =
+        EmitIntegralMin(ir_builder_->CreateSub(input_dim_size, update_dim_size),
+                        EmitIntegralMax(index_typed_const(0), start_index_value,
+                                        /*is_signed=*/true),
+                        /*is_signed=*/true);
 
     start_index_value->setName(
         AsStringRef(IrName(hlo, StrCat("start_idx", i))));
@@ -1729,7 +1748,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Handle true BB (return data from 'update')
   SetToFirstInsertPoint(if_data.true_block, ir_builder_);
   // Compute update index for intersection case.
-  llvm_ir::IrArray::Index update_index(rank);
+  llvm_ir::IrArray::Index update_index(index.GetType(), rank);
   for (int64 i = 0; i < rank; ++i) {
     update_index[i] = ir_builder_->CreateSub(index[i], slice_start_index[i]);
   }
@@ -1797,7 +1816,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
 
   SetToFirstInsertPoint(if_data.false_block, ir_builder_);
   TF_ASSIGN_OR_RETURN(llvm::Value * padding_value,
-                      operand_to_generator.at(hlo->operand(1))({}));
+                      operand_to_generator.at(hlo->operand(1))(
+                          IrArray::Index(index.GetType())));
   ir_builder_->CreateStore(padding_value, ret_value_addr);
 
   SetToFirstInsertPoint(if_data.after_block, ir_builder_);
@@ -1824,10 +1844,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   int64 lhs_dims = hlo->operand(0)->shape().dimensions_size();
   int64 rhs_dims = hlo->operand(1)->shape().dimensions_size();
 
-  std::unique_ptr<llvm_ir::ForLoop> inner_loop = llvm_ir::ForLoop::EmitForLoop(
-      IrName(hlo, "inner"), ir_builder_->getInt64(0),
-      ir_builder_->getInt64(contracted_dim_size), ir_builder_->getInt64(1),
-      ir_builder_);
+  llvm::Type* index_type = dot_result_index[0]->getType();
+  auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+    return llvm::ConstantInt::get(index_type, c);
+  };
+
+  std::unique_ptr<llvm_ir::ForLoop> inner_loop =
+      llvm_ir::ForLoop::EmitForLoop(IrName(hlo, "inner"), index_typed_const(0),
+                                    index_typed_const(contracted_dim_size),
+                                    index_typed_const(1), ir_builder_);
 
   SetToFirstInsertPoint(inner_loop->GetPreheaderBasicBlock(), ir_builder_);
   PrimitiveType primitive_type = hlo->shape().element_type();
@@ -1846,7 +1871,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   // Given an output index [a,b,c,d,e] in the result, we compute:
   //   sum(lhs[a,b,c,t]*rhs[d,t,e] for t in [0, T))
 
-  IrArray::Index lhs_index, rhs_index;
+  IrArray::Index lhs_index(index_type), rhs_index(index_type);
 
   for (int64 i = 0; i < lhs_dims - 1; i++) {
     lhs_index.push_back(dot_result_index[i]);
@@ -1945,6 +1970,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kShiftLeft:

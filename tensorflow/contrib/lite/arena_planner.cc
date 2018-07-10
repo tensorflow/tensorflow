@@ -35,12 +35,13 @@ struct AllocationInfo {
 };
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
-                           std::unique_ptr<GraphInfo> graph_info)
+                           std::unique_ptr<GraphInfo> graph_info,
+                           bool preserve_inputs)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
-      persistent_arena_(kDefaultArenaAlignment) {}
-
+      persistent_arena_(kDefaultArenaAlignment),
+      preserve_inputs_(preserve_inputs) {}
 ArenaPlanner::~ArenaPlanner() {}
 
 int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
@@ -112,9 +113,13 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     refcounts[tensor_index]++;
   }
 
-  // Queue all graph inputs for allocation.
+  // Queue all graph inputs for allocation. If preserve_inputs_ is true, make
+  // sure they never be overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kOptionalTensor) {
+      if (preserve_inputs_) {
+        refcounts[tensor_index]++;
+      }
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }

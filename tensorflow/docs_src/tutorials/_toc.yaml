@@ -1,0 +1,93 @@
+toc:
+- title: Get started with TensorFlow
+  path: /tutorials/
+
+- title: Learn and use ML
+  style: accordion
+  section:
+  - title: Overview
+    path: /tutorials/keras/
+  - title: Basic classification
+    path: /tutorials/keras/basic_classification
+  - title: Text classification
+    path: /tutorials/keras/basic_text_classification
+  - title: Regression
+    path: /tutorials/keras/basic_regression
+  - title: Overfitting and underfitting
+    path: /tutorials/keras/overfit_and_underfit
+  - title: Save and restore models
+    path: /tutorials/keras/save_and_restore_models
+
+- title: Research and experimentation
+  style: accordion
+  section:
+  - title: Overview
+    path: /tutorials/eager/
+  - title: Eager execution
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_intro.ipynb
+    status: external
+  - title: Automatic differentiation
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb
+    status: external
+  - title: "Custom training: basics"
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_training.ipynb
+    status: external
+  - title: Custom layers
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/custom_layers.ipynb
+    status: external
+  - title: "Custom training: walkthrough"
+    path: /tutorials/eager/custom_training_walkthrough
+  - title: Neural machine translation
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb
+    status: external
+
+- title: Images
+  style: accordion
+  section:
+  - title: Build a CNN using Estimators
+    path: /tutorials/images/layers
+  - title: Image recognition
+    path: /tutorials/images/image_recognition
+  - title: Image retraining
+    path: /hub/tutorials/image_retraining
+  - title: Advanced CNN
+    path: /tutorials/images/deep_cnn
+
+- title: Sequences
+  style: accordion
+  section:
+  - title: Recurrent neural network
+    path: /tutorials/sequences/recurrent
+  - title: Drawing classification
+    path: /tutorials/sequences/recurrent_quickdraw
+  - title: Simple audio recognition
+    path: /tutorials/sequences/audio_recognition
+  - title: Neural machine translation
+    path: https://github.com/tensorflow/nmt
+    status: external
+
+- title: Data representation
+  style: accordion
+  section:
+  - title: Linear models
+    path: /tutorials/representation/wide
+  - title: Wide and deep learning
+    path: /tutorials/representation/wide_and_deep
+  - title: Vector representations of words
+    path: /tutorials/representation/word2vec
+  - title: Kernel methods
+    path: /tutorials/representation/kernel_methods
+  - title: Large-scale linear models
+    path: /tutorials/representation/linear
+
+- title: Non-ML
+  style: accordion
+  section:
+  - title: Mandelbrot set
+    path: /tutorials/non-ml/mandelbrot
+  - title: Partial differential equations
+    path: /tutorials/non-ml/pdes
+
+- break: True
+- title: Next steps
+  path: /tutorials/next_steps
