@@ -27,16 +27,21 @@ from tensorflow.python.estimator.canned import head
 from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import metrics as metrics_lib
+from tensorflow.python.util import deprecation
 
 __all__ = [
     'GANHead',
     'gan_head',
 ]
 
+
 def _summary_key(head_name, val):
   return '%s/%s' % (val, head_name) if head_name else val
 
 
+@deprecation.deprecated(
+    None, 'Please use tf.contrib.gan.GANEstimator without explicitly making a '
+    'GANHead.')
 def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
              discriminator_optimizer, use_loss_summaries=True,
              get_hooks_fn=tfgan_train.get_sequential_train_hooks(),
@@ -74,6 +79,9 @@ def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
                  name=name)
 
 
+@deprecation.deprecated(
+    None, 'Please use tf.contrib.gan.GANEstimator without explicitly making a '
+    'GANHead.')
 class GANHead(head._Head):  # pylint: disable=protected-access
   """`Head` for a GAN."""
 
@@ -108,7 +116,7 @@ class GANHead(head._Head):  # pylint: disable=protected-access
       raise TypeError('generator_loss_fn must be callable.')
     if not callable(discriminator_loss_fn):
       raise TypeError('discriminator_loss_fn must be callable.')
-    if not use_loss_summaries in [True, False, None]:
+    if use_loss_summaries not in [True, False, None]:
       raise ValueError('use_loss_summaries must be True, False or None.')
     if get_hooks_fn is not None and not callable(get_hooks_fn):
       raise TypeError('get_hooks_fn must be callable.')
