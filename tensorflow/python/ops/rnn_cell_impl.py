@@ -54,16 +54,6 @@ from tensorflow.python.util.tf_export import tf_export
 _BIAS_VARIABLE_NAME = "bias"
 _WEIGHTS_VARIABLE_NAME = "kernel"
 
-
-# TODO(jblespiau): Remove this function when we are sure there are no longer
-# any usage (even if protected, it is being used). Prefer assert_like_rnncell.
-def _like_rnncell(cell):
-  """Checks that a given object is an RNNCell by using duck typing."""
-  conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
-                hasattr(cell, "zero_state"), callable(cell)]
-  return all(conditions)
-
-
 # This can be used with self.assertRaisesRegexp for assert_like_rnncell.
 ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
 
