@@ -220,6 +220,11 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
 @tf_export("fixed_size_partitioner")
 def fixed_size_partitioner(num_shards, axis=0):
   """Partitioner to specify a fixed number of shards along given axis.
+  
+  This uses the "div" partition_strategy described in tf.nn.embedding_lookup.
+  That is, we assign ids to partitions in a contiguous manner. 
+  In this case, 13 ids are split across 5 partitions as: 
+  [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]
 
   Args:
     num_shards: `int`, number of shards to partition variable.
