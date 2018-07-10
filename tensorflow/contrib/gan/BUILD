@@ -99,6 +99,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gan_estimator",
+        ":head",
         "//tensorflow/python:util",
     ],
 )
@@ -430,6 +431,40 @@ py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "head",
+    srcs = [
+        "python/estimator/python/head.py",
+        "python/estimator/python/head_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":namedtuples",
+        ":train",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:head",
+        "//tensorflow/python/estimator:model_fn",
+    ],
+)
+
+py_test(
+    name = "head_test",
+    srcs = ["python/estimator/python/head_test.py"],
+    shard_count = 1,
+    srcs_version = "PY2AND3",
+    deps = [
+        ":head",
+        ":namedtuples",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:model_fn",
     ],
 )
 

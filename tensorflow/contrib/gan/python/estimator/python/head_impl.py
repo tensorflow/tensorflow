@@ -79,12 +79,12 @@ def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
                  name=name)
 
 
-@deprecation.deprecated(
-    None, 'Please use tf.contrib.gan.GANEstimator without explicitly making a '
-    'GANHead.')
 class GANHead(head._Head):  # pylint: disable=protected-access
   """`Head` for a GAN."""
 
+  @deprecation.deprecated(
+      None, 'Please use tf.contrib.gan.GANEstimator without explicitly making '
+      'a GANHead.')
   def __init__(self, generator_loss_fn, discriminator_loss_fn,
                generator_optimizer, discriminator_optimizer,
                use_loss_summaries=True,
