@@ -58,6 +58,7 @@ ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
 
 
+# pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
   """A polymorphic assert, works with tensors and boolean expressions.
 
@@ -1071,15 +1072,16 @@ def resize_images(images,
 
 
 @tf_export('image.resize_image_with_pad')
-def resize_image_with_pad(image, target_height, target_width,
+def resize_image_with_pad(image,
+                          target_height,
+                          target_width,
                           method=ResizeMethod.BILINEAR):
-  """
-  Resizes and pads an image to a target width and height.
+  """Resizes and pads an image to a target width and height.
 
   Resizes an image to a target width and height by keeping
   the aspect ratio the same without distortion. If the target
   dimensions don't match the image dimensions, the image
-  is resized and then padded with zeroes to match requested 
+  is resized and then padded with zeroes to match requested
   dimensions.
 
   Args:
@@ -1140,10 +1142,10 @@ def resize_image_with_pad(image, target_height, target_width,
     ratio = max_(f_width / f_target_width, f_height / f_target_height)
     resized_height_float = f_height / ratio
     resized_width_float = f_width / ratio
-    resized_height = math_ops.cast(math_ops.floor(resized_height_float),
-                                   dtype=dtypes.int32)
-    resized_width = math_ops.cast(math_ops.floor(resized_width_float),
-                                  dtype=dtypes.int32)
+    resized_height = math_ops.cast(
+        math_ops.floor(resized_height_float), dtype=dtypes.int32)
+    resized_width = math_ops.cast(
+        math_ops.floor(resized_width_float), dtype=dtypes.int32)
 
     padding_height = (f_target_height - resized_height_float) / 2
     padding_width = (f_target_width - resized_width_float) / 2
@@ -1155,13 +1157,13 @@ def resize_image_with_pad(image, target_height, target_width,
     # Resize first, then pad to meet requested dimensions
     resized = resize_images(image, [resized_height, resized_width], method)
 
-    padded = pad_to_bounding_box(resized, p_height, p_width,
-                                 target_height, target_width)
+    padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
+                                 target_width)
 
     if padded.get_shape().ndims is None:
       raise ValueError('padded contains no shape.')
 
-    _, padded_height, padded_width, _ = _ImageDimensions(padded, rank=4)
+    _ImageDimensions(padded, rank=4)
 
     if not is_batch:
       padded = array_ops.squeeze(padded, squeeze_dims=[0])

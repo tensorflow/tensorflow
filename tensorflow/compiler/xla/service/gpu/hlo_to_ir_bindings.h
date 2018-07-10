@@ -51,7 +51,7 @@ class HloToIrBindings {
 
   // Rebinds the given HLO to the LLVM IR value that represent its address.
   void BindHloToIrValue(const HloInstruction& hlo, llvm::Value* ir_value,
-                        const ShapeIndex& shape_index = {});
+                        ShapeIndexView shape_index = {});
 
   // Unbinds all IR values that's defined in an LLVM function, e.g., function
   // arguments and stack variables. Global variables will be kept in bindings_.
@@ -71,7 +71,7 @@ class HloToIrBindings {
   // A helper method that returns the base pointer of the IrArray containing the
   // output of "inst".at the given ShapeIndex.
   llvm::Value* GetBasePointer(const HloInstruction& hlo,
-                              const ShapeIndex& shape_index = {}) const {
+                              ShapeIndexView shape_index = {}) const {
     auto it = base_ptrs_.find(&hlo);
     CHECK(it != base_ptrs_.end()) << hlo.ToString();
     return it->second.element(shape_index);
@@ -97,7 +97,7 @@ class HloToIrBindings {
 
   // Returns an llvm typed ir representation of 'ir_value' based on 'hlo' shape.
   llvm::Value* GetTypedIrValue(const HloInstruction& hlo,
-                               const ShapeIndex& shape_index,
+                               ShapeIndexView shape_index,
                                llvm::Value* ir_value);
 
   const BufferAssignment* buffer_assignment_;

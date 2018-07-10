@@ -41,7 +41,7 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "extension."),
       Flag("savedmodel_directory", parsed_flags.savedmodel_directory.bind(),
            parsed_flags.savedmodel_directory.default_value(),
-           "Full path to the directory containing the SavedModel."),
+           "Deprecated. Full path to the directory containing the SavedModel."),
       Flag("output_file", parsed_flags.output_file.bind(),
            parsed_flags.output_file.default_value(),
            "Output file. "
@@ -55,9 +55,9 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "One of TENSORFLOW_GRAPHDEF, TFLITE, GRAPHVIZ_DOT."),
       Flag("savedmodel_tagset", parsed_flags.savedmodel_tagset.bind(),
            parsed_flags.savedmodel_tagset.default_value(),
-           "Comma-separated set of tags identifying the MetaGraphDef within "
-           "the SavedModel to analyze. All tags in the tag set must be "
-           "specified."),
+           "Deprecated. Comma-separated set of tags identifying the "
+           "MetaGraphDef within the SavedModel to analyze. All tags in the tag "
+           "set must be specified."),
       Flag("default_ranges_min", parsed_flags.default_ranges_min.bind(),
            parsed_flags.default_ranges_min.default_value(),
            "If defined, will be used as the default value for the min bound "

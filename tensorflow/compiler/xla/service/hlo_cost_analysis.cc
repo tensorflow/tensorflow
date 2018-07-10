@@ -164,7 +164,11 @@ Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleSelect(const HloInstruction*) {
+Status HloCostAnalysis::HandleSelect(const HloInstruction* hlo) {
+  return HandleElementwiseOp(hlo);
+}
+
+Status HloCostAnalysis::HandleTupleSelect(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -393,7 +397,7 @@ Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleGenerateToken(const HloInstruction*) {
+Status HloCostAnalysis::HandleAfterAll(const HloInstruction*) {
   return Status::OK();
 }
 

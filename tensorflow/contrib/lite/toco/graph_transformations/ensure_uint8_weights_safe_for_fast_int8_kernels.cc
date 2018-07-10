@@ -122,7 +122,7 @@ bool EnsureUint8WeightsSafeForFastInt8Kernels::Run(Model* model,
     case OperatorType::kFullyConnected: {
       weights_index = 1;
       const auto& fc_op = static_cast<const toco::FullyConnectedOperator&>(op);
-      CHECK(!fc_op.experimental_shuffled_weights)
+      CHECK(fc_op.weights_format == FullyConnectedWeightsFormat::kDefault)
           << "This graph transformation expects to run before FC weights get "
              "shuffled.";
       break;

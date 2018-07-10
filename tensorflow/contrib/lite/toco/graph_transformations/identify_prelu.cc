@@ -74,14 +74,30 @@ bool IdentifyPRelu::Run(Model* model, std::size_t op_index) {
   const auto* relu_neg_input_op = GetOpWithOutput(*model, mul_op->inputs[1]);
 
   if (relu_neg_input_op == nullptr ||
-      relu_neg_input_op->type != OperatorType::kNeg ||
-      relu_neg_input_op->fused_activation_function !=
-          FusedActivationFunctionType::kRelu ||
       relu_neg_input_op->inputs.size() != 1) {
     return false;
   }
 
-  if (relu_input_op->inputs[0] != relu_neg_input_op->inputs[0]) {
+  const Operator* final_input_op;
+  if (relu_neg_input_op->type == OperatorType::kNeg &&
+      relu_neg_input_op->fused_activation_function ==
+          FusedActivationFunctionType::kRelu) {
+    // This detects a Neg op with fused Relu activation function.
+    final_input_op = relu_neg_input_op;
+  } else {
+    // This detects a Neg op followed by a separated Relu op.
+    const auto* neg_input_op =
+        GetOpWithOutput(*model, relu_neg_input_op->inputs[0]);
+    if (neg_input_op == nullptr || neg_input_op->inputs.size() != 1 ||
+        relu_neg_input_op->type != OperatorType::kRelu ||
+        relu_neg_input_op->fused_activation_function !=
+            FusedActivationFunctionType::kNone) {
+      return false;
+    }
+    final_input_op = neg_input_op;
+  }
+
+  if (relu_input_op->inputs[0] != final_input_op->inputs[0]) {
     return false;
   }
 
@@ -112,7 +128,6 @@ bool IdentifyPRelu::Run(Model* model, std::size_t op_index) {
   // intermediate tensors aren't used by other ops, those will be removed by
   // other graph transformation rules.
   model->operators.erase(FindOp(*model, add_op));
-
   return true;
 }
 

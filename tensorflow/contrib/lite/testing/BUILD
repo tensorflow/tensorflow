@@ -172,6 +172,7 @@ cc_test(
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":tflite_driver",

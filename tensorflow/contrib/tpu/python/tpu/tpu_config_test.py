@@ -43,15 +43,11 @@ class TPURunConfigTest(test.TestCase):
       tpu_config_lib.RunConfig(
           tpu_config=tpu_config_lib.TPUConfig(iterations_per_loop=0))
 
-  def test_fail_with_invalid_computation_shape(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'computation_shape must be a list with length'
-                                 ' 3 or None'):
-      tpu_config_lib.TPUConfig(computation_shape=[2, 1])
-
-    with self.assertRaisesRegexp(ValueError,
-                                 'computation_shape elements can only be'):
-      tpu_config_lib.TPUConfig(computation_shape=[1, 3, 1])
+  def test_fail_with_invalid_num_cores_per_replica(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'num_cores_per_replica must be 1, 2, 4, or 8;'
+        ' got 7'):
+      tpu_config_lib.TPUConfig(num_cores_per_replica=7)
 
 
 class TPURunConfigMasterTest(test.TestCase):

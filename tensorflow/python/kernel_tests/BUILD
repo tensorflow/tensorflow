@@ -893,6 +893,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
+        "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
 )
@@ -2754,6 +2755,7 @@ cuda_py_test(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
@@ -2841,6 +2843,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = ["nomsan"],  # TODO(b/110990716) reenable
 )
 
 cuda_py_test(
@@ -3086,4 +3089,23 @@ tf_py_test(
     ],
     data = [":invalid_op.so"],
     tags = ["no_pip"],
+)
+
+tf_py_test(
+    name = "cond_v2_test",
+    size = "small",
+    srcs = ["cond_v2_test.py"],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:training",
+    ],
+    grpc_enabled = True,
 )

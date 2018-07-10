@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.autograph.converters import call_trees
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,7 +29,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class CallTreesTest(converter_test_base.TestCase):
+class CallTreesTest(converter_testing.TestCase):
 
   def test_basic(self):
 
@@ -43,7 +43,7 @@ class CallTreesTest(converter_test_base.TestCase):
       return test_fn_1(a) + 1
 
     node = self.parse_and_analyze(test_fn_2, {'test_fn_1': test_fn_1})
-    node = call_trees.transform(node, self.ctx, (), ())
+    node = call_trees.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       # Only test_fn_2 is transformed, so we'll insert renamed_test_fn_1
@@ -60,7 +60,7 @@ class CallTreesTest(converter_test_base.TestCase):
       return f() + 3
 
     node = self.parse_and_analyze(test_fn_2, {})
-    node = call_trees.transform(node, self.ctx, (), ())
+    node = call_trees.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       # 10 = 7 (from the mock) + 3 (from test_fn_2)
@@ -78,9 +78,9 @@ class CallTreesTest(converter_test_base.TestCase):
 
     node = self.parse_and_analyze(
         TestClass.test_fn_2, {'TestClass': TestClass},
-        namer=converter_test_base.FakeNoRenameNamer(),
+        namer=converter_testing.FakeNoRenameNamer(),
         arg_types={'self': (TestClass.__name__, TestClass)})
-    node = call_trees.transform(node, self.ctx, (), ())
+    node = call_trees.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       tc = TestClass()
@@ -92,7 +92,7 @@ class CallTreesTest(converter_test_base.TestCase):
       setattr(a, 'foo', 'bar')
 
     node = self.parse_and_analyze(test_fn, {'setattr': setattr})
-    node = call_trees.transform(node, self.ctx, (), ())
+    node = call_trees.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       with self.test_session() as sess:
@@ -115,7 +115,7 @@ class CallTreesTest(converter_test_base.TestCase):
       return np.random.binomial(2, 0.5)
 
     node = self.parse_and_analyze(test_fn, {'np': np})
-    node = call_trees.transform(node, self.ctx, (), ())
+    node = call_trees.transform(node, self.ctx)
 
     with self.compiled(node, dtypes.int64) as result:
       result.np = np
@@ -130,13 +130,13 @@ class CallTreesTest(converter_test_base.TestCase):
       a = math_ops.add(a, constant_op.constant(1))
       return a
 
-    node = self.parse_and_analyze(test_fn, {
-        'math_ops': math_ops,
-        'constant_op': constant_op
-    })
-    node = call_trees.transform(node, self.ctx,
-                                set(((math_ops.__name__,),
-                                     (constant_op.__name__,))), ())
+    node = self.parse_and_analyze(
+        test_fn, {
+            'math_ops': math_ops,
+            'constant_op': constant_op
+        },
+        arg_types=set(((math_ops.__name__,), (constant_op.__name__,))))
+    node = call_trees.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       result.math_ops = math_ops

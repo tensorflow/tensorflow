@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -43,7 +43,7 @@ se::Platform::Id GenericTransferManager::PlatformId() const {
 }
 
 Status GenericTransferManager::WriteSingleTupleIndexTable(
-    se::StreamExecutor* executor,
+    se::Stream* stream,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
     const Shape& shape, se::DeviceMemoryBase* region) {
   TF_RET_CHECK(elements.size() == ShapeUtil::TupleElementCount(shape));
@@ -52,12 +52,24 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
   for (const se::DeviceMemoryBase& element : elements) {
     element_pointers.push_back(element.opaque());
   }
-  return TransferBufferToDevice(executor, GetByteSizeRequirement(shape),
-                                element_pointers.data(), region);
+  TF_RETURN_IF_ERROR(TransferBufferToDevice(
+      stream, GetByteSizeRequirement(shape), element_pointers.data(), region));
+  // Ensure the buffer is transferred before we destroy element_pointers.
+  return stream->BlockHostUntilDone();
+}
+
+void GenericTransferManager::TransferLiteralFromDevice(
+    se::Stream* stream, const ShapedBuffer& device_buffer,
+    std::function<void(StatusOr<std::unique_ptr<Literal>>)> done) {
+  Status status = stream->BlockHostUntilDone();
+  if (!status.ok()) {
+    return done(status);
+  }
+  done(TransferLiteralFromDeviceInternal(stream->parent(), device_buffer));
 }
 
 StatusOr<std::unique_ptr<Literal>>
-GenericTransferManager::TransferLiteralFromDevice(
+GenericTransferManager::TransferLiteralFromDeviceInternal(
     se::StreamExecutor* executor, const ShapedBuffer& device_buffer) {
   VLOG(2) << "transferring literal from device ordinal "
           << executor->device_ordinal() << "; device buffer: " << device_buffer;
@@ -75,8 +87,7 @@ GenericTransferManager::TransferLiteralFromDevice(
       device_buffer.on_host_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> Status {
         if (ShapeUtil::IsArray(subshape)) {
-          TF_RETURN_IF_ERROR(TransferBufferFromDevice(
-              executor,
+          TF_RETURN_IF_ERROR(executor->SynchronousMemcpyD2H(
               /*source=*/device_buffer.buffer(index),
               /*size=*/GetByteSizeRequirement(subshape),
               /*destination=*/
@@ -88,8 +99,8 @@ GenericTransferManager::TransferLiteralFromDevice(
   return std::move(literal);
 }
 
-Status GenericTransferManager::TransferLiteralToDevice(
-    se::StreamExecutor* executor, const LiteralSlice& literal,
+Status GenericTransferManager::TransferLiteralToDeviceAsync(
+    se::Stream* stream, const LiteralSlice& literal,
     const ShapedBuffer& device_buffer) {
   const Shape& shape = literal.shape();
   VLOG(2) << "transferring literal shape to device: "
@@ -103,9 +114,10 @@ Status GenericTransferManager::TransferLiteralToDevice(
 
   TF_RET_CHECK(
       ShapeUtil::Compatible(literal.shape(), device_buffer.on_host_shape()));
-  TF_RET_CHECK(executor->device_ordinal() == device_buffer.device_ordinal());
+  TF_RET_CHECK(stream->parent()->device_ordinal() ==
+               device_buffer.device_ordinal());
 
-  TF_RETURN_IF_ERROR(WriteTupleIndexTables(executor, device_buffer));
+  TF_RETURN_IF_ERROR(WriteTupleIndexTables(stream, device_buffer));
 
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_host_shape(),
@@ -121,16 +133,21 @@ Status GenericTransferManager::TransferLiteralToDevice(
           if (LayoutUtil::Equal(device_subshape.layout(),
                                 subliteral.shape().layout())) {
             source = subliteral.untyped_data();
+            return TransferBufferToDevice(
+                stream,
+                /*size=*/GetByteSizeRequirement(device_subshape), source,
+                &device_memory);
           } else {
             // Relayout data before transferring.
             relayed_out_literal = subliteral.Relayout(device_subshape.layout(),
                                                       /*shape_index=*/{});
             source = relayed_out_literal->untyped_data();
+            TF_RETURN_IF_ERROR(TransferBufferToDevice(
+                stream,
+                /*size=*/GetByteSizeRequirement(device_subshape), source,
+                &device_memory));
+            return stream->BlockHostUntilDone();
           }
-          return TransferBufferToDevice(
-              executor,
-              /*size=*/GetByteSizeRequirement(device_subshape), source,
-              &device_memory);
         }
         return Status::OK();
       });

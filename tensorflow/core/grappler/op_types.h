@@ -55,6 +55,7 @@ bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node);
 bool IsDequeueOp(const NodeDef& node);
 bool IsDiv(const NodeDef& node);
+bool IsElementWiseMonotonic(const NodeDef& node);
 bool IsEluGrad(const NodeDef& node);
 bool IsEnter(const NodeDef& node);
 bool IsEqual(const NodeDef& node);

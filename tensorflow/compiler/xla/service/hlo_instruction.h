@@ -33,7 +33,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/iterator_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -389,11 +389,10 @@ class HloInstruction {
 
   // Creates a map instruction, where the computation (given by the handle) is
   // applied element-wise to every element in operands (across the operands,
-  // at a given index) with the same `static_operands`.
+  // at a given index)
   static std::unique_ptr<HloInstruction> CreateMap(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* map_computation,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands = {});
+      HloComputation* map_computation);
 
   // Creates a convolution op, where rhs is the convolutional filter
   // and window describes how the filter is applied to lhs.
@@ -459,19 +458,36 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand);
 
   // Creates an infeed instruction, which reads data of the given shape from the
-  // Infeed interface of the device.
-  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& shape,
+  // Infeed interface of the device. infeed_shape is the shape of the data
+  // received from the infeed *not* the shape of the infeed instruction which
+  // is a tuple containing the infeed_shape and the TOKEN.
+  static std::unique_ptr<HloInstruction> CreateInfeed(
+      const Shape& infeed_shape, HloInstruction* token_operand,
+      const string& config);
+  // Overload which does not require a token.
+  // TODO(b/80000000): Remove this overload when all uses of infeed are
+  // converted to take tokens.
+  static std::unique_ptr<HloInstruction> CreateInfeed(const Shape& infeed_shape,
                                                       const string& config);
 
-  // Creates an outfeed instruction, which outputs data.
+  // Creates an outfeed instruction, which outputs data. outfeed_shape is the
+  // shape of the data being outfed *not* the shape of the outfeed instruction
+  // which is a TOKEN.
   static std::unique_ptr<HloInstruction> CreateOutfeed(
-      const Shape& shape, HloInstruction* operand,
+      const Shape& outfeed_shape, HloInstruction* operand,
+      HloInstruction* token_operand, tensorflow::StringPiece outfeed_config);
+  // Overload which does not require a token.
+  // TODO(b/80000000): Remove this overload when all uses of outfeed are
+  // converted to take tokens.
+  static std::unique_ptr<HloInstruction> CreateOutfeed(
+      const Shape& outfeed_shape, HloInstruction* operand,
       tensorflow::StringPiece outfeed_config);
 
   // Creates an asynchronous send instruction with the given channel id, which
   // initiates sending the operand data to a unique receive instruction in
   // another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
+                                                    HloInstruction* token,
                                                     int64 channel_id);
 
   // Blocks until data transfer for the Send instruction (operand) is complete.
@@ -483,6 +499,7 @@ class HloInstruction {
   // which allocates resources to receive data of the given shape from a unique
   // send instruction in another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
+                                                    HloInstruction* token,
                                                     int64 channel_id);
 
   // Blocks until data transfer for the Recv instruction (operand) is complete
@@ -596,6 +613,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
+  // Creates a sort op, with a keys operand, and an optional values operand.
+  static std::unique_ptr<HloInstruction> CreateSort(
+      const Shape& shape, HloInstruction* keys,
+      HloInstruction* values = nullptr);
+
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
   // example, shape: S32, condition: i -> i < 1000, body: i -> i * 2, init: 1
@@ -665,10 +687,18 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
-  // Creates a token instruction used for joining or creating token types which
-  // thread through side-effecting operations.
-  static std::unique_ptr<HloInstruction> CreateGenerateToken(
+  // Creates a Afterall instruction used for joining or creating new values of
+  // token type which thread through side-effecting operations. Operands must
+  // all be tokens, and there must be at least one operand.
+  static std::unique_ptr<HloInstruction> CreateAfterAll(
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
+
+  // Creates an AfterAll instruction which creates a token type out of thin air
+  // (no operands). This is a separate method from CreateAfterAll to facility
+  // the removal of operand-less AfterAll instructions.
+  // TODO(b/110532604): Remove this capability of creating a token from nothing
+  // when we plumb a primordial token from the entry computation.
+  static std::unique_ptr<HloInstruction> CreateToken();
 
   // Creates an instance of GatherDimensionNumbers.
   static GatherDimensionNumbers MakeGatherDimNumbers(
@@ -811,9 +841,15 @@ class HloInstruction {
   // Replaces the use of this instruction in "user" with "new_producer". Note
   // that there might be multiple uses of this instruction in "user"; all will
   // be replaced.
+  //
+  // If user is a fusion instruction, this function will remove any duplicated
+  // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
   // Replaces the specified operand with new_operand.
+  //
+  // This function does NOT remove duplicated operands even if this instruction
+  // is a fusion, so that the existing operand numbers do not change.
   Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
@@ -822,6 +858,9 @@ class HloInstruction {
   //
   // If this instruction is the root of its computation, sets the computation's
   // root to new_producer.
+  //
+  // If a user is a fusion instruction, this function will remove any duplicated
+  // operands of it which could be created due to this replacement.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
 
   // Performs a postorder DFS visit using this node as the root. If
@@ -896,10 +935,6 @@ class HloInstruction {
   HloComputation* to_apply() const;
   void set_to_apply(HloComputation* to_apply);
 
-  // Returns the custom_call_target for CustomCall.
-  // Precondition: opcode() == HloOpcode::kCustomCall
-  const string& custom_call_target() const;
-
   // Gets/sets the while_condition or while_body HloComputation for While. The
   // setters should only be called by HloModule or HloComputation methods.
   //
@@ -908,15 +943,6 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
-
-  // Gets/sets the select or scatter HloComputation for SelectAndScatter. The
-  // setters should only be called by HloModule or HloComputation methods.
-  //
-  // Precondition: opcode() == HloOpcode::kSelectAndScatter.
-  HloComputation* select() const;
-  HloComputation* scatter() const;
-  void set_select(HloComputation* select);
-  void set_scatter(HloComputation* scatter);
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -959,19 +985,13 @@ class HloInstruction {
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
-  string ToCategory() const;
+  virtual string ToCategory() const;
 
   // Returns a logging instruction, if the output of this instruction is logged.
   //
   // Postcondition: retval == nullptr || retval->opcode() == HloOpcode::kTrace
   HloInstruction* tracing() const;
   void set_tracing(HloInstruction* trace_instruction);
-
-  // Returns the channel name associated with the instruction. The name is
-  // used to identify host Send/Recv operations.
-  //
-  // Precondition: opcode() == HloOpcode::kHostCompute
-  string channel_name() const { return channel_name_; }
 
   // Returns true if this instruction is fused, ie contained within a fusion
   // instruction.
@@ -1050,56 +1070,6 @@ class HloInstruction {
   void SetCopyElisionAllowed(bool value) {
     CHECK_EQ(HloOpcode::kCopy, opcode_);
     copy_elision_allowed_ = value;
-  }
-
-  // Returns the size of the slice in the given dimension for a dynamic
-  // slice node.
-  //
-  // Precondition: opcode() == HloOpcode::kDynamicSlice
-  int64 slice_sizes(int64 dimension) const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_[dimension];
-  }
-  const std::vector<int64>& dynamic_slice_sizes() const {
-    CHECK_EQ(HloOpcode::kDynamicSlice, opcode_);
-    return dynamic_slice_sizes_;
-  }
-
-  // Returns data on the window in a windowed operation such as
-  // convolution.
-  const Window& window() const {
-    CHECK(window_ != nullptr);
-    return *window_;
-  }
-
-  // Sets the window data in a windowed operation such as convolution.
-  void set_window(const Window& window) {
-    window_ = MakeUnique<Window>(window);
-  }
-
-  // Returns the padding configuration for a pad node.
-  //
-  // Precondition: opcode() == HloOpcode::kPad
-  const PaddingConfig& padding_config() const {
-    CHECK(padding_config_ != nullptr);
-    return *padding_config_;
-  }
-
-  // Returns data on the dimension numbers used for a convolution operation,
-  // which may be a kConvolution instruction or a kCustomCall that implements a
-  // convolution.
-  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
-    CHECK(convolution_dimension_numbers_ != nullptr);
-    return *convolution_dimension_numbers_;
-  }
-
-  // Sets the convolution dimension numbers on this instruction.  In general you
-  // shouldn't need to call this; instead, specify the convolution dimension
-  // numbers when you create the instruction.
-  void set_convolution_dimension_numbers(
-      const ConvolutionDimensionNumbers& dnums) {
-    convolution_dimension_numbers_ =
-        MakeUnique<ConvolutionDimensionNumbers>(dnums);
   }
 
   // Returns data on the dimension numbers used for a dot operation.
@@ -1441,6 +1411,55 @@ class HloInstruction {
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   tensorflow::gtl::optional<int64> all_reduce_id() const;
+
+  // Returns data on the window in a windowed operation such as
+  // convolution.
+  virtual const Window& window() const {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Sets the window data in a windowed operation such as convolution.
+  virtual void set_window(const Window& window) {
+    LOG(FATAL) << "Unimplemented method.";
+  }
+
+  // Returns data on the dimension numbers used for a convolution operation,
+  // which may be a kConvolution instruction or a kCustomCall that implements a
+  // convolution.
+  const ConvolutionDimensionNumbers& convolution_dimension_numbers() const;
+
+  // Sets the convolution dimension numbers on this instruction.  In general you
+  // shouldn't need to call this; instead, specify the convolution dimension
+  // numbers when you create the instruction.
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums);
+
+  // Delegates to HloSelectAndScatterInstruction::select.
+  HloComputation* select() const;
+
+  // Delegates to HloSelectAndScatterInstruction::scatter.
+  HloComputation* scatter() const;
+
+  // Delegates to HloSelectAndScatterInstruction::set_select.
+  void set_select(HloComputation* computation);
+
+  // Delegates to HloSelectAndScatterInstruction::set_scatter.
+  void set_scatter(HloComputation* computation);
+
+  // Delegates to HloCustomCallInstruction::custom_call_target.
+  const string& custom_call_target() const;
+
+  // Delegates to HloHostComputeInstruction::channel_name.
+  const string& channel_name() const;
+
+  // Delegates to HloPadInstruction::padding_config.
+  const PaddingConfig& padding_config() const;
+
+  // Delegates to HloDynamicSliceInstruction::slice_sizes.
+  int64 slice_sizes(int64 dimension) const;
+
+  // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
+  const std::vector<int64>& dynamic_slice_sizes() const;
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1460,11 +1479,34 @@ class HloInstruction {
     operands_.erase(operands_.begin() + index);
   }
 
+  // Removes a list of operands with the given indices in ascending order.
+  void RemoveOperandsAtAscendingIndices(
+      tensorflow::gtl::ArraySlice<int> ascending_indices);
+
   void AppendComputation(HloComputation* computation) {
     called_computations_.push_back(computation);
   }
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
+
+  void set_called_computation(int index, HloComputation* computation) {
+    called_computations_[index] = computation;
+  }
+  // Indices of computations in called_computations_ for instructions which call
+  // multiple computations.
+  enum {
+    // kWhile computations.
+    kBodyComputationIndex = 0,
+    kConditionComputationIndex = 1,
+
+    // kSelectAndScatter computations.
+    kSelectComputationIndex = 0,
+    kScatterComputationIndex = 1,
+
+    // kConditional computations.
+    kTrueComputationIndex = 0,
+    kFalseComputationIndex = 1,
+  };
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -1558,12 +1600,6 @@ class HloInstruction {
   // Result shape of this instruction.
   Shape shape_;
 
-  // Describes the window in a windowed operation such as convolution.
-  std::unique_ptr<Window> window_;
-
-  // Describes the dimension numbers used for a convolution.
-  std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
-
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
 
@@ -1573,14 +1609,6 @@ class HloInstruction {
   // Used to tag kCopy instructions that are eligible for copy elision.
   bool copy_elision_allowed_ = true;
 
-  // Describes the [start, start + size) range size for a dynamic slice
-  // ('start' is specified dynamically in the second operand of the operation).
-  std::vector<int64> dynamic_slice_sizes_;
-
-  // The padding configuration that describes the edge padding and interior
-  // padding of this pad instruction. Only set for pad instructions.
-  std::unique_ptr<PaddingConfig> padding_config_;
-
   // The sharding, if one exists.
   std::unique_ptr<HloSharding> sharding_;
 
@@ -1588,33 +1616,8 @@ class HloInstruction {
   std::unique_ptr<DomainMetadata> operand_side_metadata_;
   std::unique_ptr<DomainMetadata> user_side_metadata_;
 
-  // Name of a global symbol to call, only present for kCustomCall.
-  string custom_call_target_;
-
-  // Name to use for host send/recv channels, only present for kHostCompute.
-  string channel_name_;
-
-  // Estimate of the duration of a host computation in nanoseconds.
-  int64 cost_estimate_ns_ = 0;
-
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;
-
-  // Indices of computations in called_computations_ for instructions which call
-  // multiple computations.
-  enum {
-    // kWhile computations.
-    kBodyComputationIndex = 0,
-    kConditionComputationIndex = 1,
-
-    // kSelectAndScatter computations.
-    kSelectComputationIndex = 0,
-    kScatterComputationIndex = 1,
-
-    // kConditional computations.
-    kTrueComputationIndex = 0,
-    kFalseComputationIndex = 1,
-  };
 
   // A trace instruction that consumes this instruction.
   //

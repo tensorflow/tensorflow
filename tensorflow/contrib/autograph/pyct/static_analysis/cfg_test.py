@@ -23,29 +23,26 @@ import functools
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis import cfg
 from tensorflow.python.platform import test
 
 
 class CFGTest(test.TestCase):
 
-  def _parse_and_analyze(self, test_fn, namespace, arg_types=None):
-    arg_types = arg_types or {}
+  def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn)
-    ctx = context.EntityContext(
-        namer=None,
+    entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
-        namespace=namespace,
+        namespace={},
         arg_values=None,
-        arg_types=arg_types,
-        owner_type=None,
-        recursive=True)
+        arg_types=None,
+        owner_type=None)
     node = qual_names.resolve(node)
-    return node, ctx
+    return node, entity_info
 
   def _check_anno_matches(self, node, anno_name, var_names):
     if isinstance(var_names, str):
@@ -73,7 +70,7 @@ class CFGTest(test.TestCase):
         x = x
       return x
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.ReachingDefinitions(ctx))
     body = node.body[0].body
     # Only the argument reaches the expression
@@ -106,7 +103,7 @@ class CFGTest(test.TestCase):
         y = 2  # pylint: disable=unused-variable
       return x
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Defined(ctx))
     body = node.body[0].body
     # only x is for sure defined at the end
@@ -116,7 +113,7 @@ class CFGTest(test.TestCase):
     self._check_anno_matches(if_body[0], 'defined_out', ('x', 'y'))
 
   def _get_live_annotated_fnbody(self, f):
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Liveness(ctx))
     body = node.body[0].body
     return body
@@ -226,7 +223,7 @@ class CFGTest(test.TestCase):
 
       return g(x)
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Defined(ctx))
 
     body = node.body[0].body
@@ -253,7 +250,7 @@ class CFGTest(test.TestCase):
 
       return g()  # y is not defined here
 
-    node, ctx = self._parse_and_analyze(f, {})
+    node, ctx = self._parse_and_analyze(f)
     cfg.run_analyses(node, cfg.Defined(ctx))
     body = node.body[0].body
     self.assertEqual(
@@ -282,7 +279,7 @@ class CFGTest(test.TestCase):
       return x, y
 
     for f in (for_orelse, while_orelse):
-      node, ctx = self._parse_and_analyze(f, {})
+      node, ctx = self._parse_and_analyze(f)
       cfg.run_analyses(node, cfg.ReachingDefinitions(ctx))
       body = node.body[0].body
       return_node = body[-1]

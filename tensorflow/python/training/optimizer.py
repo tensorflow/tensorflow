@@ -461,7 +461,8 @@ class Optimizer(
         # Have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        if distribute_lib.get_loss_reduction() == "mean":
+        if (distribute_lib.get_loss_reduction() ==
+            variable_scope.VariableAggregation.MEAN):
           num_towers = distribute_lib.get_distribution_strategy().num_towers
           if num_towers > 1:
             loss_value *= (1. / num_towers)
@@ -478,7 +479,8 @@ class Optimizer(
           "be a function when eager execution is enabled.")
 
     # Scale loss if using a "mean" loss reduction and multiple towers.
-    if distribute_lib.get_loss_reduction() == "mean":
+    if (distribute_lib.get_loss_reduction() ==
+        variable_scope.VariableAggregation.MEAN):
       num_towers = distribute_lib.get_distribution_strategy().num_towers
       if num_towers > 1:
         loss *= (1. / num_towers)
@@ -649,7 +651,8 @@ class Optimizer(
       towers. If `global_step` was not None, that operation also
       increments `global_step`.
     """
-    reduced_grads = distribution.batch_reduce("sum", grads_and_vars)
+    reduced_grads = distribution.batch_reduce(
+        variable_scope.VariableAggregation.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
     # Note that this is called in a cross-tower context.
@@ -730,15 +733,15 @@ class Optimizer(
     if not named_slots:
       return None
 
-    if hasattr(var, "_mirrored_container"):
+    if hasattr(var, "_distributed_container"):
       # NOTE: If this isn't patched, then there is no `handle` in
       # `_resource_apply_dense`.
-      mirrored_container = var._mirrored_container()
-      assert mirrored_container is not None
+      distributed_container = var._distributed_container()
+      assert distributed_container is not None
       if context.executing_eagerly():
-        key = mirrored_container._unique_id
+        key = distributed_container._unique_id
       else:
-        key = (mirrored_container.graph, mirrored_container._shared_name)
+        key = (distributed_container.graph, distributed_container._shared_name)
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
@@ -839,7 +842,7 @@ class Optimizer(
 
   def _get_non_slot_variable(self, name, graph=None):
     non_slot = self._non_slot_dict.get((name, graph), None)
-    if hasattr(non_slot, "_mirrored_container"):
+    if hasattr(non_slot, "_distributed_container"):
       # This is a mirrored non-slot.  In order to enable code like `_finish`
       # to assign to a non-slot, return the current context replica.
       return non_slot.get()

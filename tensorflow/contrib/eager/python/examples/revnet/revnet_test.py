@@ -22,25 +22,37 @@ import gc
 import time
 
 import tensorflow as tf
+from tensorflow.contrib.eager.python.examples.revnet import blocks_test
 from tensorflow.contrib.eager.python.examples.revnet import config as config_
 from tensorflow.contrib.eager.python.examples.revnet import revnet
 from tensorflow.python.client import device_lib
 tfe = tf.contrib.eager
 
 
-class RevnetTest(tf.test.TestCase):
+def train_one_iter(model, inputs, labels, optimizer, global_step=None):
+  """Train for one iteration."""
+  grads, vars_, loss = model.compute_gradients(inputs, labels, training=True)
+  optimizer.apply_gradients(zip(grads, vars_), global_step=global_step)
+
+  return loss
+
+
+class RevNetTest(tf.test.TestCase):
 
   def setUp(self):
-    super(RevnetTest, self).setUp()
-    config = config_.get_hparams_imagenet_56()
+    super(RevNetTest, self).setUp()
+    config = config_.get_hparams_cifar_38()
+    # Reconstruction could cause numerical error, use double precision for tests
+    config.dtype = tf.float64
+    config.fused = False  # Fused batch norm does not support tf.float64
     shape = (config.batch_size,) + config.input_shape
     self.model = revnet.RevNet(config=config)
-    self.x = tf.random_normal(shape=shape)
+    self.x = tf.random_normal(shape=shape, dtype=tf.float64)
     self.t = tf.random_uniform(
         shape=[config.batch_size],
         minval=0,
         maxval=config.n_classes,
-        dtype=tf.int32)
+        dtype=tf.int64)
     self.config = config
 
   def tearDown(self):
@@ -48,7 +60,7 @@ class RevnetTest(tf.test.TestCase):
     del self.x
     del self.t
     del self.config
-    super(RevnetTest, self).tearDown()
+    super(RevNetTest, self).tearDown()
 
   def test_call(self):
     """Test `call` function."""
@@ -56,10 +68,58 @@ class RevnetTest(tf.test.TestCase):
     y, _ = self.model(self.x, training=False)
     self.assertEqual(y.shape, [self.config.batch_size, self.config.n_classes])
 
+  def _check_grad_angle_combined(self, grads, grads_true):
+    """Verify that the reconstructed gradients has correct direction.
+
+    Due to numerical imprecision, the magnitude may be slightly different.
+    Yet according to the paper, the angle should be roughly the same.
+
+    Args:
+      grads: list of gradients from reconstruction
+      grads_true: list of true gradients
+    """
+
+    def _combine(gs):
+      return [tf.reshape(g, [-1]) for g in gs]
+
+    g1_all = tf.concat(_combine(grads), axis=0)
+    g2_all = tf.concat(_combine(grads_true), axis=0)
+
+    self.assertEqual(len(g1_all.shape), 1)
+    self.assertEqual(len(g2_all.shape), 1)
+
+    degree = blocks_test.compute_degree(g1_all, g2_all)
+    self.assertLessEqual(degree, 1e0)
+
   def test_compute_gradients(self):
     """Test `compute_gradients` function."""
+    self.model(self.x, training=False)  # Initialize model
+    grads, vars_, loss = self.model.compute_gradients(
+        inputs=self.x, labels=self.t, training=True, l2_reg=True)
+    self.assertTrue(isinstance(grads, list))
+    self.assertTrue(isinstance(vars_, list))
+    self.assertEqual(len(grads), len(vars_))
+    for grad, var in zip(grads, vars_):
+      self.assertEqual(grad.shape, var.shape)
 
-    grads, vars_ = self.model.compute_gradients(inputs=self.x, labels=self.t)
+    # Compare against the true gradient computed by the tape
+    with tf.GradientTape() as tape:
+      logits, _ = self.model(self.x, training=True)
+      loss_true = self.model.compute_loss(logits=logits, labels=self.t)
+    grads_true = tape.gradient(loss_true, vars_)
+    self.assertAllClose(loss, loss_true)
+    self.assertAllClose(grads, grads_true, rtol=1e-4, atol=1e-4)
+    self._check_grad_angle_combined(grads, grads_true)
+
+  def test_call_defun(self):
+    """Test `call` function with defun."""
+    y, _ = tfe.defun(self.model.call)(self.x, training=False)
+    self.assertEqual(y.shape, [self.config.batch_size, self.config.n_classes])
+
+  def test_compute_gradients_defun(self):
+    """Test `compute_gradients` function with defun."""
+    compute_gradients = tfe.defun(self.model.compute_gradients)
+    grads, vars_, _ = compute_gradients(self.x, self.t, training=True)
     self.assertTrue(isinstance(grads, list))
     self.assertTrue(isinstance(vars_, list))
     self.assertEqual(len(grads), len(vars_))
@@ -67,38 +127,33 @@ class RevnetTest(tf.test.TestCase):
       if grad is not None:
         self.assertEqual(grad.shape, var.shape)
 
-  def test_train_step(self):
-    """Test `train_step` function."""
+  def test_training_graph(self):
+    """Test model training in graph mode."""
+    with tf.Graph().as_default():
+      config = config_.get_hparams_cifar_38()
+      x = tf.random_normal(
+          shape=(self.config.batch_size,) + self.config.input_shape)
+      t = tf.random_uniform(
+          shape=(self.config.batch_size,),
+          minval=0,
+          maxval=self.config.n_classes,
+          dtype=tf.int32)
+      global_step = tfe.Variable(0., trainable=False)
+      model = revnet.RevNet(config=config)
+      model(x)
+      updates = model.get_updates_for(x)
 
-    logits, _ = self.model(self.x, training=True)
-    loss = self.model.compute_loss(logits=logits, labels=self.t)
-    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+      x_ = tf.identity(x)
+      grads_all, vars_all, _ = model.compute_gradients(x_, t, training=True)
+      optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+      with tf.control_dependencies(updates):
+        train_op = optimizer.apply_gradients(
+            zip(grads_all, vars_all), global_step=global_step)
 
-    # Loss should be decreasing after each optimization step
-    for _ in range(3):
-      loss_ = self.model.train_step(self.x, self.t, optimizer, report=True)
-      self.assertTrue(loss_.numpy() <= loss.numpy())
-      loss = loss_
-
-  def test_call_defun(self):
-    """Test `call` function with tfe.defun apply."""
-
-    y, _ = tfe.defun(self.model.call)(self.x, training=False)
-    self.assertEqual(y.shape, [self.config.batch_size, self.config.n_classes])
-
-  def test_train_step_defun(self):
-    self.model.call = tfe.defun(self.model.call)
-    logits, _ = self.model(self.x, training=True)
-    loss = self.model.compute_loss(logits=logits, labels=self.t)
-    optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-
-    for _ in range(3):
-      loss_ = self.model.train_step(self.x, self.t, optimizer, report=True)
-      self.assertTrue(loss_.numpy() <= loss.numpy())
-      loss = loss_
-
-    # Initialize new model, so that other tests are not affected
-    self.model = revnet.RevNet(config=self.config)
+      with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for _ in range(1):
+          sess.run(train_op)
 
 
 # Benchmark related
@@ -126,7 +181,7 @@ class MockIterator(object):
     return self._tensors
 
 
-class RevnetBenchmark(tf.test.Benchmark):
+class RevNetBenchmark(tf.test.Benchmark):
   """Eager and graph benchmarks for RevNet."""
 
   def _train_batch_sizes(self):
@@ -227,7 +282,7 @@ class RevnetBenchmark(tf.test.Benchmark):
           iterator = make_iterator((images, labels))
           for _ in range(num_burn):
             (images, labels) = iterator.next()
-            model.train_step(images, labels, optimizer)
+            train_one_iter(model, images, labels, optimizer)
           if execution_mode:
             tfe.async_wait()
           self._force_device_sync()
@@ -236,7 +291,7 @@ class RevnetBenchmark(tf.test.Benchmark):
           start = time.time()
           for _ in range(num_iters):
             (images, labels) = iterator.next()
-            model.train_step(images, labels, optimizer)
+            train_one_iter(model, images, labels, optimizer)
           if execution_mode:
             tfe.async_wait()
           self._force_device_sync()

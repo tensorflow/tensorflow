@@ -394,6 +394,59 @@ class BiasAddGradGPUConfig {
  private:
   BiasAddGradGPUMode mode_;
 };
+
+// Encapsulate all the shape information that is used in bias add grad
+// operations.
+class BiasAddParams {
+ public:
+  // We use a list to maintain both the shape value and the order (data format).
+  using SpatialArray = gtl::InlinedVector<int64, 4>;
+  BiasAddParams(const SpatialArray& in_shape, TensorFormat data_format,
+                DataType dtype, int device_id)
+      : in_shape_(in_shape),
+        data_format_(data_format),
+        dtype_(dtype),
+        device_id_(device_id) {
+    for (int64 val : in_shape_) {
+      hash_code_ = Hash64Combine(hash_code_, val);
+    }
+    hash_code_ = Hash64Combine(hash_code_, data_format);
+    hash_code_ = Hash64Combine(hash_code_, dtype);
+    hash_code_ = Hash64Combine(hash_code_, device_id);
+  }
+  bool operator==(const BiasAddParams& other) const {
+    return this->get_data_as_tuple() == other.get_data_as_tuple();
+  }
+
+  bool operator!=(const BiasAddParams& other) const {
+    return !(*this == other);
+  }
+  uint64 hash() const { return hash_code_; }
+
+  string ToString() const {
+    // clang-format off
+    return strings::StrCat(
+        "(", str_util::Join(in_shape_, ", "), "), ",
+        data_format_, ", ", dtype_, ", ", device_id_);
+    // clang-format on
+  }
+
+ protected:
+  using ParamsDataType = std::tuple<SpatialArray, TensorFormat, DataType, int>;
+
+  ParamsDataType get_data_as_tuple() const {
+    return std::make_tuple(in_shape_, data_format_, dtype_, device_id_);
+  }
+
+  uint64 hash_code_ = 0;
+
+ private:
+  SpatialArray in_shape_;
+  TensorFormat data_format_;
+  DataType dtype_;
+  int device_id_;
+};
+
 typedef AutoTuneSingleton<BiasGradAutotuneGroup, BiasAddParams,
                           BiasAddGradGPUConfig>
     AutotuneBiasGrad;

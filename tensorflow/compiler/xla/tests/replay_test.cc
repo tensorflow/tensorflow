@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -39,8 +39,8 @@ class ReplayTest : public ClientLibraryTestBase {};
 TEST_F(ReplayTest, TwoPlusTwoReplay) {
   // Make 2+2 computation.
   XlaBuilder builder(TestName());
-  auto two = builder.ConstantR0<int32>(2);
-  builder.Add(two, two);
+  auto two = ConstantR0<int32>(&builder, 2);
+  Add(two, two);
   XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   // Serialize it out.
@@ -70,9 +70,9 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
 XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   // Make computation.
   XlaBuilder builder(TestName());
-  auto x = builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "x");
-  auto y = builder.Parameter(1, ShapeUtil::MakeShape(S32, {}), "y");
-  builder.Add(x, y);
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(S32, {}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(S32, {}), "y");
+  Add(x, y);
   XlaComputation computation = builder.Build().ConsumeValueOrDie();
 
   // Serialize it out.
@@ -91,10 +91,10 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(*Literal::CreateR0<int32>(2))
+      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(2))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(*Literal::CreateR0<int32>(3))
+      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(3))
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> literal =
       client_
@@ -111,13 +111,13 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
   // As above, but with map(+2) over some constant array.
   XlaBuilder plus_two_builder("plus two");
   auto input =
-      plus_two_builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "input");
-  plus_two_builder.Add(input, plus_two_builder.ConstantR0<int32>(2));
+      Parameter(&plus_two_builder, 0, ShapeUtil::MakeShape(S32, {}), "input");
+  Add(input, ConstantR0<int32>(&plus_two_builder, 2));
   XlaComputation plus_two = plus_two_builder.Build().ConsumeValueOrDie();
 
   XlaBuilder mapper_builder(TestName());
-  auto original = mapper_builder.ConstantR1<int32>({1, 2, 3});
-  mapper_builder.Map({original}, plus_two, {0});
+  auto original = ConstantR1<int32>(&mapper_builder, {1, 2, 3});
+  Map(&mapper_builder, {original}, plus_two, {0});
 
   XlaComputation computation = mapper_builder.Build().ConsumeValueOrDie();
 

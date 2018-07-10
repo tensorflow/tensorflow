@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "StringStrip"
+  endpoint {
+    name: "strings.strip"
+  }
+  endpoint {
+    name: "string_strip"
+    deprecated: true
+  }
+}

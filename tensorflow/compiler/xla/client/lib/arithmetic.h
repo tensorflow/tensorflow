@@ -53,21 +53,7 @@ XlaComputation CreateScalarOrComputation(XlaBuilder* builder);
 // Returns whether any predicate in "predicates" is set.
 //
 // Note: if predicates is zero-sized, Any() vacuously returns false.
-StatusOr<XlaOp> Any(const XlaOp& predicates, XlaBuilder* builder);
-
-// Evaluate the polynomial given coefficients and `x`.
-// N.B. Coefficients should be supplied in decreasing order.
-xla::XlaOp EvaluatePolynomial(xla::XlaBuilder* b, const xla::XlaOp& x,
-                              tensorflow::gtl::ArraySlice<double> coefficients,
-                              PrimitiveType data_type);
-
-// Compute an approximation of the error function complement (1 - erf(x)).
-xla::XlaOp ComputeErfc(xla::XlaBuilder* b, const xla::XlaOp& x,
-                       PrimitiveType data_type);
-
-// Compute an approximation of the error function.
-xla::XlaOp ComputeErf(xla::XlaBuilder* b, const xla::XlaOp& x,
-                      PrimitiveType data_type);
+XlaOp Any(XlaOp predicates);
 
 }  // namespace xla
 

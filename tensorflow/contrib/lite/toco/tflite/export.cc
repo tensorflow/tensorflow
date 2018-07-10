@@ -49,7 +49,7 @@ details::OperatorKey GetOperatorKey(
     const ::toco::Operator& op,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   string custom_code;
-  if (op.type == OperatorType::kTensorFlowUnsupported) {
+  if (op.type == OperatorType::kUnsupported) {
     const TensorFlowUnsupportedOperator& unsupported_op =
         static_cast<const TensorFlowUnsupportedOperator&>(op);
     custom_code = unsupported_op.tensorflow_op;
@@ -211,7 +211,7 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
       ordered_opcodes[op_index] =
           CreateOperatorCode(*builder, builtin_ops[name], 0, op_version);
     } else {
-      // This could be a kTensorFlowUnsupported, in which case we should be
+      // This could be a kUnsupported, in which case we should be
       // able to retrieve the original Tensorflow name from the OperatorKey, or
       // this could be a proper TOCO operator that is completely unknown to TF
       // Lite.
@@ -268,7 +268,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
                                   : tflite_op_it->second.get();
 
     // This is a custom op unless we can find it in ops_by_type, and even then
-    // it could be a custom op (such as kTensorFlowUnsupported).
+    // it could be a custom op (such as kUnsupported).
     auto options = Options::Custom(0);
 
     std::vector<bool> mutating_input_variables;

@@ -26,14 +26,15 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util.tf_export import tf_export
@@ -180,11 +181,6 @@ class BatchNormalization(Layer):
       self.renorm_clipping = renorm_clipping
       self.renorm_momentum = renorm_momentum
 
-  def _add_tower_local_variable(self, *args, **kwargs):
-    tower_context = distribute_lib.get_tower_context()
-    with tower_context.tower_local_var_scope('mean'):
-      return self.add_weight(*args, **kwargs)
-
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -312,19 +308,23 @@ class BatchNormalization(Layer):
         self._scope.set_partitioner(None)
       else:
         partitioner = None
-      self.moving_mean = self._add_tower_local_variable(
+      self.moving_mean = self.add_weight(
           name='moving_mean',
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_mean_initializer,
-          trainable=False)
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          trainable=False,
+          aggregation=variable_scope.VariableAggregation.MEAN)
 
-      self.moving_variance = self._add_tower_local_variable(
+      self.moving_variance = self.add_weight(
           name='moving_variance',
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_variance_initializer,
-          trainable=False)
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          trainable=False,
+          aggregation=variable_scope.VariableAggregation.MEAN)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -335,12 +335,14 @@ class BatchNormalization(Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
-          var = self._add_tower_local_variable(
+          var = self.add_weight(
               name=name,
               shape=shape,
               dtype=param_dtype,
               initializer=init_ops.zeros_initializer(),
-              trainable=False)
+              synchronization=variable_scope.VariableSynchronization.ON_READ,
+              trainable=False,
+              aggregation=variable_scope.VariableAggregation.MEAN)
           return var
 
         with distribute_lib.get_distribution_strategy().colocate_vars_with(

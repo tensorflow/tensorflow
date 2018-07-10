@@ -187,7 +187,7 @@ class LocalComputationBuilder {
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
 
-  std::unique_ptr<Shape> GetShape(const LocalOp& operand);
+  StatusOr<Shape> GetShape(const LocalOp& operand);
 
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();
@@ -270,8 +270,7 @@ class LocalComputationBuilder {
 
   LocalOp Map(tensorflow::gtl::ArraySlice<LocalOp> operands,
               const LocalComputation& local_computation,
-              tensorflow::gtl::ArraySlice<int64> dimensions,
-              tensorflow::gtl::ArraySlice<LocalOp> static_operands);
+              tensorflow::gtl::ArraySlice<int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
                  const LocalComputation& local_computation,
@@ -333,6 +332,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(Min)
   _FORWARD_BINOP(And)
   _FORWARD_BINOP(Or)
+  _FORWARD_BINOP(Xor)
   _FORWARD_UNOP(Not)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
@@ -346,11 +346,11 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Cos)
   _FORWARD_UNOP(Sin)
   _FORWARD_UNOP(Tanh)
-  _FORWARD_UNOP(SqrtF32)
-  _FORWARD_UNOP(SquareF32)
+  _FORWARD_UNOP(Sqrt)
+  _FORWARD_UNOP(Square)
   _FORWARD_BINOP(Pow)
   _FORWARD_UNOP(IsFinite)
-  _FORWARD_UNOP(ReciprocalF32)
+  _FORWARD_UNOP(Reciprocal)
   _FORWARD_UNOP(Neg)
   _FORWARD_UNOP(Sort)
 

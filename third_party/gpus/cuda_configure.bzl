@@ -96,6 +96,16 @@ NVVM_LIBDEVICE_PATHS = [
   "share/cuda/",
 ]
 
+# Files used to detect the NVVM libdevice path.
+NVVM_LIBDEVICE_FILES = [
+  # CUDA 9.0 has a single file.
+  "libdevice.10.bc",
+
+  # CUDA 8.0 has separate files for compute versions 2.0, 3.0, 3.5 and 5.0.
+  # Probing for one of them is sufficient.
+  "libdevice.compute_20.10.bc",
+]
+
 load("//third_party/clang_toolchain:download_clang.bzl", "download_clang")
 
 # TODO(dzc): Once these functions have been factored out of Bazel's
@@ -718,11 +728,11 @@ def _find_nvvm_libdevice_dir(repository_ctx, cuda_config):
     The path of the directory containing the CUDA headers.
   """
   cuda_toolkit_path = cuda_config.cuda_toolkit_path
-  for relative_path in NVVM_LIBDEVICE_PATHS:
-    if repository_ctx.path("%s/%slibdevice.10.bc" % (cuda_toolkit_path, relative_path)).exists:
-      return ("%s/%s" % (cuda_toolkit_path, relative_path))[:-1]
-  auto_configure_fail("Cannot find libdevice.10.bc under %s" % cuda_toolkit_path)
-
+  for libdevice_file in NVVM_LIBDEVICE_FILES:
+    for relative_path in NVVM_LIBDEVICE_PATHS:
+      if repository_ctx.path("%s/%s%s" % (cuda_toolkit_path, relative_path, libdevice_file)).exists:
+        return ("%s/%s" % (cuda_toolkit_path, relative_path))[:-1]
+  auto_configure_fail("Cannot find libdevice*.bc files under %s" % cuda_toolkit_path)
 
 def _cudart_static_linkopt(cpu_value):
   """Returns additional platform-specific linkopts for cudart."""

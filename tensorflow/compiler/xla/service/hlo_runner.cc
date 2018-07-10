@@ -98,8 +98,10 @@ StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
                       backend().transfer_manager()->AllocateScopedShapedBuffer(
                           literal.shape(), backend().memory_allocator(),
                           backend().default_device_ordinal()));
+  TF_ASSIGN_OR_RETURN(
+      auto stream, backend().BorrowStream(backend().default_stream_executor()));
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-      backend().default_stream_executor(), literal, buffer));
+      stream.get(), literal, buffer));
   return std::move(buffer);
 }
 
@@ -127,8 +129,10 @@ StatusOr<std::vector<ScopedShapedBuffer>> HloRunner::TransferLiteralsToDevice(
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::TransferLiteralFromDevice(
     const ShapedBuffer& buffer) {
-  return backend().transfer_manager()->TransferLiteralFromDevice(
-      backend().default_stream_executor(), buffer);
+  TF_ASSIGN_OR_RETURN(
+      auto stream, backend().BorrowStream(backend().default_stream_executor()));
+  return backend().transfer_manager()->TransferLiteralFromDevice(stream.get(),
+                                                                 buffer);
 }
 
 StatusOr<std::unique_ptr<Literal>> HloRunner::Execute(
@@ -237,7 +241,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
           backend().transfer_manager()->AllocateScopedShapedBuffer(
               argument->shape(), backend().memory_allocator(), device));
       TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
-          executor, *argument, argument_buffer));
+          streams.back().get(), *argument, argument_buffer));
       argument_buffers.push_back(std::move(argument_buffer));
       argument_buffer_ptrs[index++] = &argument_buffers.back();
     }
@@ -307,7 +311,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
   for (int64 i = 0; i < options.num_replicas; ++i) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
-                            streams[i]->parent(), results[i]));
+                            streams[i].get(), results[i]));
     exec_results.push_back(std::move(literal));
   }
   return std::move(exec_results);

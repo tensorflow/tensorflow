@@ -44,7 +44,6 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.applications.imagenet_utils import _obtain_input_shape
 from tensorflow.python.keras.applications.imagenet_utils import decode_predictions
-from tensorflow.python.keras.engine.network import get_source_inputs
 from tensorflow.python.keras.layers import Activation
 from tensorflow.python.keras.layers import BatchNormalization
 from tensorflow.python.keras.layers import Conv2D
@@ -55,6 +54,7 @@ from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.layers import MaxPooling2D
 from tensorflow.python.keras.layers import SeparableConv2D
 from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
@@ -302,7 +302,7 @@ def Xception(include_top=True,
   # Ensure that the model takes into account
   # any potential predecessors of `input_tensor`.
   if input_tensor is not None:
-    inputs = get_source_inputs(input_tensor)
+    inputs = layer_utils.get_source_inputs(input_tensor)
   else:
     inputs = img_input
   # Create model.
