@@ -794,17 +794,23 @@ class XlaBuilder {
 
   // Enqueues a sort (as increasing order) instruction onto the computation.
   // If only keys are provided:
-  // * The keys must be a rank-1 tensor (i.e. an array).
-  // * The result is a sorted array of keys.
+  // * If the keys are an rank-1 tensor (an array), the result is a sorted array
+  // of keys, in ascending order.
+  // * If the keys have higher rank, the keys are sorted along the provided
+  // dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
+  // value of 0 will indepenently sort every column, and a dimension value of 1
+  // will independently sort each row. If no dimension number is provided, then
+  // the last dimension is chosen by default.
   //
   // If both keys and values are provided:
-  // * The keys and the values must be rank-1 tensors with the same dimensions.
-  // The element types of the tensors may be different.
-  // * The result is a tuple that consists of a sorted array of keys as the
-  // first element, and an array with their corresponding values as the second
-  // element.
-  XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values =
-                             tensorflow::gtl::nullopt);
+  // * The keys and the values must tensors with the same dimensions. The
+  // element types of the tensors may be different.
+  // * The result is a tuple that consists of a sorted tensor of keys (along the
+  // provided dimension, as above) as the first element, and a tensor with their
+  // corresponding values as the second element.
+  XlaOp Sort(XlaOp keys,
+             tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt,
+             int64 dimension = -1);
 
   // Enqueues a clamp instruction onto the computation.
   XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
@@ -1247,7 +1253,8 @@ class XlaBuilder {
                          tensorflow::gtl::ArraySlice<int64> permutation);
   friend XlaOp Rev(const XlaOp& operand,
                    tensorflow::gtl::ArraySlice<int64> dimensions);
-  friend XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values);
+  friend XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
+                    int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder,
                    tensorflow::gtl::ArraySlice<XlaOp> operands,
@@ -1888,16 +1895,25 @@ XlaOp Transpose(const XlaOp& operand,
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions);
 
-// * The result is a sorted array of keys.
+// Enqueues a sort (as increasing order) instruction onto the computation.
+// If only keys are provided:
+// * If the keys are an rank-1 tensor (an array), the result is a sorted array
+// of keys, in ascending order.
+// * If the keys have higher rank, the keys are sorted along the provided
+// dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
+// value of 0 will indepenently sort every column, and a dimension value of 1
+// will independently sort each row. If no dimension number is provided, then
+// the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must be rank-1 tensors with the same dimensions.
-// The element types of the tensors may be different.
-// * The result is a tuple that consists of a sorted array of keys as the
-// first element, and an array with their corresponding values as the second
-// element.
+// * The keys and the values must tensors with the same dimensions. The
+// element types of the tensors may be different.
+// * The result is a tuple that consists of a sorted tensor of keys (along the
+// provided dimension, as above) as the first element, and a tensor with their
+// corresponding values as the second element.
 XlaOp Sort(XlaOp keys,
-           tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt);
+           tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt,
+           int64 dimension = -1);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
