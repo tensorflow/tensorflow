@@ -206,8 +206,9 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
     } else if (builtin_code != BuiltinOperator_CUSTOM) {
       registration = op_resolver_.FindOp(builtin_code, version);
       if (registration == nullptr) {
-        error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
-                                EnumNameBuiltinOperator(builtin_code));
+        error_reporter_->Report(
+            "Didn't find op for builtin opcode '%s' version '%d'\n",
+            EnumNameBuiltinOperator(builtin_code), version);
         status = kTfLiteError;
       }
     } else if (!opcode->custom_code()) {
