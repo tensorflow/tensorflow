@@ -548,21 +548,25 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::RemapArgs(
 
 Status PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   void* buf(static_cast<void*>(tc->data));
-  if (tc->output_convertor) {
-    current_engine_->readTensor(tc->output_handle, buf);
-    std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
-    memcpy(buf, converted.data(), converted.size());
-  } else {
-    current_engine_->readTensor(tc->output_handle, buf);
+  try {
+    if (tc->output_convertor) {
+      current_engine_->readTensor(tc->output_handle, buf);
+      std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
+      memcpy(buf, converted.data(), converted.size());
+    } else {
+      current_engine_->readTensor(tc->output_handle, buf);
+    }
+    if (profile_io_) {
+      AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
+                     tc->output_handle, 0);
+    }
+    tc->on_device = false;
+    tc->output_handle.clear();
+    tc->input_handle.clear();
+    return Status::OK();
+  } catch (std::logic_error& e) {
+    return tensorflow::errors::Internal("Poplar host read error: ", e.what());
   }
-  if (profile_io_) {
-    AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
-                   tc->output_handle, 0);
-  }
-  tc->on_device = false;
-  tc->output_handle.clear();
-  tc->input_handle.clear();
-  return Status::OK();
 }
 
 StatusOr<se::DeviceMemoryBase> PoplarExecutor::GetTupleBufferByIndex(
@@ -663,45 +667,50 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       // a) the engine has changed
       // b) it is not on the device
       // c) it is on the device, but in the wrong place
-      for (auto mem : arg_map) {
-        TensorControl* tc = mem.second.tc;
-        void* buf(static_cast<void*>(tc->data));
-        if (mem.second.streamed) {
-          current_engine_->connectStream(mem.first, buf);
-        } else {
-          if (tc->on_device == false || tc->input_handle != mem.first ||
-              engine_changed) {
-            ConversionFn fn = mem.second.fn;
-            if (fn != nullptr) {
-              std::vector<char> converted = fn(buf, tc->size, 0);
-              current_engine_->writeTensor(mem.first, converted.data());
-            } else {
-              current_engine_->writeTensor(mem.first, buf);
-            }
-            tc->on_device = true;
-            tc->input_handle = mem.first;
-            if (profile_io_) {
-              AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
-                             "", mem.first, 0);
+      try {
+        for (auto mem : arg_map) {
+          TensorControl* tc = mem.second.tc;
+          void* buf(static_cast<void*>(tc->data));
+          if (mem.second.streamed) {
+            current_engine_->connectStream(mem.first, buf);
+          } else {
+            if (tc->on_device == false || tc->input_handle != mem.first ||
+                engine_changed) {
+              ConversionFn fn = mem.second.fn;
+              if (fn != nullptr) {
+                std::vector<char> converted = fn(buf, tc->size, 0);
+                current_engine_->writeTensor(mem.first, converted.data());
+              } else {
+                current_engine_->writeTensor(mem.first, buf);
+              }
+              tc->on_device = true;
+              tc->input_handle = mem.first;
+              if (profile_io_) {
+                AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
+                               "", mem.first, 0);
+              }
             }
           }
         }
+      } catch (std::logic_error e) {
+        return tensorflow::errors::Internal(
+          "Poplar host write error ", e.what());
       }
 
       std::tie(retbuf, tensor_count) =
           AllocateOutputBuffer(allocator, output_shape, 0, output_map, args,
                                executable.OutputStreamed());
 
-      const auto& streamed = executable.OutputStreamed();
-      std::vector<void*> bufs;
-      FlattenedOutputDeviceMemoryList(bufs, output_shape, retbuf.opaque());
-      for (int o = 0; o < streamed.size(); o++) {
-        if (streamed[o]) {
-          current_engine_->connectStream(GetOutputCopyHandle(o), bufs[o]);
-        }
-      }
-
       try {
+        const auto& streamed = executable.OutputStreamed();
+        std::vector<void*> bufs;
+        FlattenedOutputDeviceMemoryList(bufs, output_shape, retbuf.opaque());
+        for (int o = 0; o < streamed.size(); o++) {
+          if (streamed[o]) {
+            current_engine_->connectStream(GetOutputCopyHandle(o), bufs[o]);
+          }
+        }
+
         current_engine_->run(0);
       }
       catch (std::logic_error e) {
