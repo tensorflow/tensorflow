@@ -565,6 +565,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
     if (OpPrepare(registration, &node) == kTfLiteError) {
+      context_.ReportError(&context_, "Node %d failed to prepare.\n",
+                           node_index);
       return kTfLiteError;
     }
 
@@ -665,6 +667,8 @@ TfLiteStatus Interpreter::Invoke() {
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
     if (OpInvoke(registration, &node) == kTfLiteError) {
+      context_.ReportError(&context_, "Node %d failed to invoke.\n",
+                           node_index);
       status = kTfLiteError;
     }
 
