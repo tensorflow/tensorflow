@@ -125,15 +125,12 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
           parameter->parameter_number());
       if (param_buffer) {
         VLOG(3) << "Use buffer for " << parameter->ToString();
-        llvm::Instruction* load_from_buffer = ir_builder_->CreateLoad(
+        return ir_builder_->CreateLoad(
             ir_builder_->CreateGEP(
                 param_buffer,
                 {index.GetConstantWithIndexType(0), tiled_parameter_info_->x(),
                  tiled_parameter_info_->y()}),
             "tiled_buffer");
-        parameter_arrays_[parameter->parameter_number()]
-            .AnnotateBufferLoadStoreInstructionWithMetadata(load_from_buffer);
-        return load_from_buffer;
       }
     }
     return parameter_arrays_[parameter->parameter_number()]

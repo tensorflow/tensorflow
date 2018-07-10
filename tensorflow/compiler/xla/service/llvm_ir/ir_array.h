@@ -248,11 +248,6 @@ class IrArray {
   void AnnotateLoadStoreInstructionWithMetadata(
       llvm::Instruction* instruction) const;
 
-  // Uses the metadata for a parameter IrArray to annotate the load/store of the
-  // tile buffer for the parameter.
-  void AnnotateBufferLoadStoreInstructionWithMetadata(
-      llvm::Instruction* instruction) const;
-
   // Emit IR to read an array element at the given index. Returns the read
   // result (effectively, a Value loaded from memory). This method seamlessly
   // handles scalar shapes by broadcasting their value to all indices (index is
