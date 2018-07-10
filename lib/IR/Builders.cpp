@@ -16,13 +16,25 @@
 // =============================================================================
 
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Types.h"
 using namespace mlir;
 
 Builder::Builder(Module *module) : context(module->getContext()) {}
 
+Identifier Builder::getIdentifier(StringRef str) {
+  return Identifier::get(str, context);
+}
+
+Module *Builder::createModule() { return new Module(context); }
+
+//===----------------------------------------------------------------------===//
 // Types.
+//===----------------------------------------------------------------------===//
+
 PrimitiveType *Builder::getAffineIntType() {
   return Type::getAffineInt(context);
 }
@@ -56,4 +68,73 @@ RankedTensorType *Builder::getTensorType(ArrayRef<int> shape,
 
 UnrankedTensorType *Builder::getTensorType(Type *elementType) {
   return UnrankedTensorType::get(elementType);
+}
+
+//===----------------------------------------------------------------------===//
+// Attributes.
+//===----------------------------------------------------------------------===//
+
+BoolAttr *Builder::getBoolAttr(bool value) {
+  return BoolAttr::get(value, context);
+}
+
+IntegerAttr *Builder::getIntegerAttr(int64_t value) {
+  return IntegerAttr::get(value, context);
+}
+
+FloatAttr *Builder::getFloatAttr(double value) {
+  return FloatAttr::get(value, context);
+}
+
+StringAttr *Builder::getStringAttr(StringRef bytes) {
+  return StringAttr::get(bytes, context);
+}
+
+ArrayAttr *Builder::getArrayAttr(ArrayRef<Attribute *> value) {
+  return ArrayAttr::get(value, context);
+}
+
+//===----------------------------------------------------------------------===//
+// Affine Expressions and Affine Map.
+//===----------------------------------------------------------------------===//
+
+AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
+                                 ArrayRef<AffineExpr *> results) {
+  return AffineMap::get(dimCount, symbolCount, results, context);
+}
+
+AffineDimExpr *Builder::getDimExpr(unsigned position) {
+  return AffineDimExpr::get(position, context);
+}
+
+AffineSymbolExpr *Builder::getSymbolExpr(unsigned position) {
+  return AffineSymbolExpr::get(position, context);
+}
+
+AffineConstantExpr *Builder::getConstantExpr(int64_t constant) {
+  return AffineConstantExpr::get(constant, context);
+}
+
+AffineExpr *Builder::getAddExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return AffineAddExpr::get(lhs, rhs, context);
+}
+
+AffineExpr *Builder::getSubExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return AffineSubExpr::get(lhs, rhs, context);
+}
+
+AffineExpr *Builder::getMulExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return AffineMulExpr::get(lhs, rhs, context);
+}
+
+AffineExpr *Builder::getModExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return AffineModExpr::get(lhs, rhs, context);
+}
+
+AffineExpr *Builder::getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return AffineFloorDivExpr::get(lhs, rhs, context);
+}
+
+AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
+  return AffineCeilDivExpr::get(lhs, rhs, context);
 }

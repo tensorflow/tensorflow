@@ -30,6 +30,16 @@ class FunctionType;
 class VectorType;
 class RankedTensorType;
 class UnrankedTensorType;
+class BoolAttr;
+class IntegerAttr;
+class FloatAttr;
+class StringAttr;
+class ArrayAttr;
+class AffineMap;
+class AffineExpr;
+class AffineConstantExpr;
+class AffineDimExpr;
+class AffineSymbolExpr;
 
 /// This class is a general helper class for creating context-global objects
 /// like types, attributes, and affine expressions.
@@ -39,6 +49,9 @@ public:
   explicit Builder(Module *module);
 
   MLIRContext *getContext() const { return context; }
+
+  Identifier getIdentifier(StringRef str);
+  Module *createModule();
 
   // Types.
   PrimitiveType *getAffineIntType();
@@ -53,10 +66,27 @@ public:
   RankedTensorType *getTensorType(ArrayRef<int> shape, Type *elementType);
   UnrankedTensorType *getTensorType(Type *elementType);
 
+  // Attributes.
+  BoolAttr *getBoolAttr(bool value);
+  IntegerAttr *getIntegerAttr(int64_t value);
+  FloatAttr *getFloatAttr(double value);
+  StringAttr *getStringAttr(StringRef bytes);
+  ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
+
+  // Affine Expressions and Affine Map.
+  AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
+                          ArrayRef<AffineExpr *> results);
+  AffineDimExpr *getDimExpr(unsigned position);
+  AffineSymbolExpr *getSymbolExpr(unsigned position);
+  AffineConstantExpr *getConstantExpr(int64_t constant);
+  AffineExpr *getAddExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getSubExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getMulExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getModExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs);
+  AffineExpr *getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs);
+
   // TODO: Helpers for affine map/exprs, etc.
-  // TODO: Helpers for attributes.
-  // TODO: Identifier
-  // TODO: createModule()
 protected:
   MLIRContext *context;
 };

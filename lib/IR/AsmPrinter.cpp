@@ -313,27 +313,27 @@ void AffineExpr::dump() const {
 }
 
 void AffineAddExpr::print(raw_ostream &os) const {
-  os << "(" << *getLeftOperand() << " + " << *getRightOperand() << ")";
+  os << "(" << *getLHS() << " + " << *getRHS() << ")";
 }
 
 void AffineSubExpr::print(raw_ostream &os) const {
-  os << "(" << *getLeftOperand() << " - " << *getRightOperand() << ")";
+  os << "(" << *getLHS() << " - " << *getRHS() << ")";
 }
 
 void AffineMulExpr::print(raw_ostream &os) const {
-  os << "(" << *getLeftOperand() << " * " << *getRightOperand() << ")";
+  os << "(" << *getLHS() << " * " << *getRHS() << ")";
 }
 
 void AffineModExpr::print(raw_ostream &os) const {
-  os << "(" << *getLeftOperand() << " mod " << *getRightOperand() << ")";
+  os << "(" << *getLHS() << " mod " << *getRHS() << ")";
 }
 
 void AffineFloorDivExpr::print(raw_ostream &os) const {
-  os << "(" << *getLeftOperand() << " floordiv " << *getRightOperand() << ")";
+  os << "(" << *getLHS() << " floordiv " << *getRHS() << ")";
 }
 
 void AffineCeilDivExpr::print(raw_ostream &os) const {
-  os << "(" << *getLeftOperand() << " ceildiv " << *getRightOperand() << ")";
+  os << "(" << *getLHS() << " ceildiv " << *getRHS() << ")";
 }
 
 void AffineSymbolExpr::print(raw_ostream &os) const {

@@ -20,6 +20,8 @@
 
 using namespace mlir;
 
+/// Returns true if this expression is made out of only symbols and
+/// constants (no dimensional identifiers).
 bool AffineExpr::isSymbolic() const {
   switch (getKind()) {
   case Kind::Constant:
@@ -34,48 +36,41 @@ bool AffineExpr::isSymbolic() const {
   case Kind::Mul:
   case Kind::FloorDiv:
   case Kind::CeilDiv:
-  case Kind::Mod:
-    return cast<AffineBinaryOpExpr>(this)->isSymbolic();
+  case Kind::Mod: {
+    auto expr = cast<AffineBinaryOpExpr>(this);
+    return expr->getLHS()->isSymbolic() && expr->getRHS()->isSymbolic();
+  }
   }
 }
 
+/// Returns true if this is a pure affine expression, i.e., multiplication,
+/// floordiv, ceildiv, and mod is only allowed w.r.t constants.
 bool AffineExpr::isPureAffine() const {
   switch (getKind()) {
   case Kind::SymbolId:
-    return cast<AffineSymbolExpr>(this)->isPureAffine();
   case Kind::DimId:
-    return cast<AffineDimExpr>(this)->isPureAffine();
   case Kind::Constant:
-    return cast<AffineConstantExpr>(this)->isPureAffine();
+    return true;
   case Kind::Add:
-    return cast<AffineAddExpr>(this)->isPureAffine();
-  case Kind::Sub:
-    return cast<AffineSubExpr>(this)->isPureAffine();
-  case Kind::Mul:
-    return cast<AffineMulExpr>(this)->isPureAffine();
-  case Kind::FloorDiv:
-    return cast<AffineFloorDivExpr>(this)->isPureAffine();
-  case Kind::CeilDiv:
-    return cast<AffineCeilDivExpr>(this)->isPureAffine();
-  case Kind::Mod:
-    return cast<AffineModExpr>(this)->isPureAffine();
+  case Kind::Sub: {
+    auto op = cast<AffineBinaryOpExpr>(this);
+    return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine();
   }
-}
 
-bool AffineMulExpr::isPureAffine() const {
-  return lhsOperand->isPureAffine() && rhsOperand->isPureAffine() &&
-    (isa<AffineConstantExpr>(lhsOperand) ||
-     isa<AffineConstantExpr>(rhsOperand));
-}
-
-bool AffineFloorDivExpr::isPureAffine() const {
-  return lhsOperand->isPureAffine() && isa<AffineConstantExpr>(rhsOperand);
-}
-
-bool AffineCeilDivExpr::isPureAffine() const {
-  return lhsOperand->isPureAffine() && isa<AffineConstantExpr>(rhsOperand);
-}
-
-bool AffineModExpr::isPureAffine() const {
-  return lhsOperand->isPureAffine() && isa<AffineConstantExpr>(rhsOperand);
+  case Kind::Mul: {
+    // TODO: Canonicalize the constants in binary operators to the RHS when
+    // possible, allowing this to merge into the next case.
+    auto op = cast<AffineBinaryOpExpr>(this);
+    return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine() &&
+           (isa<AffineConstantExpr>(op->getLHS()) ||
+            isa<AffineConstantExpr>(op->getRHS()));
+  }
+  case Kind::FloorDiv:
+  case Kind::CeilDiv:
+  case Kind::Mod: {
+    auto op = cast<AffineBinaryOpExpr>(this);
+    return op->getLHS()->isPureAffine() &&
+           isa<AffineConstantExpr>(op->getRHS());
+  }
+  }
 }

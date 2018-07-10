@@ -505,17 +505,17 @@ Attribute *Parser::parseAttribute() {
   switch (getToken().getKind()) {
   case Token::kw_true:
     consumeToken(Token::kw_true);
-    return BoolAttr::get(true, builder.getContext());
+    return builder.getBoolAttr(true);
   case Token::kw_false:
     consumeToken(Token::kw_false);
-    return BoolAttr::get(false, builder.getContext());
+    return builder.getBoolAttr(false);
 
   case Token::integer: {
     auto val = getToken().getUInt64IntegerValue();
     if (!val.hasValue() || (int64_t)val.getValue() < 0)
       return (emitError("integer too large for attribute"), nullptr);
     consumeToken(Token::integer);
-    return IntegerAttr::get((int64_t)val.getValue(), builder.getContext());
+    return builder.getIntegerAttr((int64_t)val.getValue());
   }
 
   case Token::minus: {
@@ -525,7 +525,7 @@ Attribute *Parser::parseAttribute() {
       if (!val.hasValue() || (int64_t)-val.getValue() >= 0)
         return (emitError("integer too large for attribute"), nullptr);
       consumeToken(Token::integer);
-      return IntegerAttr::get((int64_t)-val.getValue(), builder.getContext());
+      return builder.getIntegerAttr((int64_t)-val.getValue());
     }
 
     return (emitError("expected constant integer or floating point value"),
@@ -535,7 +535,7 @@ Attribute *Parser::parseAttribute() {
   case Token::string: {
     auto val = getToken().getStringValue();
     consumeToken(Token::string);
-    return StringAttr::get(val, builder.getContext());
+    return builder.getStringAttr(val);
   }
 
   case Token::l_bracket: {
@@ -549,7 +549,7 @@ Attribute *Parser::parseAttribute() {
 
     if (parseCommaSeparatedList(Token::r_bracket, parseElt))
       return nullptr;
-    return ArrayAttr::get(elements, builder.getContext());
+    return builder.getArrayAttr(elements);
   }
   default:
     // TODO: Handle floating point.
@@ -572,7 +572,7 @@ ParseResult Parser::parseAttributeDict(
     if (getToken().isNot(Token::bare_identifier, Token::inttype) &&
         !getToken().isKeyword())
       return emitError("expected attribute name");
-    auto nameId = Identifier::get(getTokenSpelling(), builder.getContext());
+    auto nameId = builder.getIdentifier(getTokenSpelling());
     consumeToken();
 
     if (!consumeIf(Token::colon))
@@ -671,28 +671,28 @@ AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
                 "operands has to be either a constant or symbolic");
       return nullptr;
     }
-    return AffineMulExpr::get(lhs, rhs, builder.getContext());
+    return builder.getMulExpr(lhs, rhs);
   case FloorDiv:
     if (!rhs->isSymbolic()) {
       emitError("non-affine expression: right operand of floordiv "
                 "has to be either a constant or symbolic");
       return nullptr;
     }
-    return AffineFloorDivExpr::get(lhs, rhs, builder.getContext());
+    return builder.getFloorDivExpr(lhs, rhs);
   case CeilDiv:
     if (!rhs->isSymbolic()) {
       emitError("non-affine expression: right operand of ceildiv "
                 "has to be either a constant or symbolic");
       return nullptr;
     }
-    return AffineCeilDivExpr::get(lhs, rhs, builder.getContext());
+    return builder.getCeilDivExpr(lhs, rhs);
   case Mod:
     if (!rhs->isSymbolic()) {
       emitError("non-affine expression: right operand of mod "
                 "has to be either a constant or symbolic");
       return nullptr;
     }
-    return AffineModExpr::get(lhs, rhs, builder.getContext());
+    return builder.getModExpr(lhs, rhs);
   case HNoOp:
     llvm_unreachable("can't create affine expression for null high prec op");
     return nullptr;
@@ -705,9 +705,9 @@ AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
                                                    AffineExpr *rhs) {
   switch (op) {
   case AffineLowPrecOp::Add:
-    return AffineAddExpr::get(lhs, rhs, builder.getContext());
+    return builder.getAddExpr(lhs, rhs);
   case AffineLowPrecOp::Sub:
-    return AffineSubExpr::get(lhs, rhs, builder.getContext());
+    return builder.getSubExpr(lhs, rhs);
   case AffineLowPrecOp::LNoOp:
     llvm_unreachable("can't create affine expression for null low prec op");
     return nullptr;
@@ -816,8 +816,8 @@ AffineExpr *AffineMapParser::parseNegateExpression(AffineExpr *lhs) {
     // Extra error message although parseAffineOperandExpr would have
     // complained. Leads to a better diagnostic.
     return (emitError("missing operand of negation"), nullptr);
-  auto *minusOne = AffineConstantExpr::get(-1, builder.getContext());
-  return AffineMulExpr::get(minusOne, operand, builder.getContext());
+  auto *minusOne = builder.getConstantExpr(-1);
+  return builder.getMulExpr(minusOne, operand);
 }
 
 /// Parse a bare id that may appear in an affine expression.
@@ -830,11 +830,11 @@ AffineExpr *AffineMapParser::parseBareIdExpr() {
   StringRef sRef = getTokenSpelling();
   if (dims.count(sRef)) {
     consumeToken(Token::bare_identifier);
-    return AffineDimExpr::get(dims.lookup(sRef), builder.getContext());
+    return builder.getDimExpr(dims.lookup(sRef));
   }
   if (symbols.count(sRef)) {
     consumeToken(Token::bare_identifier);
-    return AffineSymbolExpr::get(symbols.lookup(sRef), builder.getContext());
+    return builder.getSymbolExpr(symbols.lookup(sRef));
   }
   return (emitError("identifier is neither dimensional nor symbolic"), nullptr);
 }
@@ -854,7 +854,7 @@ AffineExpr *AffineMapParser::parseIntegerExpr() {
     return (emitError("constant too large for affineint"), nullptr);
   }
   consumeToken(Token::integer);
-  return AffineConstantExpr::get((int64_t)val.getValue(), builder.getContext());
+  return builder.getConstantExpr((int64_t)val.getValue());
 }
 
 /// Parses an expression that can be a valid operand of an affine expression.
@@ -1054,8 +1054,7 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
     return nullptr;
 
   // Parsed a valid affine map.
-  return AffineMap::get(dims.size(), symbols.size(), exprs,
-                        builder.getContext());
+  return builder.getAffineMap(dims.size(), symbols.size(), exprs);
 }
 
 AffineMap *Parser::parseAffineMapInline() {
@@ -1288,7 +1287,7 @@ OperationInst *CFGFunctionParser::parseCFGOperation() {
   }
 
   // TODO: Don't drop result name and operand names on the floor.
-  auto nameId = Identifier::get(name, builder.getContext());
+  auto nameId = builder.getIdentifier(name);
   return builder.createOperation(nameId, attributes);
 }
 
