@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "segment_min"
-    deprecation_message: "tf.segment_min is deprecated, please use tf.math.segment_min instead."
+    deprecated: true
   }
 }

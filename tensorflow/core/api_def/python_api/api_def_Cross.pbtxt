@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "cross"
-    deprecation_message: "tf.cross is deprecated, please use tf.linalg.cross instead."
+    deprecated: true
   }
 }
