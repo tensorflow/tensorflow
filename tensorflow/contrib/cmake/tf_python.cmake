@@ -853,6 +853,7 @@ add_custom_command(
               "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
               "--package=tensorflow.python.estimator"
               "--apiname=estimator"
+	      "--output_package=tensorflow.python.estimator.api"
               "${estimator_api_init_list_file}"
 
       COMMENT "Generating __init__.py files for Python API."

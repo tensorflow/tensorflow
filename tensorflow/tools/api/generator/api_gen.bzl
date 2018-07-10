@@ -131,7 +131,8 @@ def gen_api_init_files(
         srcs = [],
         api_name = "tensorflow",
         package = "tensorflow.python",
-        package_dep = "//tensorflow/python:no_contrib"):
+        package_dep = "//tensorflow/python:no_contrib",
+        output_package = "tensorflow"):
     root_init_template_flag = ""
     if root_init_template:
       root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
@@ -154,7 +155,9 @@ def gen_api_init_files(
         outs = output_files,
         cmd = (
             "$(location :" + api_gen_binary_target + ") " +
-            root_init_template_flag + " --apidir=$(@D) --apiname=" + api_name + " --package=" + package + " $(OUTS)"),
+            root_init_template_flag + " --apidir=$(@D) --apiname=" +
+            api_name + " --package=" + package + " --output_package=" +
+            output_package + " $(OUTS)"),
         srcs = srcs,
         tools = [":" + api_gen_binary_target ],
         visibility = ["//tensorflow:__pkg__"],
