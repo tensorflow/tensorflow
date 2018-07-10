@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
@@ -1010,6 +1011,61 @@ TEST(FunctionalizeControlFlow, Complex) {
     EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_INT32}), result.ret_types);
     TF_EXPECT_GRAPH_EQ(expected, result.gdef);
   }
+}
+
+TEST(FunctionalizeControlFlow, Cycle) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  //   -----------------------------------------------------
+  //   |                                                   |
+  //   |                                                   v
+  // less -> switch_1 --> add -> merge_1 -> identity -> switch_2
+  //            |          ^                               |
+  //            |          |                               v
+  //            --------> one -------------------------> add_2 ---> merge_2
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto switch_1 = ops::Switch(scope.WithOpName("cond/Switch"), x, less);
+    auto two =
+        ops::Const<int32>(scope.WithOpName("cond/two")
+                              .WithControlDependencies(switch_1.output_true),
+                          2);
+    auto mul = ops::Multiply(scope.WithOpName("cond/true/mul"),
+                             switch_1.output_true, two);
+    auto one =
+        ops::Const<int32>(scope.WithOpName("cond/one")
+                              .WithControlDependencies(switch_1.output_false),
+                          1);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"),
+                        switch_1.output_false, one);
+
+    auto merge_1 = ops::Merge(scope.WithOpName("cond/Merge"),
+                              std::initializer_list<Input>{add, mul});
+    auto identity =
+        ops::Identity(scope.WithOpName("cond/Merge/identity"), merge_1.output);
+    auto switch_2 =
+        ops::Switch(scope.WithOpName("grad/cond/Switch"), identity, less);
+    auto add_2 = ops::Add(scope.WithOpName("cond_2/false/add"),
+                          switch_2.output_false, one);
+    auto mul_2 = ops::Multiply(scope.WithOpName("cond_2/true/mul"),
+                               switch_2.output_true, two);
+    auto merge_2 = ops::Merge(scope.WithOpName("cond_2/Merge"),
+                              std::initializer_list<Input>{add_2, mul_2});
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+  }
+  // No cycle before functionalize control flow.
+  TF_EXPECT_OK(graph::ValidateGraphHasNoCycle(*graph));
+  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  // switch_1 and switch_2 have the same switch depth. They are replaced by a
+  // single XlaIf node during FunctionalizeControlFlow, resulting in a cycle:
+  // less -> XlaIf <--> identity.
+  Status status = FunctionalizeControlFlow(graph.get(), &library);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Detect a cycle"))
+      << status.error_message();
 }
 
 }  // namespace

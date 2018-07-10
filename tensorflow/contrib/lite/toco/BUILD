@@ -143,7 +143,6 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
-        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -166,41 +165,6 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "toco_saved_model",
-    srcs = [
-        "toco_saved_model.cc",
-    ],
-    hdrs = [
-        "toco_saved_model.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":model_cmdline_flags",
-        ":model_flags_proto_cc",
-        ":toco_flags_proto_cc",
-        ":types_proto_cc",
-        "//tensorflow/cc/tools:freeze_saved_model",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "toco_saved_model_test",
-    srcs = ["toco_saved_model_test.cc"],
-    deps = [
-        ":model_cmdline_flags",
-        ":toco_cmdline_flags",
-        ":toco_saved_model",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -238,6 +202,7 @@ cc_library(
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
         "graph_transformations/merge_reshape_into_preceding_transpose.cc",
+        "graph_transformations/move_binary_operator_before_reshape.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_default_min_max.cc",
@@ -431,7 +396,6 @@ tf_cc_binary(
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
-        ":toco_saved_model",
         ":toco_tooling",
         ":types_proto_cc",
         "//tensorflow/core:lib",

@@ -1525,6 +1525,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2057,6 +2058,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -2755,6 +2757,7 @@ cuda_py_test(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:partitioned_variables",
@@ -2842,6 +2845,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = ["nomsan"],  # TODO(b/110990716) reenable
 )
 
 cuda_py_test(

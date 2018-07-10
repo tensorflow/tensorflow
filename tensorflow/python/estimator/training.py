@@ -278,10 +278,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   supported distributed training configuration is between-graph replication.
 
   Overfitting: In order to avoid overfitting, it is recommended to set up the
-  training `input_fn` to shuffle the training data properly. It is also
-  recommended to train the model a little longer, say multiple epochs, before
-  performing evaluation, as the input pipeline starts from scratch for each
-  training. It is particularly important for local training and evaluation.
+  training `input_fn` to shuffle the training data properly.
 
   Stop condition: In order to support both distributed and non-distributed
   configuration reliably, the only supported stop condition for model
@@ -315,10 +312,10 @@ def train_and_evaluate(estimator, train_spec, eval_spec):
   #       hidden_units=[1024, 512, 256])
 
   # Input pipeline for train and evaluate.
-  def train_input_fn: # returns x, y
+  def train_input_fn(): # returns x, y
     # please shuffle the data.
     pass
-  def eval_input_fn_eval: # returns x, y
+  def eval_input_fn(): # returns x, y
     pass
 
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, max_steps=1000)

@@ -183,6 +183,7 @@ class EagerContext {
 #endif
  private:
   void InitDeviceMapAndAsync();
+  Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
 
   const ContextDevicePlacementPolicy policy_;
 

@@ -38,7 +38,7 @@ limitations under the License.
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
@@ -66,7 +66,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -269,6 +268,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
         /*is_layout_sensitive=*/false,
         [](const Shape&, const Shape&) { return false; },
         /*enable_dot_strength_reduction=*/false);
+    pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -296,8 +296,6 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
 
-  pipeline.AddPass<GatherExpander>();
-
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
@@ -306,11 +304,16 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
       module->mutable_entry_computation_layout(), &target_machine_features);
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      /*is_layout_sensitive=*/true,
-      [](const Shape&, const Shape&) { return true; },
-      /*enable_dot_strength_reduction=*/false);
-  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  {
+    auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+        "after layout assignement");
+    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
+        /*is_layout_sensitive=*/true,
+        [](const Shape&, const Shape&) { return true; },
+        /*enable_dot_strength_reduction=*/false);
+    pass.AddPass<HloDCE>();
+    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  }
   pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
@@ -578,7 +581,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
-                       &target_machine_features, jit->external_constant_pool());
+                       &target_machine_features);
 
   for (auto embedded_computation :
        entry_computation->MakeEmbeddedComputationsList()) {
@@ -765,8 +768,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
-                         &target_machine_features,
-                         /*external_constant_pool=*/nullptr);
+                         &target_machine_features);
     HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {

@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "is_nan"
-    deprecation_message: "tf.is_nan is deprecated, please use tf.debugging.is_nan instead."
+    deprecated: true
   }
 }

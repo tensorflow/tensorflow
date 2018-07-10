@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -138,6 +139,8 @@ enum class OperatorType : uint8 {
   kSparseToDense,
   kEqual,
   kNotEqual,
+  kPow,
+  kArgMin,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -160,15 +163,16 @@ enum class AxesOrder {
 
 // The type of the scalars in an array.
 // Note that the type does not by itself tell whether the values in the array
-// are real (are literally interpreted as real numbers) or quantized (only
-// acquire a meaning as real numbers in conjunction with QuantizationParams).
+// are non-quantized (can be accessed directly) or quantized (must be
+// interpreted in conjunction with QuantizationParams).
 //
 // In practice though:
-//   float values are always real
+//   float values are never quantized
 //   uint8 values are always quantized
-//   int32 values are either real or quantized (depending on whether
+//   int32 values are sometimes quantized (depending on whether
 //   QuantizationParams are present).
-//   other types are unused at the moment.
+//   complex values are never quantized
+//   other types are never quantized at the moment.
 //
 // kNone means that we don't know the data type yet, or that we don't care
 // because we'll be dropping the array anyway (e.g. some exotic array types
@@ -186,7 +190,8 @@ enum class ArrayDataType : uint8 {
   kUint32,
   kInt64,
   kUint64,  // 10
-  kString
+  kString,
+  kComplex64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -239,6 +244,10 @@ struct DataTypeImpl<ArrayDataType::kUint64> {
 template <>
 struct DataTypeImpl<ArrayDataType::kString> {
   typedef string Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kComplex64> {
+  typedef std::complex<float> Type;
 };
 
 template <ArrayDataType A>
@@ -829,6 +838,8 @@ struct BatchMatMulOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct TensorFlowMatMulOperator : Operator {
   TensorFlowMatMulOperator() : Operator(OperatorType::kMatMul) {}
+  bool transpose_a = false;
+  bool transpose_b = false;
 };
 
 // Padding operator. Pads a tensor with zeros.
@@ -1518,6 +1529,17 @@ struct ArgMaxOperator : Operator {
   ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 
+// ArgMin operator. It returns the index of the minimum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMin
+struct ArgMinOperator : Operator {
+  ArgMinOperator() : Operator(OperatorType::kArgMin) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
+};
+
 // ResizeBilinear operator. It resizes input images with bilinear interpolation.
 // It does not support align_corners at the moment.
 //
@@ -1635,6 +1657,17 @@ struct DynamicStitchOperator : Operator {
 struct SparseToDenseOperator : Operator {
   SparseToDenseOperator() : Operator(OperatorType::kSparseToDense) {}
   bool validate_indices;
+};
+
+// Pow operator:
+//
+// Inputs:
+// Inputs[0]: required: A tensor.
+// Inputs[1]: required: A tensor.
+//
+// TensorFlow equivalent: Pow.
+struct PowOperator : Operator {
+  PowOperator() : Operator(OperatorType::kPow) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

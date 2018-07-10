@@ -2068,7 +2068,8 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status) {
   GraphDef def;
-  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data,
+                                       graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return nullptr;
   }
@@ -2098,7 +2099,8 @@ void TF_GraphImportGraphDefWithReturnOutputs(
     return;
   }
   GraphDef def;
-  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data, graph_def->length)) {
+  if (!tensorflow::ParseProtoUnlimited(&def, graph_def->data,
+                                       graph_def->length)) {
     status->status = InvalidArgument("Invalid GraphDef");
     return;
   }
@@ -2414,7 +2416,18 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
     for (int i = first_new_node_id; i < g->graph.num_node_ids(); ++i) {
       Node* n = g->graph.FindNodeId(i);
       if (n == nullptr) continue;
-      g->name_map[n->name()] = n;
+      // We have a convoluted scheme here: Using the C++ graph construction API
+      // to add potentially many nodes to the graph without running the checks
+      // (such as uniqueness of the names of nodes) we run with other functions
+      // that add a node to the graph (like TF_FinishOperation).
+      if (!g->name_map.insert(std::make_pair(n->name(), n)).second) {
+        status->status = tensorflow::errors::Internal(
+            "BUG: The API allowed construction of a graph with duplicate node "
+            "names (",
+            n->name(),
+            "). This is a bug. Please file an issue at "
+            "https://github.com/tensorflow/tensorflow/issues.");
+      }
     }
   }
 

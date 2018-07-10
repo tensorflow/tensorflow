@@ -59,7 +59,8 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kGreater ||
          type == OperatorType::kGreaterEqual || type == OperatorType::kLess ||
          type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
-         type == OperatorType::kArgMax;
+         type == OperatorType::kArgMax || type == OperatorType::kRelu ||
+         type == OperatorType::kRelu1 || type == OperatorType::kRelu6;
 }
 
 const MinMax& GetOrComputeMinMax(Model* model, const string& array_name) {
@@ -325,12 +326,13 @@ bool ChooseQuantizationForOperatorOutput(
         output, OperatorTypeName(op.type));
     return true;
   }
-  if ((op.type == OperatorType::kDepthToSpace) ||
-      (op.type == OperatorType::kSpaceToDepth) ||
-      (op.type == OperatorType::kReshape) ||
-      (op.type == OperatorType::kSplit) ||
-      (op.type == OperatorType::kConcatenation &&
-       model->flags.change_concat_input_ranges())) {
+  if ((op.type == OperatorType::kConcatenation &&
+       model->flags.change_concat_input_ranges()) ||
+      op.type == OperatorType::kDepthToSpace ||
+      op.type == OperatorType::kSpaceToDepth ||
+      op.type == OperatorType::kReshape || op.type == OperatorType::kSplit ||
+      op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
+      op.type == OperatorType::kRelu6) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;
@@ -505,36 +507,47 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
           // Check if the output of that Dequantize op was not used by any
           // other operator. We will then erase that Dequantize op.
           if (!CountOpsWithInput(*model, dequantize_op->outputs[0])) {
-            // If any of the model's output_arrays was pointing to the
-            // Dequantize op's output, let it point to the Dequantize op's
-            // input instead.
-            for (int i = 0; i < model->flags.output_arrays_size(); i++) {
-              if (model->flags.output_arrays(i) == dequantize_op->outputs[0]) {
-                // TODO(b/78013785): never rename output arrays.
-                if (IsInputArray(*model, dequantize_op->inputs[0])) {
-                  // The op input is an input array and the output is an output
-                  // array and we can't have an array be both. Insert a copy
-                  // op to ensure the two arrays stay separate.
-                  AddMessageF(
-                      "Tried to rename output array %d while removing dequant "
-                      "op %s but array is also an input; inserting copy %s "
-                      "-> %s",
-                      i, LogName(*dequantize_op), model->flags.output_arrays(i),
-                      dequantize_op->inputs[0]);
-                  InsertCopyOperator(model, dequantize_op->inputs[0],
-                                     dequantize_op->outputs[0]);
-                } else {
-                  // Op output is strictly used as an output array, so we can
-                  // just rename the array and directly bypass the op.
-                  AddMessageF(
-                      "Renaming output array %d after removing dequant op %s: "
-                      "%s -> %s",
-                      i, LogName(*dequantize_op), model->flags.output_arrays(i),
-                      dequantize_op->inputs[0]);
-                  model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
-                  model->EraseArray(dequantize_op->outputs[0]);
+            if (IsDiscardableArray(*model, dequantize_op->outputs[0])) {
+              // Usual case: we can just discard the dequantize output.
+              model->EraseArray(dequantize_op->outputs[0]);
+            } else {
+              // The dequantize output is not discardable. Special care needed.
+              // If any of the model's output_arrays was pointing to the
+              // Dequantize op's output, let it point to the Dequantize op's
+              // input instead.
+              for (int i = 0; i < model->flags.output_arrays_size(); i++) {
+                if (model->flags.output_arrays(i) ==
+                    dequantize_op->outputs[0]) {
+                  // TODO(b/78013785): never rename output arrays.
+                  if (IsInputArray(*model, dequantize_op->inputs[0])) {
+                    // The op input is an input array and the output is an
+                    // output array and we can't have an array be both. Insert a
+                    // copy op to ensure the two arrays stay separate.
+                    AddMessageF(
+                        "Tried to rename output array %d while removing "
+                        "dequant "
+                        "op %s but array is also an input; inserting copy %s "
+                        "-> %s",
+                        i, LogName(*dequantize_op),
+                        model->flags.output_arrays(i),
+                        dequantize_op->inputs[0]);
+                    InsertCopyOperator(model, dequantize_op->inputs[0],
+                                       dequantize_op->outputs[0]);
+                  } else {
+                    // Op output is strictly used as an output array, so we can
+                    // just rename the array and directly bypass the op.
+                    AddMessageF(
+                        "Renaming output array %d after removing dequant op "
+                        "%s: "
+                        "%s -> %s",
+                        i, LogName(*dequantize_op),
+                        model->flags.output_arrays(i),
+                        dequantize_op->inputs[0]);
+                    model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
+                    model->EraseArray(dequantize_op->outputs[0]);
+                  }
+                  break;
                 }
-                break;
               }
             }
             model->operators.erase(dequantize_it);

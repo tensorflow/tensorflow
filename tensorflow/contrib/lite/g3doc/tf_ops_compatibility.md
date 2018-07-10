@@ -42,6 +42,7 @@ counterparts:
     *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other) and the
     crops attribute is not used*
 *   [tf.exp](https://www.tensorflow.org/api_docs/python/tf/exp)
+*   [tf.fake_quant*](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
 *   [tf.matmul](https://www.tensorflow.org/api_docs/python/tf/matmul) - *as long
     as the second argument is constant and transposition is not used*
 *   [tf.nn.avg_pool](https://www.tensorflow.org/api_docs/python/tf/nn/avg_pool)
@@ -775,6 +776,42 @@ Inputs {
 Outputs {
   0: tensor that contains the elementwise values of 'tensor 1' if the
   corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
+}
+```
+
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
+}
+```
+
+**ARG_MAX**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of maximum values.
+}
+```
+
+**ARG_MIN**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of minium values.
 }
 ```
 

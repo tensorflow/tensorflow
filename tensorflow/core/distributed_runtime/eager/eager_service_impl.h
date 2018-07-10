@@ -135,7 +135,8 @@ class EagerServiceImpl {
   tensorflow::Status GetServerContext(uint64, ServerContext**);
 
  private:
-  Status ExecuteOp(const Operation& operation, ServerContext* server_context);
+  Status ExecuteOp(const Operation& operation, ServerContext* server_context,
+                   QueueResponse* queue_response);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;

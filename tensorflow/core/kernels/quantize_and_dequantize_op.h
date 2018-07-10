@@ -47,9 +47,13 @@ struct QuantizeAndDequantizeOneScaleImpl {
     if (!range_given) {
       input_min.device(d) = input.minimum();
       input_max.device(d) = input.maximum();
+      d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
+      d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
+    } else {
+      // Copy the range values from their respective tensors on the host.
+      min_range = input_min_tensor->scalar<T>()();
+      max_range = input_max_tensor->scalar<T>()();
     }
-    d.memcpyDeviceToHost(&min_range, input_min.data(), sizeof(T));
-    d.memcpyDeviceToHost(&max_range, input_max.data(), sizeof(T));
 
     // Calculate the range for the simulated integer quantization:
     // e.g. [-128,127] for signed = true, num_bits = 8,

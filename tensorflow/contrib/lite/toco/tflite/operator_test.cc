@@ -126,6 +126,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
   CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
   CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
+  CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -412,6 +413,13 @@ TEST_F(OperatorTest, BuiltinArgMax) {
   ArgMaxOperator op;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("ARG_MAX", OperatorType::kArgMax), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
+TEST_F(OperatorTest, BuiltinArgMin) {
+  ArgMinOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MIN", OperatorType::kArgMin), op);
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
 }
 

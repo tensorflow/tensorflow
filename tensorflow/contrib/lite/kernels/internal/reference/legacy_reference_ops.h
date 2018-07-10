@@ -69,9 +69,17 @@ inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
                         float output_activation_min,
                         float output_activation_max, float* output_data,
                         const Dims<4>& output_dims) {
-  AveragePool(input_data, DimsToShape(input_dims), stride_width, stride_height,
-              pad_width, pad_height, kwidth, kheight, output_activation_min,
-              output_activation_max, output_data, DimsToShape(output_dims));
+  tflite::PoolParams params;
+  params.stride_height = stride_height;
+  params.stride_width = stride_width;
+  params.filter_height = kheight;
+  params.filter_width = kwidth;
+  params.padding_values.height = pad_height;
+  params.padding_values.width = pad_width;
+  params.float_activation_min = output_activation_min;
+  params.float_activation_max = output_activation_max;
+  AveragePool(params, DimsToShape(input_dims), input_data,
+              DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -104,10 +112,17 @@ inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
                         int32 output_activation_min,
                         int32 output_activation_max, uint8* output_data,
                         const Dims<4>& output_dims) {
-  AveragePool(input_data, DimsToShape(input_dims), stride_width, stride_height,
-              pad_width, pad_height, filter_width, filter_height,
-              output_activation_min, output_activation_max, output_data,
-              DimsToShape(output_dims));
+  tflite::PoolParams params;
+  params.stride_height = stride_height;
+  params.stride_width = stride_width;
+  params.filter_height = filter_height;
+  params.filter_width = filter_width;
+  params.padding_values.height = pad_height;
+  params.padding_values.width = pad_width;
+  params.quantized_activation_min = output_activation_min;
+  params.quantized_activation_max = output_activation_max;
+  AveragePool(params, DimsToShape(input_dims), input_data,
+              DimsToShape(output_dims), output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -148,9 +163,17 @@ inline void MaxPool(const float* input_data, const Dims<4>& input_dims,
                     int pad_height, int kwidth, int kheight,
                     float output_activation_min, float output_activation_max,
                     float* output_data, const Dims<4>& output_dims) {
-  MaxPool(input_data, DimsToShape(input_dims), stride_width, stride_height,
-          pad_width, pad_height, kwidth, kheight, output_activation_min,
-          output_activation_max, output_data, DimsToShape(output_dims));
+  tflite::PoolParams params;
+  params.stride_height = stride_height;
+  params.stride_width = stride_width;
+  params.filter_height = kheight;
+  params.filter_width = kwidth;
+  params.padding_values.height = pad_height;
+  params.padding_values.width = pad_width;
+  params.float_activation_min = output_activation_min;
+  params.float_activation_max = output_activation_max;
+  MaxPool(params, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+          output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -180,10 +203,17 @@ inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
                     int pad_height, int filter_width, int filter_height,
                     int32 output_activation_min, int32 output_activation_max,
                     uint8* output_data, const Dims<4>& output_dims) {
-  MaxPool(input_data, DimsToShape(input_dims), stride_width, stride_height,
-          pad_width, pad_height, filter_width, filter_height,
-          output_activation_min, output_activation_max, output_data,
-          DimsToShape(output_dims));
+  PoolParams params;
+  params.stride_height = stride_height;
+  params.stride_width = stride_width;
+  params.filter_height = filter_height;
+  params.filter_width = filter_width;
+  params.padding_values.height = pad_height;
+  params.padding_values.width = pad_width;
+  params.quantized_activation_min = output_activation_min;
+  params.quantized_activation_max = output_activation_max;
+  MaxPool(params, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+          output_data);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -223,10 +253,17 @@ inline void L2Pool(const float* input_data, const Dims<4>& input_dims,
                    int pad_height, int filter_width, int filter_height,
                    float output_activation_min, float output_activation_max,
                    float* output_data, const Dims<4>& output_dims) {
-  L2Pool(input_data, DimsToShape(input_dims), stride_width, stride_height,
-         pad_width, pad_height, filter_width, filter_height,
-         output_activation_min, output_activation_max, output_data,
-         DimsToShape(output_dims));
+  PoolParams params;
+  params.stride_height = stride_height;
+  params.stride_width = stride_width;
+  params.filter_height = filter_height;
+  params.filter_width = filter_width;
+  params.padding_values.height = pad_height;
+  params.padding_values.width = pad_width;
+  params.float_activation_min = output_activation_min;
+  params.float_activation_max = output_activation_max;
+  L2Pool(params, DimsToShape(input_dims), input_data, DimsToShape(output_dims),
+         output_data);
 }
 
 // legacy, for compatibility with old checked-in code

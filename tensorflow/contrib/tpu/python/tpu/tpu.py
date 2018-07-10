@@ -227,7 +227,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     class FakeOp(object):
       """A helper class to determine the current device.
 
-      Supports only the device set/get methods needed to run the
+      Supports only the type and device set/get methods needed to run the
       graph's _apply_device_function method.
       """
 
@@ -235,11 +235,18 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         self._device = ""
 
       @property
+      def type(self):
+        return "FakeOp"
+
+      @property
       def device(self):
         return self._device
 
       def _set_device(self, device):
-        self._device = device.to_string()
+        if isinstance(device, pydev.DeviceSpec):
+          self._device = device.to_string()
+        else:
+          self._device = device
 
     if self._outside_compilation_cluster:
       raise NotImplementedError("Cannot nest outside_compilation clusters")

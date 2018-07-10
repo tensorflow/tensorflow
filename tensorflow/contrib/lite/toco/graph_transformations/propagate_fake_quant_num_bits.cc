@@ -27,11 +27,15 @@ namespace toco {
 
 namespace {
 
-void ChangeArrayDataType(GraphTransformation* transformation, Array* array,
+bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
                          ArrayDataType new_data_type,
                          const MinMax* new_minmax) {
   // Ensure the array ends up in the new type (if it hasn't yet been quantized).
-  array->final_data_type = new_data_type;
+  bool changed = false;
+  if (array->final_data_type != new_data_type) {
+    array->final_data_type = new_data_type;
+    changed = true;
+  }
 
   if (array->minmax && array->quantization_params) {
     // The array is already quantized and has min/max info.
@@ -65,15 +69,27 @@ void ChangeArrayDataType(GraphTransformation* transformation, Array* array,
 
     array_minmax.min = min;
     array_minmax.max = max;
-    GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-        array_minmax, array->quantization_params.get());
+    switch (new_data_type) {
+      case ArrayDataType::kUint8:
+        GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
+            array_minmax, array->quantization_params.get());
+        break;
+      case ArrayDataType::kInt16:
+        GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
+            array_minmax, array->quantization_params.get());
+        break;
+      default:
+        CHECK(false) << "Unsupported quantized data type: "
+                     << ArrayDataTypeName(new_data_type);
+        return false;
+    }
 
     // Directly change the type as the array was already quantized.
     array->data_type = new_data_type;
-  } else {
+    changed = true;
+  } else if (!array->quantization_params) {
     // Array has not yet been quantized so we can just set the final data type
     // and assign the new min/max value (if provided).
-    CHECK(!array->quantization_params);
 
     if (!array->minmax && new_minmax) {
       transformation->AddMessageF("Forcing new minmax to %g,%g (%s)",
@@ -82,8 +98,11 @@ void ChangeArrayDataType(GraphTransformation* transformation, Array* array,
       auto& array_minmax = array->GetOrCreateMinMax();
       array_minmax.min = new_minmax->min;
       array_minmax.max = new_minmax->max;
+      changed = true;
     }
   }
+
+  return changed;
 }
 
 // Returns true if the op blocks our backward recursive data type propagation.
@@ -159,9 +178,8 @@ bool RecursivelyBackwardPropagateDataType(GraphTransformation* transformation,
           "Adjusting input final data type of array %s from %s to %s", input,
           ArrayDataTypeName(input_array.final_data_type),
           ArrayDataTypeName(new_data_type));
-      did_change = true;
-      ChangeArrayDataType(transformation, &input_array, new_data_type,
-                          &new_minmax);
+      did_change |= ChangeArrayDataType(transformation, &input_array,
+                                        new_data_type, &new_minmax);
 
       // Walk up into all ops producing the inputs to this op.
       for (auto& producing_op : model->operators) {
@@ -212,9 +230,8 @@ bool RecursivelyForwardPropagateDataType(GraphTransformation* transformation,
           "Adjusting output final data type of array %s from %s to %s", output,
           ArrayDataTypeName(output_array.final_data_type),
           ArrayDataTypeName(new_data_type));
-      did_change = true;
-      ChangeArrayDataType(transformation, &output_array, new_data_type,
-                          nullptr);
+      did_change |= ChangeArrayDataType(transformation, &output_array,
+                                        new_data_type, nullptr);
 
       // Walk down into all ops consuming the output of this op.
       for (auto& consuming_op : model->operators) {

@@ -37,7 +37,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 21.
+// Next ID to use: 26.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;

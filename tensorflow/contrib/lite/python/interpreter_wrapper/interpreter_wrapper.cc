@@ -92,6 +92,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_OBJECT;
     case kTfLiteBool:
       return NPY_BOOL;
+    case kTfLiteComplex64:
+      return NPY_COMPLEX64;
     case kTfLiteNoType:
       return -1;
   }
@@ -118,6 +120,8 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array) {
     case NPY_STRING:
     case NPY_UNICODE:
       return kTfLiteString;
+    case NPY_COMPLEX64:
+      return kTfLiteComplex64;
   }
   LOG(ERROR) << "Unknown PyArray dtype " << pyarray_type;
   return kTfLiteNoType;

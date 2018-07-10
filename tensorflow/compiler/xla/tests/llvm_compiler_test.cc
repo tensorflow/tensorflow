@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
@@ -64,7 +65,7 @@ class LLVMCompilerTest : public ::testing::Test {
     // Create HLO module, and run the compiler.
     auto builder = HloComputation::Builder(TestName());
     builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
     auto hlo_module = CreateNewModule();
     hlo_module->AddEntryComputation(builder.Build());
@@ -86,7 +87,7 @@ class LLVMCompilerTest : public ::testing::Test {
   void TestMultiModuleCompilation(LLVMCompiler *compiler) {
     HloComputation::Builder builder(TestName());
     builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
     std::unique_ptr<HloModule> hlo_module = CreateNewModule();
     hlo_module->AddEntryComputation(builder.Build());

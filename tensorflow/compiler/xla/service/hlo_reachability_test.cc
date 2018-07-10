@@ -39,15 +39,15 @@ TEST_F(HloReachabilityTest, Reachability) {
   */
   auto builder = HloComputation::Builder(TestName());
   auto a = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   auto b = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   auto c = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   auto d = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   auto e = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
   builder.Build();
 
   HloReachabilityMap reachability({a, b, c, d, e});

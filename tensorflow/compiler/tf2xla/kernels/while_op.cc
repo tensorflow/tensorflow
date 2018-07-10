@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -246,7 +246,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
     }
   }
 
-  xla::XlaOp init = builder->Tuple(inputs);
+  xla::XlaOp init = xla::Tuple(builder, inputs);
 
   VLOG(1) << "Building while loop";
 
@@ -255,22 +255,21 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   {
     std::unique_ptr<xla::XlaBuilder> cb =
         builder->CreateSubBuilder("cond_wrapper");
-    auto inputs = cb->Parameter(0, cond_input_shape, "inputs");
-    auto outputs = cb->Call(*cond.computation, {inputs});
-    cb->GetTupleElement(outputs, 0);
+    auto inputs = xla::Parameter(cb.get(), 0, cond_input_shape, "inputs");
+    auto outputs = xla::Call(cb.get(), *cond.computation, {inputs});
+    xla::GetTupleElement(outputs, 0);
     xla::StatusOr<xla::XlaComputation> result = cb->Build();
     OP_REQUIRES_OK(ctx, result.status());
     cond_wrapper = std::move(result.ValueOrDie());
   }
 
-  xla::XlaOp while_result =
-      builder->While(cond_wrapper, *body.computation, init);
+  xla::XlaOp while_result = xla::While(cond_wrapper, *body.computation, init);
 
   // Sets non-variable outputs.
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
       ctx->SetOutput(body.input_mapping[i],
-                     builder->GetTupleElement(while_result, i));
+                     xla::GetTupleElement(while_result, i));
     }
   }
 
@@ -284,7 +283,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx,
                      resource->SetFromPack(
                          arguments[update.input_index].tensor_array_gradients,
-                         builder->GetTupleElement(while_result, pos), builder));
+                         xla::GetTupleElement(while_result, pos), builder));
     }
     VLOG(2) << "Loop-carried variable: pos: " << update.input_index
             << " name: " << resource->name() << " modified: " << update.modified

@@ -227,6 +227,27 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
            ctx().nodes_to_preserve->end();
   }
 
+  // TODO(ezhulenev): move to GraphOptimizerStage?
+  bool IsDrivenByControlDependency(const NodeDef& node) const {
+    return std::any_of(node.input().begin(), node.input().end(),
+                       IsControlInput);
+  }
+
+  // TODO(ezhulenev): move to GraphOptimizerStage?
+  bool DrivesControlDependency(const NodeDef& node) const {
+    int position;
+    for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
+      for (int i = 0; i < output->input_size(); ++i) {
+        auto input = output->input(i);
+        string name = ParseNodeName(input, &position);
+        if (name == node.name() && /*control input*/ position < 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
  private:
   // Extended context required for ArithmeticOptimizer.
   const ArithmeticOptimizerContext ctx_ext_;
@@ -355,27 +376,6 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
     };
     return std::all_of(node.input().begin(), node.input().end(),
                        is_broadcastable);
-  }
-
-  // TODO(ezhulenev): move to GraphOptimizerStage?
-  bool IsDrivenByControlDependency(const NodeDef& node) const {
-    return std::any_of(node.input().begin(), node.input().end(),
-                       IsControlInput);
-  }
-
-  // TODO(ezhulenev): move to GraphOptimizerStage?
-  bool DrivesControlDependency(const NodeDef& node) const {
-    int position;
-    for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
-      for (int i = 0; i < output->input_size(); ++i) {
-        auto input = output->input(i);
-        string name = ParseNodeName(input, &position);
-        if (name == node.name() && /*control input*/ position < 0) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   string ShapeSignature(const TensorShapeProto& shape) const {
@@ -2519,33 +2519,32 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
                              bool* modified) {
     const auto& t =
         ctx().graph_properties->GetInputProperties(input->name())[i];
-    for (int k = 0; k < t.shape().dim_size(); ++k) {
-      // Skip if t shape is not fully determined.
-      if (t.shape().dim(k).size() < 0) {
+    const auto& c =
+        ctx().graph_properties->GetInputProperties(input->name())[j];
+    for (int k = 0; k < c.shape().dim_size(); ++k) {
+      // Skip if c shape is not fully determined.
+      if (c.shape().dim(k).size() < 0) {
         return Status::OK();
       }
     }
-    const auto& c =
-        ctx().graph_properties->GetInputProperties(input->name())[j];
     TensorShapeProto broadcast_shape;
     if (!ShapeAfterBroadcast(t.shape(), c.shape(), &broadcast_shape)) {
-      return errors::InvalidArgument("Cannot get broadcast shape for: ",
-                                     t.DebugString(), " and ", c.DebugString());
+      return Status::OK();
     }
     if (!ShapesSymbolicallyEqual(t.shape(), broadcast_shape)) {
       // skip if the non-constant tensor doesn't have the same shape after
       // broadcast.
       return Status::OK();
     }
-    if (TensorShape::IsValid(t.shape()) && t.has_value()) {
-      Tensor tensor(t.dtype(), t.shape());
-      if (!tensor.FromProto(t.value())) {
+    if (TensorShape::IsValid(c.shape()) && c.has_value()) {
+      Tensor constant(c.dtype(), c.shape());
+      if (!constant.FromProto(c.value())) {
         return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                       t.value().DebugString());
+                                       c.value().DebugString());
       }
       complex128 element;
-      for (int k = 0; k < tensor.NumElements(); ++k) {
-        if (!GetElement(tensor, k, &element)) {
+      for (int k = 0; k < constant.NumElements(); ++k) {
+        if (!GetElement(constant, k, &element)) {
           // input data type is not supported by log1p. Skip.
           return Status::OK();
         }
@@ -2558,11 +2557,12 @@ class ConvertLog1pStage : public ArithmeticOptimizerStage {
       TF_RETURN_IF_ERROR(GetInputNode(input->input(i), &x));
       TF_RETURN_IF_ERROR(GetInputNode(input->input(j), &y));
       node->set_op("Log1p");
-      node->set_input(0, y->name());
-      node->add_input(AsControlDependency(x->name()));
+      node->set_input(0, input->input(i));
+      node->add_input(AsControlDependency(y->name()));
       ForwardControlDependencies(node, {input});
 
       AddToOptimizationQueue(node);
+      AddToOptimizationQueue(input);
       AddToOptimizationQueue(x);
       AddToOptimizationQueue(y);
       *modified = true;
@@ -2646,6 +2646,172 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       AddToOptimizationQueue(consumer);
     }
   }
+};
+
+// Replace a chain of type&shape preserving unary ops with a
+// '_UnaryOpsComposition' node.
+// TODO(ezhulenev): It should be a part of remapper optimizer because it doesn't
+// have to do much with arithmetic (together with FoldMultiplyIntoConv stage?).
+class UnaryOpsComposition : public ArithmeticOptimizerStage {
+ public:
+  explicit UnaryOpsComposition(const GraphOptimizerContext& ctx,
+                               const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("UnaryOpsComposition", ctx, ctx_ext) {
+    // WARN: This should be consistent with unary_ops_composition.cc.
+    // clang-format off
+    supported_ops_ = {// Ops defined via Eigen scalar ops.
+                      {"Abs",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Acos",       {DT_FLOAT,          DT_DOUBLE}},
+                      {"Acosh",      {DT_FLOAT,          DT_DOUBLE}},
+                      {"Asin",       {DT_FLOAT,          DT_DOUBLE}},
+                      {"Asinh",      {DT_FLOAT,          DT_DOUBLE}},
+                      {"Atan",       {DT_FLOAT,          DT_DOUBLE}},
+                      {"Atanh",      {DT_FLOAT,          DT_DOUBLE}},
+                      {"Ceil",       {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Cos",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Cosh",       {DT_FLOAT,          DT_DOUBLE}},
+                      {"Expm1",      {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Exp",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Floor",      {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Inv",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Log",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Log1p",      {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Neg",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Reciprocal", {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Rint",       {DT_FLOAT,          DT_DOUBLE}},
+                      {"Round",      {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Rsqrt",      {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Sigmoid",    {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Sin",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Sinh",       {DT_FLOAT,          DT_DOUBLE}},
+                      {"Sqrt",       {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Square",     {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Tan",        {DT_FLOAT,          DT_DOUBLE}},
+                      {"Tanh",       {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      // Additional ops that are not part of the Eigen.
+                      {"Elu",        {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Relu",       {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Relu6",      {DT_FLOAT, DT_HALF, DT_DOUBLE}},
+                      {"Selu",       {DT_FLOAT, DT_HALF, DT_DOUBLE}}};
+    // clang-format on
+  }
+  ~UnaryOpsComposition() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return CanOptimize(*node) &&
+           // Check that this node was not already a root of a fused chain. If
+           // graph optimization runs twice without pruning in between,
+           // fused_nodes_ will not have this information.
+           !ctx().node_map->NodeExists(OptimizedNodeName(*node));
+  }
+
+  Status TrySimplify(NodeDef* root, string* simplified_node_name) override {
+    DataType dtype = root->attr().at("T").type();
+
+    // Keep a trace of all supported input nodes that can be fused together.
+    std::vector<string> op_nodes = {root->name()};
+    std::vector<string> op_names = {root->op()};
+
+    // Check if we should follow input(0) while building an op composition.
+    const auto predicate_fn = [&](const NodeDef& input) {
+      if (input.name() == root->name()) return true;
+
+      bool follow_input_node =
+          dtype == GetDataTypeFromAttr(input, "T") &&
+          NumNonControlDataOutputs(input, *ctx().node_map) == 1 &&
+          CanOptimize(input);
+
+      if (follow_input_node) {
+        op_nodes.push_back(input.name());
+        op_names.push_back(input.op());
+      }
+
+      return follow_input_node;
+    };
+
+    NodeDef* last_op = GetTailOfChain(
+        *root, *ctx().node_map, /*follow_control_input*/ false, predicate_fn);
+
+    // We were not able to find a chain that can be replaced.
+    if (op_names.size() == 1) return Status::OK();
+
+    // Do not add fused nodes to any other chain.
+    std::for_each(op_nodes.begin(), op_nodes.end(),
+                  [this](const string& name) { AddToFusedNodes(name); });
+
+    // Reverse the trace to get correct composition computation order.
+    std::reverse(op_names.begin(), op_names.end());
+
+    VLOG(2) << "Fuse unary ops: root=" << root->name() << " op_names=["
+            << str_util::Join(op_names, ", ") << "]";
+
+    NodeDef* composition_node = ctx().optimized_graph->add_node();
+    composition_node->set_name(OptimizedNodeName(*root));
+    composition_node->set_op("_UnaryOpsComposition");
+    composition_node->add_input(last_op->input(0));
+    composition_node->set_device(root->device());
+
+    auto attr = composition_node->mutable_attr();
+    SetAttrValue(dtype, &(*attr)["T"]);
+    SetAttrValue(op_names, &(*attr)["op_names"]);
+
+    ctx().node_map->AddNode(composition_node->name(), composition_node);
+    ctx().node_map->AddOutput(NodeName(last_op->input(0)),
+                              composition_node->name());
+
+    *simplified_node_name = composition_node->name();
+
+    return Status::OK();
+  }
+
+ private:
+  bool CanOptimize(const NodeDef& node) const {
+    DataType dtype = GetDataTypeFromAttr(node, "T");
+    if (!IsSupported(node.op(), dtype)) {
+      return false;
+    }
+    if (IsInPreserveSet(node)) {
+      return false;
+    }
+    if (!NodeIsOnCpu(node)) {
+      return false;
+    }
+    if (NodeIsAlreadyFused(node)) {
+      return false;
+    }
+    return !(IsDrivenByControlDependency(node) ||
+             DrivesControlDependency(node));
+  }
+
+  // UnaryOpsComposition is defined only for CPU.
+  bool NodeIsOnCpu(const NodeDef& node) const {
+    using str_util::StartsWith;
+
+    string task;
+    string device;
+
+    return DeviceNameUtils::SplitDeviceName(node.device(), &task, &device) &&
+           StartsWith(device, DEVICE_CPU);
+  }
+
+  bool NodeIsAlreadyFused(const NodeDef& node) const {
+    return fused_nodes_.count(node.name()) > 0;
+  }
+
+  string OptimizedNodeName(const NodeDef& node) const {
+    return strings::StrCat(node.name(), "/unary_ops_composition");
+  }
+
+  void AddToFusedNodes(const string& name) { fused_nodes_.insert(name); }
+
+  // Check if an op is supported by the _UnaryOpsComposition for the given type.
+  bool IsSupported(const string& op_name, DataType dtype) const {
+    const auto it = supported_ops_.find(op_name);
+    return it != supported_ops_.end() && it->second.count(dtype) > 0;
+  }
+
+  std::unordered_map<string, std::set<DataType>> supported_ops_;
+  std::unordered_set<string> fused_nodes_;
 };
 
 }  // namespace
@@ -2928,6 +3094,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
+  if (options_.unary_ops_composition)
+    pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

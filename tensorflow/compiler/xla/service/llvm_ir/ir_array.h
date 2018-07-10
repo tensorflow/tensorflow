@@ -114,19 +114,19 @@ class IrArray {
     size_t size() const { return multidim().size(); }
 
     llvm::Value* operator[](size_t i) const { return multidim()[i]; }
-    llvm::Value*& operator[](size_t i) { return multidim()[i]; }
+    llvm::Value*& operator[](size_t i) { return mutable_multidim()[i]; }
 
-    void push_back(llvm::Value* value) { multidim().push_back(value); }
+    void push_back(llvm::Value* value) { mutable_multidim().push_back(value); }
     void InsertAt(int64 index, llvm::Value* value) {
       CHECK_LE(index, size());
-      multidim().insert(multidim().begin() + index, value);
+      mutable_multidim().insert(multidim().begin() + index, value);
     }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
 
-    iterator begin() { return multidim().begin(); }
-    iterator end() { return multidim().end(); }
+    iterator begin() { return mutable_multidim().begin(); }
+    iterator end() { return mutable_multidim().end(); }
 
     const_iterator begin() const { return multidim().begin(); }
     const_iterator end() const { return multidim().end(); }
@@ -185,7 +185,7 @@ class IrArray {
 
    private:
     // Changing the multi-dimensional index invalidates the linear index.
-    std::vector<llvm::Value*>& multidim() {
+    std::vector<llvm::Value*>& mutable_multidim() {
       linear_ = nullptr;
       return multidim_;
     }
@@ -246,6 +246,11 @@ class IrArray {
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
+      llvm::Instruction* instruction) const;
+
+  // Uses the metadata for a parameter IrArray to annotate the load/store of the
+  // tile buffer for the parameter.
+  void AnnotateBufferLoadStoreInstructionWithMetadata(
       llvm::Instruction* instruction) const;
 
   // Emit IR to read an array element at the given index. Returns the read

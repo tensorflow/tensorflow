@@ -505,7 +505,7 @@ auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
 }
 
 template <typename C, typename Pred>
-auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+auto c_find_if(C& c, Pred&& pred) -> decltype(std::begin(c)) {
   return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
@@ -534,6 +534,13 @@ c_count_if(const C& c, Pred&& pred) {
   return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
+// Determines whether `value` is present in `c`.
+template <typename C, typename T>
+bool c_linear_search(const C& c, T&& value) {
+  auto last = std::end(c);
+  return std::find(std::begin(c), last, std::forward<T>(value)) != last;
+}
+
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));
@@ -553,6 +560,11 @@ void InsertAt(C* c, int64 index, Value&& value) {
 template <typename C>
 void EraseAt(C* c, int64 index) {
   c->erase(c->begin() + index);
+}
+
+template <typename T>
+std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
+  return std::vector<T>(slice.begin(), slice.end());
 }
 
 template <typename T, int N>
