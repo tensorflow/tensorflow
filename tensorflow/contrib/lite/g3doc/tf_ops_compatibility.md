@@ -790,6 +790,30 @@ Outputs {
 }
 ```
 
+**ARG_MAX**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of maximum values.
+}
+```
+
+**ARG_MIN**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of minium values.
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

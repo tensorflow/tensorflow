@@ -97,11 +97,12 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/gather.*axis=1)", "76910444"},
 
     // No support for arbitrary dimensions in ArgMax.
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
      "77546240"},
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
      "77546240"},
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.\])", "77546240"},
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
+     "77546240"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes

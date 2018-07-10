@@ -663,6 +663,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_ARG_MIN: {
+      auto* params = MallocPOD<TfLiteArgMinParams>();
+      if (const auto* schema_params = op->builtin_options_as_ArgMinOptions()) {
+        ConvertTensorType(schema_params->output_type(), &params->output_type,
+                          error_reporter);
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_TRANSPOSE_CONV: {
       TfLiteTransposeConvParams* params =
           MallocPOD<TfLiteTransposeConvParams>();

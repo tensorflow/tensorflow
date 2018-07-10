@@ -140,6 +140,7 @@ enum class OperatorType : uint8 {
   kEqual,
   kNotEqual,
   kPow,
+  kArgMin,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1525,6 +1526,17 @@ struct GatherOperator : Operator {
 // TensorFlow equivalent: ArgMax
 struct ArgMaxOperator : Operator {
   ArgMaxOperator() : Operator(OperatorType::kArgMax) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
+};
+
+// ArgMin operator. It returns the index of the minimum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMin
+struct ArgMinOperator : Operator {
+  ArgMinOperator() : Operator(OperatorType::kArgMin) {}
   ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 

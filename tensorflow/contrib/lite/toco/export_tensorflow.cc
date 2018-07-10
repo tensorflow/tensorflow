@@ -1135,6 +1135,22 @@ void ConvertArgMaxOperator(const Model& model, const ArgMaxOperator& src_op,
       GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
+void ConvertArgMinOperator(const Model& model, const ArgMinOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* argmin_op = tensorflow_graph->add_node();
+  argmin_op->set_op("ArgMin");
+  argmin_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *argmin_op->add_input() = src_op.inputs[0];
+  *argmin_op->add_input() = src_op.inputs[1];
+  (*argmin_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[0]));
+  (*argmin_op->mutable_attr())["Tidx"].set_type(
+      GetTensorFlowDataType(model, src_op.inputs[1]));
+  (*argmin_op->mutable_attr())["output_type"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+}
+
 void ConvertTransposeOperator(const Model& model,
                               const TransposeOperator& src_op,
                               GraphDef* tensorflow_graph) {
@@ -1963,6 +1979,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                          tensorflow_graph);
   } else if (src_op.type == OperatorType::kArgMax) {
     ConvertArgMaxOperator(model, static_cast<const ArgMaxOperator&>(src_op),
+                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kArgMin) {
+    ConvertArgMinOperator(model, static_cast<const ArgMinOperator&>(src_op),
                           tensorflow_graph);
   } else if (src_op.type == OperatorType::kTopK_V2) {
     ConvertTopKV2Operator(model, static_cast<const TopKV2Operator&>(src_op),
