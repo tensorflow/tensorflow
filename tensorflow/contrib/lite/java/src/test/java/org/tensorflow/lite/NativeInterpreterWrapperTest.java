@@ -432,60 +432,6 @@ public final class NativeInterpreterWrapperTest {
   }
 
   @Test
-  public void testDataTypeOf() {
-    float[] testEmtpyArray = {};
-    DataType dataType = NativeInterpreterWrapper.dataTypeOf(testEmtpyArray);
-    assertThat(dataType).isEqualTo(DataType.FLOAT32);
-    float[] testFloatArray = {0.783f, 0.251f};
-    dataType = NativeInterpreterWrapper.dataTypeOf(testFloatArray);
-    assertThat(dataType).isEqualTo(DataType.FLOAT32);
-    float[][] testMultiDimArray = {testFloatArray, testFloatArray, testFloatArray};
-    dataType = NativeInterpreterWrapper.dataTypeOf(testFloatArray);
-    assertThat(dataType).isEqualTo(DataType.FLOAT32);
-    try {
-      double[] testDoubleArray = {0.783, 0.251};
-      NativeInterpreterWrapper.dataTypeOf(testDoubleArray);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("cannot resolve DataType of");
-    }
-    try {
-      Float[] testBoxedArray = {0.783f, 0.251f};
-      NativeInterpreterWrapper.dataTypeOf(testBoxedArray);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("cannot resolve DataType of [Ljava.lang.Float;");
-    }
-  }
-
-  @Test
-  public void testNumDimensions() {
-    int scalar = 1;
-    assertThat(NativeInterpreterWrapper.numDimensions(scalar)).isEqualTo(0);
-    int[][] array = {{2, 4}, {1, 9}};
-    assertThat(NativeInterpreterWrapper.numDimensions(array)).isEqualTo(2);
-    try {
-      int[] emptyArray = {};
-      NativeInterpreterWrapper.numDimensions(emptyArray);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
-    }
-  }
-
-  @Test
-  public void testFillShape() {
-    int[][][] array = {{{23}, {14}, {87}}, {{12}, {42}, {31}}};
-    int num = NativeInterpreterWrapper.numDimensions(array);
-    int[] shape = new int[num];
-    NativeInterpreterWrapper.fillShape(array, 0, shape);
-    assertThat(num).isEqualTo(3);
-    assertThat(shape[0]).isEqualTo(2);
-    assertThat(shape[1]).isEqualTo(3);
-    assertThat(shape[2]).isEqualTo(1);
-  }
-
-  @Test
   public void testGetInferenceLatency() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
     float[] oneD = {1.23f, 6.54f, 7.81f};
