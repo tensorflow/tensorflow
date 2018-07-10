@@ -161,18 +161,16 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
           # Python 3
           NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
 
-        if _PRINT_DEPRECATION_WARNINGS:
+        if _PRINT_DEPRECATION_WARNINGS and NewClass.__init__ not in _PRINTED_WARNING and warn_once: 
           # We're making the alias as we speak. The original may have other
           # aliases, so we cannot use it to check for whether it's already been
           # warned about.
-          if NewClass.__init__ not in _PRINTED_WARNING:
-            if warn_once:
-              _PRINTED_WARNING[NewClass.__init__] = True
-            logging.warning(
-                'From %s: The name %s is deprecated. Please use %s instead.\n',
-                _call_location(), deprecated_name, name)
+          _PRINTED_WARNING[NewClass.__init__] = True
+          logging.warning(
+              'From %s: The name %s is deprecated. Please use %s instead.\n',
+              _call_location(), deprecated_name, name)
         super(NewClass, self).__init__(*args, **kwargs)
-
+          
     return NewClass
   else:
     decorator_utils.validate_callable(func_or_class, 'deprecated')
