@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "quantized_concat"
-    deprecation_message: "tf.quantized_concat is deprecated, please use tf.quantization.quantized_concat instead."
+    deprecated: true
   }
 }

@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "string_strip"
-    deprecation_message: "tf.string_strip is deprecated, please use tf.strings.strip instead."
+    deprecated: true
   }
 }
