@@ -34,35 +34,11 @@ using namespace mlir;
 using llvm::SourceMgr;
 using llvm::SMLoc;
 
-namespace {
-class AffineMapParserState;
-} // end anonymous namespace
-
 /// Simple enum to make code read better in cases that would otherwise return a
 /// bool value.  Failure is "true" in a boolean context.
 enum ParseResult {
   ParseSuccess,
   ParseFailure
-};
-
-/// Lower precedence ops (all at the same precedence level). LNoOp is false in
-/// the boolean sense.
-enum AffineLowPrecOp {
-  /// Null value.
-  LNoOp,
-  Add,
-  Sub
-};
-
-/// Higher precedence ops - all at the same precedence level. HNoOp is false in
-/// the boolean sense.
-enum AffineHighPrecOp {
-  /// Null value.
-  HNoOp,
-  Mul,
-  FloorDiv,
-  CeilDiv,
-  Mod
 };
 
 namespace {
@@ -73,12 +49,14 @@ class Parser;
 /// methods to access this.
 class ParserState {
 public:
-  ParserState(llvm::SourceMgr &sourceMgr, MLIRContext *context,
+  ParserState(llvm::SourceMgr &sourceMgr, Module *module,
               SMDiagnosticHandlerTy errorReporter)
-      : context(context), lex(sourceMgr, errorReporter),
-        curToken(lex.lexToken()), errorReporter(std::move(errorReporter)) {
-    module.reset(new Module(context));
-  }
+      : context(module->getContext()), module(module),
+        lex(sourceMgr, errorReporter), curToken(lex.lexToken()),
+        errorReporter(std::move(errorReporter)) {}
+
+  // A map from affine map identifier to AffineMap.
+  llvm::StringMap<AffineMap *> affineMapDefinitions;
 
 private:
   ParserState(const ParserState &) = delete;
@@ -87,7 +65,10 @@ private:
   friend class Parser;
 
   // The context we're parsing into.
-  MLIRContext *context;
+  MLIRContext *const context;
+
+  // This is the module we are parsing into.
+  Module *const module;
 
   // The lexer for the source file we're parsing.
   Lexer lex;
@@ -96,13 +77,7 @@ private:
   Token curToken;
 
   // The diagnostic error reporter.
-  SMDiagnosticHandlerTy errorReporter;
-
-  // This is the result module we are parsing into.
-  std::unique_ptr<Module> module;
-
-  // A map from affine map identifier to AffineMap.
-  llvm::StringMap<AffineMap*> affineMapDefinitions;
+  SMDiagnosticHandlerTy const errorReporter;
 };
 } // end anonymous namespace
 
@@ -113,12 +88,14 @@ namespace {
 /// specialized subparsers that include state, e.g. when a local symbol table.
 class Parser {
 public:
-  Parser(ParserState &state) : state(state), builder(state.context) {}
-  Module *parseModule();
+  Builder builder;
 
-  // Helper methods.
+  Parser(ParserState &state) : builder(state.context), state(state) {}
+
+  // Helper methods to get stuff from the parser-global state.
+  ParserState &getState() const { return state; }
   MLIRContext *getContext() const { return state.context; }
-  Module *getModule() { return state.module.get(); }
+  Module *getModule() { return state.module; }
 
   /// Return the current token the parser is inspecting.
   const Token &getToken() const { return state.curToken; }
@@ -154,10 +131,6 @@ public:
     return true;
   }
 
-  // Binary affine op parsing
-  AffineLowPrecOp consumeIfLowPrecOp();
-  AffineHighPrecOp consumeIfHighPrecOp();
-
   ParseResult parseCommaSeparatedList(Token::Kind rightToken,
                                const std::function<ParseResult()> &parseElement,
                                       bool allowEmptyList = true);
@@ -182,32 +155,8 @@ public:
   Attribute *parseAttribute();
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
-  // Parsing identifiers' lists for polyhedral structures.
-  ParseResult parseDimIdList(AffineMapParserState &state);
-  ParseResult parseSymbolIdList(AffineMapParserState &state);
-  ParseResult parseDimOrSymbolId(AffineMapParserState &state, bool dim);
-
   // Polyhedral structures.
-  ParseResult parseAffineMapDef();
-  AffineMap *parseAffineMapInline(StringRef mapId);
-  AffineExpr *parseAffineExpr(const AffineMapParserState &state);
-  AffineExpr *parseParentheticalExpr(const AffineMapParserState &state);
-  AffineExpr *parseNegateExpression(AffineExpr *lhs,
-                                    const AffineMapParserState &state);
-  AffineExpr *parseIntegerExpr(const AffineMapParserState &state);
-  AffineExpr *parseBareIdExpr(const AffineMapParserState &state);
-
-  AffineExpr *getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr *lhs,
-                                    AffineExpr *rhs);
-  AffineExpr *getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr *lhs,
-                                    AffineExpr *rhs);
-  AffineExpr *parseAffineOperandExpr(AffineExpr *lhs,
-                                     const AffineMapParserState &state);
-  AffineExpr *parseAffineLowPrecOpExpr(AffineExpr *llhs, AffineLowPrecOp llhsOp,
-                                       const AffineMapParserState &state);
-  AffineExpr *parseAffineHighPrecOpExpr(AffineExpr *llhs,
-                                        AffineHighPrecOp llhsOp,
-                                        const AffineMapParserState &state);
+  AffineMap *parseAffineMapInline();
 
   // SSA
   ParseResult parseSSAUse();
@@ -215,17 +164,10 @@ public:
   ParseResult parseSSAUseAndType();
   ParseResult parseOptionalSSAUseAndTypeList(Token::Kind endToken);
 
-  // Functions.
-  ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
-  ParseResult parseExtFunc();
-  ParseResult parseCFGFunc();
-  ParseResult parseMLFunc();
-
 private:
   // The Parser is subclassed and reinstantiated.  Do not add additional
   // non-trivial state here, add it to the ParserState class.
   ParserState &state;
-  Builder builder;
 };
 } // end anonymous namespace
 
@@ -546,29 +488,6 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
   return ParseSuccess;
 }
 
-namespace {
-/// This class represents the transient parser state while parsing an affine
-/// expression.
-class AffineMapParserState {
- public:
-   explicit AffineMapParserState() {}
-
-   void addDim(StringRef sRef) { dims.insert({sRef, dims.size()}); }
-   void addSymbol(StringRef sRef) { symbols.insert({sRef, symbols.size()}); }
-
-   unsigned getNumDims() const { return dims.size(); }
-   unsigned getNumSymbols() const { return symbols.size(); }
-
-   // TODO(bondhugula): could just use an vector/ArrayRef and scan the numbers.
-   const llvm::StringMap<unsigned> &getDims() const { return dims; }
-   const llvm::StringMap<unsigned> &getSymbols() const { return symbols; }
-
- private:
-   llvm::StringMap<unsigned> dims;
-   llvm::StringMap<unsigned> symbols;
-};
-}  // end anonymous namespace
-
 //===----------------------------------------------------------------------===//
 // Attribute parsing.
 //===----------------------------------------------------------------------===//
@@ -676,37 +595,75 @@ ParseResult Parser::parseAttributeDict(
 // Polyhedral structures.
 //===----------------------------------------------------------------------===//
 
-/// Affine map declaration.
-///
-///   affine-map-def ::= affine-map-id `=` affine-map-inline
-///
-ParseResult Parser::parseAffineMapDef() {
-  assert(getToken().is(Token::hash_identifier));
+/// Lower precedence ops (all at the same precedence level). LNoOp is false in
+/// the boolean sense.
+enum AffineLowPrecOp {
+  /// Null value.
+  LNoOp,
+  Add,
+  Sub
+};
 
-  StringRef affineMapId = getTokenSpelling().drop_front();
+/// Higher precedence ops - all at the same precedence level. HNoOp is false in
+/// the boolean sense.
+enum AffineHighPrecOp {
+  /// Null value.
+  HNoOp,
+  Mul,
+  FloorDiv,
+  CeilDiv,
+  Mod
+};
 
-  // Check for redefinitions.
-  auto *&entry = state.affineMapDefinitions[affineMapId];
-  if (entry)
-    return emitError("redefinition of affine map id '" + affineMapId + "'");
+namespace {
+/// This is a specialized parser for AffineMap's, maintaining the state
+/// transient to their bodies.
+class AffineMapParser : public Parser {
+public:
+  explicit AffineMapParser(ParserState &state) : Parser(state) {}
 
-  consumeToken(Token::hash_identifier);
+  AffineMap *parseAffineMapInline();
 
-  // Parse the '='
-  if (!consumeIf(Token::equal))
-    return emitError("expected '=' in affine map outlined definition");
+private:
+  unsigned getNumDims() const { return dims.size(); }
+  unsigned getNumSymbols() const { return symbols.size(); }
 
-  entry = parseAffineMapInline(affineMapId);
-  if (!entry)
-    return ParseFailure;
+  // Binary affine op parsing.
+  AffineLowPrecOp consumeIfLowPrecOp();
+  AffineHighPrecOp consumeIfHighPrecOp();
 
-  getModule()->affineMapList.push_back(entry);
-  return ParseSuccess;
-}
+  // Identifier lists for polyhedral structures.
+  ParseResult parseDimIdList();
+  ParseResult parseSymbolIdList();
+  ParseResult parseDimOrSymbolId(bool isDim);
+
+  AffineExpr *parseAffineExpr();
+  AffineExpr *parseParentheticalExpr();
+  AffineExpr *parseNegateExpression(AffineExpr *lhs);
+  AffineExpr *parseIntegerExpr();
+  AffineExpr *parseBareIdExpr();
+
+  AffineExpr *getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr *lhs,
+                                    AffineExpr *rhs);
+  AffineExpr *getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr *lhs,
+                                    AffineExpr *rhs);
+  AffineExpr *parseAffineOperandExpr(AffineExpr *lhs);
+  AffineExpr *parseAffineLowPrecOpExpr(AffineExpr *llhs,
+                                       AffineLowPrecOp llhsOp);
+  AffineExpr *parseAffineHighPrecOpExpr(AffineExpr *llhs,
+                                        AffineHighPrecOp llhsOp);
+
+private:
+  // TODO(bondhugula): could just use an vector/ArrayRef and scan the numbers.
+  llvm::StringMap<unsigned> dims;
+  llvm::StringMap<unsigned> symbols;
+};
+} // end anonymous namespace
 
 /// Create an affine binary high precedence op expression (mul's, div's, mod)
-AffineExpr *Parser::getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr *lhs,
-                                          AffineExpr *rhs) {
+AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
+                                                   AffineExpr *lhs,
+                                                   AffineExpr *rhs) {
   switch (op) {
   case Mul:
     if (!lhs->isSymbolic() && !rhs->isSymbolic()) {
@@ -743,8 +700,9 @@ AffineExpr *Parser::getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr *lhs,
 }
 
 /// Create an affine binary low precedence op expression (add, sub).
-AffineExpr *Parser::getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr *lhs,
-                                          AffineExpr *rhs) {
+AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
+                                                   AffineExpr *lhs,
+                                                   AffineExpr *rhs) {
   switch (op) {
   case AffineLowPrecOp::Add:
     return AffineAddExpr::get(lhs, rhs, builder.getContext());
@@ -758,7 +716,7 @@ AffineExpr *Parser::getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr *lhs,
 
 /// Consume this token if it is a lower precedence affine op (there are only two
 /// precedence levels).
-AffineLowPrecOp Parser::consumeIfLowPrecOp() {
+AffineLowPrecOp AffineMapParser::consumeIfLowPrecOp() {
   switch (getToken().getKind()) {
   case Token::plus:
     consumeToken(Token::plus);
@@ -773,7 +731,7 @@ AffineLowPrecOp Parser::consumeIfLowPrecOp() {
 
 /// Consume this token if it is a higher precedence affine op (there are only
 /// two precedence levels)
-AffineHighPrecOp Parser::consumeIfHighPrecOp() {
+AffineHighPrecOp AffineMapParser::consumeIfHighPrecOp() {
   switch (getToken().getKind()) {
   case Token::star:
     consumeToken(Token::star);
@@ -801,23 +759,22 @@ AffineHighPrecOp Parser::consumeIfHighPrecOp() {
 /// null. If no rhs can be found, returns (llhs llhsOp lhs) or lhs if llhs is
 /// null.
 AffineExpr *
-Parser::parseAffineHighPrecOpExpr(AffineExpr *llhs, AffineHighPrecOp llhsOp,
-                                  const AffineMapParserState &state) {
-  AffineExpr *lhs = parseAffineOperandExpr(llhs, state);
+AffineMapParser::parseAffineHighPrecOpExpr(AffineExpr *llhs,
+                                           AffineHighPrecOp llhsOp) {
+  AffineExpr *lhs = parseAffineOperandExpr(llhs);
   if (!lhs)
     return nullptr;
 
-  AffineHighPrecOp op = HNoOp;
   // Found an LHS. Parse the remaining expression.
-  if ((op = consumeIfHighPrecOp())) {
+  if (AffineHighPrecOp op = consumeIfHighPrecOp()) {
     if (llhs) {
       AffineExpr *expr = getBinaryAffineOpExpr(llhsOp, llhs, lhs);
       if (!expr)
         return nullptr;
-      return parseAffineHighPrecOpExpr(expr, op, state);
+      return parseAffineHighPrecOpExpr(expr, op);
     }
     // No LLHS, get RHS
-    return parseAffineHighPrecOpExpr(lhs, op, state);
+    return parseAffineHighPrecOpExpr(lhs, op);
   }
 
   // This is the last operand in this expression.
@@ -831,14 +788,13 @@ Parser::parseAffineHighPrecOpExpr(AffineExpr *llhs, AffineHighPrecOp llhsOp,
 /// Parse an affine expression inside parentheses.
 ///
 ///   affine-expr ::= `(` affine-expr `)`
-AffineExpr *Parser::parseParentheticalExpr(const AffineMapParserState &state) {
+AffineExpr *AffineMapParser::parseParentheticalExpr() {
   if (!consumeIf(Token::l_paren))
     return (emitError("expected '('"), nullptr);
   if (getToken().is(Token::r_paren))
     return (emitError("no expression inside parentheses"), nullptr);
-  auto *expr = parseAffineExpr(state);
+  auto *expr = parseAffineExpr();
   if (!expr)
-    // Error would have been emitted by parseAffineExpr.
     return nullptr;
   if (!consumeIf(Token::r_paren))
     return (emitError("expected ')'"), nullptr);
@@ -848,12 +804,11 @@ AffineExpr *Parser::parseParentheticalExpr(const AffineMapParserState &state) {
 /// Parse the negation expression.
 ///
 ///   affine-expr ::= `-` affine-expr
-AffineExpr *Parser::parseNegateExpression(AffineExpr *lhs,
-                                          const AffineMapParserState &state) {
+AffineExpr *AffineMapParser::parseNegateExpression(AffineExpr *lhs) {
   if (!consumeIf(Token::minus))
     return (emitError("expected '-'"), nullptr);
 
-  AffineExpr *operand = parseAffineOperandExpr(lhs, state);
+  AffineExpr *operand = parseAffineOperandExpr(lhs);
   // Since negation has the highest precedence of all ops (including high
   // precedence ops) but lower than parentheses, we are only going to use
   // parseAffineOperandExpr instead of parseAffineExpr here.
@@ -861,21 +816,18 @@ AffineExpr *Parser::parseNegateExpression(AffineExpr *lhs,
     // Extra error message although parseAffineOperandExpr would have
     // complained. Leads to a better diagnostic.
     return (emitError("missing operand of negation"), nullptr);
-  AffineConstantExpr *minusOne =
-      AffineConstantExpr::get(-1, builder.getContext());
+  auto *minusOne = AffineConstantExpr::get(-1, builder.getContext());
   return AffineMulExpr::get(minusOne, operand, builder.getContext());
 }
 
 /// Parse a bare id that may appear in an affine expression.
 ///
 ///   affine-expr ::= bare-id
-AffineExpr *Parser::parseBareIdExpr(const AffineMapParserState &state) {
+AffineExpr *AffineMapParser::parseBareIdExpr() {
   if (getToken().isNot(Token::bare_identifier))
     return (emitError("expected bare identifier"), nullptr);
 
   StringRef sRef = getTokenSpelling();
-  const auto &dims = state.getDims();
-  const auto &symbols = state.getSymbols();
   if (dims.count(sRef)) {
     consumeToken(Token::bare_identifier);
     return AffineDimExpr::get(dims.lookup(sRef), builder.getContext());
@@ -890,7 +842,7 @@ AffineExpr *Parser::parseBareIdExpr(const AffineMapParserState &state) {
 /// Parse a positive integral constant appearing in an affine expression.
 ///
 ///   affine-expr ::= integer-literal
-AffineExpr *Parser::parseIntegerExpr(const AffineMapParserState &state) {
+AffineExpr *AffineMapParser::parseIntegerExpr() {
   // No need to handle negative numbers separately here. They are naturally
   // handled via the unary negation operator, although (FIXME) MININT_64 still
   // not correctly handled.
@@ -914,17 +866,16 @@ AffineExpr *Parser::parseIntegerExpr(const AffineMapParserState &state) {
 //  operand expression, it's an op expression and will be parsed via
 //  parseAffineHighPrecOpExpression(). However, for i + (j*k) + -l, (j*k) and -l
 //  are valid operands that will be parsed by this function.
-AffineExpr *Parser::parseAffineOperandExpr(AffineExpr *lhs,
-                                           const AffineMapParserState &state) {
+AffineExpr *AffineMapParser::parseAffineOperandExpr(AffineExpr *lhs) {
   switch (getToken().getKind()) {
   case Token::bare_identifier:
-    return parseBareIdExpr(state);
+    return parseBareIdExpr();
   case Token::integer:
-    return parseIntegerExpr(state);
+    return parseIntegerExpr();
   case Token::l_paren:
-    return parseParentheticalExpr(state);
+    return parseParentheticalExpr();
   case Token::minus:
-    return parseNegateExpression(lhs, state);
+    return parseNegateExpression(lhs);
   case Token::kw_ceildiv:
   case Token::kw_floordiv:
   case Token::kw_mod:
@@ -965,39 +916,37 @@ AffineExpr *Parser::parseAffineOperandExpr(AffineExpr *lhs,
 /// Eg: when the expression is e1 + e2*e3 + e4, with e1 as llhs, this function
 /// will return the affine expr equivalent of (e1 + (e2*e3)) + e4, where (e2*e3)
 /// will be parsed using parseAffineHighPrecOpExpr().
-AffineExpr *
-Parser::parseAffineLowPrecOpExpr(AffineExpr *llhs, AffineLowPrecOp llhsOp,
-                                 const AffineMapParserState &state) {
+AffineExpr *AffineMapParser::parseAffineLowPrecOpExpr(AffineExpr *llhs,
+                                                      AffineLowPrecOp llhsOp) {
   AffineExpr *lhs;
-  if (!(lhs = parseAffineOperandExpr(llhs, state)))
+  if (!(lhs = parseAffineOperandExpr(llhs)))
     return nullptr;
 
   // Found an LHS. Deal with the ops.
-  AffineLowPrecOp lOp;
-  AffineHighPrecOp hOp;
-  if ((lOp = consumeIfLowPrecOp())) {
+  if (AffineLowPrecOp lOp = consumeIfLowPrecOp()) {
     if (llhs) {
       AffineExpr *sum = getBinaryAffineOpExpr(llhsOp, llhs, lhs);
-      return parseAffineLowPrecOpExpr(sum, lOp, state);
+      return parseAffineLowPrecOpExpr(sum, lOp);
     }
     // No LLHS, get RHS and form the expression.
-    return parseAffineLowPrecOpExpr(lhs, lOp, state);
+    return parseAffineLowPrecOpExpr(lhs, lOp);
   }
-  if ((hOp = consumeIfHighPrecOp())) {
+  if (AffineHighPrecOp hOp = consumeIfHighPrecOp()) {
     // We have a higher precedence op here. Get the rhs operand for the llhs
     // through parseAffineHighPrecOpExpr.
-    AffineExpr *highRes = parseAffineHighPrecOpExpr(lhs, hOp, state);
+    AffineExpr *highRes = parseAffineHighPrecOpExpr(lhs, hOp);
     if (!highRes)
       return nullptr;
+
     // If llhs is null, the product forms the first operand of the yet to be
     // found expression. If non-null, the op to associate with llhs is llhsOp.
     AffineExpr *expr =
         llhs ? getBinaryAffineOpExpr(llhsOp, llhs, highRes) : highRes;
+
     // Recurse for subsequent low prec op's after the affine high prec op
     // expression.
-    AffineLowPrecOp nextOp;
-    if ((nextOp = consumeIfLowPrecOp()))
-      return parseAffineLowPrecOpExpr(expr, nextOp, state);
+    if (AffineLowPrecOp nextOp = consumeIfLowPrecOp())
+      return parseAffineLowPrecOpExpr(expr, nextOp);
     return expr;
   }
   // Last operand in the expression list.
@@ -1022,49 +971,45 @@ Parser::parseAffineLowPrecOpExpr(AffineExpr *llhs, AffineLowPrecOp llhsOp,
 /// Additional conditions are checked depending on the production. For eg., one
 /// of the operands for `*` has to be either constant/symbolic; the second
 /// operand for floordiv, ceildiv, and mod has to be a positive integer.
-/// Use 'state' to check if valid identifiers appear in the expressoins.
-AffineExpr *Parser::parseAffineExpr(const AffineMapParserState &state) {
-  return parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp, state);
+AffineExpr *AffineMapParser::parseAffineExpr() {
+  return parseAffineLowPrecOpExpr(nullptr, AffineLowPrecOp::LNoOp);
 }
 
 /// Parse a dim or symbol from the lists appearing before the actual expressions
-/// of the affine map. Update state to store the dimensional/symbolic
+/// of the affine map. Update our state to store the dimensional/symbolic
 /// identifier. 'dim': whether it's the dim list or symbol list that is being
 /// parsed.
-ParseResult Parser::parseDimOrSymbolId(AffineMapParserState &state, bool dim) {
+ParseResult AffineMapParser::parseDimOrSymbolId(bool isDim) {
   if (getToken().isNot(Token::bare_identifier))
     return emitError("expected bare identifier");
   auto sRef = getTokenSpelling();
   consumeToken(Token::bare_identifier);
-  if (state.getDims().count(sRef) == 1)
+  if (dims.count(sRef))
     return emitError("dimensional identifier name reused");
-  if (state.getSymbols().count(sRef) == 1)
+  if (symbols.count(sRef))
     return emitError("symbolic identifier name reused");
-  if (dim)
-    state.addDim(sRef);
+  if (isDim)
+    dims.insert({sRef, dims.size()});
   else
-    state.addSymbol(sRef);
+    symbols.insert({sRef, symbols.size()});
   return ParseSuccess;
 }
 
 /// Parse the list of symbolic identifiers to an affine map.
-ParseResult Parser::parseSymbolIdList(AffineMapParserState &state) {
-  if (!consumeIf(Token::l_bracket)) return emitError("expected '['");
+ParseResult AffineMapParser::parseSymbolIdList() {
+  if (!consumeIf(Token::l_bracket))
+    return emitError("expected '['");
 
-  auto parseElt = [&]() -> ParseResult {
-    return parseDimOrSymbolId(state, false);
-  };
+  auto parseElt = [&]() -> ParseResult { return parseDimOrSymbolId(false); };
   return parseCommaSeparatedList(Token::r_bracket, parseElt);
 }
 
 /// Parse the list of dimensional identifiers to an affine map.
-ParseResult Parser::parseDimIdList(AffineMapParserState &state) {
+ParseResult AffineMapParser::parseDimIdList() {
   if (!consumeIf(Token::l_paren))
     return emitError("expected '(' at start of dimensional identifiers list");
 
-  auto parseElt = [&]() -> ParseResult {
-    return parseDimOrSymbolId(state, true);
-  };
+  auto parseElt = [&]() -> ParseResult { return parseDimOrSymbolId(true); };
   return parseCommaSeparatedList(Token::r_paren, parseElt);
 }
 
@@ -1076,16 +1021,14 @@ ParseResult Parser::parseDimIdList(AffineMapParserState &state) {
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
 //  TODO(bondhugula): parse range size information.
-AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
-  AffineMapParserState state;
-
+AffineMap *AffineMapParser::parseAffineMapInline() {
   // List of dimensional identifiers.
-  if (parseDimIdList(state))
+  if (parseDimIdList())
     return nullptr;
 
   // Symbols are optional.
   if (getToken().is(Token::l_bracket)) {
-    if (parseSymbolIdList(state))
+    if (parseSymbolIdList())
       return nullptr;
   }
   if (!consumeIf(Token::arrow)) {
@@ -1098,7 +1041,7 @@ AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
 
   SmallVector<AffineExpr *, 4> exprs;
   auto parseElt = [&]() -> ParseResult {
-    auto *elt = parseAffineExpr(state);
+    auto *elt = parseAffineExpr();
     ParseResult res = elt ? ParseSuccess : ParseFailure;
     exprs.push_back(elt);
     return res;
@@ -1111,8 +1054,12 @@ AffineMap *Parser::parseAffineMapInline(StringRef mapId) {
     return nullptr;
 
   // Parsed a valid affine map.
-  return AffineMap::get(state.getNumDims(), state.getNumSymbols(), exprs,
+  return AffineMap::get(dims.size(), symbols.size(), exprs,
                         builder.getContext());
+}
+
+AffineMap *Parser::parseAffineMapInline() {
+  return AffineMapParser(state).parseAffineMapInline();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1174,57 +1121,6 @@ ParseResult Parser::parseOptionalSSAUseAndTypeList(Token::Kind endToken) {
       endToken, [&]() -> ParseResult { return parseSSAUseAndType(); });
 }
 
-//===----------------------------------------------------------------------===//
-// Functions
-//===----------------------------------------------------------------------===//
-
-/// Parse a function signature, starting with a name and including the parameter
-/// list.
-///
-///   argument-list ::= type (`,` type)* | /*empty*/
-///   function-signature ::= function-id `(` argument-list `)` (`->` type-list)?
-///
-ParseResult Parser::parseFunctionSignature(StringRef &name,
-                                           FunctionType *&type) {
-  if (getToken().isNot(Token::at_identifier))
-    return emitError("expected a function identifier like '@foo'");
-
-  name = getTokenSpelling().drop_front();
-  consumeToken(Token::at_identifier);
-
-  if (getToken().isNot(Token::l_paren))
-    return emitError("expected '(' in function signature");
-
-  SmallVector<Type*, 4> arguments;
-  if (parseTypeList(arguments))
-    return ParseFailure;
-
-  // Parse the return type if present.
-  SmallVector<Type*, 4> results;
-  if (consumeIf(Token::arrow)) {
-    if (parseTypeList(results))
-      return ParseFailure;
-  }
-  type = builder.getFunctionType(arguments, results);
-  return ParseSuccess;
-}
-
-/// External function declarations.
-///
-///   ext-func ::= `extfunc` function-signature
-///
-ParseResult Parser::parseExtFunc() {
-  consumeToken(Token::kw_extfunc);
-
-  StringRef name;
-  FunctionType *type = nullptr;
-  if (parseFunctionSignature(name, type))
-    return ParseFailure;
-
-  // Okay, the external function definition was parsed correctly.
-  getModule()->functionList.push_back(new ExtFunction(name, type));
-  return ParseSuccess;
-}
 
 //===----------------------------------------------------------------------===//
 // CFG Functions
@@ -1235,15 +1131,18 @@ namespace {
 /// transient to their bodies.
 class CFGFunctionParser : public Parser {
 public:
+  CFGFunctionParser(ParserState &state, CFGFunction *function)
+      : Parser(state), function(function), builder(function) {}
+
+  ParseResult parseFunctionBody();
+
+private:
   CFGFunction *function;
   llvm::StringMap<std::pair<BasicBlock*, SMLoc>> blocksByName;
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
   CFGFuncBuilder builder;
-
-  CFGFunctionParser(ParserState &state, CFGFunction *function)
-      : Parser(state), function(function), builder(function) {}
 
   /// Get the basic block with the specified name, creating it if it doesn't
   /// already exist.  The location specified is the point of use, which allows
@@ -1257,32 +1156,11 @@ public:
     return blockAndLoc.first;
   }
 
-  ParseResult parseFunctionBody();
   ParseResult parseBasicBlock();
   OperationInst *parseCFGOperation();
   TerminatorInst *parseTerminator();
 };
 } // end anonymous namespace
-
-
-/// CFG function declarations.
-///
-///   cfg-func ::= `cfgfunc` function-signature `{` basic-block+ `}`
-///
-ParseResult Parser::parseCFGFunc() {
-  consumeToken(Token::kw_cfgfunc);
-
-  StringRef name;
-  FunctionType *type = nullptr;
-  if (parseFunctionSignature(name, type))
-    return ParseFailure;
-
-  // Okay, the CFG function signature was parsed correctly, create the function.
-  auto function = new CFGFunction(name, type);
-
-  CFGFunctionParser cfgFuncParser(state, function);
-  return cfgFuncParser.parseFunctionBody();
-}
 
 ParseResult CFGFunctionParser::parseFunctionBody() {
   if (!consumeIf(Token::l_brace))
@@ -1467,28 +1345,6 @@ public:
 };
 } // end anonymous namespace
 
-/// ML function declarations.
-///
-///   ml-func ::= `mlfunc` ml-func-signature `{` ml-stmt* ml-return-stmt `}`
-///
-ParseResult Parser::parseMLFunc() {
-  consumeToken(Token::kw_mlfunc);
-
-  StringRef name;
-  FunctionType *type = nullptr;
-
-  // FIXME: Parse ML function signature (args + types)
-  // by passing pointer to SmallVector<identifier> into parseFunctionSignature
-  if (parseFunctionSignature(name, type))
-    return ParseFailure;
-
-  // Okay, the ML function signature was parsed correctly, create the function.
-  auto function = new MLFunction(name, type);
-
-  MLFunctionParser mlFuncParser(state, function);
-  return mlFuncParser.parseFunctionBody();
-}
-
 ParseResult MLFunctionParser::parseFunctionBody() {
   if (!consumeIf(Token::l_brace))
     return emitError("expected '{' in ML function");
@@ -1612,38 +1468,177 @@ ParseResult MLFunctionParser::parseNestedStatements(NodeStmt *parent) {
 // Top-level entity parsing.
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// This parser handles entities that are only valid at the top level of the
+/// file.
+class ModuleParser : public Parser {
+public:
+  explicit ModuleParser(ParserState &state) : Parser(state) {}
+
+  ParseResult parseModule();
+
+private:
+  ParseResult parseAffineMapDef();
+
+  // Functions.
+  ParseResult parseFunctionSignature(StringRef &name, FunctionType *&type);
+  ParseResult parseExtFunc();
+  ParseResult parseCFGFunc();
+  ParseResult parseMLFunc();
+};
+} // end anonymous namespace
+
+/// Affine map declaration.
+///
+///   affine-map-def ::= affine-map-id `=` affine-map-inline
+///
+ParseResult ModuleParser::parseAffineMapDef() {
+  assert(getToken().is(Token::hash_identifier));
+
+  StringRef affineMapId = getTokenSpelling().drop_front();
+
+  // Check for redefinitions.
+  auto *&entry = getState().affineMapDefinitions[affineMapId];
+  if (entry)
+    return emitError("redefinition of affine map id '" + affineMapId + "'");
+
+  consumeToken(Token::hash_identifier);
+
+  // Parse the '='
+  if (!consumeIf(Token::equal))
+    return emitError("expected '=' in affine map outlined definition");
+
+  entry = parseAffineMapInline();
+  if (!entry)
+    return ParseFailure;
+
+  getModule()->affineMapList.push_back(entry);
+  return ParseSuccess;
+}
+
+/// Parse a function signature, starting with a name and including the parameter
+/// list.
+///
+///   argument-list ::= type (`,` type)* | /*empty*/
+///   function-signature ::= function-id `(` argument-list `)` (`->` type-list)?
+///
+ParseResult ModuleParser::parseFunctionSignature(StringRef &name,
+                                                 FunctionType *&type) {
+  if (getToken().isNot(Token::at_identifier))
+    return emitError("expected a function identifier like '@foo'");
+
+  name = getTokenSpelling().drop_front();
+  consumeToken(Token::at_identifier);
+
+  if (getToken().isNot(Token::l_paren))
+    return emitError("expected '(' in function signature");
+
+  SmallVector<Type *, 4> arguments;
+  if (parseTypeList(arguments))
+    return ParseFailure;
+
+  // Parse the return type if present.
+  SmallVector<Type *, 4> results;
+  if (consumeIf(Token::arrow)) {
+    if (parseTypeList(results))
+      return ParseFailure;
+  }
+  type = builder.getFunctionType(arguments, results);
+  return ParseSuccess;
+}
+
+/// External function declarations.
+///
+///   ext-func ::= `extfunc` function-signature
+///
+ParseResult ModuleParser::parseExtFunc() {
+  consumeToken(Token::kw_extfunc);
+
+  StringRef name;
+  FunctionType *type = nullptr;
+  if (parseFunctionSignature(name, type))
+    return ParseFailure;
+
+  // Okay, the external function definition was parsed correctly.
+  getModule()->functionList.push_back(new ExtFunction(name, type));
+  return ParseSuccess;
+}
+
+/// CFG function declarations.
+///
+///   cfg-func ::= `cfgfunc` function-signature `{` basic-block+ `}`
+///
+ParseResult ModuleParser::parseCFGFunc() {
+  consumeToken(Token::kw_cfgfunc);
+
+  StringRef name;
+  FunctionType *type = nullptr;
+  if (parseFunctionSignature(name, type))
+    return ParseFailure;
+
+  // Okay, the CFG function signature was parsed correctly, create the function.
+  auto function = new CFGFunction(name, type);
+
+  return CFGFunctionParser(getState(), function).parseFunctionBody();
+}
+
+/// ML function declarations.
+///
+///   ml-func ::= `mlfunc` ml-func-signature `{` ml-stmt* ml-return-stmt `}`
+///
+ParseResult ModuleParser::parseMLFunc() {
+  consumeToken(Token::kw_mlfunc);
+
+  StringRef name;
+  FunctionType *type = nullptr;
+
+  // FIXME: Parse ML function signature (args + types)
+  // by passing pointer to SmallVector<identifier> into parseFunctionSignature
+  if (parseFunctionSignature(name, type))
+    return ParseFailure;
+
+  // Okay, the ML function signature was parsed correctly, create the function.
+  auto function = new MLFunction(name, type);
+
+  return MLFunctionParser(getState(), function).parseFunctionBody();
+}
+
 /// This is the top-level module parser.
-Module *Parser::parseModule() {
+ParseResult ModuleParser::parseModule() {
   while (1) {
     switch (getToken().getKind()) {
     default:
       emitError("expected a top level entity");
-      return nullptr;
+      return ParseFailure;
 
       // If we got to the end of the file, then we're done.
     case Token::eof:
-      return state.module.release();
+      return ParseSuccess;
 
     // If we got an error token, then the lexer already emitted an error, just
     // stop.  Someday we could introduce error recovery if there was demand for
     // it.
     case Token::error:
-      return nullptr;
+      return ParseFailure;
+
+    case Token::hash_identifier:
+      if (parseAffineMapDef())
+        return ParseFailure;
+      break;
 
     case Token::kw_extfunc:
-      if (parseExtFunc()) return nullptr;
+      if (parseExtFunc())
+        return ParseFailure;
       break;
 
     case Token::kw_cfgfunc:
-      if (parseCFGFunc()) return nullptr;
-      break;
-
-    case Token::hash_identifier:
-      if (parseAffineMapDef()) return nullptr;
+      if (parseCFGFunc())
+        return ParseFailure;
       break;
 
     case Token::kw_mlfunc:
-      if (parseMLFunc()) return nullptr;
+      if (parseMLFunc())
+        return ParseFailure;
       break;
 
       // TODO: affine entity declarations, etc.
@@ -1662,14 +1657,17 @@ void mlir::defaultErrorReporter(const llvm::SMDiagnostic &error) {
 /// MLIR module if it was valid.  If not, it emits diagnostics and returns null.
 Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
                               SMDiagnosticHandlerTy errorReporter) {
-  ParserState state(sourceMgr, context,
+  // This is the result module we are parsing into.
+  std::unique_ptr<Module> module(new Module(context));
+
+  ParserState state(sourceMgr, module.get(),
                     errorReporter ? std::move(errorReporter)
                                   : defaultErrorReporter);
-  auto *result = Parser(state).parseModule();
+  if (ModuleParser(state).parseModule())
+    return nullptr;
 
   // Make sure the parse module has no other structural problems detected by the
   // verifier.
-  if (result)
-    result->verify();
-  return result;
+  module->verify();
+  return module.release();
 }
