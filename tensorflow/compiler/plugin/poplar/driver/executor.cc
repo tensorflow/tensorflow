@@ -254,7 +254,7 @@ Status PoplarExecutor::InitializePoplarDevice(
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
-  poplar::DeviceSet device_set = poplar::DeviceSet::getDeviceSet();
+  static poplar::DeviceSet device_set = poplar::DeviceSet::getDeviceSet();
 
   int num_ipus = cfg.ipu_model_config().num_ipus();
   int tiles_per_ipu = cfg.ipu_model_config().tiles_per_ipu();
@@ -263,8 +263,10 @@ Status PoplarExecutor::InitializePoplarDevice(
     num_ipus = 1;
   }
 
+  auto device_list = device_set.getDevices(poplar::TargetType::IPU, num_ipus);
+
   if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-    if (device_set.getDevices(poplar::TargetType::IPU, num_ipus).size() > 0) {
+    if (device_list.size() > 0) {
       type = tensorflow::IPUOptions::DeviceConfig::IPU;
     } else {
       type = tensorflow::IPUOptions::DeviceConfig::CPU;
@@ -274,8 +276,7 @@ Status PoplarExecutor::InitializePoplarDevice(
   bool opened = false;
   switch (type) {
     case tensorflow::IPUOptions::DeviceConfig::IPU: {
-      auto devices = device_set.getDevices(poplar::TargetType::IPU, num_ipus);
-      for (auto& d : devices) {
+      for (auto& d : device_list) {
         if (d.attach()) {
           poplar_device_ = d;
 
