@@ -232,7 +232,7 @@ def generated_test_models():
         "not_equal",
         "pad",
         "padv2",
-        # "prelu",
+        "prelu",
         "pow",
         "relu",
         "relu1",
