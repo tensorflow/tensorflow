@@ -133,6 +133,7 @@ namespace xla {
   V(kTrace, "trace")                                         \
   V(kTranspose, "transpose")                                 \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                   \
+  V(kTupleSelect, "tuple-select")                            \
   V(kWhile, "while")
 
 enum class HloOpcode {

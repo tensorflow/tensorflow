@@ -49,16 +49,47 @@ class BigtableClient(object):
   `table` method to open a Bigtable Table.
   """
 
-  def __init__(self, project_id, instance_id):
+  def __init__(self,
+               project_id,
+               instance_id,
+               connection_pool_size=None,
+               max_receive_message_size=None):
     """Creates a BigtableClient that can be used to open connections to tables.
 
     Args:
       project_id: A string representing the GCP project id to connect to.
       instance_id: A string representing the Bigtable instance to connect to.
+      connection_pool_size: (Optional.) A number representing the number of
+        concurrent connections to the Cloud Bigtable service to make.
+      max_receive_message_size: (Optional.) The maximum bytes received in a
+        single gRPC response.
+
+    Raises:
+      ValueError: if the arguments are invalid (e.g. wrong type, or out of
+        expected ranges (e.g. negative).)
     """
+    if not isinstance(project_id, str):
+      raise ValueError("`project_id` must be a string")
     self._project_id = project_id
+
+    if not isinstance(instance_id, str):
+      raise ValueError("`instance_id` must be a string")
     self._instance_id = instance_id
-    self._resource = gen_bigtable_ops.bigtable_client(project_id, instance_id)
+
+    if connection_pool_size is None:
+      connection_pool_size = -1
+    elif connection_pool_size < 1:
+      raise ValueError("`connection_pool_size` must be positive")
+
+    if max_receive_message_size is None:
+      max_receive_message_size = -1
+    elif max_receive_message_size < 1:
+      raise ValueError("`max_receive_message_size` must be positive")
+
+    self._connection_pool_size = connection_pool_size
+
+    self._resource = gen_bigtable_ops.bigtable_client(
+        project_id, instance_id, connection_pool_size, max_receive_message_size)
 
   def table(self, name, snapshot=None):
     """Opens a table and returns a `BigTable` object.
@@ -185,6 +216,18 @@ class BigTable(object):
       of the row keys matching that prefix.
     """
     return _BigtablePrefixKeyDataset(self, prefix)
+
+  def sample_keys(self):
+    """Retrieves a sampling of row keys from the Bigtable table.
+
+    This dataset is most often used in conjunction with
+    @{tf.contrib.data.parallel_interleave} to construct a set of ranges for
+    scanning in parallel.
+
+    Returns:
+      A @{tf.data.Dataset} returning string row keys.
+    """
+    return _BigtableSampleKeysDataset(self)
 
   def scan_prefix(self, prefix, probability=None, columns=None, **kwargs):
     """Retrieves row (including values) from the Bigtable service.
@@ -408,6 +451,20 @@ class _BigtableRangeKeyDataset(_BigtableKeyDataset):
         table=self._table._resource,  # pylint: disable=protected-access
         start_key=self._start,
         end_key=self._end)
+
+
+class _BigtableSampleKeysDataset(_BigtableKeyDataset):
+  """_BigtableSampleKeysDataset represents a sampling of row keys.
+  """
+
+  # TODO(saeta): Expose the data size offsets into the keys.
+
+  def __init__(self, table):
+    super(_BigtableSampleKeysDataset, self).__init__(table)
+
+  def _as_variant_tensor(self):
+    return gen_bigtable_ops.bigtable_sample_keys_dataset(
+        table=self._table._resource)  # pylint: disable=protected-access
 
 
 class _BigtableLookupDataset(dataset_ops.Dataset):

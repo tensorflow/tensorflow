@@ -154,7 +154,7 @@ cc_library(
         ":parallel_loop_emitter",
         ":partition_assignment",
         ":while_transformer",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_tiling",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
@@ -204,7 +205,7 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -359,6 +360,7 @@ cc_library(
         ":cudnn_convolution_runner",
         ":gpu_executable",
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -390,7 +392,7 @@ cc_library(
     hdrs = ["cudnn_convolution_rewriter.h"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -525,6 +527,7 @@ cc_library(
     hdrs = ["pad_insertion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -541,7 +544,7 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":gpu_compiler",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -635,6 +638,7 @@ cc_library(
     hdrs = ["cudnn_batchnorm_rewriter.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -727,7 +731,7 @@ cc_library(
     srcs = ["while_transformer.cc"],
     hdrs = ["while_transformer.h"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

@@ -530,7 +530,13 @@ class ShapeUtil {
   static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i]
+  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  //
+  // Postcondition: For any valid permutation,
+  //
+  //   !HasLayout(shape) ||
+  //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
+  //                      InversePermutation(permutation)).
   static Shape PermuteDimensions(tensorflow::gtl::ArraySlice<int64> permutation,
                                  const Shape& shape);
 

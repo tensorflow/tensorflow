@@ -34,8 +34,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -274,7 +275,7 @@ Status GdrMemoryManager::Init() {
 
   Allocator* allocators[] = {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ProcessState::singleton()->GetGPUHostAllocator(0),
+    GPUProcessState::singleton()->GetGPUHostAllocator(0),
     ProcessState::singleton()->GetCPUAllocator(0),
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     cpu_allocator(),
@@ -308,7 +309,8 @@ Status GdrMemoryManager::Init() {
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
     int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
-    ProcessState::singleton()->AddGPUAllocVisitor(bus_id, cuda_alloc_visitor);
+    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
+                                                     cuda_alloc_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -430,7 +432,7 @@ void GdrMemoryManager::TransportOptionsFromTensor(
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (!on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetGPUHostAllocator(0);
+    Allocator* alloc = GPUProcessState::singleton()->GetGPUHostAllocator(0);
     Tensor* host_copy = new Tensor(alloc, tensor.dtype(), tensor.shape());
     GPUUtil::CopyGPUTensorToCPU(
         device, device_context, &tensor, host_copy,
@@ -532,7 +534,7 @@ void GdrMemoryManager::TensorFromTransportOptions(
   Tensor host_copy;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mr == nullptr && !on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetGPUHostAllocator(0);
+    Allocator* alloc = GPUProcessState::singleton()->GetGPUHostAllocator(0);
     host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
     buffer = DMAHelper::buffer(&host_copy);
     addr = buffer->data();

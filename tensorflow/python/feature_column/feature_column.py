@@ -3264,10 +3264,14 @@ class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,
           sp_ids=id_tensor,
           sp_values=weight_tensor,
           vocab_size=int(self._variable_shape[-1]))
-      # Remove (?, -1) index
+      # Remove (?, -1) index.
       weighted_column = sparse_ops.sparse_slice(weighted_column, [0, 0],
                                                 weighted_column.dense_shape)
-      return sparse_ops.sparse_tensor_to_dense(weighted_column)
+      # Use scatter_nd to merge duplicated indices if existed,
+      # instead of sparse_tensor_to_dense.
+      return array_ops.scatter_nd(weighted_column.indices,
+                                  weighted_column.values,
+                                  weighted_column.dense_shape)
 
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
         id_tensor, default_value=-1)

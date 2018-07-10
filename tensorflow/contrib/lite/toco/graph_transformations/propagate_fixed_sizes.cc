@@ -1039,9 +1039,6 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
   QCHECK_GE(input_shape.dimensions_count(), 1);
   op->input_rank = input_shape.dimensions_count();
 
-  // We only support 1-D indices.
-  QCHECK_EQ(indices_shape.dimensions_count(), 1);
-
   // Copy the input dimensions to the output except for dimension 0,
   // where the dimension of indices_shape is used.
   // TODO(mgubin): if axis != 0 this is not true, change when it's supported.

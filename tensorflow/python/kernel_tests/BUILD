@@ -2843,6 +2843,7 @@ gpu_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 20,
+    tags = ["nomsan"],  # TODO(b/110990716) reenable
 )
 
 gpu_py_test(

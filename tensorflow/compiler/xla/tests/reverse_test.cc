@@ -82,7 +82,7 @@ TEST_P(FloatReverseTest, Reverses) {
   std::vector<float> input_vector(
       ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
-  auto r1_literal = Literal::CreateR1<float>(input_vector);
+  auto r1_literal = LiteralUtil::CreateR1<float>(input_vector);
   auto input_literal = r1_literal->Reshape(spec.input_dims).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());

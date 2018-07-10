@@ -461,8 +461,8 @@ class Optimizer(
         # Have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        if distribute_lib.get_loss_reduction(
-        ) == variable_scope.VariableAggregation.MEAN:
+        if (distribute_lib.get_loss_reduction() ==
+            variable_scope.VariableAggregation.MEAN):
           num_towers = distribute_lib.get_distribution_strategy().num_towers
           if num_towers > 1:
             loss_value *= (1. / num_towers)
@@ -479,8 +479,8 @@ class Optimizer(
           "be a function when eager execution is enabled.")
 
     # Scale loss if using a "mean" loss reduction and multiple towers.
-    if distribute_lib.get_loss_reduction(
-    ) == variable_scope.VariableAggregation.MEAN:
+    if (distribute_lib.get_loss_reduction() ==
+        variable_scope.VariableAggregation.MEAN):
       num_towers = distribute_lib.get_distribution_strategy().num_towers
       if num_towers > 1:
         loss *= (1. / num_towers)

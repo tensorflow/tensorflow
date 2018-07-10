@@ -82,18 +82,7 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
 
   StatusOr<ScopedShapedBuffer> return_value =
       ExecuteOnStream(run_options, arguments, profile_ptr.get());
-  if (!return_value.status().ok()) {
-    if (profile != nullptr) {
-      // Ensure the ThenStartTimer call has completed before we destroy timer.
-      // We already have a failure status to return, so just log this if it
-      // fails.
-      Status status = stream->BlockHostUntilDone();
-      if (!status.ok()) {
-        LOG(ERROR) << "Failed to BlockHostUntilDone: " << status;
-      }
-    }
-    return return_value.status();
-  }
+  TF_RETURN_IF_ERROR(return_value.status());
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";

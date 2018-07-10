@@ -19,13 +19,15 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -40,7 +42,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import training_ops
+from tensorflow.python.util import compat
 
 
 @test_util.with_c_shapes
@@ -193,6 +198,15 @@ class FunctionTest(test.TestCase):
     self.assertEqual(fn_op.output_shapes, None)
     self.assertAllEqual(fn_op(x, x), None)
 
+  def testDefunCapturedInt32(self):
+    x = constant_op.constant(1, dtype=dtypes.int32)
+
+    @function.defun
+    def add_int32s():
+      return x + x
+
+    self.assertEqual(2, int(add_int32s()))
+
   def testDefunReadVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
 
@@ -204,13 +218,14 @@ class FunctionTest(test.TestCase):
 
   def testDefunAssignAddVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
+    x = constant_op.constant(2.0)
 
     @function.defun
-    def f():
-      v.assign_add(2.0)
+    def test_assign_add():
+      v.assign_add(x)
       return v.read_value()
 
-    self.assertEqual(3.0, float(f()))
+    self.assertEqual(3.0, float(test_assign_add()))
 
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
@@ -440,24 +455,33 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(f(constant_op.constant(1.0)), 2.0)
 
-  def testGradientOfGatherWithDefun(self):
+  def testGatherResourceWithDefun(self):
     with ops.device('cpu:0'):
       v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
 
-      def sum_gather():
-        return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
+    def sum_gather():
+      return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
 
-      grad_fn = backprop.implicit_grad(sum_gather)
-      gradient = grad_fn()
-      defun_grad_fn = backprop.implicit_grad(function.defun(sum_gather))
-      defun_gradient = defun_grad_fn()
-      self.assertEqual(len(gradient), len(defun_gradient))
+    defined = function.defun(sum_gather)
+    self.assertAllEqual(sum_gather(), defined())
 
-      gradient = gradient[0][0]
-      defun_gradient = defun_gradient[0][0]
-      self.assertAllEqual(gradient.values, defun_gradient.values)
-      self.assertAllEqual(gradient.indices, defun_gradient.indices)
-      self.assertAllEqual(gradient.dense_shape, defun_gradient.dense_shape)
+  def testGradientOfGatherWithDefun(self):
+    v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+
+    def sum_gather():
+      return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
+
+    grad_fn = backprop.implicit_grad(sum_gather)
+    gradient = grad_fn()
+    defun_grad_fn = backprop.implicit_grad(function.defun(sum_gather))
+    defun_gradient = defun_grad_fn()
+    self.assertEqual(len(gradient), len(defun_gradient))
+
+    gradient = gradient[0][0]
+    defun_gradient = defun_gradient[0][0]
+    self.assertAllEqual(gradient.values, defun_gradient.values)
+    self.assertAllEqual(gradient.indices, defun_gradient.indices)
+    self.assertAllEqual(gradient.dense_shape, defun_gradient.dense_shape)
 
   def testReturningIndexedSlicesWithDefun(self):
 
@@ -521,6 +545,66 @@ class FunctionTest(test.TestCase):
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testFunctionWithResourcesOnDifferentDevices(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/cpu:0'):
+      v_cpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+
+    with ops.device('/gpu:0'):
+      v_gpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+
+    def sum_gather():
+      cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu, [1, 2]))
+      gpu_result = math_ops.reduce_sum(array_ops.gather(v_gpu, [1, 2]))
+      return cpu_result, gpu_result
+
+    defined = function.defun(sum_gather)
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+    expected = self.evaluate(sum_gather())
+    self.assertAllEqual(expected, self.evaluate(defined()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOpInFunctionWithConflictingResourceInputs(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/cpu:0'):
+      v_cpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name='cpu')
+      v_also_cpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name='also_cpu')
+
+    with ops.device('/gpu:0'):
+      v_gpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name='gpu')
+
+    @function.defun
+    def resource_apply_adam():
+      training_ops.resource_apply_adam(
+          v_cpu.handle,
+          v_gpu.handle,
+          v_also_cpu.handle,
+          1.0,  # beta1_power
+          1.0,  # beta2_power
+          1.0,  # learning_rate
+          1.0,  # beta1
+          1.0,  # beta2
+          1.0,  # epsilon,
+          [1.0, 1.0, 1.0],  # grad
+          False)  # use_locking
+      return None
+
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError, 'Could not colocate node with its '
+        'resource and reference inputs.*'):
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+      self.evaluate(resource_apply_adam())
+
   def testFunctionHandlesInputsOnDifferentDevices(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')
@@ -570,17 +654,17 @@ class FunctionTest(test.TestCase):
 
   def testNestedDifferentiableFunction(self):
     @function.defun
-    def foo(a, b):
+    def inner_fn(a, b):
       return a * math_ops.add(a, b)
 
     @function.defun
-    def bar(x):
-      return foo(x, 1.0)
+    def outer_fn(x):
+      return inner_fn(x, 1.0)
 
     x = constant_op.constant(5.0)
     with backprop.GradientTape() as tp:
       tp.watch(x)
-      result = bar(x)
+      result = outer_fn(x)
     grad = tp.gradient(result, x)
 
     self.assertAllEqual(grad, 2 * 5.0 + 1.0)
@@ -630,15 +714,15 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(3, add_one(constant_op.constant(2)))
 
   def testVariableCaptureInNestedFunctions(self):
-    v = resource_variable_ops.ResourceVariable(1)
+    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
 
     @function.defun
-    def read():
+    def inner_read():
       return v.read_value()
 
     @function.defun
     def outer():
-      return read()
+      return inner_read()
 
     self.assertEqual(1, int(outer()))
 
@@ -728,6 +812,27 @@ class FunctionTest(test.TestCase):
     x = array_ops.ones([1, 2, 2, 1])
     y = model(x)
     self.assertAllEqual([[[[4.0]]]], y.numpy())
+
+  @test_util.run_in_graph_and_eager_modes(
+      config=config_pb2.ConfigProto(device_count={'CPU': 3}))
+  def testDeviceAnnotationsRespected(self):
+    @function.defun
+    def multi_device_fn():
+      with ops.device('/cpu:0'):
+        s1 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      with ops.device('/cpu:1'):
+        s2 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      with ops.device('/cpu:2'):
+        s3 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3
+
+    outputs = multi_device_fn()
+    self.assertTrue(compat.as_bytes('CPU:0') in self.evaluate(outputs[0]))
+    self.assertTrue(compat.as_bytes('CPU:1') in self.evaluate(outputs[1]))
+    self.assertTrue(compat.as_bytes('CPU:2') in self.evaluate(outputs[2]))
 
   def testVariablesAreTracked(self):
     v = resource_variable_ops.ResourceVariable(1.0)
@@ -1064,4 +1169,6 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
 
 if __name__ == '__main__':
+  ops.enable_eager_execution(
+      config=config_pb2.ConfigProto(device_count={'CPU': 3}))
   test.main()

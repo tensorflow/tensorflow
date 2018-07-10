@@ -376,7 +376,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
                           v3.aggregation)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testInvalidSynchronizationWithGetVariable(self):
+  def testNoneSynchronizationWithGetVariable(self):
     self._skip_eager_if_gpus_less_than(1)
     devices = ["/device:CPU:0", "/device:GPU:0"]
     dist = mirrored_strategy.MirroredStrategy(devices)
@@ -390,7 +390,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
             synchronization=variable_scope.VariableSynchronization.NONE)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testInvalidSynchronizationWithVariable(self):
+  def testNoneSynchronizationWithVariable(self):
     self._skip_eager_if_gpus_less_than(1)
     devices = ["/device:CPU:0", "/device:GPU:0"]
     dist = mirrored_strategy.MirroredStrategy(devices)
@@ -403,6 +403,17 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
             1.0,
             name="v",
             synchronization=variable_scope.VariableSynchronization.NONE)
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testInvalidSynchronizationWithVariable(self):
+    self._skip_eager_if_gpus_less_than(1)
+    devices = ["/device:CPU:0", "/device:GPU:0"]
+    dist = mirrored_strategy.MirroredStrategy(devices)
+    with dist.scope():
+      with self.assertRaisesRegexp(
+          ValueError, "Invalid variable synchronization mode: Invalid for "
+          "variable: v"):
+        variable_scope.variable(1.0, name="v", synchronization="Invalid")
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testInvalidAggregationWithGetVariable(self):
@@ -910,6 +921,50 @@ class MirroredVariableUpdateTest(test.TestCase):
           model_fn, run_concurrently=False)))
       self.assertEquals(4.5, self.evaluate(mirrored_var))
 
+
+class MirroredAndTowerLocalVariableInitializerTest(test.TestCase):
+  config = config_pb2.ConfigProto()
+  config.allow_soft_placement = True
+
+  def testAssignMirroredVarInitializer(self):
+    # This test is not eager compatible since in eager variables are initialized
+    # upon construction instead of once the initialization op is run.
+    with context.graph_mode():
+      def var_fn():
+        v = variable_scope.variable(1.0, name="foo")
+        return v
+
+      dist = mirrored_strategy.MirroredStrategy(
+          ["/device:GPU:0", "/device:CPU:0"])
+
+      with dist.scope():
+        mirrored_var = dist.call_for_each_tower(var_fn)
+        self.assertIsInstance(mirrored_var, values.MirroredVariable)
+        self.assertFalse(self.evaluate(mirrored_var.is_initialized()))
+        self.evaluate(mirrored_var.initializer)
+        self.assertTrue(self.evaluate(mirrored_var.is_initialized()))
+
+  def testAssignTowerLocalVarInitializer(self):
+    # This test is not eager compatible since in eager variables are initialized
+    # upon construction instead of once the initialization op is run.
+    with context.graph_mode():
+      def model_fn():
+        tower_context = distribute_lib.get_tower_context()
+        with tower_context.tower_local_var_scope(
+            variable_scope.VariableAggregation.SUM):
+          v_sum = variable_scope.variable(1.0)
+        self.assertTrue(isinstance(v_sum, values.TowerLocalVariable))
+        return v_sum
+
+      dist = mirrored_strategy.MirroredStrategy(
+          ["/device:GPU:0", "/device:CPU:0"])
+
+      with dist.scope():
+        tower_local_var = dist.call_for_each_tower(model_fn)
+        self.assertTrue(isinstance(tower_local_var, values.TowerLocalVariable))
+        self.assertFalse(self.evaluate(tower_local_var.is_initialized()))
+        self.evaluate(tower_local_var.initializer)
+        self.assertTrue(self.evaluate(tower_local_var.is_initialized()))
 
 if __name__ == "__main__":
   test.main()

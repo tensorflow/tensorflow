@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -56,6 +56,64 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
 REGISTER_XLA_OP(
     Name("ResourceApplyGradientDescent").TypeConstraint("T", kFloatTypes),
     ResourceApplyGradientDescent);
+
+xla::XlaOp ProximalGradientDescentUpdate(xla::XlaOp var, xla::XlaOp lr,
+                                         xla::XlaOp l1, xla::XlaOp l2,
+                                         xla::XlaOp grad) {
+  xla::XlaOp one = xla::ScalarLike(lr, 1.0);
+  xla::XlaOp zero = xla::ScalarLike(lr, 0.0);
+  xla::XlaOp prox_var = var - grad * lr;
+  xla::XlaOp l1_gt_zero = xla::Sign(prox_var) *
+                          xla::Max(xla::Abs(prox_var) - lr * l1, zero) /
+                          (one + lr * l2);
+  xla::XlaOp l1_le_zero = prox_var / (one + lr * l2);
+  return xla::Select(xla::Gt(l1, zero), l1_gt_zero, l1_le_zero);
+}
+
+class ResourceApplyProximalGradientDescent : public XlaOpKernel {
+ public:
+  explicit ResourceApplyProximalGradientDescent(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaOp var;
+    TensorShape var_shape;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+
+    TensorShape alpha_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
+                errors::InvalidArgument("alpha is not a scalar: ",
+                                        alpha_shape.DebugString()));
+    TensorShape l1_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
+                errors::InvalidArgument("l1 is not a scalar: ",
+                                        l1_shape.DebugString()));
+    TensorShape l2_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
+                errors::InvalidArgument("l2 is not a scalar: ",
+                                        l2_shape.DebugString()));
+    TensorShape delta_shape = ctx->InputShape(4);
+    OP_REQUIRES(
+        ctx, var_shape.IsSameSize(delta_shape),
+        errors::InvalidArgument("var and delta do not have the same shape: ",
+                                var_shape.DebugString(), " vs ",
+                                delta_shape.DebugString()));
+    xla::XlaOp alpha = ctx->Input(1);
+    xla::XlaOp l1 = ctx->Input(2);
+    xla::XlaOp l2 = ctx->Input(3);
+    xla::XlaOp delta = ctx->Input(4);
+    var = ProximalGradientDescentUpdate(var, alpha, l1, l2, delta);
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyProximalGradientDescent")
+                    .TypeConstraint("T", kFloatTypes),
+                ResourceApplyProximalGradientDescent);
 
 class ResourceApplyMomentum : public XlaOpKernel {
  public:
@@ -153,6 +211,62 @@ class ResourceApplyAdagrad : public XlaOpKernel {
 };
 REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
                 ResourceApplyAdagrad);
+
+class ResourceApplyProximalAdagrad : public XlaOpKernel {
+ public:
+  explicit ResourceApplyProximalAdagrad(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, accum_shape;
+    xla::XlaOp var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(1, dtype_, &accum_shape, &accum));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    TensorShape lr_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+    TensorShape l1_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1_shape),
+                errors::InvalidArgument("l1 is not a scalar: ",
+                                        l1_shape.DebugString()));
+    TensorShape l2_shape = ctx->InputShape(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2_shape),
+                errors::InvalidArgument("l2 is not a scalar: ",
+                                        l2_shape.DebugString()));
+    TensorShape grad_shape = ctx->InputShape(5);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape: ",
+                    var_shape.DebugString(), " vs ", grad_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp l1 = ctx->Input(3);
+    xla::XlaOp l2 = ctx->Input(4);
+    xla::XlaOp grad = ctx->Input(5);
+    accum = accum + xla::Square(grad);
+    // Adagrad learning rate.
+    xla::XlaOp adagrad_lr = lr * xla::Rsqrt(accum);
+    var = ProximalGradientDescentUpdate(var, adagrad_lr, l1, l2, grad);
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, accum));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(
+    Name("ResourceApplyProximalAdagrad").TypeConstraint("T", kFloatTypes),
+    ResourceApplyProximalAdagrad);
 
 class ResourceApplyAdam : public XlaOpKernel {
  public:
@@ -456,6 +570,179 @@ class ResourceApplyFtrlV2 : public XlaOpKernel {
 };
 REGISTER_XLA_OP(Name("ResourceApplyFtrlV2").TypeConstraint("T", kFloatTypes),
                 ResourceApplyFtrlV2);
+
+class ResourceApplyAdadelta : public XlaOpKernel {
+ public:
+  explicit ResourceApplyAdadelta(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, accum_shape, accum_update_shape;
+    xla::XlaOp var, accum, accum_update;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(1, dtype_, &accum_shape, &accum));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, dtype_, &accum_update_shape,
+                                               &accum_update));
+
+    TensorShape lr_shape = ctx->InputShape(3);
+    TensorShape rho_shape = ctx->InputShape(4);
+    TensorShape epsilon_shape = ctx->InputShape(5);
+    TensorShape grad_shape = ctx->InputShape(6);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rho_shape),
+                errors::InvalidArgument("rho is not a scalar: ",
+                                        rho_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
+                errors::InvalidArgument("epsilon is not a scalar: ",
+                                        epsilon_shape.DebugString()));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(3);
+    xla::XlaOp rho = ctx->Input(4);
+    xla::XlaOp epsilon = ctx->Input(5);
+    xla::XlaOp grad = ctx->Input(6);
+
+    xla::XlaBuilder* b = ctx->builder();
+    xla::XlaOp neg_half = XlaHelpers::FloatLiteral(b, dtype_, -0.5);
+    xla::XlaOp half = XlaHelpers::FloatLiteral(b, dtype_, 0.5);
+    xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
+    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype_, 2.0);
+
+    accum = rho * accum + (one - rho) * xla::Pow(grad, two);
+    xla::XlaOp update = xla::Pow(accum_update + epsilon, half) *
+                        xla::Pow(accum + epsilon, neg_half) * grad;
+    accum_update = rho * accum_update + (one - rho) * xla::Pow(update, two);
+    var = var - update * lr;
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, accum));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, dtype_, accum_update));
+  }
+
+ private:
+  DataType dtype_;
+};
+REGISTER_XLA_OP(Name("ResourceApplyAdadelta").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdadelta);
+
+class ResourceApplySignBase : public XlaOpKernel {
+ public:
+  explicit ResourceApplySignBase(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape var_shape, m_shape;
+    xla::XlaOp var, m;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, dtype_, &m_shape, &m));
+    OP_REQUIRES(ctx, var_shape.IsSameSize(m_shape),
+                errors::InvalidArgument("var and m do not have the same shape",
+                                        var_shape.DebugString(), " ",
+                                        m_shape.DebugString()));
+    TensorShape grad_shape = ctx->InputShape(6);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+    CheckScalarParams(ctx);
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp alpha = ctx->Input(3);
+    xla::XlaOp sign_decay = ctx->Input(4);
+    xla::XlaOp beta = ctx->Input(5);
+    xla::XlaOp grad = ctx->Input(6);
+
+    m = m * beta + grad * (xla::ScalarLike(beta, 1.0) - beta);
+    xla::XlaOp decay = xla::Sign(grad) * xla::Sign(m) * sign_decay;
+
+    xla::XlaOp grad_scale = ComputeGradientScale(alpha, decay);
+    var = var - lr * grad_scale * grad;
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, m));
+  }
+
+  virtual void CheckScalarParams(XlaOpKernelContext* ctx) {
+    TensorShape lr_shape = ctx->InputShape(2);
+    TensorShape sign_decay_shape = ctx->InputShape(4);
+    TensorShape beta_shape = ctx->InputShape(5);
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(sign_decay_shape),
+                errors::InvalidArgument("sign_decay is not a scalar: ",
+                                        sign_decay_shape.DebugString()));
+
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta_shape),
+                errors::InvalidArgument("beta is not a scalar: ",
+                                        beta_shape.DebugString()));
+  }
+
+  virtual xla::XlaOp ComputeGradientScale(xla::XlaOp alpha,
+                                          xla::XlaOp decay) = 0;
+
+ private:
+  DataType dtype_;
+};
+
+class ResourceApplyAddSign : public ResourceApplySignBase {
+ public:
+  explicit ResourceApplyAddSign(OpKernelConstruction* ctx)
+      : ResourceApplySignBase(ctx) {}
+
+  void CheckScalarParams(XlaOpKernelContext* ctx) override {
+    ResourceApplySignBase::CheckScalarParams(ctx);
+    TensorShape alpha_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_shape),
+                errors::InvalidArgument("alpha is not a scalar: ",
+                                        alpha_shape.DebugString()));
+  }
+
+  xla::XlaOp ComputeGradientScale(xla::XlaOp alpha, xla::XlaOp decay) override {
+    return alpha + decay;
+  }
+};
+// TODO(b/111123982): Use kFloatTypes once the bug is fixed.
+REGISTER_XLA_OP(Name("ResourceApplyAddSign")
+                    .TypeConstraint("T", {DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}),
+                ResourceApplyAddSign);
+
+class ResourceApplyPowerSign : public ResourceApplySignBase {
+ public:
+  explicit ResourceApplyPowerSign(OpKernelConstruction* ctx)
+      : ResourceApplySignBase(ctx) {}
+
+  void CheckScalarParams(XlaOpKernelContext* ctx) override {
+    ResourceApplySignBase::CheckScalarParams(ctx);
+    TensorShape logbase_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(logbase_shape),
+                errors::InvalidArgument("logbase is not a scalar: ",
+                                        logbase_shape.DebugString()));
+  }
+
+  xla::XlaOp ComputeGradientScale(xla::XlaOp alpha, xla::XlaOp decay) override {
+    return xla::Exp(alpha * decay);
+  }
+};
+REGISTER_XLA_OP(Name("ResourceApplyPowerSign").TypeConstraint("T", kFloatTypes),
+                ResourceApplyPowerSign);
 
 }  // namespace
 }  // namespace tensorflow

@@ -63,8 +63,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -84,8 +85,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -105,9 +107,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 2}, {2, 1}});
+      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -127,9 +129,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -149,9 +151,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -171,11 +173,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -195,11 +197,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -219,8 +221,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({1, 1});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({1, 1});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -240,9 +243,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{2, 1}, {1, 1}});
+      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -261,8 +264,9 @@ ENTRY main {
       window_bounds={1, 0}
 }
 )";
-  std::unique_ptr<Literal> operand = Literal::CreateR2<int32>({{}, {}, {}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -292,11 +296,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR2<int32>(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
   std::unique_ptr<Literal> in_bounds_mask =
-      Literal::CreateR1<int32>({0, 1, 1, 0, 0, 1});
+      LiteralUtil::CreateR1<int32>({0, 1, 1, 0, 0, 1});
 
   RunTest(hlo_text,
           {operand.get(), gather_indices.get(), in_bounds_mask.get()});
@@ -328,11 +332,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR2<int32>(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR2<int32>(
       {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
   std::unique_ptr<Literal> in_bounds_mask =
-      Literal::CreateR1<int32>({0, 1, 1, 0, 0, 1});
+      LiteralUtil::CreateR1<int32>({0, 1, 1, 0, 0, 1});
 
   RunTest(hlo_text,
           {operand.get(), gather_indices.get(), in_bounds_mask.get()});
@@ -353,9 +357,9 @@ ENTRY main {
       window_bounds={1,3,2}
 }
 )";
-  std::unique_ptr<Literal> operand = Literal::CreateR3<int32>(
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR3<int32>(
       {{{1, 2}, {3, 4}, {5, 6}}, {{7, 8}, {9, 10}, {11, 12}}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR0<int32>(1);
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR0<int32>(1);
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -374,8 +378,8 @@ ENTRY main {
       window_bounds={1}
 }
 )";
-  std::unique_ptr<Literal> operand = Literal::CreateR1<int32>({1, 2, 3, 4});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR0<int32>(1);
+  std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({1, 2, 3, 4});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR0<int32>(1);
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -395,8 +399,8 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices = LiteralUtil::CreateR1<int32>({});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -419,8 +423,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({0, 2});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({0, 2});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -443,9 +448,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 2}, {2, 1}});
+      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -468,9 +473,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
+      LiteralUtil::CreateR3<int32>({{{0, 2}, {2, 1}}, {{1, 2}, {2, 0}}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -493,11 +498,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -521,11 +526,11 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
-                                {{-4, 4}, {-5, 5}, {-6, 6}},  //
-                                {{-7, 7}, {-8, 8}, {-9, 9}}});
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{0, 0}, {1, 0}});
+      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -548,8 +553,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices = Literal::CreateR1<int32>({1, 1});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  std::unique_ptr<Literal> gather_indices =
+      LiteralUtil::CreateR1<int32>({1, 1});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -572,9 +578,9 @@ ENTRY main {
 }
 )";
   std::unique_ptr<Literal> operand =
-      Literal::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   std::unique_ptr<Literal> gather_indices =
-      Literal::CreateR2<int32>({{2, 1}, {1, 1}});
+      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
   RunTest(hlo_text, operand.get(), gather_indices.get());
 }
 
@@ -609,12 +615,13 @@ XLA_TEST_F(GatherClientLibraryTest, DISABLED_ON_GPU(Basic)) {
   Gather(operand, indices, dim_numbers, {1, 3});
 
   std::vector<int32> expected = {};
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> operand_arg,
-                          client_->TransferToServer(*Literal::CreateR2<int32>(
-                              {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> operand_arg,
+      client_->TransferToServer(
+          *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> indices_arg,
-      client_->TransferToServer(*Literal::CreateR1<int32>({0, 2})));
+      client_->TransferToServer(*LiteralUtil::CreateR1<int32>({0, 2})));
   TF_ASSERT_OK_AND_ASSIGN(std::vector<xla::DeviceHandle> devices,
                           client_->GetDeviceHandles(1));
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
