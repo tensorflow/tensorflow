@@ -3040,12 +3040,10 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
       llvm_ir::IrArray& input_in_logical_shape =
           param_in_reduced_shape_arrays[id];
       llvm::Value* buffer = param_buffers[id];
-      llvm::Instruction* store_to_buffer = ir_builder_.CreateStore(
+      ir_builder_.CreateStore(
           input_in_logical_shape.EmitReadArrayElement(index, &ir_builder_,
                                                       "input_element"),
           ir_builder_.CreateGEP(buffer, {index_typed_const(0), y_loc, x}));
-      param_arrays[id].AnnotateBufferLoadStoreInstructionWithMetadata(
-          store_to_buffer);
     }
   };
 
@@ -3073,8 +3071,6 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
           ir_builder_.CreateGEP(param_buffers[0],
                                 {ir_builder_.getInt64(0), x, y_loc}),
           "output_element");
-      param_arrays[0].AnnotateBufferLoadStoreInstructionWithMetadata(
-          load_from_buffer);
       output_in_reduced_shape_arrays[0].EmitWriteArrayElement(
           index, load_from_buffer, &ir_builder_);
     } else {
