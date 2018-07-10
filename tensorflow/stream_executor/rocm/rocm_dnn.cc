@@ -738,15 +738,6 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         direction_mode_(direction_mode),
         rnn_mode_(rnn_mode),
         data_type_(data_type) {
-#if 0
-    // no dropout support in MIOpen currently. Create the dropout handle.
-    miopen_dropout_desc_.reset(new miopenDropoutDescriptor(
-        parent, miopen_handle, dropout, seed, state_allocator));
-    if (!miopen_dropout_desc_->ok()) {
-      SetFailure(miopen_dropout_desc_->Status());
-      return;
-    }
-#endif
 
     // Create the RNN handle
     miopenStatus_t status = wrap::miopenCreateRNNDescriptor(parent_, &rnn_desc_);
@@ -1336,65 +1327,6 @@ MIOpenRnnParamsDescriptor::MIOpenRnnParamsDescriptor(
     status = wrap::miopenGetRNNParamsDescriptor(parent, miopen_handle, rnn_desc.handle(), input_desc, handle_, rnn_desc.data_type());
     ROCM_RETURN_IF_FAIL(status, "MIOpen fails to update RNN filter descriptor");
   }
-#if 0
-  {
-    // TODO: The following is for save and restore parameter ops from "saver"
-    // class.  Currently, "_handle" gets overwritten by MIOpen API, which is undesirable.
-    // Create the weights and biases into the params buffer
-    int region_count_per_layer = GetRegionCountPerLayer();
-    miopenTensorDescriptor_t region_desc_handle = nullptr;
-    auto status =
-        wrap::miopenCreateTensorDescriptor(parent, &region_desc_handle);
-    ROCM_RETURN_IF_FAIL(status, "MIOpen fails to create filter descriptor");
-    for (int layer = 0; layer < rnn_desc.num_layers(); layer++) {
-      for (int region = 0; region < region_count_per_layer; region++) {
-        for (int type = 0; type < 2; type++) {
-          size_t offset = 0;
-          size_t size = 0;
-          if (type == 0) {
-            status = wrap::miopenGetRNNLayerParamOffset(
-                parent, rnn_desc.handle() /*rnnDesc*/,
-                layer /*layer*/, input_desc /*xDesc*/,
-                region /*paramID*/, handle_ /*wDesc*/,
-                &offset /*layerParamOffset*/);
-            ROCM_RETURN_IF_FAIL(
-                status, "MIOpen fails to call miopenGetRNNLayerParamOffset");
-            status = wrap::miopenGetRNNLayerParamSize(
-                parent, miopen_handle /*handle*/,
-                rnn_desc.handle() /*rnnDesc*/, layer /*layer*/,
-                input_desc /*xDesc*/, region /*paramID*/,
-                &size /*numBytes */);
-            ROCM_RETURN_IF_FAIL(
-                status, "MIOpen fails to call miopenGetRNNLayerParamSize");
-          } else {
-            status = wrap::miopenGetRNNLayerBiasOffset(
-                parent, rnn_desc.handle() /*rnnDesc*/,
-                layer /*layer*/, input_desc /*xDesc*/,
-                region /*biasID*/, handle_ /*wDesc*/,
-                &offset /*layerBiasOffset*/);
-            ROCM_RETURN_IF_FAIL(
-                status, "MIOpen fails to call miopenGetRNNLayerBiasOffset");
-            status = wrap::miopenGetRNNLayerBiasSize(
-                parent, miopen_handle /*handle*/,
-                rnn_desc.handle() /*rnnDesc*/, layer /*layer*/,
-                region /*biasID*/,
-                &size /*numBytes */);
-            ROCM_RETURN_IF_FAIL(
-                status, "MIOpen fails to call miopenGetRNNLayerBiasSize");
-          }
-          auto region = ParamsRegion{reinterpret_cast<int64>((int64)offset), (int64) size};
-          if (type == 0) {
-            weights_.push_back(region);
-          } else {
-            biases_.push_back(region);
-          }
-        }
-      }
-    }
-    status = wrap::miopenDestroyTensorDescriptor(parent, region_desc_handle);
-    ROCM_RETURN_IF_FAIL(status, "MIOpen fails to destroy tensor descriptor");
-  }
-#endif
   {
     // Release the dummy input tensor descriptor.
     auto status = wrap::miopenDestroyTensorDescriptor(parent, input_desc);
@@ -2270,28 +2202,9 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
                                      const dnn::BatchDescriptor& output_desc,
                                      dnn::DataType output_type, float scale,
                                      DeviceMemoryBase* output_data) {
-  // XXX FIXME implement this operation
+  // ROCM TODO implement this operation
   LOG(ERROR) << "transform tensor not implemented yet";
   return false;
-  //mutex_lock lock{dnn_handle_mutex_};
-  //float beta = 0.0f;
-  //ScopedTensorDescriptor input_tensor_desc(
-  //    parent_, input_desc, ToMIOpenDataType(input_type, input_desc.layout()));
-  //ScopedTensorDescriptor output_tensor_desc(
-  //    parent_, output_desc, ToMIOpenDataType(output_type, output_desc.layout()));
-  //miopenStatus_t status = wrap::miopenTransformTensor(
-  //    parent_, ToHandle(dnn_handle_), &scale, input_tensor_desc.handle(),
-  //    input_data.opaque(), &beta, output_tensor_desc.handle(),
-  //    output_data->opaque());
-  //if (status != miopenStatusSuccess) {
-  //  LOG(ERROR) << "Could not transform a tensor with layout "
-  //             << input_desc.ToString() << " and data type "
-  //             << static_cast<int>(input_type) << " to another with layout "
-  //             << output_desc.ToString() << " and data type "
-  //             << static_cast<int>(output_type) << ": " << ToString(status);
-  //  return false;
-  //}
-  //return true;
 }
 
 template <class T>

@@ -230,20 +230,10 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
 bool ROCMExecutor::GetKernelMetadata(ROCMKernel *rocm_kernel,
                                      KernelMetadata *kernel_metadata) {
   int value = 0;
-  // XXX FIXME
-  //if (!ROCMDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS,
-  //                                  *rocm_kernel->rocm_function_ptr(),
-  //                                  &value)) {
-  //  return false;
-  //}
+  // ROCM TODO implement this feature in HIP
   kernel_metadata->set_registers_per_thread(value);
 
-  // XXX FIXME
-  //if (!ROCMDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-  //                                  *rocm_kernel->rocm_function_ptr(),
-  //                                  &value)) {
-  //  return false;
-  //}
+  // ROCM TODO implement this feature in HIP
   kernel_metadata->set_shared_memory_bytes(value);
 
   return true;
@@ -314,50 +304,7 @@ bool ROCMExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
 void ROCMExecutor::VlogOccupancyInfo(const KernelBase &kernel,
                                      const ThreadDim &thread_dims,
                                      const BlockDim &block_dims) {
-  // FIXME XXX review implementation later
-  //VLOG(2) << "Computing kernel occupancy for kernel "
-  //        << kernel.demangled_name();
-  //VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
-  //        << ", " << thread_dims.z << ")";
-
-  //int regs_per_thread;
-  //if (!kernel.metadata().registers_per_thread(&regs_per_thread)) {
-  //  return;
-  //}
-
-  //int smem_per_block;
-  //if (!kernel.metadata().shared_memory_bytes(&smem_per_block)) {
-  //  return;
-  //}
-
-  //const DeviceDescription &device_description =
-  //    kernel.parent()->GetDeviceDescription();
-
-  //uint64 blocks_per_sm = CalculateOccupancy(
-  //    device_description, regs_per_thread, smem_per_block, thread_dims);
-  //VLOG(2) << "Resident blocks per CU is " << blocks_per_sm;
-
-  //// To increase occupancy, there must be a sufficient number of blocks
-  //// available to spread across the sm's at this new improved occupancy level.
-  //int multiprocessor_count = device_description.core_count();
-  //int block_count = block_dims.x * block_dims.y * block_dims.z;
-  //int available_blocks_per_sm =
-  //    port::MathUtil::CeilOfRatio(block_count, multiprocessor_count);
-  //if (available_blocks_per_sm <= static_cast<int64>(blocks_per_sm)) {
-  //  VLOG(2) << "Occupancy is limited by number of blocks available per sm.";
-  //  return;
-  //}
-
-  //uint64 improved_regs_per_thread = CalculateRegisterLimitForTargetOccupancy(
-  //    device_description, smem_per_block, thread_dims, blocks_per_sm + 1);
-  //if (improved_regs_per_thread != 0) {
-  //  VLOG(2) << "Reducing register usage from " << regs_per_thread
-  //          << " to " << improved_regs_per_thread
-  //          << " could increase resident blocks per CU by one.";
-  //} else {
-  //  VLOG(2) << "Resident blocks per SM cannot be increased by reducing "
-  //      "register usage.";
-  //}
+  // ROCM TODO implement this feature in HIP
 }
 
 void *ROCMExecutor::Allocate(uint64 size) {
@@ -781,57 +728,8 @@ void *ROCMExecutor::GPUContextHack() { return nullptr; }
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
-// XXX TODO FIX THIS LATER ON
+  // ROCM TODO implement this feature in HIP
   return 1;
-
-#if 0
-  VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
-  static const int kUnknownNumaNode = -1;
-
-  if (pci_bus_id.empty()) {
-    LOG(INFO) << "no PCI bus ID for device ordinal: " << device_ordinal;
-    return kUnknownNumaNode;
-  }
-
-  string filename =
-      port::Printf("/sys/bus/pci/devices/%s/numa_node", pci_bus_id.c_str());
-
-  // We have to use fopen/fread here so that the device properties can be
-  // populated before InitGoogle procedure has been completed (at which point we
-  // could use the file::* utilities).
-  FILE *file = fopen(filename.c_str(), "r");
-  if (file == nullptr) {
-    LOG(ERROR) << "could not open file to read NUMA node: " << filename
-               << "\nYour kernel may have been built without NUMA support.";
-    return kUnknownNumaNode;
-  }
-
-  string content;
-  char buf[32];
-  size_t did_read = fread(buf, sizeof(buf[0]), sizeof(buf) - 1, file);
-  buf[did_read] = '\0';
-  content = buf;
-
-  int32 value;
-  if (port::safe_strto32(content, &value)) {
-    if (value < 0) {  // See http://b/18228951 for details on this path.
-      LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
-                << value << "), but there must be at least one NUMA node"
-                            ", so returning NUMA node zero";
-      fclose(file);
-      return 0;
-    }
-    fclose(file);
-    return value;
-  }
-
-  LOG(WARNING)
-      << "could not convert SysFS file contents to integral NUMA node value: "
-      << content;
-
-  fclose(file);
-  return kUnknownNumaNode;
-#endif
 }
 
 // Set of device-specific parameters that cannot be

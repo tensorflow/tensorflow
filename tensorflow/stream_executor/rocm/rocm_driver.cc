@@ -331,7 +331,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
 /* static */ bool ROCMDriver::FuncGetAttribute(hipDeviceAttribute_t attribute,
                                                hipFunction_t func,
                                                int *attribute_value) {
-  // XXX FIXME properly implement this feature in HIP
+  // ROCM TODO properly implement this feature in HIP
   hipError_t res = hipSuccess;
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query kernel attribute. kernel: " << func
@@ -487,7 +487,7 @@ ROCMDriver::DeviceGetSharedMemConfig(int device_ordinal) {
   ScopedActivateContext activation{device_ordinal};
   void * pointer = port::bit_cast<void *>(location);
 
-  /// XXX - need to set a 32-bit value here, need hipMemsetD32
+  // FIXME - need to set a 32-bit value here
   unsigned char valueC = static_cast<unsigned char>(value);
   uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC) ;
   assert (value32 == value); // if mismatch this indicates case where hipMemsetAsyc can't emulate hipMemSetD32
@@ -1163,7 +1163,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 /* static */ bool ROCMDriver::IsEccEnabled(hipDevice_t device, bool *result) {
   int value = -1;
   hipError_t res = hipSuccess;
-  // XXX FIXME
+  // ROCM TODO implement this feature in HIP
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query ECC status: " << ToString(res);
     return false;
@@ -1261,7 +1261,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
   int max_blocks = 0;
   hipError_t result = hipSuccess;
-  // XXX FIXME
+  // ROCM TODO implement this feature in HIP
   if (result != hipSuccess) {
     return port::Status{
         port::error::INTERNAL,
