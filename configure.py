@@ -835,6 +835,8 @@ def set_tf_cuda_version(environ_cp):
                      '[Default is %s]: ') % (tf_cuda_version, default_cuda_path)
     cuda_toolkit_path = get_from_env_or_user_or_default(
         environ_cp, 'CUDA_TOOLKIT_PATH', ask_cuda_path, default_cuda_path)
+    if is_windows() or is_cygwin():
+      cuda_toolkit_path = cygpath(cuda_toolkit_path)
 
     if is_windows():
       cuda_rt_lib_path = 'lib/x64/cudart.lib'

@@ -41,22 +41,23 @@ class BigtableTestClientOp : public OpKernel {
       ResourceMgr* mgr = ctx->resource_manager();
       OP_REQUIRES_OK(ctx, cinfo_.Init(mgr, def()));
       BigtableClientResource* resource;
-      OP_REQUIRES_OK(ctx,
-                     mgr->LookupOrCreate<BigtableClientResource>(
-                         cinfo_.container(), cinfo_.name(), &resource,
-                         [this, ctx](BigtableClientResource** ret)
-                             EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                               std::shared_ptr<bigtable::DataClient> client(
-                                   new BigtableTestClient());
-                               // Note: must make explicit copies to sequence
-                               // them before the move of client.
-                               string project_id = client->project_id();
-                               string instance_id = client->instance_id();
-                               *ret = new BigtableClientResource(
-                                   std::move(project_id),
-                                   std::move(instance_id), std::move(client));
-                               return Status::OK();
-                             }));
+      OP_REQUIRES_OK(
+          ctx,
+          mgr->LookupOrCreate<BigtableClientResource>(
+              cinfo_.container(), cinfo_.name(), &resource,
+              [this, ctx](BigtableClientResource** ret)
+                  EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                    std::shared_ptr<google::cloud::bigtable::DataClient> client(
+                        new BigtableTestClient());
+                    // Note: must make explicit copies to sequence
+                    // them before the move of client.
+                    string project_id = client->project_id();
+                    string instance_id = client->instance_id();
+                    *ret = new BigtableClientResource(std::move(project_id),
+                                                      std::move(instance_id),
+                                                      std::move(client));
+                    return Status::OK();
+                  }));
       initialized_ = true;
     }
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(

@@ -279,19 +279,22 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 
 Status IrEmitter::HandleSelect(HloInstruction* select) {
   auto pred = select->operand(0);
-  auto on_true = select->operand(1);
-  auto on_false = select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
-
-  if (ShapeUtil::IsTuple(select->shape())) {
-    TF_RETURN_IF_ERROR(EmitTargetAddressForOp(select));
-    llvm_ir::EmitTupleSelect(
-        GetIrArrayFor(select), GetIrArrayFor(pred), GetEmittedValueFor(on_true),
-        GetEmittedValueFor(on_false), &ir_builder_, module_);
-    return Status::OK();
-  }
-
   return DefaultAction(select);
+}
+
+Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
+  auto pred = tuple_select->operand(0);
+  auto on_true = tuple_select->operand(1);
+  auto on_false = tuple_select->operand(2);
+  TF_RET_CHECK(pred->shape().element_type() == PRED);
+  TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
+  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple_select));
+  llvm_ir::EmitTupleSelect(GetIrArrayFor(tuple_select), GetIrArrayFor(pred),
+                           GetEmittedValueFor(on_true),
+                           GetEmittedValueFor(on_false), &ir_builder_, module_);
+  return Status::OK();
 }
 
 Status IrEmitter::HandleInfeed(HloInstruction* instruction) {

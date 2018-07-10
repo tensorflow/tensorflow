@@ -63,10 +63,10 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
       }
       *num_retvals += iter->second.i();
     } else if (!output_arg.type_list_attr().empty()) {
-      auto iter = attrs.find(output_arg.number_attr());
+      auto iter = attrs.find(output_arg.type_list_attr());
       if (iter == attrs.end()) {
-        return errors::InvalidArgument("Unable to find number_attr ",
-                                       output_arg.number_attr(),
+        return errors::InvalidArgument("Unable to find type_list_attr ",
+                                       output_arg.type_list_attr(),
                                        " for Op: ", op_name);
       }
       *num_retvals += iter->second.list().type_size();
@@ -81,6 +81,10 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
+  //make sure env_ , env_->rendezvous_mgr available
+  if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
+    return tensorflow::errors::Internal("invalid eager env_ or env_->rendezvous_mgr.");
+  } 
   std::vector<tensorflow::Device*> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(

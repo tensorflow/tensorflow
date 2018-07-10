@@ -33,7 +33,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/iterator_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -477,7 +477,7 @@ class HloInstruction {
       const Shape& outfeed_shape, HloInstruction* operand,
       HloInstruction* token_operand, tensorflow::StringPiece outfeed_config);
   // Overload which does not require a token.
-  // TODO(b/80000000): Remove this overload when all uses of infeed are
+  // TODO(b/80000000): Remove this overload when all uses of outfeed are
   // converted to take tokens.
   static std::unique_ptr<HloInstruction> CreateOutfeed(
       const Shape& outfeed_shape, HloInstruction* operand,
@@ -487,6 +487,7 @@ class HloInstruction {
   // initiates sending the operand data to a unique receive instruction in
   // another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateSend(HloInstruction* operand,
+                                                    HloInstruction* token,
                                                     int64 channel_id);
 
   // Blocks until data transfer for the Send instruction (operand) is complete.
@@ -498,6 +499,7 @@ class HloInstruction {
   // which allocates resources to receive data of the given shape from a unique
   // send instruction in another computation that has the same channel id.
   static std::unique_ptr<HloInstruction> CreateRecv(const Shape& shape,
+                                                    HloInstruction* token,
                                                     int64 channel_id);
 
   // Blocks until data transfer for the Recv instruction (operand) is complete

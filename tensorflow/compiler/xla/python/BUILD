@@ -33,6 +33,7 @@ cc_library(
     srcs = ["numpy_bridge.cc"],
     hdrs = ["numpy_bridge.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -70,7 +71,7 @@ tf_py_wrap_cc(
     deps = [
         ":local_computation_builder",
         ":numpy_bridge",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",

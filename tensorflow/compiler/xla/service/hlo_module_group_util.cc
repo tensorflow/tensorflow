@@ -292,7 +292,7 @@ HloModuleGroupUtil::ComputeReachability(
   }
   auto reachability = MakeUnique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
-    reachability->SetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
+    reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }
   return std::move(reachability);
 }

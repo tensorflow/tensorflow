@@ -36,6 +36,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -231,11 +232,20 @@ def _register(fn):
   context.context().add_function(fn)
 
 
+_xla_compile_attr = "_XlaCompile"
+
+
 # TODO(apassos) get rid of this by splitting framework.function._DefinedFunction
 # so it doesn't have the definition-generating logic and is just a container for
 # an already-defined function.
 class _EagerDefinedFunction(object):
-  """Function object with the interface of tf _DefinedFunction."""
+  """Callable with the interface of `framework.function._DefinedFunction.`
+
+  `_EagerDefinedFunction` encapsulates a function definition and its properties,
+  and it provides a method for calling the encapsulated function. Some Ops
+  take functions as attributes, which have type `func`; an instance of this
+  class may be provided as the value of these `func` attributes.
+  """
 
   def __init__(self, name, graph, operations, inputs, outputs, attrs):
     """Initializes an eager defined function.
@@ -266,6 +276,7 @@ class _EagerDefinedFunction(object):
       # It might be worth creating a convenient way to re-use status.
       pywrap_tensorflow.TF_FunctionSetAttrValueProto(
           fn, compat.as_str(name), serialized)
+    self._xla_compile = _xla_compile_attr in attrs
 
     # TODO(apassos) avoid creating a FunctionDef (specially to grab the
     # signature, but also in general it's nice not to depend on it.
@@ -277,12 +288,92 @@ class _EagerDefinedFunction(object):
     if context.executing_eagerly():
       _register(fn)
     self.definition = function_def
-    self.name = function_def.signature.name
+    self.name = compat.as_bytes(function_def.signature.name)
     self.signature = function_def.signature
+    self._num_outputs = len(self.signature.output_arg)
+    self._output_types = [o.type for o in self.signature.output_arg]
     self.grad_func_name = None
     self.python_grad_func = None
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
+    self._graph = graph
+    self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
+
+  def add_to_graph(self, g):
+    # pylint: disable=protected-access
+    if self.name not in g._functions:
+      g._add_function(self)
+    for f in self._graph._functions.values():
+      if f.name not in g._functions:
+        g._add_function(f)
+    # pylint: enable=protected-access
+
+  @property
+  def stateful_ops(self):
+    return self._stateful_ops
+
+  def call(self, ctx, args, output_shapes):
+    """Calls this function with `args` as inputs.
+
+    Function execution respects device annotations only if the function won't
+    be compiled with xla.
+
+    Args:
+      ctx: a Context object
+      args: a list of arguments to supply this function with.
+      output_shapes: shapes to which outputs should be set; ignored when
+        executing eagerly.
+
+    Returns:
+      The outputs of the function call.
+    """
+
+    executing_eagerly = ctx.executing_eagerly()
+
+    xla_compile = self._xla_compile or (executing_eagerly and
+                                        ctx.device_spec.device_type == "TPU")
+
+    if xla_compile:
+      # XLA compilation relies upon a custom kernel creator to run functions.
+      signature = self.signature
+      if executing_eagerly:
+        outputs = execute.execute(
+            str(signature.name),
+            num_outputs=self._num_outputs,
+            inputs=args,
+            attrs=None,
+            ctx=ctx)
+      else:
+        g = ops.get_default_graph()
+        self.add_to_graph(g)
+        op = g.create_op(
+            signature.name,
+            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
+            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
+            op_def=signature,
+            name="FunctionCall",
+            compute_shapes=False)
+        outputs = op.outputs
+        if not outputs:
+          return op
+        outputs = [outputs] if isinstance(
+            outputs, (ops.Tensor, type(None))) else list(outputs)
+    else:
+      # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
+      # creates `PartitionedCallOp` kernels by default, or remove the previous
+      # branch if a TPU kernel is registered for `PartitionedCall`.
+      outputs = functional_ops.partitioned_call(
+          args=args,
+          f=self,
+          tout=self._output_types,
+          executing_eagerly=executing_eagerly)
+
+    if executing_eagerly:
+      return outputs
+    else:
+      for i, shape in enumerate(output_shapes):
+        outputs[i].set_shape(shape)
+      return outputs
 
 
 def _map_sequence_obj_to_idx(sequence):
@@ -306,8 +397,12 @@ def _flatten(sequence):
   return outputs
 
 
+# TODO(akshayka): Perhaps rename to something more appropriate.
 class GraphModeFunction(object):
-  """Callable object representing a graph-mode function.
+  """Callable object encapsulating a function definition and its gradient.
+
+  `GraphModeFunction` is a callable that encapsulates a function definition and
+  is differentiable under `tf.GradientTape` objects.
   """
 
   def __init__(self,
@@ -388,7 +483,7 @@ class GraphModeFunction(object):
           grad_ys=self._out_grad_placeholders)
       for op in self._graph.get_operations()[existing_op_len:]:
         if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
-          raise ValueError("tfe.defun cannot capture variables created without "
+          raise ValueError("defun cannot capture variables created without "
                            "using tf.get_variable. Op: %s" % op)
         c_known_ops.add(op)
         for i in op.inputs:
@@ -430,35 +525,10 @@ class GraphModeFunction(object):
       The call output.
     """
     all_args = args + self._extra_inputs
-    signature = self._forward_fdef.signature
     ctx = context.context()
-    if ctx.executing_eagerly():
-      outputs = execute.execute(
-          str(signature.name),
-          num_outputs=len(signature.output_arg),
-          inputs=all_args,
-          attrs=None,
-          ctx=ctx)
-      if not outputs:
-        return None
-    else:
-      g = ops.get_default_graph()
-      g._add_function(self._forward_fdef)  # pylint: disable=protected-access
-      op = g.create_op(
-          signature.name,
-          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in all_args],
-          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-          op_def=signature,
-          name="FunctionCall",
-          compute_shapes=False)
-      outputs = op.outputs
-      if not outputs:
-        return op
-      outputs = [outputs] if isinstance(outputs, ops.Tensor) else list(outputs)
-
-      shapes = [shape for shape in self._output_shapes if shape is not None]
-      for i, shape in enumerate(shapes):
-        outputs[i].set_shape(shape)
+    outputs = self._forward_fdef.call(ctx, all_args, self._output_shapes)
+    if isinstance(outputs, ops.Operation) or outputs is None:
+      return outputs
 
     # `real_outputs` are the actual outputs of the inference graph function;
     # `side_outputs` are the intermediate Tensors that were added as outputs to
@@ -470,7 +540,7 @@ class GraphModeFunction(object):
       return self._backward_function(*(list(args) + side_outputs))  # pylint: disable=not-callable
 
     tape.record_operation(
-        signature.name,
+        self._forward_fdef.signature.name,
         real_outputs,
         (args + self._extra_inputs),
         backward_function)
@@ -512,13 +582,6 @@ class GraphModeFunction(object):
     """Returns the name of the function in Eager-compatible format."""
     return self._function_def.name.encode("utf-8")
 
-  def add_to_graph(self, g):
-    if self._function_def.name not in g._functions:  # pylint: disable=protected-access
-      g._add_function(self._function_def)  # pylint: disable=protected-access
-    for f in self._graph._functions.values():  # pylint: disable=protected-access
-      if f.name not in g._functions:  # pylint: disable=protected-access
-        g._add_function(f)  # pylint: disable=protected-access
-
   def __call__(self, *args):
     """Executes the passed function in eager mode."""
     for v in self._variables:
@@ -533,34 +596,9 @@ class GraphModeFunction(object):
       return self._backprop_call(tensor_inputs)
 
     ctx = context.context()
-    if ctx.executing_eagerly():
-      result = execute.execute(
-          str(self._func_name),
-          num_outputs=self._num_outputs,
-          inputs=tensor_inputs + self._extra_inputs,
-          attrs=None,
-          ctx=ctx)
-    else:
-      g = ops.get_default_graph()
-      self.add_to_graph(g)
-      signature = self._function_def.definition.signature
-      args = list(tensor_inputs) + self._extra_inputs
-      op = g.create_op(
-          signature.name,
-          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-          op_def=signature,
-          name="FunctionCall",
-          compute_shapes=False)
-      result = op.outputs
-      if not result:
-        return op
-
-      shapes = [shape for shape in self._output_shapes if shape is not None]
-      for i, shape in enumerate(shapes):
-        result[i].set_shape(shape)
-
-    return self._build_call_outputs(result)
+    args = tensor_inputs + self._extra_inputs
+    outputs = self._function_def.call(ctx, args, self._output_shapes)
+    return self._build_call_outputs(outputs)
 
   def _build_call_outputs(self, result):
     """Maps the fdef output list to actual output structure.
@@ -571,7 +609,8 @@ class GraphModeFunction(object):
       The actual call output.
     """
     if self._python_func_outputs is None:
-      return None
+      return result
+
     # Use `nest.flatten` instead of `_flatten` in order to preserve any
     # IndexedSlices in `self._python_func_outputs`.
     outputs_list = nest.flatten(self._python_func_outputs)
@@ -665,7 +704,7 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
         extra_placeholders = []
       output_shapes = tuple(
           x.shape if isinstance(x, ops.Tensor) else None
-          for x in outputs_list)
+          for x in func_def_outputs)
 
   func_kwds_values = _deterministic_dict_values(func_kwds)
   flat_inputs = [
@@ -686,7 +725,7 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
 
   attrs = {}
   if compiled:
-    attrs["_XlaCompile"] = attr_value_pb2.AttrValue(b=True)
+    attrs[_xla_compile_attr] = attr_value_pb2.AttrValue(b=True)
 
   return GraphModeFunction(
       fname, all_inputs, extra_inputs, tmp_graph, operations, func_def_outputs,
@@ -841,6 +880,11 @@ def defun(func=None, compiled=False):
   For a Python function to be compatible with `defun`, all of its arguments must
   be hashable Python objects or lists thereof. Additionally, it must return zero
   or more @{tf.Tensor} objects.
+
+  Executing a graph generated by `defun` respects device annotations (i.e.,
+  all `with tf.device` directives present in a Python function will also be
+  present in its corresponding graph), but it is not yet possible to execute the
+  generated graphs across multiple machines.
 
   _Example Usage_
 

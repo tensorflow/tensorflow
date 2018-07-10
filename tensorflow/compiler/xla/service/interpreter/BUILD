@@ -74,7 +74,7 @@ cc_library(
     hdrs = ["executable.h"],
     deps = [
         ":executor",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

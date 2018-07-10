@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <stack>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -99,6 +100,7 @@ void HloExecutionProfiler::StartHloInstruction() {
 void HloExecutionProfiler::FinishHloInstruction(
     const HloInstruction* hlo_instruction) {
   if (do_profile_) {
+    hlo_instructions_.erase(hlo_instruction);
     profile_->SetCyclesTakenBy(
         hlo_instruction,
         GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
@@ -108,6 +110,12 @@ void HloExecutionProfiler::FinishHloInstruction(
 std::unique_ptr<ScopedInstructionProfiler>
 HloExecutionProfiler::MakeScopedInstructionProfiler(
     const HloInstruction* hlo_instruction) {
+  if (do_profile_ && hlo_instruction != nullptr) {
+    // Make sure that we are not already measuring the time for the same
+    // 'hlo_instruction'.
+    CHECK(hlo_instructions_.insert(hlo_instruction).second)
+        << hlo_instruction->name();
+  }
   return MakeUnique<ScopedInstructionProfiler>(this, hlo_instruction);
 }
 

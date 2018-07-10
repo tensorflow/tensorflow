@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import datetime
+from tensorflow.python.util import tf_contextlib
 
 _FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 8, 1)
 
@@ -79,3 +80,46 @@ def forward_compatible(year, month, day):
     source code after (year, month, day).
   """
   return _FORWARD_COMPATIBILITY_HORIZON > datetime.date(year, month, day)
+
+
+@tf_contextlib.contextmanager
+def forward_compatibility_horizon(year, month, day):
+  """Context manager for testing forward compatibility of generated graphs.
+
+  To ensure forward compatibility of generated graphs (see `forward_compatible`)
+  with older binaries, new features can be gated with:
+
+  ```python
+  if compat.forward_compatible(year=2018, month=08, date=01):
+    generate_graph_with_new_features()
+  else:
+    generate_graph_so_older_binaries_can_consume_it()
+  ```
+
+  However, when adding new features, one may want to unittest it before
+  the forward compatibility window expires. This context manager enables
+  such tests. For example:
+
+  ```python
+  from tensorflow.python.compat import compat
+
+  def testMyNewFeature(self):
+    with compat.forward_compatibility_horizon(2018, 08, 02):
+       # Test that generate_graph_with_new_features() has an effect
+  ```
+
+  Args :
+    year:  A year (e.g. 2018).
+    month: A month (1 <= month <= 12) in year.
+    day:   A day (1 <= day <= 31, or 30, or 29, or 28) in month.
+
+  Yields:
+    Nothing.
+  """
+  global _FORWARD_COMPATIBILITY_HORIZON
+  try:
+    old_compat_date = _FORWARD_COMPATIBILITY_HORIZON
+    _FORWARD_COMPATIBILITY_HORIZON = datetime.date(year, month, day)
+    yield
+  finally:
+    _FORWARD_COMPATIBILITY_HORIZON = old_compat_date

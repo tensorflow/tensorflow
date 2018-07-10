@@ -282,7 +282,7 @@ class OpcodeFusionTest : public InstructionFusionTest {
         builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(F32, {}), "arg0"));
     HloInstruction* one = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
     return module->AddEmbeddedComputation(builder.Build());
@@ -595,7 +595,7 @@ TEST_F(OpcodeFusionTest, MessOfFusileNodes) {
   auto pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeUtil::MakeShape(S32, {5}), idx_choice,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0(0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0(0))),
       padding_config));
 
   auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(

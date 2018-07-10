@@ -40,9 +40,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_stream_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -310,7 +310,7 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
       tf_gpu_id_(tf_gpu_id),
       sync_every_op_(sync_every_op),
       max_streams_(max_streams) {
-  ProcessState::singleton()->EnableGPUDevice();
+  GPUProcessState::singleton()->EnableGPUDevice();
 }
 
 BaseGPUDevice::~BaseGPUDevice() {
@@ -1144,7 +1144,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   se::StreamExecutor* se =
       GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
   const se::DeviceDescription& desc = se->GetDeviceDescription();
-  ProcessState* process_state = ProcessState::singleton();
+  GPUProcessState* process_state = GPUProcessState::singleton();
   Allocator* gpu_allocator = process_state->GetGPUAllocator(
       options.config.gpu_options(), tf_gpu_id, memory_limit);
   if (gpu_allocator == nullptr) {
@@ -1164,7 +1164,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   BaseGPUDevice* gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
       tf_gpu_id, GetShortDeviceDescription(physical_gpu_id, desc), gpu_allocator,
-      process_state->GetCPUAllocator(numa_node));
+      ProcessState::singleton()->GetCPUAllocator(numa_node));
   LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
             << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
             << GetShortDeviceDescription(physical_gpu_id, desc) << ")";

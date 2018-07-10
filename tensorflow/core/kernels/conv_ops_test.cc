@@ -88,14 +88,15 @@ TEST(ConvParameters, WinogradNonfusedAlgoSize) {
 
 class FusedResizePadConvOpTest : public OpsTestBase {
  protected:
-  void HandwrittenConv() {
+  template <typename T>
+  void HandwrittenConv(DataType dtype) {
     const int stride = 1;
     TF_EXPECT_OK(NodeDefBuilder("fused_resize_op", "FusedResizeAndPadConv2D")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(dtype))
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_INT32))
-                     .Input(FakeInput(DT_FLOAT))
-                     .Attr("T", DT_FLOAT)
+                     .Input(FakeInput(dtype))
+                     .Attr("T", dtype)
                      .Attr("resize_align_corners", false)
                      .Attr("mode", "REFLECT")
                      .Attr("strides", {1, stride, stride, 1})
@@ -110,9 +111,8 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     // |  1 |  2 |  3 |  4 |
     // |  5 |  6 |  7 |  8 |
     // |  9 | 10 | 11 | 12 |
-    Tensor image(DT_FLOAT,
-                 {image_batch_count, image_height, image_width, depth});
-    test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
+    test::FillValues<T>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 
     // The filter matrix is:
     // | 1 | 4 | 7 |
@@ -120,8 +120,8 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     // | 3 | 6 | 9 |
     const int filter_size = 3;
     const int filter_count = 1;
-    Tensor filter(DT_FLOAT, {filter_size, filter_size, depth, filter_count});
-    test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
+    Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
+    test::FillValues<T>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
 
     const int resized_width = image_width;
     const int resized_height = image_height;
@@ -131,12 +131,12 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     const int left_padding = 0;
     const int right_padding = 0;
 
-    AddInputFromArray<float>(image.shape(), image.flat<float>());
+    AddInputFromArray<T>(image.shape(), image.flat<T>());
     AddInputFromArray<int32>(TensorShape({2}), {resized_height, resized_width});
     AddInputFromArray<int32>(
         TensorShape({4, 2}),
         {0, 0, top_padding, bottom_padding, left_padding, right_padding, 0, 0});
-    AddInputFromArray<float>(filter.shape(), filter.flat<float>());
+    AddInputFromArray<T>(filter.shape(), filter.flat<T>());
     TF_ASSERT_OK(RunOpKernel());
 
     // We're sliding the 3x3 filter across the 3x4 image, with accesses outside
@@ -160,21 +160,22 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     // |  187  |  234  |  261  |  121  |
     const int expected_width = image_width;
     const int expected_height = image_height * filter_count;
-    Tensor expected(DT_FLOAT, TensorShape({image_batch_count, expected_height,
-                                           expected_width, filter_count}));
-    test::FillValues<float>(
+    Tensor expected(dtype, TensorShape({image_batch_count, expected_height,
+                                        expected_width, filter_count}));
+    test::FillValues<T>(
         &expected, {105, 150, 183, 95, 235, 312, 357, 178, 187, 234, 261, 121});
     const Tensor& output = *GetOutput(0);
-    test::ExpectTensorNear<float>(expected, output, 1e-5);
+    test::ExpectTensorNear<T>(expected, output, 1e-5);
   }
 
+  template <typename T>
   void CompareFusedAndSeparate(int input_width, int input_height,
                                int input_depth, int resize_width,
                                int resize_height, int y_padding, int x_padding,
                                int filter_size, int filter_count,
                                bool resize_align_corners,
                                const string& pad_mode, int stride,
-                               const string& padding) {
+                               const string& padding, DataType dtype) {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
@@ -183,29 +184,34 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     test::FillIota<float>(&input_data, 1.0f);
     Output input =
         Const(root.WithOpName("input"), Input::Initializer(input_data));
+    Output casted_input = Cast(root.WithOpName("casted_input"), input, dtype);
 
     Tensor filter_data(DT_FLOAT, TensorShape({filter_size, filter_size,
                                               input_depth, filter_count}));
     test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
         Const(root.WithOpName("filter"), Input::Initializer(filter_data));
+    Output casted_filter =
+        Cast(root.WithOpName("casted_filter"), filter, dtype);
 
     Output resize_size =
         Const(root.WithOpName("resize_size"), {resize_height, resize_width});
     Output resize =
         ResizeBilinear(root.WithOpName("resize"), input, resize_size,
                        ResizeBilinear::AlignCorners(resize_align_corners));
+    // Bilinear resize only output float, cast it to dtype to match the input.
+    Output casted_resize = Cast(root.WithOpName("cast"), resize, dtype);
     Output paddings =
         Const(root.WithOpName("paddings"),
               {{0, 0}, {y_padding, y_padding}, {x_padding, x_padding}, {0, 0}});
-    Output mirror_pad =
-        MirrorPad(root.WithOpName("mirror_pad"), resize, paddings, pad_mode);
-    Output conv = Conv2D(root.WithOpName("conv"), mirror_pad, filter,
+    Output mirror_pad = MirrorPad(root.WithOpName("mirror_pad"), casted_resize,
+                                  paddings, pad_mode);
+    Output conv = Conv2D(root.WithOpName("conv"), mirror_pad, casted_filter,
                          {1, stride, stride, 1}, padding);
 
     Output fused_conv = FusedResizeAndPadConv2D(
-        root.WithOpName("fused_conv"), input, resize_size, paddings, filter,
-        pad_mode, {1, stride, stride, 1}, padding,
+        root.WithOpName("fused_conv"), casted_input, resize_size, paddings,
+        casted_filter, pad_mode, {1, stride, stride, 1}, padding,
         FusedResizeAndPadConv2D::ResizeAlignCorners(resize_align_corners));
 
     tensorflow::GraphDef graph;
@@ -221,14 +227,16 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
-    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
+    test::ExpectTensorNear<T>(unfused_tensors[0], fused_tensors[0], 1e-5);
   }
 
+  template <typename T>
   void CompareFusedPadOnlyAndSeparate(int input_width, int input_height,
                                       int input_depth, int y_padding,
                                       int x_padding, int filter_size,
                                       int filter_count, const string& pad_mode,
-                                      int stride, const string& padding) {
+                                      int stride, const string& padding,
+                                      DataType dtype) {
     auto root = tensorflow::Scope::NewRootScope();
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
@@ -237,24 +245,27 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     test::FillIota<float>(&input_data, 1.0f);
     Output input =
         Const(root.WithOpName("input"), Input::Initializer(input_data));
+    Output casted_input = Cast(root.WithOpName("casted_input"), input, dtype);
 
     Tensor filter_data(DT_FLOAT, TensorShape({filter_size, filter_size,
                                               input_depth, filter_count}));
     test::FillIota<float>(&filter_data, 1.0f);
     Output filter =
         Const(root.WithOpName("filter"), Input::Initializer(filter_data));
+    Output casted_filter =
+        Cast(root.WithOpName("casted_filter"), filter, dtype);
 
     Output paddings =
         Const(root.WithOpName("paddings"),
               {{0, 0}, {y_padding, y_padding}, {x_padding, x_padding}, {0, 0}});
-    Output mirror_pad =
-        MirrorPad(root.WithOpName("mirror_pad"), input, paddings, pad_mode);
-    Output conv = Conv2D(root.WithOpName("conv"), mirror_pad, filter,
+    Output mirror_pad = MirrorPad(root.WithOpName("mirror_pad"), casted_input,
+                                  paddings, pad_mode);
+    Output conv = Conv2D(root.WithOpName("conv"), mirror_pad, casted_filter,
                          {1, stride, stride, 1}, padding);
 
-    Output fused_conv =
-        FusedPadConv2D(root.WithOpName("fused_conv"), input, paddings, filter,
-                       pad_mode, {1, stride, stride, 1}, padding);
+    Output fused_conv = FusedPadConv2D(
+        root.WithOpName("fused_conv"), casted_input, paddings, casted_filter,
+        pad_mode, {1, stride, stride, 1}, padding);
 
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
@@ -269,95 +280,130 @@ class FusedResizePadConvOpTest : public OpsTestBase {
     std::vector<Tensor> fused_tensors;
     TF_ASSERT_OK(session->Run({}, {"fused_conv"}, {}, &fused_tensors));
 
-    test::ExpectClose(unfused_tensors[0], fused_tensors[0]);
+    test::ExpectTensorNear<T>(unfused_tensors[0], fused_tensors[0], 1e-5);
   }
 };
 
-TEST_F(FusedResizePadConvOpTest, HandwrittenConv) { HandwrittenConv(); }
+TEST_F(FusedResizePadConvOpTest, HandwrittenConvHalf) {
+  HandwrittenConv<Eigen::half>(DT_HALF);
+}
 
-TEST_F(FusedResizePadConvOpTest, IdentityComparative) {
-  CompareFusedAndSeparate(10, 10, 1, 10, 10, 0, 0, 1, 1, false, "REFLECT", 1,
-                          "SAME");
+TEST_F(FusedResizePadConvOpTest, HandwrittenConvFloat) {
+  HandwrittenConv<float>(DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, HandwrittenConvDouble) {
+  HandwrittenConv<double>(DT_DOUBLE);
+}
+
+TEST_F(FusedResizePadConvOpTest, IdentityComparativeHalf) {
+  CompareFusedAndSeparate<Eigen::half>(10, 10, 1, 10, 10, 0, 0, 1, 1, false,
+                                       "REFLECT", 1, "SAME", DT_HALF);
+}
+
+TEST_F(FusedResizePadConvOpTest, IdentityComparativeFloat) {
+  CompareFusedAndSeparate<float>(10, 10, 1, 10, 10, 0, 0, 1, 1, false,
+                                 "REFLECT", 1, "SAME", DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, IdentityComparativeDouble) {
+  CompareFusedAndSeparate<double>(10, 10, 1, 10, 10, 0, 0, 1, 1, false,
+                                  "REFLECT", 1, "SAME", DT_DOUBLE);
 }
 
 TEST_F(FusedResizePadConvOpTest, ConvOnlyComparative) {
-  CompareFusedAndSeparate(10, 10, 3, 10, 10, 0, 0, 4, 4, false, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(10, 10, 3, 10, 10, 0, 0, 4, 4, false,
+                                 "REFLECT", 1, "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeOnlyComparative) {
-  CompareFusedAndSeparate(10, 10, 1, 20, 20, 0, 0, 1, 1, false, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(10, 10, 1, 20, 20, 0, 0, 1, 1, false,
+                                 "REFLECT", 1, "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAndConvComparative) {
-  CompareFusedAndSeparate(2, 2, 4, 4, 2, 0, 0, 2, 2, false, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(2, 2, 4, 4, 2, 0, 0, 2, 2, false, "REFLECT", 1,
+                                 "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAlignAndConvComparative) {
-  CompareFusedAndSeparate(2, 2, 4, 4, 2, 0, 0, 2, 2, true, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(2, 2, 4, 4, 2, 0, 0, 2, 2, true, "REFLECT", 1,
+                                 "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAndConvStridedComparative) {
-  CompareFusedAndSeparate(2, 2, 4, 4, 2, 0, 0, 2, 2, false, "REFLECT", 2,
-                          "SAME");
+  CompareFusedAndSeparate<float>(2, 2, 4, 4, 2, 0, 0, 2, 2, false, "REFLECT", 2,
+                                 "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAlignAndConvValidComparative) {
-  CompareFusedAndSeparate(2, 2, 4, 4, 2, 0, 0, 2, 2, true, "REFLECT", 1,
-                          "VALID");
+  CompareFusedAndSeparate<float>(2, 2, 4, 4, 2, 0, 0, 2, 2, true, "REFLECT", 1,
+                                 "VALID", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, PadOnlyComparative) {
-  CompareFusedAndSeparate(4, 4, 1, 4, 4, 2, 2, 1, 1, false, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(4, 4, 1, 4, 4, 2, 2, 1, 1, false, "REFLECT", 1,
+                                 "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, PadOnlyWithChannelsComparative) {
-  CompareFusedAndSeparate(4, 4, 3, 4, 4, 2, 2, 1, 1, false, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(4, 4, 3, 4, 4, 2, 2, 1, 1, false, "REFLECT", 1,
+                                 "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAndPadComparative) {
-  CompareFusedAndSeparate(4, 4, 1, 6, 6, 2, 2, 1, 1, false, "REFLECT", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(4, 4, 1, 6, 6, 2, 2, 1, 1, false, "REFLECT", 1,
+                                 "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, PadOnlySymmetricComparative) {
-  CompareFusedAndSeparate(4, 4, 1, 4, 4, 2, 2, 1, 1, false, "SYMMETRIC", 1,
-                          "SAME");
+  CompareFusedAndSeparate<float>(4, 4, 1, 4, 4, 2, 2, 1, 1, false, "SYMMETRIC",
+                                 1, "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAndPadSymmetricComparative) {
-  CompareFusedAndSeparate(4, 4, 3, 6, 6, 2, 2, 1, 1, false, "SYMMETRIC", 1,
-                          "SAME");
-}
-
-TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparative) {
-  CompareFusedPadOnlyAndSeparate(10, 10, 1, 0, 0, 1, 1, "REFLECT", 1, "SAME");
-}
-
-TEST_F(FusedResizePadConvOpTest, NoResizeConvOnlyComparative) {
-  CompareFusedPadOnlyAndSeparate(10, 10, 3, 0, 0, 4, 4, "REFLECT", 1, "SAME");
-}
-
-TEST_F(FusedResizePadConvOpTest, NoResizePadOnlyComparative) {
-  CompareFusedPadOnlyAndSeparate(4, 4, 1, 2, 2, 1, 1, "REFLECT", 1, "SAME");
-}
-
-TEST_F(FusedResizePadConvOpTest, NoResizePadOnlyWithChannelsComparative) {
-  CompareFusedPadOnlyAndSeparate(4, 4, 3, 2, 2, 1, 1, "REFLECT", 1, "SAME");
-}
-
-TEST_F(FusedResizePadConvOpTest, NoResizePadOnlySymmetricComparative) {
-  CompareFusedPadOnlyAndSeparate(4, 4, 1, 2, 2, 1, 1, "SYMMETRIC", 1, "SAME");
+  CompareFusedAndSeparate<float>(4, 4, 3, 6, 6, 2, 2, 1, 1, false, "SYMMETRIC",
+                                 1, "SAME", DT_FLOAT);
 }
 
 TEST_F(FusedResizePadConvOpTest, ResizeAndPadSymmetricComparativeLarge) {
-  CompareFusedAndSeparate(1000, 1000, 3, 1006, 1006, 2, 2, 1, 1, false,
-                          "SYMMETRIC", 1, "SAME");
+  CompareFusedAndSeparate<float>(1000, 1000, 3, 1006, 1006, 2, 2, 1, 1, false,
+                                 "SYMMETRIC", 1, "SAME", DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparativeHalf) {
+  CompareFusedPadOnlyAndSeparate<Eigen::half>(10, 10, 1, 0, 0, 1, 1, "REFLECT",
+                                              1, "SAME", DT_HALF);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparativeFloat) {
+  CompareFusedPadOnlyAndSeparate<float>(10, 10, 1, 0, 0, 1, 1, "REFLECT", 1,
+                                        "SAME", DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizeIdentityComparativeDouble) {
+  CompareFusedPadOnlyAndSeparate<double>(10, 10, 1, 0, 0, 1, 1, "REFLECT", 1,
+                                         "SAME", DT_DOUBLE);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizeConvOnlyComparative) {
+  CompareFusedPadOnlyAndSeparate<float>(10, 10, 3, 0, 0, 4, 4, "REFLECT", 1,
+                                        "SAME", DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizePadOnlyComparative) {
+  CompareFusedPadOnlyAndSeparate<float>(4, 4, 1, 2, 2, 1, 1, "REFLECT", 1,
+                                        "SAME", DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizePadOnlyWithChannelsComparative) {
+  CompareFusedPadOnlyAndSeparate<float>(4, 4, 3, 2, 2, 1, 1, "REFLECT", 1,
+                                        "SAME", DT_FLOAT);
+}
+
+TEST_F(FusedResizePadConvOpTest, NoResizePadOnlySymmetricComparative) {
+  CompareFusedPadOnlyAndSeparate<float>(4, 4, 1, 2, 2, 1, 1, "SYMMETRIC", 1,
+                                        "SAME", DT_FLOAT);
 }
 
 class ConvOpTest : public OpsTestBase {

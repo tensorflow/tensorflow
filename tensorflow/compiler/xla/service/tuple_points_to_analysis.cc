@@ -292,22 +292,29 @@ Status TuplePointsToAnalysis::HandleSlice(HloInstruction* slice) {
 }
 
 Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
-  // RecvDone aliases its input (Recv) tuple element {0} to its output.
+  // RecvDone aliases its input (Recv) tuple element {0} to element {0} of its
+  // output. The other indices ({} and {1}) define their own buffers.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(recv_done);
+  points_to_set.AddPointedToBuffer(
+      logical_buffer_analysis_->GetBuffer(recv_done, /*index=*/{}),
+      /*index=*/{});
+  points_to_set.AddPointedToBuffer(
+      logical_buffer_analysis_->GetBuffer(recv_done, /*index=*/{1}),
+      /*index=*/{1});
+
   const PointsToSet& operand_points_to_set =
       GetPointsToSet(recv_done->operand(0));
 
-  // Recursively copy the points to set of the operand tuple {0}.
+  // Recursively copy the points to set of the operand tuple {0} to the output
+  // element {0}.
   points_to_set.ForEachMutableElement(
       [this, &points_to_set, &operand_points_to_set](
           const ShapeIndex& index, PointsToSet::BufferList* buffers) {
-        ShapeIndex src_index({0});
-        for (auto element : index) {
-          src_index.push_back(element);
+        if (index.empty() || index[0] != 0) {
+          return;
         }
-        *buffers = operand_points_to_set.element(src_index);
-        for (auto& tuple_source :
-             operand_points_to_set.tuple_sources(src_index)) {
+        *buffers = operand_points_to_set.element(index);
+        for (auto& tuple_source : operand_points_to_set.tuple_sources(index)) {
           points_to_set.add_tuple_source(index, tuple_source);
         }
       });
@@ -315,7 +322,7 @@ Status TuplePointsToAnalysis::HandleRecvDone(HloInstruction* recv_done) {
 }
 
 Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
-  // Send creates a tuple of {aliased operand, U32 context}.
+  // Send creates a tuple of {aliased operand, U32 context, token}.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(send);
 
   // Creates the points to set for the tuple and its element at {1}.
@@ -327,6 +334,10 @@ Status TuplePointsToAnalysis::HandleSend(HloInstruction* send) {
   auto context_buffer = points_to_set.mutable_element(ShapeIndex({1}));
   context_buffer->push_back(
       &logical_buffer_analysis_->GetBuffer(send, ShapeIndex({1})));
+
+  auto token_buffer = points_to_set.mutable_element(ShapeIndex({2}));
+  token_buffer->push_back(
+      &logical_buffer_analysis_->GetBuffer(send, ShapeIndex({2})));
 
   // Recursively copy the points to set of the operand to output tuple {0}.
   const PointsToSet& operand_points_to_set = GetPointsToSet(send->operand(0));
@@ -388,7 +399,7 @@ Status TuplePointsToAnalysis::HandleTuple(HloInstruction* tuple) {
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
+Status TuplePointsToAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer. Which side is chosen cannot be
   // determined statically so conservatively set the points-to set to the union
@@ -396,9 +407,9 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
   //
   // First create a copy of the on_true points-to set (and tuple sources), then
   // add in elements of the on_false points-to set (tuple sources).
-  auto on_true = select->operand(1);
-  auto on_false = select->operand(2);
-  PointsToSet& points_to_set = CreateCopiedPointsToSet(select, on_true);
+  auto on_true = tuple_select->operand(1);
+  auto on_false = tuple_select->operand(2);
+  PointsToSet& points_to_set = CreateCopiedPointsToSet(tuple_select, on_true);
   const PointsToSet& false_points_to_set = *PerInst(on_false)->points_to_set;
   points_to_set.ForEachMutableElement(
       [&](const ShapeIndex& index, PointsToSet::BufferList* buffers) {
@@ -416,7 +427,7 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select) {
   // respective element in the points-to set should contain only itself.
   points_to_set.mutable_element({})->clear();
   points_to_set.AddPointedToBuffer(
-      logical_buffer_analysis_->GetBuffer(select, /*index=*/{}),
+      logical_buffer_analysis_->GetBuffer(tuple_select, /*index=*/{}),
       /*index=*/{});
   return Status::OK();
 }

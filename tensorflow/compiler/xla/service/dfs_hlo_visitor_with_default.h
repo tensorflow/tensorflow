@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -78,6 +78,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleSelect(HloInstructionPtr select) override {
     return DefaultAction(select);
+  }
+  Status HandleTupleSelect(HloInstructionPtr tuple_select) override {
+    return DefaultAction(tuple_select);
   }
   Status HandleDot(HloInstructionPtr dot) override {
     return DefaultAction(dot);

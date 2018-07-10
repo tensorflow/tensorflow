@@ -223,7 +223,6 @@ def has_distribution_strategy():
 def get_loss_reduction():
   """Reduce `aggregation` corresponding to the last loss reduction."""
   loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
-  print(loss_reduction)
   if loss_reduction == losses_impl.Reduction.SUM:
     return variable_scope.VariableAggregation.SUM
   return variable_scope.VariableAggregation.MEAN

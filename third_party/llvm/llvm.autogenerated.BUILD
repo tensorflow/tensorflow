@@ -260,7 +260,22 @@ llvm_target_list = [
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
             ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
-            ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+	    ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ],
+    },
+    {
+        "name": "AMDGPU",
+        "lower_name": "amdgpu_r600",
+        "short_name": "R600",
+        "tbl_outs": [
+            ("-gen-asm-writer", "lib/Target/AMDGPU/R600GenAsmWriter.inc"),
+            ("-gen-callingconv", "lib/Target/AMDGPU/R600GenCallingConv.inc"),
+            ("-gen-dag-isel", "lib/Target/AMDGPU/R600GenDAGISel.inc"),
+            ("-gen-dfa-packetizer", "lib/Target/AMDGPU/R600GenDFAPacketizer.inc"),
+            ("-gen-instr-info", "lib/Target/AMDGPU/R600GenInstrInfo.inc"),
+            ("-gen-emitter", "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc"),
+            ("-gen-register-info", "lib/Target/AMDGPU/R600GenRegisterInfo.inc"),
+            ("-gen-subtarget", "lib/Target/AMDGPU/R600GenSubtargetInfo.inc"),
         ],
     },
     {
@@ -681,6 +696,7 @@ cc_library(
     defines = LLVM_DEFINES,
     deps = [
         ":amdgpu_target_gen",
+        ":amdgpu_r600_target_gen",
         ":config",
         ":core",
         ":support",
@@ -704,6 +720,7 @@ cc_library(
     defines = LLVM_DEFINES,
     deps = [
         ":amdgpu_target_gen",
+        ":amdgpu_r600_target_gen",
         ":config",
         ":core",
         ":mc",
@@ -880,6 +897,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":transform_utils",
     ],
 )
 

@@ -693,8 +693,8 @@ class Layer(checkpointable.CheckpointableBase):
             self._dtype = input_list[0].dtype.base_dtype.name
           except AttributeError:
             pass
-        if all(hasattr(x, 'get_shape') for x in input_list):
-          input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
+        if all(hasattr(x, 'shape') for x in input_list):
+          input_shapes = nest.map_structure(lambda x: x.shape, inputs)
         self.build(input_shapes)
 
       # Check input assumptions set after layer building, e.g. input shape.
@@ -711,7 +711,7 @@ class Layer(checkpointable.CheckpointableBase):
         # Deferred mode behavior: use `compute_output_shape` to
         # infer the number of outputs of the layer and their shapes.
         if input_shapes is None:
-          input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
+          input_shapes = nest.map_structure(lambda x: x.shape, inputs)
 
         output_shapes = self.compute_output_shape(input_shapes)
         output_shapes = nest.flatten(output_shapes)
@@ -1295,7 +1295,7 @@ class Layer(checkpointable.CheckpointableBase):
                          ', but the layer isn\'t built. '
                          'You can build it manually via: `' + self.name +
                          '.build(batch_input_shape)`.')
-    weight_shapes = [w.get_shape().as_list() for w in self.weights]
+    weight_shapes = [w.shape.as_list() for w in self.weights]
     return int(sum([np.prod(w) for w in weight_shapes]))
 
   @property
@@ -1378,7 +1378,7 @@ class Layer(checkpointable.CheckpointableBase):
       if (spec.ndim is not None or
           spec.min_ndim is not None or
           spec.max_ndim is not None):
-        if x.get_shape().ndims is None:
+        if x.shape.ndims is None:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
                            'its rank is undefined, but the layer requires a '
@@ -1386,29 +1386,29 @@ class Layer(checkpointable.CheckpointableBase):
 
       # Check ndim.
       if spec.ndim is not None:
-        ndim = x.get_shape().ndims
+        ndim = x.shape.ndims
         if ndim != spec.ndim:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
                            'expected ndim=' + str(spec.ndim) + ', found ndim=' +
                            str(ndim) + '. Full shape received: ' +
-                           str(x.get_shape().as_list()))
+                           str(x.shape.as_list()))
       if spec.max_ndim is not None:
-        ndim = x.get_shape().ndims
+        ndim = x.shape.ndims
         if ndim is not None and ndim > spec.max_ndim:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
                            'expected max_ndim=' + str(spec.max_ndim) +
                            ', found ndim=' + str(ndim))
       if spec.min_ndim is not None:
-        ndim = x.get_shape().ndims
+        ndim = x.shape.ndims
         if ndim is not None and ndim < spec.min_ndim:
           raise ValueError('Input ' + str(input_index) + ' of layer ' +
                            self.name + ' is incompatible with the layer: '
                            ': expected min_ndim=' + str(spec.min_ndim) +
                            ', found ndim=' + str(ndim) +
                            '. Full shape received: ' +
-                           str(x.get_shape().as_list()))
+                           str(x.shape.as_list()))
       # Check dtype.
       if spec.dtype is not None:
         if x.dtype != spec.dtype:
@@ -1418,7 +1418,7 @@ class Layer(checkpointable.CheckpointableBase):
                            ', found dtype=' + str(x.dtype))
       # Check specific shape axes.
       if spec.axes:
-        shape = x.get_shape().as_list()
+        shape = x.shape.as_list()
         if shape is not None:
           for axis, value in spec.axes.items():
             if hasattr(value, 'value'):
@@ -1431,7 +1431,7 @@ class Layer(checkpointable.CheckpointableBase):
                   ' but received input with shape ' + str(shape))
       # Check shape.
       if spec.shape is not None:
-        shape = x.get_shape().as_list()
+        shape = x.shape.as_list()
         if shape is not None:
           for spec_dim, dim in zip(spec.shape, shape):
             if spec_dim is not None and dim is not None:
@@ -1706,12 +1706,12 @@ class DeferredTensor(object):
 
   def __str__(self):
     return "DeferredTensor('%s', shape=%s, dtype=%s)" % (self.name,
-                                                         self.get_shape(),
+                                                         self.shape,
                                                          self.dtype.name)
 
   def __repr__(self):
     return "<DeferredTensor '%s' shape=%s dtype=%s>" % (self.name,
-                                                        self.get_shape(),
+                                                        self.shape,
                                                         self.dtype.name)
 
 

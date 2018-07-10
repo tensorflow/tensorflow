@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -528,7 +528,7 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
     // def body_fun(loop_carry):
     //   i, output, a, b = loop_carry
     //   if transpose_a:
-    //     a_row = np.swapaxes(a[..., :, i:i+1], -1 -2)
+    //     a_row = np.swapaxes(a[..., :, i:i+1], -1, -2)
     //   else:
     //     a_row = a[..., :, i:i+1]
     //   result_row = b[..., :, i:i+1] - np.matmul(output, a_row)
@@ -553,26 +553,26 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
       auto body_b = xla::GetTupleElement(input_tuple, 3);
       auto zero = xla::ConstantR0<int32>(bodyb.get(), 0);
 
-      // We'd like to implement b[..., :, i:i+1] - np.matmul(output, a[..., :,
-      // i:i+1]) But since we can't have intermediate array sizes depend on the
-      // loop counter, we instead exploit the fact that we initialized the
-      // output to all zeros and use that as zero-padding (doing unnecessary
-      // FLOPs).
-      auto b_update = BatchDot(body_out, body_a,
-                               /*transpose_x=*/false,
-                               /*transpose_y=*/transpose_a,
-                               /*conjugate_x=*/false,
-                               /*conjugate_y=*/conjugate_a);
       // result = b - np.matmul(output, a)
-      auto result = body_b - b_update;
       // result_row = result[..., :, i:i+1]
-      auto result_row = DynamicSliceInMinorDims(result, {zero, i}, {m, 1});
+      auto body_b_slice = DynamicSliceInMinorDims(body_b, {zero, i}, {m, 1});
+      xla::XlaOp a_slice;
+      if (transpose_a) {
+        a_slice = DynamicSliceInMinorDims(body_a, {i, zero}, {1, n});
+      } else {
+        a_slice = DynamicSliceInMinorDims(body_a, {zero, i}, {n, 1});
+      }
+      auto b_update = body_b_slice - BatchDot(body_out, a_slice,
+                                              /*transpose_x=*/false,
+                                              /*transpose_y=*/transpose_a,
+                                              /*conjugate_x=*/false,
+                                              /*conjugate_y=*/conjugate_a);
 
-      // body_out[..., :, i:i+1] = result_row / a[..., i:i+1, i:i+1]
+      // body_out[..., :, i:i+1] = b_update / a[..., i:i+1, i:i+1]
       auto a_ii = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
       auto a_ii_conj = MaybeConjugate(a_ii, conjugate_a);
-      auto div_result = xla::Div(result_row, a_ii_conj);
-      body_out = DynamicUpdateSliceInMinorDims(body_out, div_result, {zero, i});
+      body_out = DynamicUpdateSliceInMinorDims(body_out, b_update / a_ii_conj,
+                                               {zero, i});
 
       // if transpose_a:
       //   return (i + 1, body_out, a, b)

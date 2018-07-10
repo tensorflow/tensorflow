@@ -172,6 +172,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleSelect(HloInstruction* select) override;
 
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
+
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
   Status HandleAfterAll(HloInstruction* token) override;

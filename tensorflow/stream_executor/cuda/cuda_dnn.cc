@@ -3074,6 +3074,22 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
     }
   }
 
+  // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
+  // zero-initialized.
+  // TODO(timshen): Add an nvbugs/ link.
+  if (CUDNN_VERSION >= 7000 &&
+      algorithm_config.algorithm().algo_id() ==
+          CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&
+      cudnn_type == CUDNN_DATA_HALF &&
+      algorithm_config.algorithm().tensor_ops_enabled() &&
+      input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+      filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX &&
+      output_descriptor.layout() == dnn::DataLayout::kBatchDepthYX &&
+      (convolution_descriptor.vertical_filter_stride() > 1 ||
+       convolution_descriptor.horizontal_filter_stride() > 1)) {
+    stream->ThenMemZero(&scratch, scratch.size());
+  }
+
   RETURN_IF_CUDNN_ERROR(
       cudnnConvolutionBackwardData(cudnn.handle(),
                                    /*alpha=*/alpha,
