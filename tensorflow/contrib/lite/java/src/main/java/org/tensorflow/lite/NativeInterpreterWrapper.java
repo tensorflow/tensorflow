@@ -15,7 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
-import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
@@ -202,61 +201,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
               "Input error: '%s' is not a valid name for any output. Names of outputs and their "
                   + "indexes are %s",
               name, outputsIndexes.toString()));
-    }
-  }
-
-  /** Returns the type of the data. */
-  static DataType dataTypeOf(Object o) {
-    if (o != null) {
-      Class<?> c = o.getClass();
-      while (c.isArray()) {
-        c = c.getComponentType();
-      }
-      if (float.class.equals(c)) {
-        return DataType.FLOAT32;
-      } else if (int.class.equals(c)) {
-        return DataType.INT32;
-      } else if (byte.class.equals(c)) {
-        return DataType.UINT8;
-      } else if (long.class.equals(c)) {
-        return DataType.INT64;
-      }
-    }
-    throw new IllegalArgumentException(
-        "DataType error: cannot resolve DataType of " + o.getClass().getName());
-  }
-
-  /** Returns the shape of an object as an int array. */
-  static int[] shapeOf(Object o) {
-    int size = numDimensions(o);
-    int[] dimensions = new int[size];
-    fillShape(o, 0, dimensions);
-    return dimensions;
-  }
-
-  static int numDimensions(Object o) {
-    if (o == null || !o.getClass().isArray()) {
-      return 0;
-    }
-    if (Array.getLength(o) == 0) {
-      throw new IllegalArgumentException("Array lengths cannot be 0.");
-    }
-    return 1 + numDimensions(Array.get(o, 0));
-  }
-
-  static void fillShape(Object o, int dim, int[] shape) {
-    if (shape == null || dim == shape.length) {
-      return;
-    }
-    final int len = Array.getLength(o);
-    if (shape[dim] == 0) {
-      shape[dim] = len;
-    } else if (shape[dim] != len) {
-      throw new IllegalArgumentException(
-          String.format("Mismatched lengths (%d and %d) in dimension %d", shape[dim], len, dim));
-    }
-    for (int i = 0; i < len; ++i) {
-      fillShape(Array.get(o, i), dim + 1, shape);
     }
   }
 

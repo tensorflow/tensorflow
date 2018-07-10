@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite;
 
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.Arrays;
@@ -102,11 +103,68 @@ final class Tensor {
     if (isByteBuffer(input)) {
       return null;
     }
-    int[] inputShape = NativeInterpreterWrapper.shapeOf(input);
+    int[] inputShape = shapeOf(input);
     if (Arrays.equals(shapeCopy, inputShape)) {
       return null;
     }
     return inputShape;
+  }
+
+  /** Returns the type of the data. */
+  static DataType dataTypeOf(Object o) {
+    if (o != null) {
+      Class<?> c = o.getClass();
+      while (c.isArray()) {
+        c = c.getComponentType();
+      }
+      if (float.class.equals(c)) {
+        return DataType.FLOAT32;
+      } else if (int.class.equals(c)) {
+        return DataType.INT32;
+      } else if (byte.class.equals(c)) {
+        return DataType.UINT8;
+      } else if (long.class.equals(c)) {
+        return DataType.INT64;
+      }
+    }
+    throw new IllegalArgumentException(
+        "DataType error: cannot resolve DataType of " + o.getClass().getName());
+  }
+
+  /** Returns the shape of an object as an int array. */
+  static int[] shapeOf(Object o) {
+    int size = numDimensions(o);
+    int[] dimensions = new int[size];
+    fillShape(o, 0, dimensions);
+    return dimensions;
+  }
+
+  /** Returns the number of dimensions of a multi-dimensional array, otherwise 0. */
+  static int numDimensions(Object o) {
+    if (o == null || !o.getClass().isArray()) {
+      return 0;
+    }
+    if (Array.getLength(o) == 0) {
+      throw new IllegalArgumentException("Array lengths cannot be 0.");
+    }
+    return 1 + numDimensions(Array.get(o, 0));
+  }
+
+  /** Recursively populates the shape dimensions for a given (multi-dimensional) array. */
+  static void fillShape(Object o, int dim, int[] shape) {
+    if (shape == null || dim == shape.length) {
+      return;
+    }
+    final int len = Array.getLength(o);
+    if (shape[dim] == 0) {
+      shape[dim] = len;
+    } else if (shape[dim] != len) {
+      throw new IllegalArgumentException(
+          String.format("Mismatched lengths (%d and %d) in dimension %d", shape[dim], len, dim));
+    }
+    for (int i = 0; i < len; ++i) {
+      fillShape(Array.get(o, i), dim + 1, shape);
+    }
   }
 
   private void throwExceptionIfTypeIsIncompatible(Object o) {
@@ -121,7 +179,7 @@ final class Tensor {
       }
       return;
     }
-    DataType oType = NativeInterpreterWrapper.dataTypeOf(o);
+    DataType oType = dataTypeOf(o);
     if (oType != dtype) {
       throw new IllegalArgumentException(
           String.format(
@@ -130,7 +188,7 @@ final class Tensor {
               dtype, o.getClass().getName(), oType));
     }
 
-    int[] oShape = NativeInterpreterWrapper.shapeOf(o);
+    int[] oShape = shapeOf(o);
     if (!Arrays.equals(oShape, shapeCopy)) {
       throw new IllegalArgumentException(
           String.format(
