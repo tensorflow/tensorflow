@@ -792,7 +792,7 @@ class OutputWindowIndexToInputIndex {
 
   // input_dim_value_to_index_vector_[i] tells us how to compute dimension i of
   // the input index from the output index. See
-  // PropagateOutputIndexToInputIndex.
+  // PropagateOutputIndexWindowDimsToInputIndex.
   std::vector<int64> input_dim_value_to_output_index_;
 
   // The result computed by this functor.  operator() returns an ArraySlice into
