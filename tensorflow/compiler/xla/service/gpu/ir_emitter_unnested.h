@@ -74,6 +74,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleInfeed(HloInstruction* xla_infeed) override;
+  Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
@@ -254,9 +255,13 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<Thunk> BuildDeviceToDeviceCopyThunk(
       const HloInstruction* inst);
 
-  // Returns an InfeedThunk that performs device-to-device memcpy to implement
+  // Returns an InfeedThunk that performs a host-to-device memcpy to implement
   // `inst`.
   std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
+
+  // Returns an OutfeedThunk that performs a device-to-host memcpy to implement
+  // `inst`.
+  std::unique_ptr<Thunk> BuildOutfeedThunk(const HloInstruction* inst);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
