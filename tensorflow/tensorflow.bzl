@@ -825,6 +825,9 @@ def tf_cc_test_mkl(srcs,
                    tags=[],
                    size="medium",
                    args=None):
+  # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
+  disable_header_modules = ["-use_header_modules"]
+
   for src in srcs:
     native.cc_test(
       name=src_to_test_name(src),
@@ -850,6 +853,7 @@ def tf_cc_test_mkl(srcs,
       tags=tags,
       size=size,
       args=args,
+      features=disable_header_modules,
       nocopts="-fno-exceptions")
 
 
@@ -1089,6 +1093,9 @@ def tf_mkl_kernel_library(name,
     hdrs = hdrs + native.glob(
         [prefix + "*.h"])
 
+  # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
+  disable_header_modules = ["-use_header_modules"]
+
   native.cc_library(
       name=name,
       srcs=if_mkl(srcs),
@@ -1096,7 +1103,8 @@ def tf_mkl_kernel_library(name,
       deps=deps,
       alwayslink=alwayslink,
       copts=copts,
-      nocopts=nocopts
+      nocopts=nocopts,
+      features = disable_header_modules
   )
 
 register_extension_info(

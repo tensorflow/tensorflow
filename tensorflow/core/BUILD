@@ -3599,6 +3599,7 @@ tf_cc_test_mkl(
     deps = [
         ":core",
         ":core_cpu",
+        ":core_cpu_internal",
         ":framework",
         ":framework_internal",
         ":test",
