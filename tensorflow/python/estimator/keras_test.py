@@ -477,14 +477,8 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
     keras_mobile = mobilenet.MobileNet(weights=None)
     keras_mobile.compile(loss='categorical_crossentropy', optimizer='adam')
     custom_objects = {
-        'relu6': mobilenet.relu6,
         'DepthwiseConv2D': mobilenet.DepthwiseConv2D
     }
-    with self.assertRaisesRegexp(ValueError, 'relu6'):
-      with self.test_session():
-        keras_lib.model_to_estimator(
-            keras_model=keras_mobile,
-            model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
     with self.test_session():
       keras_lib.model_to_estimator(
