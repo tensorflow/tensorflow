@@ -678,6 +678,55 @@ def make_relu6_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_prelu_tests(zip_path):
+  """Make a set of tests to do PReLU."""
+
+  test_parameters = [{
+      # The canonical case for image processing is having a 4D `input` (NHWC)
+      # and `shared_axes`=[1, 2], so the alpha parameter is per channel.
+      "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
+      "shared_axes": [[1, 2], [1]],
+  }]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    prelu = tf.keras.layers.PReLU(shared_axes=parameters["shared_axes"])
+    out = prelu(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+
+    input_shape = parameters["input_shape"]
+    input_values = create_tensor_data(
+        np.float32, input_shape, min_value=-10, max_value=10)
+    shared_axes = parameters["shared_axes"]
+
+    alpha_shape = []
+    for dim in range(1, len(input_shape)):
+      alpha_shape.append(1 if dim in shared_axes else input_shape[dim])
+
+    alpha_values = create_tensor_data(np.float32, alpha_shape)
+
+    # There should be only 1 trainable variable tensor.
+    variables = tf.all_variables()
+    assert len(variables) == 1
+    sess.run(variables[0].assign(alpha_values))
+
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      use_frozen_graph=True)
+
+
 # This function tests various TensorFLow functions that generates Const op,
 # including `tf.ones`, `tf.zeros` and random functions.
 def make_constant_tests(zip_path):
