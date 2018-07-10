@@ -885,6 +885,25 @@ class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class ArgMin : public BuiltinOperator<ArgMinOperator, ::tflite::ArgMinOptions,
+                                      ::tflite::BuiltinOptions_ArgMinOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateArgMinOptions(
+        *builder, DataType::Serialize(op.output_data_type));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->output_data_type = DataType::Deserialize(options.output_type());
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TransposeConv
     : public BuiltinOperator<TransposeConvOperator,
                              ::tflite::TransposeConvOptions,
@@ -1174,6 +1193,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Cast(::tflite::BuiltinOperator_CAST, OperatorType::kCast));
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
+  ops.emplace_back(
+      new ArgMin(::tflite::BuiltinOperator_ARG_MIN, OperatorType::kArgMin));
   ops.emplace_back(
       new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTile));
   ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,

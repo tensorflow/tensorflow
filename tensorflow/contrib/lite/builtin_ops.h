@@ -104,6 +104,7 @@ typedef enum {
   kTfLiteBuiltinRsqrt = 76,
   kTfLiteBuiltinShape = 77,
   kTfLiteBuiltinPow = 78,
+  kTfLiteBuiltinArgMin = 79,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

@@ -82,6 +82,7 @@ TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_MAXIMUM();
 TfLiteRegistration* Register_MINIMUM();
 TfLiteRegistration* Register_ARG_MAX();
+TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_GREATER();
 TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_LESS();
@@ -167,6 +168,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
   AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+  AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN());
   AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
   AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
   AddBuiltin(BuiltinOperator_LESS, Register_LESS());

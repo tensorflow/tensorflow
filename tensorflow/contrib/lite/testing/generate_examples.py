@@ -2224,7 +2224,7 @@ def make_topk_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_arg_max_tests(zip_path):
+def make_arg_min_max_tests(zip_path):
   """Make a set of tests to do arg_max."""
 
   test_parameters = [{
@@ -2232,6 +2232,7 @@ def make_arg_max_tests(zip_path):
       "input_shape": [[1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
       "output_type": [tf.int32, tf.int64],
       "axis_is_last_dim": [True, False],
+      "is_arg_max": [True],
   }]
 
   def build_graph(parameters):
@@ -2244,7 +2245,10 @@ def make_arg_max_tests(zip_path):
       axis = len(parameters["input_shape"]) - 1
     else:
       axis = random.randint(0, max(len(parameters["input_shape"]) - 2, 0))
-    out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+    if parameters["is_arg_max"]:
+      out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+    else:
+      out = tf.arg_min(input_value, axis, output_type=parameters["output_type"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

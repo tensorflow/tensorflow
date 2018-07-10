@@ -160,6 +160,7 @@ enum BuiltinOperator : byte {
   RSQRT = 76,
   SHAPE = 77,
   POW = 78,
+  ARG_MIN = 79,
 }
 
 // Options for the builtin operators.
@@ -220,6 +221,7 @@ union BuiltinOptions {
   NotEqualOptions,
   ShapeOptions,
   PowOptions,
+  ArgMinOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -466,6 +468,10 @@ table TileOptions {
 }
 
 table ArgMaxOptions {
+  output_type : TensorType;
+}
+
+table ArgMinOptions {
   output_type : TensorType;
 }
 
