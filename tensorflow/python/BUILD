@@ -4079,6 +4079,7 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(
