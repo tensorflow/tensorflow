@@ -297,8 +297,7 @@ StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForGather(
   }
 
   if (auto* indexed = dynamic_cast<ScalarIndexedArray*>(source)) {
-    auto it = c_find(indexed->output_dims(), source_dim);
-    if (it != indexed->output_dims().end()) {
+    if (c_linear_search(indexed->output_dims(), source_dim)) {
       return FoldGatherOfGather(indexed, indices, source_dim, output_dims,
                                 shape);
     }
