@@ -1441,7 +1441,8 @@ XlaOp XlaBuilder::Rev(const XlaOp& operand,
   });
 }
 
-XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
+XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
+                       int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
@@ -1455,6 +1456,11 @@ XlaOp XlaBuilder::Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
     TF_ASSIGN_OR_RETURN(*instr.mutable_shape(),
                         ShapeInference::InferVariadicOpShape(
                             HloOpcode::kSort, operand_shape_ptrs));
+    if (dimension == -1) {
+      TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(keys));
+      dimension = ShapeUtil::Rank(keys_shape) - 1;
+    }
+    instr.add_dimensions(dimension);
     return values.has_value()
                ? AddInstruction(std::move(instr), HloOpcode::kSort,
                                 {keys, *values})
@@ -2684,8 +2690,9 @@ XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions) {
   return operand.builder()->Rev(operand, dimensions);
 }
 
-XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values) {
-  return keys.builder()->Sort(keys, std::move(values));
+XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
+           int64 dimension) {
+  return keys.builder()->Sort(keys, std::move(values), dimension);
 }
 
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max) {

@@ -615,7 +615,7 @@ class HloInstruction {
 
   // Creates a sort op, with a keys operand, and an optional values operand.
   static std::unique_ptr<HloInstruction> CreateSort(
-      const Shape& shape, HloInstruction* keys,
+      const Shape& shape, int64 dimension, HloInstruction* keys,
       HloInstruction* values = nullptr);
 
   // Creates a while instruction, given a condition computation, a body

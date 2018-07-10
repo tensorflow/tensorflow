@@ -469,6 +469,46 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
       shape, new_operands[0], new_operands[1], dimensions(), to_apply());
 }
 
+HloSortInstruction::HloSortInstruction(const Shape& shape, int64 dimension,
+                                       HloInstruction* keys,
+                                       HloInstruction* values)
+    : HloInstruction(HloOpcode::kSort, shape), dimensions_({dimension}) {
+  AppendOperand(keys);
+  if (values) {
+    AppendOperand(values);
+  }
+}
+
+HloInstructionProto HloSortInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (int64 dimension : dimensions_) {
+    proto.add_dimensions(dimension);
+  }
+  return proto;
+}
+
+std::vector<string> HloSortInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+}
+
+bool HloSortInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloSortInstruction&>(other);
+  return dimensions() == casted_other.dimensions();
+}
+
+std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  HloInstruction* keys = new_operands[0];
+  HloInstruction* values = new_operands.size() == 2 ? new_operands[1] : nullptr;
+  return MakeUnique<HloSortInstruction>(shape, dimensions(0), keys, values);
+}
+
 HloTransposeInstruction::HloTransposeInstruction(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> dimensions)
