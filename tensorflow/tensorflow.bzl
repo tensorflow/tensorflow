@@ -984,16 +984,17 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_kernel_library(name,
-                      prefix=None,
-                      srcs=None,
-                      gpu_srcs=None,
-                      hdrs=None,
-                      deps=None,
-                      alwayslink=1,
-                      copts=None,
-                      is_external=False,
-                      **kwargs):
+def tf_kernel_library(
+        name,
+        prefix = None,
+        srcs = None,
+        gpu_srcs = None,
+        hdrs = None,
+        deps = None,
+        alwayslink = 1,
+        copts = None,
+        is_external = False,
+        **kwargs):
   """A rule to build a TensorFlow OpKernel.
 
   May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
@@ -1023,6 +1024,7 @@ def tf_kernel_library(name,
     deps = []
   if not copts:
     copts = []
+  textual_hdrs = []
   copts = copts + tf_copts(is_external=is_external)
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude=["*test*"]):
@@ -1033,8 +1035,13 @@ def tf_kernel_library(name,
     srcs = srcs + native.glob(
         [prefix + "*.cc"], exclude=[prefix + "*test*", prefix + "*.cu.cc"])
     hdrs = hdrs + native.glob(
-        [prefix + "*.h"], exclude=[prefix + "*test*", prefix + "*.cu.h"])
-
+            [prefix + "*.h"],
+            exclude = [prefix + "*test*", prefix + "*.cu.h", prefix + "*impl.h"],
+        )
+    textual_hdrs = native.glob(
+            [prefix + "*impl.h"],
+            exclude = [prefix + "*test*", prefix + "*.cu.h"],
+        )
   cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
   if gpu_srcs:
     for gpu_src in gpu_srcs:
@@ -1048,6 +1055,7 @@ def tf_kernel_library(name,
       name=name,
       srcs=srcs,
       hdrs=hdrs,
+      textual_hdrs = textual_hdrs,
       copts=copts,
       cuda_deps=cuda_deps,
       linkstatic=1,  # Needed since alwayslink is broken in bazel b/27630669
