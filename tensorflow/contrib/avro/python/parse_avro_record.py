@@ -49,26 +49,26 @@ def parse_avro_record(serialized, schema, features):
     :param features: Is a map of keys that describe a single entry or sparse vector in the avro record and map that
                      entry to a tensor. The syntax is as follows:
 
-                     features = {'my_meta_data/size': tf.FixedLenFeature([], tf.int64)}
+                     features = {'my_meta_data.size': tf.FixedLenFeature([], tf.int64)}
 
                         Select the 'size' field from a record metadata that is in the field 'my_meta_data'. In this
                         example we assume that the size is encoded as a long in the Avro record for the metadata.
 
 
-                     features = {'my_map_data/['source']/ip_addresses': tf.VarLenFeature([], tf.string)}
+                     features = {'my_map_data.['source'].ip_addresses': tf.VarLenFeature([], tf.string)}
 
                         Select the 'ip_addresses' for the 'source' key in the map 'my_map_data'. Notice we assume that
                         IP addresses are encoded as strings.
 
 
-                     features = {'my_friends/[1]/first_name': tf.FixedLenFeature([], tf.string)}
+                     features = {'my_friends.[1].first_name': tf.FixedLenFeature([], tf.string)}
 
                         Select the 'first_name' for the second friend with index '1'. This assumes that all of your data
                         has a second friend. In addition, we assume that all friends have only one first name. For this
                         reason we chose a 'FixedLenFeature'.
 
 
-                     features = {'my_friends/[*]/first_name': tf.VarLenFeature([], tf.string)}
+                     features = {'my_friends.[*].first_name': tf.VarLenFeature([], tf.string)}
 
                         Select all first_names in each row. For this example we use the wildcard '*' to indicate that
                         we want to select all 'first_name' entries from the array.
@@ -203,8 +203,8 @@ def _build_keys_for_sparse_features(features):
         for key in sorted(features.keys()):
             feature = features[key]
             if isinstance(feature, SparseFeature):
-                features[key] = SparseFeature(index_key=key + '/[*]/' + feature.index_key,
-                                              value_key=key + '/[*]/' + feature.value_key,
+                features[key] = SparseFeature(index_key=key + '.[*].' + feature.index_key,
+                                              value_key=key + '.[*].' + feature.value_key,
                                               dtype=feature.dtype,
                                               size=feature.size,
                                               already_sorted=feature.already_sorted)

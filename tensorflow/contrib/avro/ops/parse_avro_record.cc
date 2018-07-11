@@ -987,13 +987,13 @@ class ParseAvroRecordOp : public OpKernel {
 
     for (int i_sparse = 0; i_sparse < static_cast<int>(attrs_.num_sparse);
          ++i_sparse) {
-      TF_RETURN_IF_ERROR(StringToAvroField(
-          sparse_features[i_sparse], sparse_keys[i_sparse].scalar<string>()()));
+      TF_RETURN_IF_ERROR(StringToAvroField(sparse_keys[i_sparse].scalar<string>()(),
+                                           &sparse_features[i_sparse]));
     }
     for (int i_dense = 0; i_dense < static_cast<int>(attrs_.num_dense);
          ++i_dense) {
-      TF_RETURN_IF_ERROR(StringToAvroField(
-          dense_features[i_dense], dense_keys[i_dense].scalar<string>()()));
+      TF_RETURN_IF_ERROR(StringToAvroField(dense_keys[i_dense].scalar<string>()(),
+                                           &dense_features[i_dense]));
     }
 
     auto serialized_strings = serialized.flat<string>();
@@ -1423,11 +1423,12 @@ class ParseAvroRecordOp : public OpKernel {
   //
   // 'str' Parse this string into Avro types.
   //
-  static Status StringToAvroField(std::vector<AvroField*>& avro_fields,
-                                  const string& str) {
+  static Status StringToAvroField(const string& str,
+                                  std::vector<AvroField*>* avro_fields_ptr) {
     // Split into tokens using the separator
+    std::vector<AvroField*>& avro_fields = *avro_fields_ptr;
 
-    std::vector<string> tokens = str_util::Split(str, "/");
+    std::vector<string> tokens = str_util::Split(str, ".");
     avro_fields.resize(tokens.size());
 
     // Go through all tokens and get their type depending on the surrounding
