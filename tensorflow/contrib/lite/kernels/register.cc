@@ -101,6 +101,7 @@ TfLiteRegistration* Register_NOT_EQUAL();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
+TfLiteRegistration* Register_POW();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -122,7 +123,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP, Register_EMBEDDING_LOOKUP());
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP_SPARSE,
              Register_EMBEDDING_LOOKUP_SPARSE());
-  AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED());
+  AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX());
@@ -183,6 +186,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
+  AddBuiltin(BuiltinOperator_POW, Register_POW());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

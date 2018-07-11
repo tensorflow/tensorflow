@@ -67,22 +67,17 @@ string NameUniquer::GetUniqueName(tensorflow::StringPiece prefix) {
       has_numeric_suffix = true;
       // Remove numeric suffix from root.
       root = root.substr(0, separator_index);
-      // Update count to at least the numeric suffix value to avoid future
-      // colisions with this name.
-      generated_names_[root] = std::max(generated_names_[root], numeric_suffix);
     }
   }
-  int64* count = &(generated_names_[root]);
-  if (*count == 0) {
-    *count = 1;
+
+  SequentialIdGenerator& id_generator = generated_names_[root];
+  numeric_suffix = id_generator.RegisterId(numeric_suffix);
+  if (numeric_suffix == 0) {
     return has_numeric_suffix ? tensorflow::strings::StrCat(root, separator_, 0)
                               : root;
-  } else {
-    tensorflow::strings::StrAppend(&root, separator_, *count);
-    // Increment lookup under old 'root' name.
-    (*count)++;
-    return root;
   }
+  tensorflow::strings::StrAppend(&root, separator_, numeric_suffix);
+  return root;
 }
 
 }  // namespace xla

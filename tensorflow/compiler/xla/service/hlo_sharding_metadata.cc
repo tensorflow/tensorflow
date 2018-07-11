@@ -88,6 +88,12 @@ std::vector<PassThrough> LocatePassThroughDomainLinks(
         VLOG(2) << "  " << instruction->ToString();
       }
     }
+    if (instruction == instruction->parent()->root_instruction()) {
+      pass_through.emplace_back(nullptr, instruction);
+      VLOG(2) << "Found passthrough domain link:";
+      VLOG(2) << "  <root>";
+      VLOG(2) << "  " << instruction->ToString();
+    }
   }
   return pass_through;
 }
@@ -101,8 +107,12 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
         HloInstruction::CreateGetTupleElement(pass_through.operand->shape(),
                                               tuple, 0));
     gte->set_sharding(sharding);
-    TF_RETURN_IF_ERROR(
-        pass_through.operand->ReplaceUseWith(pass_through.user, gte));
+    if (pass_through.user != nullptr) {
+      TF_RETURN_IF_ERROR(
+          pass_through.operand->ReplaceUseWith(pass_through.user, gte));
+    } else {
+      pass_through.operand->parent()->set_root_instruction(gte);
+    }
   }
   return Status::OK();
 }
@@ -377,7 +387,7 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
 }
 
 string ShardingMetadata::ToString() const {
-  return sharding_ != nullptr ? sharding_->ToString() : "None";
+  return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 
 Status ShardingMetadata::NormalizeInstructions(

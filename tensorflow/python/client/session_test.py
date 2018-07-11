@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import random
 import os
 import sys
 import threading
@@ -1040,38 +1041,70 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
-  def testParallelRunAndBuild(self):
+  @staticmethod
+  def _build_graph():
+    time.sleep(random.random() * 0.1)
+    # Do some graph construction. Try to exercise non-trivial paths.
+    graph = ops.get_default_graph()
+    gdef = None
+    for _ in range(10):
+      x = array_ops.placeholder(dtype=dtypes.float32)
+      with ops.colocate_with(x):
+        y = array_ops.placeholder(dtype=dtypes.float32)
+      with ops.device('/cpu:0'):
+        z = control_flow_ops.while_loop(
+            lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
+      with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
+        gradients_impl.gradients(z, [x, y])
+        if gdef is None:
+          gdef = graph.as_graph_def()
+        else:
+          importer.import_graph_def(gdef, name='import')
+
+  def testParallelRunAndSingleBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
       stop = threading.Event()
 
       def run_loop():
         while not stop.is_set():
+          time.sleep(random.random() * 0.1)
           self.assertEqual(sess.run(c), 5.0)
 
-      threads = [self.checkedThread(target=run_loop) for _ in range(100)]
+      threads = [self.checkedThread(target=run_loop) for _ in range(10)]
       for t in threads:
         t.start()
 
-      # Do some graph construction. Try to exercise non-trivial paths.
-      graph = ops.get_default_graph()
-      gdef = None
-      for _ in range(10):
-        x = array_ops.placeholder(dtype=dtypes.float32)
-        with ops.colocate_with(x):
-          y = array_ops.placeholder(dtype=dtypes.float32)
-        with ops.device('/cpu:0'):
-          z = control_flow_ops.while_loop(
-              lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
-        with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
-          gradients_impl.gradients(z, [x, y])
-          if gdef is None:
-            gdef = graph.as_graph_def()
-          else:
-            importer.import_graph_def(gdef, name='import')
+      SessionTest._build_graph()
 
       stop.set()
       for t in threads:
+        t.join()
+
+  def testParallelRunAndParallelBuild(self):
+    with session.Session() as sess:
+      c = constant_op.constant(5.0)
+      stop = threading.Event()
+
+      def run_loop():
+        while not stop.is_set():
+          time.sleep(random.random() * 0.1)
+          self.assertEqual(sess.run(c), 5.0)
+
+      run_threads = [self.checkedThread(target=run_loop) for _ in range(10)]
+      for t in run_threads:
+        t.start()
+
+      build_threads = [self.checkedThread(target=SessionTest._build_graph)
+                       for _ in range(10)]
+      for t in build_threads:
+        t.start()
+      for t in build_threads:
+        t.join()
+
+      # Let the run_threads run until the build threads are finished.
+      stop.set()
+      for t in run_threads:
         t.join()
 
   def testRunFeedDict(self):

@@ -17,7 +17,8 @@ TensorFlow:
 
 Python is currently the only language supported by TensorFlow's API stability
 promises. However, TensorFlow also provides functionality in C++, Go, Java and
-[JavaScript](https://js.tensorflow.org),
+[JavaScript](https://js.tensorflow.org) (incuding
+[Node.js](https://github.com/tensorflow/tfjs-node)),
 plus community support for [Haskell](https://github.com/tensorflow/haskell) and
 [Rust](https://github.com/tensorflow/rust). If you'd like to create or
 develop TensorFlow features in a language other than these languages, read the

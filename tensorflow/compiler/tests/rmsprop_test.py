@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
 
 
-class RmspropTest(XLATestCase):
+class RmspropTest(xla_test.XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:

@@ -39,27 +39,27 @@ class DocSrcsTest(test.TestCase):
         file_path += '/'
       file_path += '__init__.py'
 
-      if file_path not in FLAGS.outputs:
-        self.assertFalse('%s is not a valid API module' % module_name)
+      self.assertIn(
+          file_path, FLAGS.outputs,
+          msg='%s is not a valid API module' % module_name)
 
   def testHaveDocstringOrDocstringModule(self):
     for module_name, docsrc in doc_srcs.get_doc_sources(FLAGS.api_name).items():
-      if docsrc.docstring and docsrc.docstring_module_name:
-        self.assertFalse(
-            '%s contains DocSource has both a docstring and a '
-            'docstring_module_name. '
-            'Only one of "docstring" or "docstring_module_name" should be set.'
-            % (module_name))
+      self.assertFalse(
+          docsrc.docstring and docsrc.docstring_module_name,
+          msg=('%s contains DocSource has both a docstring and a '
+               'docstring_module_name. Only one of "docstring" or '
+               '"docstring_module_name" should be set.') % (module_name))
 
   def testDocstringModulesAreValidModules(self):
     for _, docsrc in doc_srcs.get_doc_sources(FLAGS.api_name).items():
       if docsrc.docstring_module_name:
         doc_module_name = '.'.join([
             FLAGS.package, docsrc.docstring_module_name])
-        if doc_module_name not in sys.modules:
-          self.assertFalse(
-              'docsources_module %s is not a valid module under %s.' %
-              (docsrc.docstring_module_name, FLAGS.package))
+        self.assertIn(
+            doc_module_name, sys.modules,
+            msg=('docsources_module %s is not a valid module under %s.' %
+                 (docsrc.docstring_module_name, FLAGS.package)))
 
 
 if __name__ == '__main__':

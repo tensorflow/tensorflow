@@ -32,12 +32,13 @@ ENTRY main {
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
 
-  ROOT out = () outfeed(f32[2,3,2] const_a)
+  outfeed = token[] outfeed(f32[2,3,2] const_a)
+  ROOT root = () tuple()
 }
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [12 x float]
+CHECK: private constant [48 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

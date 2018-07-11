@@ -113,6 +113,11 @@ class HloComputation {
   // instruction.
   Status RemoveParameter(int64 param_no);
 
+  // Remove unused parameters from the computation.
+  // Note this is only applicatable to the computation for the fusion
+  // instruction.
+  Status RemoveUnusedParameters();
+
   // Add new parameter instruction to the computation.
   // This should be a new parameter. Instruction will be appended to parameters
   // and inserted to the instruction list.

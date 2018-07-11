@@ -41,6 +41,7 @@ namespace optimized_ops {
 
 // Unoptimized reference ops:
 using reference_ops::ArgMax;
+using reference_ops::ArgMinMax;
 using reference_ops::BroadcastGreater;
 using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
@@ -59,6 +60,7 @@ using reference_ops::Mean;
 using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
 using reference_ops::Relu6;
+using reference_ops::ReluX;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::StridedSlice;
@@ -170,16 +172,9 @@ template <typename Scalar, int N>
 MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
                                                    const Dims<N>& dims,
                                                    int rows) {
-  int cols = 1;
-  bool matched_rows = false;
-  for (int d = 0; d < N; d++) {
-    cols *= dims.sizes[d];
-    if (cols == rows) {
-      matched_rows = true;
-      cols = 1;
-    }
-  }
-  TFLITE_DCHECK(matched_rows);
+  const int flatsize = FlatSize(dims);
+  TFLITE_DCHECK((flatsize % rows) == 0);
+  const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
@@ -2714,6 +2709,20 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
   }
 }
 
+inline void Add(const int32* input1_data, const Dims<4>& input1_dims,
+                const int32* input2_data, const Dims<4>& input2_dims,
+                int32 output_activation_min, int32 output_activation_max,
+                int32* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Add/int32");
+
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] + input2_data[i], output_activation_min,
+        output_activation_max);
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
@@ -3763,21 +3772,20 @@ inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
 }
 
-inline void AveragePool(const float* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int kwidth, int kheight, float output_activation_min,
-                        float output_activation_max, float* output_data,
-                        const RuntimeShape& output_shape) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("AveragePool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
 
   // TODO(benoitjacob) make this a proper reference impl without Eigen!
   const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
@@ -3792,12 +3800,15 @@ inline void AveragePool(const float* input_data,
       for (int w = 0; w < input_width; ++w) {
         // (h_start, h_end) * (w_start, w_end) is the range that the input
         // vector projects to.
-        int hpad = h + pad_height;
-        int wpad = w + pad_width;
-        int h_start =
-            (hpad < kheight) ? 0 : (hpad - kheight) / stride_height + 1;
+        int hpad = h + params.padding_values.height;
+        int wpad = w + params.padding_values.width;
+        int h_start = (hpad < params.filter_height)
+                          ? 0
+                          : (hpad - params.filter_height) / stride_height + 1;
         int h_end = std::min(hpad / stride_height + 1, output_height);
-        int w_start = (wpad < kwidth) ? 0 : (wpad - kwidth) / stride_width + 1;
+        int w_start = (wpad < params.filter_width)
+                          ? 0
+                          : (wpad - params.filter_width) / stride_width + 1;
         int w_end = std::min(wpad / stride_width + 1, output_width);
         // compute elementwise sum
         for (int ph = h_start; ph < h_end; ++ph) {
@@ -3815,29 +3826,21 @@ inline void AveragePool(const float* input_data,
   TFLITE_DCHECK_GT(out_count.minCoeff(), 0);
   out_mat.array().rowwise() /= out_count.transpose().array();
 
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      for (int x = 0; x < output_width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  output_data[Offset(output_shape, b, y, x, c)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(output_data[i],
+                                                  params.float_activation_min,
+                                                  params.float_activation_max);
   }
 }
 
-inline void AveragePool(const uint8* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
-                        int32 output_activation_min,
-                        int32 output_activation_max, uint8* output_data,
-                        const RuntimeShape& output_shape) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const uint8* input_data,
+                        const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -3846,17 +3849,21 @@ inline void AveragePool(const uint8* input_data,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin = (out_x * stride_width) - pad_width;
-        const int in_y_origin = (out_y * stride_height) - pad_height;
+        const int in_x_origin =
+            (out_x * stride_width) - params.padding_values.width;
+        const int in_y_origin =
+            (out_y * stride_height) - params.padding_values.height;
         const int filter_x_start = std::max(0, -in_x_origin);
         const int filter_x_end =
-            std::min(filter_width, input_width - in_x_origin);
+            std::min(params.filter_width, input_width - in_x_origin);
         const int filter_y_start = std::max(0, -in_y_origin);
         const int filter_y_end =
-            std::min(filter_height, input_height - in_y_origin);
+            std::min(params.filter_height, input_height - in_y_origin);
         const int filter_count =
             (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
         // 1280 required by Inception v3
@@ -3904,18 +3911,18 @@ inline void AveragePool(const uint8* input_data,
             output_data + Offset(output_shape, batch, out_y, out_x, 0);
         int channel = 0;
 #ifdef USE_NEON
-#define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                              \
-  if (filter_count == FILTER_COUNT) {                                  \
-    for (; channel <= depth - 8; channel += 8) {                       \
-      uint16 buf[8];                                                   \
-      for (int i = 0; i < 8; i++) {                                    \
-        buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT; \
-      }                                                                \
-      uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));                     \
-      buf8 = vmin_u8(buf8, vdup_n_u8(output_activation_max));          \
-      buf8 = vmax_u8(buf8, vdup_n_u8(output_activation_min));          \
-      vst1_u8(output_ptr + channel, buf8);                             \
-    }                                                                  \
+#define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                               \
+  if (filter_count == FILTER_COUNT) {                                   \
+    for (; channel <= depth - 8; channel += 8) {                        \
+      uint16 buf[8];                                                    \
+      for (int i = 0; i < 8; i++) {                                     \
+        buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT;  \
+      }                                                                 \
+      uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));                      \
+      buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max)); \
+      buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min)); \
+      vst1_u8(output_ptr + channel, buf8);                              \
+    }                                                                   \
   }
         AVGPOOL_DIVIDING_BY(9)
         AVGPOOL_DIVIDING_BY(15)
@@ -3926,15 +3933,15 @@ inline void AveragePool(const uint8* input_data,
             buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
           }
           uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
-          buf8 = vmin_u8(buf8, vdup_n_u8(output_activation_max));
-          buf8 = vmax_u8(buf8, vdup_n_u8(output_activation_min));
+          buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
+          buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
           vst1_u8(output_ptr + channel, buf8);
         }
 #endif
         for (; channel < depth; ++channel) {
           uint16 a = (acc[channel] + filter_count / 2) / filter_count;
-          a = std::max<uint16>(a, output_activation_min);
-          a = std::min<uint16>(a, output_activation_max);
+          a = std::max<uint16>(a, params.quantized_activation_min);
+          a = std::min<uint16>(a, params.quantized_activation_max);
           output_ptr[channel] = static_cast<uint8>(a);
         }
       }
@@ -3942,20 +3949,19 @@ inline void AveragePool(const uint8* input_data,
   }
 }
 
-inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int kwidth, int kheight,
-                    float output_activation_min, float output_activation_max,
-                    float* output_data, const RuntimeShape& output_shape) {
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const float* input_data, const RuntimeShape& output_shape,
+                    float* output_data) {
   gemmlowp::ScopedProfilingLabel label("MaxPool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
 
   const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
   auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
@@ -3966,12 +3972,15 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
       for (int w = 0; w < input_width; ++w) {
         // (h_start, h_end) * (w_start, w_end) is the range that the input
         // vector projects to.
-        int hpad = h + pad_height;
-        int wpad = w + pad_width;
-        int h_start =
-            (hpad < kheight) ? 0 : (hpad - kheight) / stride_height + 1;
+        int hpad = h + params.padding_values.height;
+        int wpad = w + params.padding_values.width;
+        int h_start = (hpad < params.filter_height)
+                          ? 0
+                          : (hpad - params.filter_height) / stride_height + 1;
         int h_end = std::min(hpad / stride_height + 1, output_height);
-        int w_start = (wpad < kwidth) ? 0 : (wpad - kwidth) / stride_width + 1;
+        int w_start = (wpad < params.filter_width)
+                          ? 0
+                          : (wpad - params.filter_width) / stride_width + 1;
         int w_end = std::min(wpad / stride_width + 1, output_width);
         // compute elementwise sum
         for (int ph = h_start; ph < h_end; ++ph) {
@@ -3986,28 +3995,20 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
       }
     }
   }
-
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      for (int x = 0; x < output_width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  output_data[Offset(output_shape, b, y, x, c)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(output_data[i],
+                                                  params.float_activation_min,
+                                                  params.float_activation_max);
   }
 }
 
-inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int filter_width, int filter_height,
-                    int32 output_activation_min, int32 output_activation_max,
-                    uint8* output_data, const RuntimeShape& output_shape) {
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const uint8* input_data, const RuntimeShape& output_shape,
+                    uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -4016,17 +4017,21 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin = (out_x * stride_width) - pad_width;
-        const int in_y_origin = (out_y * stride_height) - pad_height;
+        const int in_x_origin =
+            (out_x * stride_width) - params.padding_values.width;
+        const int in_y_origin =
+            (out_y * stride_height) - params.padding_values.height;
         const int filter_x_start = std::max(0, -in_x_origin);
         const int filter_x_end =
-            std::min(filter_width, input_width - in_x_origin);
+            std::min(params.filter_width, input_width - in_x_origin);
         const int filter_y_start = std::max(0, -in_y_origin);
         const int filter_y_end =
-            std::min(filter_height, input_height - in_y_origin);
+            std::min(params.filter_height, input_height - in_y_origin);
         // 2048 required by Inception v3
         static constexpr int kAccBufferMaxSize = 2048;
         TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
@@ -4069,21 +4074,21 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
 #ifdef USE_NEON
         for (; channel <= depth - 16; channel += 16) {
           uint8x16_t a = vld1q_u8(acc + channel);
-          a = vminq_u8(a, vdupq_n_u8(output_activation_max));
-          a = vmaxq_u8(a, vdupq_n_u8(output_activation_min));
+          a = vminq_u8(a, vdupq_n_u8(params.quantized_activation_max));
+          a = vmaxq_u8(a, vdupq_n_u8(params.quantized_activation_min));
           vst1q_u8(output_ptr + channel, a);
         }
         for (; channel <= depth - 8; channel += 8) {
           uint8x8_t a = vld1_u8(acc + channel);
-          a = vmin_u8(a, vdup_n_u8(output_activation_max));
-          a = vmax_u8(a, vdup_n_u8(output_activation_min));
+          a = vmin_u8(a, vdup_n_u8(params.quantized_activation_max));
+          a = vmax_u8(a, vdup_n_u8(params.quantized_activation_min));
           vst1_u8(output_ptr + channel, a);
         }
 #endif
         for (; channel < depth; ++channel) {
           uint8 a = acc[channel];
-          a = std::max<uint8>(a, output_activation_min);
-          a = std::min<uint8>(a, output_activation_max);
+          a = std::max<uint8>(a, params.quantized_activation_min);
+          a = std::min<uint8>(a, params.quantized_activation_max);
           output_ptr[channel] = static_cast<uint8>(a);
         }
       }
@@ -4091,11 +4096,9 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
   }
 }
 
-inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
-                   int stride_width, int stride_height, int pad_width,
-                   int pad_height, int filter_width, int filter_height,
-                   float output_activation_min, float output_activation_max,
-                   float* output_data, const RuntimeShape& output_shape) {
+inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
+                   const float* input_data, const RuntimeShape& output_shape,
+                   float* output_data) {
   gemmlowp::ScopedProfilingLabel label("L2Pool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -4104,6 +4107,8 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   // Actually carry out L2 Pool. Code is written in forward mode: we go through
   // the input values once, and write to all the pooled regions that it maps to.
   const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
@@ -4118,15 +4123,17 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
       for (int w = 0; w < input_width; ++w) {
         // (h_start, h_end) * (w_start, w_end) is the range that the input
         // vector projects to.
-        const int hpad = h + pad_height;
-        const int wpad = w + pad_width;
-        const int h_start = (hpad < filter_height)
-                                ? 0
-                                : (hpad - filter_height) / stride_height + 1;
+        const int hpad = h + params.padding_values.height;
+        const int wpad = w + params.padding_values.width;
+        const int h_start =
+            (hpad < params.filter_height)
+                ? 0
+                : (hpad - params.filter_height) / stride_height + 1;
         const int h_end = std::min(hpad / stride_height + 1, output_height);
-        const int w_start = (wpad < filter_width)
-                                ? 0
-                                : (wpad - filter_width) / stride_width + 1;
+        const int w_start =
+            (wpad < params.filter_width)
+                ? 0
+                : (wpad - params.filter_width) / stride_width + 1;
         const int w_end = std::min(wpad / stride_width + 1, output_width);
         // pre-compute square
         const int in_offset = w + input_width * (h + input_height * b);
@@ -4147,6 +4154,13 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
   out_count = out_count.array().inverse();
   out_mat =
       (out_mat.array().rowwise() * out_count.transpose().array()).cwiseSqrt();
+
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(output_data[i],
+                                                  params.float_activation_min,
+                                                  params.float_activation_max);
+  }
 }
 
 inline void LocalResponseNormalization(const float* input_data,

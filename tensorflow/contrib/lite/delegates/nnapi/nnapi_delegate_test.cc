@@ -605,6 +605,67 @@ TEST(NNAPIDelegate, ReshapeSimpleTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
 
+class SqueezeOpModel : public SingleOpModel {
+ public:
+  SqueezeOpModel(const TensorData& input, const TensorData& output,
+                 std::initializer_list<int> axis) {
+    this->SetApplyDelegate([](Interpreter* interpreter) {
+      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
+    });
+
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(
+        BuiltinOperator_SQUEEZE, BuiltinOptions_SqueezeOptions,
+        CreateSqueezeOptions(builder_, builder_.CreateVector<int>(axis))
+            .Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor<float>(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int new_shape_;
+  int output_;
+};
+
+TEST(NNAPIDelegate, SqueezeSimpleTest) {
+  std::initializer_list<float> data = {
+      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
+      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  SqueezeOpModel m({TensorType_FLOAT32, {1, 24, 1}}, {TensorType_FLOAT32, {24}},
+                   {});
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                        9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                        17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+}
+
+TEST(NNAPIDelegate, SqueezeWithAxisTest) {
+  std::initializer_list<float> data = {
+      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
+      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  SqueezeOpModel m({TensorType_FLOAT32, {1, 24, 1}}, {TensorType_FLOAT32, {24}},
+                   {2});
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 24}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                        9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                        17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+}
+
 }  // namespace
 }  // namespace tflite
 

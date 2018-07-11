@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -39,7 +40,7 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
                          xla::XlaBuilder* builder) {
     std::vector<xla::XlaOp> elements(arity);
     for (int i = 0; i < arity; ++i) {
-      elements[i] = builder->GetTupleElement(tuple, i);
+      elements[i] = xla::GetTupleElement(tuple, i);
     }
     return elements;
   };
@@ -48,7 +49,8 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
   std::unique_ptr<xla::XlaBuilder> cond_builder =
       builder->CreateSubBuilder(strings::StrCat(name, "_condition"));
   {
-    auto parameter = cond_builder->Parameter(0, tuple_shape, "parameter");
+    auto parameter =
+        xla::Parameter(cond_builder.get(), 0, tuple_shape, "parameter");
 
     TF_RETURN_IF_ERROR(
         condition_function(unpack_tuple(parameter, arity, cond_builder.get()),
@@ -61,7 +63,8 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
   std::unique_ptr<xla::XlaBuilder> body_builder =
       builder->CreateSubBuilder(strings::StrCat(name, "_body"));
   {
-    auto parameter = body_builder->Parameter(0, tuple_shape, "parameter");
+    auto parameter =
+        xla::Parameter(body_builder.get(), 0, tuple_shape, "parameter");
 
     TF_ASSIGN_OR_RETURN(
         auto result,
@@ -69,11 +72,11 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
                       body_builder.get()));
 
     TF_RET_CHECK(result.size() == initial_values.size());
-    body_builder->Tuple(result);
+    xla::Tuple(body_builder.get(), result);
   }
   TF_ASSIGN_OR_RETURN(auto body, body_builder->Build());
 
-  auto outputs = builder->While(cond, body, builder->Tuple(initial_values));
+  auto outputs = xla::While(cond, body, xla::Tuple(builder, initial_values));
 
   return unpack_tuple(outputs, arity, builder);
 }
@@ -86,9 +89,8 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
   auto while_cond_fn =
       [&](gtl::ArraySlice<xla::XlaOp> values,
           xla::XlaBuilder* cond_builder) -> xla::StatusOr<xla::XlaOp> {
-    return cond_builder->Lt(
-        values[0],
-        IntegerLiteral(cond_builder, num_iterations_type, num_iterations));
+    return xla::Lt(values[0], IntegerLiteral(cond_builder, num_iterations_type,
+                                             num_iterations));
   };
   auto while_body_fn = [&](gtl::ArraySlice<xla::XlaOp> values,
                            xla::XlaBuilder* body_builder)
@@ -97,9 +99,10 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
 
     std::vector<xla::XlaOp> updated_values;
     updated_values.reserve(values.size());
-    updated_values.push_back(body_builder->Add(
+    updated_values.push_back(xla::Add(
         iteration,
-        body_builder->ConstantLiteral(xla::Literal::One(num_iterations_type))));
+        xla::ConstantLiteral(body_builder,
+                             xla::LiteralUtil::One(num_iterations_type))));
 
     values.remove_prefix(1);
     TF_ASSIGN_OR_RETURN(std::vector<xla::XlaOp> body_outputs,
@@ -111,8 +114,8 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
 
   std::vector<xla::XlaOp> values;
   values.reserve(initial_values.size() + 1);
-  values.push_back(
-      builder->ConstantLiteral(xla::Literal::Zero(num_iterations_type)));
+  values.push_back(xla::ConstantLiteral(
+      builder, xla::LiteralUtil::Zero(num_iterations_type)));
   values.insert(values.end(), initial_values.begin(), initial_values.end());
 
   TF_ASSIGN_OR_RETURN(values, XlaWhileLoop(while_cond_fn, while_body_fn, values,

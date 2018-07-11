@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
@@ -147,7 +148,7 @@ class ExpandDimsOp : public XlaOpKernel {
     dim = std::min<int32>(dim, existing_dims_size);
     new_shape.emplace(new_shape.begin() + dim, 1);
 
-    ctx->SetOutput(0, ctx->builder()->Reshape(ctx->Input(0), new_shape));
+    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
   }
 };
 REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstInput("dim"), ExpandDimsOp);
@@ -204,7 +205,7 @@ class SqueezeOp : public XlaOpKernel {
       }
     }
 
-    ctx->SetOutput(0, ctx->builder()->Reshape(ctx->Input(0), new_shape));
+    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
   }
 
  private:
@@ -221,7 +222,7 @@ class ZerosLikeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto zero = XlaHelpers::Zero(ctx->builder(), input_type(0));
-    ctx->SetOutput(0, ctx->builder()->Broadcast(zero, input_shape.dim_sizes()));
+    ctx->SetOutput(0, xla::Broadcast(zero, input_shape.dim_sizes()));
   }
 };
 
@@ -235,7 +236,7 @@ class OnesLikeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto one = XlaHelpers::One(ctx->builder(), input_type(0));
-    ctx->SetOutput(0, ctx->builder()->Broadcast(one, input_shape.dim_sizes()));
+    ctx->SetOutput(0, xla::Broadcast(one, input_shape.dim_sizes()));
   }
 };
 

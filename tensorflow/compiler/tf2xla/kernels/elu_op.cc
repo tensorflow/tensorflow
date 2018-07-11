@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -34,9 +34,9 @@ class EluOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
     const auto zero = XlaHelpers::Zero(b, input_type(0));
-    const auto pred = b->Gt(ctx->Input(0), zero);
-    const auto expm1 = b->Expm1(ctx->Input(0));
-    ctx->SetOutput(0, b->Select(pred, ctx->Input(0), expm1));
+    const auto pred = xla::Gt(ctx->Input(0), zero);
+    const auto expm1 = xla::Expm1(ctx->Input(0));
+    ctx->SetOutput(0, xla::Select(pred, ctx->Input(0), expm1));
   }
 };
 
@@ -51,9 +51,9 @@ class EluGradOp : public XlaOpKernel {
     const auto one = XlaHelpers::One(b, input_type(0));
     const auto grad = ctx->Input(0);
     const auto activation = ctx->Input(1);
-    const auto exp_grad = b->Mul(grad, b->Add(activation, one));
-    const auto pred = b->Gt(activation, zero);
-    ctx->SetOutput(0, b->Select(pred, grad, exp_grad));
+    const auto exp_grad = xla::Mul(grad, xla::Add(activation, one));
+    const auto pred = xla::Gt(activation, zero);
+    ctx->SetOutput(0, xla::Select(pred, grad, exp_grad));
   }
 };
 
@@ -71,10 +71,10 @@ class SeluOp : public XlaOpKernel {
             1.0507009873554804934193349852946);
     const auto scale_alpha = XlaHelpers::FloatLiteral(b, input_type(0),
             1.7580993408473768599402175208123);
-    const auto pred = b->Gt(ctx->Input(0), zero);
-    const auto expm1 = b->Expm1(ctx->Input(0));
-    ctx->SetOutput(0, b->Select(pred, b->Mul(scale, ctx->Input(0)),
-                                      b->Mul(scale_alpha, expm1)));
+    const auto pred = xla::Gt(ctx->Input(0), zero);
+    const auto expm1 = xla::Expm1(ctx->Input(0));
+    ctx->SetOutput(0, xla::Select(pred, xla::Mul(scale, ctx->Input(0)),
+                                  xla::Mul(scale_alpha, expm1)));
   }
 };
 
@@ -92,10 +92,10 @@ class SeluGradOp : public XlaOpKernel {
             1.7580993408473768599402175208123);
     const auto grad = ctx->Input(0);
     const auto activation = ctx->Input(1);
-    const auto lin_grad = b->Mul(grad, scale);
-    const auto exp_grad = b->Mul(grad, b->Add(activation, scale_alpha));
-    const auto pred = b->Gt(activation, zero);
-    ctx->SetOutput(0, b->Select(pred, lin_grad, exp_grad));
+    const auto lin_grad = xla::Mul(grad, scale);
+    const auto exp_grad = xla::Mul(grad, xla::Add(activation, scale_alpha));
+    const auto pred = xla::Gt(activation, zero);
+    ctx->SetOutput(0, xla::Select(pred, lin_grad, exp_grad));
   }
 };
 

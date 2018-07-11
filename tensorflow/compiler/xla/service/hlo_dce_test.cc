@@ -53,9 +53,9 @@ TEST_F(HloDceTest, NoDeadCode) {
   // Verify that no dead code is removed from a computation with no dead code.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(123.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
@@ -74,20 +74,21 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   // Verify that side-effect instructions (Send in this test) are not removed.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
   builder.AddInstruction(
-      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+      HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(4, computation->instruction_count());
 
   HloDCE dce;
   EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
 
-  EXPECT_EQ(3, computation->instruction_count());
+  EXPECT_EQ(4, computation->instruction_count());
 }
 
 TEST_F(HloDceTest, DeadParameters) {
@@ -126,9 +127,9 @@ TEST_F(HloDceTest, ControlDependencies) {
   // Verify that instructions with control dependencies are not removed.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(123.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(123.0f)));
 
   // Create two dead instructions: a negate and an add.
   auto dead_negate = builder.AddInstruction(HloInstruction::CreateUnary(
@@ -223,7 +224,7 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
     auto param = cond_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "cond_param"));
     auto constant = cond_builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
     cond_builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param, constant));
   }
@@ -234,9 +235,10 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
   {
     auto param = body_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
-
-    auto infeed =
-        body_builder.AddInstruction(HloInstruction::CreateInfeed(shape, ""));
+    auto token =
+        body_builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+    auto infeed = body_builder.AddInstruction(
+        HloInstruction::CreateInfeed(shape, token, ""));
     body_builder.AddInstruction(
         HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, infeed));
   }
@@ -278,8 +280,10 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   {
     auto param = nested_callee_builder.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "param"));
+    auto token = nested_callee_builder.AddInstruction(
+        HloInstruction::CreateAfterAll({}));
     nested_callee_builder.AddInstruction(
-        HloInstruction::CreateOutfeed(shape, param, ""));
+        HloInstruction::CreateOutfeed(shape, param, token, ""));
   }
   auto nested_called_computation =
       module->AddEmbeddedComputation(nested_callee_builder.Build());
@@ -342,12 +346,12 @@ TEST_F(HloDceTest, RemoveDeadSubcomputation) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
       /*dimensions_to_reduce=*/{0}, reduce_subcomp));
 
   // Add another instruction as the root of the computation.
   builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
 
   module->AddEntryComputation(builder.Build());
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
@@ -383,7 +387,7 @@ TEST_F(HloDceTest, KeepUsedSubcomputation) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {100}), "param0")),
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
       /*dimensions_to_reduce=*/{0}, reduce_subcomp));
 
   // Add another instruction as the root of the computation that also uses
@@ -393,7 +397,7 @@ TEST_F(HloDceTest, KeepUsedSubcomputation) {
       builder.AddInstruction(HloInstruction::CreateParameter(
           /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {100}), "param1")),
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
       /*dimensions_to_reduce=*/{0}, reduce_subcomp));
 
   module->AddEntryComputation(builder.Build());

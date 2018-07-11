@@ -71,6 +71,19 @@ py_test(
 )
 
 tf_xla_py_test(
+    name = "adadelta_test",
+    size = "medium",
+    srcs = ["adadelta_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "adagrad_test",
     size = "small",
     srcs = ["adagrad_test.py"],
@@ -94,6 +107,34 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "addsign_test",
+    size = "small",
+    srcs = ["addsign_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "powersign_test",
+    size = "small",
+    srcs = ["powersign_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
         "//tensorflow/python:training",
     ],
 )
@@ -372,6 +413,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "fifo_queue_test",
+    size = "medium",
+    srcs = ["fifo_queue_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
@@ -557,6 +612,32 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "proximal_adagrad_test",
+    size = "medium",
+    srcs = ["proximal_adagrad_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "proximal_gradient_descent_test",
+    size = "medium",
+    srcs = ["proximal_gradient_descent_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
@@ -685,6 +766,19 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "sparse_to_dense_op_test",
+    size = "small",
+    srcs = ["sparse_to_dense_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_ops",
     ],
 )
 
@@ -858,8 +952,10 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "sort_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["sort_ops_test.py"],
+    # Times out in fastbuild mode.
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",

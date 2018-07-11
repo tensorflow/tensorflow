@@ -778,6 +778,18 @@ Outputs {
 }
 ```
 
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

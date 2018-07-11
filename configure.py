@@ -835,6 +835,8 @@ def set_tf_cuda_version(environ_cp):
                      '[Default is %s]: ') % (tf_cuda_version, default_cuda_path)
     cuda_toolkit_path = get_from_env_or_user_or_default(
         environ_cp, 'CUDA_TOOLKIT_PATH', ask_cuda_path, default_cuda_path)
+    if is_windows() or is_cygwin():
+      cuda_toolkit_path = cygpath(cuda_toolkit_path)
 
     if is_windows():
       cuda_rt_lib_path = 'lib/x64/cudart.lib'
@@ -1134,7 +1136,9 @@ def set_tf_nccl_install_path(environ_cp):
 
     nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
     nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
-    if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
+    nccl_license_path = os.path.join(nccl_install_path, 'NCCL-SLA.txt')
+    if os.path.exists(nccl_lib_path) and os.path.exists(
+        nccl_hdr_path) and os.path.exists(nccl_license_path):
       # Set NCCL_INSTALL_PATH
       environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
       write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
@@ -1447,7 +1451,7 @@ def main():
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_S3'] = '0'
+    environ_cp['TF_NEED_AWS'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -1471,8 +1475,8 @@ def main():
                 'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
                 'with_hdfs_support', True, 'hdfs')
-  set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
-                'with_s3_support', True, 's3')
+  set_build_var(environ_cp, 'TF_NEED_AWS', 'Amazon AWS Platform',
+                'with_aws_support', True, 'aws')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',

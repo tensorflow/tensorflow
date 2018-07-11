@@ -35,7 +35,7 @@ from tensorflow import keras
 * The `tf.keras` version in the latest TensorFlow release might not be the same
   as the latest `keras` version from PyPI. Check `tf.keras.__version__`.
 * When [saving a model's weights](#weights_only), `tf.keras` defaults to the
-  [checkpoint format](../get_started/checkpoints.md). Pass `save_format='h5'` to
+  [checkpoint format](./checkpoints.md). Pass `save_format='h5'` to
   use HDF5.
 
 ## Build a simple model
@@ -221,7 +221,7 @@ To *evaluate* the inference-mode loss and metrics for the data provided:
 ```python
 model.evaluate(x, y, batch_size=32)
 
-model.evaluate(dataset, steps=30
+model.evaluate(dataset, steps=30)
 ```
 
 And to *predict* the output of the last layer in inference for the data provided,
@@ -442,7 +442,7 @@ model.load_weights('my_model')
 ```
 
 By default, this saves the model's weights in the
-[TensorFlow checkpoint](../get_started/checkpoints.md) file format. Weights can
+[TensorFlow checkpoint](./checkpoints.md) file format. Weights can
 also be saved to the Keras HDF5 format (the default for the multi-backend
 implementation of Keras):
 
@@ -581,15 +581,6 @@ model.compile(loss='binary_crossentropy', optimizer=optimizer)
 model.summary()
 ```
 
-Convert the Keras model to a `tf.estimator.Estimator` instance:
-
-```python
-keras_estimator = keras.estimator.model_to_estimator(
-  keras_model=model,
-  config=config,
-  model_dir='/tmp/model_dir')
-```
-
 Define an *input pipeline*. The `input_fn` returns a `tf.data.Dataset` object
 used to distribute the data across multiple devices—with each device processing
 a slice of the input batch.
@@ -613,6 +604,15 @@ argument. The default uses all available GPUs, like the following:
 ```python
 strategy = tf.contrib.distribute.MirroredStrategy()
 config = tf.estimator.RunConfig(train_distribute=strategy)
+```
+
+Convert the Keras model to a `tf.estimator.Estimator` instance:
+
+```python
+keras_estimator = keras.estimator.model_to_estimator(
+  keras_model=model,
+  config=config,
+  model_dir='/tmp/model_dir')
 ```
 
 Finally, train the `Estimator` instance by providing the `input_fn` and `steps`

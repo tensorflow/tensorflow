@@ -233,6 +233,7 @@ def generated_test_models():
         "pad",
         "padv2",
         # "prelu",
+        "pow",
         "relu",
         "relu1",
         "relu6",
@@ -256,7 +257,7 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        "transpose_conv",
+        #"transpose_conv",   # disabled due to b/111213074
         "where",
     ]
 

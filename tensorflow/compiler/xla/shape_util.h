@@ -280,6 +280,9 @@ class ShapeUtil {
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
+  // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
+  static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
+
   // Returns the rank (number of dimensions) of the given shape.
   // Precondition: !IsTuple(shape)
   static int64 Rank(const Shape& shape);
@@ -527,7 +530,13 @@ class ShapeUtil {
   static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i]
+  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  //
+  // Postcondition: For any valid permutation,
+  //
+  //   !HasLayout(shape) ||
+  //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
+  //                      InversePermutation(permutation)).
   static Shape PermuteDimensions(tensorflow::gtl::ArraySlice<int64> permutation,
                                  const Shape& shape);
 
@@ -699,6 +708,10 @@ class ShapeUtil {
   static size_t Hash(const Shape& shape);
 
  private:
+  // Validates the shape size is sane. This makes sure it's safe to do
+  // calculations in int64 without overflowing.
+  static Status ValidateShapeSize(const Shape& shape);
+
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);

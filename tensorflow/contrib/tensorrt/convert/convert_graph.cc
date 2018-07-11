@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -142,7 +142,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     auto n = infer_graph->mutable_node(i);
     if (n->op() == "TRTEngineOp") {
       VLOG(1) << "Processing " << n->name();
-      string container_name = n->attr().at("segment_funcdef_name").s();
+      const string& container_name = n->attr().at("segment_funcdef_name").s();
       TRTCalibrationResource* cres = nullptr;
       auto status = calib_rm->Lookup(container_name, "Calibrator", &cres);
       if (!status.ok()) {
@@ -152,7 +152,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Need to run graph with calibration data first!");
       }
       if (cres->calibrator_) {
-        cres->calibrator_->setDone();
+        cres->calibrator_->waitAndSetDone();
         cres->thr_->join();
         const auto& calibration_table =
             cres->calibrator_->getCalibrationTableAsString();
@@ -168,6 +168,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Can't get TRTCalibrator from resource manager!");
       }
       cres->Unref();
+      calib_rm->Cleanup(container_name);
     }
   }
   return tensorflow::Status::OK();
@@ -651,7 +652,7 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
   // to allocators.
   // TODO(sami): when grappler devices become available else path will not be
   // necessary
-  auto pm = tensorflow::ProcessState::singleton();
+  auto pm = tensorflow::GPUProcessState::singleton();
   if (params.cluster) {  // get allocator
     tensorflow::Device* device = nullptr;
     if (params.cluster->GetDeviceSet()) {
@@ -822,8 +823,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     } else {
       // Graph is not modified.
       LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
-                   << converted_segments.at(i).first.size() << " nodes failed: "
-                   << status << ". Skipping...";
+                   << converted_segments.at(i).first.size()
+                   << " nodes failed: " << status << ". Skipping...";
     }
   }
   cudaSetDevice(old_cuda_device);

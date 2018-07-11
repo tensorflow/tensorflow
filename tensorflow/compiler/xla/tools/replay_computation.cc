@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -174,6 +174,11 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
       client->Compile(computation, argument_layouts, ExecutableBuildOptions())
           .ValueOrDie();
 
+  // Do not attmept to run the executable, if num_runs is less than 1.
+  if (opts.num_runs < 1) {
+    return Cancelled("Cancelled after compilation since --num_runs < 1.");
+  }
+
   // Run the computation num_runs times, and return the result from the last
   // execution.
   StreamExecutorMemoryAllocator allocator(
@@ -191,9 +196,6 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << static_cast<double>(profile.compute_time_ns()) / 1e9 << "s";
   }
 
-  // Check that --num_runs > 0, otherwise *result below will fail with an
-  // unhelpful error (because the loop didn't run any iterations).
-  CHECK_GT(opts.num_runs, 0) << "--num_runs must be > 0";
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> result_literal,
                       client->ShapedBufferToLiteral(*result));
   return std::move(*result_literal);

@@ -23,9 +23,7 @@ namespace grappler {
 namespace graph_utils {
 namespace {
 
-class GraphUtilsTest : public ::testing::Test {};
-
-TEST_F(GraphUtilsTest, AddScalarConstNodeBool) {
+TEST(GraphUtilsTest, AddScalarConstNodeBool) {
   GraphDef graph;
   NodeDef* bool_node;
   TF_EXPECT_OK(AddScalarConstNode<bool>(true, &graph, &bool_node));
@@ -33,7 +31,7 @@ TEST_F(GraphUtilsTest, AddScalarConstNodeBool) {
   EXPECT_EQ(bool_node->attr().at("value").tensor().bool_val(0), true);
 }
 
-TEST_F(GraphUtilsTest, AddScalarConstNodeDouble) {
+TEST(GraphUtilsTest, AddScalarConstNodeDouble) {
   GraphDef graph;
   NodeDef* double_node;
   TF_EXPECT_OK(AddScalarConstNode<double>(3.14, &graph, &double_node));
@@ -41,7 +39,7 @@ TEST_F(GraphUtilsTest, AddScalarConstNodeDouble) {
   EXPECT_FLOAT_EQ(double_node->attr().at("value").tensor().double_val(0), 3.14);
 }
 
-TEST_F(GraphUtilsTest, AddScalarConstNodeFloat) {
+TEST(GraphUtilsTest, AddScalarConstNodeFloat) {
   GraphDef graph;
   NodeDef* float_node;
   TF_EXPECT_OK(AddScalarConstNode<float>(3.14, &graph, &float_node));
@@ -49,7 +47,7 @@ TEST_F(GraphUtilsTest, AddScalarConstNodeFloat) {
   EXPECT_FLOAT_EQ(float_node->attr().at("value").tensor().float_val(0), 3.14);
 }
 
-TEST_F(GraphUtilsTest, AddScalarConstNodeInt) {
+TEST(GraphUtilsTest, AddScalarConstNodeInt) {
   GraphDef graph;
   NodeDef* int_node;
   TF_EXPECT_OK(AddScalarConstNode<int>(42, &graph, &int_node));
@@ -57,7 +55,7 @@ TEST_F(GraphUtilsTest, AddScalarConstNodeInt) {
   EXPECT_EQ(int_node->attr().at("value").tensor().int_val(0), 42);
 }
 
-TEST_F(GraphUtilsTest, AddScalarConstNodeInt64) {
+TEST(GraphUtilsTest, AddScalarConstNodeInt64) {
   GraphDef graph;
   NodeDef* int64_node;
   TF_EXPECT_OK(AddScalarConstNode<int64>(42, &graph, &int64_node));
@@ -65,7 +63,7 @@ TEST_F(GraphUtilsTest, AddScalarConstNodeInt64) {
   EXPECT_EQ(int64_node->attr().at("value").tensor().int64_val(0), 42);
 }
 
-TEST_F(GraphUtilsTest, AddScalarConstNodeString) {
+TEST(GraphUtilsTest, AddScalarConstNodeString) {
   GraphDef graph;
   NodeDef* string_node;
   TF_EXPECT_OK(AddScalarConstNode<StringPiece>("hello", &graph, &string_node));
@@ -73,7 +71,7 @@ TEST_F(GraphUtilsTest, AddScalarConstNodeString) {
   EXPECT_EQ(string_node->attr().at("value").tensor().string_val(0), "hello");
 }
 
-TEST_F(GraphUtilsTest, Compare) {
+TEST(GraphUtilsTest, Compare) {
   GraphDef graphA;
   GraphDef graphB;
   EXPECT_TRUE(Compare(graphA, graphB));
@@ -88,7 +86,7 @@ TEST_F(GraphUtilsTest, Compare) {
   EXPECT_TRUE(Compare(graphA, graphB));
 }
 
-TEST_F(GraphUtilsTest, ContainsNodeWithName) {
+TEST(GraphUtilsTest, ContainsNodeWithName) {
   GraphDef graph;
   EXPECT_TRUE(!ContainsNodeWithName("A", graph));
 
@@ -100,7 +98,7 @@ TEST_F(GraphUtilsTest, ContainsNodeWithName) {
   EXPECT_TRUE(!ContainsNodeWithName("A", graph));
 }
 
-TEST_F(GraphUtilsTest, ContainsNodeWithOp) {
+TEST(GraphUtilsTest, ContainsNodeWithOp) {
   GraphDef graph;
   EXPECT_TRUE(!ContainsNodeWithOp("OpA", graph));
 
@@ -112,7 +110,7 @@ TEST_F(GraphUtilsTest, ContainsNodeWithOp) {
   EXPECT_TRUE(!ContainsNodeWithOp("OpA", graph));
 }
 
-TEST_F(GraphUtilsTest, FindNodeWithName) {
+TEST(GraphUtilsTest, FindNodeWithName) {
   GraphDef graph;
   EXPECT_EQ(FindNodeWithName("A", graph), -1);
 
@@ -124,7 +122,7 @@ TEST_F(GraphUtilsTest, FindNodeWithName) {
   EXPECT_EQ(FindNodeWithName("A", graph), -1);
 }
 
-TEST_F(GraphUtilsTest, FindNodeWithOp) {
+TEST(GraphUtilsTest, FindNodeWithOp) {
   GraphDef graph;
   EXPECT_EQ(FindNodeWithOp("OpA", graph), -1);
 
@@ -136,7 +134,7 @@ TEST_F(GraphUtilsTest, FindNodeWithOp) {
   EXPECT_EQ(FindNodeWithOp("OpA", graph), -1);
 }
 
-TEST_F(GraphUtilsTest, SetUniqueName) {
+TEST(GraphUtilsTest, SetUniqueName) {
   GraphDef graph;
 
   NodeDef* node1;
@@ -149,6 +147,26 @@ TEST_F(GraphUtilsTest, SetUniqueName) {
   NodeDef* node3;
   TF_EXPECT_OK(AddNode("", "A", {}, {}, &graph, &node3));
   EXPECT_NE(node2->name(), node3->name());
+}
+
+TEST(GraphUtilsTest, ReplaceInput) {
+  GraphDef graph;
+
+  NodeDef* node1;
+  TF_EXPECT_OK(AddNode("", "A", {}, {}, &graph, &node1));
+
+  NodeDef* node2;
+  TF_EXPECT_OK(AddNode("", "A", {node1->name()}, {}, &graph, &node2));
+
+  NodeDef* node3;
+  TF_EXPECT_OK(AddNode("", "A", {node2->name()}, {}, &graph, &node3));
+
+  EXPECT_EQ(node3->input(0), node2->name());
+
+  GraphView view(&graph);
+  ReplaceInput(*node2, *node1, &view);
+
+  EXPECT_EQ(node3->input(0), node1->name());
 }
 
 }  // namespace

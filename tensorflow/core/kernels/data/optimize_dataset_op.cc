@@ -136,16 +136,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // Add a fake sink node to allow rewriting the actual sink node.
       NodeDef* node = graph_def->mutable_node()->Add();
       node->set_name("FakeSink");
-      node->set_op("IdentityDataset");
+      node->set_op("SinkDataset");
       node->add_input(*output_node);
-      {
-        grappler::GraphView graph(graph_def);
-        NodeDef* sink = graph.GetNode(*output_node);
-        (*node->mutable_attr())["output_shapes"] =
-            sink->attr().at("output_shapes");
-        (*node->mutable_attr())["output_types"] =
-            sink->attr().at("output_types");
-      }
 
       // Create metagraph.
       MetaGraphDef meta_graph_def;

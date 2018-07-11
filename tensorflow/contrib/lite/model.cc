@@ -63,6 +63,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_BOOL:
       *type = kTfLiteBool;
       break;
+    case TensorType_COMPLEX64:
+      *type = kTfLiteComplex64;
+      break;
     default:
       error_reporter->Report("Unimplemented data type %s (%d) in tensor\n",
                              EnumNameTensorType(tensor_type), tensor_type);
@@ -182,6 +185,8 @@ InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
     : model_(model),
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(error_reporter)) {}
+
+InterpreterBuilder::~InterpreterBuilder() {}
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
@@ -444,6 +449,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_FullyConnectedOptions()) {
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
+        switch (fully_connected_params->weights_format()) {
+          case FullyConnectedOptionsWeightsFormat_DEFAULT:
+            params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
+            break;
+          case FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8:
+            params->weights_format =
+                kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
+            break;
+          default:
+            error_reporter->Report("Unhandled fully-connected weights format.");
+            return kTfLiteError;
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -723,6 +740,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TILE:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
+    case BuiltinOperator_POW:
       break;
   }
   return kTfLiteOk;
@@ -745,7 +763,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     }
 
     const TfLiteRegistration* registration =
-        flatbuffer_op_index_to_registration_[op->opcode_index()];
+        flatbuffer_op_index_to_registration_[index];
     if (registration == nullptr) {
       error_reporter_->Report("Skipping op for opcode_index %d\n", index);
       status = kTfLiteError;
@@ -975,7 +993,7 @@ TfLiteStatus InterpreterBuilder::operator()(
       variables.push_back(i);
     }
   }
-  (**interpreter).SetVariables(variables);
+  (**interpreter).SetVariables(std::move(variables));
 
   return kTfLiteOk;
 }

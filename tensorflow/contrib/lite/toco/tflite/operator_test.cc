@@ -126,6 +126,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogOperator>("LOG", OperatorType::kLog);
   CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
   CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
+  CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

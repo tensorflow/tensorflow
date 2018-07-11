@@ -40,7 +40,7 @@ tf_cc_test(
     name = "cpu_fusion_test",
     srcs = ["cpu_fusion_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -82,7 +82,7 @@ tf_cc_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -128,7 +128,7 @@ tf_cc_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test_helpers",

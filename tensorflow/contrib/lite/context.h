@@ -39,6 +39,26 @@ extern "C" {
 
 typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 
+// The list of external context types known to TF Lite. This list exists solely
+// to avoid conflicts and to ensure ops can share the external contexts they
+// need. Access to the external contexts is controled by one of the
+// corresponding support files.
+typedef enum {
+  kTfLiteEigenContext = 0,     // include eigen_support.h to use.
+  kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
+  kTfLiteMaxExternalContexts = 2
+} TfLiteExternalContextType;
+
+// An external context is a collection of information unrelated to the TF Lite
+// framework, but useful to a subset of the ops. TF Lite knows very little
+// about about the actual contexts, but it keeps a list of them, and is able to
+// refresh them if configurations like the number of recommended threads
+// change.
+typedef struct {
+  TfLiteExternalContextType type;
+  TfLiteStatus (*Refresh)(struct TfLiteContext* context);
+} TfLiteExternalContext;
+
 // Forward declare so GetNode can use this is in Context.
 typedef struct _TfLiteRegistration TfLiteRegistration;
 typedef struct _TfLiteDelegate TfLiteDelegate;
@@ -139,6 +159,7 @@ typedef enum {
   kTfLiteString = 5,
   kTfLiteBool = 6,
   kTfLiteInt16 = 7,
+  kTfLiteComplex64 = 8,
 } TfLiteType;
 
 // Parameters for asymmetric quantization. Quantized values can be converted
@@ -159,6 +180,7 @@ typedef union {
   uint8_t* uint8;
   bool* b;
   int16_t* i16;
+  _Complex float* c64;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -243,7 +265,8 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
                        const void* allocation, bool is_variable,
                        TfLiteTensor* tensor);
 
-// Resize the allocated data of a (dynamic) tensor.
+// Resize the allocated data of a (dynamic) tensor. Tensors with allocation
+// types other than kTfLiteDynamic will be ignored.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 
 // A structure representing an instance of a node.
@@ -336,10 +359,15 @@ typedef struct TfLiteContext {
   // eigen.
   int recommended_num_threads;
 
-  // TODO(ahentz): we should create a more general mechanism for this sort of
-  // library-global objects.
-  void* gemm_context;
-  void* eigen_context;
+  // Access external contexts by type.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteExternalContext* (*GetExternalContext)(struct TfLiteContext*,
+                                               TfLiteExternalContextType);
+  // Set the value of a external context. Does not take ownership of the
+  // pointer.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*SetExternalContext)(struct TfLiteContext*, TfLiteExternalContextType,
+                             TfLiteExternalContext*);
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {

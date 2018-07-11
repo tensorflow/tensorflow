@@ -867,6 +867,19 @@ class ResourceVariable(variables.Variable):
 
   __array_priority__ = 100
 
+  def is_initialized(self, name=None):
+    """Checks whether a resource variable has been initialized.
+
+    Outputs boolean scalar indicating whether the tensor has been initialized.
+
+    Args:
+      name: A name for the operation (optional).
+
+    Returns:
+      A `Tensor` of type `bool`.
+    """
+    return gen_resource_variable_ops.var_is_initialized_op(self.handle, name)
+
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     """Subtracts a value from this variable.
 
@@ -999,32 +1012,28 @@ class ResourceVariable(variables.Variable):
 
   def __imul__(self, unused_other):
     raise RuntimeError("Variable *= value not supported. Use "
-                       "variable.assign_mul(value) to modify the variable "
-                       "value and variable = variable * value to get a new "
-                       "Tensor object.")
+                       "`var.assign(var * value)` to modify the variable or "
+                       "`var = var * value` to get a new Tensor object.")
 
   def __idiv__(self, unused_other):
     raise RuntimeError("Variable /= value not supported. Use "
-                       "variable.assign_div(value) to modify the variable "
-                       "value and variable = variable / value to get a new "
-                       "Tensor object.")
+                       "`var.assign(var / value)` to modify the variable or "
+                       "`var = var / value` to get a new Tensor object.")
 
   def __itruediv__(self, unused_other):
     raise RuntimeError("Variable /= value not supported. Use "
-                       "variable.assign_div(value) to modify the variable "
-                       "value and variable = variable / value to get a new "
-                       "Tensor object.")
+                       "`var.assign(var / value)` to modify the variable or "
+                       "`var = var / value` to get a new Tensor object.")
 
   def __irealdiv__(self, unused_other):
     raise RuntimeError("Variable /= value not supported. Use "
-                       "variable.assign_div(value) to modify the variable "
-                       "value and variable = variable / value to get a new "
-                       "Tensor object.")
+                       "`var.assign(var / value)` to modify the variable or "
+                       "`var = var / value` to get a new Tensor object.")
 
   def __ipow__(self, unused_other):
     raise RuntimeError("Variable **= value not supported. Use "
-                       "value and variable = variable ** value to get a new "
-                       "Tensor object.")
+                       "`var.assign(var ** value)` to modify the variable or "
+                       "`var = var ** value` to get a new Tensor object.")
 
 
 pywrap_tensorflow.TFE_Py_RegisterResourceVariableType(ResourceVariable)

@@ -86,7 +86,18 @@ RUN mkdir /bazel && \
 
 # Download and build TensorFlow.
 WORKDIR /tensorflow
-RUN git clone --branch=${TF_BUILD_VERSION} --depth=1 https://github.com/tensorflow/tensorflow.git .
+
+# Download and build TensorFlow.
+# Enable checking out both tags and branches
+RUN export TAG_PREFIX="v" && \
+    echo ${TF_BUILD_VERSION} | grep -q ^${TAG_PREFIX}; \
+    if [ $? -eq 0 ]; then \
+        git clone --depth=1 https://github.com/tensorflow/tensorflow.git . && \
+        git fetch --tags && \
+        git checkout ${TF_BUILD_VERSION}; \
+   else \
+        git clone --depth=1 --branch=${TF_BUILD_VERSION} https://github.com/tensorflow/tensorflow.git . ; \
+    fi
 
 RUN yes "" | ${PYTHON} configure.py
 
@@ -103,7 +114,7 @@ COPY .bazelrc /root/.bazelrc
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel --bazelrc=/root/.bazelrc build -c opt \
-        tensorflow/tools/pip_package:build_pip_package && \
+    tensorflow/tools/pip_package:build_pip_package && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package "${WHL_DIR}" && \
     ${PIP} --no-cache-dir install --upgrade "${WHL_DIR}"/tensorflow-*.whl && \
     rm -rf /root/.cache
