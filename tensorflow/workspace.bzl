@@ -405,11 +405,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_github_gflags_gflags",
       urls = [
-          "https://mirror.bazel.build/github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
-          "https://github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
+          "https://mirror.bazel.build/github.com/gflags/gflags/archive/v2.2.1.tar.gz",
+          "https://github.com/gflags/gflags/archive/v2.2.1.tar.gz",
       ],
-      sha256 = "4d222fab8f1ede4709cdff417d15a1336f862d7334a81abf76d09c15ecf9acd1",
-      strip_prefix = "gflags-f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+      sha256 = "ae27cdbcd6a2f935baa78e4f21f675649271634c092b1be01469440495609d0e",
+      strip_prefix = "gflags-2.2.1",
   )
 
   tf_http_archive(
