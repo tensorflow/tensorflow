@@ -137,14 +137,12 @@ def if_not_mobile(a):
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": a,
   })
 
 def if_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): a,
-      clean_dep("//tensorflow:windows_msvc"): a,
       "//conditions:default": [],
   })
 
@@ -226,7 +224,6 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
             clean_dep("//tensorflow:android"): android_copts,
             clean_dep("//tensorflow:darwin"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
-            clean_dep("//tensorflow:windows_msvc"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): ["-std=c++11"],
             "//conditions:default": ["-pthread"]
       }))
@@ -286,7 +283,6 @@ def _rpath_linkopts(name):
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
       ],
@@ -656,7 +652,6 @@ def tf_cc_test(name,
             "-pie",
         ],
         clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:windows_msvc"): [],
         clean_dep("//tensorflow:darwin"): [
             "-lm",
         ],
@@ -838,7 +833,6 @@ def tf_cc_test_mkl(srcs,
             "-pie",
           ],
         clean_dep("//tensorflow:windows"): [],
-        clean_dep("//tensorflow:windows_msvc"): [],
         "//conditions:default": [
             "-lpthread",
             "-lm"
@@ -1351,7 +1345,6 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
               "-lm",
           ],
           clean_dep("//tensorflow:windows"): [],
-          clean_dep("//tensorflow:windows_msvc"): [],
           clean_dep("//tensorflow:darwin"): [],
       }),)
 
@@ -1461,7 +1454,6 @@ def tf_py_wrap_cc(name,
           "$(location %s.lds)"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
           "$(location %s.lds)"%vscriptname,
@@ -1472,7 +1464,6 @@ def tf_py_wrap_cc(name,
           "%s.lds"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
-      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "%s.lds"%vscriptname,
       ]

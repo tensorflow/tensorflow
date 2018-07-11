@@ -20,7 +20,6 @@ cc_library(
     hdrs = ["snappy.h"],
     copts = ["-DHAVE_CONFIG_H"] + select({
         "@org_tensorflow//tensorflow:windows": [],
-        "@org_tensorflow//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-fno-exceptions",
             "-Wno-sign-compare",
