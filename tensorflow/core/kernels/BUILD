@@ -2086,6 +2086,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:jpeg_internal",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
+    "//tensorflow/core:png_internal",
     "//tensorflow/core:protos_all_cc",
 ]
 
@@ -2660,7 +2661,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "summary_image_op",
     prefix = "summary_image_op",
-    deps = LOGGING_DEPS,
+    deps = LOGGING_DEPS + ["//tensorflow/core:png_internal"],
 )
 
 tf_kernel_library(
