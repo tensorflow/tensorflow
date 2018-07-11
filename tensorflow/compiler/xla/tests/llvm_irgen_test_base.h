@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 // Tests that verify IR emitted by the CPU/GPU backend is as expected.
-class LLVMIRGenTestBase : public CodegenTestBase {
+class LlvmIrGenTestBase : public CodegenTestBase {
  protected:
   // Compiles the given HLO module to LLVM IR and verifies the IR matches the
   // given pattern. `pattern` is in the FileCheck pattern matching syntax

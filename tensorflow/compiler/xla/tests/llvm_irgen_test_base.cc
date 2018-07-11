@@ -26,28 +26,28 @@ limitations under the License.
 
 namespace xla {
 
-void LLVMIRGenTestBase::SetIrHook(bool match_optimized_ir) {
+void LlvmIrGenTestBase::SetIrHook(bool match_optimized_ir) {
   auto llvm_compiler = GetLLVMCompiler();
   using std::placeholders::_1;
 
   // Add the IR inspection hook to the LLVM compiler.
   if (match_optimized_ir) {
     llvm_compiler->SetPostOptimizationHook(
-        std::bind(&LLVMIRGenTestBase::IrHook, this, _1));
+        std::bind(&LlvmIrGenTestBase::IrHook, this, _1));
   } else {
     llvm_compiler->SetPreOptimizationHook(
-        std::bind(&LLVMIRGenTestBase::IrHook, this, _1));
+        std::bind(&LlvmIrGenTestBase::IrHook, this, _1));
   }
 }
 
-void LLVMIRGenTestBase::ResetIrHook() {
+void LlvmIrGenTestBase::ResetIrHook() {
   auto llvm_compiler = GetLLVMCompiler();
 
   llvm_compiler->RemovePreOptimizationHook();
   llvm_compiler->RemovePostOptimizationHook();
 }
 
-void LLVMIRGenTestBase::CompileAndVerifyIr(
+void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const string& pattern,
     bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
@@ -59,7 +59,7 @@ void LLVMIRGenTestBase::CompileAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-void LLVMIRGenTestBase::CompileAndVerifyIr(const string& hlo_text,
+void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            const string& expected_llvm_ir,
                                            bool match_optimized_ir) {
   HloModuleConfig config;
@@ -69,7 +69,7 @@ void LLVMIRGenTestBase::CompileAndVerifyIr(const string& hlo_text,
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
 }
 
-void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
+void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
@@ -82,11 +82,11 @@ void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() {
+LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
-Status LLVMIRGenTestBase::IrHook(const llvm::Module& module) {
+Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpModuleToString(module);
   return Status::OK();
 }
