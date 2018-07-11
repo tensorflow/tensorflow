@@ -102,7 +102,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, const T* dst_data,
   context_.dst_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(dst_data)));
   if (context_.alg_kind == pooling_max) {  // max pooling must have ws
-    assert(ws != nullptr);
+    assert(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
   }
   context_.fwd_stream->submit(context_.fwd_primitives);
@@ -111,7 +111,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, const T* dst_data,
   context_.src_mem->set_data_handle(DummyData);
   context_.dst_mem->set_data_handle(DummyData);
   if (context_.alg_kind == pooling_max) {  // max pooling must have ws
-    assert(ws != nullptr);
+    assert(ws_data != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
 }
