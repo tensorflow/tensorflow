@@ -124,15 +124,15 @@ TestGraph = namedtuple("TestGraph",
 
 TEST_GRAPHS = {
     "SingleEngineGraph":
-    TestGraph(
-        gdef=GetSingleEngineGraphDef(),
-        num_expected_engines=1,
-        expected_output_dims=(100, 6, 6, 6)),
+        TestGraph(
+            gdef=GetSingleEngineGraphDef(),
+            num_expected_engines=1,
+            expected_output_dims=(100, 6, 6, 6)),
     "MultiEngineGraph":
-    TestGraph(
-        gdef=GetMultiEngineGraphDef(),
-        num_expected_engines=2,
-        expected_output_dims=(100, 12, 12, 6)),
+        TestGraph(
+            gdef=GetMultiEngineGraphDef(),
+            num_expected_engines=2,
+            expected_output_dims=(100, 12, 12, 6)),
     # TODO(aaroey): add a large complex graph to test.
 }
 
