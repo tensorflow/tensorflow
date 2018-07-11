@@ -146,7 +146,7 @@ Enter the following short program inside the python interactive shell:
 >>> import tensorflow as tf
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> sess = tf.Session()
->>> print(sess.run(hello))
+>>> print(sess.run(hello).decode())
 ```
 
 If the system outputs the following, then you are ready to begin writing
