@@ -18,17 +18,22 @@ Step-by-step Merge Process
 --------------------------
 
 ### Get TensorFlow ROCm port
-- git clone git@github.com:ROCmSoftwarePlatform/tensorflow-upstream.git
-- git checkout develop-upstream
-- git pull
-
+```
+git clone git@github.com:ROCmSoftwarePlatform/tensorflow-upstream.git
+git checkout develop-upstream
+git pull
+```
 ### Add remotes
-- git remote add upstream git@github.com:tensorflow/tensorflow.git
-- git fetch upstream
+```
+git remote add upstream git@github.com:tensorflow/tensorflow.git
+git fetch upstream
+```
 
 ### Create a working branch to track merge process
-- git checkout -b develop-upstream-sync-YYMMDD
-- git merge upstream/master --no-edit
+```
+git checkout -b develop-upstream-sync-YYMMDD
+git merge upstream/master --no-edit
+```
 - Resolve any merge conflicts encountered here
 
 ### Notice on common merge conflicts
@@ -87,15 +92,23 @@ Step-by-step Merge Process
   again. Repeat the process until we see a green check mark on the PR.
 
 ### Apply tags and merge
-
-- git checkout develop-upstream
-- git tag merge-YYMMDD-prev
-- git push --tags
-
+```
+git checkout develop-upstream
+git tag merge-YYMMDD-prev
+git push --tags
+```
 - Go to the pull request on github. Hit merge.
+```
+git pull
+git tag merge-YYMMDD
+git push --tags
+```
 
-- git pull
-- git tag merge-YYMMDD
-- git push --tags
+### Sync the upstream branch 
+```
+git checkout upstream
+git merge upstream/master
+git push origin upstream
+```
 
 Upon reaching here, the process is now complete.
