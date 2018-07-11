@@ -743,12 +743,15 @@ class ProfileResult {
             elapsed_time_in_ms_ != std::numeric_limits<float>::max());
   }
   AlgorithmDesc algorithm() const { return algorithm_; }
+  size_t scratch_size() const { return scratch_size_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
  private:
   AlgorithmDesc algorithm_;
+  size_t scratch_size_ = 0;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
@@ -760,10 +763,17 @@ class ProfileResult {
 //    the allocation for the scratch memory fails.
 class AlgorithmConfig {
  public:
-  AlgorithmConfig() {}
-  explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
-  AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
-      : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
+  AlgorithmConfig()
+      : algorithm_(), algorithm_no_scratch_(), algorithm_scratch_size_(0) {}
+  explicit AlgorithmConfig(AlgorithmDesc algorithm)
+      : algorithm_(algorithm),
+        algorithm_no_scratch_(),
+        algorithm_scratch_size_(0) {}
+  AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch,
+                  size_t algorithm_scratch_size = 0)
+      : algorithm_(algorithm),
+        algorithm_no_scratch_(algorithm_no_scratch),
+        algorithm_scratch_size_(0) {}
   AlgorithmDesc algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   AlgorithmDesc algorithm_no_scratch() const { return algorithm_no_scratch_; }
@@ -778,10 +788,13 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   string ToString() const;
+  size_t algorithm_scratch_size() const { return algorithm_scratch_size_; }
+  void set_algorithm_scratch_size(size_t val) { algorithm_scratch_size_ = val; }
 
  private:
   AlgorithmDesc algorithm_;
   AlgorithmDesc algorithm_no_scratch_;
+  size_t algorithm_scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
