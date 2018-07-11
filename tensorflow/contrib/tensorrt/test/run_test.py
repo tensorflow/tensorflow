@@ -18,22 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.contrib import tensorrt as trt
-from tensorflow.core.protobuf import config_pb2 as cpb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as rwpb2
-from tensorflow.python.client import session as csess
-from tensorflow.python.framework import constant_op as cop
-from tensorflow.python.framework import dtypes as dtypes
-from tensorflow.python.framework import importer as importer
-from tensorflow.python.framework import ops as ops
-from tensorflow.python.ops import array_ops as aops
-from tensorflow.python.ops import nn as nn
-from tensorflow.python.ops import nn_ops as nn_ops
-from tensorflow.python.ops import variables
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.client import session
+from tensorflow.python.framework import importer
+from tensorflow.python.framework import ops
 from tensorflow.python.training import training
-from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.utilities import get_all_variables
 
 OUTPUT_NODE = "output"
 INPUT_NODE = "input"
@@ -95,7 +87,7 @@ class RunTest:
   def run_dynamic_convert_network(self, mode, dummy_input, initialization=True):
     inp_dims = dummy_input.shape
     if mode == "FP32" or mode == "FP16":
-      opt_config = rwpb2.RewriterConfig()
+      opt_config = rewriter_config_pb2.RewriterConfig()
       opt_config.optimizers.extend(["constfold", "layout"])
       custom_op = opt_config.custom_optimizers.add()
       custom_op.name = "TensorRTOptimizer"
@@ -104,9 +96,9 @@ class RunTest:
       custom_op.parameter_map["max_batch_size"].i = inp_dims[0]
       custom_op.parameter_map["max_workspace_size_bytes"].i = 1 << 25
       print(custom_op)
-      gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-      graph_options = cpb2.GraphOptions(rewrite_options=opt_config)
-      sessconfig = cpb2.ConfigProto(
+      gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+      graph_options = config_pb2.GraphOptions(rewrite_options=opt_config)
+      sessconfig = config_pb2.ConfigProto(
           gpu_options=gpu_options, graph_options=graph_options)
       print(sessconfig)
       g = ops.Graph()
@@ -116,7 +108,7 @@ class RunTest:
             graph_def=self.native_network, return_elements=["input", "output"])
         inp = inp.outputs[0]
         out = out.outputs[0]
-        with csess.Session(config=sessconfig, graph=g) as sess:
+        with session.Session(config=sessconfig, graph=g) as sess:
           if (initialization):
             names_var_list = get_all_variables(sess)
             saver = training.Saver(names_var_list)
@@ -149,8 +141,8 @@ class RunTest:
 
   def execute_graph(self, gdef, dummy_input, initialization=True):
     """Run given graphdef once."""
-    gpu_options = cpb2.GPUOptions()
-    sessconfig = cpb2.ConfigProto(gpu_options=gpu_options)
+    gpu_options = config_pb2.GPUOptions()
+    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     ops.reset_default_graph()
     g = ops.Graph()
     nb_nodes = 0
@@ -160,7 +152,7 @@ class RunTest:
       nb_nodes = len(g.get_operations())
       inp = inp.outputs[0]
       out = out.outputs[0]
-    with csess.Session(config=sessconfig, graph=g) as sess:
+    with session.Session(config=sessconfig, graph=g) as sess:
       if (initialization):
         names_var_list = get_all_variables(sess)
         saver = training.Saver(names_var_list)
@@ -172,7 +164,7 @@ class RunTest:
   # for calibration. For this test script it is random data.
   def execute_calibration(self, gdef, dummy_input, initialization=True):
     """Run given calibration graph multiple times."""
-    gpu_options = cpb2.GPUOptions()
+    gpu_options = config_pb2.GPUOptions()
     ops.reset_default_graph()
     g = ops.Graph()
     with g.as_default():
@@ -180,8 +172,9 @@ class RunTest:
           graph_def=gdef, return_elements=[INPUT_NODE, OUTPUT_NODE], name="")
       inp = inp.outputs[0]
       out = out.outputs[0]
-    with csess.Session(
-        config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
+    with session.Session(
+        config=config_pb2.ConfigProto(gpu_options=gpu_options),
+        graph=g) as sess:
       if (initialization):
         names_var_list = get_all_variables(sess)
         saver = training.Saver(names_var_list)

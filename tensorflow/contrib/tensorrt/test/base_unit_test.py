@@ -18,20 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import numpy as np
-
-from tensorflow.contrib import tensorrt as trt
-from tensorflow.core.protobuf import config_pb2 as cpb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as rwpb2
-from tensorflow.python.client import session as csess
-from tensorflow.python.framework import constant_op as cop
-from tensorflow.python.framework import dtypes as dtypes
-from tensorflow.python.framework import importer as importer
-from tensorflow.python.framework import ops as ops
-from tensorflow.python.ops import array_ops as aops
-from tensorflow.python.ops import nn as nn
-from tensorflow.python.ops import nn_ops as nn_ops
 
 
 class BaseUnitTest(object):
