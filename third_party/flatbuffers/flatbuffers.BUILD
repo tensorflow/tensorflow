@@ -18,8 +18,7 @@ config_setting(
 )
 
 FLATBUFFERS_COPTS = select({
-    "@bazel_tools//src:windows": [],
-    "@bazel_tools//src:windows_msvc": [],
+    ":windows": [],
     "//conditions:default": ["-Wno-implicit-fallthrough", "-fexceptions"],
 })
 
