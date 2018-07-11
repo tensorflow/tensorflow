@@ -45,7 +45,7 @@ _GENERATED_FILE_HEADER = """# This file is MACHINE GENERATED! Do not edit.
 from __future__ import print_function
 
 """
-_GENERATED_FILE_FOOTER = "\n\ndel print_function\n"
+_GENERATED_FILE_FOOTER = '\n\ndel print_function\n'
 
 
 class SymbolExposedTwiceError(Exception):
@@ -159,7 +159,7 @@ __all__.remove('print_function')
     return module_text_map
 
 
-def get_api_init_text(package, api_name):
+def get_api_init_text(package, output_package, api_name):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
@@ -218,7 +218,6 @@ def get_api_init_text(package, api_name):
   # For e.g. if we import 'foo.bar.Value'. Then, we also
   # import 'bar' in 'foo'.
   imported_modules = set(module_code_builder.module_imports.keys())
-  import_from = '.'
   for module in imported_modules:
     if not module:
       continue
@@ -229,6 +228,9 @@ def get_api_init_text(package, api_name):
       if submodule_index > 0:
         parent_module += ('.' + module_split[submodule_index-1] if parent_module
                           else module_split[submodule_index-1])
+      import_from = output_package
+      if submodule_index > 0:
+        import_from += '.' + '.'.join(module_split[:submodule_index])
       module_code_builder.add_import(
           -1, parent_module, import_from,
           module_split[submodule_index], module_split[submodule_index])
@@ -294,7 +296,8 @@ def get_module_docstring(module_name, package, api_name):
 
 
 def create_api_files(
-    output_files, package, root_init_template, output_dir, api_name):
+    output_files, package, root_init_template, output_dir, output_package,
+    api_name):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -323,7 +326,7 @@ def create_api_files(
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map = get_api_init_text(package, api_name)
+  module_text_map = get_api_init_text(package, output_package, api_name)
 
   # Add imports to output files.
   missing_output_files = []
@@ -381,6 +384,9 @@ def main():
       '--apiname', required=True, type=str,
       choices=API_ATTRS.keys(),
       help='The API you want to generate.')
+  parser.add_argument(
+      '--output_package', default='tensorflow', type=str,
+      help='Root output package.')
 
   args = parser.parse_args()
 
@@ -395,7 +401,7 @@ def main():
   # Populate `sys.modules` with modules containing tf_export().
   importlib.import_module(args.package)
   create_api_files(outputs, args.package, args.root_init_template,
-                   args.apidir, args.apiname)
+                   args.apidir, args.output_package, args.apiname)
 
 
 if __name__ == '__main__':

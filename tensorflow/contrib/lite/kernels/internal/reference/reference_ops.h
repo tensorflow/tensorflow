@@ -2273,13 +2273,10 @@ inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
 }
 
-inline void AveragePool(const float* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
-                        float output_activation_min,
-                        float output_activation_max, float* output_data,
-                        const RuntimeShape& output_shape) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2288,20 +2285,24 @@ inline void AveragePool(const float* input_data,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           float total = 0.f;
           float filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
@@ -2317,22 +2318,20 @@ inline void AveragePool(const float* input_data,
           }
           const float average = total / filter_count;
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(average, output_activation_min,
-                                           output_activation_max);
+              ActivationFunctionWithMinMax(average, params.float_activation_min,
+                                           params.float_activation_max);
         }
       }
     }
   }
 }
 
-inline void AveragePool(const uint8* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
-                        int32 output_activation_min,
-                        int32 output_activation_max, uint8* output_data,
-                        const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const uint8* input_data,
+                        const RuntimeShape& output_shape, uint8* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2341,20 +2340,24 @@ inline void AveragePool(const uint8* input_data,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           int32 acc = 0;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
@@ -2369,8 +2372,8 @@ inline void AveragePool(const uint8* input_data,
             }
           }
           acc = (acc + filter_count / 2) / filter_count;
-          acc = std::max(acc, output_activation_min);
-          acc = std::min(acc, output_activation_max);
+          acc = std::max(acc, params.quantized_activation_min);
+          acc = std::min(acc, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               static_cast<uint8>(acc);
         }
@@ -2379,11 +2382,9 @@ inline void AveragePool(const uint8* input_data,
   }
 }
 
-inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
-                   int stride_width, int stride_height, int pad_width,
-                   int pad_height, int filter_width, int filter_height,
-                   float output_activation_min, float output_activation_max,
-                   float* output_data, const RuntimeShape& output_shape) {
+inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
+                   const float* input_data, const RuntimeShape& output_shape,
+                   float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2392,20 +2393,24 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           float sum_squares = 0.f;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
@@ -2422,19 +2427,18 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
           }
           const float l2pool_result = std::sqrt(sum_squares / filter_count);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(l2pool_result, output_activation_min,
-                                           output_activation_max);
+              ActivationFunctionWithMinMax(l2pool_result,
+                                           params.float_activation_min,
+                                           params.float_activation_max);
         }
       }
     }
   }
 }
 
-inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int filter_width, int filter_height,
-                    float output_activation_min, float output_activation_max,
-                    float* output_data, const RuntimeShape& output_shape) {
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const float* input_data, const RuntimeShape& output_shape,
+                    float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2443,20 +2447,24 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           float max = std::numeric_limits<float>::lowest();
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -2470,22 +2478,21 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
             }
           }
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(max, output_activation_min,
-                                           output_activation_max);
+              ActivationFunctionWithMinMax(max, params.float_activation_min,
+                                           params.float_activation_max);
         }
       }
     }
   }
 }
 
-inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int filter_width, int filter_height,
-                    int32 output_activation_min, int32 output_activation_max,
-                    uint8* output_data, const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  TFLITE_DCHECK_GE(output_activation_min, 0);
-  TFLITE_DCHECK_LE(output_activation_max, 255);
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const uint8* input_data, const RuntimeShape& output_shape,
+                    uint8* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  TFLITE_DCHECK_GE(params.quantized_activation_min, 0);
+  TFLITE_DCHECK_LE(params.quantized_activation_max, 255);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2494,20 +2501,24 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           uint8 max = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -2520,8 +2531,8 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
                   input_data[Offset(input_shape, batch, in_y, in_x, channel)]);
             }
           }
-          max = std::max<uint8>(max, output_activation_min);
-          max = std::min<uint8>(max, output_activation_max);
+          max = std::max<uint8>(max, params.quantized_activation_min);
+          max = std::min<uint8>(max, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               static_cast<uint8>(max);
         }
@@ -3717,9 +3728,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-template <typename T1, typename T2, typename T3>
-void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
-            T2* output_data, const Dims<4>& output_dims) {
+template <typename T1, typename T2, typename T3, typename Cmp>
+void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+               T2* output_data, const Dims<4>& output_dims, const Cmp& cmp) {
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
 
@@ -3732,17 +3743,26 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
   const int depth = ArraySize(input_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
-    auto max_value = input_data[i * depth];
-    int max_index = 0;
+    auto min_max_value = input_data[i * depth];
+    int min_max_index = 0;
     for (int d = 1; d < depth; ++d) {
       const auto& curr_value = input_data[i * depth + d];
-      if (curr_value > max_value) {
-        max_value = curr_value;
-        max_index = d;
+      if (cmp(curr_value, min_max_value)) {
+        min_max_value = curr_value;
+        min_max_index = d;
       }
     }
-    output_data[i] = max_index;
+    output_data[i] = min_max_index;
   }
+}
+
+// TODO(renjieliu): Remove this one.
+template <typename T1, typename T2, typename T3>
+void ArgMax(const T3* axis, const T1* input_data,
+            const tflite::Dims<4>& input_dims, T2* output_data,
+            const tflite::Dims<4>& output_dims) {
+  ArgMinMax(axis, input_data, input_dims, output_data, output_dims,
+            std::greater<T1>());
 }
 
 template <typename T>

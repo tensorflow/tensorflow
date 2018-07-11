@@ -59,6 +59,9 @@ See @{$python/contrib.rnn} guide.
 @@HighwayWrapper
 @@GLSTMCell
 @@SRUCell
+@@IndRNNCell
+@@IndyGRUCell
+@@IndyLSTMCell
 
 <!--RNNCell wrappers-->
 @@AttentionCellWrapper

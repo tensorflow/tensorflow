@@ -21,8 +21,6 @@ from __future__ import print_function
 from contextlib import contextmanager
 import copy
 
-import numpy as np
-
 from tensorflow.contrib.tpu.python.tpu import device_assignment  as tpu_device_assignment
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
@@ -33,6 +31,12 @@ from tensorflow.python.platform import tf_logging as logging
 _DEFAULT_JOB_NAME = 'tpu_worker'
 _DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
 _LOCAL_MASTERS = ('', 'local')
+_NUM_CORES_TO_COMPUTATION_SHAPE = {
+    1: [1, 1, 1],
+    2: [1, 1, 2],
+    4: [1, 2, 2],
+    8: [2, 2, 2]
+}
 
 
 class TPUContext(object):
@@ -121,8 +125,8 @@ class TPUContext(object):
     # as far as model is replicated to all cores in the system.
 
     # If the precise replica_id to device mapping is required, please
-    # set the computation_shape as [1,1,1] in TPUConfig to enable
-    # the model parallelism.
+    # set the num_cores_per_replica to 1 in TPUConfig to enable the
+    # model parallelism.
     if self._internal_ctx.model_parallelism_enabled:
       return RuntimeError(
           'device_for_replica is not yet implemented for model parallelism. '
@@ -175,9 +179,14 @@ class _InternalTPUContext(object):
 
     self._eval_on_tpu = eval_on_tpu
     self._model_parallelism_enabled = (
-        use_tpu and config.tpu_config.computation_shape)
+        use_tpu and config.tpu_config.num_cores_per_replica)
     self._mode = None
-
+    num_cores_per_replica = config.tpu_config.num_cores_per_replica
+    if num_cores_per_replica:
+      self._computation_shape = _NUM_CORES_TO_COMPUTATION_SHAPE[
+          num_cores_per_replica]
+    else:
+      self._computation_shape = None
     self._lazy_tpu_system_metadata_dict = {}  # key by master address
     self._lazy_device_assignment_dict = {}  # key by master address
     self._lazy_validation_dict = {}  # key by ModeKeys
@@ -238,11 +247,12 @@ class _InternalTPUContext(object):
 
     device_assignment = tpu_device_assignment.device_assignment(
         tpu_system_metadata.topology,
-        computation_shape=self._config.tpu_config.computation_shape,
+        computation_shape=self._computation_shape,
         num_replicas=self.num_replicas)
 
-    logging.info('computation_shape: %s',
-                 str(self._config.tpu_config.computation_shape))
+    logging.info('num_cores_per_replica: %s',
+                 str(self._config.tpu_config.num_cores_per_replica))
+    logging.info('computation_shape: %s', str(self._computation_shape))
     logging.info('num_replicas: %d', self.num_replicas)
     logging.info('device_assignment.topology.device_coordinates: %s',
                  str(device_assignment.topology.device_coordinates))
@@ -283,23 +293,20 @@ class _InternalTPUContext(object):
     num_cores_in_system = self.num_cores
 
     if self.model_parallelism_enabled:
-      computation_shape_array = np.asarray(
-          self._config.tpu_config.computation_shape, dtype=np.int32)
-      num_cores_per_replica = np.prod(computation_shape_array)
+      num_cores_per_replica = self._config.tpu_config.num_cores_per_replica
       if num_cores_per_replica > num_cores_in_system:
         raise ValueError(
             'The num of cores required by the model parallelism, specified by '
-            'TPUConfig.computation_shape, is larger than the total num of '
-            'TPU cores in the system. computation_shape: {}, num cores '
-            'in the system: {}'.format(
-                self._config.tpu_config.computation_shape,
-                num_cores_in_system))
+            'TPUConfig.num_cores_per_replica, is larger than the total num of '
+            'TPU cores in the system. num_cores_per_replica: {}, num cores '
+            'in the system: {}'.format(num_cores_per_replica,
+                                       num_cores_in_system))
 
       if num_cores_in_system % num_cores_per_replica != 0:
         raise RuntimeError(
             'The num of cores in the system ({}) is not divisible by the num '
             'of cores ({}) required by the model parallelism, specified by '
-            'TPUConfig.computation_shape. This should never happen!'.format(
+            'TPUConfig.num_cores_per_replica. This should never happen!'.format(
                 num_cores_in_system, num_cores_per_replica))
 
       return num_cores_in_system // num_cores_per_replica
@@ -546,7 +553,7 @@ class _InternalTPUContext(object):
             'be ({}), got ({}). For non-model-parallelism, num_replicas should '
             'be the total num of TPU cores in the system. For '
             'model-parallelism, the total number of TPU cores should be '
-            'product(computation_shape) * num_replicas. Please set it '
+            'num_cores_per_replica * num_replicas. Please set it '
             'accordingly or leave it as `None`'.format(
                 self._get_master_address(), num_replicas,
                 user_provided_num_replicas))
@@ -625,7 +632,7 @@ def _get_tpu_context(config, train_batch_size, eval_batch_size,
   """Returns an instance of `_InternalTPUContext`."""
 
   if (config.tpu_config.num_shards == 1 and
-      config.tpu_config.computation_shape is None):
+      config.tpu_config.num_cores_per_replica is None):
     logging.warning(
         'Setting TPUConfig.num_shards==1 is an unsupported behavior. '
         'Please fix as soon as possible (leaving num_shards as None.')

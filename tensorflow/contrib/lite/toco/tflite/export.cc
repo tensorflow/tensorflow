@@ -336,17 +336,13 @@ void Export(
   auto op_codes = ExportOperatorCodes(model, ops_by_type, operators_map,
                                       &builder, &error_summary);
 
-  const string fake_quant_operation_name = "FAKE_QUANT";
-
-  if (error_summary.count(fake_quant_operation_name) != 0) {
-    LOG(ERROR)
-        << fake_quant_operation_name
-        << " operation was not converted. If running quantized make sure you "
-           "are passing --inference_type=QUANTIZED_UINT8 and values for "
-           "--std_values and --mean_values.";
-    // Remove the fake quant operation from the errors, since it shouldn't
-    // be provided a custom implementation.
-    error_summary.erase(fake_quant_operation_name);
+  for (const auto& op : model.operators) {
+    if (op->type == OperatorType::kFakeQuant) {
+      LOG(WARNING) << "FAKE_QUANT operation " << LogName(*op)
+                   << " was not converted. If running quantized make sure you "
+                      "are passing --inference_type=QUANTIZED_UINT8 and values "
+                      "for --std_values and --mean_values.";
+    }
   }
   if (!allow_custom_ops && !error_summary.empty()) {
     // Remove ExpandDims and ReorderAxes from unimplemented list unless they

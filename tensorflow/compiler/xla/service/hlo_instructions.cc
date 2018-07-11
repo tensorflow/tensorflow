@@ -469,6 +469,46 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
       shape, new_operands[0], new_operands[1], dimensions(), to_apply());
 }
 
+HloSortInstruction::HloSortInstruction(const Shape& shape, int64 dimension,
+                                       HloInstruction* keys,
+                                       HloInstruction* values)
+    : HloInstruction(HloOpcode::kSort, shape), dimensions_({dimension}) {
+  AppendOperand(keys);
+  if (values) {
+    AppendOperand(values);
+  }
+}
+
+HloInstructionProto HloSortInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  for (int64 dimension : dimensions_) {
+    proto.add_dimensions(dimension);
+  }
+  return proto;
+}
+
+std::vector<string> HloSortInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("dimensions={", Join(dimensions(), ","), "}")};
+}
+
+bool HloSortInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloSortInstruction&>(other);
+  return dimensions() == casted_other.dimensions();
+}
+
+std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  HloInstruction* keys = new_operands[0];
+  HloInstruction* values = new_operands.size() == 2 ? new_operands[1] : nullptr;
+  return MakeUnique<HloSortInstruction>(shape, dimensions(0), keys, values);
+}
+
 HloTransposeInstruction::HloTransposeInstruction(
     const Shape& shape, HloInstruction* operand,
     tensorflow::gtl::ArraySlice<int64> dimensions)
@@ -1053,8 +1093,6 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
         CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
     clone = fused_expression_root();
   } else {
-    clone = fused_instructions_computation()->AddInstruction(
-        instruction_to_fuse->Clone(/*suffix=*/""));
     // When add_output is false, instruction_to_fuse is necessarily an operand
     // of the fusion instruction. After fusion this will no longer be the
     // case. Remove the operand from the operand list and remove its
@@ -1064,6 +1102,16 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     bool in_operand_list = std::find(operands().begin(), operands().end(),
                                      instruction_to_fuse) != operands().end();
     CHECK(add_output || in_operand_list);
+    if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
+      // We assume all uses of a kTuple operation are GTE ops, not another
+      // fusion node. In this case, we don't need to clone
+      // 'instruction_to_fuse'.
+      CHECK(!in_operand_list);
+      clone = instruction_to_fuse;
+    } else {
+      clone = fused_instructions_computation()->AddInstruction(
+          instruction_to_fuse->Clone(/*suffix=*/""));
+    }
     const std::vector<HloInstruction*>& fused_parameters =
         fused_instructions_computation()->parameter_instructions();
     for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -1160,9 +1208,10 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     }
     int64 index = tuple_elements.size();
     if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
-      index -= instruction_to_fuse->operand_count();
+      CHECK_EQ(clone, instruction_to_fuse);
+      index -= clone->operand_count();
       std::vector<HloInstruction*> to_be_removed;
-      for (auto old_gte : instruction_to_fuse->users()) {
+      for (auto old_gte : clone->users()) {
         CHECK_EQ(old_gte->opcode(), HloOpcode::kGetTupleElement);
         int64 old_tuple_index = old_gte->tuple_index();
         HloInstruction* new_gte =
@@ -1174,7 +1223,6 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
       for (auto old_gte : to_be_removed) {
         TF_CHECK_OK(parent()->RemoveInstruction(old_gte));
       }
-      TF_CHECK_OK(fused_instructions_computation()->RemoveInstruction(clone));
     } else {
       HloInstruction* new_gte =
           parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -1183,7 +1231,9 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     }
   }
 
-  VLOG(2) << "New clone:\n" << clone->ToString();
+  if (clone != instruction_to_fuse) {
+    VLOG(2) << "New clone:\n" << clone->ToString();
+  }
   return clone;
 }
 

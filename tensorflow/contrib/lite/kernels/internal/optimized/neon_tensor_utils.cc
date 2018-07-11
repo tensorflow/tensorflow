@@ -62,72 +62,35 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
           sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
           &aligned_vector_cache_free));
 
-  const int kUnrollSize = 2;
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
     const float* vector_in_batch = vector + b * m_cols;
-
-    const float* matrix_ptr0 = matrix;
-    // If there is only 1 row, we don't want to assign an illegal pointer.
-    const float* matrix_ptr1 = nullptr;
-    if (m_rows > 1) {
-      matrix_ptr1 = matrix + m_cols;
-    }
+    const float* matrix_row = matrix;
 
     // Cache the vector.
     for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
       vector_cache_float32x4[c >> 2] = vld1q_f32(vector_in_batch + c);
     }
 
-    // Main matrix by vector multiplication loop, which handles two rows of
-    // matrix by vector multiplication.
-    for (int r = 0; r < (m_rows & ~(kUnrollSize - 1)); r += kUnrollSize) {
-      float32x4_t acc0_32x4 = vmovq_n_f32(0.0);
-      float32x4_t acc1_32x4 = vmovq_n_f32(0.0);
+    // Main matrix by vector multiplication loop
+    for (int r = 0; r < m_rows; r++) {
+      float32x4_t acc_32x4 = vmovq_n_f32(0.0);
       for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
         float32x4_t temp = vector_cache_float32x4[c >> 2];
-        // Load 4 float values from vector1 and vector2 and accumulator.
-        float32x4_t v0_f32x4 = vld1q_f32(matrix_ptr0 + c);
-        float32x4_t v1_f32x4 = vld1q_f32(matrix_ptr1 + c);
+        // Load 4 float values from vector and accumulator.
+        float32x4_t v_f32x4 = vld1q_f32(matrix_row + c);
         // Vector multiply-accumulate 4 float
-        acc0_32x4 = vmlaq_f32(acc0_32x4, v0_f32x4, temp);
-        acc1_32x4 = vmlaq_f32(acc1_32x4, v1_f32x4, temp);
+        acc_32x4 = vmlaq_f32(acc_32x4, v_f32x4, temp);
       }
       // Add the 4 intermediate sum values to get the final dot-prod value for
       // this column.
       *result_in_batch +=
-          (vgetq_lane_f32(acc0_32x4, 0) + vgetq_lane_f32(acc0_32x4, 1) +
-           vgetq_lane_f32(acc0_32x4, 2) + vgetq_lane_f32(acc0_32x4, 3));
-      *(result_in_batch + result_stride) +=
-          (vgetq_lane_f32(acc1_32x4, 0) + vgetq_lane_f32(acc1_32x4, 1) +
-           vgetq_lane_f32(acc1_32x4, 2) + vgetq_lane_f32(acc1_32x4, 3));
+          (vgetq_lane_f32(acc_32x4, 0) + vgetq_lane_f32(acc_32x4, 1) +
+           vgetq_lane_f32(acc_32x4, 2) + vgetq_lane_f32(acc_32x4, 3));
       for (int c = postamble_start; c < m_cols; c++) {
-        *result_in_batch += matrix_ptr0[c] * vector_in_batch[c];
-        *(result_in_batch + result_stride) +=
-            matrix_ptr1[c] * vector_in_batch[c];
+        *result_in_batch += matrix_row[c] * vector_in_batch[c];
       }
-      matrix_ptr0 += kUnrollSize * m_cols;
-      matrix_ptr1 += kUnrollSize * m_cols;
-      result_in_batch += kUnrollSize * result_stride;
-    }
-    for (int r = (m_rows & ~(kUnrollSize - 1)); r < m_rows; r++) {
-      float32x4_t acc0_32x4 = vmovq_n_f32(0.0);
-      for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
-        float32x4_t temp = vector_cache_float32x4[c >> 2];
-        // Load 4 float values from vector1 and vector2 and accumulator.
-        float32x4_t v0_f32x4 = vld1q_f32(matrix_ptr0 + c);
-        // Vector multiply-accumulate 4 float
-        acc0_32x4 = vmlaq_f32(acc0_32x4, v0_f32x4, temp);
-      }
-      // Add the 4 intermediate sum values to get the final dot-prod value for
-      // this column.
-      *result_in_batch +=
-          (vgetq_lane_f32(acc0_32x4, 0) + vgetq_lane_f32(acc0_32x4, 1) +
-           vgetq_lane_f32(acc0_32x4, 2) + vgetq_lane_f32(acc0_32x4, 3));
-      for (int c = postamble_start; c < m_cols; c++) {
-        *result_in_batch += matrix_ptr0[c] * vector_in_batch[c];
-      }
-      matrix_ptr0 += m_cols;
+      matrix_row += m_cols;
       result_in_batch += result_stride;
     }
   }

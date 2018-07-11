@@ -23,10 +23,6 @@ function run_configure_for_gpu_build {
   # Enable CUDA support
   export TF_NEED_CUDA=1
 
-  # TODO(pcloudy): Remove this after TensorFlow uses its own CRSOOTOOL
-  # for GPU build on Windows
-  export USE_MSVC_WRAPPER=1
-
   yes "" | ./configure
 }
 

@@ -250,6 +250,10 @@ typedef struct {
 } TfLiteArgMaxParams;
 
 typedef struct {
+  TfLiteType output_type;
+} TfLiteArgMinParams;
+
+typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
@@ -262,6 +266,12 @@ typedef struct {
 typedef struct {
   TfLiteType out_type;
 } TfLiteShapeParams;
+
+typedef struct {
+  float min;
+  float max;
+  int num_bits;
+} TfLiteFakeQuantParams;
 
 #ifdef __cplusplus
 }  // extern "C"

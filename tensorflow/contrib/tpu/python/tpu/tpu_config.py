@@ -23,8 +23,6 @@ import collections
 import json
 import os
 
-import numpy as np
-
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
@@ -50,7 +48,7 @@ class TPUConfig(
     collections.namedtuple('TPUConfig', [
         'iterations_per_loop',
         'num_shards',
-        'computation_shape',
+        'num_cores_per_replica',
         'per_host_input_for_training',
         'tpu_job_name',
         'initial_infeed_sleep_secs',
@@ -67,13 +65,11 @@ class TPUConfig(
       case, this number equals the total number of TPU cores. For
       model-parallelism, the total number of TPU cores equals
       product(computation_shape) * num_shards.
-    computation_shape: Defaults to `None`, which disables model parallelism. A
-      list of size 3 which describes the shape of a model replica's block of
-      cores. This is required by model-parallelism which enables partitioning
-      the model to multiple cores. For example, [2, 2, 1] means the model is
-      partitioned across 4 cores which span two cores in both x and y
-      coordinates.  Please refer to @{tf.contrib.tpu.Topology} for the
-      geometry of a TPU mesh.
+    num_cores_per_replica: Defaults to `None`, which disables model parallelism.
+      An integer which describes the number of TPU cores per model replica. This
+      is required by model-parallelism which enables partitioning
+      the model to multiple cores. Currently num_cores_per_replica must be
+      1, 2, 4, or 8.
     per_host_input_for_training: If `True`, `PER_HOST_V1`, or `PER_HOST_V2`,
       `input_fn` is invoked per-host rather than per-core. With per-host input
       pipeline configuration, `input_fn` is invoked once on each host. With the
@@ -99,7 +95,7 @@ class TPUConfig(
   def __new__(cls,
               iterations_per_loop=2,
               num_shards=None,
-              computation_shape=None,
+              num_cores_per_replica=None,
               per_host_input_for_training=True,
               tpu_job_name=None,
               initial_infeed_sleep_secs=None):
@@ -112,19 +108,12 @@ class TPUConfig(
     if num_shards is not None:
       util_lib.check_positive_integer(num_shards, 'TPUConfig num_shards')
 
-    # Check computation_shape
-    if computation_shape is not None and len(computation_shape) != 3:
-      raise ValueError(
-          'computation_shape must be a list with length 3 or None; got {}'.
-          format(str(computation_shape)))
-
-    if computation_shape is not None:
-      computation_shape_array = np.asarray(computation_shape, dtype=np.int32)
-      # This prevents any computation being replicated across multiple hosts, so
-      # that each host feeds the same number of computations.
-      if any(computation_shape_array < 1) or any(computation_shape_array > 2):
-        raise ValueError('computation_shape elements can only be 1 or 2; got '
-                         'computation_shape={}'.format(computation_shape))
+    # Parse computation_shape
+    if num_cores_per_replica is not None:
+      if num_cores_per_replica not in [1, 2, 4, 8]:
+        raise ValueError(
+            'num_cores_per_replica must be 1, 2, 4, or 8; got {}'.format(
+                str(num_cores_per_replica)))
 
     # per_host_input_for_training may be True, False, or integer in [1..3].
     # Map legacy values (True, False) to numeric values.
@@ -144,7 +133,7 @@ class TPUConfig(
         cls,
         iterations_per_loop=iterations_per_loop,
         num_shards=num_shards,
-        computation_shape=computation_shape,
+        num_cores_per_replica=num_cores_per_replica,
         per_host_input_for_training=per_host_input_for_training,
         tpu_job_name=tpu_job_name,
         initial_infeed_sleep_secs=initial_infeed_sleep_secs)
@@ -213,6 +202,12 @@ class RunConfig(run_config_lib.RunConfig):
       if self._cluster_spec:
         self._session_config.cluster_def.CopyFrom(
             self._cluster_spec.as_cluster_def())
+
+  def _maybe_overwrite_session_config_for_distributed_training(self):
+    # Overrides the parent class session_config overwrite for between-graph. TPU
+    # runs with in-graph, which should not have device filter. Doing nothing
+    # ("pass") basically disables it.
+    pass
 
   @property
   def evaluation_master(self):

@@ -536,5 +536,40 @@ TEST_F(HloCseTest, ConstantsSameValueInDifferentDomains) {
   EXPECT_EQ(2, computation->instruction_count());
 }
 
+TEST_F(HloCseTest, Domain) {
+  auto module = ParseHloString(R"(
+HloModule module
+ENTRY %entry {
+  %param = f32[] parameter(0), sharding={maximal device=0}
+  %domain.0 = f32[] domain(%param),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  %domain.1 = f32[] domain(%param),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+  %domain.2 = f32[] domain(%param),
+    domain={kind="sharding", entry={maximal device=0}, exit={maximal device=2}}
+  %negate.0 = f32[] negate(%domain.0)
+  %negate.1 = f32[] negate(%domain.1)
+  %negate.2 = f32[] negate(%domain.2)
+  %domain.3 = f32[] domain(%negate.0),
+    domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  %domain.4 = f32[] domain(%negate.1),
+    domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  %domain.5 = f32[] domain(%negate.2),
+    domain={kind="sharding", entry={maximal device=2}, exit={maximal device=0}}
+  %add = f32[] add(%domain.3, %domain.4)
+  ROOT %sub = f32[] subtract(%add, %domain.5)
+})")
+                    .ValueOrDie();
+
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
+  LOG(INFO) << "AAAAA " << module->ToString();
+  const HloInstruction* sub = module->entry_computation()->root_instruction();
+  const HloInstruction* add = sub->operand(0);
+  EXPECT_EQ(add->operand(0), add->operand(1));
+  EXPECT_NE(add->operand(0), sub->operand(1));
+  EXPECT_NE(add->operand(1), sub->operand(1));
+}
+
 }  // namespace
 }  // namespace xla

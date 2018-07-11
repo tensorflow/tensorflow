@@ -989,7 +989,7 @@ def fit_loop(model,
 
     callbacks.set_model(callback_model)
 
-    callbacks.set_params({
+    callback_params = {
         'batch_size': batch_size,
         'epochs': epochs,
         'steps': steps_per_epoch,
@@ -997,9 +997,11 @@ def fit_loop(model,
         'verbose': verbose,
         'do_validation': do_validation,
         'metrics': callback_metrics or [],
-    })
-    callbacks.on_train_begin()
-    callback_model.stop_training = False
+    }
+    if validation_steps:
+      callback_params.update({'validation_steps': validation_steps})
+    callbacks.set_params(callback_params)
+
     for cbk in callbacks:
       if not val_inputs:
         cbk.validation_data = []
@@ -1009,6 +1011,10 @@ def fit_loop(model,
         cbk.validation_data = val_inputs + val_targets + val_sample_weights
       else:
         cbk.validation_data = val_inputs + val_targets
+    # validation_data must be set before on_train_begin() is called
+    # so that TensorboardCallback can validate its input
+    callbacks.on_train_begin()
+    callback_model.stop_training = False
 
     for epoch in range(initial_epoch, epochs):
       callbacks.on_epoch_begin(epoch)

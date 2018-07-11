@@ -62,6 +62,11 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
       TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
     }
   }
+  if (instruction == instruction->parent()->root_instruction()) {
+    auto domain = MakeUnique<DomainMetadata::Domain>();
+    domain->enter_domains.insert(instruction);
+    TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
+  }
   return Status::OK();
 }
 

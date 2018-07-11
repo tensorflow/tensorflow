@@ -28,8 +28,10 @@ from __future__ import division
 from __future__ import print_function
 
 from six import iteritems
+from six import string_types
 
 from tensorflow.contrib.bigtable.ops import gen_bigtable_ops
+from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -251,9 +253,11 @@ class BigTable(object):
     Note: only the latest value of a cell will be retrieved.
 
     Args:
-      prefix: The prefix all row keys muat match to be retrieved for prefix-
+      prefix: The prefix all row keys must match to be retrieved for prefix-
         based scans.
-      probability: Probabilistically sample rows.
+      probability: (Optional.) A float between 0 (exclusive) and 1 (inclusive).
+        A non-1 value indicates to probabilistically sample rows with the
+        provided probability.
       columns: The columns to read. Note: most commonly, they are expressed as
         kwargs. Use the columns value if you are using column families that are
         reserved. The value of columns and kwargs are merged. Columns is a list
@@ -268,26 +272,8 @@ class BigTable(object):
     Raises:
       ValueError: If the configured probability is unexpected.
     """
-    if probability is None:
-      probability = 1.0
-    if isinstance(probability, float) and (probability <= 0.0 or
-                                           probability > 1.0):
-      raise ValueError("probability must be in the range (0, 1].")
-
-    normalized = columns
-    if normalized is None:
-      normalized = []
-    if isinstance(normalized, tuple):
-      normalized = list(normalized)
-    for key, value in iteritems(kwargs):
-      if key == "name":
-        continue
-      if isinstance(value, str):
-        normalized.append((key, value))
-        continue
-      for col in value:
-        normalized.append((key, col))
-
+    probability = _normalize_probability(probability)
+    normalized = _normalize_columns(columns, kwargs)
     return _BigtableScanDataset(self, prefix, "", "", normalized, probability)
 
   def scan_range(self, start, end, probability=None, columns=None, **kwargs):
@@ -314,7 +300,9 @@ class BigTable(object):
     Args:
       start: The start of the range when scanning by range.
       end: (Optional.) The end of the range when scanning by range.
-      probability: Probabilistically sample rows.
+      probability: (Optional.) A float between 0 (exclusive) and 1 (inclusive).
+        A non-1 value indicates to probabilistically sample rows with the
+        provided probability.
       columns: The columns to read. Note: most commonly, they are expressed as
         kwargs. Use the columns value if you are using column families that are
         reserved. The value of columns and kwargs are merged. Columns is a list
@@ -329,27 +317,129 @@ class BigTable(object):
     Raises:
       ValueError: If the configured probability is unexpected.
     """
-    if probability is None:
-      probability = 1.0
-    if isinstance(probability, float) and (probability <= 0.0 or
-                                           probability > 1.0):
-      raise ValueError("probability must be in the range (0, 1].")
-
-    normalized = columns
-    if normalized is None:
-      normalized = []
-    if isinstance(normalized, tuple):
-      normalized = list(normalized)
-    for key, value in iteritems(kwargs):
-      if key == "name":
-        continue
-      if isinstance(value, str):
-        normalized.append((key, value))
-        continue
-      for col in value:
-        normalized.append((key, col))
-
+    probability = _normalize_probability(probability)
+    normalized = _normalize_columns(columns, kwargs)
     return _BigtableScanDataset(self, "", start, end, normalized, probability)
+
+  def parallel_scan_prefix(self,
+                           prefix,
+                           num_parallel_scans=None,
+                           probability=None,
+                           columns=None,
+                           **kwargs):
+    """Retrieves row (including values) from the Bigtable service at high speed.
+
+    Rows with row-key prefixed by `prefix` will be retrieved. This method is
+    similar to `scan_prefix`, but by constrast performs multiple sub-scans in
+    parallel in order to achieve higher performance.
+
+    Note: The dataset produced by this method is not deterministic!
+
+    Specifying the columns to retrieve for each row is done by either using
+    kwargs or in the columns parameter. To retrieve values of the columns "c1",
+    and "c2" from the column family "cfa", and the value of the column "c3"
+    from column family "cfb", the following datasets (`ds1`, and `ds2`) are
+    equivalent:
+
+    ```
+    table = # ...
+    ds1 = table.parallel_scan_prefix("row_prefix", columns=[("cfa", "c1"),
+                                                            ("cfa", "c2"),
+                                                            ("cfb", "c3")])
+    ds2 = table.parallel_scan_prefix("row_prefix", cfa=["c1", "c2"], cfb="c3")
+    ```
+
+    Note: only the latest value of a cell will be retrieved.
+
+    Args:
+      prefix: The prefix all row keys must match to be retrieved for prefix-
+        based scans.
+      num_parallel_scans: (Optional.) The number of concurrent scans against the
+        Cloud Bigtable instance.
+      probability: (Optional.) A float between 0 (exclusive) and 1 (inclusive).
+        A non-1 value indicates to probabilistically sample rows with the
+        provided probability.
+      columns: The columns to read. Note: most commonly, they are expressed as
+        kwargs. Use the columns value if you are using column families that are
+        reserved. The value of columns and kwargs are merged. Columns is a list
+        of tuples of strings ("column_family", "column_qualifier").
+      **kwargs: The column families and columns to read. Keys are treated as
+        column_families, and values can be either lists of strings, or strings
+        that are treated as the column qualifier (column name).
+
+    Returns:
+      A @{tf.data.Dataset} returning the row keys and the cell contents.
+
+    Raises:
+      ValueError: If the configured probability is unexpected.
+    """
+    probability = _normalize_probability(probability)
+    normalized = _normalize_columns(columns, kwargs)
+    ds = _BigtableSampleKeyPairsDataset(self, prefix, "", "")
+    return self._make_parallel_scan_dataset(ds, num_parallel_scans, probability,
+                                            normalized)
+
+  def parallel_scan_range(self,
+                          start,
+                          end,
+                          num_parallel_scans=None,
+                          probability=None,
+                          columns=None,
+                          **kwargs):
+    """Retrieves rows (including values) from the Bigtable service.
+
+    Rows with row-keys between `start` and `end` will be retrieved. This method
+    is similar to `scan_range`, but by constrast performs multiple sub-scans in
+    parallel in order to achieve higher performance.
+
+    Note: The dataset produced by this method is not deterministic!
+
+    Specifying the columns to retrieve for each row is done by either using
+    kwargs or in the columns parameter. To retrieve values of the columns "c1",
+    and "c2" from the column family "cfa", and the value of the column "c3"
+    from column family "cfb", the following datasets (`ds1`, and `ds2`) are
+    equivalent:
+
+    ```
+    table = # ...
+    ds1 = table.parallel_scan_range("row_start",
+                                    "row_end",
+                                    columns=[("cfa", "c1"),
+                                             ("cfa", "c2"),
+                                             ("cfb", "c3")])
+    ds2 = table.parallel_scan_range("row_start", "row_end",
+                                    cfa=["c1", "c2"], cfb="c3")
+    ```
+
+    Note: only the latest value of a cell will be retrieved.
+
+    Args:
+      start: The start of the range when scanning by range.
+      end: (Optional.) The end of the range when scanning by range.
+      num_parallel_scans: (Optional.) The number of concurrent scans against the
+        Cloud Bigtable instance.
+      probability: (Optional.) A float between 0 (exclusive) and 1 (inclusive).
+        A non-1 value indicates to probabilistically sample rows with the
+        provided probability.
+      columns: The columns to read. Note: most commonly, they are expressed as
+        kwargs. Use the columns value if you are using column families that are
+        reserved. The value of columns and kwargs are merged. Columns is a list
+        of tuples of strings ("column_family", "column_qualifier").
+      **kwargs: The column families and columns to read. Keys are treated as
+        column_families, and values can be either lists of strings, or strings
+        that are treated as the column qualifier (column name).
+
+    Returns:
+      A @{tf.data.Dataset} returning the row keys and the cell contents.
+
+    Raises:
+      ValueError: If the configured probability is unexpected.
+    """
+    probability = _normalize_probability(probability)
+    normalized = _normalize_columns(columns, kwargs)
+    ds = _BigtableSampleKeyPairsDataset(self, "", start, end)
+    return self._make_parallel_scan_dataset(ds, num_parallel_scans, probability,
+                                            normalized)
 
   def write(self, dataset, column_families, columns, timestamp=None):
     """Writes a dataset to the table.
@@ -395,6 +485,89 @@ class BigTable(object):
         column_families,
         columns,
         timestamp)
+
+  def _make_parallel_scan_dataset(self, ds, num_parallel_scans,
+                                  normalized_probability, normalized_columns):
+    """Builds a parallel dataset from a given range.
+
+    Args:
+      ds: A `_BigtableSampleKeyPairsDataset` returning ranges of keys to use.
+      num_parallel_scans: The number of concurrent parallel scans to use.
+      normalized_probability: A number between 0 and 1 for the keep probability.
+      normalized_columns: The column families and column qualifiers to retrieve.
+
+    Returns:
+      A @{tf.data.Dataset} representing the result of the parallel scan.
+    """
+    if num_parallel_scans is None:
+      num_parallel_scans = 50
+
+    ds = ds.shuffle(buffer_size=10000)  # TODO(saeta): Make configurable.
+
+    def _interleave_fn(start, end):
+      return _BigtableScanDataset(
+          self,
+          prefix="",
+          start=start,
+          end=end,
+          normalized=normalized_columns,
+          probability=normalized_probability)
+
+    # Note prefetch_input_elements must be set in order to avoid rpc timeouts.
+    ds = ds.apply(
+        interleave_ops.parallel_interleave(
+            _interleave_fn,
+            cycle_length=num_parallel_scans,
+            sloppy=True,
+            prefetch_input_elements=1))
+    return ds
+
+
+def _normalize_probability(probability):
+  if probability is None:
+    probability = 1.0
+  if isinstance(probability, float) and (probability <= 0.0 or
+                                         probability > 1.0):
+    raise ValueError("probability must be in the range (0, 1].")
+  return probability
+
+
+def _normalize_columns(columns, provided_kwargs):
+  """Converts arguments (columns, and kwargs dict) to C++ representation.
+
+  Args:
+    columns: a datastructure containing the column families and qualifier to
+      retrieve. Valid types include (1) None, (2) list of tuples, (3) a tuple of
+      strings.
+    provided_kwargs: a dictionary containing the column families and qualifiers
+      to retrieve
+
+  Returns:
+    A list of pairs of column family+qualifier to retrieve.
+
+  Raises:
+    ValueError: If there are no cells to retrieve or the columns are in an
+      incorrect format.
+  """
+  normalized = columns
+  if normalized is None:
+    normalized = []
+  if isinstance(normalized, tuple):
+    if len(normalized) == 2:
+      normalized = [normalized]
+    else:
+      raise ValueError("columns was a tuple of inappropriate length")
+  for key, value in iteritems(provided_kwargs):
+    if key == "name":
+      continue
+    if isinstance(value, string_types):
+      normalized.append((key, value))
+      continue
+    for col in value:
+      normalized.append((key, col))
+  if not normalized:
+    raise ValueError("At least one column + column family must be specified.")
+  return normalized
 
 
 class _BigtableKeyDataset(dataset_ops.Dataset):
@@ -535,3 +708,34 @@ class _BigtableScanDataset(dataset_ops.Dataset):
         column_families=self._column_families,
         columns=self._columns,
         probability=self._probability)
+
+
+class _BigtableSampleKeyPairsDataset(dataset_ops.Dataset):
+  """_BigtableKeyRangeDataset returns key pairs from the Bigtable.
+  """
+
+  def __init__(self, table, prefix, start, end):
+    self._table = table
+    self._prefix = prefix
+    self._start = start
+    self._end = end
+
+  @property
+  def output_classes(self):
+    return (ops.Tensor, ops.Tensor)
+
+  @property
+  def output_shapes(self):
+    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
+
+  @property
+  def output_types(self):
+    return (dtypes.string, dtypes.string)
+
+  def _as_variant_tensor(self):
+    # pylint: disable=protected-access
+    return gen_bigtable_ops.bigtable_sample_key_pairs_dataset(
+        table=self._table._resource,
+        prefix=self._prefix,
+        start_key=self._start,
+        end_key=self._end)
