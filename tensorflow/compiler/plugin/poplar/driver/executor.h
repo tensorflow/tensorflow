@@ -327,7 +327,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   poplar::OptionFlags option_flags_;
 
-  void *active_xla_device_;
+  unsigned int poplar_hardware_attach_count_;
 
   std::list<TensorControl *> allocations_;
 

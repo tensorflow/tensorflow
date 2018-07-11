@@ -111,7 +111,7 @@ PoplarExecutor::PoplarExecutor()
       poplar_device_(poplar::Device::createCPUDevice()),
       poplar_device_hash_(0),
       cache_directory_(std::string()),
-      active_xla_device_(nullptr),
+      poplar_hardware_attach_count_(0),
       profile_compilation_(false),
       profile_poplar_text_(false),
       profile_execution_(false),
@@ -250,7 +250,6 @@ se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
 
 Status PoplarExecutor::InitializePoplarDevice(
     void* device, const tensorflow::IPUOptions::DeviceConfig& cfg) {
-  TF_RETURN_IF_ERROR(ClosePoplarDevice(device));
 
   tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
@@ -263,7 +262,8 @@ Status PoplarExecutor::InitializePoplarDevice(
     num_ipus = 1;
   }
 
-  auto device_list = device_set.getDevices(poplar::TargetType::IPU, num_ipus);
+  static auto device_list = device_set.getDevices(poplar::TargetType::IPU,
+                                                  num_ipus);
 
   if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
     if (device_list.size() > 0) {
@@ -277,24 +277,35 @@ Status PoplarExecutor::InitializePoplarDevice(
   switch (type) {
     case tensorflow::IPUOptions::DeviceConfig::IPU: {
       for (auto& d : device_list) {
-        if (d.attach()) {
-          poplar_device_ = d;
-
-          // Temporary fix to prevent many long compilation times
-          if (tiles_per_ipu == 0) {
-            tiles_per_ipu = 4;
-          }
-
-          if (tiles_per_ipu > 0) {
-            poplar_device_ = poplar_device_.createVirtualDevice(tiles_per_ipu);
-          }
-
-          profile_compilation_ = false;
-          profile_poplar_text_ = false;
-          profile_execution_ = false;
-          profile_io_ = false;
+        if (poplar_hardware_attach_count_ > 0) {
+          poplar_hardware_attach_count_++;
           opened = true;
-          break;
+        } else {
+          for (auto d : device_list) {
+            if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
+              if (d.attach()) {
+                poplar_device_ = d;
+                poplar_hardware_attach_count_ = 1;
+
+                // Temporary fix to prevent many long compilation times
+                if (tiles_per_ipu == 0) {
+                  tiles_per_ipu = 4;
+                }
+
+                if (tiles_per_ipu > 0) {
+                  poplar_device_ =
+                    poplar_device_.createVirtualDevice(tiles_per_ipu);
+                }
+
+                profile_compilation_ = false;
+                profile_poplar_text_ = false;
+                profile_execution_ = false;
+                profile_io_ = false;
+                opened = true;
+                break;
+              }
+            }
+          }
         }
       }
       break;
@@ -347,8 +358,6 @@ Status PoplarExecutor::InitializePoplarDevice(
     option_flags_.set(opt.option(), opt.value());
   }
 
-  active_xla_device_ = device;
-
   cache_directory_ = cfg.engine_cache_directory();
 
   std::vector<int64> poplar_target;
@@ -369,9 +378,12 @@ Status PoplarExecutor::InitializePoplarDevice(
 }
 
 Status PoplarExecutor::ClosePoplarDevice(void* device) {
-  if (device == active_xla_device_) {
-    poplar_device_.detach();
-    active_xla_device_ = nullptr;
+  if (poplar_hardware_attach_count_ > 0) {
+    poplar_hardware_attach_count_--;
+    if (poplar_hardware_attach_count_ == 0) {
+      poplar_device_.detach();
+      poplar_device_ = poplar::Device::createCPUDevice();
+    }
   }
   return Status::OK();
 }
