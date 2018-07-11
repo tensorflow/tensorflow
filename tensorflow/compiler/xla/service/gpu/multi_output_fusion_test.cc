@@ -323,5 +323,31 @@ TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
               op::Tuple(op::Reduce(), op::Reduce(), op::Select()));
 }
 
+TEST_F(InstructionFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_element_wise {
+      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
+      p1.1 = f32[2,2,2]{2,1,0} parameter(1)
+      ROOT root = f32[2,2,2]{2,1,0} add(p0.1, p1.1)
+    }
+
+    fused_reduce {
+      p0.2 = f32[2,2,2]{2,1,0} parameter(0)
+      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2, f32[2,2,2]{2,1,0} p0.2)
+      c1 = f32[] constant(0)
+      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} mul, f32[] c1), dimensions={1}, to_apply=scalar_add_computation
+    }
+
+    ENTRY reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      p1 = f32[2,2,2]{2,1,0} parameter(1)
+      element_wise = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_element_wise
+      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(element_wise), kind=kLoop, calls=fused_reduce
+      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
+    })"))
+                    .ValueOrDie();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace gpu
 }  // namespace xla

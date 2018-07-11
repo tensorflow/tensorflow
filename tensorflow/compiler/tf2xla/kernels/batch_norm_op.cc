@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -34,10 +35,11 @@ class FusedBatchNormOp : public XlaOpKernel {
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
     OP_REQUIRES(ctx,
-                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW),
+                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW ||
+                 data_format_ == FORMAT_HWNC || data_format_ == FORMAT_HWCN),
                 errors::InvalidArgument(
                     "Unsupported data format ", ToString(data_format_),
-                    "; supported formats are NHWC and NCHW"));
+                    "; supported formats are NHWC, NCHW, HWNC and HWCN"));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -48,8 +50,6 @@ class FusedBatchNormOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(ctx->input_type(1), &scale_type));
 
-    xla::XlaBuilder* builder = ctx->builder();
-
     xla::XlaOp input = ctx->Input(0);
     TensorShape input_shape = ctx->InputShape(0);
 
@@ -59,30 +59,30 @@ class FusedBatchNormOp : public XlaOpKernel {
     // TODO(b/69928690): support mixed precision in the XLA batch normalization
     // operators. As a workaround, cast everything to the statistics type (which
     // may be more precise than the input type).
-    input = builder->ConvertElementType(input, scale_type);
+    input = xla::ConvertElementType(input, scale_type);
 
     if (is_training_) {
-      xla::XlaOp output = builder->BatchNormTraining(
+      xla::XlaOp output = xla::BatchNormTraining(
           input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index);
 
       // In training mode, outputs the normalized value as well as the
       // calculated mean and variance.
-      ctx->SetOutput(0, builder->ConvertElementType(
-                            builder->GetTupleElement(output, 0), input_type));
-      ctx->SetOutput(1, builder->GetTupleElement(output, 1));
-      ctx->SetOutput(2, builder->GetTupleElement(output, 2));
+      ctx->SetOutput(0, xla::ConvertElementType(xla::GetTupleElement(output, 0),
+                                                input_type));
+      ctx->SetOutput(1, xla::GetTupleElement(output, 1));
+      ctx->SetOutput(2, xla::GetTupleElement(output, 2));
 
       // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
       // space 1 & 2". They are used to pass the per-batch mean and
       // variance to the gradient. Here we maintain the same behavior by setting
       // them to the mean and variance calculated by BatchNormTraining.
-      ctx->SetOutput(3, builder->GetTupleElement(output, 1));
-      ctx->SetOutput(4, builder->GetTupleElement(output, 2));
+      ctx->SetOutput(3, xla::GetTupleElement(output, 1));
+      ctx->SetOutput(4, xla::GetTupleElement(output, 2));
     } else {
-      xla::XlaOp output = builder->BatchNormInference(
+      xla::XlaOp output = xla::BatchNormInference(
           input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
           epsilon_, feature_index);
-      ctx->SetOutput(0, builder->ConvertElementType(output, input_type));
+      ctx->SetOutput(0, xla::ConvertElementType(output, input_type));
       // Directly send input to output as mean and variance in inference mode.
       ctx->SetOutput(1, ctx->Input(3));
       ctx->SetOutput(2, ctx->Input(4));
@@ -111,10 +111,11 @@ class FusedBatchNormGradOp : public XlaOpKernel {
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
     OP_REQUIRES(ctx,
-                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW),
+                (data_format_ == FORMAT_NHWC || data_format_ == FORMAT_NCHW ||
+                 data_format_ == FORMAT_HWNC || data_format_ == FORMAT_HWCN),
                 errors::InvalidArgument(
                     "Unsupported data format ", ToString(data_format_),
-                    "; supported formats are NHWC and NCHW"));
+                    "; supported formats are NHWC, NCHW, HWNC and HWCN"));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -142,12 +143,12 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     xla::XlaOp offset_backprop;
     if (is_training_) {
       xla::XlaOp output =
-          b->BatchNormGrad(activations, scale, mean, var, grad_backprop,
-                           epsilon_, feature_index);
+          xla::BatchNormGrad(activations, scale, mean, var, grad_backprop,
+                             epsilon_, feature_index);
 
-      x_backprop = b->GetTupleElement(output, 0);
-      scale_backprop = b->GetTupleElement(output, 1);
-      offset_backprop = b->GetTupleElement(output, 2);
+      x_backprop = xla::GetTupleElement(output, 0);
+      scale_backprop = xla::GetTupleElement(output, 1);
+      offset_backprop = xla::GetTupleElement(output, 2);
     } else {
       // Reduce over all dimensions except the feature dim.
       std::vector<int64> reduction_dims(input_dims - 1);
@@ -164,35 +165,35 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       auto converted =
           XlaHelpers::ConvertElementType(b, grad_backprop, accumulation_type);
       auto reduce =
-          b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
-                    *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
+          xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                      *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
       offset_backprop = XlaHelpers::ConvertElementType(b, reduce, scale_dtype);
 
       // scratch1 = rsqrt(pop_var + epsilon)
       auto neg_half = XlaHelpers::FloatLiteral(b, scale_dtype, -0.5);
-      auto scratch1 =
-          b->Pow(b->Add(var, b->ConstantR0<float>(epsilon_)), neg_half);
+      auto scratch1 = xla::Pow(
+          xla::Add(var, xla::ConstantR0<float>(b, epsilon_)), neg_half);
 
       // scratch2 = sum(y_backprop * (x - mean))
       auto mul =
-          b->Mul(grad_backprop, b->Sub(activations, mean, {feature_index}));
+          xla::Mul(grad_backprop, xla::Sub(activations, mean, {feature_index}));
       converted = XlaHelpers::ConvertElementType(b, mul, accumulation_type);
       reduce =
-          b->Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
-                    *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
+          xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                      *ctx->GetOrCreateAdd(accumulation_type), reduction_dims);
       auto scratch2 = XlaHelpers::ConvertElementType(b, reduce, scale_dtype);
 
       x_backprop =
-          b->Mul(grad_backprop, b->Mul(scratch1, scale), {feature_index});
-      scale_backprop = b->Mul(scratch1, scratch2);
+          xla::Mul(grad_backprop, xla::Mul(scratch1, scale), {feature_index});
+      scale_backprop = xla::Mul(scratch1, scratch2);
     }
 
     ctx->SetOutput(0,
                    XlaHelpers::ConvertElementType(b, x_backprop, input_dtype));
     ctx->SetOutput(1, scale_backprop);
     ctx->SetOutput(2, offset_backprop);
-    ctx->SetConstantOutput(3, Tensor(scale_dtype, {}));
-    ctx->SetConstantOutput(4, Tensor(scale_dtype, {}));
+    ctx->SetConstantOutput(3, Tensor());
+    ctx->SetConstantOutput(4, Tensor());
   }
 
  private:

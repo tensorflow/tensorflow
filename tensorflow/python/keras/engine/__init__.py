@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# TODO(fchollet): Remove hourglass imports once external code is done importing
+# non-public APIs.
 from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
-from tensorflow.python.keras.engine.network import get_source_inputs
-from tensorflow.python.keras.engine.network import Network
-from tensorflow.python.keras.engine.training import Model
+from tensorflow.python.keras.utils.layer_utils import get_source_inputs
 
 del absolute_import
 del division

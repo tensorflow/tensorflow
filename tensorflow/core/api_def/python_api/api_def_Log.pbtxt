@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "log"
-    deprecation_message: "tf.log is deprecated, please use tf.math.log instead."
+    deprecated: true
   }
 }

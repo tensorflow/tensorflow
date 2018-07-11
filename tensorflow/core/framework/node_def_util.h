@@ -299,6 +299,11 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def);
 Status AttachDef(const Status& status, const NodeDef& node_def);
 Status AttachDef(const Status& status, const Node& node);
 
+// Appends the given prefix and suffix to the original node name in order to
+// make the name unique. If it's an "Enter" node, use the same way to reset
+// attribute "frame_name".
+Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
+                                NodeDef* node_def);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_FRAMEWORK_NODE_DEF_UTIL_H_

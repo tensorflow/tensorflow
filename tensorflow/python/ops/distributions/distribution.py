@@ -212,7 +212,7 @@ class ReparameterizationType(object):
     reparameterized, and straight-through gradients are either partially
     unsupported or are not supported at all. In this case, for purposes of
     e.g. RL or variational inference, it is generally safest to wrap the
-    sample results in a `stop_gradients` call and instead use policy
+    sample results in a `stop_gradients` call and use policy
     gradients / surrogate loss instead.
   """
 

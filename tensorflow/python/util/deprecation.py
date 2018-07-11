@@ -87,6 +87,27 @@ def _call_location(outer=False):
     return '%s:%d' % (entry[1], entry[2])
 
 
+def _wrap_decorator(wrapped_function):
+  """Indicate that one function wraps another.
+
+  This decorator wraps a function using `tf_decorator.make_decorator`
+  so that doc generation scripts can pick up original function
+  signature.
+  It would be better to use @functools.wrap decorator, but it would
+  not update function signature to match wrapped function in Python 2.
+
+  Args:
+    wrapped_function: The function that decorated function wraps.
+
+  Returns:
+    Function that accepts wrapper function as an argument and returns
+    `TFDecorator` instance.
+  """
+  def wrapper(wrapper_func):
+    return tf_decorator.make_decorator(wrapped_function, wrapper_func)
+  return wrapper
+
+
 def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
   """Deprecate a symbol in favor of a new name with identical semantics.
 
@@ -144,7 +165,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
   if tf_inspect.isclass(func_or_class):
 
     # Make a new class with __init__ wrapped in a warning.
-    class NewClass(func_or_class):  # pylint: disable=missing-docstring
+    class _NewClass(func_or_class):  # pylint: disable=missing-docstring
       __doc__ = decorator_utils.add_notice_to_docstring(
           func_or_class.__doc__, 'Please use %s instead.' % name,
           'DEPRECATED CLASS',
@@ -153,27 +174,28 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
       __name__ = func_or_class.__name__
       __module__ = _call_location(outer=True)
 
+      @_wrap_decorator(func_or_class.__init__)
       def __init__(self, *args, **kwargs):
-        if hasattr(NewClass.__init__, '__func__'):
+        if hasattr(_NewClass.__init__, '__func__'):
           # Python 2
-          NewClass.__init__.__func__.__doc__ = func_or_class.__init__.__doc__
+          _NewClass.__init__.__func__.__doc__ = func_or_class.__init__.__doc__
         else:
           # Python 3
-          NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
+          _NewClass.__init__.__doc__ = func_or_class.__init__.__doc__
 
         if _PRINT_DEPRECATION_WARNINGS:
           # We're making the alias as we speak. The original may have other
           # aliases, so we cannot use it to check for whether it's already been
           # warned about.
-          if NewClass.__init__ not in _PRINTED_WARNING:
+          if _NewClass.__init__ not in _PRINTED_WARNING:
             if warn_once:
-              _PRINTED_WARNING[NewClass.__init__] = True
+              _PRINTED_WARNING[_NewClass.__init__] = True
             logging.warning(
                 'From %s: The name %s is deprecated. Please use %s instead.\n',
                 _call_location(), deprecated_name, name)
-        super(NewClass, self).__init__(*args, **kwargs)
+        super(_NewClass, self).__init__(*args, **kwargs)
 
-    return NewClass
+    return _NewClass
   else:
     decorator_utils.validate_callable(func_or_class, 'deprecated')
 

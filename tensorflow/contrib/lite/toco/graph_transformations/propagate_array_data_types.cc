@@ -100,6 +100,13 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       model->GetArray(op->outputs[0]).data_type = argmax_op->output_data_type;
       break;
     }
+    case OperatorType::kArgMin: {
+      // Data type of the ArgMin op is specified.
+      CHECK_EQ(op->outputs.size(), 1);
+      auto* argmin_op = static_cast<ArgMinOperator*>(op);
+      model->GetArray(op->outputs[0]).data_type = argmin_op->output_data_type;
+      break;
+    }
     case OperatorType::kRange: {
       auto* range_op = static_cast<RangeOperator*>(op);
       // Output type of the Range op can be set via an attribute
@@ -172,6 +179,14 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       const ArrayDataType data_type_default =
           model->GetArray(op->inputs[3]).data_type;
       CHECK(data_type == data_type_default);
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
+    case OperatorType::kPow: {
+      CHECK_EQ(op->inputs.size(), 2);
+      CHECK(model->GetArray(op->inputs[0]).data_type ==
+            model->GetArray(op->inputs[1]).data_type);
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }

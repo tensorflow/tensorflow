@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "cosh"
-    deprecation_message: "tf.cosh is deprecated, please use tf.math.cosh instead."
+    deprecated: true
   }
 }

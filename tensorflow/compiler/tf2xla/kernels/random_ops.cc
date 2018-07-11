@@ -17,9 +17,8 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
-#include <limits>
-
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -27,6 +26,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -47,8 +48,8 @@ class RandomUniformOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp result = b->RngUniform(XlaHelpers::Zero(b, dtype),
-                                      XlaHelpers::One(b, dtype), xla_shape);
+    xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
+                                        XlaHelpers::One(b, dtype), xla_shape);
 
     ctx->SetOutput(0, result);
   }
@@ -73,57 +74,121 @@ class RandomShuffleOp : public XlaOpKernel {
     for (tensorflow::TensorShapeDim dimension : input_shape) {
       num_elements *= dimension.size;
     }
+
     if (num_elements <= 1 || n <= 1) {
       // No shuffling is required, so copy input directly to output
       ctx->SetOutput(0, input);
-    } else {
-      // Generate the random swaps for the indices.
-      auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
-      auto swaps =
-          builder->RngUniform(builder->ConstantR0<int32>(0),
-                              builder->ConstantR0<int32>(n), swaps_shape);
-
-      // Generate range(n) as the initial value for the indices to be swapped.
-      xla::XlaOp indices;
-      TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32, n, &indices));
-
-      // Swap the indices at i and swaps[i].
-      auto swap_body_fn = [&](xla::XlaOp i,
-                              gtl::ArraySlice<xla::XlaOp> loop_vars,
-                              xla::XlaBuilder* builder)
-          -> xla::StatusOr<std::vector<xla::XlaOp>> {
-        auto swaps = loop_vars[0];
-        auto indices = loop_vars[1];
-        i = builder->Reshape(i, {1});
-        // temp = indices[i]
-        auto temp = builder->DynamicSlice(indices, i, {1});
-        // swap_index = swaps[i]
-        auto swap_index = builder->DynamicSlice(swaps, i, {1});
-        // swap_value = indices[swaps[i]]
-        auto swap_value = builder->DynamicSlice(indices, swap_index, {1});
-        // indices[i] = indices[swaps[i]]
-        indices = builder->DynamicUpdateSlice(indices, swap_value, i);
-        // indices[swaps[i]] = temp
-        indices = builder->DynamicUpdateSlice(indices, temp, swap_index);
-        return std::vector<xla::XlaOp>{swaps, indices};
-      };
-      // for i in range(n):
-      auto swap_loop_result =
-          XlaForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
-                          "indices_swap_loop", builder)
-              .ValueOrDie();
-      auto swapped_indices = swap_loop_result[1];
-
-      // Gather the data using the swapped indices as the shuffled order.
-      auto indices_tensor_shape = TensorShape({n});
-      DataType type = ctx->expected_output_dtype(0);
-      xla::XlaOp gather;
-      OP_REQUIRES_OK(ctx, XlaGather(input, input_shape, swapped_indices,
-                                    indices_tensor_shape,
-                                    /*axis=*/0, /*indices_are_nd=*/false, type,
-                                    DT_INT32, builder, &gather));
-      ctx->SetOutput(0, gather);
+      return;
     }
+
+    if (input_shape.dims() == 1) {
+      // For R1s, shuffle values by sorting instead of the obvious Fisher-Yates
+      // algorithm. Fisher-Yates is simple to implement and correct, but not
+      // easily parallelizable. For a sufficiently parallel architecture, it is
+      // faster to sort many times, than Fisher-Yates shuffle once.
+
+      // Shuffle values by assigning each value a random key and sorting the
+      // keys. Keys can collide causing detectable patterns in the shuffled
+      // output. Collisions translates into more ascending sub-sequences in the
+      // shuffled output than would be expected by chance. To avoid collisions,
+      // the number of possible key values must be sufficiently large.
+
+      // How are more than 2^32 keys created? In each loop iteration, the
+      // algorithm sorts by random keys. Conceptually, the earlier iterations
+      // are sorting on the lower-order bits of larger keys that are never
+      // actually assembled.
+
+      // The expected number of collisions is n - d + d(1 - 1/d)^n, where d is
+      // the number of possible keys and n is the number of values. If d = n^2,
+      // then the limit as n goes to infinity is 1/2. If d = n^3, then the limit
+      // as n goes to infinity is zero.
+
+      // This implementation ensures that the key-space is greater than or equal
+      // to the cube of the number of values. The risk of collisions can be
+      // further reduced by increasing Exponent at the expense of
+      // performance.
+
+      // For Exponent = 2, the expected number of collisions per shuffle is
+      // maximized at n = floor((2^32-1)^(1/2)) = 65535 where the expectation is
+      // about 1/2.
+
+      // For Exponent = 3, the expected number of collisions per shuffle is
+      // maximized at n = floor((2^32-1)^(1/3)) = 1625 where the expectation is
+      // about 1/3255.
+
+      // For Exponent = 4, the expected number of collisions per shuffle is
+      // maximized at n = floor((2^32-1)^(1/4)) = 255 where the expectation is
+      // about 1/132622.
+      constexpr int Exponent = 3;
+      const int rounds = static_cast<int>(
+          std::ceil(Exponent * std::log(num_elements) / std::log(kuint32max)));
+
+      const xla::Shape key_shape =
+          xla::ShapeUtil::MakeShape(xla::U32, {num_elements});
+      xla::XlaOp zero = xla::ConstantR0(builder, 0U);
+
+      // Unfortunately, xla::RngUniform gives values in the half open interval
+      // rather than the closed interval, so instead of 2^32 possible keys there
+      // are only 2^32 - 1 (kuint32max).
+      xla::XlaOp max_value = xla::ConstantR0(builder, kuint32max);
+
+      xla::XlaOp curr = input;
+      for (int i = 0; i < rounds; ++i) {
+        xla::XlaOp keys = xla::RngUniform(zero, max_value, key_shape);
+        xla::XlaOp sorted = xla::Sort(keys, curr);
+        curr = xla::GetTupleElement(sorted, 1);
+      }
+
+      ctx->SetOutput(0, curr);
+      return;
+    }
+
+    // The Fisher-Yates algorithm.
+
+    // Generate the random swaps for the indices.
+    auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
+    auto swaps =
+        xla::RngUniform(xla::ConstantR0<int32>(builder, 0),
+                        xla::ConstantR0<int32>(builder, n), swaps_shape);
+
+    // Generate range(n) as the initial value for the indices to be swapped.
+    xla::XlaOp indices = xla::Iota(builder, xla::S32, n);
+
+    // Swap the indices at i and swaps[i].
+    auto swap_body_fn = [&](xla::XlaOp i, gtl::ArraySlice<xla::XlaOp> loop_vars,
+                            xla::XlaBuilder* builder)
+        -> xla::StatusOr<std::vector<xla::XlaOp>> {
+      auto swaps = loop_vars[0];
+      auto indices = loop_vars[1];
+      i = xla::Reshape(i, {1});
+      // temp = indices[i]
+      auto temp = xla::DynamicSlice(indices, i, {1});
+      // swap_index = swaps[i]
+      auto swap_index = xla::DynamicSlice(swaps, i, {1});
+      // swap_value = indices[swaps[i]]
+      auto swap_value = xla::DynamicSlice(indices, swap_index, {1});
+      // indices[i] = indices[swaps[i]]
+      indices = xla::DynamicUpdateSlice(indices, swap_value, i);
+      // indices[swaps[i]] = temp
+      indices = xla::DynamicUpdateSlice(indices, temp, swap_index);
+      return std::vector<xla::XlaOp>{swaps, indices};
+    };
+    // for i in range(n):
+    auto swap_loop_result =
+        XlaForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
+                        "indices_swap_loop", builder)
+            .ValueOrDie();
+    auto swapped_indices = swap_loop_result[1];
+
+    // Gather the data using the swapped indices as the shuffled order.
+    auto indices_tensor_shape = TensorShape({n});
+    DataType type = ctx->expected_output_dtype(0);
+    xla::XlaOp gather;
+    OP_REQUIRES_OK(ctx, XlaGather(input, input_shape, swapped_indices,
+                                  indices_tensor_shape,
+                                  /*axis=*/0, /*indices_are_nd=*/false, type,
+                                  DT_INT32, builder, &gather));
+    ctx->SetOutput(0, gather);
   }
 
  private:
@@ -154,7 +219,7 @@ class RandomUniformIntOp : public XlaOpKernel {
 
     auto minval = ctx->Input(1);
     auto maxval = ctx->Input(2);
-    ctx->SetOutput(0, ctx->builder()->RngUniform(minval, maxval, xla_shape));
+    ctx->SetOutput(0, xla::RngUniform(minval, maxval, xla_shape));
   }
 
  private:
@@ -180,8 +245,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
     xla::XlaBuilder* b = ctx->builder();
 
     // Normal distribution with a mean of 0 and a standard deviation of 1:
-    xla::XlaOp result = b->RngNormal(XlaHelpers::Zero(b, dtype),
-                                     XlaHelpers::One(b, dtype), xla_shape);
+    xla::XlaOp result = xla::RngNormal(XlaHelpers::Zero(b, dtype),
+                                       XlaHelpers::One(b, dtype), xla_shape);
 
     ctx->SetOutput(0, result);
   }
@@ -207,38 +272,11 @@ class TruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
 
-    auto normal_cdf = [](double x) {
-      return (1.0 + std::erf(x / std::sqrt(2.0))) / 2.0;
-    };
-
-    const double kA = -2.0;
-    const double kB = 2.0;
-    const double kMu = 0.0;
-    const double kSigma = 1.0;
-    const double kAlpha = (kA - kMu) / kSigma;
-    const double kBeta = (kB - kMu) / kSigma;
-    const double kAlphaNormalCdf = normal_cdf(kAlpha);
-    const double kBetaNormalCdf = normal_cdf(kBeta);
-    const double kZ = kBetaNormalCdf - kAlphaNormalCdf;
-
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
-    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype, 2.0);
-    xla::XlaOp sqrt_2 = XlaHelpers::FloatLiteral(b, dtype, std::sqrt(2.0));
     xla::XlaOp min_positive =
         XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
-
-    xla::XlaOp z = XlaHelpers::FloatLiteral(b, dtype, kZ);
-    xla::XlaOp alpha_normal_cdf =
-        XlaHelpers::FloatLiteral(b, dtype, kAlphaNormalCdf);
-
-    auto uniform = b->RngUniform(min_positive, one, xla_shape);
-    // probit(p) = sqrt(2) * erfinv(2*p-1)
-    auto p = b->Add(alpha_normal_cdf, b->Mul(z, uniform));
-    auto erfinv_input = b->Sub(b->Mul(p, two), one);
-    auto erfinv_or_status = ErfInv(b, erfinv_input);
-    OP_REQUIRES_OK(ctx, erfinv_or_status.status());
-    auto probit = b->Mul(sqrt_2, erfinv_or_status.ValueOrDie());
-    ctx->SetOutput(0, probit);
+    auto uniform = xla::RngUniform(min_positive, one, xla_shape);
+    ctx->SetOutput(0, TruncatedNormal(uniform));
   }
 };
 
@@ -247,5 +285,5 @@ REGISTER_XLA_OP(Name("TruncatedNormal")
                     .TypeConstraint("dtype", DT_FLOAT),
                 TruncatedNormalOp);
 
-}  // anonymous namespace
+}  // namespace
 }  // namespace tensorflow

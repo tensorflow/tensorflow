@@ -98,10 +98,13 @@ void BenchmarkModel::LogFlags() {
                    << "]";
 }
 
+void BenchmarkModel::PrepareInputsAndOutputs() {}
+
 Stat<int64_t> BenchmarkModel::Run(int num_times, RunType run_type) {
   Stat<int64_t> run_stats;
   TFLITE_LOG(INFO) << "Running benchmark for " << num_times << " iterations ";
   for (int run = 0; run < num_times; run++) {
+    PrepareInputsAndOutputs();
     listeners_.OnSingleRunStart(run_type);
     int64_t start_us = profiling::time::NowMicros();
     RunImpl();

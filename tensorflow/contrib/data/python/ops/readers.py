@@ -540,11 +540,11 @@ class CsvDataset(dataset_ops.Dataset):
 
     The expected output of its iterations is:
     ```python
-    next = dataset.make_one_shot_iterator().get_next()
+    next_element = dataset.make_one_shot_iterator().get_next()
     with tf.Session() as sess:
       while True:
         try:
-          print(sess.run(nxt))
+          print(sess.run(next_element))
         except tf.errors.OutOfRangeError:
           break
 

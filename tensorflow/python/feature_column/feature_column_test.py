@@ -2607,7 +2607,7 @@ class _LinearModelTest(test.TestCase):
 
 class InputLayerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_retrieving_input(self):
     features = {'a': [0.]}
     input_layer = InputLayer(fc.numeric_column('a'))
@@ -4580,12 +4580,12 @@ class IndicatorColumnTest(test.TestCase):
     weights = fc.weighted_categorical_column(ids, 'weights')
     indicator = fc.indicator_column(weights)
     features = {
-        'ids': constant_op.constant([['c', 'b', 'a']]),
-        'weights': constant_op.constant([[2., 4., 6.]])
+        'ids': constant_op.constant([['c', 'b', 'a', 'c']]),
+        'weights': constant_op.constant([[2., 4., 6., 1.]])
     }
     indicator_tensor = _transform_features(features, [indicator])[indicator]
     with _initialized_session():
-      self.assertAllEqual([[6., 4., 2.]], indicator_tensor.eval())
+      self.assertAllEqual([[6., 4., 3.]], indicator_tensor.eval())
 
   def test_transform_with_missing_value_in_weighted_column(self):
     # Github issue 12583

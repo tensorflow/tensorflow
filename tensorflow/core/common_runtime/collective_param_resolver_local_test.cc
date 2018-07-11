@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace {
 
 #define NUM_DEVS 3
 
@@ -43,6 +42,11 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
     prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
                                                 task_name));
+  }
+
+  void GenSubdivPerms(const string& device, int source_rank,
+                      CollectiveParams* cp) {
+    CollectiveParamResolverLocal::GenerateSubdivPerms(device, source_rank, cp);
   }
 
   std::vector<Device*> devices_;
@@ -147,7 +151,69 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
   }
 }
 
-// TEST_F(CollectiveParamResolverLocalTest,
+TEST_F(CollectiveParamResolverLocalTest, GenerateSubdivPerms) {
+  static const int kNumDevsPerTask = 8;
+  static const int kNumTasks = 3;
+  static const int kNumDevs = kNumDevsPerTask * kNumTasks;
+  CollectiveParams cp;
+  std::vector<string> device_names;
+  std::vector<string> task_names;
+  cp.group.group_key = 1;
+  cp.group.group_size = kNumDevs;
+  cp.group.device_type = DeviceType("GPU");
+  cp.group.num_tasks = kNumTasks;
+  cp.instance.instance_key = 3;
+  cp.instance.type = REDUCTION_COLLECTIVE;
+  cp.instance.data_type = DataType(DT_FLOAT);
+  cp.instance.shape = TensorShape({5});
+  cp.instance.impl_details.subdiv_offsets.push_back(0);
+  cp.is_source = false;
+  for (int i = 0; i < kNumDevs; ++i) {
+    int task_id = i / kNumDevsPerTask;
+    int dev_id = i % kNumDevsPerTask;
+    string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
+    task_names.push_back(task_name);
+    string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
+    device_names.push_back(device_name);
+    cp.instance.task_names.push_back(task_name);
+    cp.instance.device_names.push_back(device_name);
+  }
 
-}  // namespace
+  int test_rank = 0;
+  cp.default_rank = test_rank;
+  cp.instance.impl_details.subdiv_offsets = {0, 4};
+  GenSubdivPerms(cp.instance.device_names[test_rank], 0, &cp);
+  std::vector<int> expected_0 = {0,  1,  2,  3,  4,  5,  6,  7,
+                                 8,  9,  10, 11, 12, 13, 14, 15,
+                                 16, 17, 18, 19, 20, 21, 22, 23};
+  std::vector<int> expected_1 = {4, 5, 6,  7,  0,  1,  2,  3,  12, 13, 14, 15,
+                                 8, 9, 10, 11, 20, 21, 22, 23, 16, 17, 18, 19};
+  for (int i = 0; i < kNumDevs; ++i) {
+    EXPECT_EQ(expected_0[i],
+              cp.instance.impl_details.subdiv_permutations[0][i]);
+    EXPECT_EQ(expected_1[i],
+              cp.instance.impl_details.subdiv_permutations[1][i]);
+  }
+  EXPECT_EQ(0, cp.subdiv_rank[0]);
+  EXPECT_EQ(4, cp.subdiv_rank[1]);
+
+  test_rank = 3;
+  cp.default_rank = test_rank;
+  cp.instance.impl_details.subdiv_offsets = {3, -3};
+  cp.instance.impl_details.subdiv_permutations.clear();
+  GenSubdivPerms(cp.instance.device_names[test_rank], 0, &cp);
+  expected_0 = {3,  4, 5, 6,  7,  0,  1,  2,  11, 12, 13, 14,
+                15, 8, 9, 10, 19, 20, 21, 22, 23, 16, 17, 18};
+  expected_1 = {4, 3,  2,  1,  0,  7,  6,  5,  12, 11, 10, 9,
+                8, 15, 14, 13, 20, 19, 18, 17, 16, 23, 22, 21};
+  for (int i = 0; i < kNumDevs; ++i) {
+    EXPECT_EQ(expected_0[i],
+              cp.instance.impl_details.subdiv_permutations[0][i]);
+    EXPECT_EQ(expected_1[i],
+              cp.instance.impl_details.subdiv_permutations[1][i]);
+  }
+  EXPECT_EQ(0, cp.subdiv_rank[0]);
+  EXPECT_EQ(1, cp.subdiv_rank[1]);
+}
+
 }  // namespace tensorflow

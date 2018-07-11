@@ -46,11 +46,17 @@ cc_library(
     hdrs = [
         "eigen_support.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + [
+        "-Wno-error=reorder",
+    ] + select({
+        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
+        "//conditions:default": [
+        ],
+    }),
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "//third_party/eigen3",
+        "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
 
@@ -130,7 +136,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
-        "arg_max.cc",
+        "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
@@ -149,6 +155,7 @@ cc_library(
         "embedding_lookup_sparse.cc",
         "exp.cc",
         "expand_dims.cc",
+        "fake_quant.cc",
         "floor.cc",
         "fully_connected.cc",
         "gather.cc",
@@ -163,6 +170,7 @@ cc_library(
         "neg.cc",
         "pad.cc",
         "pooling.cc",
+        "pow.cc",
         "reduce.cc",
         "register.cc",
         "reshape.cc",
@@ -289,9 +297,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "arg_max_test",
+    name = "arg_min_max_test",
     size = "small",
-    srcs = ["arg_max_test.cc"],
+    srcs = ["arg_min_max_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],
@@ -547,6 +555,19 @@ tf_cc_test(
     name = "exp_test",
     size = "small",
     srcs = ["exp_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "fake_quant_test",
+    size = "small",
+    srcs = ["fake_quant_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
@@ -963,6 +984,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -999,6 +1021,20 @@ tf_cc_test(
     name = "shape_test",
     size = "small",
     srcs = ["shape_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pow_test",
+    size = "small",
+    srcs = ["pow_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

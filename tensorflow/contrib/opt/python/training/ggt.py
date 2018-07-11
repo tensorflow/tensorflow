@@ -33,7 +33,7 @@ class GGTOptimizer(optimizer_v2.OptimizerV2):
 
   GGT has an advantage over sgd and adam on large models with poor conditioning,
   for example language models and CNNs,
-  see [ABCHSZZ 2018]([pdf](https://arxiv.org/pdf/1806.02958.pdf)).
+  see [[ABCHSZZ 2018]](https://arxiv.org/pdf/1806.02958.pdf).
   """
 
   def __init__(self,

@@ -30,12 +30,12 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_function.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -67,17 +67,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
-  // external_constant_pool: if non-null, points to an ExternalConstantPool
-  //                         instance into which the Ir emitter can spill
-  //                         constants.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             std::unordered_map<const HloInstruction*, int64>
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
                 computation_to_profile_idx,
-            const TargetMachineFeatures* target_machine,
-            ExternalConstantPool* external_constant_pool);
+            const TargetMachineFeatures* target_machine);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -122,6 +118,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleSelect(HloInstruction* select) override;
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
@@ -150,7 +147,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleConditional(HloInstruction* conditional) override;
-  Status HandleGenerateToken(HloInstruction* gen_token) override;
+  Status HandleAfterAll(HloInstruction* gen_token) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -518,6 +515,17 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
 
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForMap(
+      HloMapInstruction* map, const llvm_ir::IrArray::Index& index);
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduceWindow(
+      HloReduceWindowInstruction* reduce_window,
+      const llvm_ir::IrArray::Index& index);
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForConvolution(
+      HloConvolutionInstruction* convolution,
+      const llvm_ir::IrArray::Index& index);
+  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduce(
+      HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index);
+
   enum class XfeedKind {
     kInfeed,
     kOutfeed,
@@ -536,9 +544,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   bool is_top_level_computation_;
 
   const TargetMachineFeatures& target_machine_features_;
-
-  int64 external_global_constant_counter_ = 0;
-  ExternalConstantPool* external_constant_pool_;
 
   struct LiteralPtrHashFunctor {
     size_t operator()(const Literal* literal) const { return literal->Hash(); }

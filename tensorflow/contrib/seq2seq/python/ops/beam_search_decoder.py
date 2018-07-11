@@ -250,7 +250,7 @@ class BeamSearchDecoder(decoder.Decoder):
     ```
     tiled_encoder_outputs = tf.contrib.seq2seq.tile_batch(
         encoder_outputs, multiplier=beam_width)
-    tiled_encoder_final_state = tf.conrib.seq2seq.tile_batch(
+    tiled_encoder_final_state = tf.contrib.seq2seq.tile_batch(
         encoder_final_state, multiplier=beam_width)
     tiled_sequence_length = tf.contrib.seq2seq.tile_batch(
         sequence_length, multiplier=beam_width)

@@ -94,7 +94,7 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
   const int row_size = SizeOfDimension(value, 0);
-  const double scaling_factor = 1.0 / value->params.scale;
+  const double scaling_factor = value->params.scale;
 
   // col_size after we flatten tensor into 2D.
   int col_size = 1;

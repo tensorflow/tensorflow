@@ -1164,6 +1164,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return ir_builder_->CreateAnd(lhs_value, rhs_value);
     case HloOpcode::kOr:
       return ir_builder_->CreateOr(lhs_value, rhs_value);
+    case HloOpcode::kXor:
+      return ir_builder_->CreateXor(lhs_value, rhs_value);
 
     // Shifting out bits >= the number of bits in the type being shifted
     // produces a poison value in LLVM which is basically "deferred undefined
@@ -1225,7 +1227,14 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
 
   // If no implicit broadcast is needed for this operand, returns the target
   // index as the source index.
-  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape())) {
+  //
+  // `IrArray::Index` may contain a physical linear which we can propagate to
+  // our operand only if our layouts match.  "only if" is a bit strong since
+  // e.g. we can still forward the linear index if the operand shape is
+  // [5,1,1,5]{3,2,1,0} and the HLO shape is[5,1,1,5]{3,1,2,0}, but those cases
+  // are probably not worth handling here for now.
+  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape()) &&
+      LayoutUtil::Equal(operand_shape.layout(), hlo.shape().layout())) {
     return target_index;
   }
 
@@ -1961,6 +1970,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kShiftLeft:

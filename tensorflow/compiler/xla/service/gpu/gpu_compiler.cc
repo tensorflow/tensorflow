@@ -552,8 +552,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                                &ir_emitter_context);
   {
     XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
-    TF_RETURN_IF_ERROR(
-        entry_computation->root_instruction()->Accept(&ir_emitter));
+    TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
   }
 
   if (user_pre_optimization_hook_) {

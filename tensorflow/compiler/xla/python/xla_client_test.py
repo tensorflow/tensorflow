@@ -157,6 +157,13 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayBool([True, True, False, False])))
     self._ExecuteAndCompareExact(c, expected=[True, True, True, False])
 
+  def testBooleanXor(self):
+    c = self._NewComputation()
+    c.Xor(
+        c.Constant(NumpyArrayBool([True, False, True, False])),
+        c.Constant(NumpyArrayBool([True, True, False, False])))
+    self._ExecuteAndCompareExact(c, expected=[False, True, True, False])
+
   def testSum2DF32(self):
     c = self._NewComputation()
     c.Add(
@@ -1167,14 +1174,6 @@ class EmbeddedComputationsTest(LocalComputationTest):
            c.Constant(NumpyArrayF64([5.0, 5.0, 4.0, 4.0]))),
           self._CreateBinaryDivF64Computation(), [0])
     self._ExecuteAndCompareClose(c, expected=[0.2, 0.4, 0.75, 1.0])
-
-  def DISABLED_testMapWithStaticOperands(self):
-    c = self._NewComputation()
-    factor = c.ConstantF32Scalar(3.0)
-    c.Map([c.Constant(NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
-          self._CreateMulF32ByParamComputation(), [0],
-          static_operands=[factor])
-    self._ExecuteAndCompareClose(c, expected=[3.0, 6.0, 9.0, 12.0])
 
   def testSelectAndScatterF32(self):
     c = self._NewComputation()
