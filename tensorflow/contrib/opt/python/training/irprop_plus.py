@@ -39,10 +39,10 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
   parameter, which is individually adapted for each objective variable.
   
   Rprop was originally proposed by Riedmiller and Braun in the article
-  [A direct adaptive method for faster backpropagation learning: the RPROP algorithm](https://ieeexplore.ieee.org/abstract/document/298623).
+  [A direct adaptive method for faster backpropagation learning: the RPROP algorithm](https://doi.org/10.1109/ICNN.1993.298623).
   The original Rprop algorithm uses weight-backtracking. It retracts the update of an objective
   variable if the update caused a change in sign of the corresponding partial derivative.
-  The implememented Rprop variant, which is called iRprop+ and is described in the article [Empirical evaluation of the improved Rprop learning algorithms](https://www.sciencedirect.com/science/article/pii/S0925231201007007)
+  The implememented Rprop variant, which is called iRprop+ and is described in the article [Empirical evaluation of the improved Rprop learning algorithms](https://doi.org/10.1016/S0925-2312(01)00700-7)
   only retracts an update if addionally the overall error increased.
   The TensorFlow implementation is described in the article [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz).
   
@@ -67,7 +67,7 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
                use_locking=False, name="IRpropPlusOptimizer"):
     """Constructs a new IRpropPlusOptimizer object.
 
-    The pseudocode of the algorithm can be found in the articles [Empirical evaluation of the improved Rprop learning algorithms](https://www.sciencedirect.com/science/article/pii/S0925231201007007)
+    The pseudocode of the algorithm can be found in the articles [Empirical evaluation of the improved Rprop learning algorithms](https://doi.org/10.1016/S0925-2312(01)00700-7)
     and [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz).
     
     Initialization:

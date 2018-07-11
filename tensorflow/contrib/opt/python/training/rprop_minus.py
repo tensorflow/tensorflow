@@ -26,15 +26,25 @@ from tensorflow.python.training import training_ops
 
 
 class RpropMinusOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the Rprop- update.
+  """Optimizer that implements the Rprop- algorithm.
 
-  In the Rprop algorithms the direction of each weight update is given by
-  the sign of the partial derivative `g{t}`. The step size is decoupled
-  from the absolute value of the gradient, and is adjusted according to a
-  local adaptive heuristic.
+  The Rprop (resilient backpropagation) algorithms are efficient gradient-based
+  optimization algorithms. They require hardly any hyperparameter tuning.
 
-  See [Igel and Husken, 2003],
-  [Empirical evaluation of the improved Rprop learning algorithms](https://pdfs.semanticscholar.org/ead3/a65b0c851a15ac6805b2ea7af13fa10c3fae.pdf).
+  In Rprop, the direction of each objective variable update is given by the sign
+  of the partial derivative. The amount of the change is decoupled
+  from the absolute value of the partial derivative. It is determined by a step-size
+  parameter, which is individually adapted for each objective variable.
+
+  Rprop was originally proposed by Riedmiller and Braun in the paper
+  [A direct adaptive method for faster backpropagation learning: the RPROP algorithm](https://doi.org/10.1109/ICNN.1993.298623).
+  The Rprop variant implemented here is described in Riedmiller's article [Advanced supervised learning in multi-layer perceptrons — From backpropagation to adaptive learning algorithms](https://doi.org/10.1016/0920-5489(94)90017-5), and is referred to as Rprop- (Rprop without weight-backtracking) in the article [Empirical evaluation of the improved Rprop learning algorithms](https://doi.org/10.1016/S0925-2312(01)00700-7).
+  
+  **The Rprop algorithms are recommended for batch learning, _not_ for mini-batch learning.**
+  The varint [iRprop+ (improved Rprop with weight-backtracking) algorithm](IRpropPlusOptimizer.md) is empirically found to be
+  faster and more robust than Rprop-.
+  See [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz)
+  for details and references.
   """
 
   def __init__(self,
@@ -50,11 +60,13 @@ class RpropMinusOptimizer(optimizer.Optimizer):
 
     ```
     old_grad <- 0 (Initialize the gradient from the previous timestep g{t-1})
-    delta_update <- delta_zero (Initialize initial step size)
-    t <- 0 (Initialize timestep)
+    delta_update <- delta_zero (Initialize step-size)
+    t <- 0 (Initialize iteration counter)
     ```
 
-    The following update rule is performed for each individual weight:
+    The following update rule is performed for each individual objective variable (e.g., weight),
+    where `g{t}` denotes the partial derivative of the objective function with respect to the
+    objective variable at iteration `t`:
 
     ```
     t <- t + 1
@@ -63,22 +75,22 @@ class RpropMinusOptimizer(optimizer.Optimizer):
       delta_update{t} <- min(eta_plus * delta_update{t-1}, delta_max)
     else if (grad_sign < 0)
       delta_update{t} <- max(eta_minus * delta_update{t-1}, delta_min)
-    variable{t+1} <- variable{t} -sign(g{t}) * delta_update{t}
+    variable{t+1} <- variable{t} - sign(g{t}) * delta_update{t}
     ```
 
     Args:
-      eta_minus: step size decrease multiplier
-      eta_plus: step size increase multiplier
-      delta_zero: initial step size quantity
-      delta_min: lower bound on the step size
-      delta_max: upper bound on the step size
+      eta_minus: Step-size decrease factor.
+      eta_plus: Step-size increase factor.
+      delta_zero: Initial step-size.
+      delta_min: Lower bound on step-size.
+      delta_max: Upper bound on step-size.
       use_locking: If True, use locks for update operations.
-      name: Optional name for the operations created iwhen applying gradients.
+      name: Optional name for the operations created when applying gradients.
          Defaults to "RpropMinusOptimizer".
     """
     super(RpropMinusOptimizer, self).__init__(use_locking, name)
 
-    # init parameters
+    # Init parameters
     self._eta_minus = eta_minus
     self._eta_plus = eta_plus
     self._delta_zero = delta_zero
@@ -92,13 +104,13 @@ class RpropMinusOptimizer(optimizer.Optimizer):
     self._delta_max_t = None
 
   def _create_slots(self, var_list):
-    # create slots for the gradient at (t-1) and
-    # the step size "delta_update"
+    # Create slots for the gradient at (t-1) and
+    # the step-size "delta_update".
     for v in var_list:
-      # gradient from the previous step
+      # Gradient from the previous step
       self._zeros_slot(v, "old_grad", self._name)
 
-      # delta update slot
+      # Delta update slot
       init_step = math_ops.add(array_ops.zeros(
           v.get_shape().as_list(), dtype=v.dtype.base_dtype), self._delta_zero)
       self._get_or_make_slot(v, init_step, "delta_update", self._name)
