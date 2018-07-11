@@ -28,21 +28,32 @@ from tensorflow.python.training import training_ops
 
 
 class IRpropPlusOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the iRprop+ update.
+  """Optimizer that implements the iRprop+ algorithm.
 
-  In the Rprop algorithms the direction of each weight update is given by
-  the sign of the partial derivative `g{t}`. The step size is decoupled
-  from the absolute value of the gradient, and is adjusted according to a
-  local adaptive heuristic. Moreover, iRprop+ implements weight-backtracking
-  which retracts an individual weight in case of a sign change of the derivative
-  as well as when the overall error increased. The algorithm is described
-  in section 2 of the paper below.
-
-  See [Igel and Husken, 2003],
-  [Empirical evaluation of the improved Rprop learning algorithms](https://pdfs.semanticscholar.org/ead3/a65b0c851a15ac6805b2ea7af13fa10c3fae.pdf).
+  The Rprop (resilient backpropagation) algorithms are efficient gradient-based
+  optimization algorithms. They require hardly any hyperparameter tuning.
+  
+  In Rprop, the direction of each objective variable update is given by the sign
+  of the partial derivative. The amount of the change is decoupled
+  from the absolute value of the partial derivative. It is determined by a step-size
+  parameter, which is individually adapted for each objective variable.
+  
+  Rprop was originally proposed by Riedmiller and Braun in the article
+  [A direct adaptive method for faster backpropagation learning: the RPROP algorithm](https://ieeexplore.ieee.org/abstract/document/298623).
+  The original Rprop algorithm uses weight-backtracking. It retracts the update of an objective
+  variable if the update caused a change in sign of the corresponding partial derivative.
+  The implememented Rprop variant, which is called iRprop+ and is described in the article [Empirical evaluation of the improved Rprop learning algorithms](https://www.sciencedirect.com/science/article/pii/S0925231201007007)
+  only retracts an update if addionally the overall error increased.
+  The TensorFlow implementation is described in the article [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz).
+  
+  **The Rprop algorithms are recommended for batch learning, _not_ for mini-batch learning.**
+  The iRprop+ (improved Rprop with weight-backtracking) algorithm is empirically found to be
+  faster and more robust than the [standard variant](RpropMinusOptimizer.md).
+  See [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz)
+  for details and references.
   """
 
-  # Values for gate_gradients. taken from base class
+  # Values for gate_gradients, taken from base class.
   GATE_NONE = 0
   GATE_OP = 1
   GATE_GRAPH = 2
@@ -56,18 +67,20 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
                use_locking=False, name="IRpropPlusOptimizer"):
     """Constructs a new IRpropPlusOptimizer object.
 
+    The pseudocode of the algorithm can be found in the articles [Empirical evaluation of the improved Rprop learning algorithms](https://www.sciencedirect.com/science/article/pii/S0925231201007007)
+    and [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz).
+    
     Initialization:
 
     ```
-    old_grad <- 0 (Initialize the gradient from the previous timestep g{t-1})
-    delta_update <- delta_zero (Initialize initial step size)
-    t <- 0 (Initialize timestep)
+    old_grad <- 0 (Initialize the gradient from the previous iteration g{t-1})
+    delta_update <- delta_zero (Initialize step-size)
+    t <- 0 (Initialize iteration counter)
     ```
 
-    The pseudocode is described in detail in section 2 of
-    [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz)
-
-    The following update rule is performed for each individual weight:
+    The following update rule is performed for each individual objective variable (e.g., weight),
+    where `g{t}` denotes the partial derivative of the objective function with respect to the
+    objective variable at iteration `t`:
 
     ```
     t <- t + 1
@@ -81,24 +94,24 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
         variable{t+1} <- variable{t-1}
       g{t} = 0
     else
-      variable{t+1} <- variable{t} -sign(g{t}) * delta_update{t}
+      variable{t+1} <- variable{t} - sign(g{t}) * delta_update{t}
 
     ```
 
     Args:
-      eta_minus: step size decrease multiplier
-      eta_plus: step size increase multiplier
-      delta_zero: initial step size quantity
-      delta_min: lower bound on the step size
-      delta_max: upper bound on the step size
+      eta_minus: Step-size decrease factor.
+      eta_plus: Step-size increase factor.
+      delta_zero: Initial step-size.
+      delta_min: Lower bound on step-size.
+      delta_max: Upper bound on step-size.
       use_locking: If True, use locks for update operations.
-      name: Optional name for the operations created iwhen applying gradients.
+      name: Optional name for the operations created when applying gradients.
          Defaults to "IRpropPlusOptimizer".
    """
 
     super(IRpropPlusOptimizer, self).__init__(use_locking, name)
 
-    # init parameters
+    # Init parameters
     self._eta_minus = eta_minus
     self._eta_plus = eta_plus
     self._delta_zero = delta_zero
@@ -125,23 +138,23 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
     self._delta_max_t = ops.convert_to_tensor(self._delta_max, name="delta_max")
 
   def _create_slots(self, var_list):
-    # create slots for the gradient at (t-1) and
-    # the step size "delta_update"
+    # Create slots for the gradient at (t-1) and
+    # the step-size "delta_update".
     for v in var_list:
-      # gradient from the previous step
+      # Gradient from the previous step
       self._zeros_slot(v, 'old_grad', self._name)
-      # init value for delta at step t = 0
+      # Init value for delta at step t = 0
       init_step = math_ops.add(array_ops.zeros(
           v.get_shape().as_list(), dtype=v.dtype.base_dtype), self._delta_zero)
       self._get_or_make_slot(v, init_step, "delta_update", self._name)
 
-  # helper method to check if variable is scalar
+  # Helper method to check if variable is scalar
   def _is_scalar(self, tensor):
     return tensor is not None and \
             tensor.shape.ndims == 0
            #tensor.shape.ndims is not None
 
-  # called by apply_gradients in Optimizer base class
+  # Called by apply_gradients in Optimizer base class
   def _apply_dense(self, grad, var):
 
     old_grad = self.get_slot(var, 'old_grad')
@@ -199,17 +212,17 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
     takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
+    minimized. If `var_list` is `None`, `loss` should take no arguments.
     Minimization (and gradient computation) is done with respect to the
-    elements of `var_list` if not None, else with respect to any trainable
+    elements of `var_list` if not `None`, else with respect to any trainable
     variables created during the execution of the `loss` function.
     `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
     `grad_loss` are ignored when eager execution is enabled.
     @end_compatibility
     """
-    # override method from base class
+    # Override method from base class
 
-    # error E(t)
+    # Error E(t)
     if self._is_scalar(loss):
       self._error = loss
     else:
@@ -250,19 +263,19 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
         name passed to the `Optimizer` constructor.
     Returns:
       An `Operation` that applies the specified gradients. If `global_step`
-      was not None, that operation also increments `global_step`.
+      is not `None`, the operation also increments `global_step`.
     Raises:
       TypeError: If `grads_and_vars` is malformed.
       ValueError: If the `loss` is not a 0-D tensor (scalar).
       ValueError: If none of the variables have gradients.
       RuntimeError: If you should use `_distributed_apply()` instead.
     """
-    # overload method by adding loss parameter (iRprop+ requires the error)
-    # it's possible to save the error when calling compute_gradients too
+    # Overload method by adding loss parameter (iRprop+ requires the error).
+    # It is possible to save the error when calling compute_gradients too
     # in this way we make sure that the error is passed to the step update
-    # even when the gradients are computed using different methods
+    # even when the gradients are computed using different methods.
 
-    # error E(t)
+    # Error E(t)
     if self._is_scalar(loss):
       self._error = loss
     else:
