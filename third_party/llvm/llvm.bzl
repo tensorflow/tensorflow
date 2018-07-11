@@ -338,6 +338,7 @@ llvm_defines = select({
     ],
     "//conditions:default": ["_DEBUG"],
 }) + [
+    "LLVM_ENABLE_STATS",
     "__STDC_LIMIT_MACROS",
     "__STDC_CONSTANT_MACROS",
     "__STDC_FORMAT_MACROS",
