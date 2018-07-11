@@ -24,7 +24,7 @@ toc:
   - title: Overview
     path: /tutorials/eager/
   - title: Eager execution
-    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_intro.ipynb
+    path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/eager_basics.ipynb
     status: external
   - title: Automatic differentiation
     path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/notebooks/automatic_differentiation.ipynb
