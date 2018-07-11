@@ -31,6 +31,10 @@ bool GpuOpFilter(KernelDef* kdef) {
        kdef->op() == "RandomUniformInt" || kdef->op() == "TruncatedNormal")) {
     return false;
   }
+  // TODO(b/26783907): The GPU backend currently does not implement sort.
+  if (kdef->op() == "XlaSort" || kdef->op() == "TopKV2") {
+    return false;
+  }
   if (kdef->op() == "Const") {
     AddDtypeToKernalDefConstraint("dtype", DT_STRING, kdef);
   }
