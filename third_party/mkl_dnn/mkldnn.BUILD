@@ -1,7 +1,4 @@
-exports_files([
-    "LICENSE",
-    "build_defs.bzl",
-])
+exports_files(["LICENSE"])
 
 load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
