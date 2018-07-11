@@ -1565,7 +1565,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
 
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
-    // to oficially document different behavior.
+    // to officially document different behavior.
     start_index_value =
         ir_builder_->CreateSExtOrTrunc(start_index_value, index_type);
     llvm::Value* operand_dim_size =
@@ -1610,19 +1610,22 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
 
   llvm::Type* index_type = index.GetType();
   // This is the index into `operand` that holds the element we want to
-  // generate.  This index "unsafe" as in the components in here may be
-  // out of bounds.
-  IrArray::Index unsafe_operand_index(index_type);
+  // generate.
+  IrArray::Index operand_index(index_type);
 
-  // First copy in the window indices to unsafe_operand_index.
-  for (int64 i = 0, e = operand_shape.dimensions_size(),
-             unsafe_operand_index_dim = 0;
+  // First copy in the window indices to operand_index. Also collect a mapping
+  // from operand dimension to output window dimension. Elided window dimensions
+  // map to -1.
+  std::vector<int64> operand_to_output_dim(operand_shape.dimensions_size(), -1);
+  for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
     if (c_binary_search(dim_numbers.elided_window_dims(), i)) {
-      unsafe_operand_index.push_back(index.GetConstantWithIndexType(0));
+      operand_index.push_back(index.GetConstantWithIndexType(0));
     } else {
-      unsafe_operand_index.push_back(
-          index[dim_numbers.output_window_dims(unsafe_operand_index_dim++)]);
+      int64 output_window_dim =
+          dim_numbers.output_window_dims(operand_index_dim++);
+      operand_to_output_dim[i] = output_window_dim;
+      operand_index.push_back(index[output_window_dim]);
     }
   }
 
@@ -1641,20 +1644,42 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     }
   }
 
-  auto add_to_unsafe_operand_index = [&](llvm::Value* index_component,
-                                         int64 dim) {
+  auto add_to_operand_index = [&](llvm::Value* index_component, int64 dim) {
     llvm::Value* gather_dim_component_extended =
         ir_builder_->CreateSExtOrTrunc(index_component, index_type);
-    unsafe_operand_index[dim_numbers.gather_dims_to_operand_dims(dim)] =
-        ir_builder_->CreateAdd(
-            unsafe_operand_index[dim_numbers.gather_dims_to_operand_dims(dim)],
-            gather_dim_component_extended);
+    int64 operand_dim = dim_numbers.gather_dims_to_operand_dims(dim);
+    int64 output_dim = operand_to_output_dim[operand_dim];
+    // If 'output_dim' is -1, it means 'operand_dim' is an elided window dim.
+    // This means we set the iteration index to 0, so for the purpose of the
+    // following calculations we can consider the output dimension size to be 1.
+    int64 output_dim_size =
+        output_dim == -1 ? 1 : output_shape.dimensions(output_dim);
+    int64 largest_valid_start_index =
+        operand_shape.dimensions(operand_dim) - output_dim_size;
+    CHECK_GE(largest_valid_start_index, 0);
+
+    // Clamp the gather index so that the gather region fits in the operand.
+    // gather_dim_component_extended_inbound =
+    //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
+
+    // TODO(b/111078873): This is implementation defined behavior.
+
+    bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
+    auto gather_dim_component_extended_inbound = EmitIntegralMin(
+        index.GetConstantWithIndexType(largest_valid_start_index),
+        EmitIntegralMax(index.GetConstantWithIndexType(0),
+                        gather_dim_component_extended,
+                        /*is_signed=*/is_signed),
+        /*is_signed=*/is_signed);
+
+    operand_index[operand_dim] = ir_builder_->CreateAdd(
+        operand_index[operand_dim], gather_dim_component_extended_inbound);
   };
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
     TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                         indices_generator(gather_index_index));
-    add_to_unsafe_operand_index(gather_dim_component, 0);
+    add_to_operand_index(gather_dim_component, 0);
   } else {
     int64 index_vector_size =
         indices_shape.dimensions(dim_numbers.index_vector_dim());
@@ -1663,18 +1688,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
           index.GetConstantWithIndexType(i);
       TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                           indices_generator(gather_index_index));
-      add_to_unsafe_operand_index(gather_dim_component, i);
+      add_to_operand_index(gather_dim_component, i);
     }
   }
-
-  IrArray::Index safe_operand_index(index_type);
-  for (int64 i = 0, e = unsafe_operand_index.size(); i < e; i++) {
-    safe_operand_index.push_back(ir_builder_->CreateURem(
-        unsafe_operand_index[i],
-        index.GetConstantWithIndexType(operand_shape.dimensions(i))));
-  }
-
-  return operand_generator(safe_operand_index);
+  return operand_generator(operand_index);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
@@ -1706,7 +1723,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
-    // to oficially document different behavior.
+    // to officially document different behavior.
     start_index_value =
         ir_builder_->CreateSExtOrTrunc(start_index_value, index_type);
     llvm::Value* input_dim_size =
