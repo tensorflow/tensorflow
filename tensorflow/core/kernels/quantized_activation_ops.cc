@@ -110,7 +110,8 @@ class QuantizedReluXOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     const T min_as_quantized = FloatToQuantized<T>(0.0f, min_input, max_input);
-    const T max_as_quantized = FloatToQuantized<T>(max_value, min_input, max_input);
+    const T max_as_quantized =
+        FloatToQuantized<T>(max_value, min_input, max_input);
 
     if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
       auto input_ui8_array = input.flat<quint8>();
