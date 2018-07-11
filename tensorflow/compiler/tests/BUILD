@@ -235,7 +235,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "cholesky_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["cholesky_op_test.py"],
     tags = ["optonly"],
     deps = [
@@ -661,6 +661,27 @@ tf_xla_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "qr_op_test",
+    size = "medium",
+    srcs = ["qr_op_test.py"],
+    disabled_backends = [
+        # Test is very slow on CPU.
+        "cpu",
+        "cpu_ondemand",
+    ],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
