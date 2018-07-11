@@ -203,6 +203,12 @@ class RunConfig(run_config_lib.RunConfig):
         self._session_config.cluster_def.CopyFrom(
             self._cluster_spec.as_cluster_def())
 
+  def _maybe_overwrite_session_config_for_distributed_training(self):
+    # Overrides the parent class session_config overwrite for between-graph. TPU
+    # runs with in-graph, which should not have device filter. Doing nothing
+    # ("pass") basically disables it.
+    pass
+
   @property
   def evaluation_master(self):
     return self._evaluation_master
