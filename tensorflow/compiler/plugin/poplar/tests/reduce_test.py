@@ -216,12 +216,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
             # Note that intermidiates are still floats, so there is a final cast
             ok = ['Execution',
                   '/ExchangePre',
-                  'Execution',
-                  'Execution',
-                  '/ExchangePre',
-                  'Execution',
-                  'Sum/reduce.*.clone_f16/final_stage/Cast/Cast',
-                  'Sum/reduce.*.clone_f16/final_stage/Cast/Cast/PostExchangeArrange']
+                  'Sum/reduce.*.clone_f16/final_stage/Cast/Cast']
             self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":
