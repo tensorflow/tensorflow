@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops import variables
-from tensorflow.python.training import training
 
 
 def get_all_variables(sess):

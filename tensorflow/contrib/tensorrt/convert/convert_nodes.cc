@@ -53,31 +53,24 @@ limitations under the License.
 //  would work!
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
-#define TFTRT_RETURN_ERROR_IF_FALSE(ptr, node) \
-  do {                                         \
-    if (ptr == false) {                        \
-      return tensorflow::errors::Internal(     \
-          string("TFTRT::"), __FUNCTION__,     \
-          "failed to add TRT layer, at: ",     \
-          node);                               \
-    }                                          \
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                               \
+  do {                                                                   \
+    return tensorflow::errors::Internal(                                 \
+        "TFTRT::", __FUNCTION__, "failed to add TRT layer, at: ", node); \
+  }  while (0)
+
+#define TFTRT_RETURN_ERROR_IF_FALSE(status, node) \
+  do {                                            \
+    if (status == false) {                        \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);         \
+    }                                             \
   } while (0)
 
 #define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
   do {                                           \
     if (ptr == nullptr) {                        \
-      return tensorflow::errors::Internal(       \
-          string("TFTRT::"), __FUNCTION__,       \
-          "failed to add TRT layer, at: ",       \
-          node);                                 \
+      TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
     }                                            \
-  } while (0)
-
-#define TFTRT_RETURN_IF_OK(status)     \
-  do {                                 \
-    if (status.ok()) {                 \
-      return tensorflow::Status::OK(); \
-    }                                  \
   } while (0)
 
 namespace tensorflow {
@@ -1714,44 +1707,34 @@ tensorflow::Status ConvertBinary(Converter& ctx,
 
   // Constant folding should have been done by TensorFlow
 
-  if (inputs.at(0).is_weights() && inputs.at(1).is_weights())
+  if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
     return tensorflow::errors::Unimplemented(
         "Constant folding is falled back to TensorFlow, binary op received "
         "both input as constant at: " +
         node_def.name());
+  }
 
   // Try to convert into Scale layer first (for better performance)
   // Since scale layer supports restricted broadcast policy and op types, we
   // allow failure and try to handle it through Elementwise op
   // (BinaryTensorOpTensor)
+  Status status = tensorflow::Status::OK();
   if (inputs.at(0).is_tensor() && inputs.at(1).is_weights()) {
-    auto status = BinaryTensorOpWeight(ctx, node_def, inputs.at(0).tensor(),
-                                       inputs.at(1).weights(), false, outputs);
+    status = BinaryTensorOpWeight(ctx, node_def, inputs.at(0).tensor(),
+                                  inputs.at(1).weights(), false, outputs);
+  } else if (inputs.at(0).is_weights() && inputs.at(1).is_tensor()) {
+    status = BinaryTensorOpWeight(ctx, node_def, inputs.at(1).tensor(),
+                                  inputs.at(0).weights(), true, outputs);
 #if NV_TENSORRT_MAJOR == 3
-    TF_RETURN_IF_ERROR(status);
+  } else {
 #else
-    TFTRT_RETURN_IF_OK(status);
-#endif
   }
-
-  if (inputs.at(0).is_weights() && inputs.at(1).is_tensor()) {
-    auto status = BinaryTensorOpWeight(ctx, node_def, inputs.at(1).tensor(),
-                                       inputs.at(0).weights(), true, outputs);
-#if NV_TENSORRT_MAJOR == 3
-    TF_RETURN_IF_ERROR(status);
-#else
-    TFTRT_RETURN_IF_OK(status);
+  if (inputs.at(0).is_tensor() && inputs.at(1).is_tensor() || !status.ok()) {
 #endif
+    status = BinaryTensorOpTensor(ctx, node_def, inputs.at(0), inputs.at(1),
+                                  outputs);
   }
-
-#if NV_TENSORRT_MAJOR == 3
-  if (inputs.at(0).is_tensor() && inputs.at(1).is_tensor()) {
-#endif
-    return BinaryTensorOpTensor(ctx, node_def, inputs.at(0), inputs.at(1),
-                                outputs);
-#if NV_TENSORRT_MAJOR == 3
-  }
-#endif
+  return status;
 }
 
 tensorflow::Status ConvertUnary(Converter& ctx,

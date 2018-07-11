@@ -18,31 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import numpy as np
 
-from tensorflow.contrib import tensorrt as trt
-from tensorflow.core.protobuf import config_pb2 as cpb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as rwpb2
-from tensorflow.python.client import session as csess
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import importer as importer
-from tensorflow.python.framework import ops as ops
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.layers import core
 from tensorflow.python.training import training
-from tensorflow.contrib.tensorrt.test.unit_tests.base_unit_test import BaseUnitTest
-from tensorflow.contrib.tensorrt.test.unit_tests.utilities import get_all_variables
+from tensorflow.contrib.tensorrt.test.base_unit_test import BaseUnitTest
+from tensorflow.contrib.tensorrt.test.utilities import get_all_variables
 
 
 class BatchMatMulTest(BaseUnitTest):
@@ -60,12 +51,12 @@ class BatchMatMulTest(BaseUnitTest):
     self.log_file = log_file
     self.test_name = self.__class__.__name__
     self.ckpt = "./tmp.ckpt"
-    sess = csess.Session()
+    sess = session.Session()
 
   def matmul_test(self):
     g = ops.Graph()
-    gpu_options = cpb2.GPUOptions()
-    sessconfig = cpb2.ConfigProto(gpu_options=gpu_options)
+    gpu_options = config_pb2.GPUOptions()
+    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     with g.as_default():
       x = array_ops.placeholder(
           dtype=dtypes.float32, shape=self.inp_dims, name="input")
@@ -98,7 +89,7 @@ class BatchMatMulTest(BaseUnitTest):
       out = x3 + x1
       array_ops.squeeze(out, name="output")
 
-      with csess.Session(config=sessconfig, graph=g) as sess:
+      with session.Session(config=sessconfig, graph=g) as sess:
         names_var_list = get_all_variables(sess)
         saver = training.Saver(names_var_list)
         sess.run(variables.global_variables_initializer())

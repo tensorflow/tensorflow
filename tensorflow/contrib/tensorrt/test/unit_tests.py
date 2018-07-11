@@ -18,20 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow.contrib.tensorrt.test
+from tensorflow.contrib.tensorrt.test.batch_matmul_test import BatchMatMulTest
+from tensorflow.contrib.tensorrt.test.biasadd_matmul_test import BiasaddMatMulTest
+from tensorflow.contrib.tensorrt.test.binary_tensor_weight_broadcast_test import BinaryTensorWeightBroadcastTest
+from tensorflow.contrib.tensorrt.test.concatenation_test import ConcatenationTest
+from tensorflow.contrib.tensorrt.test.multi_connection_neighbor_engine_test import MultiConnectionNeighborEngineTest
+from tensorflow.contrib.tensorrt.test.neighboring_engine_test import NeighboringEngineTest
+from tensorflow.contrib.tensorrt.test.unary_test import UnaryTest
+from tensorflow.contrib.tensorrt.test.vgg_block_nchw_test import VGGBlockNCHWTest
+from tensorflow.contrib.tensorrt.test.vgg_block_test import VGGBlockTest
+from tensorflow.contrib.tensorrt.test.const_broadcast_test import ConstBroadcastTest
 
-from tensorflow.contrib.tensorrt.test.unit_tests.BatchMatMulTest import BatchMatMulTest
-from tensorflow.contrib.tensorrt.test.unit_tests.BiasaddMatMulTest import BiasaddMatMulTest
-from tensorflow.contrib.tensorrt.test.unit_tests.BinaryTensorWeightBroadcastTest import BinaryTensorWeightBroadcastTest
-from tensorflow.contrib.tensorrt.test.unit_tests.ConcatenationTest import ConcatenationTest
-from tensorflow.contrib.tensorrt.test.unit_tests.MultiConnectionNeighborEngineTest import MultiConnectionNeighborEngineTest
-from tensorflow.contrib.tensorrt.test.unit_tests.NeighboringEngineTest import NeighboringEngineTest
-from tensorflow.contrib.tensorrt.test.unit_tests.UnaryTest import UnaryTest
-from tensorflow.contrib.tensorrt.test.unit_tests.VGGBlockNCHWTest import VGGBlockNCHWTest
-from tensorflow.contrib.tensorrt.test.unit_tests.VGGBlockTest import VGGBlockTest
-from tensorflow.contrib.tensorrt.test.unit_tests.ConstBroadcastTest import ConstBroadcastTest
-
-from tensorflow.contrib.tensorrt.test.unit_tests.run_test import RunTest
+from tensorflow.contrib.tensorrt.test.run_test import RunTest
 
 tests = 0
 passed_test = 0
