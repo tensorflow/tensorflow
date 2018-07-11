@@ -64,7 +64,7 @@ cc_library(
 )
 
 cc_library(
-    name = "hipblas",
+    name = "rocblas",
     srcs = ["rocm/lib/%{rocblas_lib}"],
     data = ["rocm/lib/%{rocblas_lib}"],
     includes = [
@@ -118,7 +118,7 @@ cc_library(
     deps = [
         ":rocm_headers",
         ":rocmrt",
-        ":hipblas",
+        ":rocblas",
         ":rocfft",
         ":hiprand",
         ":miopen",

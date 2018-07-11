@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,35 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/stream_executor/stream_executor_internal.h"
+#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 
 namespace stream_executor {
-namespace internal {
+namespace rocm {
 
-// -- CUDA
-
-StreamExecutorFactory* MakeCUDAExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
-}
-
-// -- OpenCL
-
-StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
-}
-
-// -- ROCm
-
-StreamExecutorFactory* MakeROCMExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
-}
-
-// -- Host
-
-StreamExecutorFactory MakeHostExecutorImplementation;
-
-}  // namespace internal
+PLATFORM_DEFINE_ID(kROCmPlatformId);
+}  // namespace rocm
 }  // namespace stream_executor

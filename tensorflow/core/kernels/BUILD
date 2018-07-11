@@ -2511,7 +2511,7 @@ tf_kernel_library(
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "@local_config_cuda//cuda:cublas",
         "@local_config_cuda//cuda:cusolver",
-    ])
+    ]),
 )
 
 LINALG_DEPS = [
