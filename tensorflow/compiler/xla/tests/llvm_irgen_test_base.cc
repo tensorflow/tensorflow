@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -56,6 +57,16 @@ void LLVMIRGenTestBase::CompileAndVerifyIr(
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
+void LLVMIRGenTestBase::CompileAndVerifyIr(const string& hlo_text,
+                                           const string& expected_llvm_ir,
+                                           bool match_optimized_ir) {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text, config));
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
 }
 
 void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(

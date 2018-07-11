@@ -38,6 +38,12 @@ class LLVMIRGenTestBase : public CodegenTestBase {
   void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
                           const string& pattern, bool match_optimized_ir);
 
+  // A thin wrapper around CompileAndVerifyIr that parses `hlo_text` to create
+  // an HLO module.
+  void CompileAndVerifyIr(const string& hlo_text,
+                          const string& expected_llvm_ir,
+                          bool match_optimized_ir = false);
+
   // Compiles the given HLO module to LLVM IR and verifies the IR matches the
   // given pattern. `pattern` is in the FileCheck pattern matching syntax
   // (http://llvm.org/docs/CommandGuide/FileCheck.html).
