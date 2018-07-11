@@ -101,3 +101,7 @@ bb42:
 }
 
 ; -----
+
+#map = (d0) -> (%  ; expected-error {{invalid SSA name}}
+
+; -----

@@ -30,7 +30,7 @@ namespace mlir {
 /// This class breaks up the current file into a token stream.
 class Lexer {
   llvm::SourceMgr &sourceMgr;
-  const SMDiagnosticHandlerTy &errorReporter;
+  const SMDiagnosticHandlerTy errorReporter;
 
   StringRef curBuffer;
   const char *curPtr;
@@ -38,16 +38,16 @@ class Lexer {
   Lexer(const Lexer&) = delete;
   void operator=(const Lexer&) = delete;
 public:
-  explicit Lexer(llvm::SourceMgr &sourceMgr,
-                 const SMDiagnosticHandlerTy &errorReporter);
+ explicit Lexer(llvm::SourceMgr &sourceMgr,
+                SMDiagnosticHandlerTy errorReporter);
 
-  llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
+ llvm::SourceMgr &getSourceMgr() { return sourceMgr; }
 
-  Token lexToken();
+ Token lexToken();
 
-  /// Change the position of the lexer cursor.  The next token we lex will start
-  /// at the designated point in the input.
-  void resetPointer(const char *newPointer) { curPtr = newPointer; }
+ /// Change the position of the lexer cursor.  The next token we lex will start
+ /// at the designated point in the input.
+ void resetPointer(const char *newPointer) { curPtr = newPointer; }
 private:
   // Helpers.
   Token formToken(Token::Kind kind, const char *tokStart) {

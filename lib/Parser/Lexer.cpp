@@ -31,8 +31,7 @@ static bool isPunct(char c) {
   return c == '$' || c == '.' || c == '_' || c == '-';
 }
 
-Lexer::Lexer(llvm::SourceMgr &sourceMgr,
-             const SMDiagnosticHandlerTy &errorReporter)
+Lexer::Lexer(llvm::SourceMgr &sourceMgr, SMDiagnosticHandlerTy errorReporter)
     : sourceMgr(sourceMgr), errorReporter(errorReporter) {
   auto bufferID = sourceMgr.getMainFileID();
   curBuffer = sourceMgr.getMemoryBuffer(bufferID)->getBuffer();

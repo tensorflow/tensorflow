@@ -1660,8 +1660,7 @@ Module *mlir::parseSourceFile(llvm::SourceMgr &sourceMgr, MLIRContext *context,
   std::unique_ptr<Module> module(new Module(context));
 
   ParserState state(sourceMgr, module.get(),
-                    errorReporter ? std::move(errorReporter)
-                                  : defaultErrorReporter);
+                    errorReporter ? errorReporter : defaultErrorReporter);
   if (ModuleParser(state).parseModule())
     return nullptr;
 
