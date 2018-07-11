@@ -388,16 +388,40 @@ def _build_guide_index(guide_src_dir):
 
 
 class _UpdateTags(py_guide_parser.PyGuideParser):
-  """Rewrites a Python guide so that each section has an explicit tag."""
+  """Rewrites a Python guide so that each section has an explicit id tag.
+
+  "section" here refers to blocks delimited by second level headings.
+  """
 
   def process_section(self, line_number, section_title, tag):
     self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
 
 
+def update_id_tags_inplace(src_dir):
+  """Set explicit ids on all second-level headings to ensure back-links work.
+
+  Args:
+    src_dir: The directory of md-files to convert (inplace).
+  """
+  tag_updater = _UpdateTags()
+
+  for dirpath, _, filenames in os.walk(src_dir):
+    for base_name in filenames:
+      if not base_name.endswith('.md'):
+        continue
+      full_path = os.path.join(src_dir, dirpath, base_name)
+
+      # Tag updater loads the file, makes the replacements, and returns the
+      # modified file contents
+      content = tag_updater.process(full_path)
+      with open(full_path, 'w') as f:
+        f.write(content)
+
+
 EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
 
 
-def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
+def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
   """Fix @{} references in all files under `src_dir` matching `file_pattern`.
 
   A matching directory structure, with the modified files is
@@ -418,7 +442,6 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       using fnmatch. Non-matching files are copied unchanged.
   """
   # Iterate through all the source files and process them.
-  tag_updater = _UpdateTags()
   for dirpath, _, filenames in os.walk(src_dir):
     # How to get from `dirpath` to api_docs/python/
     relative_path_to_root = os.path.relpath(
@@ -435,23 +458,24 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
         continue
       full_in_path = os.path.join(dirpath, base_name)
 
+      # Set the `current_doc_full_name` so bad files can be reported on errors.
       reference_resolver.current_doc_full_name = full_in_path
 
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
+      # Copy files that do not match the file_pattern, unmodified.
       if not fnmatch.fnmatch(base_name, file_pattern):
         shutil.copyfile(full_in_path, full_out_path)
         continue
-      if dirpath.endswith('/api_guides/python'):
-        content = tag_updater.process(full_in_path)
-      else:
-        with open(full_in_path, 'rb') as f:
-          content = f.read().decode('utf-8')
+
+      with open(full_in_path, 'rb') as f:
+        content = f.read().decode('utf-8')
 
       content = reference_resolver.replace_references(content,
                                                       relative_path_to_root)
       with open(full_out_path, 'wb') as f:
         f.write(content.encode('utf-8'))
+
 
 class DocGenerator(object):
   """Main entry point for generating docs."""
@@ -538,15 +562,43 @@ class DocGenerator(object):
                    self._do_not_descend_map)
 
   def build(self, flags):
-    """Actually build the docs."""
+    """Build all the docs.
+
+    This produces two outputs
+
+    python api docs:
+
+      * generated from modules set with `set_py_modules`.
+      * written to '{FLAGS.output_dir}/api_docs/python/'
+
+    non-api docs:
+
+      * Everything in '{FLAGS.src_dir}' is copied to '{FLAGS.output_dir}'.
+      * '@{}' references in '.md' files are replaced with links.
+      * '.md' files under 'api_guides/python' have explicit ids set for their
+        second level headings.
+
+    Args:
+      flags:
+        * src_dir: Where to fetch the non-api-docs.
+        * base_dir: Base of the docs directory (Used to build correct
+          relative links).
+        * output_dir: Where to write the resulting docs.
+
+    Returns:
+      The number of errors encountered while processing.
+    """
+    # Extract the python api from the _py_modules
     doc_index = build_doc_index(flags.src_dir)
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
 
+    # Build the guide_index for the api_docs back links.
     root_title = getattr(flags, 'root_title', 'TensorFlow')
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
 
+    # Write the api docs.
     parser_config = self.make_parser_config(visitor, reference_resolver,
                                             guide_index, flags.base_dir)
     output_dir = os.path.join(flags.output_dir, 'api_docs/python')
@@ -557,8 +609,16 @@ class DocGenerator(object):
         yaml_toc=self.yaml_toc,
         root_title=root_title,
         search_hints=getattr(flags, 'search_hints', True))
-    _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
 
+    # Replace all the @{} references in files under `FLAGS.src_dir`
+    replace_refs(flags.src_dir, flags.output_dir, reference_resolver, '*.md')
+    # Fix the tags in the guide dir.
+    guide_dir = os.path.join(flags.output_dir, 'api_guides/python')
+    if os.path.exists(guide_dir):
+      update_id_tags_inplace(guide_dir)
+
+    # Report all errors found by the reference resolver, and return the error
+    # code.
     parser_config.reference_resolver.log_errors()
 
     return parser_config.reference_resolver.num_errors()

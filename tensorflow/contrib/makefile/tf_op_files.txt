@@ -92,6 +92,7 @@ tensorflow/core/kernels/reduction_ops_common.cc
 tensorflow/core/kernels/reduction_ops_any.cc
 tensorflow/core/kernels/reduction_ops_all.cc
 tensorflow/core/kernels/roll_op.cc
+tensorflow/core/kernels/queue_op.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc

@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -166,8 +166,7 @@ Status GenericTransferManager::TransferBufferToInfeed(
 Status GenericTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
-  return Unimplemented(
-      "Outfeed is not supported on this platform (b/30467474)");
+  return Unimplemented("Generic transfer from Outfeed");
 }
 
 Status GenericTransferManager::ResetDevices(

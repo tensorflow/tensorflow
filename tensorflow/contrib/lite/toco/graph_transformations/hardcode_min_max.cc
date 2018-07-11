@@ -133,24 +133,20 @@ bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
 }
 
 bool HardcodeMinMaxForSplit(Model* model, Operator* op) {
-  for (const auto& output : op->outputs) {
-    if (model->GetArray(output).minmax) {
-      LOG(WARNING) << "Skipping min-max setting for " << LogName(*op)
-                   << " because output " << output << " already has min-max.";
-      return false;
-    }
-  }
   // Data is in second input.
   auto& input_array = model->GetArray(op->inputs[1]);
   if (!input_array.minmax) {
     return false;
-  } else {
-    for (const auto& output : op->outputs) {
-      auto& array = model->GetArray(output);
+  }
+  bool changed = false;
+  for (const auto& output : op->outputs) {
+    auto& array = model->GetArray(output);
+    if (!array.minmax || !(array.GetMinMax() == input_array.GetMinMax())) {
+      changed = true;
       array.GetOrCreateMinMax() = *input_array.minmax;
     }
-    return true;
   }
+  return changed;
 }
 
 // The output of average or max pooling is within the same range as its input.
@@ -232,6 +228,14 @@ bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
   return true;
 }
 
+bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
+  const double magnitude =
+      std::min(minmax1.max - minmax1.min, minmax2.max - minmax2.min);
+  const double tolerated = 1e-6 * magnitude;
+  return std::abs(minmax1.min - minmax2.min) < tolerated &&
+         std::abs(minmax1.max - minmax2.max) < tolerated;
+}
+
 // Propagates MinMax from any of the listed arrays, to all others.
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
@@ -254,7 +258,7 @@ bool PropagateMinMaxAmongArrays(Model* model,
   for (const string& array_name : array_names) {
     auto& array = model->GetArray(array_name);
     if (array.minmax) {
-      CHECK(*array.minmax == *reference_minmax)
+      CHECK(MinMaxApproximatelyEqual(*array.minmax, *reference_minmax))
           << "Both the following arrays have minmax, and they disagree: "
           << reference_array_name << " (" << reference_minmax->min << ","
           << reference_minmax->max << ") and " << array_name << " ("

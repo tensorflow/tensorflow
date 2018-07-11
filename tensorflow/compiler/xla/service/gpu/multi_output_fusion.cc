@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -84,31 +85,35 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
 }
 
 namespace {
-bool IsReduction(HloInstruction* instr) {
+bool IsInputFusibleReduction(HloInstruction* instr) {
   if (instr->IsMultiOutputFusion()) {
     for (const HloInstruction* operand :
          instr->fused_expression_root()->operands()) {
       if (operand->opcode() == HloOpcode::kReduce) {
+        CHECK(instr->fusion_kind() == HloInstruction::FusionKind::kInput)
+            << " Reduce multi-output fusion " << instr->ToString()
+            << " must be an input fusion.";
         return true;
       }
     }
     return false;
   } else if (instr->opcode() == HloOpcode::kFusion) {
-    return instr->fused_expression_root()->opcode() == HloOpcode::kReduce;
+    // The loop emitter can handle to-vector reduce fusions. Such reduce
+    // fusions have the fusion kind kLoop rather than kInput. We do not fuse
+    // to-vector reduce fusions, because the resulting fusions may no longer be
+    // supported by loop emitter.
+    return IsReductionToVector(*instr->fused_expression_root());
   } else {
-    return instr->opcode() == HloOpcode::kReduce;
+    return IsReductionToVector(*instr);
   }
 }
 }  // namespace
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // We can fuse reduces and loop fusions.
-  return IsReduction(instr) ||
+  return IsInputFusibleReduction(instr) ||
          (instr->opcode() == HloOpcode::kFusion &&
-          instr->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-          // TODO(b/110202584): bitcasts make nested fusions, GPU has no support
-          // for nested fusions.
-          instr->fused_expression_root()->opcode() != HloOpcode::kBitcast);
+          instr->fusion_kind() == HloInstruction::FusionKind::kLoop);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
@@ -170,13 +175,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
     if (consumer->user_count() == 0) {
       continue;
     }
-    if (!IsReduction(consumer)) {
-      continue;
-    }
-    // TODO(b/110517657): Lowering multi-output reduce fusions with bfloat16
-    // output element types is not supported on GPU. However, bfloat16 is used
-    // in shared tests.
-    if (consumer->shape().element_type() == PrimitiveType::BF16) {
+    if (!IsInputFusibleReduction(consumer)) {
       continue;
     }
 
@@ -201,12 +200,11 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       }
       // Do not fuse a producer if the other operands of the fusion are
       // reachable from the producer, this would create a cycle.
-      if (std::any_of(consumer_operands.begin(), consumer_operands.end(),
-                      [&](HloInstruction* operand) {
-                        return producer != operand &&
-                               reachability()->IsReachable(producer, operand);
-                      })) {
-        continue;
+      if (c_any_of(consumer_operands, [&](HloInstruction* operand) {
+            return producer != operand &&
+                   reachability()->IsReachable(producer, operand);
+          })) {
+        break;
       }
       to_fuse.insert(producer);
       potential_fusion_list.emplace_back(producer, consumer);
@@ -221,15 +219,10 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   for (auto& fusion_pair : potential_fusion_list) {
     HloInstruction* producer = fusion_pair.first;
     HloInstruction* consumer = fusion_pair.second;
-    bool fusable = true;
-    for (size_t i = 0; i < consumer->operand_count(); ++i) {
-      if (producer != consumer->operand(i) &&
-          reachability()->IsReachable(producer, consumer->operand(i))) {
-        fusable = false;
-        break;
-      }
-    }
-    if (fusable) {
+    if (!c_any_of(consumer->operands(), [&](HloInstruction* operand) {
+          return producer != operand &&
+                 reachability()->IsReachable(producer, operand);
+        })) {
       UpdateReachability(producer, consumer, instrs_to_update_reachability);
       fusion_list.push_back(fusion_pair);
     }

@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -251,14 +252,12 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
-  const Shape& shape = literal.shape();
-  llvm::Type* type = shape.element_type() == C64
-                         ? llvm::Type::getFloatTy(module->getContext())
-                         : PrimitiveTypeToIrType(shape.element_type(), module);
   const char* data = static_cast<const char*>(literal.untyped_data());
-  uint64 num_elements = literal.size_bytes() * 8 / GetSizeInBits(type);
-  return llvm::ConstantDataArray::getRaw(
-      llvm::StringRef(data, literal.size_bytes()), num_elements, type);
+  CHECK_EQ(module->getDataLayout().isLittleEndian(),
+           tensorflow::port::kLittleEndian);
+  return llvm::ConstantDataArray::getString(
+      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
+      /*AddNull=*/false);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,

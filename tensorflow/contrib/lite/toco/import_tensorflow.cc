@@ -263,7 +263,11 @@ tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int_val_size()) {
+  if (input_tensor.int_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
     }
@@ -296,7 +300,11 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int_val_size()) {
+  if (input_tensor.int_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int_val(0);
+    }
+  } else if (input_tensor.int_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
     }
@@ -328,8 +336,12 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int64_val_size()) {
-    for (int i = 0; i < input_tensor.int64_val_size(); i++) {
+  if (input_tensor.int64_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_int_data[i] = input_tensor.int64_val(0);
+    }
+  } else if (input_tensor.int64_val_size() == input_flat_size) {
+    for (int i = 0; i < input_tensor.float_val_size(); i++) {
       output_int_data[i] = input_tensor.int64_val(i);
     }
   } else if (input_tensor.tensor_content().size() ==
@@ -362,7 +374,11 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
   output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                           false);
   CHECK_GE(output_bool_data.size(), input_flat_size);
-  if (input_tensor.bool_val_size()) {
+  if (input_tensor.bool_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_bool_data[i] = input_tensor.bool_val(0);
+    }
+  } else if (input_tensor.bool_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.bool_val_size(); i++) {
       output_bool_data[i] = input_tensor.bool_val(i);
     }
@@ -968,18 +984,19 @@ tensorflow::Status ConvertMatMulOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
-  // Transpose flags should be easy to support, but we don't have a
-  // GraphDef with them to test on at the moment.
-  CHECK_EQ(HasAttr(node, "transpose_a") && GetBoolAttr(node, "transpose_a"),
-           false);
-  CHECK_EQ(HasAttr(node, "transpose_b") && GetBoolAttr(node, "transpose_b"),
-           false);
   CHECK(!HasAttr(node, "adjoint_a") ||
         (GetBoolAttr(node, "adjoint_a") == false));
   CHECK(!HasAttr(node, "adjoint_b") ||
         (GetBoolAttr(node, "adjoint_b") == false));
 
   auto* matmul = new TensorFlowMatMulOperator;
+  if (HasAttr(node, "transpose_a")) {
+    matmul->transpose_a = GetBoolAttr(node, "transpose_a");
+  }
+  if (HasAttr(node, "transpose_b")) {
+    matmul->transpose_b = GetBoolAttr(node, "transpose_b");
+  }
+
   matmul->inputs = {node.input(0), node.input(1)};
   matmul->outputs = {node.name()};
   model->operators.emplace_back(matmul);
@@ -1213,10 +1230,11 @@ tensorflow::Status ConvertGatherOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertArgMaxOperator(
+template <typename Op, const char* op_name>
+tensorflow::Status ConvertArgMinMaxOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  CHECK_EQ(node.op(), "ArgMax");
+  CHECK_EQ(node.op(), op_name);
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
   const auto axis_data_type =
       HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
@@ -1225,7 +1243,7 @@ tensorflow::Status ConvertArgMaxOperator(
                                : DT_INT64;
   CHECK(axis_data_type == DT_INT64 || axis_data_type == DT_INT32);
   CHECK(output_type == DT_INT64 || output_type == DT_INT32);
-  auto* op = new ArgMaxOperator;
+  auto* op = new Op;
   op->output_data_type = ConvertDataType(output_type);
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
@@ -1816,12 +1834,16 @@ using ConverterType = tensorflow::Status (*)(
     Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
+constexpr char kArgMax[] = "ArgMax";
+constexpr char kArgMin[] = "ArgMin";
+
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperator<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
-      {"ArgMax", ConvertArgMaxOperator},
+      {"ArgMax", ConvertArgMinMaxOperator<ArgMaxOperator, kArgMax>},
+      {"ArgMin", ConvertArgMinMaxOperator<ArgMinOperator, kArgMin>},
       {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},
@@ -1883,6 +1905,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ParallelDynamicStitch", ConvertDynamicStitchOperator},
       {"Placeholder", ConvertPlaceholderOperator},
       {"PlaceholderWithDefault", ConvertIdentityOperator},
+      {"Pow", ConvertSimpleOperator<PowOperator, 2>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
       {"Rank", ConvertSimpleOperator<RankOperator, 1>},

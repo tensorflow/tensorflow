@@ -161,12 +161,40 @@ py_library(
 )
 
 py_library(
+    name = "keras_support",
+    srcs = [
+        "python/tpu/keras_support.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_lib",
+        ":tpu_py",
+        "//tensorflow/contrib/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/contrib/distribute/python:tpu_strategy",
+        "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "tpu_lib",
     srcs = [
         "python/tpu/__init__.py",
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
-        "python/tpu/keras_support.py",
         "python/tpu/session_support.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
@@ -304,6 +332,16 @@ tf_py_test(
     additional_deps = [
         ":tpu_estimator",
         "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+tf_py_test(
+    name = "topology_test",
+    size = "small",
+    srcs = ["python/tpu/topology_test.py"],
+    additional_deps = [
+        ":tpu",
         "//tensorflow/python:framework_test_lib",
     ],
 )

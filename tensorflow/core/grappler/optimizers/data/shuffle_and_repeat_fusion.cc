@@ -84,15 +84,7 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
     nodes_to_delete.insert(shuffle_node->name());
     nodes_to_delete.insert(repeat_node.name());
 
-    // Update the input of the outputs of the `Repeat` node to use
-    // `ShuffleAndRepeat`.
-    GraphView::OutputPort output_port =
-        graph.GetOutputPort(repeat_node.name(), 0);
-    auto fanout = graph.GetFanout(output_port);
-    for (auto it = fanout.begin(); it != fanout.end(); ++it) {
-      NodeDef* node = it->node;
-      node->set_input(0, new_node->name());
-    }
+    graph_utils::ReplaceInput(repeat_node, *new_node, &graph);
   }
   TF_RETURN_IF_ERROR(graph_utils::DeleteNodes(nodes_to_delete, output));
   return Status::OK();

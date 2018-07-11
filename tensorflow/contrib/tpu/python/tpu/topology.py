@@ -55,8 +55,9 @@ class Topology(object):
         rank 3 numpy int32 array that describes a valid coordinate mapping.
     """
 
+    self._serialized = serialized
+
     if serialized:
-      self._serialized = serialized
       self._parse_topology(serialized)
     else:
       self._mesh_shape = np.asarray(mesh_shape, dtype=np.int32)
@@ -131,7 +132,7 @@ class Topology(object):
       proto.mesh_shape[:] = list(self._mesh_shape)
       proto.num_tasks = self._device_coordinates.shape[0]
       proto.num_tpu_devices_per_task = self._device_coordinates.shape[1]
-      proto.device_coordinates = list(self._device_coordinates.flatten())
+      proto.device_coordinates.extend(list(self._device_coordinates.flatten()))
       self._serialized = proto.SerializeToString()
 
     return self._serialized

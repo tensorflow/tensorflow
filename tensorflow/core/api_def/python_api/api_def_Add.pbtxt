@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "add"
-    deprecation_message: "tf.add is deprecated, please use tf.math.add instead."
+    deprecated: true
   }
 }

@@ -91,21 +91,21 @@ class AssertCloseTest(test.TestCase):
 
 class MaybeGetStaticTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGetStaticInt(self):
     x = 2
     self.assertEqual(x, du.maybe_get_static_value(x))
     self.assertAllClose(
         np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGetStaticNumpyArray(self):
     x = np.array(2, dtype=np.int32)
     self.assertEqual(x, du.maybe_get_static_value(x))
     self.assertAllClose(
         np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGetStaticConstant(self):
     x = constant_op.constant(2, dtype=dtypes.int32)
     self.assertEqual(np.array(2, dtype=np.int32), du.maybe_get_static_value(x))
@@ -120,7 +120,7 @@ class MaybeGetStaticTest(test.TestCase):
 
 class GetLogitsAndProbsTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testImproperArguments(self):
     with self.test_session():
       with self.assertRaises(ValueError):
@@ -129,7 +129,7 @@ class GetLogitsAndProbsTest(test.TestCase):
       with self.assertRaises(ValueError):
         du.get_logits_and_probs(logits=[0.1], probs=[0.1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLogits(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
     logits = _logit(p)
@@ -141,7 +141,7 @@ class GetLogitsAndProbsTest(test.TestCase):
       self.assertAllClose(p, self.evaluate(new_p), rtol=1e-5, atol=0.)
       self.assertAllClose(logits, self.evaluate(new_logits), rtol=1e-5, atol=0.)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLogitsMultidimensional(self):
     p = np.array([0.2, 0.3, 0.5], dtype=np.float32)
     logits = np.log(p)
@@ -153,7 +153,7 @@ class GetLogitsAndProbsTest(test.TestCase):
       self.assertAllClose(self.evaluate(new_p), p)
       self.assertAllClose(self.evaluate(new_logits), logits)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testProbability(self):
     p = np.array([0.01, 0.2, 0.5, 0.7, .99], dtype=np.float32)
 
@@ -164,7 +164,7 @@ class GetLogitsAndProbsTest(test.TestCase):
       self.assertAllClose(_logit(p), self.evaluate(new_logits))
       self.assertAllClose(p, self.evaluate(new_p))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testProbabilityMultidimensional(self):
     p = np.array([[0.3, 0.4, 0.3], [0.1, 0.5, 0.4]], dtype=np.float32)
 
@@ -175,7 +175,7 @@ class GetLogitsAndProbsTest(test.TestCase):
       self.assertAllClose(np.log(p), self.evaluate(new_logits))
       self.assertAllClose(p, self.evaluate(new_p))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testProbabilityValidateArgs(self):
     p = [0.01, 0.2, 0.5, 0.7, .99]
     # Component less than 0.
@@ -206,7 +206,7 @@ class GetLogitsAndProbsTest(test.TestCase):
           probs=p3, validate_args=False)
       self.evaluate(prob)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testProbabilityValidateArgsMultidimensional(self):
     p = np.array([[0.3, 0.4, 0.3], [0.1, 0.5, 0.4]], dtype=np.float32)
     # Component less than 0. Still sums to 1.
@@ -308,7 +308,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
             param)
         checked_param.eval(feed_dict={param: np.ones([int(2**11+1)])})
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testUnsupportedDtype(self):
     with self.test_session():
       with self.assertRaises(TypeError):
@@ -493,7 +493,7 @@ class RotateTransposeTest(test.TestCase):
       x = np.array(x)
     return np.transpose(x, np.roll(np.arange(len(x.shape)), shift))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRollStatic(self):
     with self.test_session():
       if context.executing_eagerly():

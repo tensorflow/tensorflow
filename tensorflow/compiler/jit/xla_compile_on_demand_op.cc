@@ -53,7 +53,9 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
   // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
-      client, client->backend().memory_allocator(), true);
+      client, client->backend().memory_allocator(),
+      /*allocate_xla_tensors=*/true,
+      /*use_multiple_streams=*/metadata.UseMultipleStreams());
 
   launch_context.PopulateInputs(ctx, result, variables);
 
@@ -71,14 +73,8 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
   run_options.set_rng_seed(ctx->step_id());
 
-  xla::StatusOr<xla::ScopedShapedBuffer> run_result;
-  {
-    // TODO(b/110383871): fix concurrency problems and remove this mutex.
-    static mutex* mu = new mutex;
-    mutex_lock lock(*mu);
-
-    run_result = executable->Run(launch_context.arguments(), run_options);
-  }
+  xla::StatusOr<xla::ScopedShapedBuffer> run_result =
+      executable->Run(launch_context.arguments(), run_options);
   TF_RETURN_IF_ERROR(run_result.status());
 
   launch_context.PopulateOutputs(ctx, result, run_result.ConsumeValueOrDie());
@@ -169,6 +165,13 @@ Status XlaCompileOnDemandOp::Compile(
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
+  // Optimization: don't resolve constants. If we resolve constants we never
+  // emit them on the device, meaning that if they are needed by a following
+  // computation the host has to transfer them.
+  compile_options.resolve_compile_time_constants = false;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
   return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,

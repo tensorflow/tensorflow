@@ -120,6 +120,30 @@ HloInstruction* HloComputation::AddParameter(
   return instructions_.back().get();
 }
 
+namespace {
+
+// Returns the new name for a fusion parameter when we change its number.
+//
+// Fusion parameters are named foo.param_1, bar.param_2, etc. We are
+// renumbering the parameters, so replace the final number in the name with
+// the updated value.
+string RenameFusionParameter(const string& original_name, int64 new_param_no) {
+  const string param_underscore = ".param_";
+  size_t index = original_name.rfind(param_underscore);
+  if (index == string::npos) {
+    return original_name;
+  }
+  string after_param = original_name.substr(index + param_underscore.size());
+  int64 numeric_suffix;
+  if (tensorflow::strings::safe_strto64(after_param, &numeric_suffix)) {
+    return StrCat(original_name.substr(0, index + param_underscore.size()),
+                  new_param_no);
+  }
+  return original_name;
+}
+
+}  // namespace
+
 Status HloComputation::RemoveParameter(int64 param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());
@@ -132,21 +156,8 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    string param_name = param_instruction->name();
-    // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
-    // renumbering the parameters, so replace the final number in the name with
-    // the updated value.
-    const string param_underscore = ".param_";
-    size_t index = param_name.rfind(param_underscore);
-    if (index == string::npos) {
-      string after_param = name().substr(index + param_underscore.size());
-      int64 numeric_suffix;
-      if (tensorflow::strings::safe_strto64(after_param, &numeric_suffix)) {
-        param_name =
-            StrCat(param_name.substr(0, index), param_underscore, param_no);
-      }
-    }
-
+    string param_name =
+        RenameFusionParameter(param_instruction->name(), param_no);
     HloInstruction* new_instr =
         AddInstructionInternal(HloInstruction::CreateParameter(
             param_no, param_instruction->shape(), param_name));
@@ -156,6 +167,34 @@ Status HloComputation::RemoveParameter(int64 param_no) {
     param_no++;
   }
 
+  return Status::OK();
+}
+
+Status HloComputation::RemoveUnusedParameters() {
+  CHECK(IsFusionComputation());
+  int64 removed = 0;
+  for (int64 i = 0; i < param_instructions_.size(); ++i) {
+    HloInstruction* param_instruction = param_instructions_[i];
+    if (param_instruction->user_count() == 0 &&
+        param_instruction != root_instruction()) {
+      TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+      ++removed;
+      continue;
+    }
+
+    if (removed > 0) {
+      const int64 param_no = i - removed;
+      string param_name =
+          RenameFusionParameter(param_instruction->name(), param_no);
+      HloInstruction* new_instr =
+          AddInstructionInternal(HloInstruction::CreateParameter(
+              param_no, param_instruction->shape(), param_name));
+      TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
+      param_instructions_[param_no] = new_instr;
+      TF_RETURN_IF_ERROR(RemoveInstruction(param_instruction));
+    }
+  }
+  param_instructions_.resize(param_instructions_.size() - removed);
   return Status::OK();
 }
 
@@ -245,9 +284,8 @@ void HloComputation::set_root_instruction(
   if (!IsFusionComputation()) {
     CHECK(ShapeUtil::Compatible(new_root_instruction->shape(),
                                 root_instruction_->shape()))
-        << new_root_instruction->shape().ShortDebugString()
-        << " is incompatible with "
-        << root_instruction_->shape().ShortDebugString();
+        << new_root_instruction->shape() << " is incompatible with "
+        << root_instruction_->shape();
   }
   bool root_found = false;
   for (auto& instruction : instructions_) {
@@ -490,8 +528,10 @@ HloInstruction* HloComputation::CreateFusionInstruction(
 }
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
-    HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
-    ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
+    HloInstruction* instruction, ShapeIndex* index,
+    const std::function<
+        HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
+                        HloComputation* computation)>& copy_leaf) {
   if (ShapeUtil::IsTuple(instruction->shape())) {
     std::vector<HloInstruction*> elements;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
@@ -502,9 +542,8 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
               instruction, i));
 
       index->push_back(i);
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * element,
-          DeepCopyHelper(gte, indices_to_copy, copies_added, index));
+      TF_ASSIGN_OR_RETURN(HloInstruction * element,
+                          DeepCopyHelper(gte, index, copy_leaf));
       elements.push_back(element);
       index->pop_back();
     }
@@ -518,19 +557,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
 
   // Array shape.
   TF_RET_CHECK(ShapeUtil::IsArray(instruction->shape()));
-  if (indices_to_copy == nullptr || indices_to_copy->element(*index)) {
-    // Use kCopy to copy array elements
-    HloInstruction* copy = AddInstruction(HloInstruction::CreateUnary(
-        instruction->shape(), HloOpcode::kCopy, instruction));
-    if (copies_added != nullptr) {
-      *copies_added->mutable_element(*index) = copy;
-    }
-    return copy;
-  } else {
-    // Elements which are not to be copied are passed through
-    // transparently.
-    return instruction;
-  }
+  return copy_leaf(instruction, *index, this);
 }
 
 StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
@@ -552,7 +579,36 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
   }
 
   ShapeIndex index;
-  return DeepCopyHelper(instruction, indices_to_copy, copies_added, &index);
+  auto copy_leaf = [indices_to_copy, copies_added](
+                       HloInstruction* leaf, const ShapeIndex& leaf_index,
+                       HloComputation* computation) {
+    if (indices_to_copy == nullptr || indices_to_copy->element(leaf_index)) {
+      HloInstruction* copy = computation->AddInstruction(
+          HloInstruction::CreateUnary(leaf->shape(), HloOpcode::kCopy, leaf));
+      if (copies_added != nullptr) {
+        *copies_added->mutable_element(leaf_index) = copy;
+      }
+      return copy;
+    }
+    // Elements which are not to be copied are passed through
+    // transparently.
+    return leaf;
+  };
+  return DeepCopyHelper(instruction, &index, copy_leaf);
+}
+
+StatusOr<HloInstruction*> HloComputation::DeepCopyInstructionWithCustomCopier(
+    HloInstruction* instruction,
+    const std::function<
+        HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
+                        HloComputation* computation)>& copy_leaf) {
+  if (instruction->parent() != this) {
+    return FailedPrecondition(
+        "Can't deep copy instruction %s: instruction is not in computation %s",
+        instruction->name().c_str(), name().c_str());
+  }
+  ShapeIndex index;
+  return DeepCopyHelper(instruction, &index, copy_leaf);
 }
 
 ProgramShape HloComputation::ComputeProgramShape() const {
@@ -625,7 +681,7 @@ std::unique_ptr<HloReachabilityMap> HloComputation::ComputeReachability()
     inputs.assign(hlo->operands().begin(), hlo->operands().end());
     inputs.insert(inputs.end(), hlo->control_predecessors().begin(),
                   hlo->control_predecessors().end());
-    result->SetReachabilityToUnion(inputs, hlo);
+    result->FastSetReachabilityToUnion(inputs, hlo);
   }
   return result;
 }

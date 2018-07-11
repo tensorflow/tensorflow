@@ -175,6 +175,28 @@ class GroupByReducerTest(test.TestCase):
       dataset.apply(
           grouping.group_by_reducer(lambda _: "wrong", reducer))
 
+  def testTuple(self):
+    def init_fn(_):
+      return np.array([], dtype=np.int64), np.int64(0)
+
+    def reduce_fn(state, value):
+      s1, s2 = state
+      v1, v2 = value
+      return array_ops.concat([s1, [v1]], 0), s2 + v2
+
+    def finalize_fn(s1, s2):
+      return s1, s2
+
+    reducer = grouping.Reducer(init_fn, reduce_fn, finalize_fn)
+    dataset = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(10), dataset_ops.Dataset.range(10))).apply(
+            grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
+    get_next = dataset.make_one_shot_iterator().get_next()
+    with self.test_session() as sess:
+      x, y = sess.run(get_next)
+      self.assertAllEqual(x, np.asarray([x for x in range(10)]))
+      self.assertEqual(y, 45)
+
 
 class GroupByWindowTest(test.TestCase):
 
@@ -594,7 +616,44 @@ class BucketBySequenceLength(test.TestCase):
     batch_sizes = batch_sizes[:-1]
     self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
     self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
-    self.assertEqual(sorted(boundaries), sorted(lengths_val))
+    self.assertEqual([boundary - 1 for boundary in sorted(boundaries)],
+                     sorted(lengths_val))
+
+  def testPadToBoundaryNoExtraneousPadding(self):
+
+    boundaries = [3, 7, 11]
+    batch_sizes = [2, 2, 2, 2]
+    lengths = range(1, 11)
+
+    def element_gen():
+      for length in lengths:
+        yield ([1] * length,)
+
+    element_len = lambda element: array_ops.shape(element)[0]
+    dataset = dataset_ops.Dataset.from_generator(
+        element_gen, (dtypes.int64,), ([None],)).apply(
+            grouping.bucket_by_sequence_length(
+                element_len, boundaries, batch_sizes,
+                pad_to_bucket_boundary=True))
+    batch, = dataset.make_one_shot_iterator().get_next()
+
+    with self.test_session() as sess:
+      batches = []
+      for _ in range(5):
+        batches.append(sess.run(batch))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(batch)
+
+    self.assertAllEqual(batches[0], [[1, 0],
+                                     [1, 1]])
+    self.assertAllEqual(batches[1], [[1, 1, 1, 0, 0, 0],
+                                     [1, 1, 1, 1, 0, 0]])
+    self.assertAllEqual(batches[2], [[1, 1, 1, 1, 1, 0],
+                                     [1, 1, 1, 1, 1, 1]])
+    self.assertAllEqual(batches[3], [[1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+                                     [1, 1, 1, 1, 1, 1, 1, 1, 0, 0]])
+    self.assertAllEqual(batches[4], [[1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+                                     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
 
   def testTupleElements(self):
 

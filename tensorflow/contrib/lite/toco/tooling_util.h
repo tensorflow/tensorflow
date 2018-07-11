@@ -344,6 +344,11 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
   return tensorflow::Status::OK();
 }
 
+// A model file may have shuffled FC weights.
+// When that happens, we want to de-shuffle them immediately on import,
+// so that the rest of toco doesn't need to know about shuffled weights.
+void UndoWeightsShuffling(Model* model);
+
 }  // namespace toco
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_

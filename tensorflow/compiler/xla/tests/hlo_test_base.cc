@@ -276,9 +276,10 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
 HloComputation* HloTestBase::FindComputation(HloModule* module,
                                              tensorflow::StringPiece name) {
-  auto it = c_find_if(module->computations(),
+  auto computations = module->computations();
+  auto it = c_find_if(computations,
                       [&](HloComputation* c) { return c->name() == name; });
-  if (it == module->computations().end()) {
+  if (it == computations.end()) {
     return nullptr;
   }
   return *it;
@@ -287,9 +288,10 @@ HloComputation* HloTestBase::FindComputation(HloModule* module,
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              tensorflow::StringPiece name) {
   for (const HloComputation* c : module->computations()) {
-    auto it = c_find_if(c->instructions(),
+    auto instructions = c->instructions();
+    auto it = c_find_if(instructions,
                         [&](HloInstruction* i) { return i->name() == name; });
-    if (it != c->instructions().end()) {
+    if (it != instructions.end()) {
       return *it;
     }
   }

@@ -216,11 +216,11 @@ class ShapeInference {
   static StatusOr<Shape> InferConcatOpShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes, int64 dimension);
 
-  // Infers the shape produced by a kGenerateToken operation. Trivially this
-  // shape is always a TOKEN shape. However, ShapeInference serves two purposes:
-  // inferring shapes and checking operand shapes. This method verifies that the
-  // operand shapes are all TOKENs.
-  static StatusOr<Shape> InferGenerateTokenShape(
+  // Infers the shape produced by a kAfterAll. Trivially this shape is always a
+  // TOKEN shape. However, ShapeInference serves two purposes: inferring shapes
+  // and checking operand shapes. This method verifies that the operand shapes
+  // are all TOKENs.
+  static StatusOr<Shape> InferAfterAllShape(
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes);
 
   // Helper that validates the given operand shape can be converted to the
@@ -286,6 +286,10 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
+  // Helper for inferring the shape of TupleSelect ops.
+  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
+                                               const Shape& on_true,
+                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast

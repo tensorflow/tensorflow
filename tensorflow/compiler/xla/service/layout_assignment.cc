@@ -1565,6 +1565,13 @@ Status LayoutAssignment::RunOnComputation(
   // Propagates layouts from mandatory and backend constraints.
   TF_RETURN_IF_ERROR(PropagateConstraints(&constraints));
 
+  // Prior to applying default layouts, we take note of all HLO instructions
+  // which lack a layout constraint.
+  for (LogicalBuffer::Id buffer_id : constraints.unconstrained_buffer_ids()) {
+    unconstrained_layout_instructions_.insert(
+        points_to_analysis.GetBuffer(buffer_id).instruction());
+  }
+
   // While any unconstrained buffers remain, pick an arbitrary buffer, give it a
   // layout and propagate the change.
   while (!constraints.unconstrained_buffer_ids().empty()) {
@@ -1623,7 +1630,8 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   for (HloInstruction* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kRecvDone) {
       const Layout* layout = channel_constraints->ConstrainChannel(
-          instruction->channel_id(), instruction->shape().layout());
+          instruction->channel_id(),
+          ShapeUtil::GetSubshape(instruction->shape(), {0}).layout());
       TF_RET_CHECK(layout == nullptr)
           << instruction->ToString()
           << " cannot constrain layout as it was set to "
@@ -1640,7 +1648,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
           instruction->channel_id(), operand->shape().layout());
       if (layout != nullptr) {
         // We found an already constrained layout which does not match the one
-        // the kSend wants to impose. Eitehr add a new kCopy, or use the
+        // the kSend wants to impose. Either add a new kCopy, or use the
         // existing one to marshal the correct shape.
         Shape shape = operand->shape();
         *shape.mutable_layout() = *layout;
@@ -1709,7 +1717,7 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   // when seen from an outer instruction, which has across-computation
   // constraints to impose.
   // For example, the kWhile instruction needs to enforce the same layouts for
-  // the parameters and root of the bosy, as well as the condition parameters.
+  // the parameters and root of the body, as well as the condition parameters.
   // Similarly, the kConditional instruction needs to enforce the same layouts
   // for the root of the true and false computations.
   // So in the first pass, while allowing the layouts to flow to parameters and
@@ -1777,6 +1785,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     }
   }
   added_copies_.clear();
+  unconstrained_layout_instructions_.clear();
   if (removed_copies > 0) {
     TupleSimplifier tuple_simplifier;
     HloDCE dce;

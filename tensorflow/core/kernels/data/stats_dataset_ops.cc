@@ -316,10 +316,14 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
             // changes to parse_example() where it returns stats as well.
             for (int i = 0; i < record_t.size(); ++i) {
               if (example.ParseFromString(record_t(i))) {
+                stats_aggregator->IncrementCounter("examples_count", "trainer",
+                                                   1);
                 AddStatsFeatures(example, stats_aggregator);
               } else {
                 SequenceExample sequence_example;
                 if (sequence_example.ParseFromString(record_t(i))) {
+                  stats_aggregator->IncrementCounter("sequence_examples_count",
+                                                     "trainer", 1);
                   AddStatsFeatures(sequence_example, stats_aggregator);
                 }
               }
@@ -360,8 +364,11 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
 
         int feature_values_list_size_sum = 0;
         for (const auto& feature : example.features().feature()) {
+          stats_aggregator->IncrementCounter("features_count", "trainer", 1);
           feature_values_list_size_sum += AddStatsFeatureValues(feature.second);
         }
+        stats_aggregator->IncrementCounter("feature_values_count", "trainer",
+                                           feature_values_list_size_sum);
         stats_aggregator->AddToHistogram(
             strings::StrCat(dataset()->tag_, ":feature-values"),
             {static_cast<double>(feature_values_list_size_sum)});
@@ -378,16 +385,20 @@ class FeatureStatsDatasetOp : public UnaryDatasetOpKernel {
 
         int feature_values_list_size_sum = 0;
         for (const auto& feature : example.context().feature()) {
+          stats_aggregator->IncrementCounter("features_count", "trainer", 1);
           feature_values_list_size_sum += AddStatsFeatureValues(feature.second);
         }
 
         for (const auto& feature_list :
              example.feature_lists().feature_list()) {
+          stats_aggregator->IncrementCounter("feature_lists_count", "reainer",
+                                             1);
           for (const auto& feature : feature_list.second.feature()) {
             feature_values_list_size_sum += AddStatsFeatureValues(feature);
           }
         }
-
+        stats_aggregator->IncrementCounter("feature_values_count", "trainer",
+                                           feature_values_list_size_sum);
         stats_aggregator->AddToHistogram(
             strings::StrCat(dataset()->tag_, ":feature-values"),
             {static_cast<double>(feature_values_list_size_sum)});

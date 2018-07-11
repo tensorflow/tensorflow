@@ -25,6 +25,14 @@ limitations under the License.
 
 namespace toco {
 
+namespace {
+
+bool SupportsMinMax(const Array& array) {
+  return array.data_type == ArrayDataType::kFloat;
+}
+
+}  // namespace
+
 // Propagates default min/max values to any operator input/output array that
 // is missing them.
 //
@@ -39,14 +47,16 @@ bool PropagateDefaultMinMax::Run(Model* model, std::size_t op_index) {
 
   for (const auto& input : op->inputs) {
     auto& input_array = model->GetArray(input);
-    if (!input_array.minmax && !input_array.buffer) {
+    if (!input_array.minmax && !input_array.buffer &&
+        SupportsMinMax(input_array)) {
       did_change |= SetArrayMinMax(input, &input_array);
     }
   }
 
   for (const auto& output : op->outputs) {
     auto& output_array = model->GetArray(output);
-    if (!output_array.minmax && !output_array.buffer) {
+    if (!output_array.minmax && !output_array.buffer &&
+        SupportsMinMax(output_array)) {
       did_change |= SetArrayMinMax(output, &output_array);
     }
   }

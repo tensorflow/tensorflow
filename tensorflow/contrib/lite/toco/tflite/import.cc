@@ -221,6 +221,8 @@ std::unique_ptr<Model> Import(const ModelFlags& model_flags,
                   model.get());
   ImportIOTensors(*input_model, tensors_table, model.get());
 
+  UndoWeightsShuffling(model.get());
+
   return model;
 }
 

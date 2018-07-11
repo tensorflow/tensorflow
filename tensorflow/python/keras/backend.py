@@ -963,13 +963,14 @@ def zeros(shape, dtype=None, name=None):
              [ 0.,  0.,  0.,  0.]], dtype=float32)
   ```
   """
-  if dtype is None:
-    dtype = floatx()
-  tf_dtype = dtypes_module.as_dtype(dtype)
-  v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
-  if py_all(v.get_shape().as_list()):
-    return variable(v, dtype=dtype, name=name)
-  return v
+  with ops.init_scope():
+    if dtype is None:
+      dtype = floatx()
+    tf_dtype = dtypes_module.as_dtype(dtype)
+    v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
+    if py_all(v.get_shape().as_list()):
+      return variable(v, dtype=dtype, name=name)
+    return v
 
 
 @tf_export('keras.backend.ones')
@@ -996,13 +997,14 @@ def ones(shape, dtype=None, name=None):
              [ 1.,  1.,  1.,  1.]], dtype=float32)
   ```
   """
-  if dtype is None:
-    dtype = floatx()
-  tf_dtype = dtypes_module.as_dtype(dtype)
-  v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
-  if py_all(v.get_shape().as_list()):
-    return variable(v, dtype=dtype, name=name)
-  return v
+  with ops.init_scope():
+    if dtype is None:
+      dtype = floatx()
+    tf_dtype = dtypes_module.as_dtype(dtype)
+    v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
+    if py_all(v.get_shape().as_list()):
+      return variable(v, dtype=dtype, name=name)
+    return v
 
 
 @tf_export('keras.backend.eye')
@@ -2798,10 +2800,15 @@ class Function(object):
     self.run_options = session_kwargs.pop('options', None)
     self.run_metadata = session_kwargs.pop('run_metadata', None)
     # The main use case of `fetches` being passed to a model is the ability
-    # to run custom updates (since the outputs of fetches are never returned).
+    # to run custom updates
     # This requires us to wrap fetches in `identity` ops.
     self.fetches = [array_ops.identity(x) for x in self.fetches]
     self.session_kwargs = session_kwargs
+    # This mapping keeps track of the function that should receive the
+    # output from a fetch in `fetches`: { fetch: function(fetch_output) }
+    # A Callback can use this to register a function with access to the
+    # output values for a fetch it added.
+    self.fetch_callbacks = dict()
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
@@ -2811,6 +2818,7 @@ class Function(object):
     self._feed_arrays = None
     self._feed_symbols = None
     self._symbol_vals = None
+    self._fetches = None
     self._session = None
 
   def _make_callable(self, feed_arrays, feed_symbols, symbol_vals, session):
@@ -2859,7 +2867,13 @@ class Function(object):
     self._feed_arrays = feed_arrays
     self._feed_symbols = feed_symbols
     self._symbol_vals = symbol_vals
+    self._fetches = list(self.fetches)
     self._session = session
+
+  def _call_fetch_callbacks(self, fetches_output):
+    for fetch, output in zip(self._fetches, fetches_output):
+      if fetch in self.fetch_callbacks:
+        self.fetch_callbacks[fetch](output)
 
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
@@ -2897,15 +2911,15 @@ class Function(object):
             np.asarray(self.feed_dict[key], dtype=key.dtype.base_dtype.name))
 
     # Refresh callable if anything has changed.
-    if (self._callable_fn is None or
-        feed_arrays != self._feed_arrays or
+    if (self._callable_fn is None or feed_arrays != self._feed_arrays or
         symbol_vals != self._symbol_vals or
-        feed_symbols != self._feed_symbols or
+        feed_symbols != self._feed_symbols or self.fetches != self._fetches or
         session != self._session):
       self._make_callable(feed_arrays, feed_symbols, symbol_vals, session)
 
     fetched = self._callable_fn(*array_vals,
                                 run_metadata=self.run_metadata)
+    self._call_fetch_callbacks(fetched[-len(self._fetches):])
     return fetched[:len(self.outputs)]
 
 
@@ -3168,10 +3182,16 @@ def rnn(step_function,
                                       array_ops.stack(
                                           [1, array_ops.shape(output)[1]]))
         output = array_ops.where(tiled_mask_t, output, states[0])
-        new_states = [
-            array_ops.where(tiled_mask_t, new_states[i], states[i])
-            for i in range(len(states))
-        ]
+
+        masked_states = []
+        for i in range(len(states)):
+          states_dim = array_ops.shape(new_states[i])[1]
+          stacked_states_dim = array_ops.stack([1, states_dim])
+          tiled_mask = array_ops.tile(mask_t, stacked_states_dim)
+          masked_state = array_ops.where(tiled_mask, new_states[i], states[i])
+          masked_states.append(masked_state)
+        new_states = masked_states
+
         output_ta_t = output_ta_t.write(time, output)
         return (time + 1, output_ta_t) + tuple(new_states)
     else:

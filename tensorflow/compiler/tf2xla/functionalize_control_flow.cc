@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/tf2xla/validate_control_flow.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -165,6 +164,27 @@ StatusOr<Node*> AddNode(const NodeDef& node_def, Graph* graph) {
     return status;
   }
   return inserted_node;
+}
+
+// Check that the graph has no cycle containing the given node.
+Status CheckNoCycleContains(const Node* node, const int num_nodes) {
+  std::vector<const Node*> ready;
+  ready.push_back(node);
+  std::vector<bool> visited(num_nodes);
+  while (!ready.empty()) {
+    const Node* current_node = ready.back();
+    ready.pop_back();
+    visited[current_node->id()] = true;
+    for (const Edge* out : current_node->out_edges()) {
+      if (out->dst() == node) {
+        return errors::Internal("Detect a cycle: Node \"", node->name(), "\"(",
+                                node->def().op(), ") feeds into itself.");
+      } else if (!visited[out->dst()->id()]) {
+        ready.push_back(out->dst());
+      }
+    }
+  }
+  return Status::OK();
 }
 
 StatusOr<Node*> BuildArgNode(Graph* graph, DataType type, int index) {
@@ -1408,6 +1428,10 @@ StatusOr<Node*> FunctionalizeCond::ConvertToXlaIf(
   TF_RETURN_IF_ERROR(
       AddInputEdges(cond_arg_nodes, switch_cluster.predicate_edge, if_node));
   TF_RETURN_IF_ERROR(AddOutputEdges(merge_nodes, if_node));
+  // Check that the if_node doesn't feed into itself.
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      CheckNoCycleContains(if_node, graph_->num_node_ids()),
+      "ConvertToXlaIf failed.");
 
   return if_node;
 }
@@ -1441,7 +1465,7 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
   std::vector<ControlFlowInfo> cf_info;
   std::vector<string> unreachable_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      BuildAndValidateControlFlowInfo(graph, &cf_info, &unreachable_nodes),
+      BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes),
       "FunctionalizeControlFlow failed");
   if (!unreachable_nodes.empty()) {
     return errors::InvalidArgument(
@@ -1505,6 +1529,16 @@ Status FunctionalizeControlFlow(const FunctionLibraryDefinition* lookup_library,
     --frame->parent->num_children;
     if (frame->parent->num_children == 0) {
       worklist.push_back(frame->parent);
+    }
+  }
+  // There should be no cycle at this point, since while loops have been removed
+  // from graph.
+  // Check that the newly added XlaWhile nodes don't feed into themselves.
+  for (const Node* node : graph->op_nodes()) {
+    if (node->def().op() == "XlaWhile") {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          CheckNoCycleContains(node, graph->num_node_ids()),
+          "FunctionalizeLoop failed.");
     }
   }
 

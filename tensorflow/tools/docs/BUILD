@@ -39,6 +39,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:platform",
+        "//tensorflow/python:util",
         "@astor_archive//:astor",
     ],
 )
@@ -95,6 +96,7 @@ py_binary(
     deps = [
         ":generate_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:util",
         "//tensorflow/python/debug:debug_py",
     ],
 )

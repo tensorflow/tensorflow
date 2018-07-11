@@ -31,8 +31,8 @@ class QueryInferredShapeTest : public ClientLibraryTestBase {};
 
 TEST_F(QueryInferredShapeTest, OnePlusOneShape) {
   XlaBuilder builder("one_plus_one");
-  auto one = builder.ConstantR0<float>(1.0);
-  auto result = builder.Add(one, one);
+  auto one = ConstantR0<float>(&builder, 1.0);
+  auto result = Add(one, one);
   StatusOr<Shape> shape_status = builder.GetShape(result);
   ASSERT_IS_OK(shape_status.status());
   auto shape = shape_status.ConsumeValueOrDie();

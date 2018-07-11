@@ -127,12 +127,14 @@ py_library(
         ":util",
         ":weights_broadcast_ops",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
         "//third_party/py/numpy",
@@ -279,6 +281,9 @@ cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    visibility = visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ],
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
@@ -695,6 +700,15 @@ py_library(
 )
 
 py_library(
+    name = "error_interpolation",
+    srcs = [
+        "framework/error_interpolation.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "function",
     srcs = ["framework/function.py"],
     srcs_version = "PY2AND3",
@@ -993,6 +1007,18 @@ py_test(
         ":client_testlib",
         ":errors",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_error_interpolation_test",
+    size = "small",
+    srcs = ["framework/error_interpolation_test.py"],
+    main = "framework/error_interpolation_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":error_interpolation",
     ],
 )
 
@@ -1961,6 +1987,8 @@ py_library(
         ":math_ops",
         ":platform",
         ":resource_variable_ops",
+        ":sparse_ops",
+        ":tensor_shape",
         ":variables",
     ],
 )
@@ -3394,6 +3422,19 @@ py_library(
     ],
 )
 
+py_test(
+    name = "lock_util_test",
+    size = "small",
+    srcs = ["util/lock_util_test.py"],
+    main = "util/lock_util_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_proto_library(
     name = "protos_all",
     srcs = glob(
@@ -3712,6 +3753,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":c_api_util",
+        ":error_interpolation",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -3912,7 +3954,7 @@ tf_cuda_library(
 
 tf_py_test(
     name = "session_test",
-    size = "small",
+    size = "medium",
     srcs = ["client/session_test.py"],
     additional_deps = [
         ":array_ops",
@@ -4037,6 +4079,7 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(

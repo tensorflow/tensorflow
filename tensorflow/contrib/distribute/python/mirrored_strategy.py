@@ -104,9 +104,36 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     colocate_with = kwargs.pop("colocate_with", None)
     devices = self._get_devices_from(colocate_with)
 
-    tower_local = kwargs.pop("tower_local_reduce_method", None)
-    if tower_local is not None:
+    # Get synchronization value
+    synchronization = kwargs.get(
+        "synchronization", variable_scope.VariableSynchronization.ON_WRITE)
+    if synchronization == variable_scope.VariableSynchronization.NONE:
+      raise ValueError("`NONE` variable synchronization mode is not "
+                       "supported with `Mirrored` distribution strategy. Please"
+                       " change the `synchronization` for variable: " +
+                       kwargs["name"])
+    elif synchronization == variable_scope.VariableSynchronization.ON_READ:
+      # Variables that are to be synced on read are tower local.
+      is_tower_local = True
       kwargs["trainable"] = False
+    elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
+          synchronization == variable_scope.VariableSynchronization.AUTO):
+      # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
+      is_tower_local = False
+    else:
+      raise ValueError("Invalid variable synchronization mode: " +
+                       synchronization + " for variable: " + kwargs["name"])
+
+    # Get aggregation value
+    aggregation = kwargs.pop("aggregation",
+                             variable_scope.VariableAggregation.NONE)
+    if aggregation not in [
+        variable_scope.VariableAggregation.NONE,
+        variable_scope.VariableAggregation.SUM,
+        variable_scope.VariableAggregation.MEAN
+    ]:
+      raise ValueError("Invalid variable aggregation mode: " + aggregation +
+                       " for variable: " + kwargs["name"])
 
     # Ignore user-specified caching device, not needed for mirrored variables.
     kwargs.pop("caching_device", None)
@@ -139,11 +166,11 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           assert not isinstance(v, values.DistributedVariable)
           index[d] = v
 
-      if tower_local is None:
-        result = values.MirroredVariable(index, index[devices[0]])
+      if is_tower_local:
+        result = values.TowerLocalVariable(index, index[devices[0]],
+                                           aggregation)
       else:
-        result = values.TowerLocalVariable(
-            index, index[devices[0]], tower_local)
+        result = values.MirroredVariable(index, index[devices[0]], aggregation)
 
     if not context.executing_eagerly():
       g = ops.get_default_graph()
@@ -308,16 +335,36 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps())
     return self._cross_tower_ops
 
-  def _reduce(self, method_string, value, destinations):
-    if len(self._devices) == 1 and not isinstance(value, values.PerDevice):
-      value = values.PerDevice({self._devices[0]: value})
-    assert isinstance(value, values.PerDevice)
+  def _reduce(self, aggregation, value, destinations):
+    assert not isinstance(value, values.Mirrored)
+    if not isinstance(value, values.PerDevice):
+      if value == 0:
+        return 0
+      if aggregation == variable_scope.VariableAggregation.MEAN:
+        return self._broadcast(value, destinations)
+
+      cross_tower_ops_lib.validate_destinations(destinations)
+      if len(self._devices) == 1:
+        if destinations:
+          # TODO(anjalisridhar): Moves these methods to a device utility file?
+          devices = cross_tower_ops_lib.get_devices_from(destinations)
+          if len(devices) == 1:
+            with ops.device(devices[0]):
+              return array_ops.identity(value)
+          else:
+            value_updates = {}
+            for d in devices:
+              with ops.device(d):
+                value_updates[d] = array_ops.identity(value)
+            return values.Mirrored(value_updates)
+      raise ValueError("A non PerDevice value cannot be reduced with the given "
+                       "aggregation.")
 
     return self._get_cross_tower_ops().reduce(
-        method_string, value, destinations=destinations)
+        aggregation, value, destinations=destinations)
 
-  def _batch_reduce(self, method_string, value_destination_pairs):
-    return self._get_cross_tower_ops().batch_reduce(method_string,
+  def _batch_reduce(self, aggregation, value_destination_pairs):
+    return self._get_cross_tower_ops().batch_reduce(aggregation,
                                                     value_destination_pairs)
 
   def _update(self, var, fn, *args, **kwargs):
@@ -350,33 +397,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       return tower_local_var._get_cross_tower()  # pylint: disable=protected-access
     assert isinstance(tower_local_var, values.Mirrored)
     return array_ops.identity(tower_local_var.get())
-
-  def _fetch(self, val, destination, fn):
-    """Return a copy of `val` or `fn(val)` on `destination`."""
-    if isinstance(val, values.TowerLocalVariable):
-      val = self.reduce(val.reduce_method, val, destinations=destination)
-      with ops.device(destination):
-        return fn(self.unwrap(val)[0])
-
-    assert isinstance(val, values.Mirrored), (
-        "val = %s (type %s)" % (val, val.__class__.__name__))
-    if val.on_device(destination):
-      with ops.device(destination):
-        # Use an identity here to make sure we are returning a tensor
-        # instead of e.g. a variable object.
-        return array_ops.identity(fn(val.get(destination)))
-    device = None
-    for d in self._devices:
-      if val.on_device(d):
-        device = d
-        break
-    assert device is not None, (
-        "Could not find destination %s in list of devices %s." %
-        (destination, val.devices))
-    with ops.device(device):
-      v = fn(val.get(device))
-    with ops.device(destination):
-      return array_ops.identity(v)
 
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):
