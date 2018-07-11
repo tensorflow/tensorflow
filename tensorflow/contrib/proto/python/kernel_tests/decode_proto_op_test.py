@@ -23,24 +23,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
+
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.proto.python.kernel_tests import test_case
+from tensorflow.contrib.proto.python.kernel_tests import test_base
 from tensorflow.contrib.proto.python.kernel_tests import test_example_pb2
 from tensorflow.contrib.proto.python.ops import decode_proto_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 
-FLAGS = flags.FLAGS
 
-flags.DEFINE_string('message_text_file', None,
-                    'A file containing a text serialized TestCase protobuf.')
-
-
-class DecodeProtoOpTest(test_case.ProtoOpTestCase):
+class DecodeProtoOpTest(test_base.ProtoOpTestBase, parameterized.TestCase):
 
   def _compareValues(self, fd, vs, evs):
     """Compare lists/arrays of field values."""
@@ -203,10 +199,8 @@ class DecodeProtoOpTest(test_case.ProtoOpTestCase):
       self._compareRepeatedPrimitiveValue(batch_shape, sizes, fields,
                                           field_dict)
 
-  def testBinary(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testBinary(self, case):
     batch = [primitive.SerializeToString() for primitive in case.primitive]
     self._runDecodeProtoTests(
         case.field,
@@ -217,10 +211,8 @@ class DecodeProtoOpTest(test_case.ProtoOpTestCase):
         'binary',
         sanitize=False)
 
-  def testBinaryDisordered(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testBinaryDisordered(self, case):
     batch = [primitive.SerializeToString() for primitive in case.primitive]
     self._runDecodeProtoTests(
         case.field,
@@ -232,10 +224,8 @@ class DecodeProtoOpTest(test_case.ProtoOpTestCase):
         sanitize=False,
         force_disordered=True)
 
-  def testPacked(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testPacked(self, case):
     # Now try with the packed serialization.
     # We test the packed representations by loading the same test cases
     # using PackedPrimitiveValue instead of RepeatedPrimitiveValue.
@@ -261,10 +251,8 @@ class DecodeProtoOpTest(test_case.ProtoOpTestCase):
         'binary',
         sanitize=False)
 
-  def testText(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testText(self, case):
     # Note: float_format='.17g' is necessary to ensure preservation of
     # doubles and floats in text format.
     text_batch = [
@@ -281,10 +269,8 @@ class DecodeProtoOpTest(test_case.ProtoOpTestCase):
         'text',
         sanitize=False)
 
-  def testSanitizerGood(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testSanitizerGood(self, case):
     batch = [primitive.SerializeToString() for primitive in case.primitive]
     self._runDecodeProtoTests(
         case.field,
