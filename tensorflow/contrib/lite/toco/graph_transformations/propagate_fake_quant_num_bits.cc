@@ -30,15 +30,9 @@ namespace {
 bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
                          ArrayDataType new_data_type,
                          const MinMax* new_minmax) {
-  // The code below assumes kInt16, see
-  //     GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>
-  if (new_data_type != ArrayDataType::kInt16) {
-    return false;
-  }
-
-  bool changed = false;
   // Ensure the array ends up in the new type (if it hasn't yet been quantized).
-  if ((array->final_data_type != new_data_type)) {
+  bool changed = false;
+  if (array->final_data_type != new_data_type) {
     array->final_data_type = new_data_type;
     changed = true;
   }
@@ -75,8 +69,20 @@ bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
 
     array_minmax.min = min;
     array_minmax.max = max;
-    GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-        array_minmax, array->quantization_params.get());
+    switch (new_data_type) {
+      case ArrayDataType::kUint8:
+        GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
+            array_minmax, array->quantization_params.get());
+        break;
+      case ArrayDataType::kInt16:
+        GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
+            array_minmax, array->quantization_params.get());
+        break;
+      default:
+        CHECK(false) << "Unsupported quantized data type: "
+                     << ArrayDataTypeName(new_data_type);
+        return false;
+    }
 
     // Directly change the type as the array was already quantized.
     array->data_type = new_data_type;
@@ -95,6 +101,7 @@ bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
       changed = true;
     }
   }
+
   return changed;
 }
 

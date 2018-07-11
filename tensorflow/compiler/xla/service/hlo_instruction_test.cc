@@ -716,7 +716,7 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
       })));
   auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
   auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
-  auto token = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, token, ""));
   auto outfeed01 = builder.AddInstruction(
@@ -1455,15 +1455,15 @@ TEST_F(HloInstructionTest, CanonnicalStringificationFusion) {
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kLoop);
 
-  EXPECT_EQ(
-      fusion->ToString(options),
+  const string expected_fusion =
       R"(f32[5,20]{1,0} fusion(f32[5,10]{1,0}, f32[20,10]{1,0}), kind=kLoop, calls=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})");
+})";
+  EXPECT_EQ(fusion->ToString(options), expected_fusion);
 }
 
 TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
@@ -1495,8 +1495,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
       HloInstruction::CreateWhile(sout, computation, computation, x));
 
   auto options = HloPrintOptions().Canonical();
-  EXPECT_EQ(loop->ToString(options),
-            R"(f32[5,20]{1,0} while(f32[5,10]{1,0}), condition=
+  const string expected_loop =
+      R"(f32[5,20]{1,0} while(f32[5,10]{1,0}), condition=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
   tmp_1 = f32[20,10]{1,0} parameter(1)
@@ -1518,7 +1518,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationWhile) {
     tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
-})");
+})";
+  EXPECT_EQ(loop->ToString(options), expected_loop);
 }
 
 TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
@@ -1555,8 +1556,7 @@ TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
       builder.AddInstruction(HloInstruction::CreateConditional(
           sout, pred, x, computation, x, computation));
   auto options = HloPrintOptions().Canonical();
-  EXPECT_EQ(
-      conditional->ToString(options),
+  const string expected_conditional =
       R"(f32[5,20]{1,0} conditional(pred[], f32[5,10]{1,0}, f32[5,10]{1,0}), true_computation=
 {
   tmp_0 = f32[5,10]{1,0} parameter(0)
@@ -1579,7 +1579,8 @@ TEST_F(HloInstructionTest, CanonnicalStringificationConditional) {
     tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
-})");
+})";
+  EXPECT_EQ(conditional->ToString(options), expected_conditional);
 }
 
 TEST_F(HloInstructionTest, CheckDeepClone) {

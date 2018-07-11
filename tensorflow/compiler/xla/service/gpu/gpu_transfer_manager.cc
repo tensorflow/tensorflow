@@ -21,7 +21,9 @@ limitations under the License.
 
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -137,6 +139,63 @@ StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
   VLOG(2) << "Queued infeed data on stream " << stream;
 
   return buffer;
+}
+
+static std::unique_ptr<Literal> ShapeTreeToLiteral(
+    ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree) {
+  // This is a struct instead of a lambda for std::function-free recursion.
+  struct Helper {
+    static std::unique_ptr<Literal> helper(
+        ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>>* shape_tree,
+        ShapeIndex* index) {
+      const Shape& shape = ShapeUtil::GetSubshape(shape_tree->shape(), *index);
+      if (ShapeUtil::IsArray(shape)) {
+        return (*shape_tree->mutable_element(*index))->WaitUntilAvailable();
+      }
+
+      CHECK(ShapeUtil::IsTuple(shape))
+          << ShapeUtil::HumanStringWithLayout(shape);
+      const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
+      index->push_back(0);
+      std::vector<std::unique_ptr<Literal>> tuple_operands;
+      for (int64 i = 0; i < tuple_element_count; ++i) {
+        index->back() = i;
+        tuple_operands.push_back(helper(shape_tree, index));
+      }
+      index->pop_back();
+      return LiteralUtil::MakeTupleOwned(std::move(tuple_operands));
+    }
+  };
+  ShapeIndex index;
+  return Helper::helper(shape_tree, &index);
+}
+
+Status GpuTransferManager::TransferLiteralFromOutfeed(
+    se::StreamExecutor* /*executor*/, const Shape& literal_shape,
+    Literal* literal) {
+  ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
+      &literal_shape);
+
+  // First create a tree of literal buffers that the device can write to.
+  outfeed_buffers.ForEachMutableElement(
+      [&](const ShapeIndex& index,
+          std::unique_ptr<gpu::OutfeedBuffer>* buffer) {
+        const Shape& shape = ShapeUtil::GetSubshape(literal_shape, index);
+        // Do not transfer tuple index buffers.
+        if (ShapeUtil::IsTuple(shape)) {
+          return;
+        }
+        *buffer = MakeUnique<gpu::OutfeedBuffer>(GetByteSizeRequirement(shape));
+      });
+
+  // Give the tree of buffers to the outfeed mananger. The device will fill it
+  // while we're waiting for it below.
+  gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
+  outfeed_manager->EnqueueOutfeedDestination(&outfeed_buffers);
+
+  // Now turn the tree of buffers back into a literal.
+  *literal = std::move(*ShapeTreeToLiteral(&outfeed_buffers));
+  return Status::OK();
 }
 
 }  // namespace xla

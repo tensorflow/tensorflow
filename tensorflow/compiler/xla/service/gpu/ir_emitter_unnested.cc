@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
@@ -2028,6 +2029,11 @@ Status IrEmitterUnnested::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
+Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {
+  thunk_sequence_->emplace_back(BuildOutfeedThunk(outfeed));
+  return Status::OK();
+}
+
 // Figures out how to access the buffers for all subshapes of hlo's operands and
 // for hlo itself (i.e. all the buffers produced by HLO).
 //
@@ -2275,12 +2281,29 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
 
   ShapeTree<BufferAllocation::Slice> slices(inst->shape());
   slices.ForEachMutableElement(
-      [this, inst](const ShapeIndex& index, BufferAllocation::Slice* slice) {
+      [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
         *slice = ir_emitter_context_->buffer_assignment()
                      .GetUniqueSlice(inst, index)
                      .ConsumeValueOrDie();
       });
   return MakeUnique<InfeedThunk>(slices, inst);
+}
+
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildOutfeedThunk(
+    const HloInstruction* inst) {
+  CHECK_EQ(HloOpcode::kOutfeed, inst->opcode());
+
+  ShapeTree<BufferAllocation::Slice> slices(inst->operand(0)->shape());
+  slices.ForEachMutableElement(
+      [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
+        auto status_or_slice =
+            ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                inst->operand(0), index);
+        if (status_or_slice.ok()) {
+          *slice = status_or_slice.ConsumeValueOrDie();
+        }
+      });
+  return MakeUnique<OutfeedThunk>(std::move(slices), inst);
 }
 
 namespace {
@@ -3040,12 +3063,10 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
       llvm_ir::IrArray& input_in_logical_shape =
           param_in_reduced_shape_arrays[id];
       llvm::Value* buffer = param_buffers[id];
-      llvm::Instruction* store_to_buffer = ir_builder_.CreateStore(
+      ir_builder_.CreateStore(
           input_in_logical_shape.EmitReadArrayElement(index, &ir_builder_,
                                                       "input_element"),
           ir_builder_.CreateGEP(buffer, {index_typed_const(0), y_loc, x}));
-      param_arrays[id].AnnotateBufferLoadStoreInstructionWithMetadata(
-          store_to_buffer);
     }
   };
 
@@ -3073,8 +3094,6 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
           ir_builder_.CreateGEP(param_buffers[0],
                                 {ir_builder_.getInt64(0), x, y_loc}),
           "output_element");
-      param_arrays[0].AnnotateBufferLoadStoreInstructionWithMetadata(
-          load_from_buffer);
       output_in_reduced_shape_arrays[0].EmitWriteArrayElement(
           index, load_from_buffer, &ir_builder_);
     } else {

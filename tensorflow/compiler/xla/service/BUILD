@@ -1239,6 +1239,7 @@ tf_cc_test(
         ":batchnorm_expander",
         ":hlo",
         ":hlo_matchers",
+        ":hlo_parser",
         ":hlo_pass",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

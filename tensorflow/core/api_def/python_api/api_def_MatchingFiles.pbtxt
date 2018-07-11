@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "matching_files"
-    deprecation_message: "tf.matching_files is deprecated, please use tf.io.matching_files instead."
+    deprecated: true
   }
 }

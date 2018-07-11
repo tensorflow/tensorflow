@@ -268,6 +268,12 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(rnn_cell_impl.GRUCell, f64, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(rnn_cell_impl.LSTMCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyGRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
 
 ######### Benchmarking RNN code

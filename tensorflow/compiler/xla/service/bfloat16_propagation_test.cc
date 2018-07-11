@@ -240,12 +240,10 @@ TEST_F(BFloat16PropagationTest, SameValueReferencedTwice) {
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), dot);
-  EXPECT_TRUE(OutputsBF16(add0));
   EXPECT_TRUE(OutputsBF16(add1));
   EXPECT_TRUE(OutputsBF16(lhs));
-  // rhs is a get-tuple-element, which does not define a buffer, but its shape
-  // should also be adjusted accordingly.
-  EXPECT_TRUE(OutputsBF16(rhs));
+
+  // add0 and rhs have been eliminated by simplification and DCE.
 }
 
 // Tests that a non-fusion computation's root should not be changed.
@@ -734,10 +732,8 @@ TEST_F(BFloat16PropagationTest, NoopConversionRemoved) {
   EXPECT_TRUE(PropagatePrecision(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), add2);
-  EXPECT_EQ(add2->operand(0), gte0);
-  EXPECT_EQ(add2->operand(1), gte1);
-  EXPECT_EQ(gte0->shape().element_type(), BF16);
-  EXPECT_EQ(gte1->shape().element_type(), BF16);
+  EXPECT_EQ(add2->operand(0), add0);
+  EXPECT_EQ(add2->operand(1), add1);
   EXPECT_EQ(add0->shape().element_type(), BF16);
   EXPECT_EQ(add1->shape().element_type(), BF16);
 }

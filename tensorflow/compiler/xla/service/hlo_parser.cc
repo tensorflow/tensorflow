@@ -622,23 +622,32 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+      if (operands.empty()) {
+        instruction = builder->AddInstruction(HloInstruction::CreateToken());
+      } else {
+        instruction =
+            builder->AddInstruction(HloInstruction::CreateAfterAll(operands));
+      }
       break;
     }
     case HloOpcode::kSort: {
       auto loc = lexer_.GetLoc();
-      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+
+      optional<std::vector<tensorflow::int64>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
+          dimensions->size() != 1) {
         return false;
       }
       switch (operands.size()) {
         case 1:
-          instruction = builder->AddInstruction(
-              HloInstruction::CreateSort(shape, /*keys=*/operands[0]));
+          instruction = builder->AddInstruction(HloInstruction::CreateSort(
+              shape, dimensions->at(0), /*keys=*/operands[0]));
           break;
         case 2:
           instruction = builder->AddInstruction(HloInstruction::CreateSort(
-              shape,
+              shape, dimensions->at(0),
               /*keys=*/operands[0], /*values=*/operands[1]));
           break;
         default:

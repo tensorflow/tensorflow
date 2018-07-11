@@ -43,7 +43,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 
@@ -1140,7 +1140,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     def loss(v):
       return v**2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
     @function.defun
     def train():
@@ -1157,7 +1157,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     def loss():
       return v**2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
     @function.defun
     def train():

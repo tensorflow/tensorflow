@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "string_join"
-    deprecation_message: "tf.string_join is deprecated, please use tf.strings.join instead."
+    deprecated: true
   }
 }
