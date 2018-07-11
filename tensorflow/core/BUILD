@@ -1952,8 +1952,10 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "**/*test*",
         "lib/gif/**/*",
         "lib/jpeg/**/*",
+        "lib/png/**/*",
         "platform/gif.h",
         "platform/jpeg.h",
+        "platform/png.h",
         "platform/**/cuda.h",
         "platform/**/stream_executor.h",
     ],
@@ -2048,6 +2050,7 @@ cc_library(
             "lib/hash/crc32c_accelerate.cc",
             "lib/gif/**/*",
             "lib/jpeg/**/*",
+            "lib/png/**/*",
             "platform/**/env_time.cc",
             "platform/**/cuda_libdevice_path.cc",
             "platform/**/device_tracer.cc",
@@ -2140,6 +2143,39 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform/default/build_config:jpeg",
+    ],
+)
+
+cc_library(
+    name = "png_internal",
+    srcs = ["lib/png/png_io.cc"],
+    hdrs = [
+        "lib/bfloat16/bfloat16.h",
+        "lib/core/casts.h",
+        "lib/core/stringpiece.h",
+        "lib/png/png_io.h",
+        "platform/byte_order.h",
+        "platform/cpu_info.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/logging.h",
+        "platform/macros.h",
+        "platform/platform.h",
+        "platform/png.h",
+        "platform/types.h",
+    ],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//conditions:default": ["-ldl"],
+    }),
+    deps = [
+        ":lib",
+        ":lib_internal",
+        "//tensorflow/core/platform/default/build_config:png",
+        "@zlib_archive//:zlib",
     ],
 )
 
