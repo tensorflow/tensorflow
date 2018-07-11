@@ -537,11 +537,13 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
     }
   }
   if (bad_i >= 0) {
+    auto slice_shape = indices.shape();
+    slice_shape.RemoveLastDims(1);
     return errors::InvalidArgument(
-        "Invalid indices: ", SliceDebugString(indices.shape(), bad_i), " = [",
+        "indices", SliceDebugString(slice_shape, bad_i), " = [",
         str_util::Join(
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
-        "] does not index into ", shape.DebugString());
+        "] does not index into shape ", shape.DebugString());
   }
   return Status::OK();
 }
