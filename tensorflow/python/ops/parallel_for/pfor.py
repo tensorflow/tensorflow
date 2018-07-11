@@ -592,7 +592,7 @@ class WhileOp(object):
       inputs = args[:num_enters]
       output_tas = args[num_enters:]
       # TODO(agarwal): see which outputs have consumers and only populate the
-      # TensorArrays corresonding to those. Or do those paths get trimmed out
+      # TensorArrays corresponding to those. Or do those paths get trimmed out
       # from inside the while_loop body?
       assert len(inputs) >= len(output_tas)
       assert len(inputs) == len(inputs_stacked)
