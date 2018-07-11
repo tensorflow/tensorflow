@@ -20,6 +20,15 @@ limitations under the License.
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/model.h"
+
+#undef toupper
+#undef tolower
+#undef isspace
+#undef isupper
+#undef islower
+#undef isalpha
+#undef isalnum
+
 #include "tensorflow/core/platform/logging.h"
 
 // Disallow Numpy 1.7 deprecated symbols.
