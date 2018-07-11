@@ -128,8 +128,8 @@ def _host_compiler_includes(repository_ctx, cc):
   # Add rocfft headers
   inc_dirs.append("/opt/rocm/rocfft/include")
 
-  # Add hipblas headers
-  inc_dirs.append("/opt/rocm/hipblas/include")
+  # Add rocBLAS headers
+  inc_dirs.append("/opt/rocm/rocblas/include")
 
   # Add MIOpen headers
   inc_dirs.append("/opt/rocm/miopen/include")
@@ -303,8 +303,8 @@ def _find_libs(repository_ctx, rocm_config):
   return {
       "hip": _find_rocm_lib(
           "hip_hcc", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path),
-      "hipblas": _find_rocm_lib(
-          "hipblas", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path),
+      "rocblas": _find_rocm_lib(
+          "rocblas", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path),
       "rocfft": _find_rocm_lib(
           "rocfft", repository_ctx, cpu_value, rocm_config.rocm_toolkit_path + "/rocfft"),
       "hiprand": _find_rocm_lib(
@@ -536,7 +536,7 @@ def _create_local_rocm_repository(repository_ctx):
   genrules.append(_symlink_genrule_for_dir(repository_ctx,
       rocm_toolkit_path + "/rocfft/include", "rocm/include/rocfft", "rocfft-include"))
   genrules.append(_symlink_genrule_for_dir(repository_ctx,
-      rocm_toolkit_path + "/hipblas/include", "rocm/include/hipblas", "hipblas-include"))
+      rocm_toolkit_path + "/rocblas/include", "rocm/include/rocblas", "rocblas-include"))
   genrules.append(_symlink_genrule_for_dir(repository_ctx,
       rocm_toolkit_path + "/miopen/include", "rocm/include/miopen", "miopen-include"))
 
@@ -565,14 +565,14 @@ def _create_local_rocm_repository(repository_ctx):
            "%{rocmrt_static_lib}": rocm_libs["hip"].file_name,
            "%{rocmrt_static_linkopt}": '',
            "%{rocmrt_lib}": rocm_libs["hip"].file_name,
-           "%{rocblas_lib}": rocm_libs["hipblas"].file_name,
+           "%{rocblas_lib}": rocm_libs["rocblas"].file_name,
            "%{rocfft_lib}": rocm_libs["rocfft"].file_name,
            "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
            "%{miopen_lib}": rocm_libs["miopen"].file_name,
            "%{rocm_include_genrules}": "\n".join(genrules),
            "%{rocm_headers}": ('":rocm-include",\n' +
                                '":rocfft-include",\n' +
-                               '":hipblas-include",\n' +
+                               '":rocblas-include",\n' +
                                '":miopen-include",'),
        })
   # Set up crosstool/

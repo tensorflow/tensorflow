@@ -389,6 +389,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
+)
+
+config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
