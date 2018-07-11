@@ -53,7 +53,7 @@ public:
               SMDiagnosticHandlerTy errorReporter)
       : context(module->getContext()), module(module),
         lex(sourceMgr, errorReporter), curToken(lex.lexToken()),
-        errorReporter(std::move(errorReporter)) {}
+        errorReporter(errorReporter) {}
 
   // A map from affine map identifier to AffineMap.
   llvm::StringMap<AffineMap *> affineMapDefinitions;
