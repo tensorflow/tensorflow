@@ -892,7 +892,7 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
     }
     for (int i = 0, e = input_index.size(); i < e; i++) {
       input_index[i] = input_gather_index_clamped[i] + input_window_index[i];
-      DCHECK_GT(input_index[i], 0);
+      DCHECK_GE(input_index[i], 0);
       DCHECK_LT(input_index[i], operand_shape.dimensions(i));
     }
     TF_RETURN_IF_ERROR(
