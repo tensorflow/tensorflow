@@ -341,39 +341,6 @@ py_test(
     ],
 )
 
-py_test(
-    name = "converter_unit_tests",
-    srcs = [
-        "test/base_unit_test.py",
-        "test/batch_matmul_test.py",
-        "test/biasadd_matmul_test.py",
-        "test/binary_tensor_weight_broadcast_test.py",
-        "test/concatenation_test.py",
-        "test/const_broadcast_test.py",
-        "test/multi_connection_neighbor_engine_test.py",
-        "test/neighboring_engine_test.py",
-        "test/run_test.py",
-        "test/unary_test.py",
-        "test/unit_tests.py",
-        "test/utilities.py",
-        "test/vgg_block_nchw_test.py",
-        "test/vgg_block_test.py",
-    ],
-    main = "test/unit_tests.py",
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "notap",
-    ],
-    deps = [
-        ":init_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:training",
-    ],
-)
-
 cc_library(
     name = "utils",
     hdrs = ["convert/utils.h"],
