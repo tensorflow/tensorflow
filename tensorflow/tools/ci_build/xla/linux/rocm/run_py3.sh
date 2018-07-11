@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,15 +25,17 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export TF_NEED_CUDA=0
-export TF_NEED_ROCM=0
-export CC_OPT_FLAGS='-mavx'
-# Only running cc tests, python version does not matter.
-export PYTHON_BIN_PATH=`which python`
-yes "" | $PYTHON_BIN_PATH configure.py
+export PYTHON_BIN_PATH=`which python3`
 
+export TF_NEED_ROCM=1
+
+yes "" | $PYTHON_BIN_PATH configure.py
+echo "build --distinct_host_configuration=false" >> .tf_configure.bazelrc
+
+bazel clean
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --test_tag_filters=-no_oss,-gpu,-benchmark-test --test_lang_filters=cc,java -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --config=opt \
-    --test_output=errors --test_size_filters=small,medium -- \
-    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...
+bazel test --config=rocm --test_tag_filters=-no_gpu,-benchmark-test,-no_oss -k \
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
+    --build_tests_only --test_output=errors --local_test_jobs=1 \
+    --config=xla -- \
+    //tensorflow/compiler/...
