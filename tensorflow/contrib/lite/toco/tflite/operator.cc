@@ -290,8 +290,8 @@ class FakeQuant
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateFakeQuantOptions(*builder, op.minmax->min,
-                                            op.minmax->max, op.num_bits);
+    return ::tflite::CreateFakeQuantOptions(
+        *builder, op.minmax->min, op.minmax->max, op.num_bits, op.narrow_range);
   }
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
@@ -300,9 +300,13 @@ class FakeQuant
     minmax->max = options.max();
     op->minmax.reset(minmax);
     op->num_bits = options.num_bits();
+    op->narrow_range = options.narrow_range();
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& fq_op = static_cast<const FakeQuantOperator&>(op);
+    return fq_op.narrow_range ? 2 : 1;
+  }
 };
 
 class FullyConnected

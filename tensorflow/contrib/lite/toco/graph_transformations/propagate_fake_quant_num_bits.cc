@@ -66,24 +66,10 @@ bool ChangeArrayDataType(GraphTransformation* transformation, Array* array,
         "Rescaling min/max from %g,%g (%s) to %g,%g (%s)", array_minmax.min,
         array_minmax.max, ArrayDataTypeName(array->data_type), min, max,
         ArrayDataTypeName(new_data_type));
-
     array_minmax.min = min;
     array_minmax.max = max;
-    switch (new_data_type) {
-      case ArrayDataType::kUint8:
-        GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(
-            array_minmax, array->quantization_params.get());
-        break;
-      case ArrayDataType::kInt16:
-        GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
-            array_minmax, array->quantization_params.get());
-        break;
-      default:
-        CHECK(false) << "Unsupported quantized data type: "
-                     << ArrayDataTypeName(new_data_type);
-        return false;
-    }
-
+    ChooseQuantizationParamsForArrayAndQuantizedDataType(
+        *array, new_data_type, array->quantization_params.get());
     // Directly change the type as the array was already quantized.
     array->data_type = new_data_type;
     changed = true;

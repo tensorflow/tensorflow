@@ -105,7 +105,8 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
-  transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveFakeQuantArgsFromVars);
+  transformations->Add(new ReadArrayMinmaxAndNarrowRangeFromFakeQuant);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
