@@ -128,6 +128,10 @@ tensorflow::Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
     bool* convert_successfully);
 
+bool IsTensorRTInputCandidate(const tensorflow::Node* node);
+
+bool IsTensorRTOutputCandidate(const tensorflow::Node* node);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
