@@ -46,7 +46,7 @@ class MultiWorkerMirroredStrategy(MirroredStrategy):
     * **In-graph replication**: the `client` creates a single `tf.Graph` that
     specifies tasks for devices on all workers. The `client` then creates a
     client session which will talk to the `master` service of a `worker`. Then
-    the `master` will parition the graph and distribute the work to all
+    the `master` will partition the graph and distribute the work to all
     participating workers.
     * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
     physical machine. We will have multiple `worker`s with different `task`

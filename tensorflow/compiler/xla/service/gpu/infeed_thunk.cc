@@ -38,9 +38,10 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   se::DeviceMemoryBase data_address =
       buffer_allocations.GetDeviceAddress(infeed_slices_.element({0}));
   InfeedManager* infeed_manager = GetOrCreateInfeedManager();
-  std::vector<InfeedBuffer*> infeed_buffers;
   const Shape& data_shape =
       ShapeUtil::GetTupleElementShape(hlo_instruction()->shape(), 0);
+  ShapeTree<InfeedBuffer> infeed_buffers =
+      infeed_manager->BlockingGetNextDestination();
   if (ShapeUtil::IsTuple(data_shape)) {
     CHECK(!ShapeUtil::IsNestedTuple(data_shape));
     // Transfer the tuple elements first.
@@ -51,8 +52,7 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
       se::DeviceMemoryBase tuple_element_address =
           buffer_allocations.GetDeviceAddress(tuple_element_buffer);
 
-      InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();
-      infeed_buffers.push_back(buffer);
+      InfeedBuffer* buffer = infeed_buffers.mutable_element({i});
       stream->ThenMemcpy(&tuple_element_address, *(buffer->device_memory()),
                          buffer->length());
       tuple_element_addresses.push_back(tuple_element_address.opaque());
@@ -62,27 +62,23 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
     stream->ThenMemcpy(&data_address, tuple_element_addresses.data(),
                        host_size);
   } else {
-    InfeedBuffer* buffer = infeed_manager->BlockingDequeueBuffer();
-    infeed_buffers.push_back(buffer);
+    InfeedBuffer* buffer = infeed_buffers.mutable_element({});
     stream->ThenMemcpy(&data_address, *(buffer->device_memory()),
                        buffer->length());
   }
 
   // Construct top-level tuple of infeed containing the data and the token. Use
   // a nullptr for the token, it should never be dereferenced.
-  std::vector<void*> infeed_addresses = {data_address.opaque(), nullptr};
+  void* infeed_addresses[] = {data_address.opaque(), nullptr};
   se::DeviceMemoryBase top_level_address =
       buffer_allocations.GetDeviceAddress(infeed_slices_.element({}));
-  stream->ThenMemcpy(&top_level_address, infeed_addresses.data(),
-                     2 * sizeof(void*));
+  stream->ThenMemcpy(&top_level_address, infeed_addresses, 2 * sizeof(void*));
 
   Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
                          stream, block_status.error_message().c_str());
   }
-
-  infeed_manager->ReleaseBuffers(infeed_buffers);
 
   VLOG(2) << "Infeeding to GPU complete";
   return Status::OK();

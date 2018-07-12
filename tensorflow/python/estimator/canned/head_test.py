@@ -3103,8 +3103,10 @@ class RegressionHead(test.TestCase):
     self.assertItemsEqual((prediction_key,), spec.predictions.keys())
     self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
     self.assertEqual(dtypes.float32, spec.loss.dtype)
-    self.assertItemsEqual(
-        (metric_keys.MetricKeys.LOSS_MEAN,), spec.eval_metric_ops.keys())
+    self.assertItemsEqual((metric_keys.MetricKeys.LOSS_MEAN,
+                           metric_keys.MetricKeys.PREDICTION_MEAN,
+                           metric_keys.MetricKeys.LABEL_MEAN),
+                          spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
@@ -3140,6 +3142,9 @@ class RegressionHead(test.TestCase):
 
     expected_metric_keys = [
         '{}/some_regression_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
+        '{}/some_regression_head'.format(
+            metric_keys.MetricKeys.PREDICTION_MEAN),
+        '{}/some_regression_head'.format(metric_keys.MetricKeys.LABEL_MEAN),
     ]
     self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
 
@@ -3170,6 +3175,8 @@ class RegressionHead(test.TestCase):
     expected_metrics = {
         keys.LOSS_MEAN: expected_unregularized_loss,
         keys.LOSS_REGULARIZATION: expected_regularization_loss,
+        keys.PREDICTION_MEAN: (45 + 41) / 2.0,
+        keys.LABEL_MEAN: (43 + 44) / 2.0,
     }
 
     # Assert predictions, loss, and metrics.
@@ -3471,8 +3478,10 @@ class RegressionHead(test.TestCase):
     self.assertItemsEqual((prediction_key,), spec.predictions.keys())
     self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
     self.assertEqual(dtypes.float32, spec.loss.dtype)
-    self.assertItemsEqual(
-        (metric_keys.MetricKeys.LOSS_MEAN,), spec.eval_metric_ops.keys())
+    self.assertItemsEqual((metric_keys.MetricKeys.LOSS_MEAN,
+                           metric_keys.MetricKeys.PREDICTION_MEAN,
+                           metric_keys.MetricKeys.LABEL_MEAN),
+                          spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
@@ -3700,8 +3709,10 @@ class RegressionHead(test.TestCase):
     self.assertItemsEqual((prediction_key,), spec.predictions.keys())
     self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
     self.assertEqual(dtypes.float32, spec.loss.dtype)
-    self.assertItemsEqual(
-        (metric_keys.MetricKeys.LOSS_MEAN,), spec.eval_metric_ops.keys())
+    self.assertItemsEqual((metric_keys.MetricKeys.LOSS_MEAN,
+                           metric_keys.MetricKeys.PREDICTION_MEAN,
+                           metric_keys.MetricKeys.LABEL_MEAN),
+                          spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
@@ -3832,7 +3843,13 @@ class RegressionHead(test.TestCase):
     # losses = [1*(35-45)^2, .1*(42-41)^2, 1.5*(45-44)^2] = [100, .1, 1.5]
     # loss = sum(losses) = 100+.1+1.5 = 101.6
     # loss_mean = loss/(1+.1+1.5) = 101.6/2.6 = 39.076923
-    expected_metrics = {metric_keys.MetricKeys.LOSS_MEAN: 39.076923}
+    expected_metrics = {
+        metric_keys.MetricKeys.LOSS_MEAN:
+            39.076923,
+        metric_keys.MetricKeys.PREDICTION_MEAN:
+            (45 + 41 * 0.1 + 44 * 1.5) / 2.6,
+        metric_keys.MetricKeys.LABEL_MEAN: (35 + 42 * 0.1 + 45 * 1.5) / 2.6,
+    }
 
     # Assert spec contains expected tensors.
     self.assertEqual(dtypes.float32, spec.loss.dtype)

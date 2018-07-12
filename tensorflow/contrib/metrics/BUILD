@@ -31,6 +31,7 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:confusion_matrix",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:histogram_ops",
         "//tensorflow/python:init_ops",

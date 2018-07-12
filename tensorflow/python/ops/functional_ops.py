@@ -775,7 +775,7 @@ def While(input_, cond, body, name=None, hostmem=None):
       a string, non-empty means True and empty means False. If the
       tensor is not a scalar, non-emptiness means True and False
       otherwise.
-    body: . A funcion takes a list of tensors and returns another
+    body: . A function takes a list of tensors and returns another
       list tensors. Both lists have the same types as specified
       by T.
     name: A name for the operation (optional).
