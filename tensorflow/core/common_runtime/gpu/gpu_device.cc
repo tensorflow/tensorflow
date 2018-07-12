@@ -101,7 +101,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
     context_ = context;
     scratch_ = scratch;
     semaphore_ =
-        reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
+        reinterpret_cast<unsigned int*>(scratch + Eigen::kGpuScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
     PlatformGpuId platform_gpu_id;
@@ -292,7 +292,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
       DCHECK(streams_[i]);
       if (scratch_.size() > i && scratch_[i]) continue;
       size_t scratch_buffer_size =
-          Eigen::kCudaScratchSize + sizeof(unsigned int);
+          Eigen::kGpuScratchSize + sizeof(unsigned int);
       void* scratch_buffer = gpu_allocator_->AllocateRaw(
           Allocator::kAllocatorAlignment, scratch_buffer_size);
       if (scratch_buffer == nullptr) {
@@ -304,7 +304,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
           se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
 
       bool ok = executor_->SynchronousMemZero(
-          &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
+          &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
       if (!ok) {
         return errors::FailedPrecondition(
             "Failed to memcopy into scratch buffer for device ",

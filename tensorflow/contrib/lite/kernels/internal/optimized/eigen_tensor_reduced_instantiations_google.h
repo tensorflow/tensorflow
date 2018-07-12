@@ -103,7 +103,7 @@ limitations under the License.
   }
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionThreadPool.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionCuda.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorContractionGpu.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorConversion.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorConvolution.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorFFT.h"
@@ -135,7 +135,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorMap.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorRef.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReductionCuda.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReductionGpu.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorIO.h"
 
