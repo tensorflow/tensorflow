@@ -66,10 +66,12 @@ class TraceableObjectTest(test_util.TensorFlowTestCase):
     result = t_obj.set_filename_and_line_from_caller(offset=300)
 
     # We expect a heuristic to be used because we are not currently 300 frames
-    # down on the stack.  The filename should be some wacky thing from the
-    # outermost stack frame -- definitely not equal to this filename.
+    # down on the stack.  The filename and lineno of the outermost frame are not
+    # predictable -- in some environments the filename is this test file, but in
+    # other environments it is not (e.g. due to a test runner calling this
+    # file).  Therefore we only test that the called function knows it applied a
+    # heuristic for the ridiculous stack offset.
     self.assertEqual(t_obj.HEURISTIC_USED, result)
-    self.assertNotEqual(_THIS_FILENAME, t_obj.filename)
 
 
 class TraceableStackTest(test_util.TensorFlowTestCase):
