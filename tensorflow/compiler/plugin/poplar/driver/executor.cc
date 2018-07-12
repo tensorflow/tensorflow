@@ -714,6 +714,11 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           AllocateOutputBuffer(allocator, output_shape, 0, output_map, args,
                                executable.OutputStreamed());
 
+      auto target_type_name =
+        poplar::toString(poplar_device_.getTarget().getTargetType());
+
+      VLOG(1) << "Executing on poplar device type " << target_type_name;
+
       try {
         const auto& streamed = executable.OutputStreamed();
         std::vector<void*> bufs;
