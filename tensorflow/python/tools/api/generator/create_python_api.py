@@ -29,6 +29,7 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_export
 
 API_ATTRS = tf_export.API_ATTRS
+API_ATTRS_V1 = tf_export.API_ATTRS_V1
 
 _DEFAULT_PACKAGE = 'tensorflow.python'
 _GENFILES_DIR_SUFFIX = 'genfiles/'
@@ -159,13 +160,16 @@ __all__.remove('print_function')
     return module_text_map
 
 
-def get_api_init_text(package, output_package, api_name):
+def get_api_init_text(package, output_package, api_name, api_version):
   """Get a map from destination module to __init__.py code for that module.
 
   Args:
     package: Base python package containing python with target tf_export
       decorators.
+    output_package: Base output python package where generated API will
+      be added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_version: API version you want to generate (`v1` or `v2`).
 
   Returns:
     A dictionary where
@@ -173,6 +177,12 @@ def get_api_init_text(package, output_package, api_name):
       value: (string) text that should be in __init__.py files for
         corresponding modules.
   """
+  if api_version == 1:
+    names_attr = API_ATTRS_V1[api_name].names
+    constants_attr = API_ATTRS_V1[api_name].constants
+  else:
+    names_attr = API_ATTRS[api_name].names
+    constants_attr = API_ATTRS[api_name].constants
   module_code_builder = _ModuleInitCodeBuilder()
 
   # Traverse over everything imported above. Specifically,
@@ -193,7 +203,7 @@ def get_api_init_text(package, output_package, api_name):
       attr = getattr(module, module_contents_name)
 
       # If attr is _tf_api_constants attribute, then add the constants.
-      if module_contents_name == API_ATTRS[api_name].constants:
+      if module_contents_name == constants_attr:
         for exports, value in attr:
           for export in exports:
             names = export.split('.')
@@ -205,9 +215,8 @@ def get_api_init_text(package, output_package, api_name):
       _, attr = tf_decorator.unwrap(attr)
       # If attr is a symbol with _tf_api_names attribute, then
       # add import for it.
-      if (hasattr(attr, '__dict__') and
-          API_ATTRS[api_name].names in attr.__dict__):
-        for export in getattr(attr, API_ATTRS[api_name].names):  # pylint: disable=protected-access
+      if (hasattr(attr, '__dict__') and names_attr in attr.__dict__):
+        for export in getattr(attr, names_attr):  # pylint: disable=protected-access
           names = export.split('.')
           dest_module = '.'.join(names[:-1])
           module_code_builder.add_import(
@@ -297,7 +306,7 @@ def get_module_docstring(module_name, package, api_name):
 
 def create_api_files(
     output_files, package, root_init_template, output_dir, output_package,
-    api_name):
+    api_name, api_version):
   """Creates __init__.py files for the Python API.
 
   Args:
@@ -309,7 +318,9 @@ def create_api_files(
       "#API IMPORTS PLACEHOLDER" comment in the template file will be replaced
       with imports.
     output_dir: output API root directory.
+    output_package: Base output package where generated API will be added.
     api_name: API you want to generate (e.g. `tensorflow` or `estimator`).
+    api_version: API version to generate (`v1` or `v2`).
 
   Raises:
     ValueError: if an output file is not under api/ directory,
@@ -326,7 +337,8 @@ def create_api_files(
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  module_text_map = get_api_init_text(package, output_package, api_name)
+  module_text_map = get_api_init_text(
+      package, output_package, api_name, api_version)
 
   # Add imports to output files.
   missing_output_files = []
@@ -385,6 +397,10 @@ def main():
       choices=API_ATTRS.keys(),
       help='The API you want to generate.')
   parser.add_argument(
+      '--apiversion', default=2, type=int,
+      choices=[1, 2],
+      help='The API version you want to generate.')
+  parser.add_argument(
       '--output_package', default='tensorflow', type=str,
       help='Root output package.')
 
@@ -401,7 +417,8 @@ def main():
   # Populate `sys.modules` with modules containing tf_export().
   importlib.import_module(args.package)
   create_api_files(outputs, args.package, args.root_init_template,
-                   args.apidir, args.output_package, args.apiname)
+                   args.apidir, args.output_package, args.apiname,
+                   args.apiversion)
 
 
 if __name__ == '__main__':
