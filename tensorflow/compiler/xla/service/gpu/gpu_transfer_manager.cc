@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
+namespace gpu {
 
 // TODO(b/30467474) Once GPU infeed implementation settles, consider
 // folding back the cpu and gpu infeed implementations into a generic
@@ -52,48 +53,37 @@ Status GpuTransferManager::TransferLiteralToInfeed(
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(shape);
 
-  if (!ShapeUtil::IsTuple(shape)) {
-    int64 size = GetByteSizeRequirement(shape);
-    return TransferBufferToInfeed(executor, size, literal.untyped_data());
-  }
-
   // For a tuple, we transfer each of its elements to the device and
   // enqueue the resulting destination device addresses with the
   // infeed manager.
-  std::vector<gpu::InfeedBuffer*> buffers;
-  auto cleanup = tensorflow::gtl::MakeCleanup([buffers]() {
-    for (gpu::InfeedBuffer* b : buffers) {
-      b->Done();
-    }
-  });
+  ShapeTree<InfeedBuffer> buffer_tree(shape);
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       shape, [&](const Shape& literal_subshape, const ShapeIndex& index) {
         if (ShapeUtil::IsArray(literal_subshape)) {
           int64 tuple_element_size = GetByteSizeRequirement(literal_subshape);
           TF_ASSIGN_OR_RETURN(
-              gpu::InfeedBuffer * buffer,
+              *buffer_tree.mutable_element(index),
               TransferBufferToInfeedInternal(executor, tuple_element_size,
                                              literal.untyped_data(index)));
-          buffers.push_back(buffer);
         }
         return Status::OK();
       }));
 
-  cleanup.release();
-  return EnqueueBuffersToInfeed(executor, buffers);
+  return EnqueueBuffersToInfeed(executor, std::move(buffer_tree));
 }
 
 Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
                                                   int64 size,
                                                   const void* source) {
-  TF_ASSIGN_OR_RETURN(gpu::InfeedBuffer * buffer,
-                      TransferBufferToInfeedInternal(executor, size, source));
-  return EnqueueBuffersToInfeed(executor, {buffer});
+  return InternalError(
+      "Attempted to transfer data to infeed on a GPU device using "
+      "TransferBufferToInfeed. This should be done using "
+      "TransferLiteralToInfeed instead.");
 }
 
 Status GpuTransferManager::EnqueueBuffersToInfeed(
-    se::StreamExecutor* executor, std::vector<gpu::InfeedBuffer*> buffers) {
+    se::StreamExecutor* executor, ShapeTree<InfeedBuffer> buffers) {
   gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
   se::Stream* stream = infeed_manager->GetStream(executor);
 
@@ -103,21 +93,18 @@ Status GpuTransferManager::EnqueueBuffersToInfeed(
   // possible.
   Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
-    for (gpu::InfeedBuffer* b : buffers) {
-      b->Done();
-    }
     return InternalError("Failed to complete data transfer on stream %p: %s",
                          stream, block_status.error_message().c_str());
   }
 
-  infeed_manager->EnqueueBuffers(buffers);
+  infeed_manager->EnqueueDestination(std::move(buffers));
 
   VLOG(2) << "Infeed data transferred";
 
   return Status::OK();
 }
 
-StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
+StatusOr<InfeedBuffer> GpuTransferManager::TransferBufferToInfeedInternal(
     se::StreamExecutor* executor, int64 size, const void* source) {
   if (size > std::numeric_limits<int32>::max()) {
     return InvalidArgument("Infeed shape is too large: needs %lld bytes", size);
@@ -133,12 +120,12 @@ StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
     return InternalError("Failed to obtain a stream");
   }
 
-  gpu::InfeedBuffer* buffer = new gpu::InfeedBuffer(executor, size);
-  stream->ThenMemcpy(buffer->device_memory(), source, size);
+  InfeedBuffer buffer(executor, size);
+  stream->ThenMemcpy(buffer.device_memory(), source, size);
 
   VLOG(2) << "Queued infeed data on stream " << stream;
 
-  return buffer;
+  return std::move(buffer);
 }
 
 static std::unique_ptr<Literal> ShapeTreeToLiteral(
@@ -191,17 +178,18 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
   // Give the tree of buffers to the outfeed mananger. The device will fill it
   // while we're waiting for it below.
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
-  outfeed_manager->EnqueueOutfeedDestination(&outfeed_buffers);
+  outfeed_manager->EnqueueDestination(&outfeed_buffers);
 
   // Now turn the tree of buffers back into a literal.
   *literal = std::move(*ShapeTreeToLiteral(&outfeed_buffers));
   return Status::OK();
 }
 
+}  // namespace gpu
 }  // namespace xla
 
 static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
-  return xla::MakeUnique<xla::GpuTransferManager>();
+  return xla::MakeUnique<xla::gpu::GpuTransferManager>();
 }
 
 static bool InitModule() {
