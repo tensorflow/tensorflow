@@ -21,6 +21,9 @@ from __future__ import print_function
 from enum import Enum
 
 
+# TODO(mdan): Remove.
+
+
 class NoValue(Enum):
 
   def __repr__(self):
@@ -50,10 +53,3 @@ class NodeAnno(NoValue):
   ORELSE_SCOPE = (
       'The scope for the orelse body of a statement (False branch for if '
       'statements, orelse body for loops).')
-
-  # Type and Value annotations
-  # Type annotations are represented by objects of type type_info.Type.
-  STATIC_INFO = (
-      'The type or value information that should be asserted about the entity '
-      'referenced by the symbol holding this annotation, irrespective of the '
-      'execution context.')
