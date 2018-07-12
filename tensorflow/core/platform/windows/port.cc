@@ -57,6 +57,11 @@ int NumSchedulableCPUs() {
   return system_info.dwNumberOfProcessors;
 }
 
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
+}
+
 void* AlignedMalloc(size_t size, int minimum_alignment) {
 #ifdef TENSORFLOW_USE_JEMALLOC
   void* ptr = NULL;
