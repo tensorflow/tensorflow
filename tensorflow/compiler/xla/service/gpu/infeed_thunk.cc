@@ -30,45 +30,64 @@ InfeedThunk::InfeedThunk(
 Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
                                     se::Stream* stream,
                                     HloExecutionProfiler* profiler) {
-  VLOG(2) << "Infeeding to GPU ";
+  VLOG(2) << "Infeeding to GPU: " << hlo_instruction()->ToString();
 
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  // First copy the infeed data which is element 0 of the infeed instruction's
-  // two-tuple output (the other element is a token).
-  se::DeviceMemoryBase data_address =
-      buffer_allocations.GetDeviceAddress(infeed_slices_.element({0}));
-  InfeedManager* infeed_manager = GetOrCreateInfeedManager();
-  const Shape& data_shape =
-      ShapeUtil::GetTupleElementShape(hlo_instruction()->shape(), 0);
   ShapeTree<InfeedBuffer> infeed_buffers =
-      infeed_manager->BlockingGetNextDestination();
-  if (ShapeUtil::IsTuple(data_shape)) {
-    CHECK(!ShapeUtil::IsNestedTuple(data_shape));
-    // Transfer the tuple elements first.
-    std::vector<void*> tuple_element_addresses;
-    for (int i = 0; i < ShapeUtil::TupleElementCount(data_shape); ++i) {
-      const BufferAllocation::Slice& tuple_element_buffer =
-          infeed_slices_.element({0, i});
-      se::DeviceMemoryBase tuple_element_address =
-          buffer_allocations.GetDeviceAddress(tuple_element_buffer);
+      GetOrCreateInfeedManager()->BlockingGetNextDestination();
 
-      InfeedBuffer* buffer = infeed_buffers.mutable_element({i});
-      stream->ThenMemcpy(&tuple_element_address, *(buffer->device_memory()),
-                         buffer->length());
-      tuple_element_addresses.push_back(tuple_element_address.opaque());
-    }
-    // Transfer the tuple outer buffer.
-    auto host_size = tuple_element_addresses.size() * sizeof(void*);
-    stream->ThenMemcpy(&data_address, tuple_element_addresses.data(),
-                       host_size);
-  } else {
-    InfeedBuffer* buffer = infeed_buffers.mutable_element({});
-    stream->ThenMemcpy(&data_address, *(buffer->device_memory()),
-                       buffer->length());
+  {
+    // The infeed buffer has an extra outer tuple with a token. Adjust the index
+    // accordingly.
+    ShapeIndex index = {0};
+    std::function<void(std::vector<void*>*)> copy_tuple_contents =
+        [&](std::vector<void*>* tuple_element_addresses) {
+          const Shape& shape = ShapeUtil::GetSubshape(infeed_buffers.shape(),
+                                                      ShapeIndexView(index, 1));
+          // For the leaf buffers of the tuple copy the elements directly.
+          if (ShapeUtil::IsArray(shape)) {
+            const BufferAllocation::Slice& tuple_element_buffer =
+                infeed_slices_.element(index);
+            se::DeviceMemoryBase tuple_element_address =
+                buffer_allocations.GetDeviceAddress(tuple_element_buffer);
+
+            InfeedBuffer* buffer =
+                infeed_buffers.mutable_element(ShapeIndexView(index, 1));
+            stream->ThenMemcpy(&tuple_element_address,
+                               *(buffer->device_memory()), buffer->length());
+            tuple_element_addresses->push_back(tuple_element_address.opaque());
+            return;
+          }
+
+          const int64 tuple_element_count = ShapeUtil::TupleElementCount(shape);
+          index.push_back(0);
+          std::vector<void*> inner_tuple_element_addresses;
+          for (int64 i = 0; i < tuple_element_count; ++i) {
+            index.back() = i;
+            copy_tuple_contents(&inner_tuple_element_addresses);
+          }
+          index.pop_back();
+
+          // Create a buffer of pointers for non-leaf buffers.
+          CHECK_EQ(tuple_element_count, inner_tuple_element_addresses.size());
+          auto host_size = inner_tuple_element_addresses.size() * sizeof(void*);
+          se::DeviceMemoryBase tuple_address =
+              buffer_allocations.GetDeviceAddress(
+                  infeed_slices_.element(index));
+          stream->ThenMemcpy(&tuple_address,
+                             inner_tuple_element_addresses.data(), host_size);
+          tuple_element_addresses->push_back(tuple_address.opaque());
+        };
+
+    std::vector<void*> tuple_element_addresses;
+    copy_tuple_contents(&tuple_element_addresses);
+    CHECK_EQ(1, tuple_element_addresses.size());
   }
 
   // Construct top-level tuple of infeed containing the data and the token. Use
   // a nullptr for the token, it should never be dereferenced.
+  se::DeviceMemoryBase data_address =
+      buffer_allocations.GetDeviceAddress(infeed_slices_.element({0}));
   void* infeed_addresses[] = {data_address.opaque(), nullptr};
   se::DeviceMemoryBase top_level_address =
       buffer_allocations.GetDeviceAddress(infeed_slices_.element({}));
