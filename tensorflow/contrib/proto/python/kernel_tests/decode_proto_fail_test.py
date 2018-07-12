@@ -21,14 +21,14 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.proto.python.kernel_tests import test_case
+from tensorflow.contrib.proto.python.kernel_tests import test_base
 from tensorflow.contrib.proto.python.ops import decode_proto_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 
-class DecodeProtoFailTest(test_case.ProtoOpTestCase):
+class DecodeProtoFailTest(test_base.ProtoOpTestBase):
   """Test failure cases for DecodeToProto."""
 
   def _TestCorruptProtobuf(self, sanitize):

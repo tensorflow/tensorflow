@@ -503,34 +503,39 @@ REGISTER_XLA_OP(Name("ResourceApplyAdaMax").TypeConstraint("T", kFloatTypes),
 
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
-  explicit ResourceApplyRMSProp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ResourceApplyRMSProp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    DataType type = ctx->input_type(3);
+    TensorShape var_shape, ms_shape, mom_shape, mg_shape;
+    xla::XlaOp var, ms, mom, mg;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput("var", dtype_, &var_shape, &var));
+    if (centered_) {
+      OP_REQUIRES_OK(ctx, ctx->ReadVariableInput("mg", dtype_, &mg_shape, &mg));
+    }
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput("ms", dtype_, &ms_shape, &ms));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput("mom", dtype_, &mom_shape, &mom));
 
-    TensorShape var_shape, ms_shape, mom_shape;
-    xla::XlaOp var, ms, mom;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &ms_shape, &ms));
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(2, type, &mom_shape, &mom));
-
-    TensorShape lr_shape = ctx->InputShape(3);
+    TensorShape lr_shape = ctx->InputShape("lr");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr_shape.DebugString()));
-    TensorShape rho_shape = ctx->InputShape(4);
+    TensorShape rho_shape = ctx->InputShape("rho");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(rho_shape),
                 errors::InvalidArgument("rho is not a scalar: ",
                                         rho_shape.DebugString()));
-    TensorShape momentum_shape = ctx->InputShape(5);
+    TensorShape momentum_shape = ctx->InputShape("momentum");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
                 errors::InvalidArgument("momentum is not a scalar: ",
                                         momentum_shape.DebugString()));
-    TensorShape epsilon_shape = ctx->InputShape(6);
+    TensorShape epsilon_shape = ctx->InputShape("epsilon");
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_shape),
                 errors::InvalidArgument("epsilon is not a scalar: ",
                                         epsilon_shape.DebugString()));
-    TensorShape grad_shape = ctx->InputShape(7);
+    TensorShape grad_shape = ctx->InputShape("grad");
 
     // var should be the same shape as mom and ms.
     OP_REQUIRES(ctx, var_shape.IsSameSize(ms_shape),
@@ -546,11 +551,11 @@ class ResourceApplyRMSProp : public XlaOpKernel {
                     "var and grad do not have the same shape",
                     var_shape.DebugString(), " ", grad_shape.DebugString()));
 
-    xla::XlaOp lr = ctx->Input(3);
-    xla::XlaOp rho = ctx->Input(4);
-    xla::XlaOp momentum = ctx->Input(5);
-    xla::XlaOp epsilon = ctx->Input(6);
-    xla::XlaOp grad = ctx->Input(7);
+    xla::XlaOp lr = ctx->Input("lr");
+    xla::XlaOp rho = ctx->Input("rho");
+    xla::XlaOp momentum = ctx->Input("momentum");
+    xla::XlaOp epsilon = ctx->Input("epsilon");
+    xla::XlaOp grad = ctx->Input("grad");
 
     // ms <- rho * ms_{t-1} + (1-rho) * grad * grad
     // mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
@@ -569,19 +574,45 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     //    ms <- grad**2 (1 - rho) + ms * rho
     //
     // Which is the equation listed above.
-    xla::XlaOp new_ms =
-        ms + (xla::Square(grad) - ms) * (xla::ScalarLike(ms, 1.0) - rho);
-    xla::XlaOp new_mom =
-        mom * momentum + grad * lr * xla::Rsqrt(new_ms + epsilon);
+    xla::XlaOp one = xla::ScalarLike(ms, 1.0);
+    xla::XlaOp new_ms = xla::Square(grad) * (one - rho) + ms * rho;
+    xla::XlaOp denominator;
+    if (centered_) {
+      mg = grad * (one - rho) + mg * rho;
+      denominator = new_ms - xla::Square(mg) + epsilon;
+    } else {
+      denominator = new_ms + epsilon;
+    }
+    xla::XlaOp new_mom = mom * momentum + grad * lr * xla::Rsqrt(denominator);
     xla::XlaOp new_var = var - new_mom;
 
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, new_var));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, new_ms));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, type, new_mom));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable("var", dtype_, new_var));
+    if (centered_) {
+      OP_REQUIRES_OK(ctx, ctx->AssignVariable("mg", dtype_, mg));
+    }
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable("ms", dtype_, new_ms));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable("mom", dtype_, new_mom));
   }
+
+ protected:
+  bool centered_ = false;
+
+ private:
+  DataType dtype_;
 };
 REGISTER_XLA_OP(Name("ResourceApplyRMSProp").TypeConstraint("T", kFloatTypes),
                 ResourceApplyRMSProp);
+
+class ResourceApplyCenteredRMSProp : public ResourceApplyRMSProp {
+ public:
+  explicit ResourceApplyCenteredRMSProp(OpKernelConstruction* ctx)
+      : ResourceApplyRMSProp(ctx) {
+    centered_ = true;
+  }
+};
+REGISTER_XLA_OP(
+    Name("ResourceApplyCenteredRMSProp").TypeConstraint("T", kFloatTypes),
+    ResourceApplyCenteredRMSProp);
 
 void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
                  bool has_l2_shrinkage) {

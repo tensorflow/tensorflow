@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -31,12 +30,6 @@ random_seed.set_random_seed(23)
 class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
-
-  @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test complex types once supported by
-    # matrix_triangular_solve.
-    return [dtypes.float32, dtypes.float64]
 
   def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)

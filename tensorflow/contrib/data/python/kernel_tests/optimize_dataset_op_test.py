@@ -71,6 +71,17 @@ class OptimizeDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testFunctionLibraryDefinitionModification(self):
+    dataset = dataset_ops.Dataset.from_tensors(0).map(lambda x: x).apply(
+        optimization.optimize(["_test_only_function_rename"]))
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      with self.assertRaisesRegexp(errors.NotFoundError,
+                                   "Function .* is not defined."):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

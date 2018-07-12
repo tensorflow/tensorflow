@@ -212,6 +212,7 @@ cc_library(
     deps = [
         ":codegen_test_base",
         ":filecheck",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:test",

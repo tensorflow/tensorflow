@@ -55,32 +55,20 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
   const int postamble_start =
       m_cols - (m_cols & (kFloatWeightsPerNeonLane - 1));
 
-  // The arrays used to cache the vector.
-  void* aligned_vector_cache_free = nullptr;
-  float32x4_t* vector_cache_float32x4 =
-      reinterpret_cast<float32x4_t*>(aligned_alloc(
-          sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
-          &aligned_vector_cache_free));
-
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
     const float* vector_in_batch = vector + b * m_cols;
     const float* matrix_row = matrix;
 
-    // Cache the vector.
-    for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
-      vector_cache_float32x4[c >> 2] = vld1q_f32(vector_in_batch + c);
-    }
-
     // Main matrix by vector multiplication loop
     for (int r = 0; r < m_rows; r++) {
       float32x4_t acc_32x4 = vmovq_n_f32(0.0);
       for (int c = 0; c < postamble_start; c += kFloatWeightsPerNeonLane) {
-        float32x4_t temp = vector_cache_float32x4[c >> 2];
-        // Load 4 float values from vector and accumulator.
-        float32x4_t v_f32x4 = vld1q_f32(matrix_row + c);
-        // Vector multiply-accumulate 4 float
-        acc_32x4 = vmlaq_f32(acc_32x4, v_f32x4, temp);
+        // Load 4 float values from vector and matrix row.
+        float32x4_t vector_f32x4 = vld1q_f32(vector_in_batch + c);
+        float32x4_t matrix_f32x4 = vld1q_f32(matrix_row + c);
+        // Multiply the vector and matrix row and add to accumulator.
+        acc_32x4 = vmlaq_f32(acc_32x4, matrix_f32x4, vector_f32x4);
       }
       // Add the 4 intermediate sum values to get the final dot-prod value for
       // this column.
@@ -94,7 +82,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       result_in_batch += result_stride;
     }
   }
-  free(aligned_vector_cache_free);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -259,17 +246,6 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
   const int postamble_start =
       v_size - (v_size & (kFloatWeightsPerNeonLane - 1));
 
-  // The arrays used to cache the vector.
-  void* aligned_vector_cache_free = nullptr;
-  float32x4_t* vector_cache_float32x4 =
-      reinterpret_cast<float32x4_t*>(aligned_alloc(
-          sizeof(float32x4_t), (postamble_start >> 2) * sizeof(float32x4_t),
-          &aligned_vector_cache_free));
-
-  for (int v = 0; v < postamble_start; v += kFloatWeightsPerNeonLane) {
-    vector_cache_float32x4[v >> 2] = vld1q_f32(vector + v);
-  }
-
   float* result_ptr = result;
   const float* batch_vector_ptr = batch_vector;
   for (int b = 0; b < n_batch; b++) {
@@ -277,9 +253,9 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
       // Load from memory to vectors.
       float32x4_t result_f32x4 = vld1q_f32(result_ptr + v);
       float32x4_t batch_vector_f32x4 = vld1q_f32(batch_vector_ptr + v);
+      float32x4_t vector_f32x4 = vld1q_f32(vector + v);
       // Multiply-accumulate.
-      result_f32x4 = vmlaq_f32(result_f32x4, batch_vector_f32x4,
-                               vector_cache_float32x4[v >> 2]);
+      result_f32x4 = vmlaq_f32(result_f32x4, batch_vector_f32x4, vector_f32x4);
       // Store.
       vst1q_f32(result_ptr + v, result_f32x4);
     }
@@ -291,7 +267,6 @@ void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
     result_ptr += v_size;
     batch_vector_ptr += v_size;
   }
-  free(aligned_vector_cache_free);
 }
 
 void NeonSub1Vector(const float* vector, int v_size, float* result) {
