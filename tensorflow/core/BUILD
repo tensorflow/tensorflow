@@ -2476,7 +2476,10 @@ tf_cuda_library(
     linkopts = select({
         "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl", "-lm"],
+        "//conditions:default": [
+            "-ldl",
+            "-lm",
+        ],
     }),
     deps = [
         ":lib",
