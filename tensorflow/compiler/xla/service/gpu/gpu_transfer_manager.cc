@@ -73,15 +73,6 @@ Status GpuTransferManager::TransferLiteralToInfeed(
   return EnqueueBuffersToInfeed(executor, std::move(buffer_tree));
 }
 
-Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
-                                                  int64 size,
-                                                  const void* source) {
-  return InternalError(
-      "Attempted to transfer data to infeed on a GPU device using "
-      "TransferBufferToInfeed. This should be done using "
-      "TransferLiteralToInfeed instead.");
-}
-
 Status GpuTransferManager::EnqueueBuffersToInfeed(
     se::StreamExecutor* executor, ShapeTree<InfeedBuffer> buffers) {
   gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
