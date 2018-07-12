@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+namespace gpu {
 
 // An implementation of the XLA GenericTransferManager that
 // handles GPU-specific infeed.
@@ -47,17 +49,18 @@ class GpuTransferManager : public GenericTransferManager {
  private:
   // Initiates the infeed data transfers. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
-  StatusOr<gpu::InfeedBuffer*> TransferBufferToInfeedInternal(
+  StatusOr<InfeedBuffer> TransferBufferToInfeedInternal(
       se::StreamExecutor* executor, int64 size, const void* source);
 
   // Enqueues infeed data buffers with the infeed manager after their
   // transfer completes.
   Status EnqueueBuffersToInfeed(se::StreamExecutor* executor,
-                                std::vector<gpu::InfeedBuffer*> buffers);
+                                ShapeTree<InfeedBuffer> buffers);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuTransferManager);
 };
 
+}  // namespace gpu
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRANSFER_MANAGER_H_
