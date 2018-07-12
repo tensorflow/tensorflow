@@ -43,7 +43,7 @@ code to merge.
 2. Build the app with Bazel. The demo needs C++11:
 
   ```shell
-  bazel build -c opt --cxxopt='--std=c++11' \
+  bazel build -c opt --config=android_arm64 --cxxopt='--std=c++11' \
     //tensorflow/contrib/lite/java/demo/app/src/main:TfLiteCameraDemo
   ```
 
