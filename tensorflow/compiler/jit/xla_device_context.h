@@ -66,9 +66,8 @@ class XlaTransferManager {
  private:
   Status TransferLiteralToDevice(const Tensor& host_tensor,
                                  Tensor* device_tensor) const;
-  void TransferLiteralFromDevice(Tensor* host_tensor,
-                                 const Tensor& device_tensor,
-                                 const StatusCallback& done) const;
+  Status TransferLiteralFromDevice(Tensor* host_tensor,
+                                   const Tensor& device_tensor) const;
   bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 
   // The main compute stream of the device, used to synchronize the transfer

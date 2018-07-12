@@ -92,8 +92,10 @@ se::Event* XlaTensor::GetDefinitionEvent(se::Stream* stream) {
 
 void XlaTensor::SetDefinedOn(se::Stream* stream, se::Event event) {
   mutex_lock lock(mu_);
+  CHECK(!definition_event_.has_value())
+      << "SetDefinedOn must only be called once!";
   definition_event_ = std::move(event);
-  streams_defined_on_ = {stream};
+  streams_defined_on_.push_back(stream);
 }
 
 void XlaTensor::SetDefinedOn(se::Stream* stream) {
