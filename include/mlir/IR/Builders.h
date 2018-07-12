@@ -75,7 +75,8 @@ public:
 
   // Affine Expressions and Affine Map.
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,
-                          ArrayRef<AffineExpr *> results);
+                          ArrayRef<AffineExpr *> results,
+                          ArrayRef<AffineExpr *> rangeSizes);
   AffineDimExpr *getDimExpr(unsigned position);
   AffineSymbolExpr *getSymbolExpr(unsigned position);
   AffineConstantExpr *getConstantExpr(int64_t constant);

@@ -628,6 +628,11 @@ private:
   unsigned getNumDims() const { return dims.size(); }
   unsigned getNumSymbols() const { return symbols.size(); }
 
+  /// Returns true if the only identifiers the parser accepts in affine
+  /// expressions are symbolic identifiers.
+  bool isPureSymbolic() const { return pureSymbolic; }
+  void setSymbolicParsing(bool val) { pureSymbolic = val; }
+
   // Binary affine op parsing.
   AffineLowPrecOp consumeIfLowPrecOp();
   AffineHighPrecOp consumeIfHighPrecOp();
@@ -657,6 +662,9 @@ private:
   // TODO(bondhugula): could just use an vector/ArrayRef and scan the numbers.
   llvm::StringMap<unsigned> dims;
   llvm::StringMap<unsigned> symbols;
+  /// True if the parser should allow only symbolic identifiers in affine
+  /// expressions.
+  bool pureSymbolic = false;
 };
 } // end anonymous namespace
 
@@ -664,6 +672,7 @@ private:
 AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
                                                    AffineExpr *lhs,
                                                    AffineExpr *rhs) {
+  // TODO: make the error location info accurate.
   switch (op) {
   case Mul:
     if (!lhs->isSymbolic() && !rhs->isSymbolic()) {
@@ -828,15 +837,21 @@ AffineExpr *AffineMapParser::parseBareIdExpr() {
     return (emitError("expected bare identifier"), nullptr);
 
   StringRef sRef = getTokenSpelling();
+  // dims, symbols are all pairwise distinct.
   if (dims.count(sRef)) {
+    if (isPureSymbolic())
+      return (emitError("identifier used is not a symbolic identifier"),
+              nullptr);
     consumeToken(Token::bare_identifier);
     return builder.getDimExpr(dims.lookup(sRef));
   }
+
   if (symbols.count(sRef)) {
     consumeToken(Token::bare_identifier);
     return builder.getSymbolExpr(symbols.lookup(sRef));
   }
-  return (emitError("identifier is neither dimensional nor symbolic"), nullptr);
+
+  return (emitError("use of undeclared identifier"), nullptr);
 }
 
 /// Parse a positive integral constant appearing in an affine expression.
@@ -1053,8 +1068,36 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
   if (parseCommaSeparatedList(Token::r_paren, parseElt, false))
     return nullptr;
 
+  // Parse optional range sizes.
+  //  (`size` `(` dim-size (`,` dim-size)* `)`)?
+  // TODO: check if sizes are non-negative whenever they are constant.
+  SmallVector<AffineExpr *, 4> rangeSizes;
+  if (consumeIf(Token::kw_size)) {
+    // Location of the l_paren token (if it exists) for error reporting later.
+    auto loc = getToken().getLoc();
+    if (!consumeIf(Token::l_paren))
+      return (emitError("expected '(' at start of affine map range"), nullptr);
+
+    auto parseRangeSize = [&]() -> ParseResult {
+      auto *elt = parseAffineExpr();
+      ParseResult res = elt ? ParseSuccess : ParseFailure;
+      rangeSizes.push_back(elt);
+      return res;
+    };
+
+    setSymbolicParsing(true);
+    if (parseCommaSeparatedList(Token::r_paren, parseRangeSize, false))
+      return nullptr;
+    if (exprs.size() > rangeSizes.size())
+      return (emitError(loc, "fewer range sizes than range expressions"),
+              nullptr);
+    if (exprs.size() < rangeSizes.size())
+      return (emitError(loc, "more range sizes than range expressions"),
+              nullptr);
+  }
+
   // Parsed a valid affine map.
-  return builder.getAffineMap(dims.size(), symbols.size(), exprs);
+  return builder.getAffineMap(dims.size(), symbols.size(), exprs, rangeSizes);
 }
 
 AffineMap *Parser::parseAffineMapInline() {

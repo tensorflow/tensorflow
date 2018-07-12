@@ -41,7 +41,14 @@ class AffineExpr;
 class AffineMap {
 public:
   static AffineMap *get(unsigned dimCount, unsigned symbolCount,
-                        ArrayRef<AffineExpr *> results, MLIRContext *context);
+                        ArrayRef<AffineExpr *> results,
+                        ArrayRef<AffineExpr *> rangeSizes,
+                        MLIRContext *context);
+
+  /// Returns true if the co-domain (or more loosely speaking, range) of this
+  /// map is bounded. Bounded affine maps have a size (extent) for each of
+  /// their range dimensions (more accurately co-domain dimensions).
+  bool isBounded() const { return rangeSizes != nullptr; }
 
   // Prints affine map to 'os'.
   void print(raw_ostream &os) const;
@@ -55,12 +62,17 @@ public:
     return ArrayRef<AffineExpr *>(results, numResults);
   }
 
- private:
-  AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-            AffineExpr *const *results);
+  ArrayRef<AffineExpr *> getRangeSizes() const {
+    return rangeSizes ? ArrayRef<AffineExpr *>(rangeSizes, numResults)
+                      : ArrayRef<AffineExpr *>();
+  }
 
-  AffineMap(const AffineMap&) = delete;
-  void operator=(const AffineMap&) = delete;
+private:
+  AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
+            AffineExpr *const *results, AffineExpr *const *rangeSizes);
+
+  AffineMap(const AffineMap &) = delete;
+  void operator=(const AffineMap &) = delete;
 
   const unsigned numDims;
   const unsigned numSymbols;
@@ -69,6 +81,10 @@ public:
   /// The affine expressions for this (multi-dimensional) map.
   /// TODO: use trailing objects for this.
   AffineExpr *const *const results;
+
+  /// The extents along each of the range dimensions if the map is bounded,
+  /// nullptr otherwise.
+  AffineExpr *const *const rangeSizes;
 };
 
 }  // end namespace mlir

@@ -392,6 +392,17 @@ void AffineMap::print(raw_ostream &os) const {
   os << " -> (";
   interleave(getResults(), [&](AffineExpr *expr) { os << *expr; },
              [&]() { os << ", "; });
+  os << ")";
+
+  if (!isBounded()) {
+    os << "\n";
+    return;
+  }
+
+  // Print range sizes for bounded affine maps.
+  os << " size (";
+  interleave(getRangeSizes(), [&](AffineExpr *expr) { os << *expr; },
+             [&]() { os << ", "; });
   os << ")\n";
 }
 

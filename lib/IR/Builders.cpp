@@ -99,8 +99,9 @@ ArrayAttr *Builder::getArrayAttr(ArrayRef<Attribute *> value) {
 //===----------------------------------------------------------------------===//
 
 AffineMap *Builder::getAffineMap(unsigned dimCount, unsigned symbolCount,
-                                 ArrayRef<AffineExpr *> results) {
-  return AffineMap::get(dimCount, symbolCount, results, context);
+                                 ArrayRef<AffineExpr *> results,
+                                 ArrayRef<AffineExpr *> rangeSizes) {
+  return AffineMap::get(dimCount, symbolCount, results, rangeSizes, context);
 }
 
 AffineDimExpr *Builder::getDimExpr(unsigned position) {

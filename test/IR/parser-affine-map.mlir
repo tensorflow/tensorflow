@@ -110,3 +110,12 @@
 
 ; CHECK: #{{[0-9]+}} = (d0, d1) [s0, s1] -> ((d0 * s0), (d0 + s0), (d0 + 2), (d1 * 2), (s1 * 2), (s0 + 2))
 #hello_world39 = (i, j) [M, N] -> (i*M, M + i, 2+i, j*2, N*2, 2 + M)
+
+; CHECK: #{{[0-9]+}} = (d0, d1) -> (d0, d1) size (10, 20)
+#hello_world40 = (i, j) -> (i, j) size (10, 20)
+
+; CHECK: #{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, d1) size (s0, (s1 + 10))
+#hello_world41 = (i, j) [N, M] -> (i, j) size (N, M+10)
+
+; CHECK: #{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, d1) size (128, (((s0 * 2) + 5) + s1))
+#hello_world42 = (i, j) [N, M] -> (i, j) size (64 + 64, 5 + 2*N + M)

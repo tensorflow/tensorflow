@@ -23,9 +23,9 @@
 using namespace mlir;
 
 AffineMap::AffineMap(unsigned numDims, unsigned numSymbols, unsigned numResults,
-                     AffineExpr *const *results)
+                     AffineExpr *const *results, AffineExpr *const *rangeSizes)
     : numDims(numDims), numSymbols(numSymbols), numResults(numResults),
-      results(results) {}
+      results(results), rangeSizes(rangeSizes) {}
 
 /// Fold to a constant when possible. Canonicalize so that only the RHS is a
 /// constant. (4 + d0 becomes d0 + 4). If only one of them is a symbolic

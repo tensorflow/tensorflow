@@ -55,21 +55,23 @@ struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType*> {
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.
-  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr *>>;
+  using KeyTy = std::tuple<unsigned, unsigned, ArrayRef<AffineExpr *>,
+                           ArrayRef<AffineExpr *>>;
   using DenseMapInfo<AffineMap *>::getHashValue;
   using DenseMapInfo<AffineMap *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
         std::get<0>(key), std::get<1>(key),
-        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()));
+        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()),
+        hash_combine_range(std::get<3>(key).begin(), std::get<3>(key).end()));
   }
 
   static bool isEqual(const KeyTy &lhs, const AffineMap *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
     return lhs == std::make_tuple(rhs->getNumDims(), rhs->getNumSymbols(),
-                                  rhs->getResults());
+                                  rhs->getResults(), rhs->getRangeSizes());
   }
 };
 
@@ -555,14 +557,17 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
 
 AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
                           ArrayRef<AffineExpr *> results,
+                          ArrayRef<AffineExpr *> rangeSizes,
                           MLIRContext *context) {
   // The number of results can't be zero.
   assert(!results.empty());
 
+  assert(rangeSizes.empty() || results.size() == rangeSizes.size());
+
   auto &impl = context->getImpl();
 
   // Check if we already have this affine map.
-  auto key = std::make_tuple(dimCount, symbolCount, results);
+  auto key = std::make_tuple(dimCount, symbolCount, results, rangeSizes);
   auto existing = impl.affineMaps.insert_as(nullptr, key);
 
   // If we already have it, return that value.
@@ -575,8 +580,12 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
   // Copy the results into the bump pointer.
   results = impl.copyInto(ArrayRef<AffineExpr *>(results));
 
+  // Copy the results into the bump pointer.
+  rangeSizes = impl.copyInto(ArrayRef<AffineExpr *>(rangeSizes));
+
   // Initialize the memory using placement new.
-  new (res) AffineMap(dimCount, symbolCount, results.size(), results.data());
+  new (res) AffineMap(dimCount, symbolCount, results.size(), results.data(),
+                      rangeSizes.empty() ? nullptr : rangeSizes.data());
 
   // Cache and return it.
   return *existing.first = res;
