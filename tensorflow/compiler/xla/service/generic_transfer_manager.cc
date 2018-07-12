@@ -158,11 +158,6 @@ Status GenericTransferManager::TransferLiteralToInfeed(
   return Unimplemented("Generic transfer to Infeed");
 }
 
-Status GenericTransferManager::TransferBufferToInfeed(
-    se::StreamExecutor* executor, int64 size, const void* source) {
-  return Unimplemented("Generic transfer to Infeed");
-}
-
 Status GenericTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
