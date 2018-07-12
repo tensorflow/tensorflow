@@ -107,10 +107,8 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
       // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
-  if (!candidate_ops.count(node->type_string()) &&
-      !PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string())) {
-    return false;
-  }
+  return (candidate_ops.count(node->type_string()) ||
+          PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
 }
 
 tensorflow::Status BuildNodeMap(
@@ -280,7 +278,8 @@ tensorflow::Status GetEngineInfo(
     subgraph_node_ids.push_back(node_id);
     for (const auto edge : node->in_edges()) {
       auto input_node = edge->src();
-      if (segment_nodes.count(input_node->name()) == 0) {
+      if (segment_nodes.count(input_node->name()) == 0 &&
+          !edge->IsControlEdge() && !input_node->IsSource()) {
         // Add constant input node into the segment. We don't care if it has
         // other output edges going into other engines or TF nodes. Since we add
         // it only to the subsegment node list, not the subsegment itself, it
@@ -288,7 +287,7 @@ tensorflow::Status GetEngineInfo(
         // will prune it out.
         if (input_node->type_string() == "Const") {
           subgraph_node_ids.push_back(input_node->id());
-        } else if (!edge->IsControlEdge() && !input_node->IsSource()) {
+        } else {
           string s(input_node->name());
           StrAppend(&s, ":", edge->src_output());
           VLOG(1) << "Input edge = " << s;
@@ -351,9 +350,9 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
                                  nvinfer1::IGpuAllocator* alloc,
                                  int max_batch_size) {
   const auto& info = infos.at(pos);
-  std::vector<tensorflow::TensorShapeProto> out_shapes;
-  std::vector<tensorflow::TensorShapeProto> input_shapes;
-  std::vector<tensorflow::PartialTensorShape> shapes;
+  std::vector<tensorflow::TensorShapeProto> output_shape_protos;
+  std::vector<tensorflow::TensorShapeProto> input_shape_protos;
+  std::vector<tensorflow::PartialTensorShape> input_shapes;
   std::vector<tensorflow::NodeDefBuilder::NodeOut> inputs;
   std::vector<tensorflow::DataType> out_types;
   VLOG(1) << "Processing " << info.engine_name;
@@ -366,11 +365,11 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
       tensorflow::TensorShapeProto out_shape;
       // shape of the output node inside segment
       conn.inside_shape.AsProto(&out_shape);
-      if (out_shapes.size() <= conn.port_number) {
-        out_shapes.resize(conn.port_number + 1);
+      if (output_shape_protos.size() <= conn.port_number) {
+        output_shape_protos.resize(conn.port_number + 1);
         out_types.resize(conn.port_number + 1);
       }
-      out_shapes.at(conn.port_number) = out_shape;
+      output_shape_protos.at(conn.port_number) = out_shape;
       out_types.at(conn.port_number) = conn.connection_type;
       continue;
     }
@@ -378,12 +377,12 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     // Set the shapes and data types of input edge.
     tensorflow::TensorShapeProto in_shape;
     conn.outside_shape.AsProto(&in_shape);
-    if (input_shapes.size() <= conn.port_number) {
+    if (input_shape_protos.size() <= conn.port_number) {
+      input_shape_protos.resize(conn.port_number + 1);
       input_shapes.resize(conn.port_number + 1);
-      shapes.resize(conn.port_number + 1);
     }
-    input_shapes.at(conn.port_number) = in_shape;
-    shapes.at(conn.port_number) = conn.outside_shape;
+    input_shape_protos.at(conn.port_number) = in_shape;
+    input_shapes.at(conn.port_number) = conn.outside_shape;
 
     string input_node = conn.outside_node_name;
     int input_port = conn.outside_port;
@@ -411,6 +410,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     VLOG(1) << "Engine Input " << input_node << ":" << input_port << " -> "
             << info.engine_name << ":" << inputs.size();
     // Skip duplicate inputs.
+    // TODO(aaroey): use std::find instead. GetEngineInfo already remove
+    // duplicate connections, so here we should never find any duplicate?
     bool new_input = true;
     for (const auto& inp : inputs) {
       if (inp.node == input_node && inp.index == input_port) {
@@ -438,8 +439,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         info.precision_mode == INT8MODE ? FP32MODE : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, shapes, &trt_logger,
-        alloc, /*calibrator=*/nullptr, &engine,
+        max_batch_size, info.max_workspace_size_bytes, input_shapes,
+        &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string =
@@ -487,8 +488,8 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   }
   tensorflow::NodeDef trt_node;
   tensorflow::Status status =
-      node_builder.Attr("input_shapes", input_shapes)
-          .Attr("output_shapes", out_shapes)
+      node_builder.Attr("input_shapes", input_shape_protos)
+          .Attr("output_shapes", output_shape_protos)
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_funcdef_name",
@@ -705,6 +706,7 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
 }
 
 // Entry function from optimization pass.
+// TODO(aaeory): parameter should use pointer type.
 tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   // Convert graphdef to graph.
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
@@ -722,8 +724,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, IsTensorRTInputCandidate,
-      IsTensorRTOutputCandidate, segment_options, &initial_segments));
+      &graph, IsTensorRTCandidate, InputEdgeValidator(*params.graph_properties),
+      OutputEdgeValidator(), segment_options, &initial_segments));
   if (initial_segments.size() > 1) {
     VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
             << initial_segments.size();
