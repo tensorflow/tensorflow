@@ -38,9 +38,7 @@ class CleanCopier(gast.NodeVisitor):
   def generic_visit(self, node):
     new_fields = {}
     for f in node._fields:
-      if f.startswith('__'):
-        continue
-      if not hasattr(node, f):
+      if f.startswith('__') or not hasattr(node, f):
         continue
       v = getattr(node, f)
       if isinstance(v, list):
