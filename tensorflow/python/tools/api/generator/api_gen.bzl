@@ -102,37 +102,41 @@ ESTIMATOR_API_INIT_FILES = [
     # END GENERATED ESTIMATOR FILES
 ]
 
-# Creates a genrule that generates a directory structure with __init__.py
-# files that import all exported modules (i.e. modules with tf_export
-# decorators).
-#
-# Args:
-#   name: name of genrule to create.
-#   output_files: List of __init__.py files that should be generated.
-#     This list should include file name for every module exported using
-#     tf_export. For e.g. if an op is decorated with
-#     @tf_export('module1.module2', 'module3'). Then, output_files should
-#     include module1/module2/__init__.py and module3/__init__.py.
-#   root_init_template: Python init file that should be used as template for
-#     root __init__.py file. "# API IMPORTS PLACEHOLDER" comment inside this
-#     template will be replaced with root imports collected by this genrule.
-#   srcs: genrule sources. If passing root_init_template, the template file
-#     must be included in sources.
-#   api_name: Name of the project that you want to generate API files for
-#     (e.g. "tensorflow" or "estimator").
-#   package: Python package containing the @tf_export decorators you want to
-#     process
-#   package_dep: Python library target containing your package.
-
 def gen_api_init_files(
         name,
         output_files = TENSORFLOW_API_INIT_FILES,
         root_init_template = None,
         srcs = [],
         api_name = "tensorflow",
+        api_version = 2,
         package = "tensorflow.python",
         package_dep = "//tensorflow/python:no_contrib",
         output_package = "tensorflow"):
+    """Creates API directory structure and __init__.py files.
+
+    Creates a genrule that generates a directory structure with __init__.py
+    files that import all exported modules (i.e. modules with tf_export
+    decorators).
+
+    Args:
+      name: name of genrule to create.
+      output_files: List of __init__.py files that should be generated.
+        This list should include file name for every module exported using
+        tf_export. For e.g. if an op is decorated with
+        @tf_export('module1.module2', 'module3'). Then, output_files should
+        include module1/module2/__init__.py and module3/__init__.py.
+      root_init_template: Python init file that should be used as template for
+        root __init__.py file. "# API IMPORTS PLACEHOLDER" comment inside this
+        template will be replaced with root imports collected by this genrule.
+      srcs: genrule sources. If passing root_init_template, the template file
+        must be included in sources.
+      api_name: Name of the project that you want to generate API files for
+        (e.g. "tensorflow" or "estimator").
+      api_version: TensorFlow API version to generate. Must be either 1 or 2.
+      package: Python package containing the @tf_export decorators you want to
+        process
+      package_dep: Python library target containing your package.
+    """
     root_init_template_flag = ""
     if root_init_template:
       root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
@@ -156,8 +160,8 @@ def gen_api_init_files(
         cmd = (
             "$(location :" + api_gen_binary_target + ") " +
             root_init_template_flag + " --apidir=$(@D) --apiname=" +
-            api_name + " --package=" + package + " --output_package=" +
-            output_package + " $(OUTS)"),
+            api_name + " --apiversion=" + str(api_version) + " --package=" + package +
+            " --output_package=" + output_package + " $(OUTS)"),
         srcs = srcs,
         tools = [":" + api_gen_binary_target ],
         visibility = ["//tensorflow:__pkg__"],
