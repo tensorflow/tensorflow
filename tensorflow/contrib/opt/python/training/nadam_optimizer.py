@@ -83,7 +83,8 @@ class NadamOptimizer(adam.AdamOptimizer):
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
       # m_bar = (1 - beta1) * g_t + beta1 * m_t
-      m_bar = m_scaled_g_values + beta1_t * m_t
+      state_ops.assign(m_t, m_t * beta1_t, use_locking=self._use_locking)
+      m_bar = scatter_add(m_t, indices, m_scaled_g_values)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, "v")
     v_scaled_g_values = (grad * grad) * (1 - beta2_t)
