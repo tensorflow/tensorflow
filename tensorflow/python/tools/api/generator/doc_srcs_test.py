@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Tests for tensorflow.tools.api.generator.doc_srcs."""
+"""Tests for tensorflow.python.tools.api.generator.doc_srcs."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,7 @@ import importlib
 import sys
 
 from tensorflow.python.platform import test
-from tensorflow.tools.api.generator import doc_srcs
+from tensorflow.python.tools.api.generator import doc_srcs
 
 
 FLAGS = None

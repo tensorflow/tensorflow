@@ -3,13 +3,26 @@
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow/tools/api/generator:api_gen.bzl", "ESTIMATOR_API_INIT_FILES")
-load("//tensorflow/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_INIT_FILES")
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/python/tools/api/generator:api_gen.bzl", "ESTIMATOR_API_INIT_FILES")
+load("//tensorflow/python/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_INIT_FILES")
 
 exports_files(
     [
         "LICENSE",
         "create_python_api.py",
+    ],
+)
+
+py_binary(
+    name = "create_python_api",
+    srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
+    main = "//tensorflow/python/tools/api/generator:create_python_api.py",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/python:no_contrib",
+        "//tensorflow/python/tools/api/generator:doc_srcs",
     ],
 )
 

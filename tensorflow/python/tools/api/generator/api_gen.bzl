@@ -140,13 +140,13 @@ def gen_api_init_files(
     api_gen_binary_target = "create_" + package + "_api"
     native.py_binary(
         name = "create_" + package + "_api",
-        srcs = ["//tensorflow/tools/api/generator:create_python_api.py"],
-        main = "//tensorflow/tools/api/generator:create_python_api.py",
+        srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
+        main = "//tensorflow/python/tools/api/generator:create_python_api.py",
         srcs_version = "PY2AND3",
         visibility = ["//visibility:public"],
         deps = [
             package_dep,
-            "//tensorflow/tools/api/generator:doc_srcs",
+            "//tensorflow/python/tools/api/generator:doc_srcs",
         ],
     )
 
