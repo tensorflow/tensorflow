@@ -364,8 +364,8 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
-    const std::function<bool(const tensorflow::Node*)>& input_candidate_fn,
-    const std::function<bool(const tensorflow::Node*)>& output_candidate_fn,
+    const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
+    const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
   // Steps:
   // 1. run the segmentation algorithm to find all the segments, which uses
@@ -526,7 +526,7 @@ tensorflow::Status SegmentGraph(
         for (const tensorflow::Edge* edge : node->in_edges()) {
           if (!edge->IsControlEdge() && !edge->src()->IsSource() &&
               !segment_nodes.count(edge->src())) {  // 'node' is an input node.
-            if (!input_candidate_fn(node)) {
+            if (!input_candidate_fn(edge)) {
               in_nodes_que.push_back(node);
               added = true;
               break;
@@ -537,7 +537,7 @@ tensorflow::Status SegmentGraph(
         for (const tensorflow::Edge* edge : node->out_edges()) {
           if (!edge->dst()->IsSink() && !edge->IsControlEdge() &&
               !segment_nodes.count(edge->dst())) {  // 'node' is an output node.
-            if (!output_candidate_fn(node)) {
+            if (!output_candidate_fn(edge)) {
               out_nodes_que.push_back(node);
               break;
             }

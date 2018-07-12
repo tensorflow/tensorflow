@@ -41,15 +41,30 @@ class SegmentTest : public ::testing::Test {
     };
   }
 
+  std::function<bool(const tensorflow::Edge*)> MakeInputEdgeCandidateFn(
+      const std::set<string>& node_names) {
+    return [node_names](const tensorflow::Edge* in_edge) -> bool {
+      return node_names.find(in_edge->dst()->name()) != node_names.end();
+    };
+  }
+
+  std::function<bool(const tensorflow::Edge*)> MakeOutputEdgeCandidateFn(
+      const std::set<string>& node_names) {
+    return [node_names](const tensorflow::Edge* out_edge) -> bool {
+      return node_names.find(out_edge->src()->name()) != node_names.end();
+    };
+  }
+
   void RunTest(const tensorflow::Graph* graph,
                const std::set<string>& candidates,
                const std::set<string>& input_candidates,
                const std::set<string>& output_candidates,
                const std::vector<std::set<string>>& expected_segments) {
     SegmentNodesVector segments;
-    TF_EXPECT_OK(SegmentGraph(
-        graph, MakeCandidateFn(candidates), MakeCandidateFn(input_candidates),
-        MakeCandidateFn(output_candidates), default_options_, &segments));
+    TF_EXPECT_OK(SegmentGraph(graph, MakeCandidateFn(candidates),
+                              MakeInputEdgeCandidateFn(input_candidates),
+                              MakeOutputEdgeCandidateFn(output_candidates),
+                              default_options_, &segments));
     ValidateSegment(segments, expected_segments);
   }
 
