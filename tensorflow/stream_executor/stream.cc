@@ -268,6 +268,12 @@ Stream::~Stream() {
   VLOG_CALL();
 
   temporary_memory_manager_.ForceDeallocateAll();
+  // Ensure the stream is completed.
+  auto status = BlockHostUntilDone();
+  if (!status.ok()) {
+    LOG(WARNING) << "Error blocking host until done in stream destructor: "
+                 << status;
+  }
 
   if (allocated_) {
     parent_->DeallocateStream(this);
