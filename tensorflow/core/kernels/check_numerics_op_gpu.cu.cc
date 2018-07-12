@@ -60,9 +60,9 @@ template <typename T>
 struct CheckNumericsLaunch {
   void Run(const GPUDevice &d, const T *data, int size,
            int abnormal_detected[2]) {
-    const int32 block_size = d.maxCudaThreadsPerBlock();
+    const int32 block_size = d.maxGpuThreadsPerBlock();
     const int32 num_blocks =
-        (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
+        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
     CheckNumericsKernel<T><<<num_blocks, block_size, 0, d.stream()>>>(
