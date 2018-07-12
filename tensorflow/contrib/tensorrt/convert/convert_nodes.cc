@@ -2391,6 +2391,14 @@ tensorflow::Status ConvertSegmentToGraphDef(
   return tensorflow::Status::OK();
 }
 
+bool IsTensorRTInputCandidate(const tensorflow::Node* node) {
+  return true;
+}
+
+bool IsTensorRTOutputCandidate(const tensorflow::Node* node) {
+  return true;
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

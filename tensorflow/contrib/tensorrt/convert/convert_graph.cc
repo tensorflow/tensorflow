@@ -107,8 +107,10 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
       // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
-  return (candidate_ops.count(node->type_string()) ||
-          PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  if (!candidate_ops.count(node->type_string()) &&
+      !PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string())) {
+    return false;
+  }
 }
 
 tensorflow::Status BuildNodeMap(
@@ -720,7 +722,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, segment_options, &initial_segments));
+      &graph, IsTensorRTCandidate, IsTensorRTInputCandidate,
+      IsTensorRTOutputCandidate, segment_options, &initial_segments));
   if (initial_segments.size() > 1) {
     VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
             << initial_segments.size();

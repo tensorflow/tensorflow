@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 
+#include <queue>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -32,6 +33,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 using ::tensorflow::strings::StrAppend;
+
 // A simple graph representation to mirror tensorflow::Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
 // the need to create a copy of the graph. It is composed of edges and nodes.
@@ -215,7 +217,7 @@ namespace {
 
 bool CheckCycles(const std::unique_ptr<SimpleGraph>& g, const SimpleNode* src,
                  const std::vector<SimpleNode*>& start) {
-  // copied from TF ReverseDFS.
+  // Copied from TF ReverseDFS, which only works for tensorflow::Graph.
   struct Work {
     SimpleNode* node;
     bool leave;  // Are we entering or leaving n?
@@ -269,6 +271,24 @@ bool CanContractEdge(const SimpleEdge* edge,
   //   1. Get all nodes incoming to 'dst', excluding 'src'
   //   2. Reverse DFS from those nodes
   //   3. If reverse DFS reaches 'src' then we have a cycle
+  //
+  // TODO(aaroey): there are several problems with the current approach:
+  // 1. src->dst->src, this is not detected but it should be;
+  // 2. src->dst->...(any node sequence that doesn't contain src)...->dst, this
+  //    is detected but it should not be.
+  //
+  // Note that it's fine that dst connects back to src indirectly (i.e. through
+  // a path with length > 1 that consists of intermedia nodes other than src).
+  // While loops is one example.
+  //
+  // The goal is to make sure that the trt subgraph:
+  // 1. has no loops (i.e. is a DAG), and
+  // 2. if there is a path in the subgraph from X to Y (X and Y are both nodes
+  //    in the subgraph), then all paths from X to Y are in the subgraph.
+  //
+  // To achieve this goal, the correct way seems to be:
+  // 1. remove any direct edge from src->dst;
+  // 2. detect if src can reach dst, if so they cannot be merged.
   std::vector<SimpleNode*> dfs_start_nodes;
   for (SimpleNode* node : dst->in_nodes()) {
     if (node != src) {
@@ -276,8 +296,8 @@ bool CanContractEdge(const SimpleEdge* edge,
     }
   }
 
-  bool is_cycle = CheckCycles(graph, src, dfs_start_nodes);
-  return !is_cycle;
+  const bool has_cycle = CheckCycles(graph, src, dfs_start_nodes);
+  return !has_cycle;
 }
 }  // namespace
 
@@ -342,22 +362,20 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
 }
 
 tensorflow::Status SegmentGraph(
-    const tensorflow::GraphDef& gdef,
+    const tensorflow::Graph* tf_graph,
     const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const std::function<bool(const tensorflow::Node*)>& input_candidate_fn,
+    const std::function<bool(const tensorflow::Node*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
-  // Create a Graph representation of the GraphDef.
-  tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
-                                             gdef.library());
-  tensorflow::Graph graph(flib);
-  TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
-      tensorflow::GraphConstructorOptions(), gdef, &graph));
-  return SegmentGraph(&graph, candidate_fn, options, segments);
-}
+  // Steps:
+  // 1. run the segmentation algorithm to find all the segments, which uses
+  //    candidate_fn to determine the candidates segment nodes;
+  // 2. for each segments, remove the nodes that are inputs/outputs of the
+  //    segment but are not eligible, using input/output_candidate_fn to
+  //    determine the eligibilities;
+  // 3. convert the segment into expected return format and return the result.
 
-tensorflow::Status SegmentGraph(
-    tensorflow::Graph* tf_graph,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
-    const SegmentOptions& options, SegmentNodesVector* segments) {
+  // --------------------------------- Step 1 ---------------------------------
   auto graph = std::unique_ptr<SimpleGraph>(new SimpleGraph(tf_graph));
   // Use a union-find to collect the nodes that belong to the same
   // segment. A node value of nullptr indicates that the node is not a candidate
@@ -372,14 +390,19 @@ tensorflow::Status SegmentGraph(
     node_segments.emplace_back(node);
   }
 
-  // The segmentation algorithm below visits nodes in reverse
-  // topological order and attempts to merge nodes along output
-  // edges. That means that subgraphs grow from the output-side of the
-  // network towards the inputs. In general this is not guaranteed to
-  // produce a globally optimal segmentation. In the future if we have
-  // a measure of how beneficial it is to include a given node in a
-  // TRT subgraph then we can revisit this algorithm to take advantage
-  // of that information.
+  // The segmentation algorithm below visits nodes in reverse topological order
+  // and attempts to merge nodes along output edges. That means that subgraphs
+  // grow from the output-side of the network towards the inputs.
+  //
+  // In general this is not guaranteed to produce a globally optimal
+  // segmentation. For exaample, consider graph with node {A, B, C, D} and edges
+  // {A->B, A->C, B->D, C->D), where A, B, D are trt compatible but C is not, so
+  // in theory we can choose to contract either A, B or B, D but not both, but
+  // here it always choose to contract B, D.
+  //
+  // In the future if we have a measure of how beneficial it is to include a
+  // given node in a TRT subgraph then we can revisit this algorithm to take
+  // advantage of that information.
   std::vector<tensorflow::Node*> tforder;
   tensorflow::GetPostOrder(*tf_graph, &tforder);
   // use postorder implementation from tensorflow and construct mirror in
@@ -392,13 +415,11 @@ tensorflow::Status SegmentGraph(
   for (const SimpleNode* node : order) {
     // All output nodes of 'node' have been visited...
     VLOG(2) << "Trying node " << node->name() << " id=" << node->id();
-
     // 'node' must be a TRT candidate...
     if (node_segments[node->id()].Value() == nullptr) {
       VLOG(2) << "... not a TRT candidate";
       continue;
     }
-
     // Contract output edges to combine 'node' with output
     // nodes. Iterate since combining two nodes may unblock other
     // combining.
@@ -416,7 +437,6 @@ tensorflow::Status SegmentGraph(
           VLOG(2) << "... ... not a TRT candidate";
           continue;
         }
-
         if (CanContractEdge(out_edge, graph)) {
           VLOG(2) << "... ... can contract";
           contract_edges.insert(out_edge);
@@ -424,11 +444,9 @@ tensorflow::Status SegmentGraph(
           VLOG(2) << "... ... cannot contract, would form cycle";
         }
       }
-
       if (contract_edges.empty()) {
         break;
       }
-
       // Contract edges and collect the adjacent nodes into the same
       // segment/subgraph.
       while (!contract_edges.empty()) {
@@ -457,11 +475,22 @@ tensorflow::Status SegmentGraph(
 
   // Collect the segments/subgraphs. Each subgraph is represented by a
   // set of the names of the nodes in that subgraph.
-  std::unordered_map<string, std::set<string>> sg_map;
+
+  // A map from the segment identifier (currently the name of the root node of
+  // the segment tree) to the segment nodes set.
+  std::unordered_map<string, std::set<const tensorflow::Node*>> sg_map;
+
+  // A map from the segment identifier (currently the name of the root node of
+  // the segment tree) to the device names that the nodes in the segment are
+  // assigned to.
+  //
+  // TODO(aaroey): nodes assigned to different devices should not be merged,
+  // fix this.
   std::unordered_map<string, std::set<string>> device_maps;
+
   for (auto& u : node_segments) {
     if ((u.Value() != nullptr) && (u.ParentValue() != nullptr)) {
-      sg_map[u.ParentValue()->name()].insert(u.Value()->name());
+      sg_map[u.ParentValue()->name()].insert(u.Value()->tf_node());
       auto tf_node = u.Value()->tf_node();
       // has_assigned_device_name() is expected to return true
       // when called from optimization pass. However, since graph
@@ -482,25 +511,104 @@ tensorflow::Status SegmentGraph(
     }
   }
 
+  // --------------------------------- Step 2 ---------------------------------
+  // Remove ineligible input/output nodes.
+  for (auto& itr : sg_map) {
+    std::set<const tensorflow::Node*>& segment_nodes = itr.second;
+    VLOG(1) << "Segment original size: " << segment_nodes.size();
+    while (true) {
+      std::deque<const tensorflow::Node*> in_nodes_que, out_nodes_que;
+      // Find an input node that is not eligible and add it to the queue.
+      // Nodes that has no incoming edges should not be treated as "input",
+      // as there are really no inputs to them. Similar for output nodes.
+      for (auto node : segment_nodes) {
+        bool added = false;
+        for (const tensorflow::Edge* edge : node->in_edges()) {
+          if (!edge->IsControlEdge() && !edge->src()->IsSource() &&
+              !segment_nodes.count(edge->src())) {  // 'node' is an input node.
+            if (!input_candidate_fn(node)) {
+              in_nodes_que.push_back(node);
+              added = true;
+              break;
+            }
+          }
+        }
+        if (added) continue;  // Only adding the node once to either queue.
+        for (const tensorflow::Edge* edge : node->out_edges()) {
+          if (!edge->dst()->IsSink() && !edge->IsControlEdge() &&
+              !segment_nodes.count(edge->dst())) {  // 'node' is an output node.
+            if (!output_candidate_fn(node)) {
+              out_nodes_que.push_back(node);
+              break;
+            }
+          }
+        }
+      }
+      if (in_nodes_que.empty() && out_nodes_que.empty()) {
+        // No more ineligible input/output nodes.
+        break;
+      }
+      // Now for each ineligible node, remove all of its inputs or outputs from
+      // the subgraph.
+      //
+      // It can be proven that, if the original subgraph:
+      // 1. is a DAG, and
+      // 2. all paths between two nodes in the subgraph are all inside the
+      //    subgraph
+      // then after doing this operation the resulting subgraph will keep the
+      // same properties 1 and 2.
+      //
+      // For simplicity we use heuristics: for input nodes remove all its
+      // input, for output nodes remove all its output. In this way, for common
+      // cases the number of removed nodes should be minimum.
+      auto remove_nodes = [&segment_nodes](
+          bool is_input_nodes,
+          std::deque<const tensorflow::Node*>* que) {
+        // Run a BFS on the queue to find all the input/output nodes.
+        std::set<const tensorflow::Node*> visited;
+        while (!que->empty()) {
+          auto node = que->front();
+          que->pop_front();
+          if (!visited.insert(node).second) continue;
+          segment_nodes.erase(node);
+          for (auto in : is_input_nodes ? node->in_nodes() : node->out_nodes()) {
+            if (segment_nodes.count(in)) {
+              que->push_back(in);
+              VLOG(2) << "Need to remove node " << in->name()
+                         << " because one of its "
+                         << (is_input_nodes ? "output" : "input")
+                         << " nodes in the graph was removed: " << node->name();
+            }
+          }
+        }
+      };
+      remove_nodes(true, &in_nodes_que);
+      remove_nodes(false, &out_nodes_que);
+    }
+    VLOG(1) << "Segment new size: " << segment_nodes.size();
+  }
+
+  // --------------------------------- Step 3 ---------------------------------
   // Convert the segments into the expected return format
   for (const auto& itr : sg_map) {
-    const auto& segment_node_names = itr.second;
+    const std::set<const tensorflow::Node*>& segment_nodes = itr.second;
     if (VLOG_IS_ON(1)) {
       string s;
-      for (const auto& name : segment_node_names) {
-        s += " " + name;
-      }
-      VLOG(1) << "Segment " << segments->size() << ":" << s;
+      for (auto node : segment_nodes) s += " " + node->name();
+      VLOG(1) << "Segment " << segments->size() << ": " << s;
     }
 
     // Don't use small segments.
-    if (static_cast<int>(segment_node_names.size()) <
+    if (static_cast<int>(segment_nodes.size()) <
         options.minimum_segment_size) {
       VLOG(1) << "Segment " << segments->size() << " has only "
-              << segment_node_names.size() << " nodes, dropping";
+              << segment_nodes.size() << " nodes, dropping";
       continue;
     }
+
     // TODO(sami): Make segmenter placement aware once trtscopes are in place
+    std::set<string> segment_node_names;
+    for (auto node : itr.second) segment_node_names.insert(node->name());
     const auto& dev_itr = device_maps.find(itr.first);
     if (dev_itr == device_maps.end() || dev_itr->second.empty()) {
       VLOG(1) << "No device assigned to segment " << segments->size();
