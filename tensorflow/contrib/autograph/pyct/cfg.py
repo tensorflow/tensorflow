@@ -64,11 +64,17 @@ class Node(object):
     self.prev = frozenset(self.prev)
 
   def __repr__(self):
+    if isinstance(self.ast_node, gast.FunctionDef):
+      return 'def %s' % self.ast_node.name
+    elif isinstance(self.ast_node, gast.withitem):
+      return compiler.ast_to_source(self.ast_node.context_expr).strip()
     return compiler.ast_to_source(self.ast_node).strip()
 
 
 class Graph(
-    collections.namedtuple('Graph', ['entry', 'exit', 'error', 'index'])):
+    collections.namedtuple(
+        'Graph',
+        ['entry', 'exit', 'error', 'index', 'stmt_prev', 'stmt_next'])):
   """A Control Flow Graph.
 
   The CFG maintains an index to allow looking up a CFG node by the AST node to
@@ -82,6 +88,11 @@ class Graph(
   because these are shared, and wiring them would create a reverse path from
   normal control flow into the error nodes, which we want to avoid.
 
+  The graph also maintains edges corresponding to higher level statements
+  like for-else loops. A node is considered successor of a statement if there
+  is an edge from a node that is lexically a child of that statement to a node
+  that is not. Statement predecessors are analogously defined.
+
   Attributes:
     entry: Node, the entry node
     exit: FrozenSet[Node, ...], the exit nodes
@@ -89,6 +100,10 @@ class Graph(
         error (errors propagated from function calls are not accounted)
     index: Dict[ast.Node, Node], mapping AST nodes to the respective CFG
         node
+    stmt_prev: Dict[ast.Node, FrozenSet[Node, ...]], mapping statement AST
+        nodes to their predecessor CFG nodes
+    stmt_next: Dict[ast.Node, FrozenSet[Node, ...]], mapping statement AST
+        nodes to their successor CFG nodes
   """
 
   def __repr__(self):
@@ -96,9 +111,8 @@ class Graph(
     for node in self.index.values():
       result += '  %s [label="%s"];\n' % (id(node), node)
     for node in self.index.values():
-      if node.next:
-        result += '  %s -> {%s};\n' % (id(node), ', '.join(
-            repr(id(n)) for n in node.next))
+      for next_ in node.next:
+        result += '  %s -> %s;\n' % (id(node), id(next_))
     result += '}'
     return result
 
@@ -130,25 +144,20 @@ class GraphVisitor(object):
     out: Dict[Node, Any], stores node-keyed state during a visit
   """
 
-  def reset(self):
-    self.in_ = {
-        node: self.init_state(node) for node in self.graph.index.values()
-    }
-    self.out = {
-        node: self.init_state(node) for node in self.graph.index.values()
-    }
+  def __init__(self, graph):
+    self.graph = graph
+    self.reset()
 
   def init_state(self, node):
     """State initialization function. Optional to overload.
 
     An in/out state slot will be created for each node in the graph. Subclasses
-    may overload this to control what that is initialized to.
+    must overload this to control what that is initialized to.
 
     Args:
       node: Node
     """
-    del node
-    return None
+    raise NotImplementedError('Subclasses must implement this.')
 
   def visit_node(self, node):
     """Visitor function.
@@ -161,6 +170,14 @@ class GraphVisitor(object):
     """
     raise NotImplementedError('Subclasses must implement this.')
 
+  def reset(self):
+    self.in_ = {
+        node: self.init_state(node) for node in self.graph.index.values()
+    }
+    self.out = {
+        node: self.init_state(node) for node in self.graph.index.values()
+    }
+
   def _visit_internal(self, mode):
     """Visits the CFG, depth-first."""
     assert mode in (_WalkMode.FORWARD, _WalkMode.REVERSE)
@@ -169,7 +186,6 @@ class GraphVisitor(object):
     elif mode == _WalkMode.REVERSE:
       open_ = list(self.graph.exit)
     closed = set()
-    self.reset()
 
     while open_:
       node = open_.pop(0)
@@ -186,12 +202,10 @@ class GraphVisitor(object):
         if should_revisit or next_ not in closed:
           open_.append(next_)
 
-  def visit_forward(self, graph):
-    self.graph = graph
+  def visit_forward(self):
     self._visit_internal(_WalkMode.FORWARD)
 
-  def visit_reverse(self, graph):
-    self.graph = graph
+  def visit_reverse(self):
     self._visit_internal(_WalkMode.REVERSE)
 
 
@@ -244,8 +258,16 @@ class GraphBuilder(object):
     # TODO(mdan): Too many primitives. Use classes.
     self.leaves = set()
 
+    # Note: This mechanism requires that nodes are added in lexical order (top
+    # to bottom, depth first).
+    self.active_stmts = set()
+    self.owners = {}  # type: Set[any]
+    self.forward_edges = set()  # type: Tuple[Node, Node] # (from, to)
+
     self.finally_sections = {}
-    self.finally_section_subgraphs = {}  # Values are [begin_node, exit_nodes]
+    # Dict values represent (entry, exits)
+    self.finally_section_subgraphs = {
+    }  # type: Dict[ast.AST, Tuple[Node, Set[Node]]]
     # Whether the guard section can be reached from the statement that precedes
     # it.
     self.finally_section_has_direct_flow = {}
@@ -275,6 +297,7 @@ class GraphBuilder(object):
     if isinstance(first, Node):
       first.next.add(second)
       second.prev.add(first)
+      self.forward_edges.add((first, second))
     else:
       for node in first:
         self._connect_nodes(node, second)
@@ -285,6 +308,7 @@ class GraphBuilder(object):
       raise ValueError('%s added twice' % ast_node)
     node = Node(next_=set(), prev=set(), ast_node=ast_node)
     self.node_index[ast_node] = node
+    self.owners[node] = frozenset(self.active_stmts)
 
     if self.head is None:
       self.head = node
@@ -298,6 +322,25 @@ class GraphBuilder(object):
     self.pending_finally_sections = set()
 
     return node
+
+  def begin_statement(self, stmt):
+    """Marks the beginning of a statement.
+
+    Args:
+      stmt: Hashable, a key by which the statement can be identified in
+          the CFG's stmt_prev and stmt_next attributes
+    """
+    self.active_stmts.add(stmt)
+
+  def end_statement(self, stmt):
+    """Marks the end of a statement.
+
+    Args:
+      stmt: Hashable, a key by which the statement can be identified in
+          the CFG's stmt_prev and stmt_next attributes; must match a key
+          previously passed to begin_statement.
+    """
+    self.active_stmts.remove(stmt)
 
   def add_ordinary_node(self, ast_node):
     """Grows the graph by adding an ordinary CFG node.
@@ -505,11 +548,35 @@ class GraphBuilder(object):
     for node in self.node_index.values():
       node.freeze()
 
+    # Build the statement edges.
+    stmt_next = {}
+    stmt_prev = {}
+    for node, _ in self.forward_edges:
+      for stmt in self.owners[node]:
+        if stmt not in stmt_next:
+          stmt_next[stmt] = set()
+        if stmt not in stmt_prev:
+          stmt_prev[stmt] = set()
+    for first, second in self.forward_edges:
+      stmts_exited = self.owners[first] - self.owners[second]
+      for stmt in stmts_exited:
+        stmt_next[stmt].add(second)
+      stmts_entered = self.owners[second] - self.owners[first]
+      for stmt in stmts_entered:
+        stmt_prev[stmt].add(first)
+    for stmt in stmt_next:
+      stmt_next[stmt] = frozenset(stmt_next[stmt])
+    for stmt in stmt_prev:
+      stmt_prev[stmt] = frozenset(stmt_prev[stmt])
+
+    # Construct the final graph object.
     result = Graph(
         entry=self.head,
         exit=self.leaves,
         error=self.errors,
-        index=self.node_index)
+        index=self.node_index,
+        stmt_prev=stmt_prev,
+        stmt_next=stmt_next)
 
     # Reset the state.
     self.reset()
@@ -522,8 +589,6 @@ class AstToCfg(gast.NodeVisitor):
 
   A separate CFG will be constructed for each function.
   """
-
-  # TODO(mdan): Figure out how to deal with closures.
 
   def __init__(self):
     super(AstToCfg, self).__init__()
@@ -577,6 +642,13 @@ class AstToCfg(gast.NodeVisitor):
     self.builder.add_continue_node(node, try_node, guards)
 
   def visit_FunctionDef(self, node):
+    # We also keep the FunctionDef node in the CFG. This allows us to determine
+    # things like reaching definitions via closure. Note that the function body
+    # will be stored in a separate graph, because function definitions are not
+    # the same as function calls.
+    if self.builder is not None:
+      self.builder.add_ordinary_node(node)
+
     self.builder_stack.append(self.builder)
     self.builder = GraphBuilder(node)
 
@@ -637,6 +709,7 @@ class AstToCfg(gast.NodeVisitor):
     # targets of jump statements like break/continue/etc. Since there is no
     # statement that can interrupt a conditional, we don't need to track their
     # lexical scope. That may change in the future.
+    self.builder.begin_statement(node)
 
     self.builder.enter_cond_section(node)
     self._process_basic_statement(node.test)
@@ -650,8 +723,10 @@ class AstToCfg(gast.NodeVisitor):
       self.visit(stmt)
 
     self.builder.exit_cond_section(node)
+    self.builder.end_statement(node)
 
   def visit_While(self, node):
+    self.builder.begin_statement(node)
     self._enter_lexical_scope(node)
 
     self.builder.enter_section(node)
@@ -670,8 +745,10 @@ class AstToCfg(gast.NodeVisitor):
       self.visit(stmt)
 
     self.builder.exit_section(node)
+    self.builder.end_statement(node)
 
   def visit_For(self, node):
+    self.builder.begin_statement(node)
     self._enter_lexical_scope(node)
 
     self.builder.enter_section(node)
@@ -693,6 +770,7 @@ class AstToCfg(gast.NodeVisitor):
       self.visit(stmt)
 
     self.builder.exit_section(node)
+    self.builder.end_statement(node)
 
   def visit_Break(self, node):
     self._process_exit_statement(node, gast.While, gast.For)
@@ -722,12 +800,13 @@ class AstToCfg(gast.NodeVisitor):
 
   def visit_With(self, node):
     # TODO(mdan): Mark the context manager's exit call as exit guard.
-    self._process_basic_statement(node.items)
+    for item in node.items:
+      self._process_basic_statement(item)
     for stmt in node.body:
       self.visit(stmt)
 
 
 def build(node):
-  builder = AstToCfg()
-  builder.visit(node)
-  return builder.cfgs
+  visitor = AstToCfg()
+  visitor.visit(node)
+  return visitor.cfgs
