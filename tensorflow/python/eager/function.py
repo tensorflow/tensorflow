@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import threading
 
 import numpy as np
 
@@ -137,7 +138,7 @@ class CapturingGraph(ops.Graph):
       inputs[i] = self.capture(inp)
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
-        compute_shapes, compute_device)
+        compute_device=compute_device)
 
 
 # pylint: disable=invalid-name
@@ -770,6 +771,11 @@ class _PolymorphicFunction(object):
 
   See the documentation for `defun` for more information on the semantics of
   defined functions.
+
+  _PolymorphicFunction class is thread-compatible meaning that minimal
+  usage of defuns (defining and calling) is thread-safe, but if users call other
+  methods or invoke the base `python_function` themselves, external
+  synchronization is necessary.
   """
 
   def __init__(self, python_function, name, compiled=False):
@@ -786,6 +792,8 @@ class _PolymorphicFunction(object):
     self._compiled = compiled
     self._arguments_to_functions = {}
     self._variables = []
+
+    self._lock = threading.Lock()
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
@@ -825,15 +833,16 @@ class _PolymorphicFunction(object):
     # signature so we don't improperly capture tensors such as variables.
     signature += tuple([context.executing_eagerly() or ops.get_default_graph()])
 
-    if signature not in self._arguments_to_functions:
-      graph_function = _trace_and_define_function(
-          self._name, self._python_function, self._compiled, args, kwds)
-      self._arguments_to_functions[signature] = graph_function
-      self._variables.extend(
-          [v for v in graph_function.variables if v not in self._variables])
-      return graph_function, inputs
-    else:
-      return self._arguments_to_functions[signature], inputs
+    with self._lock:
+      if signature not in self._arguments_to_functions:
+        graph_function = _trace_and_define_function(
+            self._name, self._python_function, self._compiled, args, kwds)
+        self._arguments_to_functions[signature] = graph_function
+        self._variables.extend(
+            [v for v in graph_function.variables if v not in self._variables])
+        return graph_function, inputs
+      else:
+        return self._arguments_to_functions[signature], inputs
 
   def __call__(self, *args, **kwds):
     """Calls a graph function specialized for this input signature."""
