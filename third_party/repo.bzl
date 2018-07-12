@@ -123,7 +123,10 @@ tf_http_archive = repository_rule(
         "patch_file": attr.label(),
         "build_file": attr.label(),
         "system_build_file": attr.label(),
-    })
+    },
+    environ=[
+	"TF_SYSTEM_LIBS",
+    ])
 """Downloads and creates Bazel repos for dependencies.
 
 This is a swappable replacement for both http_archive() and
