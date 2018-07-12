@@ -7,7 +7,7 @@
 2. Build the app with Bazel. The demo needs C++11:
 
   ```shell
-  bazel build -c opt --cxxopt='--std=c++11' \
+  bazel build -c opt --config=android_arm64 --cxxopt='--std=c++11' \
     //tensorflow/contrib/lite/examples/android:tflite_demo
   ```
 
@@ -15,5 +15,5 @@
    [debug-enabled device](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#install):
 
   ```shell
-  adb install bazel-bin/tensorflow/contrib/lite/examples/android/tflite_demo.apk
+  adb install -r bazel-bin/tensorflow/contrib/lite/examples/android/tflite_demo.apk
   ```
