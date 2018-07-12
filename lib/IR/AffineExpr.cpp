@@ -17,8 +17,43 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/Support/STLExtras.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 
 using namespace mlir;
+
+AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
+                                       AffineExpr *rhs)
+    : AffineExpr(kind), lhs(lhs), rhs(rhs) {
+  // We verify affine op expr forms at construction time.
+  switch (kind) {
+  case Kind::Add:
+    assert(!isa<AffineConstantExpr>(lhs));
+    // TODO (more verification)
+    break;
+  case Kind::Sub:
+    // TODO (verification)
+    break;
+  case Kind::Mul:
+    assert(!isa<AffineConstantExpr>(lhs));
+    assert(rhs->isSymbolic());
+    // TODO (more verification)
+    break;
+  case Kind::FloorDiv:
+    assert(rhs->isSymbolic());
+    // TODO (more verification)
+    break;
+  case Kind::CeilDiv:
+    assert(rhs->isSymbolic());
+    // TODO (more verification)
+    break;
+  case Kind::Mod:
+    assert(rhs->isSymbolic());
+    // TODO (more verification)
+    break;
+  default:
+    llvm_unreachable("unexpected binary affine expr");
+  }
+}
 
 /// Returns true if this expression is made out of only symbols and
 /// constants (no dimensional identifiers).
