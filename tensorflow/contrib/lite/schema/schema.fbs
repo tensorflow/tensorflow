@@ -526,9 +526,13 @@ table PowOptions {
 }
 
 table FakeQuantOptions {
+  // Parameters supported by version 1:
   min:float;
   max:float;
   num_bits:int;
+
+  // Parameters supported by version 2:
+  narrow_range:bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
