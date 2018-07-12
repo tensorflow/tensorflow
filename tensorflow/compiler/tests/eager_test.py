@@ -177,17 +177,6 @@ class EagerTest(xla_test.XLATestCase):
       for _ in range(100):
         values.append(var.value())
 
-  def testVariablesAreDeleted(self):
-    # This test makes sure that we release device (especially TPU) memory
-    # when resource variable is deleted.
-    with self.test_scope():
-      # Create and destroy a 128MB variable 100 times.
-      # If we don't release device memory when python variable is deleted,
-      # this will eat over 13GB and OOM.
-      for _ in range(100):
-        # Create 128MiB variables
-        resource_variable_ops.ResourceVariable(array_ops.ones([32, 1024, 1024]))
-
   # The shape, shape_n, size, and rank are tested here because their
   # execution kernels (as opposed to compilation only tf2xla kernels)
   # are distincts from tf2xla kernels.
@@ -430,6 +419,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
   def testNestedDefun(self):
+    self.skipTest('Nested defuns do not work on TPU at the moment')
     with self.test_scope():
 
       @function.defun
