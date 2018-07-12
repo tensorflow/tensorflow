@@ -46,7 +46,7 @@ and the following optional parameters:
 
 ```
 bazel build -c opt \
-  --config=android_arm \
+  --config=android_arm64 \
   --cxxopt='--std=c++11' \
   tensorflow/contrib/lite/tools/benchmark:benchmark_model
 ```
@@ -133,7 +133,7 @@ For example, to compile with profiling support on Android, add this flag to the 
 
 ```
 bazel build -c opt \
-  --config=android_arm \
+  --config=android_arm64 \
   --cxxopt='--std=c++11' \
   --copt=-DTFLITE_PROFILING_ENABLED \
   tensorflow/contrib/lite/tools/benchmark:benchmark_model
