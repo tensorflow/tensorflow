@@ -522,6 +522,116 @@ def inverse_time_decay(learning_rate,
     return decayed_lr
 
 
+@tf_export("train.cosine_cyclical")
+def cosine_cyclical(learning_rate, global_step, end_learning_rate, T, name=None):
+  """Creates a cyclical learning rate from a cosine curve.
+
+  Instead of a monotonically decreasing learning rate, this function creates
+  a cyclical learning rate that varies from a given interval. It was empirically
+  proven by Smith (2016) that this approach may both achieve better accuracy
+  and earlier convergence compared with other approaches like fixed and monotonically
+  decreasing learning rate.
+  
+
+  It requires a `global_step` value to compute the decayed learning rate.  You
+  can just pass a TensorFlow variable that you increment at each training step.
+
+
+  It is important to understand how the function is dependent on the
+  parameter `T`, the period of the cosine curve.
+  On the first half of the period the learning rate will follow a standard 
+  cosine curve and will drop. On the second half of the period 
+  the learning rate will not increase but repeat the pattern of the
+  first half. For a better comprehension, see this [this example](https://postimg.cc/image/vzwtaxzhj/)
+
+
+  The function returns the cyclical learning rate from a cosine .  It is computed as:
+
+  ```python
+    A = (learning_rate - end_learning_rate) / 2
+    mod = tf.floormod(global_step, T)
+    offset = tf.cond(mod < T / 2, lambda: 0, lambda: T / 2)
+    lr = A * tf.cos(2 * math.pi * (tf.cast(global_step + offset,
+                                           dtype=tf.float32) / tf.cast(T, dtype=tf.float32))) + A + end_learning_rate
+  ```
+
+  Example: decay from 0.1 to 0.001 with periods of 1000 steps:
+
+  ```python
+  ...
+  global_step = tf.Variable(0, trainable=False)
+  starter_learning_rate = 0.1
+  end_learning_rate = 0.001
+  T = 1000
+  learning_rate = tf.train.cosine_cyclical(starter_learning_rate, global_step,
+                                            decay_steps, end_learning_rate, T)
+  # Passing global_step to minimize() will increment it at each step.
+  learning_step = (
+      tf.train.GradientDescentOptimizer(learning_rate)
+      .minimize(...my loss..., global_step=global_step)
+  )
+  ```
+
+
+  This function can be easily couple to others like `tf.train.exponential`
+
+  ```python
+  ...
+  cosine_lr = tf.train.cosine_cyclical(starter_learning_rate, global_step,
+                                            decay_steps, end_learning_rate, T)
+  cosine_exp_lr = tf.train.exponential_decay(cosine_lr,global_step,300,0.7,staircase=False)
+
+  ```
+
+  For the a better comprehension, see [this example](https://postimg.cc/image/8tcgv2xjb/)
+  of how the snippet above looks like in practice.
+
+  References:
+  
+  Leslie N Smith. Cyclical learning rates for training neural networks. arXiv preprint arXiv:1506.01186v3, 2016.
+  
+  Args:
+    learning_rate: A scalar `float32` or `float64` `Tensor` or a
+      Python number.  The initial learning rate.
+    global_step: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Global step to use for the decay computation.  Must not be negative.
+    decay_steps: A scalar `int32` or `int64` `Tensor` or a Python number.
+      Must be positive.  See the decay computation above.
+    end_learning_rate: A scalar `float32` or `float64` `Tensor` or a
+      Python number.  The minimal learning rate.
+    T: A scalar `int32` or `int64` `Tensor` or a
+      Python number.  The period of the curve as training steps. 
+    name: String.  Optional name of the operation. Defaults to
+      'CosineCyclical'.
+
+  Returns:
+    A scalar `Tensor` of the same type as `learning_rate`.  The cyclic
+    learning rate.
+
+  Raises:
+    ValueError: if `global_step` is not supplied.
+  """
+    with ops.name_scope(name, "CosineCyclical",[learning_rate, global_step, end_learning_rate, T]) as name:
+      learning_rate = tf.convert_to_tensor(learning_rate)
+      end_learning_rate = tf.convert_to_tensor(end_learning_rate)
+      T = tf.convert_to_tensor(T)
+
+      if global_step is None:
+          raise ValueError("global_step must be defined")
+
+      dtype = learning_rate.dtype
+      global_step = math_ops.cast(global_step, dtype)
+      T = math_ops.cast(T, dtype)
+      end_learning_rate = math_ops.cast(end_learning_rate, dtype)
+
+      A = (learning_rate - end_learning_rate) / 2
+      mod = tf.floormod(global_step, T)
+      offset = tf.cond(mod < T / 2, lambda: 0.0, lambda: T / 2)
+      lr = A * tf.cos(2 * math.pi * ((global_step + offset) / T)) + A + end_learning_rate
+      lr = tf.identity(lr,name=name)
+
+      return lr
+
 @tf_export("train.cosine_decay")
 def cosine_decay(learning_rate, global_step, decay_steps, alpha=0.0, name=None):
   """Applies cosine decay to the learning rate.
