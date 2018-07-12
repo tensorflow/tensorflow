@@ -118,7 +118,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits code that reduces a matrix of shape [height x width] to a vector of
   // [width]. Other parameters have the same meaning as those of
   // `EmitReductionToVector`. Note that input shape might not be
-  // [height x width], but can be bitcast to [height x weight] with "height"
+  // [height x width], but can be bitcast to [height x width] with "height"
   // being the major dimension.
   Status EmitColumnReduction(
       int64 height, int64 width, HloInstruction* reduce,
@@ -134,7 +134,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits code that reduces a 3D tensor of shape [depth x height x width] to a
   // vector of shape [height]. Other parameters have the same meaning as those
   // of `EmitReductionToVector`. Note that input shape might not be
-  // [depth x height x width], but can be bitcast to [depth x height x weight]
+  // [depth x height x width], but can be bitcast to [depth x height x width]
   // with "depth" being the most major dimension.
   Status EmitRowReduction(
       int64 depth, int64 height, int64 width, HloInstruction* reduce,
