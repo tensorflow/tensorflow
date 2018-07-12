@@ -163,6 +163,20 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                                     proto.dimensions().end()),
                                  computations(0));
       break;
+    case HloOpcode::kSort: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1 ||
+                   proto.operand_ids_size() == 2)
+          << "Sort instruction should have 1 or 2 operands but has "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.dimensions().size() == 1)
+          << "Sort instruction should have 1 dimension";
+      HloInstruction* keys = operands(0);
+      HloInstruction* values =
+          proto.operand_ids_size() == 2 ? operands(1) : nullptr;
+      instruction =
+          CreateSort(proto.shape(), proto.dimensions(0), keys, values);
+      break;
+    }
     case HloOpcode::kTranspose:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Transpose instruction should have 1 operand but sees "
@@ -915,13 +929,9 @@ HloInstruction::CreateBroadcastSequence(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSort(
-    const Shape& shape, HloInstruction* keys, HloInstruction* values) {
-  auto instruction = WrapUnique(new HloInstruction(HloOpcode::kSort, shape));
-  instruction->AppendOperand(keys);
-  if (values) {
-    instruction->AppendOperand(values);
-  }
-  return instruction;
+    const Shape& shape, int64 dimension, HloInstruction* keys,
+    HloInstruction* values) {
+  return MakeUnique<HloSortInstruction>(shape, dimension, keys, values);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
@@ -1116,6 +1126,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kHostCompute:
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
+    case HloOpcode::kSort:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1234,14 +1245,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       } else {
         clone = CreateAfterAll(new_operands);
       }
-      break;
-    case HloOpcode::kSort:
-      CHECK(new_operands.size() == 1 || new_operands.size() == 2)
-          << "Too many operands for sort: " << new_operands.size();
-      HloInstruction* keys = new_operands[0];
-      HloInstruction* values =
-          new_operands.size() == 2 ? new_operands[1] : nullptr;
-      clone = CreateSort(shape, keys, values);
       break;
   }
   SetupDerivedInstruction(clone.get());
@@ -1519,7 +1522,6 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
-    case HloOpcode::kSort:
     case HloOpcode::kSin:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
@@ -1566,6 +1568,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReverse:
     case HloOpcode::kConcatenate:
     case HloOpcode::kReduce:
+    case HloOpcode::kSort:
     case HloOpcode::kTranspose:
     case HloOpcode::kBroadcast:
     case HloOpcode::kMap:

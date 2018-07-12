@@ -715,6 +715,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->min = schema_params->min();
         params->max = schema_params->max();
         params->num_bits = schema_params->num_bits();
+        params->narrow_range = schema_params->narrow_range();
       }
       *builtin_data = static_cast<void*>(params);
       break;

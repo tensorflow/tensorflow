@@ -3153,8 +3153,8 @@ class IndyGRUCell(rnn_cell_impl.LayerRNNCell):
     reuse: (optional) Python boolean describing whether to reuse variables
      in an existing scope.  If not `True`, and the existing scope already has
      the given variables, an error is raised.
-    kernel_initializer: (optional) The initializer to use for the weight and
-    projection matrices.
+    kernel_initializer: (optional) The initializer to use for the weight
+      matrices applied to the input.
     bias_initializer: (optional) The initializer to use for the bias.
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such
@@ -3287,6 +3287,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
                forget_bias=1.0,
                activation=None,
                reuse=None,
+               kernel_initializer=None,
+               bias_initializer=None,
                name=None,
                dtype=None):
     """Initialize the IndyLSTM cell.
@@ -3300,6 +3302,9 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
+      kernel_initializer: (optional) The initializer to use for the weight
+        matrix applied to the inputs.
+      bias_initializer: (optional) The initializer to use for the bias.
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
@@ -3314,6 +3319,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._activation = activation or math_ops.tanh
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
 
   @property
   def state_size(self):
@@ -3332,7 +3339,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     # pylint: disable=protected-access
     self._kernel_w = self.add_variable(
         "%s_w" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-        shape=[input_depth, 4 * self._num_units])
+        shape=[input_depth, 4 * self._num_units],
+        initializer=self._kernel_initializer)
     self._kernel_u = self.add_variable(
         "%s_u" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
         shape=[1, 4 * self._num_units],
@@ -3341,7 +3349,9 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     self._bias = self.add_variable(
         rnn_cell_impl._BIAS_VARIABLE_NAME,
         shape=[4 * self._num_units],
-        initializer=init_ops.zeros_initializer(dtype=self.dtype))
+        initializer=(self._bias_initializer
+                     if self._bias_initializer is not None else
+                     init_ops.zeros_initializer(dtype=self.dtype)))
     # pylint: enable=protected-access
 
     self.built = True

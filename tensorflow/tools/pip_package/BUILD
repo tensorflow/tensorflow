@@ -104,6 +104,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
+    "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]

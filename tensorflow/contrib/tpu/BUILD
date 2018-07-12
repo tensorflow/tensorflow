@@ -16,7 +16,6 @@ package(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu:__subpackages__",
     ],
 )
 
@@ -175,9 +174,12 @@ py_library(
         "//tensorflow/contrib/tpu/proto:compilation_result_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variable_scope",

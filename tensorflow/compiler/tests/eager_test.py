@@ -177,6 +177,17 @@ class EagerTest(xla_test.XLATestCase):
       for _ in range(100):
         values.append(var.value())
 
+  def testVariablesAreDeleted(self):
+    # This test makes sure that we release device (especially TPU) memory
+    # when resource variable is deleted.
+    with self.test_scope():
+      # Create and destroy a 128MB variable 100 times.
+      # If we don't release device memory when python variable is deleted,
+      # this will eat over 13GB and OOM.
+      for _ in range(100):
+        # Create 128MiB variables
+        resource_variable_ops.ResourceVariable(array_ops.ones([32, 1024, 1024]))
+
   # The shape, shape_n, size, and rank are tested here because their
   # execution kernels (as opposed to compilation only tf2xla kernels)
   # are distincts from tf2xla kernels.
@@ -403,7 +414,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
   def testSliceInDefun(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x, y):
         return x[0::2, y:, ...]
 
@@ -417,6 +428,21 @@ class EagerFunctionTest(xla_test.XLATestCase):
 
       self.assertAllEqual(np.ones([1, 2, 4]), z.numpy())
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
+
+  def testNestedDefun(self):
+    with self.test_scope():
+
+      @function.defun
+      def times_two(x):
+        return 2 * x
+
+      @function.defun
+      def two_x_plus_1(x):
+        return times_two(x) + 1
+
+      x = constant_op.constant([2, 3, 4])
+      y = two_x_plus_1(x)
+      self.assertAllEqual([5, 7, 9], y.numpy())
 
 
 class ExcessivePaddingTest(xla_test.XLATestCase):
@@ -468,6 +494,36 @@ class ExcessivePaddingTest(xla_test.XLATestCase):
       y = f(3)
       reduced = math_ops.reduce_sum(y, axis=2)
       self.assertAllEqual(100 * [[36.0]], reduced)
+
+
+def multiple_tpus():
+  devices = context.context().devices()
+  return len([d for d in devices if 'device:TPU:' in d]) > 1
+
+
+class MultiDeviceTest(xla_test.XLATestCase):
+  """Test running TPU computation on more than one core."""
+
+  def testBasic(self):
+    if not multiple_tpus():
+      self.skipTest('MultiDeviceTest requires multiple TPU devices.')
+
+    # Compute 10 on TPU core 0
+    with ops.device('device:TPU:0'):
+      two = constant_op.constant(2)
+      five = constant_op.constant(5)
+      ten = two * five
+      self.assertAllEqual(10, ten)
+
+    # Compute 6 on TPU core 1
+    with ops.device('device:TPU:1'):
+      two = constant_op.constant(2)
+      three = constant_op.constant(3)
+      six = two * three
+      self.assertAllEqual(6, six)
+
+    # Copy 10 and 6 to CPU and sum them
+    self.assertAllEqual(16, ten + six)
 
 
 if __name__ == '__main__':

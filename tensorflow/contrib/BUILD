@@ -27,7 +27,6 @@ py_library(
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/checkpoint/python:checkpoint",
-        "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",

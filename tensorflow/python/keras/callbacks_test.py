@@ -29,10 +29,16 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training.adam import AdamOptimizer
+from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
+
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -369,6 +375,76 @@ class KerasCallbacksTest(test.TestCase):
       assert (
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_TF_LearningRateScheduler_Adam(self):
+    with self.test_session():
+      with context.eager_mode():
+        np.random.seed(1337)
+        (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+            train_samples=TRAIN_SAMPLES,
+            test_samples=TEST_SAMPLES,
+            input_shape=(INPUT_DIM,),
+            num_classes=NUM_CLASSES)
+        y_test = keras.utils.to_categorical(y_test)
+        y_train = keras.utils.to_categorical(y_train)
+        model = keras.models.Sequential()
+        model.add(
+            keras.layers.Dense(
+                NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+        model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+        model.compile(
+            loss='categorical_crossentropy',
+            optimizer=AdamOptimizer(),
+            metrics=['accuracy'])
+        cbks = [keras.callbacks.LearningRateScheduler(lambda x: 1. / (1. + x))]
+        model.fit(
+            x_train,
+            y_train,
+            batch_size=BATCH_SIZE,
+            validation_data=(x_test, y_test),
+            callbacks=cbks,
+            epochs=5,
+            verbose=0)
+        opt_lr = model.optimizer.optimizer._lr
+        self.assertLess(
+            float(keras.backend.get_value(
+                Variable(opt_lr))) - 0.2, keras.backend.epsilon())
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_TF_LearningRateScheduler_GradientDescent(self):
+    with self.test_session():
+      with context.eager_mode():
+        np.random.seed(1337)
+        (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+            train_samples=TRAIN_SAMPLES,
+            test_samples=TEST_SAMPLES,
+            input_shape=(INPUT_DIM,),
+            num_classes=NUM_CLASSES)
+        y_test = keras.utils.to_categorical(y_test)
+        y_train = keras.utils.to_categorical(y_train)
+        model = keras.models.Sequential()
+        model.add(
+            keras.layers.Dense(
+                NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+        model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+        model.compile(
+            loss='categorical_crossentropy',
+            optimizer=GradientDescentOptimizer(1e-3),
+            metrics=['accuracy'])
+        cbks = [keras.callbacks.LearningRateScheduler(lambda x: 1. / (1. + x))]
+        model.fit(
+            x_train,
+            y_train,
+            batch_size=BATCH_SIZE,
+            validation_data=(x_test, y_test),
+            callbacks=cbks,
+            epochs=5,
+            verbose=0)
+        opt_lr = model.optimizer.optimizer._learning_rate
+        self.assertLess(
+            float(keras.backend.get_value(
+                Variable(opt_lr))) - 0.2, keras.backend.epsilon())
 
   def test_ReduceLROnPlateau(self):
     with self.test_session():
@@ -813,21 +889,6 @@ class KerasCallbacksTest(test.TestCase):
       for cb in cbs:
         cb.on_train_end()
 
-      # fit generator with validation data generator should raise ValueError if
-      # histogram_freq > 0
-      cbs = callbacks_factory(histogram_freq=1)
-      with self.assertRaises(ValueError):
-        model.fit_generator(
-            data_generator(True),
-            len(x_train),
-            epochs=2,
-            validation_data=data_generator(False),
-            validation_steps=1,
-            callbacks=cbs)
-
-      for cb in cbs:
-        cb.on_train_end()
-
       # Make sure file writer cache is clear to avoid failures during cleanup.
       writer_cache.FileWriterCache.clear()
 
@@ -975,6 +1036,56 @@ class KerasCallbacksTest(test.TestCase):
           verbose=0)
 
       self.assertAllEqual(tsb.writer.steps_seen, [0, 0.5, 1, 1.5, 2, 2.5])
+
+  def test_Tensorboard_histogram_summaries_with_generator(self):
+    np.random.seed(1337)
+    tmpdir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, tmpdir)
+
+    def generator():
+      x = np.random.randn(10, 100).astype(np.float32)
+      y = np.random.randn(10, 10).astype(np.float32)
+      while True:
+        yield x, y
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(10, input_dim=100, activation='relu'))
+      model.add(keras.layers.Dense(10, activation='softmax'))
+      model.compile(
+          loss='categorical_crossentropy',
+          optimizer='sgd',
+          metrics=['accuracy'])
+      tsb = keras.callbacks.TensorBoard(
+          log_dir=tmpdir,
+          histogram_freq=1,
+          write_images=True,
+          write_grads=True,
+          batch_size=5)
+      cbks = [tsb]
+
+      # fit with validation generator
+      model.fit_generator(
+          generator(),
+          steps_per_epoch=2,
+          epochs=2,
+          validation_data=generator(),
+          validation_steps=2,
+          callbacks=cbks,
+          verbose=0)
+
+      with self.assertRaises(ValueError):
+        # fit with validation generator but no
+        # validation_steps
+        model.fit_generator(
+            generator(),
+            steps_per_epoch=2,
+            epochs=2,
+            validation_data=generator(),
+            callbacks=cbks,
+            verbose=0)
+
+      self.assertTrue(os.path.exists(tmpdir))
 
   @unittest.skipIf(
       os.name == 'nt',

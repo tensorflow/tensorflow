@@ -150,6 +150,7 @@ class BenchmarkModel {
   virtual std::vector<Flag> GetFlags();
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int num_times, RunType run_type);
+  virtual void PrepareInputsAndOutputs();
   virtual void RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;

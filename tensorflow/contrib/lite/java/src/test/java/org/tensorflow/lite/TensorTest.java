@@ -170,4 +170,58 @@ public final class TensorTest {
     assertThat(tensor.getInputShapeIfDifferent(differentShapeInput))
         .isEqualTo(new int[] {1, 8, 8, 3});
   }
+
+  @Test
+  public void testDataTypeOf() {
+    float[] testEmptyArray = {};
+    DataType dataType = Tensor.dataTypeOf(testEmptyArray);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    float[] testFloatArray = {0.783f, 0.251f};
+    dataType = Tensor.dataTypeOf(testFloatArray);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    float[][] testMultiDimArray = {testFloatArray, testFloatArray, testFloatArray};
+    dataType = Tensor.dataTypeOf(testFloatArray);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    try {
+      double[] testDoubleArray = {0.783, 0.251};
+      Tensor.dataTypeOf(testDoubleArray);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("cannot resolve DataType of");
+    }
+    try {
+      Float[] testBoxedArray = {0.783f, 0.251f};
+      Tensor.dataTypeOf(testBoxedArray);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("cannot resolve DataType of [Ljava.lang.Float;");
+    }
+  }
+
+  @Test
+  public void testNumDimensions() {
+    int scalar = 1;
+    assertThat(Tensor.numDimensions(scalar)).isEqualTo(0);
+    int[][] array = {{2, 4}, {1, 9}};
+    assertThat(Tensor.numDimensions(array)).isEqualTo(2);
+    try {
+      int[] emptyArray = {};
+      Tensor.numDimensions(emptyArray);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
+    }
+  }
+
+  @Test
+  public void testFillShape() {
+    int[][][] array = {{{23}, {14}, {87}}, {{12}, {42}, {31}}};
+    int num = Tensor.numDimensions(array);
+    int[] shape = new int[num];
+    Tensor.fillShape(array, 0, shape);
+    assertThat(num).isEqualTo(3);
+    assertThat(shape[0]).isEqualTo(2);
+    assertThat(shape[1]).isEqualTo(3);
+    assertThat(shape[2]).isEqualTo(1);
+  }
 }

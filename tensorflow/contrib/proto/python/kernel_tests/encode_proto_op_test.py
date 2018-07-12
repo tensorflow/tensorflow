@@ -26,11 +26,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.proto.python.kernel_tests import test_case
+from tensorflow.contrib.proto.python.kernel_tests import test_base
 from tensorflow.contrib.proto.python.kernel_tests import test_example_pb2
 from tensorflow.contrib.proto.python.ops import decode_proto_op
 from tensorflow.contrib.proto.python.ops import encode_proto_op
@@ -45,7 +46,7 @@ flags.DEFINE_string('message_text_file', None,
                     'A file containing a text serialized TestCase protobuf.')
 
 
-class EncodeProtoOpTest(test_case.ProtoOpTestCase):
+class EncodeProtoOpTest(test_base.ProtoOpTestBase, parameterized.TestCase):
 
   def testBadInputs(self):
     # Invalid field name
@@ -139,10 +140,8 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
         # loss of packing in the encoding).
         self.assertEqual(in_buf, out_buf)
 
-  def testRoundtrip(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testRoundtrip(self, case):
     in_bufs = [primitive.SerializeToString() for primitive in case.primitive]
 
     # np.array silently truncates strings if you don't specify dtype=object.
@@ -150,10 +149,8 @@ class EncodeProtoOpTest(test_case.ProtoOpTestCase):
     return self._testRoundtrip(
         in_bufs, 'tensorflow.contrib.proto.RepeatedPrimitiveValue', case.field)
 
-  def testRoundtripPacked(self):
-    with open(FLAGS.message_text_file, 'r') as fp:
-      case = text_format.Parse(fp.read(), test_example_pb2.TestCase())
-
+  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  def testRoundtripPacked(self, case):
     # Now try with the packed serialization.
     # We test the packed representations by loading the same test cases
     # using PackedPrimitiveValue instead of RepeatedPrimitiveValue.

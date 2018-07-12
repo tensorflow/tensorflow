@@ -847,6 +847,65 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
 
+def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
+                                      num_hosts):
+  """Generates infeed enqueue ops for one input_fn on all the hosts."""
+  captured_infeed_queue = _CapturedObject()
+  hooks = []
+  device_0 = ctx.tpu_host_placement_function(host_id=0)
+  with ops.device(device_0):
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx, input_device=device_0, invocation_index=0)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
+
+    is_dataset = inputs.is_dataset
+    if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
+      raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
+
+    hooks.append(inputs.dataset_initializer_hook())
+    num_replicas_per_host = ctx.num_of_replicas_per_host
+
+  def tpu_ordinal_function_impl(replica_id):
+    if ctx.device_assignment:
+      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+    else:
+      return replica_id % num_replicas_per_host
+
+  def device_function_impl(replica_id):
+    return ctx.tpu_host_placement_function(replica_id=replica_id)
+
+  def enqueue_ops_fn():
+    """Generates enqueue ops for all the hosts."""
+    broadcasted_inputs = []
+    flattened_inputs = None  # Cache result from input_fn.
+    for host_id in xrange(num_hosts):
+      with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
+        for _ in xrange(ctx.num_of_replicas_per_host):
+          # Note: input_fn is only called once at host 0 for the first replica.
+          # The features and labels returned from that invocation are
+          # broadcasted to other replicas(including the replicas on other
+          # hosts).
+          if flattened_inputs is None:
+            features, labels = inputs.features_and_labels()  # Calls get_next()
+            inputs_structure_recorder.validate_and_record_structure(
+                features, labels)
+            flattened_inputs = (
+                inputs_structure_recorder.flatten_features_and_labels(
+                    features, labels))
+          broadcasted_inputs.append(flattened_inputs)
+
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(broadcasted_inputs[0]))
+    captured_infeed_queue.capture(infeed_queue)
+    enqueue_ops = infeed_queue.generate_enqueue_ops(
+        broadcasted_inputs,
+        tpu_ordinal_function=tpu_ordinal_function_impl,
+        placement_function=device_function_impl)
+    return enqueue_ops
+
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
+
+
 class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
@@ -1079,6 +1138,22 @@ class _InputPipeline(object):
             # Infeed_queue_getter must be called after enqueue_ops_fn is called.
             infeed_queues.append(captured_infeed_queue.get())
 
+    elif self._ctx.is_input_broadcast_with_iterators():
+      # Only calls input_fn in host 0.
+      host_device = tpu_host_placement_fn(host_id=0)
+      enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+          generate_broadcast_enqueue_ops_fn(self._ctx, self._input_fn,
+                                            self._inputs_structure_recorder,
+                                            num_hosts))
+      all_hooks.extend(hooks)
+      if is_dataset:
+        run_infeed_loop_on_coordinator = False
+        enqueue_ops.append(
+            _wrap_computation_in_while_loop(
+                device=host_device, op_fn=enqueue_ops_fn))
+      else:
+        enqueue_ops.append(enqueue_ops_fn())
+      infeed_queues.append(captured_infeed_queue.get())
     else:
       for host_id in range(num_hosts):
         host_device = tpu_host_placement_fn(host_id=host_id)
@@ -1422,6 +1497,11 @@ class _ModelFnWrapper(object):
     running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
     _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
 
+    if not running_on_cpu:
+      user_context = tpu_context.TPUContext(
+          internal_ctx=self._ctx, call_from_input_fn=False)
+      _add_item_to_params(params, _CTX_KEY, user_context)
+
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (running_on_cpu and
         isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
@@ -1601,7 +1681,7 @@ class _OutfeedHostCall(object):
     # place all ops on tpu host if possible.
     #
     # TODO(jhseu): Evaluate whether this is right for summaries.
-    with ops.device(self._ctx.tpu_host_placement_function(core_id=0)):
+    with ops.device(self._ctx.tpu_host_placement_function(replica_id=0)):
       for name in self._names:
         dequeue_ops = dequeue_ops_by_name[name]
         for i, item in enumerate(dequeue_ops):
@@ -2298,10 +2378,20 @@ class TPUEstimator(estimator_lib.Estimator):
         # Clear the bit.
         self._is_input_fn_invoked = None
 
+        # examples_hook is added to training_hooks for both CPU and TPU
+        # execution.
+        examples_hook = ExamplesPerSecondHook(
+            ctx.global_batch_size,
+            output_dir=self.model_dir,
+            every_n_steps=self._log_every_n_steps)
+
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):
           logging.info('Running %s on CPU', mode)
-          return model_fn_wrapper.call_without_tpu(
+          estimator_spec = model_fn_wrapper.call_without_tpu(
               features, labels, is_export_mode=is_export_mode)
+          estimator_spec = estimator_spec._replace(
+              training_hooks=estimator_spec.training_hooks + (examples_hook,))
+          return estimator_spec
 
         assert labels is None, '`labels` passed to `model_fn` must be `None`.'
         # TPUEstimator._call_input_fn passes `input_fn` as features to here.
@@ -2369,10 +2459,6 @@ class TPUEstimator(estimator_lib.Estimator):
                   },
                   every_n_iter=logging_hook_frequency)
           ])
-          examples_hook = ExamplesPerSecondHook(
-              ctx.global_batch_size,
-              output_dir=self.model_dir,
-              every_n_steps=self._log_every_n_steps)
           examples_hook._set_steps_per_run(   # pylint: disable=protected-access
               self._config.tpu_config.iterations_per_loop)
           hooks.append(examples_hook)

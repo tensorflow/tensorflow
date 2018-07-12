@@ -685,8 +685,8 @@ class Layer(checkpointable.CheckpointableBase):
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
-    if (not hasattr(self, '_compute_previous_mask') or
-        self._compute_previous_mask):
+    if build_graph and (not hasattr(self, '_compute_previous_mask') or
+                        self._compute_previous_mask):
       previous_mask = collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
         self._call_fn_args = self._no_dependency(
@@ -726,6 +726,7 @@ class Layer(checkpointable.CheckpointableBase):
         if all(hasattr(x, 'shape') for x in input_list):
           input_shapes = nest.map_structure(lambda x: x.shape, inputs)
         self.build(input_shapes)
+        self.built = True
 
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph or in_deferred_mode:
@@ -761,8 +762,6 @@ class Layer(checkpointable.CheckpointableBase):
       if in_deferred_mode or build_graph and have_all_keras_metadata(inputs):
         inputs, outputs = self._set_connectivity_metadata_(
             inputs, outputs, args, kwargs)
-
-      self.built = True
       if context.executing_eagerly():
         return outputs
 

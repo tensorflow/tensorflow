@@ -42,10 +42,15 @@ _NUM_CORES_TO_COMPUTATION_SHAPE = {
 class TPUContext(object):
   """The context of current input_fn invocation."""
 
-  def __init__(self, internal_ctx, input_device=None, invocation_index=None):
+  def __init__(self,
+               internal_ctx,
+               input_device=None,
+               invocation_index=None,
+               call_from_input_fn=True):
     self._internal_ctx = internal_ctx
     self._input_device = input_device
     self._invocation_index = invocation_index
+    self._call_from_input_fn = call_from_input_fn
 
   def current_input_fn_deployment(self):
     """The configuration of the current input_fn invocation.
@@ -73,11 +78,21 @@ class TPUContext(object):
            total invocation count is equal to the number of hosts in the system
            and num replicas consumed by current invocation is equal to number of
            cores per host.
+
+    Raises:
+      RuntimeError: If this method must not be called from input_fn.
     """
+    if not self._call_from_input_fn:
+      raise RuntimeError('This TPUContext instance must not be called from'
+                         ' model_fn.')
+
     if self._internal_ctx.is_input_sharded_per_core():
       total_invocation_count = (self._internal_ctx.num_hosts
                                 * self._internal_ctx.num_of_replicas_per_host)
       replicas_consumed = 1
+    elif self._internal_ctx.is_input_broadcast_with_iterators():
+      total_invocation_count = 1
+      replicas_consumed = self._internal_ctx.num_replicas
     else:
       total_invocation_count = self._internal_ctx.num_hosts
       replicas_consumed = self._internal_ctx.num_of_replicas_per_host
@@ -108,6 +123,14 @@ class TPUContext(object):
       raise ValueError(
           'num_of_replicas_per_host is not supported for model_parallelism')
     return self._internal_ctx.num_of_replicas_per_host
+
+  @property
+  def device_assignment(self):
+    """Returns device_assignment object."""
+    if self._call_from_input_fn:
+      raise RuntimeError('This TPUContext instance must not be called from'
+                         ' input_fn.')
+    return self._internal_ctx.device_assignment
 
   def device_for_replica(self, replica_id):
     """Returns the tuple of (CPU device and device ordinal) for replica.
@@ -334,6 +357,11 @@ class _InternalTPUContext(object):
     return (self._config.tpu_config.per_host_input_for_training is
             tpu_config.InputPipelineConfig.PER_HOST_V2)
 
+  def is_input_broadcast_with_iterators(self):
+    """Return true if input_fn should be run in the full_replicae config."""
+    return (self._config.tpu_config.per_host_input_for_training is
+            tpu_config.InputPipelineConfig.BROADCAST)
+
   def is_running_on_cpu(self, is_export_mode=False):
     """Determines whether the input_fn and model_fn should be invoked on CPU.
 
@@ -398,7 +426,7 @@ class _InternalTPUContext(object):
     """Returns the shard batch size for `input_fn`."""
     global_batch_size = self.global_batch_size
 
-    if self.is_running_on_cpu():
+    if (self.is_running_on_cpu() or self.is_input_broadcast_with_iterators()):
       return global_batch_size
 
     # On TPU
@@ -413,7 +441,7 @@ class _InternalTPUContext(object):
     """Returns the shard batch size for `model_fn`."""
     global_batch_size = self.global_batch_size
 
-    if self.is_running_on_cpu():
+    if (self.is_running_on_cpu() or self.is_input_broadcast_with_iterators()):
       return global_batch_size
 
     # On TPU. always sharded per shard.
@@ -470,17 +498,23 @@ class _InternalTPUContext(object):
 
     master = self.master_job
 
-    def _placement_function(_sentinal=None, core_id=None, host_id=None):  # pylint: disable=invalid-name
+    def _placement_function(_sentinal=None, replica_id=None, host_id=None):  # pylint: disable=invalid-name
+      """Return the host device given replica_id or host_id."""
       assert _sentinal is None
-      if core_id is not None and host_id is not None:
+      if replica_id is not None and host_id is not None:
         raise RuntimeError(
-            'core_id and host_id can have only one non-None value.')
+            'replica_id and host_id can have only one non-None value.')
 
       if master is None:
         return '/replica:0/task:0/device:CPU:0'
       else:
-        if core_id is not None:
-          host_id = core_id / self.num_of_cores_per_host
+        if replica_id is not None:
+          if self.model_parallelism_enabled:
+            return self.device_assignment.host_device(
+                replica=replica_id, job=master)
+          else:
+            host_id = replica_id / self.num_of_cores_per_host
+
         return '/job:%s/task:%d/device:CPU:0' % (master, host_id)
 
     return _placement_function

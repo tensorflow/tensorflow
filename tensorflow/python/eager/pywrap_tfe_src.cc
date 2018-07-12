@@ -1898,10 +1898,10 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
 void MaybeWatchVariable(PyObject* input) {
   DCHECK(CheckResourceVariable(input));
-  DCHECK(PyObject_HasAttrString(input, "trainable"));
+  DCHECK(PyObject_HasAttrString(input, "_trainable"));
 
   tensorflow::Safe_PyObjectPtr trainable(
-      PyObject_GetAttrString(input, "trainable"));
+      PyObject_GetAttrString(input, "_trainable"));
   if (trainable.get() == Py_False) return;
   TFE_Py_TapeSetWatchVariable(input);
 }

@@ -266,6 +266,7 @@ cc_library(
         "infeed_thunk.cc",
         "kernel_thunk.cc",
         "memset_thunk.cc",
+        "outfeed_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
@@ -283,6 +284,7 @@ cc_library(
         "infeed_thunk.h",
         "kernel_thunk.h",
         "memset_thunk.h",
+        "outfeed_thunk.h",
         "sequential_thunk.h",
         "thunk.h",
         "thunk_schedule.h",
@@ -290,15 +292,16 @@ cc_library(
         "while_thunk.h",
     ],
     deps = [
-        ":backend_configs",
         ":buffer_allocations",
         ":cudnn_convolution_runner",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
+        ":outfeed_manager",
         ":partition_assignment",
         ":stream_assignment",
         "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -536,7 +539,10 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":gpu_compiler",
+        ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -635,14 +641,35 @@ cc_library(
 )
 
 cc_library(
+    name = "xfeed_queue",
+    hdrs = ["xfeed_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
     deps = [
+        ":xfeed_queue",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "outfeed_manager",
+    srcs = ["outfeed_manager.cc"],
+    hdrs = ["outfeed_manager.h"],
+    deps = [
+        ":xfeed_queue",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 

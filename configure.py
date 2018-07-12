@@ -1236,28 +1236,13 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
 def set_other_cuda_vars(environ_cp):
   """Set other CUDA related variables."""
-  if is_windows():
-    # The following three variables are needed for MSVC toolchain configuration
-    # in Bazel
-    environ_cp['CUDA_PATH'] = environ_cp.get('CUDA_TOOLKIT_PATH')
-    environ_cp['CUDA_COMPUTE_CAPABILITIES'] = environ_cp.get(
-        'TF_CUDA_COMPUTE_CAPABILITIES')
-    environ_cp['NO_WHOLE_ARCHIVE_OPTION'] = 1
-    write_action_env_to_bazelrc('CUDA_PATH', environ_cp.get('CUDA_PATH'))
-    write_action_env_to_bazelrc('CUDA_COMPUTE_CAPABILITIE',
-                                environ_cp.get('CUDA_COMPUTE_CAPABILITIE'))
-    write_action_env_to_bazelrc('NO_WHOLE_ARCHIVE_OPTION',
-                                environ_cp.get('NO_WHOLE_ARCHIVE_OPTION'))
-    write_to_bazelrc('build --config=win-cuda')
-    write_to_bazelrc('test --config=win-cuda')
+  # If CUDA is enabled, always use GPU during build and test.
+  if environ_cp.get('TF_CUDA_CLANG') == '1':
+    write_to_bazelrc('build --config=cuda_clang')
+    write_to_bazelrc('test --config=cuda_clang')
   else:
-    # If CUDA is enabled, always use GPU during build and test.
-    if environ_cp.get('TF_CUDA_CLANG') == '1':
-      write_to_bazelrc('build --config=cuda_clang')
-      write_to_bazelrc('test --config=cuda_clang')
-    else:
-      write_to_bazelrc('build --config=cuda')
-      write_to_bazelrc('test --config=cuda')
+    write_to_bazelrc('build --config=cuda')
+    write_to_bazelrc('test --config=cuda')
 
 
 def set_host_cxx_compiler(environ_cp):
