@@ -207,7 +207,6 @@ class FloatFullyConnectedOpModel : public BaseFullyConnectedOpModel {
   }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-  std::vector<int> GetOutputSize() { return GetTensorShape(output_); }
 };
 
 class QuantizedFullyConnectedOpModel : public BaseFullyConnectedOpModel {
@@ -299,7 +298,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-  std::vector<int> GetOutputSize() { return GetTensorShape(output_); }
 
   int input_size() { return input_size_; }
   int num_units() { return units_; }
@@ -374,7 +372,6 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutputSize(), ElementsAre(2, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
 }
 
@@ -393,7 +390,6 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest2) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutputSize(), ElementsAre(2, 1));
   EXPECT_THAT(m.GetOutput(), ElementsAre(11, 9));
 }
 
@@ -580,10 +576,11 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantized) {
 
 TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
   // Note that it is not required that the first dimension be the number of
-  // batches. All we care is that the input size is the last dimension.
+  // batches. All we care is that the input can be evenly distributed in
+  // batches. In this case, we need the input to have multiples of '2'.
   FloatFullyConnectedOpModel m(GetRegistration(),
                                /*units=*/3, /*batches=*/2,
-                               /*input=*/{TensorType_FLOAT32, {1, 2, 1, 10}});
+                               /*input=*/{TensorType_FLOAT32, {4, 1, 5, 1}});
   m.SetWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
@@ -598,7 +595,6 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutputSize(), ElementsAre(1, 2, 1, 3));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  24, 25, 26,  // first batch
                                  58, 59, 60,  // second batch
@@ -608,7 +604,7 @@ TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTest4dInputQuantized) {
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches=*/2,
-      /*input=*/{TensorType_UINT8, {1, 2, 1, 10}, -63.5, 64},
+      /*input=*/{TensorType_UINT8, {4, 1, 5, 1}, -63.5, 64},
       /*output=*/{TensorType_UINT8, {}, -127, 128});
 
   // input_product_scale < output_scale was not true.
