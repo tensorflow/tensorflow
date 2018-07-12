@@ -144,26 +144,26 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   Status SynchronousMemcpyDeviceToDevice(se::DeviceMemoryBase *,
                                          const se::DeviceMemoryBase &,
                                          uint64 size) override {
-    return xla::Unimplemented("");
+    return xla::Unimplemented("Not implemented");
   }
 
   bool HostCallback(se::Stream *stream,
                     std::function<void()> callback) override;
 
   Status AllocateEvent(se::Event *event) override {
-    return xla::Unimplemented("");
+    return xla::Unimplemented("Not implemented");
   }
 
   Status DeallocateEvent(se::Event *event) override {
-    return xla::Unimplemented("");
+    return xla::Unimplemented("Not implemented");
   }
 
   Status RecordEvent(se::Stream *stream, se::Event *event) override {
-    return xla::Unimplemented("");
+    return xla::Unimplemented("Not implemented");
   }
 
   Status WaitForEvent(se::Stream *stream, se::Event *event) override {
-    return xla::Unimplemented("");
+    return xla::Unimplemented("Not implemented");
   }
 
   se::Event::Status PollForEventStatus(se::Event *event) override {
@@ -229,10 +229,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   // Poplar Interface
 
-  Status InitializePoplarDevice(void *,
-                                const tensorflow::IPUOptions::DeviceConfig &);
+  std::string GetDeviceTargetName() const;
 
-  Status ClosePoplarDevice(void *);
+  Status ConfigurePoplarDevice(const tensorflow::IPUOptions::DeviceConfig &);
 
   const poplar::Device &GetPoplarDevice() const { return poplar_device_; }
 
@@ -240,8 +239,13 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   const poplar::OptionFlags &GetOptionsFlags() const { return option_flags_; }
 
-  bool CompilerReportingEnabled() const { return profile_compilation_; }
-  bool CompilerReportingTextFormat() const { return profile_poplar_text_; }
+  bool CompilerReportingEnabled() const {
+    return current_config_.profiling().enable_compilation_trace();
+  }
+
+  bool CompilerReportingTextFormat() const {
+    return current_config_.profiling().enable_poplar_reports_text();
+  }
 
   void AddEventRecord(tensorflow::IpuTraceEvent::Type type,
                       const std::string &module_name,
@@ -319,24 +323,17 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   std::shared_ptr<poplar::Engine> current_engine_;
 
+  bool device_open_;
+
   poplar::Device poplar_device_;
 
   int64 poplar_device_hash_;
 
-  std::string cache_directory_;
-
   poplar::OptionFlags option_flags_;
-
-  unsigned int poplar_hardware_attach_count_;
 
   std::list<TensorControl *> allocations_;
 
-  bool profile_compilation_;
-  bool profile_poplar_text_;
-  bool profile_execution_;
-  bool profile_io_;
-
-  tensorflow::IPUOptions::DeviceConfig::RandomType random_type_;
+  tensorflow::IPUOptions::DeviceConfig current_config_;
 
   std::list<tensorflow::IpuTraceEvent> reports_;
 };

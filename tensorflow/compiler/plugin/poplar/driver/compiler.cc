@@ -432,7 +432,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       VLOG(1) << "Compile engine " << module->name();
 
       auto opts = poplarExecutor->GetOptionsFlags();
-      engine.reset(new poplar::Engine(dev, graph, progs, opts));
+      engine.reset(new poplar::Engine(graph, progs, opts));
     } catch (std::logic_error e) {
       return tensorflow::errors::Unknown(StrCat("[Poplar Engine] ", e.what()));
     }

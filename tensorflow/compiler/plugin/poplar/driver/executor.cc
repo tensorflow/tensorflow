@@ -27,6 +27,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
+#include "google/protobuf/util/message_differencer.h"
+
 #include <fstream>
 
 #include <string.h>
@@ -108,14 +110,11 @@ se::host::HostStream* AsPoplarStream(se::Stream* stream) {
 
 PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
+      device_open_(false),
       poplar_device_(poplar::Device::createCPUDevice()),
-      poplar_device_hash_(0),
-      cache_directory_(std::string()),
-      poplar_hardware_attach_count_(0),
-      profile_compilation_(false),
-      profile_poplar_text_(false),
-      profile_execution_(false),
-      profile_io_(false) {}
+      poplar_device_hash_(0) {
+  ConfigurePoplarDevice(current_config_);
+}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -248,148 +247,139 @@ se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
   return built.release();
 }
 
-Status PoplarExecutor::InitializePoplarDevice(
-    void* device, const tensorflow::IPUOptions::DeviceConfig& cfg) {
+std::string PoplarExecutor::GetDeviceTargetName() const {
+  return poplar::toString(poplar_device_.getTarget().getTargetType());
+}
 
-  tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
+static bool DeviceConfigurationsEqual(
+    const tensorflow::IPUOptions::DeviceConfig& a,
+    const tensorflow::IPUOptions::DeviceConfig& b) {
+  return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
+}
 
-  static poplar::DeviceSet device_set = poplar::DeviceSet::getDeviceSet();
+Status PoplarExecutor::ConfigurePoplarDevice(
+    const tensorflow::IPUOptions::DeviceConfig& cfg) {
 
-  int num_ipus = cfg.ipu_model_config().num_ipus();
-  int tiles_per_ipu = cfg.ipu_model_config().tiles_per_ipu();
+  if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
 
-  if (num_ipus == 0) {
-    num_ipus = 1;
-  }
+    current_config_ = cfg;
 
-  static auto device_list = device_set.getDevices(poplar::TargetType::IPU,
-                                                  num_ipus);
+    tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
-  if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-    if (device_list.size() > 0) {
-      type = tensorflow::IPUOptions::DeviceConfig::IPU;
-    } else {
-      type = tensorflow::IPUOptions::DeviceConfig::CPU;
+    static poplar::DeviceSet device_set = poplar::DeviceSet::getDeviceSet();
+
+    int num_ipus = cfg.ipu_model_config().num_ipus();
+    int tiles_per_ipu = cfg.ipu_model_config().tiles_per_ipu();
+
+    if (num_ipus == 0) {
+      num_ipus = 1;
     }
-  }
 
-  bool opened = false;
-  switch (type) {
-    case tensorflow::IPUOptions::DeviceConfig::IPU: {
-      for (auto& d : device_list) {
-        if (poplar_hardware_attach_count_ > 0) {
-          poplar_hardware_attach_count_++;
-          opened = true;
-        } else {
-          for (auto d : device_list) {
-            if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
-              if (d.attach()) {
-                poplar_device_ = d;
-                poplar_hardware_attach_count_ = 1;
+    static auto device_list = device_set.getDevices(poplar::TargetType::IPU,
+                                                    num_ipus);
 
-                // Temporary fix to prevent many long compilation times
-                if (tiles_per_ipu == 0) {
-                  tiles_per_ipu = 4;
-                }
+    if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
+      if (device_list.size() > 0) {
+        type = tensorflow::IPUOptions::DeviceConfig::IPU;
+      } else {
+        type = tensorflow::IPUOptions::DeviceConfig::CPU;
+      }
+    }
 
-                if (tiles_per_ipu > 0) {
-                  poplar_device_ =
-                    poplar_device_.createVirtualDevice(tiles_per_ipu);
-                }
+    if (device_open_) {
+      VLOG(1) << "Detaching poplar device type " << GetDeviceTargetName();
+      poplar_device_.detach();
+      device_open_ = false;
+    }
 
-                profile_compilation_ = false;
-                profile_poplar_text_ = false;
-                profile_execution_ = false;
-                profile_io_ = false;
-                opened = true;
-                break;
+    bool opened = false;
+    switch (type) {
+      case tensorflow::IPUOptions::DeviceConfig::IPU: {
+        for (auto d : device_list) {
+          if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
+            if (d.attach()) {
+              poplar_device_ = d;
+
+              // Temporary fix to prevent many long compilation times
+              if (tiles_per_ipu == 0) {
+                tiles_per_ipu = 4;
               }
+
+              if (tiles_per_ipu > 0) {
+                poplar_device_ =
+                  poplar_device_.createVirtualDevice(tiles_per_ipu);
+              }
+
+              opened = true;
+              break;
             }
           }
         }
+        break;
       }
-      break;
+      case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
+        poplar::IPUModel model;
+        if (num_ipus != 0) {
+          model.numIPUs = num_ipus;
+        }
+        if (tiles_per_ipu != 0) {
+          model.tilesPerIPU = tiles_per_ipu;
+        }
+        poplar_device_ = model.createDevice();
+        if (poplar_device_.attach()) {
+          opened = true;
+        }
+        break;
+      }
+      case tensorflow::IPUOptions::DeviceConfig::CPU: {
+        poplar_device_ = poplar::Device::createCPUDevice();
+        if (poplar_device_.attach()) {
+          opened = true;
+        }
+        break;
+      }
+      default:
+        return xla::InternalError(
+            "Unrecognized poplar device type for ordinal %d: %d", ordinal_, type);
     }
-    case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
-      poplar::IPUModel model;
-      if (num_ipus != 0) {
-        model.numIPUs = num_ipus;
-      }
-      if (tiles_per_ipu != 0) {
-        model.tilesPerIPU = tiles_per_ipu;
-      }
-      poplar_device_ = model.createDevice();
-      if (poplar_device_.attach()) {
-        profile_compilation_ = cfg.profiling().enable_compilation_trace();
-        profile_poplar_text_ = cfg.profiling().enable_poplar_reports_text();
-        profile_execution_ = cfg.profiling().enable_execution_trace();
-        profile_io_ = cfg.profiling().enable_io_trace();
-        opened = true;
-      }
-      break;
+
+    if (!opened) {
+      return xla::ResourceExhausted(
+          "Unable to acquire poplar device type for ordinal %d", ordinal_);
     }
-    case tensorflow::IPUOptions::DeviceConfig::CPU: {
-      poplar_device_ = poplar::Device::createCPUDevice();
-      if (poplar_device_.attach()) {
-        profile_compilation_ = false;
-        profile_poplar_text_ = false;
-        profile_execution_ = false;
-        profile_io_ = false;
-        opened = true;
-      }
-      break;
+
+    VLOG(1) << "Attached poplar device type " << GetDeviceTargetName();
+    device_open_ = true;
+
+    option_flags_ = poplar::OptionFlags();
+    option_flags_.set("target.textSectionSizeInBytes", "0xa000");
+    option_flags_.set("target.workerStackSizeInBytes", "0x400");
+    for (const auto& opt : cfg.compilation_options()) {
+      option_flags_.set(opt.option(), opt.value());
     }
-    default:
-      return xla::InternalError(
-          "Unrecognized poplar device type for ordinal %d: %d", ordinal_, type);
-  }
 
-  if (!opened) {
-    return xla::ResourceExhausted(
-        "Unable to acquire poplar device type for ordinal %d", ordinal_);
-  }
+    // Cache Target hash
+    std::vector<int64> poplar_target;
+    const auto& target = poplar_device_.getTarget();
+    poplar_target.push_back(target.getNumTiles());
+    poplar_target.push_back(target.getDataPathWidth());
+    poplar_target.push_back(target.getBytesPerTile());
+    poplar_target.push_back(target.getNumWorkerContexts());
+    poplar_target.push_back(target.getTilesPerIPU());
+    poplar_target.push_back(target.getNumIPUs());
+    poplar_target.push_back((unsigned)target.getTargetType());
 
-  random_type_ = cfg.random_type();
-
-  option_flags_ = poplar::OptionFlags();
-  option_flags_.set("target.textSectionSizeInBytes", "0xa000");
-  option_flags_.set("target.workerStackSizeInBytes", "0x400");
-  for (const auto& opt : cfg.compilation_options()) {
-    option_flags_.set(opt.option(), opt.value());
-  }
-
-  cache_directory_ = cfg.engine_cache_directory();
-
-  std::vector<int64> poplar_target;
-  const auto& target = poplar_device_.getTarget();
-  poplar_target.push_back(target.getNumTiles());
-  poplar_target.push_back(target.getDataPathWidth());
-  poplar_target.push_back(target.getBytesPerTile());
-  poplar_target.push_back(target.getNumWorkerContexts());
-  poplar_target.push_back(target.getTilesPerIPU());
-  poplar_target.push_back(target.getNumIPUs());
-  poplar_target.push_back((unsigned)target.getTargetType());
-
-  for (int64 h : poplar_target) {
-    poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
-  }
-
-  return Status::OK();
-}
-
-Status PoplarExecutor::ClosePoplarDevice(void* device) {
-  if (poplar_hardware_attach_count_ > 0) {
-    poplar_hardware_attach_count_--;
-    if (poplar_hardware_attach_count_ == 0) {
-      poplar_device_.detach();
-      poplar_device_ = poplar::Device::createCPUDevice();
+    for (int64 h : poplar_target) {
+      poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
     }
+
   }
+
   return Status::OK();
 }
 
 bool PoplarExecutor::HaveExecutableCache() const {
-  return !cache_directory_.empty();
+  return !current_config_.engine_cache_directory().empty();
 }
 
 std::string PoplarExecutor::CachedExecutableFilename(
@@ -400,7 +390,9 @@ std::string PoplarExecutor::CachedExecutableFilename(
 
   std::string filename = tensorflow::strings::Printf("%0llx.xla_engine", hash);
 
-  return tensorflow::io::JoinPath(cache_directory_, filename);
+  const auto& dir = current_config_.engine_cache_directory();
+
+  return tensorflow::io::JoinPath(dir, filename);
 }
 
 bool PoplarExecutor::HaveCachedExecutable(const std::string& filename) const {
@@ -422,7 +414,7 @@ void PoplarExecutor::AddEventRecord(tensorflow::IpuTraceEvent::Type type,
 }
 
 const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
-  switch (random_type_) {
+  switch (current_config_.random_type()) {
     case tensorflow::IPUOptions::DeviceConfig::NOT_REPEATABLE:
       return poprand::NOT_REPEATABLE;
     case tensorflow::IPUOptions::DeviceConfig::SYSTEM_REPEATABLE:
@@ -569,7 +561,7 @@ Status PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
     } else {
       current_engine_->readTensor(tc->output_handle, buf);
     }
-    if (profile_io_) {
+    if (current_config_.profiling().enable_io_trace()) {
       AddEventRecord(tensorflow::IpuTraceEvent::DEVICE_TO_HOST_TRANSFER, "",
                      tc->output_handle, 0);
     }
@@ -666,9 +658,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       if (engine_changed) {
-        // TODO Load new engine
+        engine->load(poplar_device_);
 
-        if (profile_io_) {
+        if (current_config_.profiling().enable_io_trace()) {
           AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
                          executable.module().name(), "", 0);
         }
@@ -698,7 +690,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
               }
               tc->on_device = true;
               tc->input_handle = mem.first;
-              if (profile_io_) {
+              if (current_config_.profiling().enable_io_trace()) {
                 AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
                                "", mem.first, 0);
               }
@@ -714,10 +706,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           AllocateOutputBuffer(allocator, output_shape, 0, output_map, args,
                                executable.OutputStreamed());
 
-      auto target_type_name =
-        poplar::toString(poplar_device_.getTarget().getTargetType());
-
-      VLOG(1) << "Executing on poplar device type " << target_type_name;
+      VLOG(1) << "Executing on poplar device type " << GetDeviceTargetName();
 
       try {
         const auto& streamed = executable.OutputStreamed();
@@ -738,7 +727,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
 
       try {
-        if (profile_execution_) {
+        if (current_config_.profiling().enable_execution_trace()) {
           poplar::OptionFlags opts;
           opts.set("doLayerWiseBreakdown", "true");
           // opts.set("doLayerWisePerIPUBreakdown", "true");

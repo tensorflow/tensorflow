@@ -60,10 +60,10 @@ class IpuDevice : public XlaDevice {
         poplar_platform_(static_cast<xp::PoplarPlatform*>(platform)) {}
 
   Status Init(const tensorflow::IPUOptions& options) {
-    return poplar_platform_->ConfigurePoplarDevices(this, ordinal_, options);
+    return poplar_platform_->ConfigurePoplarDevice(ordinal_, options);
   }
 
-  virtual ~IpuDevice() { poplar_platform_->ClosePoplarDevice(this, ordinal_); }
+  virtual ~IpuDevice() {}
 
  private:
   int ordinal_;

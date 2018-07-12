@@ -90,8 +90,8 @@ void PoplarPlatform::UnregisterTraceListener(se::TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
 }
 
-Status PoplarPlatform::ConfigurePoplarDevices(
-    void* device, int ordinal, const tensorflow::IPUOptions& opts) {
+Status PoplarPlatform::ConfigurePoplarDevice(
+    int ordinal, const tensorflow::IPUOptions& opts) {
   se::StreamExecutor* executor;
   TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
 
@@ -99,25 +99,13 @@ Status PoplarPlatform::ConfigurePoplarDevices(
 
   if (opts.device_config().size() > ordinal) {
     TF_RETURN_IF_ERROR(
-        e->InitializePoplarDevice(device, opts.device_config(ordinal)));
+        e->ConfigurePoplarDevice(opts.device_config(ordinal)));
   } else {
     tensorflow::IPUOptions::DeviceConfig default_config;
-    TF_RETURN_IF_ERROR(e->InitializePoplarDevice(device, default_config));
+    TF_RETURN_IF_ERROR(e->ConfigurePoplarDevice(default_config));
   }
 
   return Status::OK();
-}
-
-Status PoplarPlatform::ClosePoplarDevice(void* device, int ordinal) {
-  if (ordinal >= VisibleDeviceCount()) {
-    return tensorflow::errors::Unknown("Invalid ordinal value");
-  }
-
-  se::StreamExecutor* executor;
-  TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
-
-  auto* e = static_cast<PoplarExecutor*>(executor->implementation());
-  return e->ClosePoplarDevice(device);
 }
 
 Status PoplarPlatform::GetCompilerEvents(
