@@ -20,6 +20,16 @@ from __future__ import print_function
 from collections import namedtuple
 
 
+class CodeLocation(namedtuple('CodeLocation', ('file_path', 'line_number'))):
+  """Location of a line of code.
+
+  Attributes:
+    file_path: text, the full path to the file containing the code.
+    line_number: Int, the 1-based line number of the code in its file.
+  """
+  pass
+
+
 class OriginInfo(
     namedtuple('OriginInfo', ('file_path', 'function_name', 'line_number',
                               'column_offset', 'source_code_line'))):
@@ -32,4 +42,11 @@ class OriginInfo(
     * original user code
   """
 
-  pass
+  def as_frame(self):
+    """Makes a traceback frame tuple.
+
+    Returns:
+      A tuple of (file_path, line_number, function_name, source_code_line).
+    """
+    return (self.file_path, self.line_number, self.function_name,
+            self.source_code_line)
