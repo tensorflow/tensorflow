@@ -669,6 +669,10 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
   for collection in curr_graph.collections:
     tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
         collection)
+  if context.executing_eagerly():
+    tmp_graph.seed = context.global_seed()
+  else:
+    tmp_graph.seed = curr_graph.seed
   with tmp_graph.as_default(), AutomaticControlDependencies() as a:
     func_args = _get_defun_inputs(args)
     func_kwds = _get_defun_inputs(kwds)
