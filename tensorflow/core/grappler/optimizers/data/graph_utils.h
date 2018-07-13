@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -77,6 +78,10 @@ int FindNodeWithOp(const string& op, const GraphDef& graph);
 // Sets the node name using the op name as a prefix while guaranteeing the name
 // is unique across the graph.
 void SetUniqueName(const string& op, GraphDef* graph, NodeDef* node);
+
+// Replaces the input for the output nodes of 'old_input' with 'new_input'.
+void ReplaceInput(const NodeDef& old_input, const NodeDef& new_input,
+                  GraphView* graph);
 
 }  // end namespace graph_utils
 }  // end namespace grappler

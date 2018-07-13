@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "invert_permutation"
-    deprecation_message: "tf.invert_permutation is deprecated, please use tf.math.invert_permutation instead."
+    deprecated: true
   }
 }

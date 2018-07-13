@@ -24,6 +24,7 @@ from collections import Iterable
 from collections import OrderedDict
 import csv
 import json
+import math
 import os
 import time
 
@@ -31,8 +32,10 @@ import numpy as np
 import six
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
 from tensorflow.python.util.tf_export import tf_export
@@ -496,6 +499,9 @@ class EarlyStopping(Callback):
           monitored has stopped increasing; in `auto`
           mode, the direction is automatically inferred
           from the name of the monitored quantity.
+      baseline: baseline value for the monitored quantity.
+          Training will stop if the model doesn't show improvement over the
+          baseline.
   """
 
   def __init__(self,
@@ -503,13 +509,15 @@ class EarlyStopping(Callback):
                min_delta=0,
                patience=0,
                verbose=0,
-               mode='auto'):
+               mode='auto',
+               baseline=None):
     super(EarlyStopping, self).__init__()
 
     self.monitor = monitor
     self.patience = patience
     self.verbose = verbose
-    self.min_delta = min_delta
+    self.baseline = baseline
+    self.min_delta = abs(min_delta)
     self.wait = 0
     self.stopped_epoch = 0
 
@@ -537,7 +545,10 @@ class EarlyStopping(Callback):
     # Allow instances to be re-used
     self.wait = 0
     self.stopped_epoch = 0
-    self.best = np.Inf if self.monitor_op == np.less else -np.Inf
+    if self.baseline is not None:
+      self.best = self.baseline
+    else:
+      self.best = np.Inf if self.monitor_op == np.less else -np.Inf
 
   def on_epoch_end(self, epoch, logs=None):
     current = logs.get(self.monitor)
@@ -633,17 +644,35 @@ class LearningRateScheduler(Callback):
     self.verbose = verbose
 
   def on_epoch_begin(self, epoch, logs=None):
-    if not hasattr(self.model.optimizer, 'lr'):
-      raise ValueError('Optimizer must have a "lr" attribute.')
+    # TODO(yashkatariya): Change the property checking when the learning
+    # rate attribute is unified across all TF Optimizers.
+    if isinstance(self.model.optimizer, optimizers.TFOptimizer):
+      if not hasattr(self.model.optimizer.optimizer, '_lr') and not hasattr(
+          self.model.optimizer.optimizer, '_learning_rate'):
+        raise ValueError(
+            'TF Optimizer must have a "_lr" or "_learning_rate" attribute.')
+      else:
+        opt = self.model.optimizer.optimizer
+        if hasattr(opt, '_lr'):
+          opt_lr = Variable(opt._lr)  # pylint: disable=protected-access
+        elif hasattr(opt, '_learning_rate'):
+          opt_lr = Variable(opt._learning_rate)  # pylint: disable=protected-access
+    else:
+      if not hasattr(self.model.optimizer, 'lr'):
+        raise ValueError('Optimizer must have a "lr" attribute.')
+      else:
+        opt = self.model.optimizer
+        opt_lr = opt.lr
+
     try:  # new API
-      lr = float(K.get_value(self.model.optimizer.lr))
+      lr = float(K.get_value(opt_lr))
       lr = self.schedule(epoch, lr)
     except TypeError:  # Support for old API for backward compatibility
       lr = self.schedule(epoch)
     if not isinstance(lr, (float, np.float32, np.float64)):
       raise ValueError('The output of the "schedule" function '
                        'should be float.')
-    K.set_value(self.model.optimizer.lr, lr)
+    K.set_value(opt_lr, lr)
     if self.verbose > 0:
       print('\nEpoch %05d: LearningRateScheduler reducing learning '
             'rate to %s.' % (epoch + 1, lr))
@@ -715,10 +744,16 @@ class TensorBoard(Callback):
     self.write_grads = write_grads
     self.write_images = write_images
     self.batch_size = batch_size
+    self._current_batch = 0
+    # abstracted writer class to be able to stub for testing
+    self._writer_class = tf_summary.FileWriter
 
   def set_model(self, model):
+    """Sets Keras model and creates summary ops."""
+
     self.model = model
     self.sess = K.get_session()
+    # only make histogram summary op if it hasn't already been made
     if self.histogram_freq and self.merged is None:
       for layer in self.model.layers:
         for weight in layer.weights:
@@ -767,54 +802,56 @@ class TensorBoard(Callback):
     self.merged = tf_summary.merge_all()
 
     if self.write_graph:
-      self.writer = tf_summary.FileWriter(self.log_dir, self.sess.graph)
+      self.writer = self._writer_class(self.log_dir, self.sess.graph)
     else:
-      self.writer = tf_summary.FileWriter(self.log_dir)
+      self.writer = self._writer_class(self.log_dir)
+
+  def _fetch_callback(self, summary):
+    self.writer.add_summary(
+        summary,
+        self._epoch + self._current_val_batch / self._validation_batches)
+    self._current_val_batch += 1
+
+  def on_train_begin(self, logs=None):
+    """Checks if histogram summaries can be run."""
+
+    if self.histogram_freq:
+      if 'validation_steps' in self.params:
+        self._validation_batches = self.params['validation_steps']
+      elif self.validation_data:
+        self._validation_batches = math.ceil(
+            self.validation_data[0].shape[0] / self.batch_size)
+      else:
+        raise ValueError('If printing histograms, validation data must be '
+                         'provided.')
+      if self._validation_batches == 0:
+        raise ValueError(
+            'If printing histograms, validation data must have length > 0.')
+
+  def on_epoch_begin(self, epoch, logs=None):
+    """Add histogram op to Model test_function callbacks, reset batch count."""
+
+    # check if histogram summary should be run for this epoch
+    if self.histogram_freq and epoch % self.histogram_freq == 0:
+      self._epoch = epoch
+      self._current_val_batch = 0
+      # add the histogram summary op if it should run this epoch
+      if self.merged not in self.model.test_function.fetches:
+        self.model.test_function.fetches.append(self.merged)
+        self.model.test_function.fetch_callbacks[
+            self.merged] = self._fetch_callback
 
   def on_epoch_end(self, epoch, logs=None):
+    """Checks if summary ops should run next epoch, logs scalar summaries."""
+
     logs = logs or {}
 
-    if not self.validation_data and self.histogram_freq:
-      raise ValueError('If printing histograms, validation_data must be '
-                       'provided, and cannot be a generator.')
-    if self.validation_data and self.histogram_freq:
-      if epoch % self.histogram_freq == 0:
-
-        val_data = self.validation_data
-        tensors = (
-            self.model.inputs + self.model.targets + self.model.sample_weights)
-
-        if self.model.uses_learning_phase:
-          tensors += [K.learning_phase()]
-
-        assert len(val_data) == len(tensors)
-        val_size = val_data[0].shape[0]
-        i = 0
-        while i < val_size:
-          step = min(self.batch_size, val_size - i)
-          batch_val = []
-          batch_val.append(val_data[0][i:i + step]
-                           if val_data[0] is not None else None)
-          batch_val.append(val_data[1][i:i + step]
-                           if val_data[1] is not None else None)
-          batch_val.append(val_data[2][i:i + step]
-                           if val_data[2] is not None else None)
-          if self.model.uses_learning_phase:
-            # do not slice the learning phase
-            batch_val = [x[i:i + step] if x is not None else None
-                         for x in val_data[:-1]]
-            batch_val.append(val_data[-1])
-          else:
-            batch_val = [x[i:i + step] if x is not None else None
-                         for x in val_data]
-          feed_dict = {}
-          for key, val in zip(tensors, batch_val):
-            if val is not None:
-              feed_dict[key] = val
-          result = self.sess.run([self.merged], feed_dict=feed_dict)
-          summary_str = result[0]
-          self.writer.add_summary(summary_str, epoch)
-          i += self.batch_size
+    # pop the histogram summary op after each epoch
+    if self.histogram_freq:
+      if self.merged in self.model.test_function.fetches:
+        self.model.test_function.fetches.remove(self.merged)
+      if self.merged in self.model.test_function.fetch_callbacks:
+        self.model.test_function.fetch_callbacks.pop(self.merged)
 
     for name, value in logs.items():
       if name in ['batch', 'size']:

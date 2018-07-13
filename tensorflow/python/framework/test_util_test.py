@@ -616,13 +616,54 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
-  def testRunInGraphAndEagerModesOnTestCase(self):
+  def test_run_in_eager_and_graph_modes_test_class(self):
     msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
     with self.assertRaisesRegexp(ValueError, msg):
       @test_util.run_in_graph_and_eager_modes()
       class Foo(object):
         pass
       del Foo  # Make pylint unused happy.
+
+  def test_run_in_eager_and_graph_modes_skip_graph_runs_eager(self):
+    modes = []
+    def _test(self):
+      if not context.executing_eagerly():
+        self.skipTest("Skipping in graph mode")
+      modes.append("eager" if context.executing_eagerly() else "graph")
+    test_util.run_in_graph_and_eager_modes(_test)(self)
+    self.assertEqual(modes, ["eager"])
+
+  def test_run_in_eager_and_graph_modes_skip_eager_runs_graph(self):
+    modes = []
+    def _test(self):
+      if context.executing_eagerly():
+        self.skipTest("Skipping in eager mode")
+      modes.append("eager" if context.executing_eagerly() else "graph")
+    test_util.run_in_graph_and_eager_modes(_test)(self)
+    self.assertEqual(modes, ["graph"])
+
+  def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
+    modes = []
+    mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
+
+    class ExampleTest(test_util.TensorFlowTestCase):
+
+      def runTest(self):
+        pass
+
+      def setUp(self):
+        modes.append("setup_" + mode_name())
+
+      @test_util.run_in_graph_and_eager_modes
+      def testBody(self):
+        modes.append("run_" + mode_name())
+
+    e = ExampleTest()
+    e.setUp()
+    e.testBody()
+
+    self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
+    self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
 
 
 class GarbageCollectionTest(test_util.TensorFlowTestCase):

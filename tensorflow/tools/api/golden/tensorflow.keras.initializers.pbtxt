@@ -90,11 +90,11 @@ tf_module {
   }
   member_method {
     name: "glorot_normal"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "glorot_uniform"
-    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "he_normal"

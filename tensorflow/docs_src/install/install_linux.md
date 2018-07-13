@@ -489,7 +489,7 @@ TensorFlow programs:
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-To learn more, see [Get Started with TensorFlow](https://www.tensorflow.org/get_started).
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 <a name="NVIDIARequirements"></a>
 ## TensorFlow GPU support
@@ -511,6 +511,8 @@ on your system:
   list of supported GPU cards.
 * [GPU drivers](http://nvidia.com/drivers) that support your version of the CUDA
   Toolkit.
+* NCCL 2.2 to use TensorFlow with multiple GPUs. For details, see [NVIDIA's
+  documentation](https://developer.nvidia.com/nccl).
 * The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
   library provides advanced profiling support. To install this library,
   use the following command for CUDA Toolkit >= 8.0:

@@ -23,7 +23,12 @@ limitations under the License.
 namespace tflite {
 
 enum class FusedActivationFunctionType : uint8 { kNone, kRelu6, kRelu1, kRelu };
-enum class PaddingType { kNone, kSame, kValid };
+enum class PaddingType : uint8 { kNone, kSame, kValid };
+
+struct PaddingValues {
+  int8 width;
+  int8 height;
+};
 
 // This enumeration allows for non-default formats for the weights array
 // of a fully-connected operator, allowing the use of special optimized
@@ -587,6 +592,22 @@ void ComputeStrides(Dims<N>* dims) {
     dims->strides[d] = dims->strides[d - 1] * dims->sizes[d - 1];
   }
 }
+
+struct PoolParams {
+  FusedActivationFunctionType activation;
+  PaddingType padding_type;
+  PaddingValues padding_values;
+  int stride_height;
+  int stride_width;
+  int filter_height;
+  int filter_width;
+  // uint8, etc, inference params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float inference params.
+  float float_activation_min;
+  float float_activation_max;
+};
 
 }  // namespace tflite
 

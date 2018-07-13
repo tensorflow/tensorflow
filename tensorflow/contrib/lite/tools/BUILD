@@ -14,6 +14,7 @@ py_binary(
     srcs = ["visualize.py"],
     data = [
         "//tensorflow/contrib/lite/schema:schema.fbs",
+        "//tensorflow/python:platform",
         "@flatbuffers//:flatc",
     ],
     srcs_version = "PY2AND3",
@@ -53,6 +54,7 @@ cc_test(
     ],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":gen_op_registration",

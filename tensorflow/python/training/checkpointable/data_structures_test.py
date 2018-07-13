@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.checkpointable import tracking
 
 
 class HasList(training.Model):
@@ -113,6 +114,19 @@ class ListTests(test.TestCase):
     model(model_input)
     self.assertEqual(2, len(model.losses))
 
+  def testModelContainersCompareEqual(self):
+    class HasEqualContainers(training.Model):
+
+      def __init__(self):
+        super(HasEqualContainers, self).__init__()
+        self.l1 = []
+        self.l2 = []
+
+    model = HasEqualContainers()
+    model.l1.append(HasEqualContainers())
+    model.l2.append(HasEqualContainers())
+    self.assertEqual([model.l1, model.l2], model.layers)
+
   def testNotCheckpointable(self):
     class NotCheckpointable(object):
       pass
@@ -158,11 +172,62 @@ class ListTests(test.TestCase):
     self.assertEqual([v], l.trainable_weights)
     self.assertEqual([v2], l.non_trainable_weights)
 
+  def testListWrapperBasic(self):
+    # _ListWrapper, unlike List, compares like the built-in list type (since it
+    # is used to automatically replace lists).
+    a = tracking.Checkpointable()
+    b = tracking.Checkpointable()
+    self.assertEqual([a, a],
+                     [a, a])
+    self.assertEqual(data_structures._ListWrapper([a, a]),
+                     data_structures._ListWrapper([a, a]))
+    self.assertEqual([a, a],
+                     data_structures._ListWrapper([a, a]))
+    self.assertEqual(data_structures._ListWrapper([a, a]),
+                     [a, a])
+    self.assertNotEqual([a, a],
+                        [b, a])
+    self.assertNotEqual(data_structures._ListWrapper([a, a]),
+                        data_structures._ListWrapper([b, a]))
+    self.assertNotEqual([a, a],
+                        data_structures._ListWrapper([b, a]))
+    self.assertLess([a], [a, b])
+    self.assertLess(data_structures._ListWrapper([a]),
+                    data_structures._ListWrapper([a, b]))
+    self.assertLessEqual([a], [a, b])
+    self.assertLessEqual(data_structures._ListWrapper([a]),
+                         data_structures._ListWrapper([a, b]))
+    self.assertGreater([a, b], [a])
+    self.assertGreater(data_structures._ListWrapper([a, b]),
+                       data_structures._ListWrapper([a]))
+    self.assertGreaterEqual([a, b], [a])
+    self.assertGreaterEqual(data_structures._ListWrapper([a, b]),
+                            data_structures._ListWrapper([a]))
+    self.assertEqual([a], data_structures._ListWrapper([a]))
+    self.assertEqual([a], list(data_structures.List([a])))
+    self.assertEqual([a, a], data_structures._ListWrapper([a]) + [a])
+    self.assertEqual([a, a], [a] + data_structures._ListWrapper([a]))
+    self.assertIsInstance(data_structures._ListWrapper([a]), list)
+
+  def testWrapperChangesList(self):
+    l = []
+    l_wrapper = data_structures._ListWrapper(l)
+    l_wrapper.append(1)
+    self.assertEqual([1], l)
+
+  def testListChangesWrapper(self):
+    l = []
+    l_wrapper = data_structures._ListWrapper(l)
+    l.append(1)
+    self.assertEqual([1], l_wrapper)
+
   def testHashing(self):
     has_sequences = set([data_structures.List(),
                          data_structures.List()])
     self.assertEqual(2, len(has_sequences))
     self.assertNotIn(data_structures.List(), has_sequences)
+    with self.assertRaises(TypeError):
+      has_sequences.add(data_structures._ListWrapper([]))
 
 
 class HasMapping(training.Model):

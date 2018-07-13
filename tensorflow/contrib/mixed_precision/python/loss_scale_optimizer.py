@@ -77,7 +77,7 @@ class LossScaleOptimizer(optimizer.Optimizer):
 
   If gradients clipping is applied, one can call
   `optimizer.compute_gradients()` and `optimizer.apply_gradients()`
-  seperately.
+  separately.
 
   Notice the following way of using LossScaleOptimizer is not intended. Always
   use `loss_scale_optimizer.compute_gradients()` to compute gradients instead of

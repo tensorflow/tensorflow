@@ -92,8 +92,17 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteSequenceRNNParams;
 
+typedef enum {
+  kTfLiteFullyConnectedWeightsFormatDefault = 0,
+  kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8 = 1,
+} TfLiteFullyConnectedWeightsFormat;
+
 typedef struct {
+  // Parameters for FullyConnected version 1 or above.
   TfLiteFusedActivation activation;
+
+  // Parameters for FullyConnected version 2 or above.
+  TfLiteFullyConnectedWeightsFormat weights_format;
 } TfLiteFullyConnectedParams;
 
 typedef enum {
@@ -241,6 +250,10 @@ typedef struct {
 } TfLiteArgMaxParams;
 
 typedef struct {
+  TfLiteType output_type;
+} TfLiteArgMinParams;
+
+typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
@@ -253,6 +266,16 @@ typedef struct {
 typedef struct {
   TfLiteType out_type;
 } TfLiteShapeParams;
+
+typedef struct {
+  // Parameters supported by version 1:
+  float min;
+  float max;
+  int num_bits;
+
+  // Parameters supported by version 2:
+  bool narrow_range;
+} TfLiteFakeQuantParams;
 
 #ifdef __cplusplus
 }  // extern "C"

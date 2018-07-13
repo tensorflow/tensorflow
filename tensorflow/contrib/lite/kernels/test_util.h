@@ -148,20 +148,18 @@ class SingleOpModel {
   int AddOutput(const TensorData& t);
 
   template <typename T>
-  void QuantizeAndPopulate(int index, std::initializer_list<float> data) {
+  void QuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
     auto q = Quantize<T>(data, t->params.scale, t->params.zero_point);
     PopulateTensor(index, 0, q.data(), q.data() + q.size());
   }
 
-  void SymmetricQuantizeAndPopulate(int index,
-                                    std::initializer_list<float> data) {
+  void SymmetricQuantizeAndPopulate(int index, const std::vector<float>& data) {
     TfLiteTensor* t = interpreter_->tensor(index);
-    std::vector<float> values(data);
-    const int length = values.size();
+    const int length = data.size();
     std::vector<int8_t> q(length);
     float min, max, scaling_factor;
-    tensor_utils::SymmetricQuantizeFloats(values.data(), length, q.data(), &min,
+    tensor_utils::SymmetricQuantizeFloats(data.data(), length, q.data(), &min,
                                           &max, &scaling_factor);
     // Update quantization params.
     t->params.scale = scaling_factor;
@@ -198,8 +196,22 @@ class SingleOpModel {
   }
 
   // Populate the tensor given its index.
+  // TODO(b/110696148) clean up and merge with vector-taking variant below.
   template <typename T>
-  void PopulateTensor(int index, std::initializer_list<T> data) {
+  void PopulateTensor(int index, const std::initializer_list<T>& data) {
+    T* v = interpreter_->typed_tensor<T>(index);
+    CHECK(v) << "No tensor with index '" << index << "'.";
+    for (T f : data) {
+      *v = f;
+      ++v;
+    }
+  }
+
+  // Populate the tensor given its index.
+  // TODO(b/110696148) clean up and merge with initializer_list-taking variant
+  // above.
+  template <typename T>
+  void PopulateTensor(int index, const std::vector<T>& data) {
     T* v = interpreter_->typed_tensor<T>(index);
     CHECK(v) << "No tensor with index '" << index << "'.";
     for (T f : data) {

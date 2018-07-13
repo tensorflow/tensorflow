@@ -42,12 +42,12 @@ class FloorCeilTest : public ClientLibraryTestBase {
     LOG(INFO) << "input: {" << tensorflow::str_util::Join(expected, ", ")
               << "}";
     XlaBuilder builder(TestName());
-    auto c = builder.ConstantR1<float>(input);
+    auto c = ConstantR1<float>(&builder, input);
     if (f == kCeil) {
-      builder.Ceil(c);
+      Ceil(c);
     } else {
       ASSERT_EQ(kFloor, f);
-      builder.Floor(c);
+      Floor(c);
     }
     ComputeAndCompareR1<float>(&builder, expected, /*arguments=*/{});
   }
@@ -55,12 +55,12 @@ class FloorCeilTest : public ClientLibraryTestBase {
   void TestR0F32(float input, float expected, Function f) {
     LOG(INFO) << "input: " << expected;
     XlaBuilder builder(TestName());
-    auto c = builder.ConstantR0<float>(input);
+    auto c = ConstantR0<float>(&builder, input);
     if (f == kCeil) {
-      builder.Ceil(c);
+      Ceil(c);
     } else {
       ASSERT_EQ(kFloor, f);
-      builder.Floor(c);
+      Floor(c);
     }
     ComputeAndCompareR0<float>(&builder, expected, /*arguments=*/{});
   }

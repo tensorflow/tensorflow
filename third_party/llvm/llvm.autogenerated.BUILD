@@ -11,7 +11,11 @@ load(
     "cmake_var_string",
     "expand_cmake_vars",
     "gentbl",
-    "llvm_target_cmake_vars",
+    "llvm_all_cmake_vars",
+    "llvm_copts",
+    "llvm_defines",
+    "llvm_linkopts",
+    "llvm_support_platform_specific_srcs_glob",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -39,147 +43,25 @@ llvm_target_asm_printers = llvm_targets
 
 llvm_target_disassemblers = llvm_targets
 
-# TODO(phawkins): the set of CMake variables was hardcoded for expediency.
-# However, we should really detect many of these via configure-time tests.
-
-# The set of CMake variables common to all targets.
-cmake_vars = {
-    # Headers
-    "HAVE_DIRENT_H": 1,
-    "HAVE_DLFCN_H": 1,
-    "HAVE_ERRNO_H": 1,
-    "HAVE_EXECINFO_H": 1,
-    "HAVE_FCNTL_H": 1,
-    "HAVE_INTTYPES_H": 1,
-    "HAVE_PTHREAD_H": 1,
-    "HAVE_SIGNAL_H": 1,
-    "HAVE_STDINT_H": 1,
-    "HAVE_SYS_IOCTL_H": 1,
-    "HAVE_SYS_MMAN_H": 1,
-    "HAVE_SYS_PARAM_H": 1,
-    "HAVE_SYS_RESOURCE_H": 1,
-    "HAVE_SYS_STAT_H": 1,
-    "HAVE_SYS_TIME_H": 1,
-    "HAVE_SYS_TYPES_H": 1,
-    "HAVE_TERMIOS_H": 1,
-    "HAVE_UNISTD_H": 1,
-    "HAVE_ZLIB_H": 1,
-
-    # Features
-    "HAVE_BACKTRACE": 1,
-    "BACKTRACE_HEADER": "execinfo.h",
-    "HAVE_DLOPEN": 1,
-    "HAVE_FUTIMES": 1,
-    "HAVE_GETCWD": 1,
-    "HAVE_GETPAGESIZE": 1,
-    "HAVE_GETRLIMIT": 1,
-    "HAVE_GETRUSAGE": 1,
-    "HAVE_GETTIMEOFDAY": 1,
-    "HAVE_INT64_T": 1,
-    "HAVE_ISATTY": 1,
-    "HAVE_LIBEDIT": 1,
-    "HAVE_LIBPTHREAD": 1,
-    "HAVE_LIBZ": 1,
-    "HAVE_MKDTEMP": 1,
-    "HAVE_MKSTEMP": 1,
-    "HAVE_MKTEMP": 1,
-    "HAVE_PREAD": 1,
-    "HAVE_PTHREAD_GETSPECIFIC": 1,
-    "HAVE_PTHREAD_MUTEX_LOCK": 1,
-    "HAVE_PTHREAD_RWLOCK_INIT": 1,
-    "HAVE_REALPATH": 1,
-    "HAVE_SBRK": 1,
-    "HAVE_SETENV": 1,
-    "HAVE_SETRLIMIT": 1,
-    "HAVE_SIGALTSTACK": 1,
-    "HAVE_STRERROR": 1,
-    "HAVE_STRERROR_R": 1,
-    "HAVE_STRTOLL": 1,
-    "HAVE_SYSCONF": 1,
-    "HAVE_UINT64_T": 1,
-    "HAVE__UNWIND_BACKTRACE": 1,
-
-    # LLVM features
-    "ENABLE_BACKTRACES": 1,
-    "LLVM_BINDIR": "/dev/null",
-    "LLVM_DISABLE_ABI_BREAKING_CHECKS_ENFORCING": 0,
-    "LLVM_ENABLE_ABI_BREAKING_CHECKS": 0,
-    "LLVM_ENABLE_THREADS": 1,
-    "LLVM_ENABLE_ZLIB": 1,
-    "LLVM_HAS_ATOMICS": 1,
-    "LLVM_INCLUDEDIR": "/dev/null",
-    "LLVM_INFODIR": "/dev/null",
-    "LLVM_MANDIR": "/dev/null",
-    "LLVM_NATIVE_TARGET": 1,
-    "LLVM_NATIVE_TARGETINFO": 1,
-    "LLVM_NATIVE_TARGETMC": 1,
-    "LLVM_NATIVE_ASMPRINTER": 1,
-    "LLVM_NATIVE_ASMPARSER": 1,
-    "LLVM_NATIVE_DISASSEMBLER": 1,
-    "LLVM_ON_UNIX": 1,
-    "LLVM_PREFIX": "/dev/null",
-    "LLVM_VERSION_MAJOR": 0,
-    "LLVM_VERSION_MINOR": 0,
-    "LLVM_VERSION_PATCH": 0,
-    "LTDL_SHLIB_EXT": ".so",
-    "PACKAGE_NAME": "llvm",
-    "PACKAGE_STRING": "llvm tensorflow-trunk",
-    "PACKAGE_VERSION": "tensorflow-trunk",
-    "RETSIGTYPE": "void",
-}
-
-# CMake variables specific to the Linux platform
-linux_cmake_vars = {
-    "HAVE_MALLOC_H": 1,
-    "HAVE_LINK_H": 1,
-    "HAVE_MALLINFO": 1,
-    "HAVE_FUTIMENS": 1,
-}
-
-# CMake variables specific to the Darwin (Mac OS X) platform.
-darwin_cmake_vars = {
-    "HAVE_MALLOC_MALLOC_H": 1,
-}
-
-# Select a set of CMake variables based on the platform.
-# TODO(phawkins): use a better method to select the right host triple, rather
-# than hardcoding x86_64.
-all_cmake_vars = select({
-    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
-        cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
-        darwin_cmake_vars,
-    ),
-    "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
-        cmake_vars +
-        llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
-        linux_cmake_vars,
-    ),
-    "//conditions:default": cmake_var_string(
-        cmake_vars +
-        llvm_target_cmake_vars("X86", "x86_64-unknown-linux_gnu") +
-        linux_cmake_vars,
-    ),
-})
-
 # Performs CMake variable substitutions on configuration header files.
 expand_cmake_vars(
     name = "config_gen",
     src = "include/llvm/Config/config.h.cmake",
-    cmake_vars = all_cmake_vars,
+    cmake_vars = llvm_all_cmake_vars,
     dst = "include/llvm/Config/config.h",
 )
 
 expand_cmake_vars(
     name = "llvm_config_gen",
     src = "include/llvm/Config/llvm-config.h.cmake",
-    cmake_vars = all_cmake_vars,
+    cmake_vars = llvm_all_cmake_vars,
     dst = "include/llvm/Config/llvm-config.h",
 )
 
 expand_cmake_vars(
     name = "abi_breaking_gen",
     src = "include/llvm/Config/abi-breaking.h.cmake",
-    cmake_vars = all_cmake_vars,
+    cmake_vars = llvm_all_cmake_vars,
     dst = "include/llvm/Config/abi-breaking.h",
 )
 
@@ -240,14 +122,7 @@ cc_library(
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
     ],
-    defines = [
-        "LLVM_ENABLE_STATS",
-        "__STDC_LIMIT_MACROS",
-        "__STDC_CONSTANT_MACROS",
-        "__STDC_FORMAT_MACROS",
-        "_DEBUG",
-        "LLVM_BUILD_GLOBAL_ISEL",
-    ],
+    defines = llvm_defines,
     includes = ["include"],
 )
 
@@ -262,17 +137,6 @@ genrule(
 )
 
 # Rules that apply the LLVM tblgen tool.
-gentbl(
-    name = "intrinsics_gen",
-    tbl_outs = [("-gen-intrinsic", "include/llvm/IR/Intrinsics.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "include/llvm/IR/Intrinsics.td",
-    td_srcs = glob([
-        "include/llvm/CodeGen/*.td",
-        "include/llvm/IR/Intrinsics*.td",
-    ]),
-)
-
 gentbl(
     name = "attributes_gen",
     tbl_outs = [("-gen-attrs", "include/llvm/IR/Attributes.inc")],
@@ -306,6 +170,28 @@ gentbl(
     ]) + ["include/llvm/TableGen/SearchableTable.td"],
 )
 
+gentbl(
+    name = "intrinsic_enums_gen",
+    tbl_outs = [("-gen-intrinsic-enums", "include/llvm/IR/IntrinsicEnums.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
+gentbl(
+    name = "intrinsics_impl_gen",
+    tbl_outs = [("-gen-intrinsic-impl", "include/llvm/IR/IntrinsicImpl.inc")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/IR/Intrinsics.td",
+    td_srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+    ]),
+)
+
 # Binary targets used by Tensorflow.
 cc_binary(
     name = "llvm-tblgen",
@@ -313,11 +199,8 @@ cc_binary(
         "utils/TableGen/*.cpp",
         "utils/TableGen/*.h",
     ]),
-    linkopts = [
-        "-lm",
-        "-ldl",
-        "-lpthread",
-    ],
+    copts = llvm_copts,
+    linkopts = llvm_linkopts,
     stamp = 0,
     deps = [
         ":config",
@@ -333,11 +216,8 @@ cc_binary(
         "utils/FileCheck/*.cpp",
         "utils/FileCheck/*.h",
     ]),
-    linkopts = [
-        "-ldl",
-        "-lm",
-        "-lpthread",
-    ],
+    copts = llvm_copts,
+    linkopts = llvm_linkopts,
     stamp = 0,
     deps = [":support"],
 )
@@ -508,7 +388,7 @@ cc_library(
         "include/llvm/Target/AArch64/AsmParser/*.inc",
         "lib/Target/AArch64/AsmParser/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":aarch64_desc",
         ":aarch64_info",
@@ -533,7 +413,7 @@ cc_library(
         "include/llvm/Target/AArch64/InstPrinter/*.inc",
         "lib/Target/AArch64/InstPrinter/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":aarch64_target_gen",
         ":aarch64_utils",
@@ -556,7 +436,7 @@ cc_library(
         "include/llvm/Target/AArch64/*.inc",
         "lib/Target/AArch64/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":aarch64_asm_printer",
         ":aarch64_desc",
@@ -589,14 +469,15 @@ cc_library(
         "include/llvm/Target/AArch64/MCTargetDesc/*.inc",
         "lib/Target/AArch64/MCTargetDesc/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":aarch64_asm_printer",
         ":aarch64_info",
         ":aarch64_target_gen",
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":support",
     ],
@@ -615,7 +496,7 @@ cc_library(
         "include/llvm/Target/AArch64/Disassembler/*.inc",
         "lib/Target/AArch64/Disassembler/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":aarch64_desc",
         ":aarch64_info",
@@ -643,7 +524,7 @@ cc_library(
         "lib/Target/AArch64/AArch64*.h",
         "lib/Target/AArch64/TargetInfo/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":code_gen",
         ":config",
@@ -666,7 +547,7 @@ cc_library(
         "include/llvm/Target/AArch64/Utils/*.inc",
         "lib/Target/AArch64/Utils/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AArch64"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AArch64"],
     deps = [
         ":aarch64_target_gen",
         ":config",
@@ -688,6 +569,7 @@ cc_library(
         "include/llvm/Transforms/AggressiveInstCombine/*.def",
         "include/llvm/Transforms/AggressiveInstCombine/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -712,6 +594,7 @@ cc_library(
         "include/llvm/Analysis/*.def",
         "include/llvm/Analysis/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":binary_format",
         ":config",
@@ -735,7 +618,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/MCTargetDesc/*.inc",
         "lib/Target/AMDGPU/MCTargetDesc/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_asm_printer",
         ":amdgpu_info",
@@ -760,7 +643,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/Disassembler/*.inc",
         "lib/Target/AMDGPU/Disassembler/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_desc",
         ":amdgpu_info",
@@ -785,7 +668,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/TargetInfo/*.inc",
         "lib/Target/AMDGPU/TargetInfo/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_target_gen",
         ":config",
@@ -807,7 +690,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/Utils/*.inc",
         "lib/Target/AMDGPU/Utils/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_target_gen",
         ":config",
@@ -830,7 +713,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/AsmParser/*.inc",
         "lib/Target/AMDGPU/AsmParser/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_desc",
         ":amdgpu_info",
@@ -855,7 +738,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/InstPrinter/*.inc",
         "lib/Target/AMDGPU/InstPrinter/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_utils",
         ":config",
@@ -877,7 +760,7 @@ cc_library(
         "include/llvm/Target/AMDGPU/*.inc",
         "lib/Target/AMDGPU/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/AMDGPU"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
         ":amdgpu_asm_printer",
         ":amdgpu_desc",
@@ -913,7 +796,7 @@ cc_library(
         "include/llvm/Target/ARM/AsmParser/*.inc",
         "lib/Target/ARM/AsmParser/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_desc",
         ":arm_info",
@@ -939,7 +822,7 @@ cc_library(
         "lib/Target/ARM/*.h",
         "lib/Target/ARM/InstPrinter/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_info",
         ":arm_target_gen",
@@ -963,7 +846,7 @@ cc_library(
         "include/llvm/Target/ARM/*.inc",
         "lib/Target/ARM/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":analysis",
         ":arm_asm_printer",
@@ -980,6 +863,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":transform_utils",
     ],
 )
 
@@ -998,14 +882,15 @@ cc_library(
         "include/llvm/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/MCTargetDesc/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_asm_printer",
         ":arm_info",
         ":arm_target_gen",
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":mc_disassembler",
         ":support",
@@ -1025,7 +910,7 @@ cc_library(
         "include/llvm/Target/ARM/Disassembler/*.inc",
         "lib/Target/ARM/Disassembler/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_desc",
         ":arm_info",
@@ -1050,7 +935,7 @@ cc_library(
         "include/llvm/Target/ARM/TargetInfo/*.inc",
         "lib/Target/ARM/TargetInfo/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_target_gen",
         ":config",
@@ -1073,7 +958,7 @@ cc_library(
         "include/llvm/Target/ARM/Utils/*.inc",
         "lib/Target/ARM/Utils/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/ARM"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
         ":arm_target_gen",
         ":config",
@@ -1095,6 +980,7 @@ cc_library(
         "include/llvm/AsmParser/*.def",
         "include/llvm/AsmParser/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":binary_format",
         ":config",
@@ -1117,6 +1003,7 @@ cc_library(
         "include/llvm/CodeGen/AsmPrinter/*.inc",
         "lib/CodeGen/AsmPrinter/*.def",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":binary_format",
@@ -1147,6 +1034,7 @@ cc_library(
         "include/llvm/BinaryFormat/ELFRelocs/*.def",
         "include/llvm/BinaryFormat/WasmRelocs/*.def",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":support",
@@ -1167,6 +1055,7 @@ cc_library(
         "include/llvm/Bitcode/Reader/*.inc",
         "include/llvm/Bitcode/BitstreamReader.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":core",
@@ -1190,6 +1079,7 @@ cc_library(
         "include/llvm/Bitcode/BitcodeWriterPass.h",
         "include/llvm/Bitcode/BitstreamWriter.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -1214,6 +1104,7 @@ cc_library(
         "include/llvm/CodeGen/*.inc",
         "include/llvm/CodeGen/**/*.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":bit_reader",
@@ -1251,12 +1142,14 @@ cc_library(
         "include/llvm/*.h",
         "include/llvm/Analysis/*.def",
     ]),
+    copts = llvm_copts,
     deps = [
         ":attributes_compat_gen",
         ":attributes_gen",
         ":binary_format",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":support",
     ],
 )
@@ -1274,6 +1167,7 @@ cc_library(
         "include/llvm/DebugInfo/CodeView/*.def",
         "include/llvm/DebugInfo/CodeView/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":binary_format",
         ":config",
@@ -1295,6 +1189,7 @@ cc_library(
         "include/llvm/DebugInfo/MSF/*.def",
         "include/llvm/DebugInfo/MSF/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":support",
@@ -1314,6 +1209,7 @@ cc_library(
         "include/llvm/Demangle/*.def",
         "include/llvm/Demangle/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [":config"],
 )
 
@@ -1330,6 +1226,7 @@ cc_library(
         "include/llvm/ExecutionEngine/*.def",
         "include/llvm/ExecutionEngine/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":core",
@@ -1354,6 +1251,7 @@ cc_library(
         "include/llvm/CodeGen/GlobalISel/*.def",
         "include/llvm/CodeGen/GlobalISel/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":code_gen",
@@ -1383,6 +1281,7 @@ cc_library(
         "include/llvm/Transforms/InstrProfiling.h",
         "include/llvm/Transforms/PGOInstrumentation.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -1407,6 +1306,7 @@ cc_library(
         "include/llvm/Transforms/InstCombine/*.def",
         "include/llvm/Transforms/InstCombine/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -1433,6 +1333,7 @@ cc_library(
         "include/llvm/Transforms/IPO/*.def",
         "include/llvm/Transforms/IPO/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":aggressive_inst_combine",
         ":analysis",
@@ -1466,6 +1367,7 @@ cc_library(
         "include/llvm/IRReader/*.def",
         "include/llvm/IRReader/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":asm_parser",
         ":bit_reader",
@@ -1488,6 +1390,7 @@ cc_library(
         "include/llvm/Linker/*.def",
         "include/llvm/Linker/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":core",
@@ -1509,6 +1412,7 @@ cc_library(
         "include/llvm/MC/*.def",
         "include/llvm/MC/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":binary_format",
         ":config",
@@ -1530,6 +1434,7 @@ cc_library(
         "include/llvm/MC/MCDisassembler/*.def",
         "include/llvm/MC/MCDisassembler/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":mc",
@@ -1550,6 +1455,7 @@ cc_library(
         "include/llvm/MC/MCParser/*.def",
         "include/llvm/MC/MCParser/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":mc",
@@ -1570,7 +1476,7 @@ cc_library(
         "include/llvm/Target/NVPTX/InstPrinter/*.inc",
         "lib/Target/NVPTX/InstPrinter/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/NVPTX"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/NVPTX"],
     deps = [
         "nvptx_target_gen",
         ":attributes_gen",
@@ -1594,7 +1500,7 @@ cc_library(
         "include/llvm/Target/NVPTX/*.inc",
         "lib/Target/NVPTX/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/NVPTX"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/NVPTX"],
     deps = [
         ":analysis",
         ":asm_printer",
@@ -1628,7 +1534,7 @@ cc_library(
         "include/llvm/Target/NVPTX/MCTargetDesc/*.inc",
         "lib/Target/NVPTX/MCTargetDesc/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/NVPTX"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/NVPTX"],
     deps = [
         "nvptx_target_gen",
         ":config",
@@ -1654,7 +1560,7 @@ cc_library(
         "lib/Target/NVPTX/NVPTX.h",
         "lib/Target/NVPTX/TargetInfo/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/NVPTX"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/NVPTX"],
     deps = [
         "nvptx_target_gen",
         ":attributes_gen",
@@ -1678,6 +1584,7 @@ cc_library(
         "include/llvm/Object/*.def",
         "include/llvm/Object/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":binary_format",
         ":bit_reader",
@@ -1703,6 +1610,7 @@ cc_library(
         "include/llvm/Transforms/ObjCARC/*.def",
         "include/llvm/Transforms/ObjCARC/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -1725,13 +1633,16 @@ cc_library(
         "include/llvm/ExecutionEngine/Orc/*.def",
         "include/llvm/ExecutionEngine/Orc/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":core",
         ":execution_engine",
+        ":mc",
         ":object",
         ":runtime_dyld",
         ":support",
+        ":target",
         ":transform_utils",
     ],
 )
@@ -1749,7 +1660,7 @@ cc_library(
         "include/llvm/Target/PowerPC/AsmParser/*.inc",
         "lib/Target/PowerPC/AsmParser/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/PowerPC"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
     deps = [
         ":config",
         ":mc",
@@ -1773,11 +1684,12 @@ cc_library(
         "include/llvm/Target/PowerPC/InstPrinter/*.inc",
         "lib/Target/PowerPC/InstPrinter/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/PowerPC"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
     deps = [
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":powerpc_info",
         ":powerpc_target_gen",
@@ -1798,7 +1710,7 @@ cc_library(
         "include/llvm/Target/PowerPC/*.inc",
         "lib/Target/PowerPC/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/PowerPC"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
     deps = [
         ":analysis",
         ":asm_printer",
@@ -1830,11 +1742,12 @@ cc_library(
         "include/llvm/Target/PowerPC/MCTargetDesc/*.inc",
         "lib/Target/PowerPC/MCTargetDesc/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/PowerPC"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
     deps = [
         ":attributes_gen",
         ":config",
-        ":intrinsics_gen",
+        ":intrinsic_enums_gen",
+        ":intrinsics_impl_gen",
         ":mc",
         ":powerpc_asm_printer",
         ":powerpc_info",
@@ -1856,7 +1769,7 @@ cc_library(
         "include/llvm/Target/PowerPC/Disassembler/*.inc",
         "lib/Target/PowerPC/Disassembler/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/PowerPC"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
     deps = [
         ":config",
         ":mc_disassembler",
@@ -1880,12 +1793,11 @@ cc_library(
         "lib/Target/PowerPC/PPC*.h",
         "lib/Target/PowerPC/TargetInfo/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/PowerPC"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/PowerPC"],
     deps = [
         ":attributes_gen",
         ":config",
         ":core",
-        ":intrinsics_gen",
         ":powerpc_target_gen",
         ":support",
         ":target",
@@ -1905,6 +1817,7 @@ cc_library(
         "include/llvm/ProfileData/*.def",
         "include/llvm/ProfileData/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":core",
@@ -1933,6 +1846,7 @@ cc_library(
         "include/llvm/ExecutionEngine/RTDyldMemoryManager.h",
         "include/llvm/ExecutionEngine/RuntimeDyld*.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":mc",
@@ -1960,6 +1874,7 @@ cc_library(
         "include/llvm/Transforms/IPO.h",
         "include/llvm/Transforms/IPO/SCCP.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":aggressive_inst_combine",
         ":analysis",
@@ -1985,6 +1900,7 @@ cc_library(
         "include/llvm/CodeGen/SelectionDAG/*.def",
         "include/llvm/CodeGen/SelectionDAG/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":code_gen",
@@ -2003,14 +1919,12 @@ cc_library(
         "lib/Support/*.c",
         "lib/Support/*.cpp",
         "lib/Support/*.inc",
-        "lib/Support/Unix/*.inc",
-        "lib/Support/Unix/*.h",
         "include/llvm-c/*.h",
         "include/llvm/CodeGen/MachineValueType.h",
         "include/llvm/BinaryFormat/COFF.h",
         "include/llvm/BinaryFormat/MachO.h",
         "lib/Support/*.h",
-    ]),
+    ] + llvm_support_platform_specific_srcs_glob),
     hdrs = glob([
         "include/llvm/Support/*.h",
         "include/llvm/Support/*.def",
@@ -2022,6 +1936,7 @@ cc_library(
         "include/llvm/BinaryFormat/MachO.def",
         "include/llvm/Support/VCSRevision.h",
     ],
+    copts = llvm_copts,
     deps = [
         ":config",
         ":demangle",
@@ -2044,6 +1959,7 @@ cc_library(
         "include/llvm/TableGen/*.inc",
         "include/llvm/Target/*.def",
     ]),
+    copts = llvm_copts,
     deps = [
         ":config",
         ":mc",
@@ -2069,6 +1985,7 @@ cc_library(
         "include/llvm/CodeGen/*.def",
         "include/llvm/CodeGen/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -2093,6 +2010,7 @@ cc_library(
         "include/llvm/Transforms/Utils/*.def",
         "include/llvm/Transforms/Utils/*.inc",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -2116,6 +2034,7 @@ cc_library(
         "include/llvm/Transforms/Vectorize/*.inc",
         "include/llvm/Transforms/Vectorize.h",
     ]),
+    copts = llvm_copts,
     deps = [
         ":analysis",
         ":config",
@@ -2139,7 +2058,7 @@ cc_library(
         "include/llvm/Target/X86/AsmParser/*.inc",
         "lib/Target/X86/AsmParser/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":config",
         ":mc",
@@ -2164,7 +2083,7 @@ cc_library(
         "include/llvm/Target/X86/InstPrinter/*.inc",
         "lib/Target/X86/InstPrinter/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":config",
         ":mc",
@@ -2188,7 +2107,7 @@ cc_library(
         "include/llvm/Target/X86/*.inc",
         "lib/Target/X86/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":analysis",
         ":asm_printer",
@@ -2221,7 +2140,7 @@ cc_library(
         "include/llvm/Target/X86/MCTargetDesc/*.inc",
         "lib/Target/X86/MCTargetDesc/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":config",
         ":mc",
@@ -2246,7 +2165,7 @@ cc_library(
         "include/llvm/Target/X86/Disassembler/*.inc",
         "lib/Target/X86/Disassembler/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":config",
         ":mc_disassembler",
@@ -2269,7 +2188,7 @@ cc_library(
         "include/llvm/Target/X86/TargetInfo/*.inc",
         "lib/Target/X86/TargetInfo/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":config",
         ":mc",
@@ -2291,7 +2210,7 @@ cc_library(
         "include/llvm/Target/X86/Utils/*.inc",
         "lib/Target/X86/Utils/*.h",
     ]),
-    copts = ["-Iexternal/llvm/lib/Target/X86"],
+    copts = llvm_copts + ["-Iexternal/llvm/lib/Target/X86"],
     deps = [
         ":code_gen",
         ":config",

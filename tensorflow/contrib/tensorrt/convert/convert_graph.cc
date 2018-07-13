@@ -149,7 +149,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Need to run graph with calibration data first!");
       }
       if (cres->calibrator_) {
-        cres->calibrator_->setDone();
+        cres->calibrator_->waitAndSetDone();
         cres->thr_->join();
         const auto& calibration_table =
             cres->calibrator_->getCalibrationTableAsString();
@@ -165,7 +165,7 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
             "Can't get TRTCalibrator from resource manager!");
       }
       cres->Unref();
-      calib_rm->Cleanup(container_name);
+      TF_RETURN_IF_ERROR(calib_rm->Cleanup(container_name));
     }
   }
   return tensorflow::Status::OK();
@@ -719,8 +719,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     } else {
       // Graph is not modified.
       LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
-                   << converted_segments.at(i).first.size() << " nodes failed: "
-                   << status << ". Skipping...";
+                   << converted_segments.at(i).first.size()
+                   << " nodes failed: " << status << ". Skipping...";
     }
   }
   cudaSetDevice(old_cuda_device);

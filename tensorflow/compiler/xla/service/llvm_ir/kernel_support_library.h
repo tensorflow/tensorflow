@@ -203,16 +203,30 @@ class KernelSupportLibrary {
   //     `true_block_generator()`;
   //   else
   //      `false_block_generator()`;
-  Status If(llvm::Value* condition,
+  Status If(tensorflow::StringPiece name, llvm::Value* condition,
             const std::function<Status()>& true_block_generator,
             const std::function<Status()>& false_block_generator =
                 []() -> Status { return Status::OK(); });
+
+  Status If(llvm::Value* condition,
+            const std::function<Status()>& true_block_generator,
+            const std::function<Status()>& false_block_generator =
+                []() -> Status { return Status::OK(); }) {
+    return If("", condition, true_block_generator, false_block_generator);
+  }
 
   void IfReturnVoid(llvm::Value* condition,
                     const std::function<void()>& true_block_generator,
                     const std::function<void()>& false_block_generator = []() {
                     }) {
-    TF_CHECK_OK(If(condition,
+    IfReturnVoid("", condition, true_block_generator, false_block_generator);
+  }
+
+  void IfReturnVoid(tensorflow::StringPiece name, llvm::Value* condition,
+                    const std::function<void()>& true_block_generator,
+                    const std::function<void()>& false_block_generator = []() {
+                    }) {
+    TF_CHECK_OK(If(name, condition,
                    [&]() {
                      true_block_generator();
                      return Status::OK();
