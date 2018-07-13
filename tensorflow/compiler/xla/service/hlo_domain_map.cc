@@ -41,9 +41,13 @@ namespace xla {
 
 bool HloDomainMap::InSameDomain(HloInstruction* instruction1,
                                 HloInstruction* instruction2) const {
-  int64 domain_id1 = FindOrDefault(instruction_to_domain_, instruction1, -1);
-  int64 domain_id2 = FindOrDefault(instruction_to_domain_, instruction2, -1);
+  int64 domain_id1 = GetDomainId(instruction1);
+  int64 domain_id2 = GetDomainId(instruction2);
   return domain_id1 >= 0 && domain_id1 == domain_id2;
+}
+
+int64 HloDomainMap::GetDomainId(HloInstruction* instruction) const {
+  return FindOrDefault(instruction_to_domain_, instruction, -1);
 }
 
 Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
@@ -57,6 +61,11 @@ Status HloDomainMap::TryProcessEmptyDomain(HloInstruction* instruction) {
       domain->exit_domains.insert(instruction);
       TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
     }
+  }
+  if (instruction == instruction->parent()->root_instruction()) {
+    auto domain = MakeUnique<DomainMetadata::Domain>();
+    domain->enter_domains.insert(instruction);
+    TF_RETURN_IF_ERROR(InsertDomain(std::move(domain)));
   }
   return Status::OK();
 }

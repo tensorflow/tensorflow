@@ -1,7 +1,5 @@
 # Description:
 #   The new XLA client libraries.
-#
-# This is NOT YET ready to use.
 
 licenses(["notice"])  # Apache 2.0
 
@@ -41,9 +39,11 @@ cc_library(
     name = "xla_builder",
     srcs = ["xla_builder.cc"],
     hdrs = ["xla_builder.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":xla_computation",
         "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -52,6 +52,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:shape_inference",
@@ -64,7 +65,7 @@ tf_cc_test(
     srcs = ["xla_builder_test.cc"],
     deps = [
         ":xla_builder",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",

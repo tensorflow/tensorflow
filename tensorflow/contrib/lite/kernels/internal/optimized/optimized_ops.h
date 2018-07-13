@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,16 +40,31 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
+using reference_ops::ArgMax;
+using reference_ops::ArgMinMax;
 using reference_ops::BroadcastGreater;
 using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
 using reference_ops::BroadcastLessEqual;
+using reference_ops::Concatenation;
+using reference_ops::DepthConcatenation;
+using reference_ops::Dequantize;
+using reference_ops::Div;
+using reference_ops::FakeQuant;
+using reference_ops::Gather;
 using reference_ops::Greater;
 using reference_ops::GreaterEqual;
 using reference_ops::Less;
 using reference_ops::LessEqual;
+using reference_ops::Mean;
 using reference_ops::RankOneSelect;
+using reference_ops::Relu1;
+using reference_ops::Relu6;
+using reference_ops::ReluX;
 using reference_ops::Select;
+using reference_ops::SpaceToBatchND;
+using reference_ops::StridedSlice;
+using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
@@ -72,6 +87,12 @@ using VectorMap = typename std::conditional<
                                    Eigen::Dynamic, 1>>,
     Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, 1>>>::type;
 
+template <typename Scalar>
+VectorMap<Scalar> MapAsVector(Scalar* data, const RuntimeShape& shape) {
+  const int size = shape.FlatSize();
+  return VectorMap<Scalar>(data, size, 1);
+}
+
 template <typename Scalar, int N>
 VectorMap<Scalar> MapAsVector(Scalar* data, const Dims<N>& dims) {
   const int size = FlatSize(dims);
@@ -87,6 +108,23 @@ using MatrixMap = typename std::conditional<
     Eigen::Map<const Eigen::Matrix<typename std::remove_const<Scalar>::type,
                                    Eigen::Dynamic, Eigen::Dynamic>>,
     Eigen::Map<Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic>>>::type;
+
+template <typename Scalar>
+MatrixMap<Scalar> MapAsMatrixWithLastDimAsRows(Scalar* data,
+                                               const RuntimeShape& shape) {
+  const int dims_count = shape.DimensionsCount();
+  const int rows = shape.Dims(dims_count - 1);
+  const int cols = FlatSizeSkipDim(shape, dims_count - 1);
+  return MatrixMap<Scalar>(data, rows, cols);
+}
+
+template <typename Scalar>
+MatrixMap<Scalar> MapAsMatrixWithFirstDimAsCols(Scalar* data,
+                                                const RuntimeShape& shape) {
+  const int cols = shape.Dims(0);
+  const int rows = FlatSizeSkipDim(shape, 0);
+  return MatrixMap<Scalar>(data, rows, cols);
+}
 
 template <typename Scalar, int N>
 MatrixMap<Scalar> MapAsMatrixWithFirstDimAsRows(Scalar* data,
@@ -134,16 +172,9 @@ template <typename Scalar, int N>
 MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
                                                    const Dims<N>& dims,
                                                    int rows) {
-  int cols = 1;
-  bool matched_rows = false;
-  for (int d = 0; d < N; d++) {
-    cols *= dims.sizes[d];
-    if (cols == rows) {
-      matched_rows = true;
-      cols = 1;
-    }
-  }
-  TFLITE_DCHECK(matched_rows);
+  const int flatsize = FlatSize(dims);
+  TFLITE_DCHECK((flatsize % rows) == 0);
+  const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
@@ -1082,10 +1113,10 @@ struct GemmlowpOutputPipeline {
       gemmlowp::OutputStageQuantizeDownInt32ToUint8ScaleByFixedPoint,
       gemmlowp::OutputStageClamp, gemmlowp::OutputStageSaturatingCastToUint8>
       Pipeline;
-  static Pipeline Make(const int32* bias_data, int output_rows,
-                       int32 output_offset, int32 output_multiplier,
-                       int output_shift, int32 output_activation_min,
-                       int32 output_activation_max) {
+  static Pipeline MakeExp(const int32* bias_data, int output_rows,
+                          int32 output_offset, int32 output_multiplier,
+                          int output_left_shift, int32 output_activation_min,
+                          int32 output_activation_max) {
     ColVectorMap bias_vector(bias_data, output_rows);
     gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
     bias_addition_stage.bias_vector = bias_vector;
@@ -1093,7 +1124,7 @@ struct GemmlowpOutputPipeline {
         quantize_down_stage;
     quantize_down_stage.result_offset_after_shift = output_offset;
     quantize_down_stage.result_fixedpoint_multiplier = output_multiplier;
-    quantize_down_stage.result_shift = output_shift;
+    quantize_down_stage.result_shift = -output_left_shift;
     gemmlowp::OutputStageClamp clamp_stage;
     clamp_stage.min = output_activation_min;
     clamp_stage.max = output_activation_max;
@@ -1146,8 +1177,8 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
       input_data, filter_cols, batches, filter_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, batches, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -1256,11 +1287,11 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
 }
 
 // Internal function doing the actual arithmetic work for
-// ExperimentalShuffledFullyConnected.
+// ShuffledFullyConnected.
 // May be called either directly by it (single-threaded case) or may be used
 // as the 'task' for worker threads to run (multi-threaded case, see
-// ExperimentalShuffledFullyConnectedWorkerTask below).
-inline void ExperimentalShuffledFullyConnectedWorkerImpl(
+// ShuffledFullyConnectedWorkerTask below).
+inline void ShuffledFullyConnectedWorkerImpl(
     const uint8* shuffled_input_workspace_data,
     const int8* shuffled_weights_data, int batches, int output_depth,
     int output_stride, int accum_depth, const int32* bias_data,
@@ -1534,14 +1565,16 @@ inline void ExperimentalShuffledFullyConnectedWorkerImpl(
 #endif
 }
 
-// Wraps ExperimentalShuffledFullyConnectedWorkerImpl into a Task class
+// Wraps ShuffledFullyConnectedWorkerImpl into a Task class
 // to allow using gemmlowp's threadpool.
-struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
-  ExperimentalShuffledFullyConnectedWorkerTask(
-      const uint8* input_data, const int8* shuffled_weights_data, int batches,
-      int output_depth, int output_stride, int accum_depth,
-      const int32* bias_data, int32 output_multiplier, int output_shift,
-      int16* output_data)
+struct ShuffledFullyConnectedWorkerTask : gemmlowp::Task {
+  ShuffledFullyConnectedWorkerTask(const uint8* input_data,
+                                   const int8* shuffled_weights_data,
+                                   int batches, int output_depth,
+                                   int output_stride, int accum_depth,
+                                   const int32* bias_data,
+                                   int32 output_multiplier, int output_shift,
+                                   int16* output_data)
       : input_data_(input_data),
         shuffled_weights_data_(shuffled_weights_data),
         batches_(batches),
@@ -1554,7 +1587,7 @@ struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
         output_data_(output_data) {}
 
   void Run() override {
-    ExperimentalShuffledFullyConnectedWorkerImpl(
+    ShuffledFullyConnectedWorkerImpl(
         input_data_, shuffled_weights_data_, batches_, output_depth_,
         output_stride_, accum_depth_, bias_data_, output_multiplier_,
         output_shift_, output_data_);
@@ -1572,15 +1605,14 @@ struct ExperimentalShuffledFullyConnectedWorkerTask : gemmlowp::Task {
   int16* output_data_;
 };
 
-inline void ExperimentalShuffledFullyConnected(
+inline void ShuffledFullyConnected(
     const uint8* input_data, const Dims<4>& input_dims,
     const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
     const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
     int output_shift, int32 output_activation_min, int32 output_activation_max,
     int16* output_data, const Dims<4>& output_dims,
     uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
-  gemmlowp::ScopedProfilingLabel label(
-      "ExperimentalShuffledFullyConnected/8bit");
+  gemmlowp::ScopedProfilingLabel label("ShuffledFullyConnected/8bit");
   (void)gemm_context;  // only used in optimized code.
   TFLITE_DCHECK_EQ(output_activation_min, -32768);
   TFLITE_DCHECK_EQ(output_activation_max, 32767);
@@ -1664,7 +1696,7 @@ inline void ExperimentalShuffledFullyConnected(
   if (thread_count == 1) {
     // Single-thread case: do the computation on the current thread, don't
     // use a threadpool
-    ExperimentalShuffledFullyConnectedWorkerImpl(
+    ShuffledFullyConnectedWorkerImpl(
         shuffled_input_workspace_data, int8_shuffled_weights_data, batches,
         output_depth, output_depth, accum_depth, bias_data, output_multiplier,
         output_shift, output_data);
@@ -1679,7 +1711,7 @@ inline void ExperimentalShuffledFullyConnected(
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);
-    tasks[i] = new ExperimentalShuffledFullyConnectedWorkerTask(
+    tasks[i] = new ShuffledFullyConnectedWorkerTask(
         shuffled_input_workspace_data,
         int8_shuffled_weights_data + row_start * accum_depth, batches,
         row_end - row_start, output_depth, accum_depth, bias_data + row_start,
@@ -1821,8 +1853,8 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
 
   // Use dimensions M and N to construct dims for indexing directly into im2col
   Dims<4> im2col_dims;
-  im2col_dims.sizes[0] = col_dims.strides[3];
-  im2col_dims.sizes[1] = row_dims.strides[3];
+  im2col_dims.sizes[0] = FlatSize(col_dims);
+  im2col_dims.sizes[1] = FlatSize(row_dims);
   im2col_dims.sizes[2] = 1;
   im2col_dims.sizes[3] = 1;
   ComputeStrides(&im2col_dims);
@@ -1831,8 +1863,8 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        // Each row is an output pixel. Arrange the input data into this row in
-        // an order we can conveniently multiply with the filter data.
+        // Each im2col row is an output pixel. Arrange the input data in this
+        // row in an order we can conveniently multiply with the filter data.
         int row_offset = Offset(row_dims, out_x, out_y, batch, 0);
         const int in_x_origin = (out_x * stride_width) - pad_width;
         const int in_y_origin = (out_y * stride_height) - pad_height;
@@ -1848,7 +1880,7 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
               T* dst = im2col_data +
                        Offset(im2col_dims, col_offset, row_offset, 0, 0);
               if ((in_x >= 0) && (in_x < input_width)) {
-                // Filter pixel is within the input, copy the data.
+                // Filter pixel is within the input, copy the input data.
                 T const* src =
                     input_data + Offset(input_dims, 0, in_x, in_y, batch);
                 memcpy(dst, src, input_depth * sizeof(T));
@@ -1858,7 +1890,7 @@ void DilatedIm2col(const T* input_data, const Dims<4>& input_dims,
               }
             }
           } else {
-            // Filter row is outside the input, zero out the entire im2col row.
+            // Filter row is outside the input, zero out the entire filter row.
             int col_offset = Offset(col_dims, 0, 0, filter_y, 0);
             T* dst =
                 im2col_data + Offset(im2col_dims, col_offset, row_offset, 0, 0);
@@ -1922,7 +1954,7 @@ inline void Conv(const float* input_data, const Dims<4>& input_dims,
   (void)im2col_dims;
   gemmlowp::ScopedProfilingLabel label("Conv");
 
-  // A float set to 0x00000000h == 0.0f
+  // NB: static_cast<float>(0x00000000h) == 0.0f
   const uint8 float_zero_byte = 0x00;
   const float* gemm_input_data = nullptr;
   const Dims<4>* gemm_input_dims = nullptr;
@@ -2084,8 +2116,8 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
       gemm_input_data, gemm_input_rows, gemm_input_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2242,8 +2274,8 @@ void ConvAsGemm(const uint8* input_data, const Dims<4>& input_dims,
       input_data, filter_cols, output_cols, filter_cols);
   gemmlowp::MatrixMap<uint8, gemmlowp::MapOrder::ColMajor> output_matrix(
       output_data, output_rows, output_cols, output_rows);
-  const auto& output_pipeline = GemmlowpOutputPipeline::Make(
-      bias_data, output_rows, output_offset, output_multiplier, output_shift,
+  const auto& output_pipeline = GemmlowpOutputPipeline::MakeExp(
+      bias_data, output_rows, output_offset, output_multiplier, -output_shift,
       output_activation_min, output_activation_max);
   gemmlowp::GemmWithOutputPipeline<uint8, uint8,
                                    gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
@@ -2330,48 +2362,25 @@ void GlobalBatchNormalization(const float* input_data,
   }
 }
 
-inline void Relu(const float* input_data, const Dims<4>& input_dims,
-                 float* output_data, const Dims<4>& output_dims) {
+inline void Relu(const float* input_data, const RuntimeShape& input_shape,
+                 float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Relu (not fused)");
 
-  const auto input = MapAsVector(input_data, input_dims);
-  auto output = MapAsVector(output_data, output_dims);
+  const auto input = MapAsVector(input_data, input_shape);
+  auto output = MapAsVector(output_data, output_shape);
   output = input.cwiseMax(0.0f);
 }
 
-inline void Relu1(const float* input_data, const Dims<4>& input_dims,
-                  float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
-  const int flat_size = MatchingFlatSize(input_dims, output_dims);
-  for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float upper = 1;
-    const float lower = -1;
-    const float clamped = val > upper ? upper : val < lower ? lower : val;
-    output_data[i] = clamped;
-  }
-}
-
-inline void Relu6(const float* input_data, const Dims<4>& input_dims,
-                  float* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Relu6 (not fused)");
-  const int flat_size = MatchingFlatSize(input_dims, output_dims);
-  for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float upper = 6;
-    const float lower = 0;
-    const float clamped = val > upper ? upper : val < lower ? lower : val;
-    output_data[i] = clamped;
-  }
-}
-
 template <FusedActivationFunctionType Ac>
-void L2Normalization(const float* input_data, const Dims<4>& input_dims,
-                     float* output_data, const Dims<4>& output_dims) {
+void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization");
   static_assert(Ac == FusedActivationFunctionType::kNone, "");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
   for (int i = 0; i < outer_size; ++i) {
     float squared_l2_norm = 0;
     for (int c = 0; c < depth; ++c) {
@@ -2387,8 +2396,9 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
-                                          int* output_shift) {
+inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
+                                             int32* output_inv_sqrt,
+                                             int* output_shift) {
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
@@ -2430,31 +2440,35 @@ inline void GetInvSqrtQuantizedMultiplier(int32 input, int32* output_inv_sqrt,
     *output_inv_sqrt <<= -*output_shift;
     *output_shift = 0;
   }
+  *output_shift *= kReverseShift;
 }
 
-inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
+inline void L2Normalization(const uint8* input_data,
+                            const RuntimeShape& input_shape,
                             int32 input_zero_point, uint8* output_data,
-                            const Dims<4>& output_dims) {
+                            const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("L2Normalization/8bit");
-  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   for (int i = 0; i < outer_size; ++i) {
     int32 square_l2_norm = 0;
     for (int c = 0; c < depth; c++) {
+      // Note that input_data advances by depth in the second pass below.
       int32 diff = input_data[c] - input_zero_point;
       square_l2_norm += diff * diff;
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplier(square_l2_norm, &inv_l2norm_multiplier,
-                                  &inv_l2norm_shift);
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
+                                     &inv_l2norm_shift);
 
     for (int c = 0; c < depth; c++) {
       int32 diff = *input_data - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, kReverseShift * inv_l2norm_shift);
+          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
       int32 output_val = std::min(255, std::max(0, unclamped_output_val));
       *output_data = static_cast<uint8>(output_val);
@@ -2663,25 +2677,13 @@ inline void Add(int left_shift, const uint8* input1_data,
                  output_activation_max, output_data);
 }
 
-template <FusedActivationFunctionType Ac>
 inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
                 int input1_shift, const int16* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
                 int16 output_activation_min, int16 output_activation_max,
                 int16* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("Add/Int16");
-  // This is a copy of the reference implementation. We do not currently have a
-  // properly optimized version.
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, -32768);
-    TFLITE_DCHECK_EQ(output_activation_max, 32767);
-  }
 
   const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
 
@@ -2705,6 +2707,42 @@ inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
         output_activation_max, std::max(output_activation_min, raw_output));
     output_data[i] = clamped_output;
   }
+}
+
+inline void Add(const int32* input1_data, const Dims<4>& input1_dims,
+                const int32* input2_data, const Dims<4>& input2_dims,
+                int32 output_activation_min, int32 output_activation_max,
+                int32* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Add/int32");
+
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] + input2_data[i], output_activation_min,
+        output_activation_max);
+  }
+}
+
+template <FusedActivationFunctionType Ac>
+inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
+                int input1_shift, const int16* input2_data,
+                const Dims<4>& input2_dims, int input2_shift,
+                int16 output_activation_min, int16 output_activation_max,
+                int16* output_data, const Dims<4>& output_dims) {
+  static_assert(Ac == FusedActivationFunctionType::kNone ||
+                    Ac == FusedActivationFunctionType::kRelu ||
+                    Ac == FusedActivationFunctionType::kRelu6 ||
+                    Ac == FusedActivationFunctionType::kRelu1,
+                "");
+  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+  if (Ac == FusedActivationFunctionType::kNone) {
+    TFLITE_DCHECK_EQ(output_activation_min, -32768);
+    TFLITE_DCHECK_EQ(output_activation_max, 32767);
+  }
+
+  Add(input1_data, input1_dims, input1_shift, input2_data, input2_dims,
+      input2_shift, output_activation_min, output_activation_max, output_data,
+      output_dims);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -3016,6 +3054,20 @@ void Mul(const float* input1_data, const Dims<4>& input1_dims,
       output_activation_max, output_data, output_dims);
 }
 
+inline void Mul(const int32* input1_data, const Dims<4>& input1_dims,
+                const int32* input2_data, const Dims<4>& input2_dims,
+                int32 output_activation_min, int32 output_activation_max,
+                int32* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Mul/int32");
+
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] * input2_data[i], output_activation_min,
+        output_activation_max);
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 void Mul(const int32* input1_data, const Dims<4>& input1_dims,
          const int32* input2_data, const Dims<4>& input2_dims,
@@ -3207,19 +3259,6 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                output_data, output_dims);
 }
 
-// TODO(aselle): This is not actually optimized yet.
-inline void Div(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
-  const int flat_size = MatchingFlatSize(output_dims, input1_dims, input2_dims);
-  for (int i = 0; i < flat_size; i++) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] / input2_data[i], output_activation_min,
-        output_activation_max);
-  }
-}
-
 // TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
@@ -3383,105 +3422,6 @@ inline void BroadcastSub(int left_shift, const uint8* input1_data,
       }
     }
   }
-}
-
-template <FusedActivationFunctionType Ac, typename Scalar>
-void Concatenation(int concat_dim, const Scalar* const* input_data,
-                   const Dims<4>* const* input_dims, int inputs_count,
-                   Scalar* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Concatenation");
-  int concat_size = 0;
-  for (int i = 0; i < inputs_count; i++) {
-    for (int j = 0; j < 4; j++) {
-      if (j != concat_dim) {
-        MatchingArraySize(*input_dims[i], j, output_dims, j);
-      }
-    }
-    concat_size += ArraySize(*input_dims[i], concat_dim);
-  }
-  TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
-  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
-  // for now we dont have a model with a Concatenation
-  // with fused activation function.
-  TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
-  int outer_size = 1;
-  for (int i = concat_dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
-  }
-  Scalar* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size =
-          input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
-      memcpy(output_ptr, input_data[i] + k * copy_size,
-             copy_size * sizeof(Scalar));
-      output_ptr += copy_size;
-    }
-  }
-}
-
-// TODO(prabhumk): This is the same as the reference implementation.
-// TODO(prabhumk): The quantized implementation of concatentation isn't fully
-// quantized as it takes scale as a floating point value. This should be fixed
-// when optimizng this routine further.
-inline void Concatenation(int concat_dim, const uint8* const* input_data,
-                          const Dims<4>* const* input_dims,
-                          const int32* input_zeropoint,
-                          const float* input_scale, int inputs_count,
-                          uint8* output_data, const Dims<4>& output_dims,
-                          const int32 output_zeropoint,
-                          const float output_scale) {
-  // The arguments input_zeropoint and input_scale are expected to be an array
-  // that have the quantization parameters for all the inputs to the concat
-  // operator.
-  gemmlowp::ScopedProfilingLabel label("Concatenation");
-  TFLITE_DCHECK_GT(inputs_count, 1);
-  int concat_size = 0;
-  for (int i = 0; i < inputs_count; i++) {
-    for (int j = 0; j < 4; j++) {
-      if (j != concat_dim) {
-        MatchingArraySize(*input_dims[i], j, output_dims, j);
-      }
-    }
-    concat_size += ArraySize(*input_dims[i], concat_dim);
-  }
-  TFLITE_DCHECK_EQ(concat_size, ArraySize(output_dims, concat_dim));
-  int outer_size = 1;
-  for (int i = concat_dim + 1; i < 4; i++) {
-    outer_size *= output_dims.sizes[i];
-  }
-  const float inverse_output_scale = 1.f / output_scale;
-  uint8* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size =
-          input_dims[i]->sizes[concat_dim] * input_dims[i]->strides[concat_dim];
-      const uint8* input_ptr = input_data[i] + k * copy_size;
-      if (input_zeropoint[i] == output_zeropoint &&
-          input_scale[i] == output_scale) {
-        memcpy(output_ptr, input_ptr, copy_size);
-      } else {
-        const float scale = input_scale[i] * inverse_output_scale;
-        const float bias = -input_zeropoint[i] * scale;
-        for (int j = 0; j < copy_size; ++j) {
-          const int32_t value =
-              static_cast<int32_t>(round(input_ptr[j] * scale + bias)) +
-              output_zeropoint;
-          output_ptr[j] =
-              static_cast<uint8_t>(std::max(std::min(255, value), 0));
-        }
-      }
-      output_ptr += copy_size;
-    }
-  }
-}
-
-template <FusedActivationFunctionType Ac, typename Scalar>
-void DepthConcatenation(const Scalar* const* input_data,
-                        const Dims<4>* const* input_dims, int inputs_count,
-                        Scalar* output_data, const Dims<4>& output_dims) {
-  Concatenation<Ac, Scalar>(0, input_data, input_dims, inputs_count,
-                            output_data, output_dims);
 }
 
 inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
@@ -3846,23 +3786,24 @@ inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
 }
 
-inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
-                        int stride_width, int stride_height, int pad_width,
-                        int pad_height, int kwidth, int kheight,
-                        float output_activation_min,
-                        float output_activation_max, float* output_data,
-                        const Dims<4>& output_dims) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data) {
   gemmlowp::ScopedProfilingLabel label("AveragePool");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
 
   // TODO(benoitjacob) make this a proper reference impl without Eigen!
-  const auto in_mat = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
-  auto out_mat = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
+  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
   // TODO(benoitjacob) get rid of the dynamic memory allocation here!
   Eigen::VectorXf out_count(out_mat.cols());
   out_count.setZero();
@@ -3873,12 +3814,15 @@ inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
       for (int w = 0; w < input_width; ++w) {
         // (h_start, h_end) * (w_start, w_end) is the range that the input
         // vector projects to.
-        int hpad = h + pad_height;
-        int wpad = w + pad_width;
-        int h_start =
-            (hpad < kheight) ? 0 : (hpad - kheight) / stride_height + 1;
+        int hpad = h + params.padding_values.height;
+        int wpad = w + params.padding_values.width;
+        int h_start = (hpad < params.filter_height)
+                          ? 0
+                          : (hpad - params.filter_height) / stride_height + 1;
         int h_end = std::min(hpad / stride_height + 1, output_height);
-        int w_start = (wpad < kwidth) ? 0 : (wpad - kwidth) / stride_width + 1;
+        int w_start = (wpad < params.filter_width)
+                          ? 0
+                          : (wpad - params.filter_width) / stride_width + 1;
         int w_end = std::min(wpad / stride_width + 1, output_width);
         // compute elementwise sum
         for (int ph = h_start; ph < h_end; ++ph) {
@@ -3896,69 +3840,44 @@ inline void AveragePool(const float* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_GT(out_count.minCoeff(), 0);
   out_mat.array().rowwise() /= out_count.transpose().array();
 
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      for (int x = 0; x < output_width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              ActivationFunctionWithMinMax(
-                  output_data[Offset(output_dims, c, x, y, b)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(output_data[i],
+                                                  params.float_activation_min,
+                                                  params.float_activation_max);
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void AveragePool(const float* input_data, const Dims<4>& input_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, int kwidth, int kheight, float* output_data,
-                 const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-
-  AveragePool(input_data, input_dims, stride_width, stride_height, pad_width,
-              pad_height, kwidth, kheight, output_activation_min,
-              output_activation_max, output_data, output_dims);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void AveragePool(const float* input_data, const Dims<4>& input_dims, int stride,
-                 int pad_width, int pad_height, int filter_width,
-                 int filter_height, float* output_data,
-                 const Dims<4>& output_dims) {
-  AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-                  filter_width, filter_height, output_data, output_dims);
-}
-
-inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
-                        int stride_width, int stride_height, int pad_width,
-                        int pad_height, int filter_width, int filter_height,
-                        int32 output_activation_min,
-                        int32 output_activation_max, uint8* output_data,
-                        const Dims<4>& output_dims) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const uint8* input_data,
+                        const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin = (out_x * stride_width) - pad_width;
-        const int in_y_origin = (out_y * stride_height) - pad_height;
+        const int in_x_origin =
+            (out_x * stride_width) - params.padding_values.width;
+        const int in_y_origin =
+            (out_y * stride_height) - params.padding_values.height;
         const int filter_x_start = std::max(0, -in_x_origin);
         const int filter_x_end =
-            std::min(filter_width, input_width - in_x_origin);
+            std::min(params.filter_width, input_width - in_x_origin);
         const int filter_y_start = std::max(0, -in_y_origin);
         const int filter_y_end =
-            std::min(filter_height, input_height - in_y_origin);
+            std::min(params.filter_height, input_height - in_y_origin);
         const int filter_count =
             (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
         // 1280 required by Inception v3
@@ -3967,11 +3886,12 @@ inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
         uint16 acc[kAccBufferMaxSize];
         memset(acc, 0, depth * sizeof(acc[0]));
         const uint8* input_ptr =
-            input_data + input_dims.strides[1] * in_x_origin +
-            input_dims.strides[2] * in_y_origin + input_dims.strides[3] * batch;
+            input_data +
+            depth * (in_x_origin +
+                     input_width * (in_y_origin + input_height * batch));
         for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-          const uint8* input_row_ptr = input_ptr + fy * input_dims.strides[2] +
-                                       filter_x_start * input_dims.strides[1];
+          const uint8* input_row_ptr =
+              input_ptr + depth * (fy * input_width + filter_x_start);
           for (int fx = filter_x_start; fx < filter_x_end; fx++) {
             int channel = 0;
 #ifdef USE_NEON
@@ -4002,21 +3922,21 @@ inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
           }
         }
         uint8* output_ptr =
-            output_data + Offset(output_dims, 0, out_x, out_y, batch);
+            output_data + Offset(output_shape, batch, out_y, out_x, 0);
         int channel = 0;
 #ifdef USE_NEON
-#define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                              \
-  if (filter_count == FILTER_COUNT) {                                  \
-    for (; channel <= depth - 8; channel += 8) {                       \
-      uint16 buf[8];                                                   \
-      for (int i = 0; i < 8; i++) {                                    \
-        buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT; \
-      }                                                                \
-      uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));                     \
-      buf8 = vmin_u8(buf8, vdup_n_u8(output_activation_max));          \
-      buf8 = vmax_u8(buf8, vdup_n_u8(output_activation_min));          \
-      vst1_u8(output_ptr + channel, buf8);                             \
-    }                                                                  \
+#define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                               \
+  if (filter_count == FILTER_COUNT) {                                   \
+    for (; channel <= depth - 8; channel += 8) {                        \
+      uint16 buf[8];                                                    \
+      for (int i = 0; i < 8; i++) {                                     \
+        buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT;  \
+      }                                                                 \
+      uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));                      \
+      buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max)); \
+      buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min)); \
+      vst1_u8(output_ptr + channel, buf8);                              \
+    }                                                                   \
   }
         AVGPOOL_DIVIDING_BY(9)
         AVGPOOL_DIVIDING_BY(15)
@@ -4027,15 +3947,15 @@ inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
             buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
           }
           uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
-          buf8 = vmin_u8(buf8, vdup_n_u8(output_activation_max));
-          buf8 = vmax_u8(buf8, vdup_n_u8(output_activation_min));
+          buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
+          buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
           vst1_u8(output_ptr + channel, buf8);
         }
 #endif
         for (; channel < depth; ++channel) {
           uint16 a = (acc[channel] + filter_count / 2) / filter_count;
-          a = std::max<uint16>(a, output_activation_min);
-          a = std::min<uint16>(a, output_activation_max);
+          a = std::max<uint16>(a, params.quantized_activation_min);
+          a = std::min<uint16>(a, params.quantized_activation_max);
           output_ptr[channel] = static_cast<uint8>(a);
         }
       }
@@ -4043,54 +3963,22 @@ inline void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void AveragePool(const uint8* input_data, const Dims<4>& input_dims,
-                 int stride_width, int stride_height, int pad_width,
-                 int pad_height, int filter_width, int filter_height,
-                 int32 output_activation_min, int32 output_activation_max,
-                 uint8* output_data, const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  AveragePool(input_data, input_dims, stride_width, stride_height, pad_width,
-              pad_height, filter_width, filter_height, output_activation_min,
-              output_activation_max, output_data, output_dims);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void AveragePool(const uint8* input_data, const Dims<4>& input_dims, int stride,
-                 int pad_width, int pad_height, int filter_width,
-                 int filter_height, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims) {
-  AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-                  filter_width, filter_height, output_activation_min,
-                  output_activation_max, output_data, output_dims);
-}
-
-inline void MaxPool(const float* input_data, const Dims<4>& input_dims,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int kwidth, int kheight,
-                    float output_activation_min, float output_activation_max,
-                    float* output_data, const Dims<4>& output_dims) {
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const float* input_data, const RuntimeShape& output_shape,
+                    float* output_data) {
   gemmlowp::ScopedProfilingLabel label("MaxPool");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
 
-  const auto in_mat = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
-  auto out_mat = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
+  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
   // Prefill the output to minimum representable float value
   out_mat.setConstant(std::numeric_limits<float>::lowest());
   for (int b = 0; b < batches; ++b) {
@@ -4098,12 +3986,15 @@ inline void MaxPool(const float* input_data, const Dims<4>& input_dims,
       for (int w = 0; w < input_width; ++w) {
         // (h_start, h_end) * (w_start, w_end) is the range that the input
         // vector projects to.
-        int hpad = h + pad_height;
-        int wpad = w + pad_width;
-        int h_start =
-            (hpad < kheight) ? 0 : (hpad - kheight) / stride_height + 1;
+        int hpad = h + params.padding_values.height;
+        int wpad = w + params.padding_values.width;
+        int h_start = (hpad < params.filter_height)
+                          ? 0
+                          : (hpad - params.filter_height) / stride_height + 1;
         int h_end = std::min(hpad / stride_height + 1, output_height);
-        int w_start = (wpad < kwidth) ? 0 : (wpad - kwidth) / stride_width + 1;
+        int w_start = (wpad < params.filter_width)
+                          ? 0
+                          : (wpad - params.filter_width) / stride_width + 1;
         int w_end = std::min(wpad / stride_width + 1, output_width);
         // compute elementwise sum
         for (int ph = h_start; ph < h_end; ++ph) {
@@ -4118,78 +4009,55 @@ inline void MaxPool(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
-
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      for (int x = 0; x < output_width; ++x) {
-        for (int c = 0; c < depth; ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] =
-              ActivationFunctionWithMinMax(
-                  output_data[Offset(output_dims, c, x, y, b)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(output_data[i],
+                                                  params.float_activation_min,
+                                                  params.float_activation_max);
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void MaxPool(const float* input_data, const Dims<4>& input_dims,
-             int stride_width, int stride_height, int pad_width, int pad_height,
-             int kwidth, int kheight, float* output_data,
-             const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-  MaxPool(input_data, input_dims, stride_width, stride_height, pad_width,
-          pad_height, kwidth, kheight, output_activation_min,
-          output_activation_max, output_data, output_dims);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void MaxPool(const float* input_data, const Dims<4>& input_dims, int stride,
-             int pad_width, int pad_height, int filter_width, int filter_height,
-             float* output_data, const Dims<4>& output_dims) {
-  MaxPool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-              filter_width, filter_height, output_data, output_dims);
-}
-
-inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int filter_width, int filter_height,
-                    int32 output_activation_min, int32 output_activation_max,
-                    uint8* output_data, const Dims<4>& output_dims) {
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const uint8* input_data, const RuntimeShape& output_shape,
+                    uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin = (out_x * stride_width) - pad_width;
-        const int in_y_origin = (out_y * stride_height) - pad_height;
+        const int in_x_origin =
+            (out_x * stride_width) - params.padding_values.width;
+        const int in_y_origin =
+            (out_y * stride_height) - params.padding_values.height;
         const int filter_x_start = std::max(0, -in_x_origin);
         const int filter_x_end =
-            std::min(filter_width, input_width - in_x_origin);
+            std::min(params.filter_width, input_width - in_x_origin);
         const int filter_y_start = std::max(0, -in_y_origin);
         const int filter_y_end =
-            std::min(filter_height, input_height - in_y_origin);
+            std::min(params.filter_height, input_height - in_y_origin);
         // 2048 required by Inception v3
         static constexpr int kAccBufferMaxSize = 2048;
         TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
         uint8 acc[kAccBufferMaxSize];
         memset(acc, 0, depth * sizeof(acc[0]));
         const uint8* input_ptr =
-            input_data + input_dims.strides[1] * in_x_origin +
-            input_dims.strides[2] * in_y_origin + input_dims.strides[3] * batch;
+            input_data +
+            depth * (in_x_origin +
+                     input_width * (in_y_origin + input_height * batch));
         for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-          const uint8* input_row_ptr = input_ptr + fy * input_dims.strides[2] +
-                                       filter_x_start * input_dims.strides[1];
+          const uint8* input_row_ptr =
+              input_ptr + depth * (fy * input_width + filter_x_start);
           for (int fx = filter_x_start; fx < filter_x_end; fx++) {
             int channel = 0;
 #ifdef USE_NEON
@@ -4215,26 +4083,26 @@ inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
           }
         }
         uint8* output_ptr =
-            output_data + Offset(output_dims, 0, out_x, out_y, batch);
+            output_data + Offset(output_shape, batch, out_y, out_x, 0);
         int channel = 0;
 #ifdef USE_NEON
         for (; channel <= depth - 16; channel += 16) {
           uint8x16_t a = vld1q_u8(acc + channel);
-          a = vminq_u8(a, vdupq_n_u8(output_activation_max));
-          a = vmaxq_u8(a, vdupq_n_u8(output_activation_min));
+          a = vminq_u8(a, vdupq_n_u8(params.quantized_activation_max));
+          a = vmaxq_u8(a, vdupq_n_u8(params.quantized_activation_min));
           vst1q_u8(output_ptr + channel, a);
         }
         for (; channel <= depth - 8; channel += 8) {
           uint8x8_t a = vld1_u8(acc + channel);
-          a = vmin_u8(a, vdup_n_u8(output_activation_max));
-          a = vmax_u8(a, vdup_n_u8(output_activation_min));
+          a = vmin_u8(a, vdup_n_u8(params.quantized_activation_max));
+          a = vmax_u8(a, vdup_n_u8(params.quantized_activation_min));
           vst1_u8(output_ptr + channel, a);
         }
 #endif
         for (; channel < depth; ++channel) {
           uint8 a = acc[channel];
-          a = std::max<uint8>(a, output_activation_min);
-          a = std::min<uint8>(a, output_activation_max);
+          a = std::max<uint8>(a, params.quantized_activation_min);
+          a = std::min<uint8>(a, params.quantized_activation_max);
           output_ptr[channel] = static_cast<uint8>(a);
         }
       }
@@ -4242,53 +4110,23 @@ inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
-             int stride_width, int stride_height, int pad_width, int pad_height,
-             int filter_width, int filter_height, int32 output_activation_min,
-             int32 output_activation_max, uint8* output_data,
-             const Dims<4>& output_dims) {
-  static_assert(Ac == FusedActivationFunctionType::kNone ||
-                    Ac == FusedActivationFunctionType::kRelu ||
-                    Ac == FusedActivationFunctionType::kRelu6 ||
-                    Ac == FusedActivationFunctionType::kRelu1,
-                "");
-  if (Ac == FusedActivationFunctionType::kNone) {
-    TFLITE_DCHECK_EQ(output_activation_min, 0);
-    TFLITE_DCHECK_EQ(output_activation_max, 255);
-  }
-  MaxPool(input_data, input_dims, stride_width, stride_height, pad_width,
-          pad_height, filter_width, filter_height, output_activation_min,
-          output_activation_max, output_data, output_dims);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void MaxPool(const uint8* input_data, const Dims<4>& input_dims, int stride,
-             int pad_width, int pad_height, int filter_width, int filter_height,
-             int32 output_activation_min, int32 output_activation_max,
-             uint8* output_data, const Dims<4>& output_dims) {
-  MaxPool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-              filter_width, filter_height, output_activation_min,
-              output_activation_max, output_data, output_dims);
-}
-
-inline void L2Pool(const float* input_data, const Dims<4>& input_dims,
-                   int stride_width, int stride_height, int pad_width,
-                   int pad_height, int filter_width, int filter_height,
-                   float output_activation_min, float output_activation_max,
-                   float* output_data, const Dims<4>& output_dims) {
+inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
+                   const float* input_data, const RuntimeShape& output_shape,
+                   float* output_data) {
   gemmlowp::ScopedProfilingLabel label("L2Pool");
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   // Actually carry out L2 Pool. Code is written in forward mode: we go through
   // the input values once, and write to all the pooled regions that it maps to.
-  const auto in_mat = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
-  auto out_mat = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
+  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
   Eigen::VectorXf in_square(in_mat.rows());
   Eigen::VectorXf out_count(out_mat.cols());
   out_count.setZero();
@@ -4299,15 +4137,17 @@ inline void L2Pool(const float* input_data, const Dims<4>& input_dims,
       for (int w = 0; w < input_width; ++w) {
         // (h_start, h_end) * (w_start, w_end) is the range that the input
         // vector projects to.
-        const int hpad = h + pad_height;
-        const int wpad = w + pad_width;
-        const int h_start = (hpad < filter_height)
-                                ? 0
-                                : (hpad - filter_height) / stride_height + 1;
+        const int hpad = h + params.padding_values.height;
+        const int wpad = w + params.padding_values.width;
+        const int h_start =
+            (hpad < params.filter_height)
+                ? 0
+                : (hpad - params.filter_height) / stride_height + 1;
         const int h_end = std::min(hpad / stride_height + 1, output_height);
-        const int w_start = (wpad < filter_width)
-                                ? 0
-                                : (wpad - filter_width) / stride_width + 1;
+        const int w_start =
+            (wpad < params.filter_width)
+                ? 0
+                : (wpad - params.filter_width) / stride_width + 1;
         const int w_end = std::min(wpad / stride_width + 1, output_width);
         // pre-compute square
         const int in_offset = w + input_width * (h + input_height * b);
@@ -4328,28 +4168,13 @@ inline void L2Pool(const float* input_data, const Dims<4>& input_dims,
   out_count = out_count.array().inverse();
   out_mat =
       (out_mat.array().rowwise() * out_count.transpose().array()).cwiseSqrt();
-}
 
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void L2Pool(const float* input_data, const Dims<4>& input_dims,
-            int stride_width, int stride_height, int pad_width, int pad_height,
-            int filter_width, int filter_height, float* output_data,
-            const Dims<4>& output_dims) {
-  float output_activation_min, output_activation_max;
-  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
-  L2Pool(input_data, input_dims, stride_width, stride_height, pad_width,
-         pad_height, filter_width, filter_height, output_activation_min,
-         output_activation_max, output_data, output_dims);
-}
-
-// legacy, for compatibility with old checked-in code
-template <FusedActivationFunctionType Ac>
-void L2Pool(const float* input_data, const Dims<4>& input_dims, int stride,
-            int pad_width, int pad_height, int filter_width, int filter_height,
-            float* output_data, const Dims<4>& output_dims) {
-  L2Pool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
-             filter_width, filter_height, output_data, output_dims);
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(output_data[i],
+                                                  params.float_activation_min,
+                                                  params.float_activation_max);
+  }
 }
 
 inline void LocalResponseNormalization(const float* input_data,
@@ -4397,14 +4222,14 @@ inline void LocalResponseNormalization(const float* input_data,
   }
 }
 
-inline void Softmax(const float* input_data, const Dims<4>& input_dims,
+inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
                     float beta, float* output_data,
-                    const Dims<4>& output_dims) {
+                    const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Softmax");
-  MatchingFlatSize(input_dims, output_dims);
+  MatchingFlatSize(input_shape, output_shape);
 
-  const auto in_mat = MapAsMatrixWithFirstDimAsRows(input_data, input_dims);
-  auto out_mat = MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+  const auto in_mat = MapAsMatrixWithLastDimAsRows(input_data, input_shape);
+  auto out_mat = MapAsMatrixWithLastDimAsRows(output_data, output_shape);
   // Compute the exponential first, removing the max coefficient for numerical
   // stability.
   out_mat = (in_mat.rowwise() - in_mat.colwise().maxCoeff()).array() * beta;
@@ -4416,10 +4241,10 @@ inline void Softmax(const float* input_data, const Dims<4>& input_dims,
   out_mat.array().rowwise() *= scale;
 }
 
-inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
+inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
                     int32 input_beta_multiplier, int32 input_beta_left_shift,
                     int diff_min, uint8* output_data,
-                    const Dims<4>& output_dims) {
+                    const RuntimeShape& output_shape) {
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
   // -32 before multiplying by input_beta_multiplier, and therefore as large as
@@ -4433,8 +4258,11 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
   gemmlowp::ScopedProfilingLabel label("Softmax/8bit");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int b = 0; b < outer_size; ++b) {
     const uint8* input_data_ptr = input_data + b * depth;
@@ -4624,11 +4452,14 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
 
 // TODO(myenik): This is the same as the reference implementation, not actually
 // optimized yet.
-inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
-                       float* output_data, const Dims<4>& output_dims) {
+inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
+                       float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("LogSoftmax");
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
     const float* block_input_data = input_data + i * depth;
@@ -4769,11 +4600,11 @@ log_x_for_x_greater_than_or_equal_to_1(
 }
 
 // Currently just a copy of the reference code.
-inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
+inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
                        int32 input_multiplier, int32 input_left_shift,
                        int32 reverse_scaling_divisor,
                        int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const Dims<4>& output_dims) {
+                       uint8* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("LogSoftmax/Uint8");
   // The representation chosen for the input to the exp() function is Q5.26.
   // We need to leave extra space since values that we skip might be as large as
@@ -4788,8 +4619,11 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
   using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  const int trailing_dim = input_shape.DimensionsCount() - 1;
+  const int outer_size =
+      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+  const int depth =
+      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
     const uint8* block_input_data = input_data + i * depth;
@@ -4853,21 +4687,21 @@ inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void Logistic(const float* input_data, const Dims<4>& input_dims,
-                     float* output_data, const Dims<4>& output_dims) {
+inline void Logistic(const float* input_data, const RuntimeShape& input_shape,
+                     float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Logistic");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() =
       input_map.array().unaryExpr(Eigen::internal::scalar_sigmoid_op<float>());
 }
 
-inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
+inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
                      int32 input_zero_point, int32 input_range_radius,
                      int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const Dims<4>& output_dims) {
+                     uint8* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Uint8");
-  const int size = MatchingFlatSize(input_dims, output_dims);
+  const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
 #ifdef USE_NEON
@@ -4999,10 +4833,10 @@ inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
-                     int16* output_data, const Dims<4>& output_dims) {
+inline void Logistic(const int16* input_data, const RuntimeShape& input_shape,
+                     int16* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Logistic/Int16");
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
   }
@@ -5059,21 +4893,21 @@ inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void Tanh(const float* input_data, const Dims<4>& input_dims,
-                 float* output_data, const Dims<4>& output_dims) {
+inline void Tanh(const float* input_data, const RuntimeShape& input_shape,
+                 float* output_data, const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Tanh");
-  auto input_map = MapAsVector(input_data, input_dims);
-  auto output_map = MapAsVector(output_data, output_dims);
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = input_map.array().tanh();
 }
 
-inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
+inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
                  int32 input_zero_point, int32 input_range_radius,
                  int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const Dims<4>& output_dims) {
+                 uint8* output_data, const RuntimeShape& output_shape) {
   // Note that this is almost the exact same code as in Logistic().
   gemmlowp::ScopedProfilingLabel label("Tanh");
-  const int size = MatchingFlatSize(input_dims, output_dims);
+  const int size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
   int32_t output_zero_point = 128;
@@ -5214,16 +5048,16 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
+inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
                  int input_left_shift, int16* output_data,
-                 const Dims<4>& output_dims) {
+                 const RuntimeShape& output_shape) {
   gemmlowp::ScopedProfilingLabel label("Tanh/Int16");
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
   TFLITE_DCHECK_GE(input_left_shift, 0);
   TFLITE_DCHECK_LE(input_left_shift, 1);
 
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   int c = 0;
   const int16* input_data_ptr = input_data;
@@ -5314,49 +5148,6 @@ inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
   }
 }
 
-inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
-                       int32 zero_point, double scale, float* output_data,
-                       const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Dequantize");
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
-  for (int i = 0; i < flat_size; ++i) {
-    int32 val = input_data[i];
-    float result = static_cast<float>(scale * (val - zero_point));
-    output_data[i] = result;
-  }
-}
-
-inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
-                      float rmin, float rmax, int num_bits, float* output_data,
-                      const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("FakeQuant");
-
-  // 0 should always be a representable value. Let's assume that the initial
-  // min,max range contains 0.
-  TFLITE_DCHECK_LE(rmin, 0.0f);
-  TFLITE_DCHECK_GE(rmax, 0.0f);
-  TFLITE_DCHECK_LT(rmin, rmax);
-
-  // Code matches tensorflow's FakeQuantWithMinMaxArgsFunctor.
-  int quant_min = 0;
-  int quant_max = (1 << num_bits) - 1;
-  float nudged_min, nudged_max, nudged_scale;
-  NudgeQuantizationRange(rmin, rmax, quant_min, quant_max, &nudged_min,
-                         &nudged_max, &nudged_scale);
-  const float inv_nudged_scale = 1.0f / nudged_scale;
-
-  const int flat_size = MatchingFlatSize(output_dims, input_dims);
-  for (int i = 0; i < flat_size; ++i) {
-    const float src_val = input_data[i];
-    const float clamped = std::min(nudged_max, std::max(nudged_min, src_val));
-    const float clamped_shifted = clamped - nudged_min;
-    const float dst_val =
-        TfLiteRound(clamped_shifted * inv_nudged_scale) * nudged_scale +
-        nudged_min;
-    output_data[i] = dst_val;
-  }
-}
-
 template <typename SrcT, typename DstT>
 inline void Cast(const SrcT* input_data, const Dims<4>& input_dims,
                  DstT* output_data, const Dims<4>& output_dims) {
@@ -5372,26 +5163,6 @@ inline void Floor(const float* input_data, const Dims<4>& input_dims,
   auto input_map = MapAsVector(input_data, input_dims);
   auto output_map = MapAsVector(output_data, output_dims);
   output_map.array() = Eigen::floor(input_map.array());
-}
-
-template <typename T>
-inline void Gather(const T* input_data, const Dims<4>& input_dims,
-                   int input_rank, const int32* coords_data,
-                   const Dims<4>& coords_dims, T* output_data,
-                   const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Gather");
-
-  TFLITE_DCHECK(coords_dims.sizes[0] == output_dims.sizes[input_rank - 1]);
-  int stride = input_dims.strides[input_rank - 1];
-  T* out = output_data;
-
-  for (int i = 0; i < coords_dims.sizes[0]; i++) {
-    TFLITE_DCHECK_GE(coords_data[i], 0);
-    TFLITE_DCHECK_LT(coords_data[i], input_dims.sizes[input_rank - 1]);
-    const T* in = input_data + coords_data[i] * stride;
-    memcpy(out, in, sizeof(T) * stride);
-    out += stride;
-  }
 }
 
 #ifdef USE_NEON
@@ -5722,6 +5493,46 @@ inline void ResizeBilinearGeneric(const float* input_data,
   }
 }
 
+template <typename T>
+inline void ResizeBilinearGenericSmallChannel(
+    const T* input_data, const Dims<4>& input_dims, T* output_data,
+    const Dims<4>& output_dims, int32 batches, int32 input_height,
+    int32 input_width, int32 depth, int32 output_height, int32 output_width,
+    float height_scale, float width_scale) {
+  memset(output_data, 0,
+         batches * output_height * output_width * depth * sizeof(T));
+
+  T* output_ptr = &output_data[0];
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < output_height; ++y) {
+      float input_y = y * height_scale;
+      int32 y0 = static_cast<int32>(std::floor(input_y));
+      int32 y1 = std::min(y0 + 1, input_height - 1);
+      for (int x = 0; x < output_width; ++x) {
+        float input_x = x * width_scale;
+        int32 x0 = static_cast<int32>(input_x);
+        int32 x1 = std::min(x0 + 1, input_width - 1);
+
+        int32 input_offset[4] = {
+            Offset(input_dims, 0, x0, y0, b), Offset(input_dims, 0, x1, y0, b),
+            Offset(input_dims, 0, x0, y1, b), Offset(input_dims, 0, x1, y1, b)};
+        float scale[4] = {(1 - (input_y - y0)) * (1 - (input_x - x0)),
+                          (1 - (input_y - y0)) * (input_x - x0),
+                          (input_y - y0) * (1 - (input_x - x0)),
+                          (input_y - y0) * (input_x - x0)};
+
+        for (int d = 0; d < depth; d++) {
+          const T* input_ptr = &input_data[d];
+          *output_ptr++ = static_cast<T>(input_ptr[input_offset[0]] * scale[0] +
+                                         input_ptr[input_offset[1]] * scale[1] +
+                                         input_ptr[input_offset[2]] * scale[2] +
+                                         input_ptr[input_offset[3]] * scale[3]);
+        }
+      }
+    }
+  }
+}
+
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
@@ -5762,6 +5573,41 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// TODO(prabhumk): This is not a real quantized bilinear. It does not use int8
+// or int16 arithmetic.
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
+                           const Dims<4>& output_dims, bool align_corners) {
+  gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
+  int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  int32 input_height = ArraySize(input_dims, 2);
+  int32 input_width = ArraySize(input_dims, 1);
+  int32 depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 3), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 2), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 1), 1);
+  TFLITE_DCHECK_EQ(ArraySize(output_size_dims, 0), 2);
+  int32 output_height = output_size_data[Offset(output_size_dims, 0, 0, 0, 0)];
+  int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
+
+  float height_scale =
+      (align_corners && output_height > 1)
+          ? (static_cast<float>(input_height - 1) / (output_height - 1))
+          : (static_cast<float>(input_height) / output_height);
+
+  float width_scale =
+      (align_corners && output_width > 1)
+          ? (static_cast<float>(input_width - 1) / (output_width - 1))
+          : (static_cast<float>(input_width) / output_width);
+
+  ResizeBilinearGenericSmallChannel<uint8>(
+      input_data, input_dims, output_data, output_dims, batches, input_height,
+      input_width, depth, output_height, output_width, height_scale,
+      width_scale);
+}
+
 // legacy, for compatibility with old checked-in code
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
@@ -5771,53 +5617,13 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                  output_data, output_dims, /*align_corners=*/false);
 }
 
-template <typename T>
-inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
-                           const Dims<4>& block_shape_dims,
-                           const int32* paddings_data,
-                           const Dims<4>& paddings_dims, T* output_data,
+// legacy, for compatibility with old checked-in code
+inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, uint8* output_data,
                            const Dims<4>& output_dims) {
-  // Unoptimized - Straight copy from reference ops.
-  gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
-
-  const int output_batch_size = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int input_batch_size = ArraySize(input_dims, 3);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int depth = ArraySize(input_dims, 0);
-  const int block_shape_height = block_shape_data[0];
-  const int block_shape_width = block_shape_data[1];
-  const int padding_top = paddings_data[0];
-  const int padding_left = paddings_data[2];
-
-  for (int out_b = 0; out_b < output_batch_size; ++out_b) {
-    int input_batch = out_b % input_batch_size;
-    int shift_w = (out_b / input_batch_size) % block_shape_width;
-    int shift_h = (out_b / input_batch_size) / block_shape_width;
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_b);
-        if (out_h * block_shape_height + shift_h < padding_top ||
-            out_h * block_shape_height + shift_h >=
-                padding_top + input_height ||
-            out_w * block_shape_width + shift_w < padding_left ||
-            out_w * block_shape_width + shift_w >= padding_left + input_width) {
-          memset(out, 0, depth * sizeof(T));
-        } else {
-          const T* in =
-              input_data +
-              Offset(input_dims, 0,
-                     (out_w * block_shape_width + shift_w) - padding_left,
-                     (out_h * block_shape_height + shift_h) - padding_top,
-                     input_batch);
-          memcpy(out, in, depth * sizeof(T));
-        }
-      }
-    }
-  }
+  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
+                 output_data, output_dims, /*align_corners=*/false);
 }
 
 // Helper methods for BatchToSpaceND.
@@ -6022,54 +5828,6 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
       output_dims, 0);
 }
 
-// UNOPTIMIZED COPY of StridedSlice from reference_ops.h.
-template <typename T>
-inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
-                         int begin_mask, int end_mask,
-                         const std::vector<int>& start_indices,
-                         const std::vector<int>& stop_indices,
-                         const std::vector<int>& strides, T* output_data,
-                         const Dims<4>& output_dims) {
-  TFLITE_DCHECK_EQ(start_indices.size(), 4);
-  TFLITE_DCHECK_EQ(stop_indices.size(), 4);
-  TFLITE_DCHECK_EQ(strides.size(), 4);
-  const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 3);
-  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 3);
-  const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 2);
-  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 2);
-  const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 1);
-  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 1);
-  const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
-                                                  strides, input_dims.sizes, 0);
-  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 0);
-
-  T* out_ptr = output_data;
-  for (int in_b = start_b;
-       !strided_slice::LoopCondition(in_b, stop_b, strides[3]);
-       in_b += strides[3]) {
-    for (int in_h = start_h;
-         !strided_slice::LoopCondition(in_h, stop_h, strides[2]);
-         in_h += strides[2]) {
-      for (int in_w = start_w;
-           !strided_slice::LoopCondition(in_w, stop_w, strides[1]);
-           in_w += strides[1]) {
-        for (int in_d = start_d;
-             !strided_slice::LoopCondition(in_d, stop_d, strides[0]);
-             in_d += strides[0]) {
-          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
-        }
-      }
-    }
-  }
-}
-
 template <typename T>
 inline void Slice(const T* input_data, const Dims<4>& input_dims,
                   const std::vector<int>& begin, const std::vector<int>& size,
@@ -6100,41 +5858,6 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
                len * sizeof(T));
         out_ptr += len;
       }
-    }
-  }
-}
-
-template <typename T>
-inline void Mean(const T* input_data, const Dims<4>& input_dims,
-                 const std::vector<int>& reduction_indices, T* output_data,
-                 const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Mean");
-  const int output_batch = ArraySize(output_dims, 3);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
-  const int output_depth = ArraySize(output_dims, 0);
-
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-
-  // The current implementation only supports simultaneous reduction over
-  // width and height.
-  TFLITE_DCHECK_EQ(reduction_indices.size(), 2);
-  TFLITE_DCHECK((reduction_indices[0] == 1 && reduction_indices[1] == 2) ||
-                (reduction_indices[0] == 2 && reduction_indices[1] == 1));
-  TFLITE_DCHECK_EQ(output_height, 1);
-  TFLITE_DCHECK_EQ(output_width, 1);
-
-  for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_d = 0; out_d < output_depth; ++out_d) {
-      float value = 0;
-      for (int in_h = 0; in_h < input_height; ++in_h) {
-        for (int in_w = 0; in_w < input_width; ++in_w) {
-          value += input_data[Offset(input_dims, out_d, in_w, in_h, out_b)];
-        }
-      }
-      output_data[Offset(output_dims, out_d, 0, 0, out_b)] =
-          value / (input_width * input_height);
     }
   }
 }
@@ -6218,61 +5941,87 @@ void TensorFlowMaximum(const T* input1_data, const Dims<4>& input1_dims,
   output_map.array() = input1_map.array().max(max_value);
 }
 
-template <typename T1, typename T2, typename T3>
-void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
-            T2* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("ArgMax");
-
-  // The current ArgMax implemention can only determine the index of the maximum
-  // value in the last dimension. So the axis argument is ignored.
-
-  // For ArgMax, the number of output dimensions = (number of input dimensions -
-  // 1). For the sake of simplicity, the output dimensions are equal to the
-  // input dimensions here. We enforce the constraint that the last dimension
-  // must always be 1.
-  TFLITE_DCHECK_EQ(ArraySize(output_dims, 0), 1);
-  const int outer_size = MatchingFlatSizeSkipDim(input_dims, 0, output_dims);
-  const int depth = ArraySize(input_dims, 0);
-  for (int i = 0; i < outer_size; ++i) {
-    auto max_value = *input_data;
-    ++input_data;
-    int max_index = 0;
-    for (int d = 1; d < depth; ++d) {
-      const auto& curr_value = *input_data;
-      if (curr_value > max_value) {
-        max_value = curr_value;
-        max_index = d;
-      }
-      ++input_data;
-    }
-    *output_data = max_index;
-    ++output_data;
-  }
-}
-
 template <typename T>
-void Transpose(const T* input, const Dims<4>& input_dims, T* output,
-               const Dims<4>& output_dims, const int* permuted_axes) {
-  int out_sizes[4];
-  // Compute the inverse permutation array so we can do an output centered
-  // transpose. Also, check to make sure output_dims is matching input_dims.
-  for (int k = 0; k < 4; k++) {
-    out_sizes[k] =
-        MatchingArraySize(input_dims, permuted_axes[k], output_dims, k);
-  }
+void TransposeIm2col(const T* input_data, const Dims<4>& input_dims,
+                     const Dims<4>& filter_dims, int stride_width,
+                     int stride_height, int pad_width, int pad_height,
+                     const Dims<4>& output_dims, uint8 zero_byte,
+                     T* im2col_data) {
+  gemmlowp::ScopedProfilingLabel label("TransposeIm2col");
+  TFLITE_DCHECK(IsPackedWithoutStrides(input_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(filter_dims));
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  TFLITE_DCHECK(im2col_data);
 
-  // Naive transpose loop (iterate on output index and compute input index).
-  int o[4];  // loop index (on output).
-  int i[4];
-  for (o[3] = 0; o[3] < out_sizes[3]; o[3]++) {
-    i[permuted_axes[3]] = o[3];
-    for (o[2] = 0; o[2] < out_sizes[2]; o[2]++) {
-      i[permuted_axes[2]] = o[2];
-      for (o[1] = 0; o[1] < out_sizes[1]; o[1]++) {
-        i[permuted_axes[1]] = o[1];
-        for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
-          i[permuted_axes[0]] = o[0];
-          output[Offset(output_dims, o)] = input[Offset(input_dims, i)];
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int input_height = ArraySize(input_dims, 2);
+  const int input_width = ArraySize(input_dims, 1);
+  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 3);
+  const int filter_height = ArraySize(filter_dims, 2);
+  const int filter_width = ArraySize(filter_dims, 1);
+  const int output_height = ArraySize(output_dims, 2);
+  const int output_width = ArraySize(output_dims, 1);
+  MatchingArraySize(output_dims, 0, filter_dims, 0);  // output_depth
+
+  // Construct the MxN sized im2col matrix.
+  // The rows M, are sub-ordered B x H x W
+  Dims<4> row_dims;
+  row_dims.sizes[0] = output_width;
+  row_dims.sizes[1] = output_height;
+  row_dims.sizes[2] = batches;
+  row_dims.sizes[3] = 1;
+  ComputeStrides(&row_dims);
+
+  // The columns, N, are sub-ordered Kh x Kw x Din
+  Dims<4> col_dims;
+  col_dims.sizes[0] = input_depth;
+  col_dims.sizes[1] = filter_width;
+  col_dims.sizes[2] = filter_height;
+  col_dims.sizes[3] = 1;
+  ComputeStrides(&col_dims);
+
+  // Use dimensions M and N to construct dims for indexing directly into im2col
+  Dims<4> im2col_dims;
+  im2col_dims.sizes[0] = FlatSize(col_dims);
+  im2col_dims.sizes[1] = FlatSize(row_dims);
+  im2col_dims.sizes[2] = 1;
+  im2col_dims.sizes[3] = 1;
+  ComputeStrides(&im2col_dims);
+
+  // Build the im2col matrix by looping through all the input pixels,
+  // computing their influence on the output, rather than looping through all
+  // the output pixels. We therefore must initialize the im2col array to zero.
+  // This is potentially inefficient because we subsequently overwrite bytes
+  // set here. However, in practice memset is very fast and costs negligible.
+  memset(im2col_data, zero_byte, FlatSize(im2col_dims) * sizeof(T));
+
+  // Loop through the output batches
+  for (int batch = 0; batch < batches; ++batch) {
+    // Loop through input pixels one at a time.
+    for (int in_y = 0; in_y < input_height; ++in_y) {
+      for (int in_x = 0; in_x < input_width; ++in_x) {
+        // Loop through the output pixels it will influence
+        const int out_x_origin = (in_x * stride_width) - pad_width;
+        const int out_y_origin = (in_y * stride_height) - pad_height;
+        for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+          const int out_y = out_y_origin + filter_y;
+          // Is output pixel within height bounds?
+          if ((out_y >= 0) && (out_y < output_height)) {
+            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int out_x = out_x_origin + filter_x;
+              // Is output pixel within width bounds?
+              if ((out_x >= 0) && (out_x < output_width)) {
+                // Copy the input elements of this pixel
+                T const* src =
+                    input_data + Offset(input_dims, 0, in_x, in_y, batch);
+                T* dst = im2col_data +
+                         Offset(im2col_dims,
+                                Offset(col_dims, 0, filter_x, filter_y, 0),
+                                Offset(row_dims, out_x, out_y, batch, 0), 0, 0);
+                memcpy(dst, src, input_depth * sizeof(T));
+              }
+            }
+          }
         }
       }
     }
@@ -6283,72 +6032,25 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                           const float* filter_data, const Dims<4>& filter_dims,
                           int stride_width, int stride_height, int pad_width,
                           int pad_height, float* output_data,
-                          const Dims<4>& output_dims) {
+                          const Dims<4>& output_dims, float* im2col_data,
+                          const Dims<4>& im2col_dims) {
   gemmlowp::ScopedProfilingLabel label("TransposeConv");
-  // THIS FUNCTION IS A COPY FROM reference_ops.h.
-  // To optimize, start by using the conv code with transposed weights for the
-  // case of stride_height = stride_width = 1.
-  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
-  const int input_depth = MatchingArraySize(input_dims, 0, filter_dims, 0);
-  const int output_depth = MatchingArraySize(filter_dims, 3, output_dims, 0);
-  const int input_height = ArraySize(input_dims, 2);
-  const int input_width = ArraySize(input_dims, 1);
-  const int filter_height = ArraySize(filter_dims, 2);
-  const int filter_width = ArraySize(filter_dims, 1);
-  const int output_height = ArraySize(output_dims, 2);
-  const int output_width = ArraySize(output_dims, 1);
 
-  // Although transpose convolution simplifies to convolution with transposed
-  // weights for strides of 1, non-unitary striding complicates matters. To
-  // keep this reference implementation as clear as possible, we use a "scatter"
-  // access pattern, where we loop through all the input elements, computing
-  // their influence on the output, rather than looping through the output
-  // elements in the typical "gather" access pattern of a conv. We therefore
-  // must initialize the output array to zero.
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          output_data[Offset(output_dims, out_channel, out_x, out_y, batch)] =
-              0.0f;
-        }
-      }
-    }
-  }
+  // Note we could use transposed weights with forward conv for unstrided
+  // cases. But we are already getting good performance with this code as-is.
+  TFLITE_DCHECK(im2col_data);
+  TransposeIm2col(input_data, input_dims, filter_dims, stride_width,
+                  stride_height, pad_width, pad_height, output_dims, 0,
+                  im2col_data);
 
-  // Loop through input elements one at a time.
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int in_y = 0; in_y < input_height; ++in_y) {
-      for (int in_x = 0; in_x < input_width; ++in_x) {
-        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-          // Loop through the output elements it will influence
-          const int out_x_origin = (in_x * stride_width) - pad_width;
-          const int out_y_origin = (in_y * stride_height) - pad_height;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < output_depth;
-                   ++out_channel) {
-                // Compute output element location
-                const int out_x = out_x_origin + filter_x;
-                const int out_y = out_y_origin + filter_y;
-                // We cannot accumulate out of bounds
-                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
-                    (out_y < output_height)) {
-                  float input_value = input_data[Offset(input_dims, in_channel,
-                                                        in_x, in_y, batch)];
-                  float filter_value =
-                      filter_data[Offset(filter_dims, in_channel, filter_x,
-                                         filter_y, out_channel)];
-                  output_data[Offset(output_dims, out_channel, out_x, out_y,
-                                     batch)] += input_value * filter_value;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
+  const auto im2col_matrix_map =
+      MapAsMatrixWithFirstDimAsRows(im2col_data, im2col_dims);
+  const auto filter_matrix_map =
+      MapAsMatrixWithLastDimAsCols(filter_data, filter_dims);
+  auto output_matrix_map =
+      MapAsMatrixWithFirstDimAsRows(output_data, output_dims);
+
+  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
 }
 
 }  // namespace optimized_ops

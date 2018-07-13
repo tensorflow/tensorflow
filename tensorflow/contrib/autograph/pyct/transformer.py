@@ -32,31 +32,176 @@ class AutographParseError(SyntaxError):
   pass
 
 
-def try_ast_to_source(node):
-  try:
-    return compiler.ast_to_source(node)
-  except AssertionError:
-    return '<could not convert AST to source>'
+# TODO(mdan): Use namedtuple.
+class EntityInfo(object):
+  """Contains information about a Python entity. Immutable.
+
+  Examples of entities include functions and classes.
+
+  Attributes:
+    source_code: The entity's source code.
+    source_file: The entity's source file.
+    namespace: Dict[str, ], containing symbols visible to the entity
+        (excluding parameters).
+    arg_values: dict[str->*], containing parameter values, if known.
+    arg_types: dict[str->*], containing parameter types, if known.
+    owner_type: The surrounding class type of the function, if present.
+  """
+
+  # TODO(mdan): Remove the default and update tests.
+  def __init__(self, source_code, source_file, namespace, arg_values, arg_types,
+               owner_type):
+    self.source_code = source_code
+    self.source_file = source_file
+    self.namespace = namespace
+    self.arg_values = {} if arg_values is None else arg_values
+    self.arg_types = {} if arg_types is None else arg_types
+    self.owner_type = owner_type
+
+
+class _StateStack(object):
+  """Typed stack abstraction.
+
+  This class provides syntactic sugar for a stack of objects of known
+  type. It allows accessing attributes of the object at the top of the stack
+  directly against this object, which allows for very terse syntax.
+
+  For example, this code:
+
+    stack = _StateStack(Foo)
+    stack.enter()
+    stack.bar
+
+  Is equivalent to:
+
+    stack = []
+    stack.append(Foo())
+    foo = stack[-1]
+    foo.bar
+
+  See _State for more on how this is used.
+
+  Attributes:
+    type: Any, the type of objects that this stack holds
+    level: int, the current stack depth
+    value: Any, the instance of the object at the top of the stack
+  """
+
+  def __init__(self, type_):
+    # Because we override __setattr__, we need to attach these attributes using
+    # the superclass' setattr.
+    object.__setattr__(self, 'type', type_)
+    object.__setattr__(self, '_stack', [])
+    self.enter()
+
+  def enter(self):
+    self._stack.append(self.type())
+
+  def exit(self):
+    return self._stack.pop()
+
+  @property
+  def level(self):
+    return len(self._stack)
+
+  @property
+  def value(self):
+    return self._stack[-1]
+
+  def __getattr__(self, key):
+    return getattr(self._stack[-1], key)
+
+  def __setattr__(self, key, value):
+    setattr(self._stack[-1], key, value)
+
+
+class _State(object):
+  """Supporting class for nested scope variable space for converter.Base.
+
+  This structure offers syntactic sugar over a dict of stacks of objects
+  of known type. These structures are useful to keep state during AST walks.
+  Multiple different scopes can be tracked in parallel. For example:
+
+    s = _State()
+
+    s[foo].enter()
+    s[bar].enter()  # this will not affect s[foo]
+
+  Element access has special semantics:
+    * keys are a data type
+    * element values are _StateStack(type=key) objects
+    * missing elements are automatically added, similarly to defaultdict
+
+  For example, the following block :
+
+    _State s
+    s[Foo]
+
+  Is equivalent to:
+
+    s = {}
+    if Foo not in s:
+      s[Foo] = Foo()
+    s[Foo]
+
+  See Base for how it's used.
+  """
+
+  def __init__(self):
+    self._value = {}
+
+  def __getitem__(self, key):
+    if key not in self._value:
+      self._value[key] = _StateStack(key)
+    return self._value[key]
 
 
 class Base(gast.NodeTransformer):
-  """Base class for specialized transformers.
+  """Base class for general-purpose code transformers transformers.
+
+  This is an extension of ast.NodeTransformer that provides a few additional
+  functions, like state tracking within the scope of arbitrary node, helpers
+  for processing code blocks, debugging, mapping of transformed code to
+  original code, and others.
 
   Scope-local state tracking: to keep state across nodes, at the level of
   (possibly nested) scopes, use enter/exit_local_scope and set/get_local.
   You must call enter/exit_local_scope manually, but the transformer detects
   when they are not properly paired.
+
+  The transformer allows keeping state across calls to visit_* that is local to
+  arbitrary nodes and their descendants, using the self.state attribute.
+  Multiple independent scopes are allowed and automatically constructed.
+
+  For example, to keep track of the If node that encloses any Name node, one can
+  write:
+
+    class FooType(object):
+
+      def __init__(self):
+        self.foo_property = None
+
+    class DummyTransformer(Base):
+
+      def visit_If(self, node):
+        self.state[FooType].enter()
+        self.state[FooType].foo_property = node
+
+      def visit_Name(self, node):
+        self.state[FooType].foo_property  # will hold the innermost enclosing if
   """
 
-  def __init__(self, context):
+  # TODO(mdan): Document all extra features.
+
+  def __init__(self, entity_info):
     """Initialize the transformer. Subclasses should call this.
 
     Args:
-      context: An EntityContext.
+      entity_info: An EntityInfo object.
     """
     self._lineno = 0
     self._col_offset = 0
-    self.context = context
+    self.entity_info = entity_info
     self._enclosing_entities = []
 
     # A stack that allows keeping mutable, scope-local state where scopes may be
@@ -64,6 +209,12 @@ class Base(gast.NodeTransformer):
     # statements in each loop, where loops may be nested.
     self._local_scope_state = []
     self.enter_local_scope()
+
+    # Allows scoping of local variables to keep state across calls to visit_*
+    # methods. Multiple scope hierchies may exist and are keyed by tag. A scope
+    # is valid at one or more nodes and all its children. Scopes created in
+    # child nodes supersede their parent. Scopes are isolated from one another.
+    self.state = _State()
 
   @property
   def enclosing_entities(self):
@@ -74,7 +225,9 @@ class Base(gast.NodeTransformer):
     return len(self._local_scope_state)
 
   def enter_local_scope(self, inherit=None):
-    """Marks entry into a new local scope.
+    """Deprecated. Use self.state instead.
+
+    Marks entry into a new local scope.
 
     Args:
       inherit: Optional enumerable of variable names to copy from the
@@ -89,7 +242,9 @@ class Base(gast.NodeTransformer):
     self._local_scope_state.append(scope_entered)
 
   def exit_local_scope(self, keep=None):
-    """Marks exit from the current local scope.
+    """Deprecated. Use self.state instead.
+
+    Marks exit from the current local scope.
 
     Args:
       keep: Optional enumerable of variable names to copy into the
@@ -106,9 +261,11 @@ class Base(gast.NodeTransformer):
     return scope_left
 
   def set_local(self, name, value):
+    """Deprecated. Use self.state instead."""
     self._local_scope_state[-1][name] = value
 
   def get_local(self, name, default=None):
+    """Deprecated. Use self.state instead."""
     return self._local_scope_state[-1].get(name, default)
 
   def debug_print(self, node):
@@ -189,9 +346,9 @@ class Base(gast.NodeTransformer):
         node_destination = new_destination
     return results
 
-  # TODO(mdan): Once we have error tracing, we may be able to just go to SSA.
+  # TODO(mdan): Remove.
   def apply_to_single_assignments(self, targets, values, apply_fn):
-    """Applies a fuction to each individual assignment.
+    """Applies a function to each individual assignment.
 
     This function can process a possibly-unpacked (e.g. a, b = c, d) assignment.
     It tries to break down the unpacking if possible. In effect, it has the same
@@ -219,7 +376,7 @@ class Base(gast.NodeTransformer):
           targets field of an ast.Assign node.
       values: an AST node.
       apply_fn: a function of a single argument, which will be called with the
-          respective nodes of each single assignment. The signaure is
+          respective nodes of each single assignment. The signature is
           apply_fn(target, value), no return value.
     """
     if not isinstance(targets, (list, tuple)):
@@ -237,9 +394,15 @@ class Base(gast.NodeTransformer):
         # TODO(mdan): Look into allowing to rewrite the AST here.
         apply_fn(target, values)
 
+  def _get_source(self, node):
+    try:
+      return compiler.ast_to_source(node)
+    except AssertionError:
+      return '<could not convert AST to source>'
+
   def visit(self, node):
-    source_code = self.context.source_code
-    source_file = self.context.source_file
+    source_code = self.entity_info.source_code
+    source_file = self.entity_info.source_file
     did_enter_function = False
     local_scope_size_at_entry = len(self._local_scope_state)
 
@@ -275,7 +438,7 @@ class Base(gast.NodeTransformer):
 
     except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
       msg = '%s: %s\nOffending source:\n%s\n\nOccurred at node:\n%s' % (
-          e.__class__.__name__, str(e), try_ast_to_source(node),
+          e.__class__.__name__, str(e), self._get_source(node),
           pretty_printer.fmt(node, color=False))
       if source_code:
         line = source_code.splitlines()[self._lineno - 1]

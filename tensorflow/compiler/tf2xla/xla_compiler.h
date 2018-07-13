@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -52,13 +53,7 @@ class XlaContext;
 // (kind kResource).
 //
 // Only kParameter and initialized kResource arguments become runtime parameters
-// to the generated XLA computation. The XLA computation will have run-time
-// parameters in the following order:
-//   +---------------------+-----------------------------------------+
-//   |  kParameter values  |  Initial values of kResource arguments  |
-//   +---------------------+-----------------------------------------+
-// Within each block, the arguments are arranged by the _Arg index from which
-// they were derived.
+// to the generated XLA computation.
 //
 // The run-time outputs of the XLA computation are arranged in the following
 // order:
@@ -77,10 +72,10 @@ class XlaContext;
 // tensors with a different shape to their representation inside the XLA
 // computation.
 //
-// In both inputs and outputs, kResource values are placed the end. When
+// In computation outputs, updated kResource values are placed the end. When
 // emitting While loop bodies, we must ensure that the loop body has
-// identical input and output signatures. By moving variable values
-// to the end of the argument list and using the
+// identical input and output signatures. By passing variable values
+// at the end of the argument list and using the
 // `return_updated_values_for_all_variables` option, we can ensure that the
 // input and output values of resources appear at the same positions.
 //
@@ -175,6 +170,11 @@ class XlaCompiler {
     // computation.
     bool resolve_compile_time_constants = true;
 
+    // If 'always_return_tuple' is true, then the output of a computation will
+    // always be a tuple. Otherwise, a single-element output will not be wrapped
+    // in a tuple.
+    bool always_return_tuple = true;
+
     // True when compiling the entry computation, false for subcomputations
     // (while, call, etc.)
     bool is_entry_computation = true;
@@ -234,7 +234,8 @@ class XlaCompiler {
     tf2xla::HostComputeMetadata host_compute_metadata;
 
     // Resources whose values were updated by the computation, ordered
-    // by return value position. Resource updates follow the non-constant
+    // by return value position (which is the same as the order the resources
+    // were passed as arguments). Resource updates follow the non-constant
     // results in the outputs of XLA computation.
     std::vector<ResourceUpdate> resource_updates;
 
@@ -242,7 +243,8 @@ class XlaCompiler {
     std::shared_ptr<xla::XlaComputation> computation;
   };
 
-  typedef std::function<TensorShape(const TensorShape&, DataType)>
+  typedef std::function<xla::StatusOr<TensorShape>(const TensorShape&,
+                                                   DataType)>
       ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.

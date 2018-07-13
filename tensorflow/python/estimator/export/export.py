@@ -333,11 +333,7 @@ def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
     """A serving_input_receiver_fn that expects features to be fed directly."""
     receiver_tensors = _placeholders_from_receiver_tensors_dict(
         features, default_batch_size)
-
-    # TODO(b/34885899): remove the unnecessary copy
-    # The features provided are simply the placeholders, but we defensively copy
-    # the dict because it may be mutated.
-    return ServingInputReceiver(receiver_tensors, receiver_tensors.copy())
+    return ServingInputReceiver(receiver_tensors, receiver_tensors)
 
   return serving_input_receiver_fn
 

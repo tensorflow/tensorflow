@@ -19,15 +19,16 @@ To use, wrap your model with the `keras_support.tpu_model` function.
 Example usage:
 
 ```
-# Must activate before building TPU models
-keras_support.setup_tpu_session(master_address)
-
 image = tf.keras.layers.Input(shape=(28, 28, 3), name='image')
 c1 = tf.keras.layers.Conv2D(filters=16, kernel_size=(3, 3))( image)
 flattened = tf.keras.layers.Flatten()(c1)
 logits = tf.keras.layers.Dense(10, activation='softmax')(flattened)
 model = tf.keras.Model(inputs=[image], outputs=[logits])
-model = keras_support.tpu_model(model)
+
+strategy = keras_support.TPUDistributionStrategy(num_cores_per_host=8)
+model = keras_support.tpu_model(model,
+                                strategy=strategy,
+                                tpu_name_or_address=tpu_name)
 
 # Only TF optimizers are currently supported.
 model.compile(optimizer=tf.train.AdamOptimizer(), ...)
@@ -35,9 +36,6 @@ model.compile(optimizer=tf.train.AdamOptimizer(), ...)
 # `images` and `labels` should be Numpy arrays.  Support for tensor input
 # (e.g. datasets) is planned.
 model.fit(images, labels)
-
-# Invoke before shutting down
-keras_support.shutdown_tpu_session()
 ```
 """
 
@@ -48,27 +46,40 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import re
+import sys
 import time
 
+import numpy as np
+
+from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver
+from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizers as keras_optimizers
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+
+TPUDistributionStrategy = tpu_strategy.TPUStrategy  # pylint: disable=invalid-name
 
 
 class TPUEmbedding(embeddings.Embedding):
@@ -92,11 +103,49 @@ class TPUEmbedding(embeddings.Embedding):
     return math_ops.tensordot(inputs, self.embeddings, 1)
 
 
+class KerasCrossShardOptimizer(keras_optimizers.Optimizer):
+  """An optimizer that averages gradients across TPU shards."""
+
+  def __init__(self, opt, name='KerasCrossShardOptimizer'):
+    """Construct a new cross-shard optimizer.
+
+    Args:
+      opt: An existing `Optimizer` to encapsulate.
+      name: Optional name prefix for the operations created when applying
+        gradients. Defaults to "KerasCrossShardOptimizer".
+
+    Raises:
+      ValueError: If reduction is not a valid cross-shard reduction.
+    """
+    super(KerasCrossShardOptimizer, self).__init__()
+    self._name = name
+    self._opt = opt
+
+  def get_updates(self, loss, params):
+    logging.info('Get updates: %s', loss)
+    self._opt.get_gradients = self.get_gradients
+    return self._opt.get_updates(loss, params)
+
+  def get_gradients(self, loss, params):
+    num_shards = tpu_function.get_tpu_context().number_of_shards
+    grads = super(KerasCrossShardOptimizer, self).get_gradients(loss, params)
+    return [tpu_ops.cross_replica_sum(grad) / num_shards for grad in grads]
+
+  def set_weights(self, weights):
+    self._opt.set_weights()
+
+  def get_weights(self):
+    return self._opt.get_weights()
+
+  @property
+  def lr(self):
+    return self._opt.lr
+
+
 class TPUModelOp(
-    collections.namedtuple(
-        'TPUModelOp',
-        ['compile_op', 'execute_op', 'infeed_tensors', 'infeed_op',
-         'outfeed_op'])):
+    collections.namedtuple('TPUModelOp', [
+        'compile_op', 'execute_op', 'infeed_tensors', 'infeed_op', 'outfeed_op'
+    ])):
   pass
 
 
@@ -105,13 +154,119 @@ def _valid_name(tensor_name):
   return re.sub('[^a-zA-Z0-9_-]+', '', tensor_name)
 
 
-def _replicated_optimizer(opt, num_replicas):
+def _replicated_optimizer(opt):
   """Wrap the optimizer `opt` with CrossShardOptimizer if applicable."""
-  if num_replicas == 1:
+  if tpu_function.get_tpu_context().number_of_shards == 1:
     return opt
-  return keras_optimizers.TFOptimizer(
-      optimizer=tpu_optimizer.CrossShardOptimizer(opt.optimizer)
-  )
+
+  if isinstance(opt, keras_optimizers.TFOptimizer):
+    return tpu_optimizer.CrossShardOptimizer(opt.optimizer)
+  else:
+    return KerasCrossShardOptimizer(opt)
+
+
+class TPURewriteContext(object):
+  """Prepare the environment for a Keras model during `tpu.rewrite`.
+
+  This overrides the default placeholder behaviour to instead refer to a preset
+  input mapping.  Placeholders are unsupported in TPU compiled code, and must
+  be replaced with explicit inputs or values from the infeed queue.
+
+  Instead of explicitly threading inputs all the way through the Keras codebase,
+  we override the behavior of the placeholder while compiling and inject the
+  Tensors from the infeed in place of the placeholder.
+
+  Similarly, as we compile a new sub-graph for each unique shape and execution
+  mode, we need to override the behavior of an embedded `name_scope` call in
+  the base Keras layer code.  This allows us to re-use the same weights across
+  many compiles and share a single session/graph.
+  """
+
+  def __init__(self, input_map):
+    self._input_map = input_map
+    self._default_placeholder = None
+    self._default_name_scope = None
+
+  def __enter__(self):
+
+    def _placeholder(dtype, shape=None, name=None):  # pylint: disable=unused-argument
+      logging.info('Remapping placeholder for %s', name)
+      if name in self._input_map:
+        return self._input_map[name]
+      else:
+        logging.info('Default: %s', name)
+        return self._default_placeholder(dtype, shape, name)
+
+    def _name_scope(name, default_name=None, values=None):
+      caller_frame = sys._getframe().f_back
+      caller_obj = caller_frame.f_locals.get('self')
+      if (caller_obj is not None and
+          isinstance(caller_obj, base_layer.Layer) and name is not None):
+        logging.info('Intercepted name_scope: %s', caller_obj)
+        return variable_scope.variable_scope(
+            name, default_name, values, reuse=variable_scope.AUTO_REUSE)
+
+      return self._default_name_scope(name, default_name, values)
+
+    self._default_placeholder = array_ops.placeholder
+    self._default_name_scope = ops.name_scope
+    self._default_make_variable = base_layer.make_variable
+    self._default_random_normal = random_ops.random_normal
+    self._default_qr = gen_linalg_ops.qr
+
+    array_ops.placeholder = _placeholder
+
+    # Replace random_ops.random_normal with a dummy function because
+    # `random_normal` isn't yet implemented on the TPU. Because these
+    # initialized values are overwritten by the CPU values, this is okay.
+    def random_normal(shape,
+                      mean=0.0,
+                      stddev=1.0,
+                      dtype=dtypes.float32,
+                      seed=None,
+                      name=None):
+      del mean
+      del stddev
+      del seed
+      return array_ops.zeros(shape, dtype=dtype, name=name)
+
+    random_ops.random_normal = random_normal
+
+    # Replace gen_linalg_ops.qr because QR decomposition is not yet implemented.
+    # TODO(saeta): Remove qr override once we confirm the qr implementation is
+    # ok.
+    # pylint: disable=redefined-builtin
+    def qr(input, full_matrices=False, name=None):
+      """Dummy implementation of qr decomposition."""
+      del full_matrices  # TODO(saeta): Properly handle the full matrix case.
+      input_shape = input.shape
+      if len(input_shape) < 2:
+        raise ValueError('Invalid shape passed to qr: %s' % input_shape)
+      p = min(input_shape[-1], input_shape[-2])
+      if len(input_shape) == 2:
+        q = array_ops.zeros((p, p), name=name)
+        r = array_ops.zeros(input_shape, name=name)
+        return (r, q)
+      elif len(input_shape) == 3:
+        n = input_shape[0]
+        q = array_ops.zeros((n, p, p), name=name)
+        r = array_ops.zeros(input_shape, name=name)
+        return (r, q)
+      else:
+        raise ValueError('Invalid shape passed to qr: %s' % input_shape)
+    gen_linalg_ops.qr = qr
+
+    ops.name_scope = _name_scope
+    base_layer.make_variable = variable_scope.get_variable
+    logging.info('Overriding default placeholder.')
+    return
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    array_ops.placeholder = self._default_placeholder
+    ops.name_scope = self._default_name_scope
+    base_layer.make_variable = self._default_make_variable
+    random_ops.random_normal = self._default_random_normal
+    gen_linalg_ops.qr = self._default_qr
 
 
 class TPUFunction(object):
@@ -126,19 +281,24 @@ class TPUFunction(object):
   instead of being injected as `feed_dict` items or fetches.
   """
 
-  def __init__(self, model, execution_mode, num_replicas=1):
+  def __init__(self, model, execution_mode, strategy):
     self.model = model
     self.execution_mode = execution_mode
+    self._strategy = strategy
     self._compilation_cache = {}
-    self.num_replicas = num_replicas
+    self._cloned_model = None
+
+    # Copy optimizer configuration.  This is done prior to `_specialize_model`
+    # as the configuration may require evaluating variables in the CPU session.
+    self._optimizer_config = None
+    if not isinstance(self.model.optimizer, keras_optimizers.TFOptimizer):
+      self._optimizer_config = self.model.optimizer.get_config()
 
   def _specialize_model(self, input_specs):
     """Specialize `self.model` (a Keras model) for the given input shapes."""
     # Re-create our input and output layers inside our subgraph.  They will be
     # attached to the true computation when we clone our model in `tpu_fn`.
-    K.set_learning_phase(
-        self.execution_mode == model_fn_lib.ModeKeys.TRAIN
-    )
+    K.set_learning_phase(self.execution_mode == model_fn_lib.ModeKeys.TRAIN)
 
     # functools.partial and callable objects are not supported by tpu.rewrite
     def _model_fn():
@@ -164,23 +324,34 @@ class TPUFunction(object):
                                                           infeed_tensors))
 
       tpu_targets = []
-      tpu_inputs = []
+      tpu_input_map = {}
 
       # Sort infeed outputs into inputs and labels for calling our Keras model.
       for tensor, layer in zip(infeed_tensors, infeed_layers):
         if layer in self.model._input_layers:
-          tpu_inputs.append(layers.Input(name=layer.name, tensor=tensor))
+          tpu_input_map[layer.name] = tensor
         if layer in self.model._output_layers:
           tpu_targets.append(tensor)
 
-      # Call our model with our infeed inputs (re-using the weights).
-      model_outputs = self.model(tpu_inputs)
-      child_model = models.Model(inputs=tpu_inputs, outputs=model_outputs)
+      # Clone our CPU model, running within the TPU device context.
+      with TPURewriteContext(tpu_input_map):
+        # TODO(power): Replicate variables.
+        with ops.device('/device:TPU:0'):
+          self._cloned_model = models.clone_model(self.model)
+
+      # Create a copy of the optimizer for this graph.
+      if isinstance(self.model.optimizer, keras_optimizers.TFOptimizer):
+        cloned_optimizer = keras_optimizers.TFOptimizer(
+            self.model.optimizer.optimizer)
+      else:
+        logging.info('Cloning %s %s', self.model.optimizer.__class__.__name__,
+                     self._optimizer_config)
+        cloned_optimizer = self.model.optimizer.__class__.from_config(
+            self._optimizer_config)
 
       if is_training or is_test:
-        child_model.compile(
-            optimizer=_replicated_optimizer(self.model.optimizer,
-                                            self.num_replicas),
+        self._cloned_model.compile(
+            optimizer=_replicated_optimizer(cloned_optimizer),
             loss=self.model.loss,
             loss_weights=self.model.loss_weights,
             metrics=self.model.metrics,
@@ -190,37 +361,37 @@ class TPUFunction(object):
 
       # Compute our outfeed depending on the execution mode
       if is_training:
-        child_model._make_train_function()
+        self._cloned_model._make_train_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in child_model.train_function.outputs
+            for tensor in self._cloned_model.train_function.outputs
         ]
         return [
-            child_model.train_function.updates_op,
+            self._cloned_model.train_function.updates_op,
             tpu_ops.outfeed_enqueue_tuple(
-                child_model.train_function.outputs,
+                self._cloned_model.train_function.outputs,
                 name='outfeed-enqueue-train')
         ]
       elif is_test:
-        child_model._make_test_function()
+        self._cloned_model._make_test_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in child_model.test_function.outputs
+            for tensor in self._cloned_model.test_function.outputs
         ]
         return [
             tpu_ops.outfeed_enqueue_tuple(
-                child_model.test_function.outputs,
+                self._cloned_model.test_function.outputs,
                 name='outfeed-enqueue-test')
         ]
       elif is_predict:
-        child_model._make_predict_function()
+        self._cloned_model._make_predict_function()
         self._outfeed_spec = [
             tensor_spec.TensorSpec(tensor.shape, tensor.dtype, tensor.name)
-            for tensor in child_model.predict_function.outputs
+            for tensor in self._cloned_model.predict_function.outputs
         ]
         return [
             tpu_ops.outfeed_enqueue_tuple(
-                child_model.predict_function.outputs,
+                self._cloned_model.predict_function.outputs,
                 name='outfeed-enqueue-predict',
             )
         ]
@@ -235,7 +406,7 @@ class TPUFunction(object):
     # `execute op` replicates `_model_fn` `num_replicas` times, with each shard
     # running on a different logical core.
     compile_op, execute_op = tpu.split_compile_and_replicate(
-        _model_fn, inputs=[[]] * self.num_replicas)
+        _model_fn, inputs=[[]] * self._strategy.num_towers)
 
     # Generate CPU side operations to enqueue features/labels and dequeue
     # outputs from the model call.
@@ -243,7 +414,7 @@ class TPUFunction(object):
     outfeed_op = []
     shard_infeed_tensors = []
 
-    for shard_id in range(self.num_replicas):
+    for shard_id in range(self._strategy.num_towers):
       with ops.device('/device:TPU:%d' % shard_id):
         infeed_tensors = []
         for spec in input_specs:
@@ -254,32 +425,35 @@ class TPUFunction(object):
                   name='infeed-enqueue-%s-%d' % (spec.name, shard_id)))
         shard_infeed_tensors.append(infeed_tensors)
 
-        infeed_op.append(tpu_ops.infeed_enqueue_tuple(
-            infeed_tensors, [spec.shape for spec in input_specs],
-            name='infeed-enqueue-%s-%d' % (self.execution_mode, shard_id)))
+        infeed_op.append(
+            tpu_ops.infeed_enqueue_tuple(
+                infeed_tensors, [spec.shape for spec in input_specs],
+                name='infeed-enqueue-%s-%d' % (self.execution_mode, shard_id)))
 
-        outfeed_op.extend(tpu_ops.outfeed_dequeue_tuple(
-            dtypes=[spec.dtype for spec in self._outfeed_spec],
-            shapes=[spec.shape for spec in self._outfeed_spec],
-            name='outfeed-dequeue-%s-%d' % (self.execution_mode, shard_id)))
+        outfeed_op.extend(
+            tpu_ops.outfeed_dequeue_tuple(
+                dtypes=[spec.dtype for spec in self._outfeed_spec],
+                shapes=[spec.shape for spec in self._outfeed_spec],
+                name='outfeed-dequeue-%s-%d' % (self.execution_mode, shard_id)))
 
     return TPUModelOp(
-        compile_op, execute_op, infeed_tensors=shard_infeed_tensors,
-        infeed_op=infeed_op, outfeed_op=outfeed_op)
+        compile_op,
+        execute_op,
+        infeed_tensors=shard_infeed_tensors,
+        infeed_op=infeed_op,
+        outfeed_op=outfeed_op)
 
   def _test_model_compiles(self, tpu_model_ops):
     """Verifies that the given TPUModelOp can be compiled via XLA."""
-    session = K.get_session()
-
     logging.info('Started compiling')
     start_time = time.clock()
 
-    result = session.run(tpu_model_ops.compile_op)
+    result = K.get_session().run(tpu_model_ops.compile_op)
     proto = tpu_compilation_result.CompilationResultProto()
     proto.ParseFromString(result)
     if proto.status_error_message:
-      raise RuntimeError(
-          'Compilation failed: {}'.format(proto.status_error_message))
+      raise RuntimeError('Compilation failed: {}'.format(
+          proto.status_error_message))
 
     end_time = time.clock()
     logging.info('Finished compiling. Time elapsed: %s secs',
@@ -296,17 +470,19 @@ class TPUFunction(object):
     Returns:
       List of lists containing the input to feed to each TPU shard.
     """
-    if self.num_replicas == 1:
+    if self._strategy.num_towers == 1:
       return [inputs]
 
     batch_size = inputs[0].shape[0]
-    assert batch_size % self.num_replicas == 0, (
-        'batch_size must be divisible by num_replicas')
-    shard_size = batch_size // self.num_replicas
+    assert batch_size % self._strategy.num_towers == 0, (
+        'batch_size must be divisible by strategy.num_towers (%s vs %s)' %
+        (batch_size, self._strategy.num_towers))
+    shard_size = batch_size // self._strategy.num_towers
     input_list = []
-    for index in range(self.num_replicas):
-      shard_inputs = [x[index * shard_size:(index + 1) * shard_size]
-                      for x in inputs]
+    for index in range(self._strategy.num_towers):
+      shard_inputs = [
+          x[index * shard_size:(index + 1) * shard_size] for x in inputs
+      ]
       input_list.append(shard_inputs)
     return input_list
 
@@ -343,12 +519,15 @@ class TPUFunction(object):
     shape_key = tuple([tuple(spec.shape.as_list()) for spec in input_specs])
 
     if shape_key not in self._compilation_cache:
-      logging.info('New input shapes; (re-)compiling: mode=%s, %s',
-                   self.execution_mode, input_specs)
-      new_tpu_model_ops = self._specialize_model(input_specs)
-      self._compilation_cache[shape_key] = new_tpu_model_ops
-      self._test_model_compiles(new_tpu_model_ops)
+      with self.model.tpu_session():
+        logging.info('New input shapes; (re-)compiling: mode=%s, %s',
+                     self.execution_mode, input_specs)
+        new_tpu_model_ops = self._specialize_model(input_specs)
+        self._compilation_cache[shape_key] = new_tpu_model_ops
+        self._test_model_compiles(new_tpu_model_ops)
 
+    # Initialize our TPU weights on the first compile.
+    self.model._initialize_weights(self._cloned_model)
     tpu_model_ops = self._compilation_cache[shape_key]
 
     infeed_dict = {}
@@ -357,58 +536,84 @@ class TPUFunction(object):
       for tensor, value in zip(infeed_tensors, inputs):
         infeed_dict[tensor] = value
 
-    session = K.get_session()
-    _, _, outfeed_outputs = session.run([
-        tpu_model_ops.infeed_op, tpu_model_ops.execute_op,
-        tpu_model_ops.outfeed_op
-    ], infeed_dict)
+    with self.model.tpu_session() as session:
+      _, _, outfeed_outputs = session.run([
+          tpu_model_ops.infeed_op, tpu_model_ops.execute_op,
+          tpu_model_ops.outfeed_op
+      ], infeed_dict)
 
     # TODO(xiejw): Decide how to reduce outputs, or just discard all but first.
-    return outfeed_outputs[:len(outfeed_outputs) // self.num_replicas]
+    if self.execution_mode == model_fn_lib.ModeKeys.PREDICT:
+      outputs = [[]] * len(self._outfeed_spec)
+      outputs_per_replica = len(self._outfeed_spec)
 
+      for i in range(self._strategy.num_towers):
+        output_group = outfeed_outputs[i * outputs_per_replica:(i + 1) *
+                                       outputs_per_replica]
+        for j in range(outputs_per_replica):
+          outputs[j].append(output_group[j])
 
-@experimental
-def setup_tpu_session(master):
-  """Initializes and returns a Keras/TF session connected the TPU `master`."""
-  session = tf_session.Session(
-      target=master, config=config_pb2.ConfigProto(isolate_session_state=True))
-  K.set_session(session)
-  K.get_session().run(tpu.initialize_system())
-  return session
-
-
-@experimental
-def shutdown_tpu_session(session=None):
-  """Shutdown the TPU attached to session.
-
-  This should be called to cleanly shut down the TPU system before the client
-  exits.
-
-  Args:
-    session: Session to shutdown, or None to use the default session.
-
-  Returns:
-
-  """
-  if session is None:
-    session = K.get_session()
-
-  session.run(tpu.shutdown_system())
+      return [np.concatenate(group) for group in outputs]
+    else:
+      return outfeed_outputs[:len(outfeed_outputs) // self._strategy.num_towers]
 
 
 class KerasTPUModel(models.Model):
   """TPU compatible Keras model wrapper."""
 
-  def __init__(self, inputs, outputs, name, replicas=1):
+  def __init__(self, cpu_model, tpu_name_or_address, strategy):
     super(models.Model, self).__init__(  # pylint: disable=bad-super-call
-        inputs=inputs,
-        outputs=outputs,
-        name=name,
+        inputs=cpu_model.inputs,
+        outputs=cpu_model.outputs,
+        name=cpu_model.name,
     )
+
     self.predict_function = None
     self.test_function = None
     self.train_function = None
-    self.replicas = replicas
+    self._strategy = strategy
+
+    self._tpu_name_or_address = tpu_name_or_address
+    self._cpu_model = cpu_model
+    self._tpu_model = None
+    self._tpu_weights_initialized = False
+    self._graph = ops.Graph()
+
+    self._cluster_resolver = tpu_cluster_resolver.TPUClusterResolver(
+        tpu_name_or_address)
+    master = self._cluster_resolver.master()
+    cluster_spec = self._cluster_resolver.cluster_spec()
+    self._session = tf_session.Session(
+        graph=self._graph,
+        target=master,
+        config=config_pb2.ConfigProto(isolate_session_state=True))
+
+    # TODO(saeta): Confirm the lines below work in ClusterSpec propagation env.
+    if cluster_spec:
+      self._session.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
+    with self._graph.as_default():
+      self._session.run(tpu.initialize_system())
+
+    # If the input CPU model has already been compiled, compile our TPU model
+    # immediately.
+    if self._cpu_model.optimizer:
+      self.compile(
+          self._cpu_model.optimizer,
+          self._cpu_model.loss,
+          self._cpu_model.metrics,
+          self._cpu_model.loss_weights,
+          self._cpu_model.sample_weight_mode,
+          self._cpu_model.weighted_metrics,
+          self._cpu_model.target_tensors,
+      )
+
+  def get_config(self):
+    return {
+        'cpu_model': self._cpu_model,
+        'tpu_name_or_address': self._tpu_name_or_address,
+        'strategy': self._strategy,
+    }
 
   def compile(self,
               optimizer,
@@ -430,44 +635,97 @@ class KerasTPUModel(models.Model):
                                        sample_weight_mode, weighted_metrics,
                                        target_tensors, **kwargs)
 
-    # Keras optimizers are not compatible with TPU rewrite
-    if not isinstance(self.optimizer, keras_optimizers.TFOptimizer):
-      raise ValueError(
-          'Optimizer must be a TFOptimizer, got: %s' % self.optimizer)
+    if not self._cpu_model.optimizer:
+      self._cpu_model.compile(optimizer, loss, metrics, loss_weights,
+                              sample_weight_mode, weighted_metrics,
+                              target_tensors, **kwargs)
 
   def _make_train_function(self):
     if not self.train_function:
-      self.train_function = TPUFunction(self, model_fn_lib.ModeKeys.TRAIN,
-                                        num_replicas=self.replicas)
+      self.train_function = TPUFunction(
+          self, model_fn_lib.ModeKeys.TRAIN, strategy=self._strategy)
 
     return self.train_function
 
   def _make_test_function(self):
     if not self.test_function:
-      self.test_function = TPUFunction(self, model_fn_lib.ModeKeys.EVAL)
+      self.test_function = TPUFunction(
+          self, model_fn_lib.ModeKeys.EVAL, strategy=self._strategy)
     return self.test_function
 
   def _make_predict_function(self):
     if not self.predict_function:
-      self.predict_function = TPUFunction(self, model_fn_lib.ModeKeys.PREDICT)
+      self.predict_function = TPUFunction(
+          self, model_fn_lib.ModeKeys.PREDICT, strategy=self._strategy)
     return self.predict_function
 
-  def cpu_model(self):
-    cpu_model = models.Model(
-        inputs=self.inputs,
-        outputs=self.outputs,
-        name=self.name,
-    )
+  def _initialize_weights(self, cloned_model):
+    """Initialize TPU weights.
 
-    if self.optimizer:
-      cpu_model.compile(
-          optimizer=self.optimizer,
-          loss=self.loss,
-          metrics=self.metrics,
-          loss_weights=self.loss_weights,
-      )
+    This is called on the first compile of the TPU model (first call to
+    fit/predict/evaluate).
 
-    return cpu_model
+    Args:
+      cloned_model: `keras.Model`, TPU model to initialize.
+    """
+    if self._tpu_weights_initialized:
+      return
+
+    self._tpu_model = cloned_model
+    self._tpu_weights_initialized = True
+
+    weights = self._cpu_model.get_weights()
+    with self.tpu_session():
+      logging.info('Setting weights on TPU model.')
+      cloned_model.set_weights(weights)
+
+  def sync_to_cpu(self):
+    """Copy weights from the CPU, returning a synchronized CPU model."""
+    if self._tpu_weights_initialized:
+      with self.tpu_session():
+        logging.info('Copying TPU weights to the CPU')
+        tpu_weights = self._tpu_model.get_weights()
+
+      self._cpu_model.set_weights(tpu_weights)
+
+    return self._cpu_model
+
+  def get_weights(self):
+    return self.sync_to_cpu().get_weights()
+
+  def save_weights(self, *args, **kw):
+    return self.sync_to_cpu().save_weights(*args, **kw)
+
+  def save(self, *args, **kw):
+    return self.sync_to_cpu().save(*args, **kw)
+
+  def set_weights(self, weights):
+    # We may not have a TPU model available if we haven't run fit/predict, so
+    # we can't directly set the TPU weights here.
+    # Instead, reset CPU model weights and force TPU re-initialization at the
+    # next call.
+    self._cpu_model.set_weights(weights)
+    self._tpu_weights_initialized = False
+
+  @contextlib.contextmanager
+  def tpu_session(self):
+    """Yields a TPU session and sets it as the default Keras session."""
+    with self._graph.as_default():
+      default_session = K.get_session()
+      # N.B. We have to call `K.set_session()` AND set our session as the
+      # TF default. `K.get_session()` surprisingly does not return the value
+      # supplied by K.set_session otherwise.
+      K.set_session(self._session)
+      with self._session.as_default():
+        yield self._session
+      K.set_session(default_session)
+
+  def shutdown(self):
+    # TODO(b/111364423): Actually shut down the system.
+    logging.info('Skipping shutting down TPU system.')
+    # with self.tpu_session() as session:
+    #   session.run(tpu.shutdown_system())
+    self._session.close()
 
 
 def _validate_shapes(model):
@@ -504,8 +762,8 @@ Output shape: %(output_shape)s
 
 
 @experimental
-def tpu_model(model, replicas=None):
-  """Runs a model on TPU(s).
+def tpu_model(model, tpu_name_or_address=None, strategy=None):
+  """Copy `model` along with weights to the TPU.  Returns a TPU model.
 
   Usage:
   ```
@@ -513,44 +771,39 @@ def tpu_model(model, replicas=None):
   b = Dense(32)(a)
   model = Model(inputs=a, outputs=b)
 
-  model = keras_support.tpu_model(model)
+  # If `num_cores_per_host` is greater than one, batch parallelism will be used
+  # to run on multiple TPU cores.
+  strategy = keras_support.TPUDistributionStrategy(num_cores_per_host=8)
+  model = keras_support.tpu_model(model, strategy)
   model.compile(
       optimizer=tf.train.GradientDescentOptimizer(learning_rate=1.0),
       ...)
-  ```
-
-  If `replicas` is set, replicates the model computation on all TPU cores. The
-  model computation is replicated `num_replicas` times; each shard will run on a
-  different TPU core.
-
-  Limitation: Currently, replication is only supported for training.
-
-  Usage:
-  ```
-  a = Input(shape=(32,))
-  b = Dense(32)(a)
-  model = Model(inputs=a, outputs=b)
-
-  model = keras_support.tpu_model(model, replicas=2)
-  model.compile(
-      optimizer=tf.train.GradientDescentOptimizer(learning_rate=1.0),
-      ...)
+  model.shutdown()
   ```
 
   Args:
     model: A `KerasTPUModel`.
-    replicas: (Optional) Int, number of TPU cores which to create model
-        replicas. If `None`, the model runs on single core only, i.e., no
-        replication.
+    tpu_name_or_address: A string that is either the name of the Cloud TPU,
+      the grpc address of the Cloud TPU, or (Googlers only) the BNS name of the
+      Cloud TPU. If tpu_name_or_address is None, the TPUClusterResolver will
+      examine the environment to determine a potential Cloud TPU to use.
+    strategy: `TPUDistributionStrategy`.  The strategy to use for replicating
+              model across multiple TPU cores.
 
   Returns:
     A new `KerasTPUModel` instance.
   """
+  # Force initialization of the CPU model.
+  model.get_weights()
+  model.reset_states()
+
   _validate_shapes(model)
   # TODO(xiejw): Validate TPU model. TPUModel only?
   # TODO(xiejw): Validate replicas. Full or 1. Shall we allow subset?
   # TODO(xiejw): Adds reduction option.
-  replicas = 1 if replicas is None else replicas
+  if strategy is None:
+    strategy = TPUDistributionStrategy(num_cores_per_host=1)
   return KerasTPUModel(
-      inputs=model.inputs, outputs=model.outputs, name=model.name,
-      replicas=replicas)
+      cpu_model=model,
+      tpu_name_or_address=tpu_name_or_address,
+      strategy=strategy)

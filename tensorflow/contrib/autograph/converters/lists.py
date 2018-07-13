@@ -32,10 +32,10 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -43,7 +43,7 @@ from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 POP_USES = 'pop_uses'
 
 
-class ListTransformer(transformer.Base):
+class ListTransformer(converter.Base):
   """Converts lists and related operations to their TF counterpart."""
 
   def visit_List(self, node):
@@ -94,7 +94,7 @@ class ListTransformer(transformer.Base):
       target_name = anno.getanno(target_node, anno.Basic.QN).ssf()
     else:
       target_name = 'list'
-    pop_var_name = self.context.namer.new_symbol(target_name, scope.referenced)
+    pop_var_name = self.ctx.namer.new_symbol(target_name, scope.referenced)
 
     pop_uses = self.get_local(POP_USES, [])
     pop_uses.append((node, pop_var_name))
@@ -223,5 +223,5 @@ class ListTransformer(transformer.Base):
     return node
 
 
-def transform(node, context):
-  return ListTransformer(context).visit(node)
+def transform(node, ctx):
+  return ListTransformer(ctx).visit(node)

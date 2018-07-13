@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -62,15 +63,24 @@ class RetvalOp : public XlaOpKernel {
         OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
         TensorShape shape = ctx->InputShape(0);
-        TensorShape representation_shape =
-            tc.is_entry_computation()
-                ? tc.RepresentationShape(shape, ctx->input_type(0))
-                : shape;
+        ctx->SetStatus(is_constant.status());
+        TensorShape representation_shape;
+        if (tc.is_entry_computation()) {
+          xla::StatusOr<TensorShape> shape_or_status =
+              tc.RepresentationShape(shape, ctx->input_type(0));
+          if (!shape_or_status.ok()) {
+            ctx->SetStatus(shape_or_status.status());
+            return;
+          } else {
+            representation_shape = shape_or_status.ValueOrDie();
+          }
+        } else {
+          representation_shape = shape;
+        }
 
         xla::XlaOp output = input;
         if (tc.is_entry_computation()) {
-          output =
-              ctx->builder()->Reshape(input, representation_shape.dim_sizes());
+          output = xla::Reshape(input, representation_shape.dim_sizes());
         } else {
           // The core from which a return value is returned depends on the
           // device assignment of the input to the retval. Since we can't change
@@ -78,8 +88,8 @@ class RetvalOp : public XlaOpKernel {
           // introduce an operator here, even if the shape does not change.
           // TODO(b/76097077): propagate device assignments onto arguments and
           // return values of functions, and then reshape unconditionally.
-          output = ctx->builder()->GetTupleElement(
-              ctx->builder()->Tuple({output}), 0);
+          output =
+              xla::GetTupleElement(xla::Tuple(ctx->builder(), {output}), 0);
         }
         tc.AddRetval(index_, dtype_, shape, output);
       }

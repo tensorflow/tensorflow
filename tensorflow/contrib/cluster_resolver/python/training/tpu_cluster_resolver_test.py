@@ -402,13 +402,61 @@ class TPUClusterResolverTest(test.TestCase):
         compat.as_bytes('/bns/foo/bar'), tpu_cluster_resolver.master())
     self.assertEqual(None, tpu_cluster_resolver.cluster_spec())
 
-  def testGkeEnvironment(self):
+  def testGkeEnvironmentForDonut(self):
     os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'
-    self.assertTrue('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS' in os.environ)
+
+    self.assertIn('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS', os.environ)
     self.assertTrue(TPUClusterResolver._inGke())
     self.assertEqual(
         compat.as_bytes('grpc://10.120.27.5:8470'),
-        compat.as_bytes(TPUClusterResolver._gkeMaster()))
+        compat.as_bytes(TPUClusterResolver._gkeEndpoints()))
+
+    tpu_cluster_resolver = TPUClusterResolver()
+    self.assertEqual(
+        compat.as_bytes('grpc://10.120.27.5:8470'),
+        compat.as_bytes(tpu_cluster_resolver.master()))
+    actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
+    expected_proto = """
+    job {
+      name: 'worker'
+      tasks { key: 0 value: '10.120.27.5:8470' }
+    }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
+    del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
+
+  def testGkeEnvironmentForPod(self):
+    os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = ('grpc://10.120.27.5:8470,'
+                                                     'grpc://10.120.27.6:8470,'
+                                                     'grpc://10.120.27.7:8470,'
+                                                     'grpc://10.120.27.8:8470')
+
+    self.assertIn('KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS', os.environ)
+    self.assertTrue(TPUClusterResolver._inGke())
+    self.assertEqual(
+        compat.as_bytes('grpc://10.120.27.5:8470,'
+                        'grpc://10.120.27.6:8470,'
+                        'grpc://10.120.27.7:8470,'
+                        'grpc://10.120.27.8:8470'),
+        compat.as_bytes(TPUClusterResolver._gkeEndpoints()))
+
+    tpu_cluster_resolver = TPUClusterResolver()
+    self.assertEqual(
+        compat.as_bytes('grpc://10.120.27.5:8470'),
+        compat.as_bytes(tpu_cluster_resolver.master()))
+    actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
+    expected_proto = """
+    job {
+      name: 'worker'
+      tasks { key: 0 value: '10.120.27.5:8470' }
+      tasks { key: 1 value: '10.120.27.6:8470' }
+      tasks { key: 2 value: '10.120.27.7:8470' }
+      tasks { key: 3 value: '10.120.27.8:8470' }
+    }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
     del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
 
   def testDiscoveryUrl(self):

@@ -29,10 +29,14 @@ from tensorflow.contrib.autograph.impl.api import converted_call
 from tensorflow.contrib.autograph.impl.api import do_not_convert
 from tensorflow.contrib.autograph.impl.api import RunMode
 from tensorflow.contrib.autograph.impl.api import to_code
+from tensorflow.contrib.autograph.core.errors import improved_errors
+from tensorflow.contrib.autograph.core.errors import rewrite_graph_construction_error
+from tensorflow.contrib.autograph.core.errors import GraphConstructionError
+from tensorflow.contrib.autograph.core.errors import TfRuntimeError
 from tensorflow.contrib.autograph.impl.api import to_graph
-from tensorflow.contrib.autograph.impl.directives import set_element_type
-from tensorflow.contrib.autograph.impl.directives import set_loop_options
-from tensorflow.contrib.autograph.impl.special_functions import stack
+from tensorflow.contrib.autograph.lang.directives import set_element_type
+from tensorflow.contrib.autograph.lang.directives import set_loop_options
+from tensorflow.contrib.autograph.lang.special_functions import stack
 from tensorflow.contrib.autograph.pyct.transformer import AutographParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
@@ -42,11 +46,13 @@ _allowed_symbols = [
     'convert',
     'converted_call',
     'do_not_convert',
+    'improved_errors',
     'to_code',
     'to_graph',
     # Overloaded operators
     'operators',
-    # Special functions and directives
+    'rewrite_graph_construction_error',
+    # Python language "extensions"
     'set_element_type',
     'set_loop_options',
     'stack',

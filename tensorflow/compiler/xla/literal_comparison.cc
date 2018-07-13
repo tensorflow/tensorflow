@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -217,7 +218,7 @@ class NearComparator {
       return Printf(
           "actual %s, expected %s, index %s, rel error %8.3g, abs error %8.3g",
           FpValueToString(actual).c_str(), FpValueToString(expected).c_str(),
-          Literal::MultiIndexAsString(
+          LiteralUtil::MultiIndexAsString(
               IndexUtil::LinearIndexToMultidimensionalIndex(shape,
                                                             linear_index))
               .c_str(),
@@ -606,8 +607,8 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 }  // namespace
 
 Status EqualShapes(const Shape& expected, const Shape& actual) {
-  if (ShapeUtil::IsTuple(expected) != ShapeUtil::IsTuple(actual)) {
-    return InvalidArgument("tupleness-mismatch! want: %s got %s",
+  if (expected.element_type() != actual.element_type()) {
+    return InvalidArgument("element type mismatch, want: %s got %s",
                            ShapeUtil::HumanString(expected).c_str(),
                            ShapeUtil::HumanString(actual).c_str());
   }
@@ -626,7 +627,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
         return AppendStatus(result, StrCat("mismatch in tuple index", i));
       }
     }
-  } else {
+  } else if (ShapeUtil::IsArray(expected)) {
     if (ShapeUtil::Rank(expected) != ShapeUtil::Rank(actual)) {
       return InvalidArgument("want rank of %s got rank of %s",
                              ShapeUtil::HumanString(expected).c_str(),
@@ -652,6 +653,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
       }
     }
   }
+  // Non-array, non-tuple shapes are trivially equivalent.
   return Status::OK();
 }
 
@@ -705,6 +707,9 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
       }
       break;
     }
+    case TOKEN:
+      // Tokens have no on-device representation and are trivially equal.
+      return Status::OK();
     default:
       LOG(FATAL)
           << "Unsupported primitive type in LiteralTestUtil::ExpectEqual: "
@@ -718,7 +723,7 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
   return AppendStatus(result,
                       tensorflow::strings::Printf(
                           "\nat index: %s\nexpected: %s\nactual:   %s",
-                          Literal::MultiIndexAsString(multi_index).c_str(),
+                          LiteralUtil::MultiIndexAsString(multi_index).c_str(),
                           ToStringTruncated(expected).c_str(),
                           ToStringTruncated(actual).c_str()));
 }

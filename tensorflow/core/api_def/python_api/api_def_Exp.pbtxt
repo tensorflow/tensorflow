@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Exp"
+  endpoint {
+    name: "math.exp"
+  }
+  endpoint {
+    name: "exp"
+    deprecated: true
+  }
+}

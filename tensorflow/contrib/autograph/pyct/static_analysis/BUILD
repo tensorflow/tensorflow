@@ -19,14 +19,18 @@ py_library(
     srcs = [
         "activity.py",
         "annos.py",
-        "cfg.py",
+        "cfg.py",  # TODO(mdan): Remove.
         "live_values.py",
+        "liveness.py",
+        "reaching_definitions.py",
         "type_info.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/autograph/pyct",
+        "//tensorflow/contrib/autograph/utils",
+        "//tensorflow/python:util",
         "@gast_archive//:gast",
     ],
 )
@@ -62,6 +66,37 @@ py_test(
     srcs = ["live_values_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
+    deps = [
+        ":static_analysis",
+        "//tensorflow/contrib/autograph/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+# TODO(mdan): Enable these tests once child change is in.
+py_test(
+    name = "liveness_test",
+    srcs = ["liveness_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":static_analysis",
+        "//tensorflow/contrib/autograph/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "reaching_definitions_test",
+    srcs = ["reaching_definitions_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/autograph/pyct",

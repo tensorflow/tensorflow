@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
@@ -129,6 +130,18 @@ def _maybe_tensor_shape_from_tensor(shape):
     return tensor_shape.as_shape(tensor_util.constant_value(shape))
   else:
     return shape
+
+
+def _should_cache():
+  """Returns True if a default caching device should be set, otherwise False."""
+  if context.executing_eagerly():
+    return False
+  # Don't set a caching device when running in a loop, since it is possible that
+  # train steps could be wrapped in a tf.while_loop. In that scenario caching
+  # prevents forward computations in loop iterations from re-reading the
+  # updated weights.
+  ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  return control_flow_util.GetContainingWhileContext(ctxt) is None
 
 
 # pylint: disable=unused-argument
@@ -558,7 +571,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     # Create a new scope in which the caching device is either
     # determined by the parent scope, or is set to place the cached
     # Variable using the same placement as for the rest of the RNN.
-    if not context.executing_eagerly():
+    if _should_cache():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -828,7 +841,8 @@ def _dynamic_rnn_loop(cell,
   final_outputs = nest.pack_sequence_as(
       structure=cell.output_size, flat_sequence=final_outputs)
   if not in_graph_mode:
-    final_outputs = array_ops.stack(final_outputs, axis=0)
+    final_outputs = nest.map_structure_up_to(
+        cell.output_size, lambda x: array_ops.stack(x, axis=0), final_outputs)
 
   return (final_outputs, final_state)
 
@@ -1014,7 +1028,7 @@ def raw_rnn(cell, loop_fn,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if not context.executing_eagerly():
+    if _should_cache():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 
@@ -1227,7 +1241,7 @@ def static_rnn(cell,
   # determined by the parent scope, or is set to place the cached
   # Variable using the same placement as for the rest of the RNN.
   with vs.variable_scope(scope or "rnn") as varscope:
-    if not context.executing_eagerly():
+    if _should_cache():
       if varscope.caching_device is None:
         varscope.set_caching_device(lambda op: op.device)
 

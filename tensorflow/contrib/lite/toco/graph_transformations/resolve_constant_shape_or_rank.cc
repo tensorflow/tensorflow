@@ -22,8 +22,7 @@ namespace toco {
 bool ResolveConstantShapeOrRank::Run(Model* model, std::size_t op_index) {
   const auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
-  if (!(op->type == OperatorType::kTensorFlowShape ||
-        op->type == OperatorType::kRank)) {
+  if (!(op->type == OperatorType::kShape || op->type == OperatorType::kRank)) {
     return false;
   }
 
@@ -48,7 +47,7 @@ bool ResolveConstantShapeOrRank::Run(Model* model, std::size_t op_index) {
   // Compute the output
   CHECK(!output_array.buffer);
   auto& output_buffer = output_array.GetMutableBuffer<ArrayDataType::kInt32>();
-  if (op->type == OperatorType::kTensorFlowShape) {
+  if (op->type == OperatorType::kShape) {
     // Copy the input shape into the output buffer.
     output_buffer.data = input_array.shape().dims();
   } else if (op->type == OperatorType::kRank) {

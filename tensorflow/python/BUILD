@@ -4,14 +4,16 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-package(default_visibility = [
+visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//tensorflow:internal",
     "//tensorflow/contrib/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/contrib/lite/toco/python:__pkg__",
-])
+]
+
+package(default_visibility = visibility)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -55,12 +57,12 @@ py_library(
         "//tensorflow/contrib/lite/toco/python:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/debug:__pkg__",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python/tools:__pkg__",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/tools/api/generator:__pkg__",
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
         ":no_contrib",
         "//tensorflow/contrib:contrib_py",
+        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
@@ -71,7 +73,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools:__pkg__",
-        "//tensorflow/tools/api/generator:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -125,13 +127,14 @@ py_library(
         ":util",
         ":weights_broadcast_ops",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
         "//third_party/py/numpy",
@@ -278,6 +281,9 @@ cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
+    visibility = visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ],
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
@@ -358,6 +364,9 @@ cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
+    visibility = visibility + [
+        "//learning/deepmind/courier:__subpackages__",
+    ],
     deps = [
         ":bfloat16_lib",
         ":ndarray_tensor_bridge",
@@ -691,11 +700,21 @@ py_library(
 )
 
 py_library(
+    name = "error_interpolation",
+    srcs = [
+        "framework/error_interpolation.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "function",
     srcs = ["framework/function.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":cond_v2_impl",
         ":dtypes",
         ":framework_ops",
         ":graph_to_function_def",
@@ -712,6 +731,7 @@ py_library(
     srcs = ["framework/graph_to_function_def.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cond_v2_impl",
         ":op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
@@ -802,6 +822,7 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_shape",
+        ":traceable_stack",
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -867,6 +888,17 @@ py_library(
     ],
 )
 
+# This target is maintained separately from :util to provide separate visibility
+# for legacy users who were granted visibility when the functions were private
+# members of ops.Graph.
+py_library(
+    name = "tf_stack",
+    srcs = ["util/tf_stack.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
 py_library(
     name = "tensor_shape",
     srcs = ["framework/tensor_shape.py"],
@@ -898,6 +930,16 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "traceable_stack",
+    srcs = ["framework/traceable_stack.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
     ],
 )
 
@@ -991,6 +1033,18 @@ py_test(
 )
 
 py_test(
+    name = "framework_error_interpolation_test",
+    size = "small",
+    srcs = ["framework/error_interpolation_test.py"],
+    main = "framework/error_interpolation_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":error_interpolation",
+    ],
+)
+
+py_test(
     name = "framework_subscribe_test",
     size = "small",
     srcs = ["framework/subscribe_test.py"],
@@ -1052,7 +1106,6 @@ tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/contrib/control_flow:__pkg__",
     ],
 )
 
@@ -1173,6 +1226,21 @@ py_test(
         ":random_ops",
         ":training",
         ":variables",
+    ],
+)
+
+py_test(
+    name = "framework_traceable_stack_test",
+    size = "small",
+    srcs = ["framework/traceable_stack_test.py"],
+    main = "framework/traceable_stack_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+        ":traceable_stack",
+        ":util",
     ],
 )
 
@@ -1600,6 +1668,9 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
+    visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+    ],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1827,6 +1898,7 @@ py_library(
         "tensor_shape",
         ":array_ops",
         ":array_ops_gen",
+        ":cond_v2_impl",
         ":constant_op",
         ":control_flow_ops_gen",
         ":control_flow_util",
@@ -1852,6 +1924,37 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":platform",
+    ],
+)
+
+py_library(
+    name = "cond_v2",
+    srcs = [
+        "ops/cond_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cond_v2_impl",
+        ":function",
+        ":function_def_to_graph",
+        ":gradients",
+    ],
+)
+
+py_library(
+    name = "cond_v2_impl",
+    srcs = [
+        "ops/cond_v2_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":c_api_util",
+        ":framework_ops",
+        ":functional_ops_gen",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -1921,6 +2024,8 @@ py_library(
         ":math_ops",
         ":platform",
         ":resource_variable_ops",
+        ":sparse_ops",
+        ":tensor_shape",
         ":variables",
     ],
 )
@@ -1937,6 +2042,7 @@ py_library(
         ":array_grad",
         ":array_ops",
         ":bitwise_ops",
+        ":cond_v2_impl",
         ":control_flow_grad",
         ":control_flow_ops",
         ":control_flow_util",
@@ -1953,6 +2059,7 @@ py_library(
         ":math_grad",
         ":math_ops",
         ":platform",
+        ":random_grad",
         ":resource_variable_ops",
         ":spectral_grad",
         ":util",
@@ -2332,6 +2439,19 @@ py_library(
 )
 
 py_library(
+    name = "random_grad",
+    srcs = ["ops/random_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":dtypes",
+        ":framework_ops",
+        ":math_ops",
+        ":random_ops_gen",
+    ],
+)
+
+py_library(
     name = "random_ops",
     srcs = ["ops/random_ops.py"],
     srcs_version = "PY2AND3",
@@ -2391,6 +2511,7 @@ py_library(
     srcs = ["ops/script_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":framework_for_generated_wrappers",
         ":script_ops_gen",
         "//third_party/py/numpy",
@@ -2530,6 +2651,7 @@ py_library(
         ":check_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
@@ -3337,6 +3459,19 @@ py_library(
     ],
 )
 
+py_test(
+    name = "lock_util_test",
+    size = "small",
+    srcs = ["util/lock_util_test.py"],
+    main = "util/lock_util_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":util",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_proto_library(
     name = "protos_all",
     srcs = glob(
@@ -3655,6 +3790,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":c_api_util",
+        ":error_interpolation",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -3855,7 +3991,7 @@ tf_cuda_library(
 
 tf_py_test(
     name = "session_test",
-    size = "small",
+    size = "medium",
     srcs = ["client/session_test.py"],
     additional_deps = [
         ":array_ops",
@@ -3980,6 +4116,7 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(
@@ -4034,6 +4171,19 @@ py_test(
         ":client_testlib",
         ":errors",
         ":lib",
+    ],
+)
+
+py_test(
+    name = "tf_record_test",
+    size = "small",
+    srcs = ["lib/io/tf_record_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":errors",
+        ":lib",
+        ":util",
     ],
 )
 

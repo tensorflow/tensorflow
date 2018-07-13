@@ -120,49 +120,7 @@ void ComputeBinaryOperatorOutputSize(const Shape& input_shape_x,
   CHECK(output_array->has_shape());
 }
 
-int GetOutputDepthFromWeights(const Model& model, const Operator& op) {
-  const string& weights_name = op.inputs[1];
-  const auto& weights_shape = model.GetArray(weights_name).shape();
-  if (op.type == OperatorType::kConv ||
-      op.type == OperatorType::kFullyConnected) {
-    return weights_shape.dims(0);
-  } else if (op.type == OperatorType::kDepthwiseConv) {
-    return weights_shape.dims(3);
-  } else {
-    LOG(FATAL) << "Unhandled operator type";
-  }
-}
-
-bool EnsureBiasVectorShape(Model* model, Operator* op) {
-  const string& weights_name = op->inputs[1];
-  const auto& weights_array = model->GetArray(weights_name);
-  // Yield until weights shape has been resolved.
-  if (!weights_array.has_shape()) {
-    return false;
-  }
-
-  if (op->inputs.size() < 3) {
-    return false;
-  }
-  auto& bias_array = model->GetArray(op->inputs[2]);
-  if (bias_array.has_shape()) {
-    return true;
-  }
-
-  const int output_depth = GetOutputDepthFromWeights(*model, *op);
-  bias_array.copy_shape(Shape({output_depth}));
-
-  auto& float_buffer = bias_array.GetMutableBuffer<ArrayDataType::kFloat>();
-  float_buffer.data.resize(output_depth, 0);
-
-  return true;
-}
-
 void ProcessConvOperator(Model* model, ConvOperator* op) {
-  if (!EnsureBiasVectorShape(model, op)) {
-    return;
-  }
-
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
@@ -210,12 +168,6 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // have to calculate the padding which requires the weights shape. So, we
   // might as well calculate the output shape and ensure it matches the
   // specified one
-
-  // Check if we have already run.
-  auto& output_array = model->GetArray(op->outputs[0]);
-  if (output_array.has_shape()) {
-    return;
-  }
 
   // SPECIFIED OUTPUT SHAPE
   // The below is the specified, or prescribed output shape, _given_ to the
@@ -284,14 +236,20 @@ void ProcessTransposeConvOperator(Model* model, TransposeConvOperator* op) {
   // Set the output shape according to the specified output shape.
   std::vector<int32> const& specified_output_shape =
       specified_output_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
+  auto& output_array = model->GetArray(op->outputs[0]);
   *(output_array.mutable_shape()->mutable_dims()) = specified_output_shape;
+
+  // Set im2col array dimensions if there is one.
+  if (op->outputs.size() == 2) {
+    const int input_depth = weights_shape.dims(3);
+    auto& im2col_array = model->GetArray(op->outputs[1]);
+    im2col_array.copy_shape(
+        Shape{specified_output_shape[0], specified_output_shape[1],
+              specified_output_shape[2], input_depth * kheight * kwidth});
+  }
 }
 
 void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
-  if (!EnsureBiasVectorShape(model, op)) {
-    return;
-  }
-
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
@@ -321,7 +279,7 @@ void ProcessDepthwiseConvOperator(Model* model, DepthwiseConvOperator* op) {
   if (!op->depth_multiplier) {
     op->depth_multiplier = output_depth / input_depth;
   }
-  QCHECK_EQ(output_depth, input_depth * op->depth_multiplier)
+  CHECK_EQ(output_depth, input_depth * op->depth_multiplier)
       << "input/output depths and depth_multiplier don't match";
 
   const int kheight = weights_shape.dims(1);
@@ -406,10 +364,6 @@ void ProcessOpWithShapeInput(Model* model, Operator* op) {
 }
 
 void ProcessFullyConnectedOperator(Model* model, FullyConnectedOperator* op) {
-  if (!EnsureBiasVectorShape(model, op)) {
-    return;
-  }
-
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
@@ -568,11 +522,11 @@ void ProcessAddNOperator(Model* model, Operator* op) {
 
 bool KeepDims(const Operator& op) {
   switch (op.type) {
-    case OperatorType::kTensorFlowMin:
+    case OperatorType::kMin:  //  Reduction Min
       return static_cast<const TensorFlowMinOperator&>(op).keep_dims;
-    case OperatorType::kTensorFlowMax:
+    case OperatorType::kMax:  //  Reduction Max
       return static_cast<const TensorFlowMaxOperator&>(op).keep_dims;
-    case OperatorType::kTensorFlowSum:
+    case OperatorType::kSum:
       return static_cast<const TensorFlowSumOperator&>(op).keep_dims;
     case OperatorType::kMean:
       return static_cast<const MeanOperator&>(op).keep_dims;
@@ -1085,9 +1039,6 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
   QCHECK_GE(input_shape.dimensions_count(), 1);
   op->input_rank = input_shape.dimensions_count();
 
-  // We only support 1-D indices.
-  QCHECK_EQ(indices_shape.dimensions_count(), 1);
-
   // Copy the input dimensions to the output except for dimension 0,
   // where the dimension of indices_shape is used.
   // TODO(mgubin): if axis != 0 this is not true, change when it's supported.
@@ -1337,8 +1288,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
         op->begin_mask, op->start_indices, op->strides,
         input_array.shape().dims().data(), axis);
     int stop_index = tflite::strided_slice::StopForAxis(
-        op->end_mask, op->stop_indices, op->strides,
-        input_array.shape().dims().data(), axis);
+        op->end_mask, op->shrink_axis_mask, op->stop_indices, op->strides,
+        input_array.shape().dims().data(), axis, start_index);
     int dim_size =
         ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
 
@@ -1453,7 +1404,8 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
   }
 }
 
-void ProcessArgMaxOperator(Model* model, ArgMaxOperator* op) {
+template <typename Op>
+void ProcessArgMinMaxOperator(Model* model, Op* op) {
   CHECK_EQ(op->inputs.size(), 2);
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1505,6 +1457,48 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
   }
 }
 
+void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // We have already run.
+    return;
+  }
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  if (!input_array.has_shape()) {
+    // Yield until input dims have been resolved.
+    return;
+  }
+  const auto& input_shape = input_array.shape();
+
+  auto& multiples_array = model->GetArray(op->inputs[1]);
+  if (!multiples_array.has_shape()) {
+    // Yield until multiples shape been resolved.
+    return;
+  }
+  if (!multiples_array.buffer) {
+    // Yield until the multiples is constant.
+    return;
+  }
+  CHECK(multiples_array.data_type == ArrayDataType::kInt32)
+      << "Tile multiples input must be int32";
+
+  std::vector<int32> const& multiples =
+      multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
+  CHECK_EQ(multiples.size(), input_shape.dimensions_count())
+      << "Tile multiples input " << op->inputs[1]
+      << " must be same length as input dimensions";
+
+  auto* mutable_dims = output_array.mutable_shape()->mutable_dims();
+  mutable_dims->resize(multiples.size());
+  for (int i = 0; i < mutable_dims->size(); ++i) {
+    (*mutable_dims)[i] = input_shape.dims(i) * multiples[i];
+  }
+}
+
 }  // namespace
 
 bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
@@ -1531,14 +1525,14 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLogistic:
     case OperatorType::kTanh:
     case OperatorType::kLocalResponseNormalization:
-    case OperatorType::kTensorFlowIdentity:
+    case OperatorType::kIdentity:
     case OperatorType::kFakeQuant:
     case OperatorType::kNeg:
-    case OperatorType::kTensorFlowRsqrt:
-    case OperatorType::kTensorFlowSqrt:
-    case OperatorType::kTensorFlowSquare:
-    case OperatorType::kTensorFlowAll:
-    case OperatorType::kTensorFlowAssert:
+    case OperatorType::kRsqrt:
+    case OperatorType::kSqrt:
+    case OperatorType::kSquare:
+    case OperatorType::kAll:
+    case OperatorType::kAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
     case OperatorType::kExp:
@@ -1557,14 +1551,15 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kDiv:
     case OperatorType::kFloorDiv:
     case OperatorType::kFloorMod:
-    case OperatorType::kTensorFlowLess:
-    case OperatorType::kTensorFlowLessEqual:
-    case OperatorType::kTensorFlowGreater:
-    case OperatorType::kTensorFlowMaximum:
-    case OperatorType::kTensorFlowMinimum:
-    case OperatorType::kTensorFlowGreaterEqual:
-    case OperatorType::kTensorFlowEqual:
-    case OperatorType::kTensorFlowNotEqual:
+    case OperatorType::kLess:
+    case OperatorType::kLessEqual:
+    case OperatorType::kGreater:
+    case OperatorType::kMaximum:  //  Element-wise Maximum
+    case OperatorType::kMinimum:  //  Element-wise Minimum
+    case OperatorType::kGreaterEqual:
+    case OperatorType::kEqual:
+    case OperatorType::kNotEqual:
+    case OperatorType::kPow:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:
@@ -1597,7 +1592,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessFullyConnectedOperator(model,
                                     static_cast<FullyConnectedOperator*>(op));
       break;
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kReshape:
       ProcessTensorFlowReshapeOperator(
           model, static_cast<TensorFlowReshapeOperator*>(op));
       break;
@@ -1610,9 +1605,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kL2Pool:
       ProcessL2PoolOperator(model, static_cast<L2PoolOperator*>(op));
       break;
-    case OperatorType::kTensorFlowMin:
-    case OperatorType::kTensorFlowMax:
-    case OperatorType::kTensorFlowSum:
+    case OperatorType::kMin:  //  Reduction Min
+    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kSum:
     case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
@@ -1623,34 +1618,26 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessSliceOperator(model, static_cast<SliceOperator*>(op));
       break;
 
-    case OperatorType::kTensorFlowTile:
-      // We don't currently implement the propagation of fixed sizes through
-      // a TensorFlow Tile.
-      //
-      // Fortunately, we don't need to: so far, we have only dealt with Tile
-      // or Slice ops in subgraphs that are identified as L2Normalization.
-      // See IdentifyL2Normalization.
-      break;
-    case OperatorType::kTensorFlowSwitch:
+    case OperatorType::kSwitch:
       // We can't know the sizes of the outputs until we have resolved the
       // predicate, and once we have resolved the predicate, the whole
       // Switch node will get resolved away.
       // See ResolveTensorFlowSwitch.
       break;
-    case OperatorType::kTensorFlowMerge:
+    case OperatorType::kMerge:
       // No need to bother resolving TensorFlow Merge ops: other graph
       // transformations will remove them anyway.
       // See ResolveTensorFlowMerge.
       break;
-    case OperatorType::kTensorFlowSplit:
+    case OperatorType::kSplit:
       ProcessTensorFlowSplitOperator(model,
                                      static_cast<TensorFlowSplitOperator*>(op));
       break;
     case OperatorType::kSqueeze:
       ProcessSqueezeOperator(model, static_cast<SqueezeOperator*>(op));
       break;
-    case OperatorType::kTensorFlowConcat:
-    case OperatorType::kTensorFlowConcatV2:
+    case OperatorType::kConcat:
+    case OperatorType::kConcatV2:
       // Unimplemented, hopefully another graph transformation will
       // drop it or rewrite it. Concretely, either ResolveTensorFlowConcat
       // will resolve this node to a DepthConcatenation, or else we have
@@ -1666,7 +1653,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRank:
       ProcessRankOperator(model, static_cast<RankOperator*>(op));
       break;
-    case OperatorType::kTensorFlowShape:
+    case OperatorType::kShape:
       ProcessShapeOperator(model, static_cast<TensorFlowShapeOperator*>(op));
       break;
     case OperatorType::kStack:
@@ -1687,7 +1674,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
       break;
     case OperatorType::kBatchMatMul:
-    case OperatorType::kTensorFlowMatMul:
+    case OperatorType::kMatMul:
       // MatMul operators are converted to FullyConnected, after which their
       // shapes are propagated.
       break;
@@ -1710,9 +1697,14 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
                                   static_cast<StridedSliceOperator*>(op));
       break;
     case OperatorType::kArgMax:
-      ProcessArgMaxOperator(model, static_cast<ArgMaxOperator*>(op));
+      ProcessArgMinMaxOperator<ArgMaxOperator>(
+          model, static_cast<ArgMaxOperator*>(op));
       break;
-    case OperatorType::kTensorFlowUnsupported:
+    case OperatorType::kArgMin:
+      ProcessArgMinMaxOperator<ArgMinOperator>(
+          model, static_cast<ArgMinOperator*>(op));
+      break;
+    case OperatorType::kUnsupported:
       break;
     case OperatorType::kSvdf:
       ProcessSvdfOperator(model, static_cast<SvdfOperator*>(op));
@@ -1733,6 +1725,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kSparseToDense:
       ProcessSparseToDenseOperator(model,
                                    static_cast<SparseToDenseOperator*>(op));
+      break;
+    case OperatorType::kTile:
+      ProcessTileOperator(model, static_cast<TensorFlowTileOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

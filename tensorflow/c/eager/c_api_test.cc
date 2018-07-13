@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string.h>
 #include "tensorflow/c/eager/c_api_test_util.h"
-#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -132,18 +132,20 @@ void TestRemoteExecute(bool async) {
 
   server_def.set_task_index(1);
 
-  std::unique_ptr<tensorflow::eager::EagerGrpcServer> worker_server;
-  ASSERT_TRUE(
-      tensorflow::eager::EagerGrpcServer::Create(server_def, &worker_server)
-          .ok());
+  std::unique_ptr<tensorflow::GrpcServer> worker_server;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
   ASSERT_TRUE(worker_server->Start().ok());
 
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetServerDef(opts, serialized.data(), serialized.size(),
                                  status);
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(1));
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts,
+                                             TFE_DEVICE_PLACEMENT_EXPLICIT);
   TFE_Context* ctx = TFE_NewContext(opts, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -204,6 +206,95 @@ void TestRemoteExecute(bool async) {
 
 TEST(CAPI, RemoteExecute) { TestRemoteExecute(false); }
 TEST(CAPI, RemoteExecuteAsync) { TestRemoteExecute(true); }
+
+void TestRemoteExecuteSilentCopies(bool async) {
+  tensorflow::ServerDef server_def = GetServerDef(3);
+
+  // This server def has the task index set to 0.
+  string serialized = server_def.SerializeAsString();
+
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server1;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server1)
+                  .ok());
+  ASSERT_TRUE(worker_server1->Start().ok());
+
+  server_def.set_task_index(2);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server2;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server2)
+                  .ok());
+  ASSERT_TRUE(worker_server2->Start().ok());
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetServerDef(opts, serialized.data(), serialized.size(),
+                                 status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle();
+  const char task1_name[] = "/job:localhost/replica:0/task:1/device:CPU:0";
+  const char task2_name[] = "/job:localhost/replica:0/task:2/device:CPU:0";
+
+  auto* h1_task2 =
+      TFE_TensorHandleCopyToDevice(h1_task0, ctx, task2_name, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // Handles are on task0 (local), and task2, but op is on task1.
+  TFE_Op* matmul = MatMulOp(ctx, h0_task0, h1_task2);
+  TFE_OpSetDevice(matmul, task1_name, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  TFE_Execute(matmul, &retvals[0], &num_retvals, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  auto* retval_task0 = TFE_TensorHandleCopyToDevice(
+      retvals[0], ctx, "/job:localhost/replica:0/task:0/device:CPU:0", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_Tensor* t = TFE_TensorHandleResolve(retval_task0, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(retval_task0);
+  float product[4] = {0};
+  EXPECT_EQ(sizeof(product), TF_TensorByteSize(t));
+  memcpy(&product[0], TF_TensorData(t), TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+  EXPECT_EQ(7, product[0]);
+  EXPECT_EQ(10, product[1]);
+  EXPECT_EQ(15, product[2]);
+  EXPECT_EQ(22, product[3]);
+
+  TFE_DeleteTensorHandle(h0_task0);
+  TFE_DeleteTensorHandle(h1_task0);
+  TFE_DeleteTensorHandle(h1_task2);
+  TFE_DeleteTensorHandle(retvals[0]);
+
+  TFE_DeleteOp(matmul);
+
+  TFE_ContextAsyncWait(ctx, status);
+  TFE_DeleteContext(ctx, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_DeleteStatus(status);
+
+  // TODO(nareshmodi): Figure out how to correctly shut the server down.
+  worker_server1.release();
+  worker_server2.release();
+}
+
+TEST(CAPI, RemoteExecuteSilentCopies) { TestRemoteExecuteSilentCopies(false); }
+TEST(CAPI, RemoteExecuteSilentCopiesAsync) {
+  TestRemoteExecuteSilentCopies(true);
+}
 
 TEST(CAPI, TensorHandle) {
   TFE_TensorHandle* h = TestMatrixTensorHandle();
@@ -1083,8 +1174,8 @@ TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
   TFE_OpSetAttrShape(op, "shape", {}, 0, status);
-  TFE_OpSetAttrString(op, "container", "");
-  TFE_OpSetAttrString(op, "shared_name", "");
+  TFE_OpSetAttrString(op, "container", "", 0);
+  TFE_OpSetAttrString(op, "shared_name", "", 0);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   TFE_TensorHandle* var_handle = nullptr;
   int num_retvals = 1;

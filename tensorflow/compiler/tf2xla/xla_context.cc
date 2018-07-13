@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -66,8 +66,8 @@ XlaContext::XlaContext(
     XlaCompiler* compiler, xla::XlaBuilder* builder,
     bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
     bool is_entry_computation,
-    const std::function<TensorShape(const TensorShape&, DataType)>*
-        shape_representation_fn)
+    const std::function<xla::StatusOr<TensorShape>(
+        const TensorShape&, DataType)>* shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
@@ -92,7 +92,7 @@ void XlaContext::AddRetval(int retval_index, DataType type,
 }
 
 Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
-                                  const xla::Literal& literal) {
+                                  const xla::LiteralSlice& literal) {
   VLOG(1) << "Adding retval index " << retval_index
           << " with non-data-dependent tensor to XLA computation";
   if (retvals_.size() <= retval_index) {
@@ -119,8 +119,8 @@ Status XlaContext::CreateResource(
   return Status::OK();
 }
 
-TensorShape XlaContext::RepresentationShape(const TensorShape& shape,
-                                            DataType type) const {
+xla::StatusOr<TensorShape> XlaContext::RepresentationShape(
+    const TensorShape& shape, DataType type) const {
   return (*shape_representation_fn_)(shape, type);
 }
 
@@ -131,9 +131,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
     xla::XlaBuilder b("max<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
-    b.Max(x, y);
+    auto x =
+        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y =
+        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    xla::Max(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }
@@ -145,9 +147,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
     xla::XlaBuilder b("min<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
-    b.Min(x, y);
+    auto x =
+        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y =
+        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    xla::Min(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }
@@ -159,9 +163,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
     xla::XlaBuilder b("add<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
-    b.Add(x, y);
+    auto x =
+        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y =
+        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    xla::Add(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }
@@ -173,9 +179,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
     xla::XlaBuilder b("mul<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
-    b.Mul(x, y);
+    auto x =
+        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y =
+        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    xla::Mul(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }

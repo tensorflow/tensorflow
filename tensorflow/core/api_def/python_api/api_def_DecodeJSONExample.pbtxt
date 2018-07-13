@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "DecodeJSONExample"
+  endpoint {
+    name: "io.decode_json_example"
+  }
+  endpoint {
+    name: "decode_json_example"
+    deprecated: true
+  }
+}

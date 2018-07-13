@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -29,7 +29,7 @@ BREAK_USED = 'break_used'
 CONTROL_VAR_NAME = 'control_var_name'
 
 
-class BreakStatementTransformer(transformer.Base):
+class BreakStatementTransformer(converter.Base):
   """Canonicalizes break statements into additional conditionals."""
 
   def visit_Break(self, node):
@@ -67,7 +67,7 @@ class BreakStatementTransformer(transformer.Base):
 
   def visit_While(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    break_var = self.context.namer.new_symbol('break_', scope.referenced)
+    break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
     node.test = self.visit(node.test)
     node.body, break_used = self._track_body(node.body, break_var)
@@ -97,7 +97,7 @@ class BreakStatementTransformer(transformer.Base):
 
   def visit_For(self, node):
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    break_var = self.context.namer.new_symbol('break_', scope.referenced)
+    break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
     node.target = self.visit(node.target)
     node.iter = self.visit(node.iter)
@@ -137,5 +137,5 @@ class BreakStatementTransformer(transformer.Base):
     return node
 
 
-def transform(node, context):
-  return BreakStatementTransformer(context).visit(node)
+def transform(node, ctx):
+  return BreakStatementTransformer(ctx).visit(node)

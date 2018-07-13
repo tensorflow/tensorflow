@@ -36,7 +36,13 @@ bool FLAGS_ignore_known_bugs = true;
 // TODO(b/71769302) zip_files_dir should have a more accurate default, if
 // possible
 string* FLAGS_zip_file_path = new string("./");
+#ifndef __ANDROID__
 string* FLAGS_unzip_binary_path = new string("/usr/bin/unzip");
+#else
+string* FLAGS_unzip_binary_path = new string("/system/bin/unzip");
+#endif
+bool FLAGS_use_nnapi = false;
+bool FLAGS_ignore_unsupported_nnapi = false;
 }  // namespace
 
 // TensorFlow system environment for file system called.
@@ -47,10 +53,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Add only supports float32. (and "constant" tests use Add)
-    {R"(^\/add_a.*int32)", "68808744"},
-    {R"(^\/constant.*int32)", "68808744"},
-    {R"(^\/mul.*int32)", "68808744"},
     {R"(^\/div.*int32)", "68808744"},
     {R"(^\/sub.*int32)", "68808744"},
 
@@ -94,11 +96,12 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/gather.*axis=1)", "76910444"},
 
     // No support for arbitrary dimensions in ArgMax.
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
      "77546240"},
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
      "77546240"},
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.\])", "77546240"},
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
+     "77546240"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -212,7 +215,7 @@ TEST_P(OpsTest, RunZipTests) {
 
   std::ifstream tflite_stream(tflite_test_case);
   ASSERT_TRUE(tflite_stream.is_open()) << tflite_test_case;
-  tflite::testing::TfLiteDriver test_driver(/*use_nnapi=*/true);
+  tflite::testing::TfLiteDriver test_driver(FLAGS_use_nnapi);
   test_driver.SetModelBaseDir(tflite_dir);
 
   string bug_number;
@@ -223,16 +226,21 @@ TEST_P(OpsTest, RunZipTests) {
   }
 
   bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
+  string message = test_driver.GetErrorMessage();
   if (bug_number.empty()) {
-    EXPECT_TRUE(result) << test_driver.GetErrorMessage();
+    if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
+      EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
+    } else {
+      EXPECT_TRUE(result) << message;
+    }
   } else {
     if (FLAGS_ignore_known_bugs) {
       EXPECT_FALSE(result) << "Test was expected to fail but is now passing; "
                               "you can mark http://b/"
                            << bug_number << " as fixed! Yay!";
     } else {
-      EXPECT_TRUE(result) << test_driver.GetErrorMessage()
-                          << ": Possibly due to http://b/" << bug_number;
+      EXPECT_TRUE(result) << message << ": Possibly due to http://b/"
+                          << bug_number;
     }
   }
 }
@@ -273,7 +281,13 @@ int main(int argc, char** argv) {
                        "Required: Location of the test zip file."),
       tensorflow::Flag("unzip_binary_path",
                        tflite::testing::FLAGS_unzip_binary_path,
-                       "Required: Location of a suitable unzip binary.")};
+                       "Required: Location of a suitable unzip binary."),
+      tensorflow::Flag("use_nnapi", &tflite::testing::FLAGS_use_nnapi,
+                       "Whether to enable the NNAPI delegate"),
+      tensorflow::Flag("ignore_unsupported_nnapi",
+                       &tflite::testing::FLAGS_ignore_unsupported_nnapi,
+                       "Don't fail tests just because delegation to NNAPI "
+                       "is not possible")};
   bool success = tensorflow::Flags::Parse(&argc, argv, flags);
   if (!success || (argc == 2 && !strcmp(argv[1], "--helpfull"))) {
     fprintf(stderr, "%s", tensorflow::Flags::Usage(argv[0], flags).c_str());
@@ -281,6 +295,8 @@ int main(int argc, char** argv) {
   }
 
   ::tflite::LogToStderr();
+  // TODO(mikie): googletest arguments do not work - maybe the tensorflow flags
+  // parser removes them?
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

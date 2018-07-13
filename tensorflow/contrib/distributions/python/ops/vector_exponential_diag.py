@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import vector_exponential_linear_operator as vector_exponential_linop
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -116,6 +117,14 @@ class VectorExponentialDiag(
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_diag=None,

@@ -31,7 +31,7 @@ namespace tensorflow {
 //
 // This dataset is constructed internally for use in datasets that
 // build nested dataset expressions (e.g. the reducer function for
-// GroupByBatchDataset). It efficiently supports multiple iterators on
+// GroupByWindowDataset). It efficiently supports multiple iterators on
 // the same window without recomputation.
 //
 // REQUIRES: `output_types` must match the types of the respective

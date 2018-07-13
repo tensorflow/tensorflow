@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 # imports for backwards namespace compatibility
 # pylint: disable=unused-import
 from tensorflow.python.keras.layers.pooling import AveragePooling1D
@@ -382,11 +382,11 @@ class Conv2D(Conv):
       filters: Integer, the dimensionality of the output space
           (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
-          width and height of the 2D convolution window.
+          height and width of the 2D convolution window.
           Can be a single integer to specify the same value for
           all spatial dimensions.
       strides: An integer or tuple/list of 2 integers,
-          specifying the strides of the convolution along the width and height.
+          specifying the strides of the convolution along the height and width.
           Can be a single integer to specify the same value for
           all spatial dimensions.
           Specifying any stride value != 1 is incompatible with specifying
@@ -613,11 +613,11 @@ class Conv2DTranspose(Conv2D):
       filters: Integer, the dimensionality of the output space
           (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
-          width and height of the 2D convolution window.
+          height and width of the 2D convolution window.
           Can be a single integer to specify the same value for
           all spatial dimensions.
       strides: An integer or tuple/list of 2 integers,
-          specifying the strides of the convolution along the width and height.
+          specifying the strides of the convolution along the height and width.
           Can be a single integer to specify the same value for
           all spatial dimensions.
           Specifying any stride value != 1 is incompatible with specifying
@@ -1195,6 +1195,7 @@ class SeparableConv(Conv):
         dilation_rate=dilation_rate,
         activation=activations.get(activation),
         use_bias=use_bias,
+        bias_initializer=initializers.get(bias_initializer),
         bias_regularizer=regularizers.get(bias_regularizer),
         activity_regularizer=regularizers.get(activity_regularizer),
         bias_constraint=bias_constraint,
@@ -1452,11 +1453,11 @@ class SeparableConv2D(SeparableConv):
       filters: Integer, the dimensionality of the output space
           (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
-          width and height of the 2D convolution window.
+          height and width of the 2D convolution window.
           Can be a single integer to specify the same value for
           all spatial dimensions.
       strides: An integer or tuple/list of 2 integers,
-          specifying the strides of the convolution along the width and height.
+          specifying the strides of the convolution along the height and width.
           Can be a single integer to specify the same value for
           all spatial dimensions.
           Specifying any stride value != 1 is incompatible with specifying
@@ -1596,11 +1597,11 @@ class DepthwiseConv2D(Conv2D):
 
   Arguments:
     kernel_size: An integer or tuple/list of 2 integers, specifying the
-        width and height of the 2D convolution window.
+        height and width of the 2D convolution window.
         Can be a single integer to specify the same value for
         all spatial dimensions.
     strides: An integer or tuple/list of 2 integers,
-        specifying the strides of the convolution along the width and height.
+        specifying the strides of the convolution along the height and width.
         Can be a single integer to specify the same value for
         all spatial dimensions.
         Specifying any stride value != 1 is incompatible with specifying
@@ -1729,7 +1730,7 @@ class DepthwiseConv2D(Conv2D):
         dilation_rate=self.dilation_rate,
         data_format=self.data_format)
 
-    if self.bias:
+    if self.use_bias:
       outputs = backend.bias_add(
           outputs,
           self.bias,
@@ -2007,7 +2008,7 @@ class ZeroPadding2D(Layer):
   Arguments:
       padding: int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
           - If int: the same symmetric padding
-              is applied to width and height.
+              is applied to height and width.
           - If tuple of 2 ints:
               interpreted as two different
               symmetric padding values for height and width:
@@ -2106,7 +2107,7 @@ class ZeroPadding3D(Layer):
   Arguments:
       padding: int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
           - If int: the same symmetric padding
-              is applied to width and height.
+              is applied to height and width.
           - If tuple of 3 ints:
               interpreted as two different
               symmetric padding values for height and width:
@@ -2266,12 +2267,12 @@ class Cropping1D(Layer):
 class Cropping2D(Layer):
   """Cropping layer for 2D input (e.g. picture).
 
-  It crops along spatial dimensions, i.e. width and height.
+  It crops along spatial dimensions, i.e. height and width.
 
   Arguments:
       cropping: int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
           - If int: the same symmetric cropping
-              is applied to width and height.
+              is applied to height and width.
           - If tuple of 2 ints:
               interpreted as two different
               symmetric cropping values for height and width:

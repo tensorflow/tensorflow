@@ -24,7 +24,9 @@ from __future__ import division
 from __future__ import print_function
 
 import six
+
 from tensorflow.contrib import layers
+from tensorflow.contrib.boosted_trees.estimator_batch import distillation_loss
 from tensorflow.contrib.boosted_trees.estimator_batch import estimator_utils
 from tensorflow.contrib.boosted_trees.estimator_batch import trainer_hooks
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
@@ -35,11 +37,13 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training_util
 
@@ -77,6 +81,7 @@ def _dnn_tree_combined_model_fn(features,
                                 predict_with_tree_only=False,
                                 tree_feature_columns=None,
                                 tree_center_bias=False,
+                                dnn_to_tree_distillation_param=None,
                                 use_core_versions=False):
   """DNN and GBDT combined model_fn.
 
@@ -117,6 +122,13 @@ def _dnn_tree_combined_model_fn(features,
       set to True, these features are in addition to dnn_feature_columns.
     tree_center_bias: Whether a separate tree should be created for
       first fitting the bias.
+    dnn_to_tree_distillation_param: A Tuple of (float, loss_fn), where the
+      float defines the weight of the distillation loss, and the loss_fn, for
+      computing distillation loss, takes dnn_logits, tree_logits and weight
+      tensor. If the entire tuple is None, no distillation will be applied. If
+      only the loss_fn is None, we will take the sigmoid/softmax cross entropy
+      loss be default. When distillation is applied, `predict_with_tree_only`
+      will be set to True.
     use_core_versions: Whether feature columns and loss are from the core (as
       opposed to contrib) version of tensorflow.
 
@@ -131,6 +143,12 @@ def _dnn_tree_combined_model_fn(features,
 
   if not dnn_feature_columns:
     raise ValueError("dnn_feature_columns must be specified")
+
+  if dnn_to_tree_distillation_param:
+    if not predict_with_tree_only:
+      logging.warning("update predict_with_tree_only to True since distillation"
+                      "is specified.")
+      predict_with_tree_only = True
 
   # Build DNN Logits.
   dnn_parent_scope = "dnn"
@@ -225,6 +243,25 @@ def _dnn_tree_combined_model_fn(features,
 
     def _tree_train_op_fn(loss):
       """Returns the op to optimize the loss."""
+      if dnn_to_tree_distillation_param:
+        loss_weight, loss_fn = dnn_to_tree_distillation_param
+        weight_tensor = head_lib._weight_tensor(  # pylint: disable=protected-access
+            features, head.weight_column_name)
+        dnn_logits_fixed = array_ops.stop_gradient(dnn_logits)
+
+        if loss_fn is None:
+          # we create the loss_fn similar to the head loss_fn for
+          # multi_class_head used previously as the default one.
+          n_classes = 2 if head.logits_dimension == 1 else head.logits_dimension
+          loss_fn = distillation_loss.create_dnn_to_tree_cross_entropy_loss_fn(
+              n_classes)
+
+        dnn_to_tree_distillation_loss = loss_weight * loss_fn(
+            dnn_logits_fixed, tree_logits, weight_tensor)
+        summary.scalar("dnn_to_tree_distillation_loss",
+                       dnn_to_tree_distillation_loss)
+        loss += dnn_to_tree_distillation_loss
+
       update_op = gbdt_model.train(loss, predictions_dict, labels)
       with ops.control_dependencies(
           [update_op]), (ops.colocate_with(global_step)):
@@ -232,7 +269,13 @@ def _dnn_tree_combined_model_fn(features,
         return update_op
 
   if predict_with_tree_only:
-    tree_train_logits = tree_logits
+    if mode == model_fn.ModeKeys.TRAIN or mode == model_fn.ModeKeys.INFER:
+      tree_train_logits = tree_logits
+    else:
+      tree_train_logits = control_flow_ops.cond(
+          global_step > dnn_steps_to_train,
+          lambda: tree_logits,
+          lambda: dnn_logits)
   else:
     tree_train_logits = dnn_logits + tree_logits
 
@@ -325,6 +368,7 @@ class DNNBoostedTreeCombinedClassifier(estimator.Estimator):
                predict_with_tree_only=False,
                tree_feature_columns=None,
                tree_center_bias=False,
+               dnn_to_tree_distillation_param=None,
                use_core_versions=False):
     """Initializes a DNNBoostedTreeCombinedClassifier instance.
 
@@ -372,6 +416,13 @@ class DNNBoostedTreeCombinedClassifier(estimator.Estimator):
         set to True, these features are in addition to dnn_feature_columns.
       tree_center_bias: Whether a separate tree should be created for
         first fitting the bias.
+      dnn_to_tree_distillation_param: A Tuple of (float, loss_fn), where the
+        float defines the weight of the distillation loss, and the loss_fn, for
+        computing distillation loss, takes dnn_logits, tree_logits and weight
+        tensor. If the entire tuple is None, no distillation will be applied. If
+        only the loss_fn is None, we will take the sigmoid/softmax cross entropy
+        loss be default. When distillation is applied, `predict_with_tree_only`
+        will be set to True.
       use_core_versions: Whether feature columns and loss are from the core (as
         opposed to contrib) version of tensorflow.
     """
@@ -403,6 +454,7 @@ class DNNBoostedTreeCombinedClassifier(estimator.Estimator):
           predict_with_tree_only=predict_with_tree_only,
           tree_feature_columns=tree_feature_columns,
           tree_center_bias=tree_center_bias,
+          dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
           use_core_versions=use_core_versions)
 
     super(DNNBoostedTreeCombinedClassifier, self).__init__(
@@ -436,6 +488,7 @@ class DNNBoostedTreeCombinedRegressor(estimator.Estimator):
                predict_with_tree_only=False,
                tree_feature_columns=None,
                tree_center_bias=False,
+               dnn_to_tree_distillation_param=None,
                use_core_versions=False):
     """Initializes a DNNBoostedTreeCombinedRegressor instance.
 
@@ -483,6 +536,13 @@ class DNNBoostedTreeCombinedRegressor(estimator.Estimator):
         set to True, these features are in addition to dnn_feature_columns.
       tree_center_bias: Whether a separate tree should be created for
         first fitting the bias.
+      dnn_to_tree_distillation_param: A Tuple of (float, loss_fn), where the
+        float defines the weight of the distillation loss, and the loss_fn, for
+        computing distillation loss, takes dnn_logits, tree_logits and weight
+        tensor. If the entire tuple is None, no distillation will be applied. If
+        only the loss_fn is None, we will take the sigmoid/softmax cross entropy
+        loss be default. When distillation is applied, `predict_with_tree_only`
+        will be set to True.
       use_core_versions: Whether feature columns and loss are from the core (as
         opposed to contrib) version of tensorflow.
     """
@@ -519,6 +579,7 @@ class DNNBoostedTreeCombinedRegressor(estimator.Estimator):
           predict_with_tree_only=predict_with_tree_only,
           tree_feature_columns=tree_feature_columns,
           tree_center_bias=tree_center_bias,
+          dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
           use_core_versions=use_core_versions)
 
     super(DNNBoostedTreeCombinedRegressor, self).__init__(
@@ -553,6 +614,7 @@ class DNNBoostedTreeCombinedEstimator(estimator.Estimator):
                predict_with_tree_only=False,
                tree_feature_columns=None,
                tree_center_bias=False,
+               dnn_to_tree_distillation_param=None,
                use_core_versions=False):
     """Initializes a DNNBoostedTreeCombinedEstimator instance.
 
@@ -595,6 +657,13 @@ class DNNBoostedTreeCombinedEstimator(estimator.Estimator):
         set to True, these features are in addition to dnn_feature_columns.
       tree_center_bias: Whether a separate tree should be created for
         first fitting the bias.
+      dnn_to_tree_distillation_param: A Tuple of (float, loss_fn), where the
+        float defines the weight of the distillation loss, and the loss_fn, for
+        computing distillation loss, takes dnn_logits, tree_logits and weight
+        tensor. If the entire tuple is None, no distillation will be applied. If
+        only the loss_fn is None, we will take the sigmoid/softmax cross entropy
+        loss be default. When distillation is applied, `predict_with_tree_only`
+        will be set to True.
       use_core_versions: Whether feature columns and loss are from the core (as
         opposed to contrib) version of tensorflow.
     """
@@ -620,6 +689,7 @@ class DNNBoostedTreeCombinedEstimator(estimator.Estimator):
           predict_with_tree_only=predict_with_tree_only,
           tree_feature_columns=tree_feature_columns,
           tree_center_bias=tree_center_bias,
+          dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
           use_core_versions=use_core_versions)
 
     super(DNNBoostedTreeCombinedEstimator, self).__init__(

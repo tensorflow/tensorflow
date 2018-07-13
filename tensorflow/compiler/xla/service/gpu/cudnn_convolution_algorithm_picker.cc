@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
@@ -80,8 +81,7 @@ bool ShouldIncludeWinogradNonfusedAlgo(const Shape& input_shape,
                                        const ConvolutionDimensionNumbers& dnums,
                                        se::StreamExecutor* stream_exec) {
   // Skip this check for cudnn7 and newer.
-  auto version =
-      stream_exec->AsDnn()->GetVersion();
+  auto version = stream_exec->AsDnn()->GetVersion();
   if (version.ok() && version.ValueOrDie().major_version() >= 7) {
     return true;
   }
@@ -338,8 +338,8 @@ StatusOr<bool> CudnnConvolutionAlgorithmPicker::RunOnInstruction(
       computation->AddInstruction(HloInstruction::CreateTuple(
           {computation->AddInstruction(HloInstruction::CreateGetTupleElement(
                new_call_shape.tuple_shapes(0), new_call, 0)),
-           computation->AddInstruction(
-               HloInstruction::CreateConstant(Literal::CreateR1<uint8>({})))}));
+           computation->AddInstruction(HloInstruction::CreateConstant(
+               LiteralUtil::CreateR1<uint8>({})))}));
 
   TF_RETURN_IF_ERROR(instr->parent()->ReplaceInstruction(instr, new_tuple));
   return true;
