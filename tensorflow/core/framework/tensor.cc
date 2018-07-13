@@ -917,7 +917,7 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
     for (int64 i = 0; i < element_count; i++) {
       if (*data_index >= limit) {
         // If not enough elements has been printed, append "...".
-        if (i < element_count) {
+        if (dim_index != 0 && i < element_count) {
           strings::StrAppend(result, "...");
         }
         return;
@@ -939,10 +939,6 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
                 result);
     if (*data_index < limit || flag) {
       strings::StrAppend(result, "]");
-      if (*data_index >= limit) {
-        // If not enough elements has been printed in this dim, append "...".
-        strings::StrAppend(result, "...");
-      }
       flag = false;
     }
   }
@@ -967,6 +963,7 @@ string SummarizeArray(int64 limit, int64 num_elts,
   const int shape_size = tensor_shape.dims();
   PrintOneDim(0, shape, limit, shape_size, array, &data_index, &ret);
 
+  if (num_elts > limit) strings::StrAppend(&ret, "...");
   return ret;
 }
 }  // namespace
