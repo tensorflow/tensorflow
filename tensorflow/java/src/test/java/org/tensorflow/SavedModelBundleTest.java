@@ -47,7 +47,7 @@ public class SavedModelBundleTest {
       fail("not expected");
     } catch (org.tensorflow.TensorFlowException e) {
       // expected exception
-      assertTrue(e.getMessage().contains("SavedModel not found"));
+      assertTrue(e.getMessage().contains("Could not find SavedModel"));
     }
   }
 }
