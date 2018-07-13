@@ -46,7 +46,7 @@ using tensorflow::tracing::ScopedAnnotation;
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    const string& ptx, const std::vector<uint8>& cubin,
+    const string& asm_text, const std::vector<uint8>& binary,
     se::DeviceVersion device_hardware_version,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
@@ -55,8 +55,8 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      ptx_(ptx),
-      cubin_(cubin),
+      asm_text_(asm_text),
+      binary_(binary),
       device_hardware_version_(device_hardware_version),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {}
