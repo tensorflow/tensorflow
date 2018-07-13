@@ -352,8 +352,10 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     device_open_ = true;
 
     option_flags_ = poplar::OptionFlags();
-    option_flags_.set("target.textSectionSizeInBytes", "0xa000");
-    option_flags_.set("target.workerStackSizeInBytes", "0x400");
+    if (type == tensorflow::IPUOptions::DeviceConfig::IPU) {
+      option_flags_.set("target.textSectionSizeInBytes", "0x8000");
+      option_flags_.set("target.workerStackSizeInBytes", "0x400");
+    }
     for (const auto& opt : cfg.compilation_options()) {
       option_flags_.set(opt.option(), opt.value());
     }
@@ -658,7 +660,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       if (engine_changed) {
-        engine->load(poplar_device_);
+        try {
+          engine->load(poplar_device_);
+        } catch (std::logic_error e) {
+          return tensorflow::errors::Internal(
+            "Poplar engine load error ", e.what());
+        }
 
         if (current_config_.profiling().enable_io_trace()) {
           AddEventRecord(tensorflow::IpuTraceEvent::LOAD_ENGINE,
