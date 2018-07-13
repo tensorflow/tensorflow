@@ -1261,7 +1261,8 @@ TEST(SummarizeValue, INT32) {
 }
 
 TEST(SummarizeValue, INT32Dims) {
-  Tensor x = MkTensor<int>(DT_INT32, TensorShape({3, 4}), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({3, 4}),
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   EXPECT_EQ("[1 2 3...]...", x.SummarizeValue(3));
   EXPECT_EQ("[1 2 3 4][5 6 7 8][9 10...]...", x.SummarizeValue(10));
 }
