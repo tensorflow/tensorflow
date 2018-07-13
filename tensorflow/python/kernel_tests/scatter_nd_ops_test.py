@@ -145,7 +145,7 @@ class StatefulScatterNdTest(test.TestCase):
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
     for vtype in (np.int32,
-                  np.float32, np.float64,
+                  np.float16, np.float32, np.float64,
                   np.complex64, np.complex128):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
