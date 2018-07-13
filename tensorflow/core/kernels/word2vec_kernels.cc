@@ -320,7 +320,7 @@ class NegTrainOp : public OpKernel {
         auto dot = (v_in * v_out).sum();
         g = (dot.exp() + 1.f).inverse();
         Tbuf = v_out * (g() * lr);
-        v_out += v_in * (g() * lr);
+        v_out -= v_in * (g() * lr);
       }
 
       // Negative samples:
@@ -336,11 +336,11 @@ class NegTrainOp : public OpKernel {
         auto dot = (v_in * v_sample).sum();
         g = -((-dot).exp() + 1.f).inverse();
         Tbuf += v_sample * (g() * lr);
-        v_sample += v_in * (g() * lr);
+        v_sample -= v_in * (g() * lr);
       }
 
       // Applies the gradient on v_in.
-      v_in += Tbuf;
+      v_in -= Tbuf;
     }
   }
 
