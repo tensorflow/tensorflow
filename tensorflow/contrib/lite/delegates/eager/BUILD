@@ -30,6 +30,6 @@ cc_test(
         ":util",
         "//tensorflow/contrib/lite/testing:util",
         "//tensorflow/core:lib",
-        "//testing/base/public:gunit",
+        "@com_google_googletest//:gtest",
     ],
 )
