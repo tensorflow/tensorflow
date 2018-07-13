@@ -1483,6 +1483,13 @@ def main():
     else:
       set_trisycl_include_dir(environ_cp)
 
+  set_action_env_var(environ_cp, 'TF_NEED_ROCM', 'ROCm', False)
+  if environ_cp.get('TF_NEED_ROCM') == '1':
+    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
+        'LD_LIBRARY_PATH') != '1':
+      write_action_env_to_bazelrc('LD_LIBRARY_PATH',
+                                  environ_cp.get('LD_LIBRARY_PATH'))
+
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
