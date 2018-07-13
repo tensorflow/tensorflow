@@ -1,0 +1,53 @@
+--- a/BUILD     2017-10-17 21:30:48.000000000 +0000
++++ b/BUILD     2018-01-09 12:40:36.264153992 +0000
+@@ -23,6 +23,7 @@
+     "crypto_sources",
+     "crypto_sources_linux_x86_64",
+     "crypto_sources_mac_x86_64",
++    "crypto_sources_linux_ppc64le",
+     "fips_fragments",
+     "ssl_headers",
+     "ssl_internal_headers",
+@@ -46,6 +47,11 @@
+     values = {"cpu": "x64_windows"},
+ )
+
++config_setting(
++    name = "linux_ppc64le",
++    values = {"cpu": "ppc"},
++)
++
+ posix_copts = [
+     # Assembler option --noexecstack adds .note.GNU-stack to each object to
+     # ensure that binaries can be built with non-executable stack.
+@@ -77,12 +83,14 @@
+         "-DWIN32_LEAN_AND_MEAN",
+         "-DOPENSSL_NO_ASM",
+     ],
++    ":linux_ppc64le": posix_copts,
+     "//conditions:default": ["-DOPENSSL_NO_ASM"],
+ })
+
+ crypto_sources_asm = select({
+     ":linux_x86_64": crypto_sources_linux_x86_64,
+     ":mac_x86_64": crypto_sources_mac_x86_64,
++    ":linux_ppc64le": crypto_sources_linux_ppc64le,
+     "//conditions:default": [],
+ })
+
+@@ -97,6 +105,7 @@
+ boringssl_copts_c11 = boringssl_copts + select({
+     ":linux_x86_64": posix_copts_c11,
+     ":mac_x86_64": posix_copts_c11,
++    ":linux_ppc64le": posix_copts_c11,
+     "//conditions:default": [],
+ })
+
+@@ -110,6 +119,7 @@
+     ":linux_x86_64": posix_copts_cxx,
+     ":mac_x86_64": posix_copts_cxx,
+     "//conditions:default": [],
++    ":linux_ppc64le": posix_copts_cxx,
+ })
+
+ cc_library(
