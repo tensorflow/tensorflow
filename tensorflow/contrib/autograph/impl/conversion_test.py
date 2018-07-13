@@ -79,10 +79,12 @@ class ConversionTest(test.TestCase):
     self.assertTrue(f in program_ctx.dependency_cache)
     self.assertTrue(g in program_ctx.dependency_cache)
     self.assertEqual('tf__f', program_ctx.dependency_cache[f].name)
-    # need the extra .body[0] in order to step past the with tf.name_scope('f')
-    # that is added automatically
+    # need one extra .body[0] in order to step past the try/except wrapper that
+    # is added automatically, the other for the with tf.name_scope('f') that is
+    # added automatically
     self.assertEqual(
-        'tf__g', program_ctx.dependency_cache[f].body[0].body[0].value.func.id)
+        'tf__g',
+        program_ctx.dependency_cache[f].body[0].body[0].body[0].value.func.id)
     self.assertEqual('tf__g', program_ctx.dependency_cache[g].name)
 
   def test_entity_to_graph_class_hierarchy(self):
