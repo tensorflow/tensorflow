@@ -164,8 +164,8 @@ public final class Tensor<T> implements AutoCloseable {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Tensor<Integer> create(long[] shape, IntBuffer data) {
-    Tensor<Integer> t = allocateForBuffer(DataType.INT32, shape, data.remaining());
+  public static Tensor<Integer> create(Shape shape, IntBuffer data) {
+    Tensor<Integer> t = allocateForBuffer(DataType.INT32, shape.asArray(), data.remaining());
     t.buffer().asIntBuffer().put(data);
     return t;
   }
@@ -182,8 +182,8 @@ public final class Tensor<T> implements AutoCloseable {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Tensor<Float> create(long[] shape, FloatBuffer data) {
-    Tensor<Float> t = allocateForBuffer(DataType.FLOAT, shape, data.remaining());
+  public static Tensor<Float> create(Shape shape, FloatBuffer data) {
+    Tensor<Float> t = allocateForBuffer(DataType.FLOAT, shape.asArray(), data.remaining());
     t.buffer().asFloatBuffer().put(data);
     return t;
   }
@@ -200,8 +200,8 @@ public final class Tensor<T> implements AutoCloseable {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Tensor<Double> create(long[] shape, DoubleBuffer data) {
-    Tensor<Double> t = allocateForBuffer(DataType.DOUBLE, shape, data.remaining());
+  public static Tensor<Double> create(Shape shape, DoubleBuffer data) {
+    Tensor<Double> t = allocateForBuffer(DataType.DOUBLE, shape.asArray(), data.remaining());
     t.buffer().asDoubleBuffer().put(data);
     return t;
   }
@@ -218,8 +218,8 @@ public final class Tensor<T> implements AutoCloseable {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Tensor<Long> create(long[] shape, LongBuffer data) {
-    Tensor<Long> t = allocateForBuffer(DataType.INT64, shape, data.remaining());
+  public static Tensor<Long> create(Shape shape, LongBuffer data) {
+    Tensor<Long> t = allocateForBuffer(DataType.INT64, shape.asArray(), data.remaining());
     t.buffer().asLongBuffer().put(data);
     return t;
   }
@@ -239,7 +239,7 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  public static <T> Tensor<T> create(Class<T> type, long[] shape, ByteBuffer data) {
+  public static <T> Tensor<T> create(Class<T> type, Shape shape, ByteBuffer data) {
     @SuppressWarnings("unchecked")
     Tensor<T> ret = (Tensor<T>) create(DataType.fromClass(type), shape, data);
     return ret;
@@ -260,7 +260,7 @@ public final class Tensor<T> implements AutoCloseable {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  private static Tensor<?> create(DataType dtype, long[] shape, ByteBuffer data) {
+  private static Tensor<?> create(DataType dtype, Shape shape, ByteBuffer data) {
     int nremaining = 0;
     if (dtype != DataType.STRING) {
       int elemBytes = elemByteSize(dtype);
@@ -274,7 +274,7 @@ public final class Tensor<T> implements AutoCloseable {
     } else {
       nremaining = data.remaining();
     }
-    Tensor<?> t = allocateForBuffer(dtype, shape, nremaining);
+    Tensor<?> t = allocateForBuffer(dtype, shape.asArray(), nremaining);
     t.buffer().put(data);
     return t;
   }
