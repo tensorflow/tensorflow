@@ -12,6 +12,7 @@ load(
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -145,7 +146,6 @@ filegroup(
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
-        "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
@@ -154,8 +154,6 @@ filegroup(
         "@lmdb//:LICENSE",
         "@local_config_nccl//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@grpc//third_party/nanopb:LICENSE.txt",
-        "@grpc//third_party/address_sorting:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@pcre//:LICENCE",
@@ -170,7 +168,14 @@ filegroup(
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]) + tf_additional_license_deps(),
+    ]) + if_not_system_lib(
+        "grpc",
+        [
+            "@grpc//:LICENSE",
+            "@grpc//third_party/nanopb:LICENSE.txt",
+            "@grpc//third_party/address_sorting:LICENSE",
+        ],
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(
