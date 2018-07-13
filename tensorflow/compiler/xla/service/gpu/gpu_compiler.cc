@@ -354,6 +354,9 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
     return;
   }
 
+  // We need ptxas >= 9.0 as a hard requirement, because we compile targeting
+  // PTX 6.0.  An older ptxas will just fail to compile any of our code.
+  //
   // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
   // address calculations with large offsets (e.g. "load ptr + large_constant"),
   // b/70245379.
@@ -361,15 +364,20 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
   // that appears related to address calculations.  ptxas 9.2.88 appears to
   // work, as far as we can tell.
-  if ((vmaj < 9 || vmin < 2 || vdot < 88)) {
+  if (vmaj < 9) {
+    LOG(ERROR)
+        << "You are using ptxas 8.x, but XLA requires ptxas 9.x (and strongly "
+           "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
+           "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
+           "binary is sufficient.";
+  } else if ((vmaj < 9 || vmin < 2 || vdot < 88)) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot
-        << ", which older than 9.2.88.  XLA doesn't support ptxas 8.x, and "
-           "ptxas 9.x before 9.2.88 is known to miscompile XLA code, leading "
-           "to incorrect results or invalid-address errors.\n\nYou do not need "
-           "to update to CUDA 9.2.88; cherry-picking the ptxas binary is "
-           "sufficient.";
+        << ", which older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+           "miscompile XLA code, leading to incorrect results or "
+           "invalid-address errors.\n\nYou do not need to update to CUDA "
+           "9.2.88; cherry-picking the ptxas binary is sufficient.";
   }
 }
 
