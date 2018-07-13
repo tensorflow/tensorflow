@@ -357,13 +357,19 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
   // address calculations with large offsets (e.g. "load ptr + large_constant"),
   // b/70245379.
-  if ((vmaj == 9 && vmin == 0 && vdot < 276) ||
-      (vmaj == 9 && vmin == 1 && vdot < 121)) {
-    LOG(WARNING) << "*** WARNING *** You are using ptxas " << vmaj << "."
-                 << vmin << "." << vdot
-                 << ", which is in range [9.0.0, 9.0.276) + [9.1.0, 9.1.121). "
-                    "These versions are known to miscompile XLA code, leading "
-                    "to incorrect results or invalid-address errors.";
+  //
+  // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
+  // that appears related to address calculations.  ptxas 9.2.88 appears to
+  // work, as far as we can tell.
+  if ((vmaj < 9 || vmin < 2 || vdot < 88)) {
+    LOG(WARNING)
+        << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
+        << vdot
+        << ", which older than 9.2.88.  XLA doesn't support ptxas 8.x, and "
+           "ptxas 9.x before 9.2.88 is known to miscompile XLA code, leading "
+           "to incorrect results or invalid-address errors.\n\nYou do not need "
+           "to update to CUDA 9.2.88; cherry-picking the ptxas binary is "
+           "sufficient.";
   }
 }
 
@@ -391,6 +397,10 @@ void WarnIfBadDriverJITVersion() {
     //  - 384.x before 384.108
     //  - 387.x before 387.40
     //  - 390.x before 390.10.
+    //
+    // TODO(jlebar): This list does not cover the address-calculation bug we've
+    // observed in ptxas 9.1.121.  Need to get a new safe range from nvidia
+    // corresponding to ptxas >= 9.2.88.
     auto vmaj = std::get<0>(version);
     auto vmin = std::get<1>(version);
     if ((vmaj == 384 && vmin < 108) ||  //
