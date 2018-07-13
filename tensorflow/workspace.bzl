@@ -510,6 +510,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "524ba98a56300149696481b4cb9ddebd0c7b7ac9b9f6edee81da2d2d7e5d2bb3",
       strip_prefix = "boringssl-a0fb951d2a26a8ee746b52f3ba81ab011a0af778",
+      patch_file = clean_dep("//third_party/boringssl:boringssl_build_file_ppc64le.patch"),
   )
 
   tf_http_archive(
