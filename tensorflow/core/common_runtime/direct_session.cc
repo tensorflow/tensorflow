@@ -1186,12 +1186,11 @@ Status DirectSession::CreateExecutors(
         delete kernel;
       }
     };
-    params.node_outputs_cb = node_outputs_callback_;
 
     optimizer.Optimize(lib, options_.env, device, &iter->second,
                        /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
+    // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =
         options.callable_options.run_options().debug_options();
     if (!debug_options.debug_tensor_watch_opts().empty()) {
