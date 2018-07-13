@@ -352,7 +352,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
         Py_ssize_t el_size;
         if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
 #if PY_MAJOR_VERSION >= 3
-          el = PyUnicode_AsUTF8AndSize(input_data[i], &el_size);
+          el = const_cast<char*>(PyUnicode_AsUTF8AndSize(input_data[i], &el_size));
 #else
           el = nullptr;
           if (PyUnicode_Check(input_data[i])) {

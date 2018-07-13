@@ -22,7 +22,7 @@ namespace tensorflow {
 
 EagerContext::EagerContext(const SessionOptions& opts,
                            ContextDevicePlacementPolicy default_policy,
-                           bool async, std::unique_ptr<DeviceMgr> device_mgr,
+                           bool is_async, std::unique_ptr<DeviceMgr> device_mgr,
                            Rendezvous* rendezvous)
     : policy_(default_policy),
       local_device_manager_(std::move(device_mgr)),
@@ -34,14 +34,14 @@ EagerContext::EagerContext(const SessionOptions& opts,
           local_device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION,
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
-      async_default_(async) {
+      async_default_(is_async) {
   InitDeviceMapAndAsync();
 }
 
 #ifndef __ANDROID__
 EagerContext::EagerContext(
     const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-    bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
+    bool is_async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
     std::unique_ptr<ServerInterface> server,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DeviceMgr> remote_device_manager,
@@ -55,7 +55,7 @@ EagerContext::EagerContext(
           local_unowned_device_manager_, opts.env, TF_GRAPH_DEF_VERSION,
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
-      async_default_(async),
+      async_default_(is_async),
       remote_device_manager_(std::move(remote_device_manager)),
       server_(std::move(server)),
       remote_eager_workers_(std::move(remote_eager_workers)),
@@ -89,12 +89,12 @@ bool EagerContext::Async() const {
                               async_default_);
 }
 
-Status EagerContext::SetAsyncForThread(bool async) {
+Status EagerContext::SetAsyncForThread(bool is_async) {
   {
     tensorflow::mutex_lock l(async_map_mu_);
-    thread_local_async_[std::this_thread::get_id()] = async;
+    thread_local_async_[std::this_thread::get_id()] = is_async;
   }
-  if (async) {
+  if (is_async) {
     executor_.EnableAsync();
   } else {
     // TODO(agarwal): Currently we add a wait here to handle cases where a

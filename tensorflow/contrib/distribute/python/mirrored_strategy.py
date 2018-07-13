@@ -193,7 +193,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         self._prefetch_on_device)
 
   def _broadcast(self, tensor, destinations):
-    # TODO(josh11b): In eager mode, use one thread per device, or async mode.
+    # TODO(josh11b): In eager mode, use one thread per device, or asynchronous mode.
     return self._get_cross_tower_ops().broadcast(tensor, destinations or
                                                  self._devices)
 

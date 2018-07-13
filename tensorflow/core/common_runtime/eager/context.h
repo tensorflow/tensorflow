@@ -65,7 +65,7 @@ enum ContextDevicePlacementPolicy {
 class EagerContext {
  public:
   explicit EagerContext(const SessionOptions& opts,
-                        ContextDevicePlacementPolicy default_policy, bool async,
+                        ContextDevicePlacementPolicy default_policy, bool is_async,
                         std::unique_ptr<DeviceMgr> device_mgr,
                         Rendezvous* rendezvous);
 
@@ -87,7 +87,7 @@ class EagerContext {
 #ifndef __ANDROID__
   explicit EagerContext(
       const SessionOptions& opts, ContextDevicePlacementPolicy default_policy,
-      bool async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
+      bool is_async, DeviceMgr* local_device_mgr, Rendezvous* rendezvous,
       std::unique_ptr<ServerInterface> server,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DeviceMgr> remote_device_manager,
@@ -106,7 +106,7 @@ class EagerContext {
   EagerExecutor* Executor() { return &executor_; }
 
   // Sets whether this thread should run in synchronous or asynchronous mode.
-  Status SetAsyncForThread(bool async);
+  Status SetAsyncForThread(bool is_async);
 
   // TODO(apassos) make this return a constant reference
   gtl::FlatMap<string, Device*, StringPieceHasher>* device_map() {

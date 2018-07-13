@@ -154,7 +154,7 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     if (PyUnicode_Check(item.get())) {
 #if PY_VERSION_HEX >= 0x03030000
       // Accept unicode by converting to UTF-8 bytes.
-      ptr = PyUnicode_AsUTF8AndSize(item.get(), &len);
+      ptr = const_cast<char*>(PyUnicode_AsUTF8AndSize(item.get(), &len));
       if (!ptr) {
         return errors::Internal("Unable to get element as UTF-8.");
       }
