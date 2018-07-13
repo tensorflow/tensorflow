@@ -1260,6 +1260,12 @@ TEST(SummarizeValue, INT32) {
   EXPECT_EQ("", x.SummarizeValue(16));
 }
 
+TEST(SummarizeValue, INT32Dims) {
+  Tensor x = MkTensor<int>(DT_INT32, TensorShape({3, 4}), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  EXPECT_EQ("[1 2 3...]...", x.SummarizeValue(3));
+  EXPECT_EQ("[1 2 3 4][5 6 7 8][9 10...]...", x.SummarizeValue(10));
+}
+
 TEST(SummarizeValue, FLOAT) {
   Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
   EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
