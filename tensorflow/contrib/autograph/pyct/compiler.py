@@ -91,7 +91,7 @@ def ast_to_source(node, indentation='  '):
 def ast_to_object(node,
                   indentation='  ',
                   source_prefix=None,
-                  delete_on_exit=False):
+                  delete_on_exit=True):
   """Return the Python objects represented by given AST.
 
   Compiling the AST code this way ensures that the source code is readable by
