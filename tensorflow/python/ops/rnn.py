@@ -423,18 +423,18 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
       time_dim = 0
       batch_dim = 1
 
-    def _reverse(input_, seq_lengths, seq_dim, batch_dim):
+    def _reverse(input_, seq_lengths, seq_axis, batch_axis):
       if seq_lengths is not None:
         return array_ops.reverse_sequence(
             input=input_, seq_lengths=seq_lengths,
-            seq_axis=seq_dim, batch_axis=batch_dim)
+            seq_axis=seq_axis, batch_axis=batch_axis)
       else:
-        return array_ops.reverse(input_, axis=[seq_dim])
+        return array_ops.reverse(input_, axis=[seq_axis])
 
     with vs.variable_scope("bw") as bw_scope:
       inputs_reverse = _reverse(
           inputs, seq_lengths=sequence_length,
-          seq_dim=time_dim, batch_dim=batch_dim)
+          seq_axis=time_dim, batch_axis=batch_dim)
       tmp, output_state_bw = dynamic_rnn(
           cell=cell_bw, inputs=inputs_reverse, sequence_length=sequence_length,
           initial_state=initial_state_bw, dtype=dtype,
@@ -443,7 +443,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
 
   output_bw = _reverse(
       tmp, seq_lengths=sequence_length,
-      seq_dim=time_dim, batch_dim=batch_dim)
+      seq_axis=time_dim, batch_axis=batch_dim)
 
   outputs = (output_fw, output_bw)
   output_states = (output_state_fw, output_state_bw)
