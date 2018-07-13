@@ -1015,7 +1015,7 @@ def _create_dummy_repository(repository_ctx):
             "%{cuda_version}": _DEFAULT_CUDA_VERSION,
             "%{cudnn_version}": _DEFAULT_CUDNN_VERSION,
             "%{cuda_compute_capabilities}": ",".join([
-                "CudaVersion(\"%s\")" % c
+                "DeviceVersion::Parse(\"%s\").ValueOrDie()" % c
                 for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES
             ]),
             "%{cuda_toolkit_path}": _DEFAULT_CUDA_TOOLKIT_PATH,
@@ -1396,7 +1396,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cudnn_version}": cuda_config.cudnn_version,
             "%{cuda_compute_capabilities}": ",".join(
                 [
-                    "CudaVersion(\"%s\")" % c
+                    "DeviceVersion::Parse(\"%s\").ValueOrDie()" % c
                     for c in cuda_config.compute_capabilities
                 ],
             ),

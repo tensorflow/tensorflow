@@ -1861,12 +1861,11 @@ bool CUDABlas::DoBlasGemm(
 
   bool use_tensor_ops = false;
 #if CUDA_VERSION >= 9000
-  int cc_major, cc_minor;
-  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                   &cc_minor);
+  DeviceVersion device_version;
+  stream->parent()->GetDeviceDescription().device_hardware_version();
 
   // GPUs < sm_70 don't support Volta hardware.
-  if (cc_major >= 7 && TensorOpMathEnabled()) {
+  if (device_version.major_part >= 7 && TensorOpMathEnabled()) {
     use_tensor_ops = true;
   }
 #endif
@@ -2156,14 +2155,14 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
     blas::ComputationType computation_type, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
   // GPUs < sm_50 don't support cublasGemmEx.
-  int cc_major, cc_minor;
-  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major < 5) {
+  DeviceVersion device_version =
+      stream->parent()->GetDeviceDescription().device_hardware_version();
+  if (device_version.is_valid() && device_version.major_part < 5) {
     return false;
   }
 
-  if (UsesTensorOps(algorithm) && !TensorOpsAvailable<InT>(cc_major)) {
+  if (UsesTensorOps(algorithm) &&
+      !TensorOpsAvailable<InT>(device_version.major_part)) {
     return false;
   }
 
@@ -2185,7 +2184,7 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
   // result. See nvbugs/2156201, b/79126339.
 #if CUDA_VERSION >= 9000 && CUDA_VERSION < 9020
   if ((algorithm == CUBLAS_GEMM_DEFAULT || algorithm >= CUBLAS_GEMM_ALGO13) &&
-      std::max({m, n, k}) >= 2097153 && cc_major < 7) {
+      std::max({m, n, k}) >= 2097153 && device_version.major_part < 7) {
     return false;
   }
 #endif
@@ -2419,10 +2418,9 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   cudaDataType_t data_type = CUDADataType<T>::type;
 
 #if CUDA_VERSION >= 9010
-  int cc_major, cc_minor;
-  if (stream->parent()->GetDeviceDescription().cuda_compute_capability(
-          &cc_major, &cc_minor) &&
-      cc_major >= 5) {
+  DeviceVersion =
+      stream->parent()->GetDeviceDescription().device_hardware_version();
+  if (device_version.is_valid() && device_version.major_part >= 5) {
     bool use_tensor_ops = TensorOpMathEnabled() && data_type == CUDA_R_16F;
     cublasGemmAlgo_t algo =
         (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);

@@ -1147,7 +1147,7 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
   builder.set_device_address_bits(64);
 
   builder.set_device_vendor("NVIDIA Corporation");
-  builder.set_cuda_compute_capability(cc_major_, cc_minor_);
+  builder.set_device_hardware_version({cc_major_, cc_minor_});
   builder.set_shared_memory_per_core(
       CUDADriver::GetMaxSharedMemoryPerCore(device_).ValueOrDie());
   builder.set_shared_memory_per_block(

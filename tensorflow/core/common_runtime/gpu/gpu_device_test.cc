@@ -42,10 +42,15 @@ int64 GetTotalGPUMemory(CudaGpuId gpu_id) {
 Status GetComputeCapability(CudaGpuId gpu_id, int* cc_major, int* cc_minor) {
   se::StreamExecutor* se =
       GpuIdUtil::ExecutorForCudaGpuId(GPUMachineManager(), gpu_id).ValueOrDie();
-  if (!se->GetDeviceDescription().cuda_compute_capability(cc_major, cc_minor)) {
+  DeviceVersion device_version =
+      se->GetDeviceDescription().device_hardware_version();
+  if (!device_version.is_valid()) {
     *cc_major = 0;
     *cc_minor = 0;
     return errors::Internal("Failed to get compute capability for device.");
+  } else {
+    *cc_major = device_version.major_part;
+    *cc_minor = device_version.minor_part;
   }
   return Status::OK();
 }

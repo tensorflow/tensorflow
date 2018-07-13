@@ -35,10 +35,10 @@ using stream_executor::dnn::DataLayout;
 using stream_executor::dnn::FilterLayout;
 
 static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
-  int major, minor;
-  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
-                                                                       &minor));
-  return major >= 7;
+  se::DeviceVersion device_version =
+      stream_executor.GetDeviceDescription().device_hardware_version();
+  CHECK(device_version.is_valid());
+  return device_version.major_part >= 7;
 }
 
 // Returns (input, filter, output) layouts.
