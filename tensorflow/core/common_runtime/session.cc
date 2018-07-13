@@ -53,33 +53,27 @@ Status Session::PRun(const string& handle,
 
 Session* NewSession(const SessionOptions& options) {
   SessionFactory* factory;
-  Status s = SessionFactory::GetFactory(options, &factory);
+  const Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     LOG(ERROR) << s;
     return nullptr;
   }
-  Session* out_session;
-  s = NewSession(options, &out_session);
-  if (!s.ok()) {
-    LOG(ERROR) << "Failed to create session: " << s;
-    return nullptr;
-  }
-  return out_session;
+  return factory->NewSession(options);
 }
 
 Status NewSession(const SessionOptions& options, Session** out_session) {
   SessionFactory* factory;
-  Status s = SessionFactory::GetFactory(options, &factory);
+  const Status s = SessionFactory::GetFactory(options, &factory);
   if (!s.ok()) {
     *out_session = nullptr;
     LOG(ERROR) << s;
     return s;
   }
-  s = factory->NewSession(options, out_session);
-  if (!s.ok()) {
-    *out_session = nullptr;
+  *out_session = factory->NewSession(options);
+  if (!*out_session) {
+    return errors::Internal("Failed to create session.");
   }
-  return s;
+  return Status::OK();
 }
 
 Status Reset(const SessionOptions& options,

@@ -47,10 +47,8 @@ class FakeSessionFactory : public SessionFactory {
     return str_util::StartsWith(options.target, "fake");
   }
 
-  Status NewSession(const SessionOptions& options,
-                    Session** out_session) override {
-    *out_session = nullptr;
-    return Status::OK();
+  Session* NewSession(const SessionOptions& options) override {
+    return nullptr;
   }
 };
 class FakeSessionRegistrar {

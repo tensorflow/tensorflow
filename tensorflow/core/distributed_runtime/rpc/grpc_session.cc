@@ -452,12 +452,15 @@ class GrpcSessionFactory : public SessionFactory {
     return str_util::StartsWith(options.target, kSchemePrefix);
   }
 
-  Status NewSession(const SessionOptions& options,
-                    Session** out_session) override {
-    std::unique_ptr<GrpcSession> session;
-    TF_RETURN_IF_ERROR(GrpcSession::Create(options, &session));
-    *out_session = session.release();
-    return Status::OK();
+  Session* NewSession(const SessionOptions& options) override {
+    std::unique_ptr<GrpcSession> ret;
+    Status s = GrpcSession::Create(options, &ret);
+    if (s.ok()) {
+      return ret.release();
+    } else {
+      LOG(ERROR) << "Error during session construction: " << s.ToString();
+      return nullptr;
+    }
   }
 
   // Invokes the session specific static method to reset containers.
