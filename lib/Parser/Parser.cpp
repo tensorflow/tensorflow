@@ -1035,7 +1035,6 @@ ParseResult AffineMapParser::parseDimIdList() {
 ///  dim-size ::= affine-expr | `min` `(` affine-expr ( `,` affine-expr)+ `)`
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-//  TODO(bondhugula): parse range size information.
 AffineMap *AffineMapParser::parseAffineMapInline() {
   // List of dimensional identifiers.
   if (parseDimIdList())
@@ -1069,7 +1068,9 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
     return nullptr;
 
   // Parse optional range sizes.
-  //  (`size` `(` dim-size (`,` dim-size)* `)`)?
+  //  range-sizes ::= (`size` `(` dim-size (`,` dim-size)* `)`)?
+  //  dim-size ::= affine-expr | `min` `(` affine-expr (`,` affine-expr)+ `)`
+  // TODO(bondhugula): support for min of several affine expressions.
   // TODO: check if sizes are non-negative whenever they are constant.
   SmallVector<AffineExpr *, 4> rangeSizes;
   if (consumeIf(Token::kw_size)) {

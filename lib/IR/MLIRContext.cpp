@@ -577,10 +577,8 @@ AffineMap *AffineMap::get(unsigned dimCount, unsigned symbolCount,
   // On the first use, we allocate them into the bump pointer.
   auto *res = impl.allocator.Allocate<AffineMap>();
 
-  // Copy the results into the bump pointer.
+  // Copy the results and range sizes into the bump pointer.
   results = impl.copyInto(ArrayRef<AffineExpr *>(results));
-
-  // Copy the results into the bump pointer.
   rangeSizes = impl.copyInto(ArrayRef<AffineExpr *>(rangeSizes));
 
   // Initialize the memory using placement new.
