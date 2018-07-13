@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -47,7 +47,7 @@ class InfeedTest : public ClientLibraryTestBase {
     // don't use ResetDevice since it is not implemented on CPU.
     ASSERT_IS_OK(client_->TransferToInfeed(literal));
     XlaBuilder builder(TestName());
-    builder.Infeed(literal.shape());
+    Infeed(&builder, literal.shape());
     if (ShapeUtil::IsTuple(literal.shape())) {
       // TODO(b/30609564): Use ComputeAndCompareLiteral instead.
       ComputeAndCompareTuple(&builder, literal, {});
@@ -58,52 +58,52 @@ class InfeedTest : public ClientLibraryTestBase {
 };
 
 TEST_F(InfeedTest, SingleInfeedR0Bool) {
-  TestInfeedRoundTrip(*Literal::CreateR0<bool>(true));
+  TestInfeedRoundTrip(*LiteralUtil::CreateR0<bool>(true));
 }
 
 TEST_F(InfeedTest, SingleInfeedR1U32) {
-  TestInfeedRoundTrip(*Literal::CreateR1<uint32>({1, 2, 3}));
+  TestInfeedRoundTrip(*LiteralUtil::CreateR1<uint32>({1, 2, 3}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR2F32) {
-  TestInfeedRoundTrip(*Literal::CreateR2F32Linspace(0.0, 1.0, 128, 64));
+  TestInfeedRoundTrip(*LiteralUtil::CreateR2F32Linspace(0.0, 1.0, 128, 64));
 }
 
 TEST_F(InfeedTest, SingleInfeedR3F32) {
   TestInfeedRoundTrip(
-      *Literal::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
-                          {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
+      *LiteralUtil::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
+                              {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR3F32DifferentLayout) {
   const Layout r3_dim0minor = LayoutUtil::MakeLayout({0, 1, 2});
   const Layout r3_dim0major = LayoutUtil::MakeLayout({2, 1, 0});
 
-  TestInfeedRoundTrip(
-      *Literal::CreateR3WithLayout({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
-                                    {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
-                                   r3_dim0minor));
+  TestInfeedRoundTrip(*LiteralUtil::CreateR3WithLayout(
+      {{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
+       {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
+      r3_dim0minor));
 
-  TestInfeedRoundTrip(
-      *Literal::CreateR3WithLayout({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
-                                    {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
-                                   r3_dim0major));
+  TestInfeedRoundTrip(*LiteralUtil::CreateR3WithLayout(
+      {{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
+       {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
+      r3_dim0major));
 }
 
 TEST_F(InfeedTest, SingleInfeedR4S32) {
-  TestInfeedRoundTrip(*Literal::CreateR4(
+  TestInfeedRoundTrip(*LiteralUtil::CreateR4(
       {{{{1, -2}, {-4, 5}, {6, 7}}, {{8, 9}, {10, 11}, {12, 13}}},
        {{{10, 3}, {7, -2}, {3, 6}}, {{2, 5}, {-11, 5}, {-2, -5}}}}));
 }
 
 TEST_F(InfeedTest, SingleInfeedTuple) {
   TestInfeedRoundTrip(
-      *Literal::MakeTuple({Literal::CreateR1<uint32>({1, 2, 3}).get(),
-                           Literal::CreateR0<bool>(false).get()}));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<uint32>({1, 2, 3}).get(),
+                               LiteralUtil::CreateR0<bool>(false).get()}));
 }
 
 TEST_F(InfeedTest, SingleInfeedEmptyTuple) {
-  TestInfeedRoundTrip(*Literal::MakeTuple({}));
+  TestInfeedRoundTrip(*LiteralUtil::MakeTuple({}));
 }
 
 // Tests Infeed operation used in a while loop, as in the code below. The
@@ -125,8 +125,8 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   XlaComputation condition;
   {
     XlaBuilder builder("condition");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    builder.Gt(builder.ConstantR0<float>(40.0f), prev);
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    Gt(ConstantR0<float>(&builder, 40.0f), prev);
     condition = builder.Build().ConsumeValueOrDie();
   }
   // Create a computation for the body: add the reduced value of the Infeed
@@ -134,17 +134,16 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   XlaComputation body;
   {
     XlaBuilder builder("body");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    auto infeed = builder.Infeed(infeed_shape);
-    auto addend =
-        builder.Reduce(infeed, builder.ConstantR0<float>(0.0f),
-                       CreateScalarAddComputation(F32, &builder), {0});
-    builder.Add(prev, addend);
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    auto infeed = Infeed(&builder, infeed_shape);
+    auto addend = Reduce(infeed, ConstantR0<float>(&builder, 0.0f),
+                         CreateScalarAddComputation(F32, &builder), {0});
+    Add(prev, addend);
     body = builder.Build().ConsumeValueOrDie();
   }
   // Create a While node with computations for the condition and the body.
-  auto init = builder.ConstantR0<float>(0.0f);
-  builder.While(condition, body, init);
+  auto init = ConstantR0<float>(&builder, 0.0f);
+  While(condition, body, init);
 
   // Build and asynchronously launch the computation.
   auto computation = builder.Build().ConsumeValueOrDie();
@@ -157,13 +156,16 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
           });
 
   // Send 5 Infeed data of shape F32[3].
-  ASSERT_IS_OK(client_->TransferToInfeed(*Literal::CreateR1<float>({1, 2, 3})));
-  ASSERT_IS_OK(client_->TransferToInfeed(*Literal::CreateR1<float>({4, 5, 6})));
-  ASSERT_IS_OK(client_->TransferToInfeed(*Literal::CreateR1<float>({7, 8, 9})));
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*Literal::CreateR1<float>({10, 11, 12})));
+      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({1, 2, 3})));
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*Literal::CreateR1<float>({13, 14, 15})));
+      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({4, 5, 6})));
+  ASSERT_IS_OK(
+      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({7, 8, 9})));
+  ASSERT_IS_OK(
+      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({10, 11, 12})));
+  ASSERT_IS_OK(
+      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({13, 14, 15})));
 
   delete computation_thread;  // Joins the thread.
   auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
@@ -207,8 +209,8 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   XlaComputation condition;
   {
     XlaBuilder builder("condition");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    builder.GetTupleElement(prev, 1);
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    GetTupleElement(prev, 1);
     condition = builder.Build().ConsumeValueOrDie();
   }
 
@@ -221,44 +223,44 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   const auto build_body = [this, &result_shape](const Shape& infeed_shape) {
     XlaComputation body;
     XlaBuilder builder("body");
-    auto prev = builder.Parameter(0, result_shape, "prev");
-    auto infeed = builder.Infeed(infeed_shape);
-    auto addend = builder.Reduce(
-        builder.GetTupleElement(infeed, 0), builder.ConstantR0<float>(0.0f),
-        CreateScalarAddComputation(F32, &builder), {0});
-    auto result = builder.Add(builder.GetTupleElement(prev, 0), addend);
-    builder.Tuple({result, builder.GetTupleElement(infeed, 1)});
+    auto prev = Parameter(&builder, 0, result_shape, "prev");
+    auto infeed = Infeed(&builder, infeed_shape);
+    auto addend =
+        Reduce(GetTupleElement(infeed, 0), ConstantR0<float>(&builder, 0.0f),
+               CreateScalarAddComputation(F32, &builder), {0});
+    auto result = Add(GetTupleElement(prev, 0), addend);
+    Tuple(&builder, {result, GetTupleElement(infeed, 1)});
     return builder.Build().ConsumeValueOrDie();
   };
 
   // Create the first while loop with infeed1_shape.
-  auto init = builder.Tuple(
-      {builder.ConstantR0<float>(0.0f), builder.ConstantR0<bool>(true)});
-  auto while1 = builder.While(condition, build_body(infeed1_shape), init);
-  auto result1 = builder.Tuple(
-      {builder.GetTupleElement(while1, 0), builder.ConstantR0<bool>(true)});
+  auto init = Tuple(&builder, {ConstantR0<float>(&builder, 0.0f),
+                               ConstantR0<bool>(&builder, true)});
+  auto while1 = While(condition, build_body(infeed1_shape), init);
+  auto result1 = Tuple(
+      &builder, {GetTupleElement(while1, 0), ConstantR0<bool>(&builder, true)});
 
   // Create the second while loop with infeed2_shape. Note that the result from
   // the first while loop is used as the initial value.
-  auto while2 = builder.While(condition, build_body(infeed2_shape), result1);
-  builder.GetTupleElement(while2, 0);
+  auto while2 = While(condition, build_body(infeed2_shape), result1);
+  GetTupleElement(while2, 0);
 
   // Build the computation.
   auto computation = builder.Build().ConsumeValueOrDie();
 
   // Send the first 4 Infeed data of shape Tuple(F32[2], PRED).
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({1, 2}).get(),
-                           Literal::CreateR0<bool>(true).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({1, 2}).get(),
+                               LiteralUtil::CreateR0<bool>(true).get()})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({3, 4}).get(),
-                           Literal::CreateR0<bool>(true).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({3, 4}).get(),
+                               LiteralUtil::CreateR0<bool>(true).get()})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({5, 6}).get(),
-                           Literal::CreateR0<bool>(true).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({5, 6}).get(),
+                               LiteralUtil::CreateR0<bool>(true).get()})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({7, 8}).get(),
-                           Literal::CreateR0<bool>(false).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({7, 8}).get(),
+                               LiteralUtil::CreateR0<bool>(false).get()})));
 
   // Asynchronously launch the execution on the device.
   std::unique_ptr<GlobalData> result;
@@ -273,14 +275,14 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   // Infeed data, and send the rest Infeed data of shape Tuple(F32[3], PRED).
   sleep(1);
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({1, 2, 3}).get(),
-                           Literal::CreateR0<bool>(true).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({1, 2, 3}).get(),
+                               LiteralUtil::CreateR0<bool>(true).get()})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({7, 8, 9}).get(),
-                           Literal::CreateR0<bool>(false).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({7, 8, 9}).get(),
+                               LiteralUtil::CreateR0<bool>(false).get()})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *Literal::MakeTuple({Literal::CreateR1<float>({4, 5, 6}).get(),
-                           Literal::CreateR0<bool>(true).get()})));
+      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({4, 5, 6}).get(),
+                               LiteralUtil::CreateR0<bool>(true).get()})));
 
   // Wait for the execution to be done, and transfer the result.
   delete computation_thread;  // Joins the thread.

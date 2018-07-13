@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "encode_base64"
-    deprecation_message: "tf.encode_base64 is deprecated, please use tf.io.encode_base64 instead."
+    deprecated: true
   }
 }

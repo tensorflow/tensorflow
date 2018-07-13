@@ -88,6 +88,9 @@ def _SanitizedMRO(obj):
   """
   return_list = []
   for cls in tf_inspect.getmro(obj):
+    if cls.__name__ == '_NewClass':
+      # Ignore class created by @deprecated_alias decorator.
+      continue
     str_repr = str(cls)
     return_list.append(str_repr)
     if 'tensorflow' not in str_repr:

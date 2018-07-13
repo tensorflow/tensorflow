@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -40,7 +40,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import adam
 
 
-class EagerTest(XLATestCase):
+class EagerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
@@ -286,7 +286,7 @@ class EagerTest(XLATestCase):
                          [2.0, 2.0]], embedding_matrix.numpy())
 
 
-class EagerFunctionTest(XLATestCase):
+class EagerFunctionTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_scope():
@@ -403,7 +403,7 @@ class EagerFunctionTest(XLATestCase):
   def testSliceInDefun(self):
     with self.test_scope():
 
-      @function.defun(compiled=True)
+      @function.defun
       def f(x, y):
         return x[0::2, y:, ...]
 
@@ -418,8 +418,24 @@ class EagerFunctionTest(XLATestCase):
       self.assertAllEqual(np.ones([1, 2, 4]), z.numpy())
       self.assertAllEqual((2, 3, 4), dz.shape.as_list())
 
+  def testNestedDefun(self):
+    self.skipTest('Nested defuns do not work on TPU at the moment')
+    with self.test_scope():
 
-class ExcessivePaddingTest(XLATestCase):
+      @function.defun
+      def times_two(x):
+        return 2 * x
+
+      @function.defun
+      def two_x_plus_1(x):
+        return times_two(x) + 1
+
+      x = constant_op.constant([2, 3, 4])
+      y = two_x_plus_1(x)
+      self.assertAllEqual([5, 7, 9], y.numpy())
+
+
+class ExcessivePaddingTest(xla_test.XLATestCase):
   """Test that eager execution works with TPU flattened tensors.
 
   Tensors that would normally be excessively padded when written
@@ -468,6 +484,36 @@ class ExcessivePaddingTest(XLATestCase):
       y = f(3)
       reduced = math_ops.reduce_sum(y, axis=2)
       self.assertAllEqual(100 * [[36.0]], reduced)
+
+
+def multiple_tpus():
+  devices = context.context().devices()
+  return len([d for d in devices if 'device:TPU:' in d]) > 1
+
+
+class MultiDeviceTest(xla_test.XLATestCase):
+  """Test running TPU computation on more than one core."""
+
+  def testBasic(self):
+    if not multiple_tpus():
+      self.skipTest('MultiDeviceTest requires multiple TPU devices.')
+
+    # Compute 10 on TPU core 0
+    with ops.device('device:TPU:0'):
+      two = constant_op.constant(2)
+      five = constant_op.constant(5)
+      ten = two * five
+      self.assertAllEqual(10, ten)
+
+    # Compute 6 on TPU core 1
+    with ops.device('device:TPU:1'):
+      two = constant_op.constant(2)
+      three = constant_op.constant(3)
+      six = two * three
+      self.assertAllEqual(6, six)
+
+    # Copy 10 and 6 to CPU and sum them
+    self.assertAllEqual(16, ten + six)
 
 
 if __name__ == '__main__':

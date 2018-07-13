@@ -422,9 +422,11 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* ir_builder) const {
   llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
-  return IrArray(
+  IrArray new_irarray(
       ir_builder->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()),
       new_shape);
+  new_irarray.metadata_ = metadata_;
+  return new_irarray;
 }
 
 /* static */ IrArray::Index IrArray::BumpIndex(const Index& index,

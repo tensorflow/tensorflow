@@ -43,7 +43,8 @@ from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import (
+    deprecated, deprecated_arg_values)
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -409,8 +410,10 @@ class UniformUnitScaling(Initializer):
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
 
-  With `distribution="normal"`, samples are drawn from a truncated normal
-  distribution centered on zero, with `stddev = sqrt(scale / n)`
+  With `distribution="truncated_normal" or "untruncated_normal"`,
+  samples are drawn from a truncated/untruncated normal
+  distribution with a mean of zero and a standard deviation (after truncation,
+  if used) `stddev = sqrt(scale / n)`
   where n is:
     - number of input units in the weight tensor, if mode = "fan_in"
     - number of output units, if mode = "fan_out"
@@ -433,10 +436,14 @@ class VarianceScaling(Initializer):
       "distribution" arguments.
   """
 
+  @deprecated_arg_values(
+      None,
+      "`normal` is a deprecated alias for `truncated_normal`",
+      distribution="normal")
   def __init__(self,
                scale=1.0,
                mode="fan_in",
-               distribution="normal",
+               distribution="truncated_normal",
                seed=None,
                dtype=dtypes.float32):
     if scale <= 0.:
@@ -444,7 +451,8 @@ class VarianceScaling(Initializer):
     if mode not in {"fan_in", "fan_out", "fan_avg"}:
       raise ValueError("Invalid `mode` argument:", mode)
     distribution = distribution.lower()
-    if distribution not in {"normal", "uniform"}:
+    if distribution not in {"normal", "uniform",
+                            "truncated_normal", "untruncated_normal"}:
       raise ValueError("Invalid `distribution` argument:", distribution)
     self.scale = scale
     self.mode = mode
@@ -466,10 +474,14 @@ class VarianceScaling(Initializer):
       scale /= max(1., fan_out)
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
-    if self.distribution == "normal":
+    if self.distribution == "normal" or self.distribution == "truncated_normal":
       # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
+          shape, 0.0, stddev, dtype, seed=self.seed)
+    elif self.distribution == "untruncated_normal":
+      stddev = math.sqrt(scale)
+      return random_ops.random_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
     else:
       limit = math.sqrt(3.0 * scale)
@@ -1124,7 +1136,7 @@ convolutional_orthogonal_3d = ConvolutionOrthogonal3D
 # pylint: enable=invalid-name
 
 
-@tf_export("glorot_uniform_initializer")
+@tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform")
 def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -1148,7 +1160,7 @@ def glorot_uniform_initializer(seed=None, dtype=dtypes.float32):
       scale=1.0, mode="fan_avg", distribution="uniform", seed=seed, dtype=dtype)
 
 
-@tf_export("glorot_normal_initializer")
+@tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal")
 def glorot_normal_initializer(seed=None, dtype=dtypes.float32):
   """The Glorot normal initializer, also called Xavier normal initializer.
 

@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "less_equal"
-    deprecation_message: "tf.less_equal is deprecated, please use tf.math.less_equal instead."
+    deprecated: true
   }
 }

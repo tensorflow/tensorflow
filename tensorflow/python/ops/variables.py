@@ -1093,39 +1093,40 @@ class Variable(checkpointable.CheckpointableBase):
   def __imul__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable *= will be deprecated. Use variable.assign_mul"
-        " if you want assignment to the variable value or 'x = x * y'"
+        "Variable *= will be deprecated. Use `var.assign(var * other)`"
+        " if you want assignment to the variable value or `x = x * y`"
         " if you want a new python Tensor object.", 1)
     return self * other
 
   def __idiv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __itruediv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __irealdiv__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable /= will be deprecated. Use variable.assign_div"
-        " if you want assignment to the variable value or 'x = x / y'"
+        "Variable /= will be deprecated. Use `var.assign(var / other)`"
+        " if you want assignment to the variable value or `x = x / y`"
         " if you want a new python Tensor object.", 1)
     return self / other
 
   def __ipow__(self, other):
     logging.log_first_n(
         logging.WARN,
-        "Variable **= will be deprecated. Use 'x = x ** y'"
+        "Variable **= will be deprecated. Use `var.assign(var ** other)`"
+        " if you want assignment to the variable value or `x = x ** y`"
         " if you want a new python Tensor object.", 1)
     return self ** other
 
@@ -1402,6 +1403,10 @@ class PartitionedVariable(object):
   @property
   def dtype(self):
     return self._dtype
+
+  @property
+  def shape(self):
+    return self.get_shape()
 
   def get_shape(self):
     return self._shape
@@ -1722,6 +1727,8 @@ def report_uninitialized_variables(var_list=None,
           var_list.append(op.outputs[0])
   with ops.name_scope(name):
     # Run all operations on CPU
+    if var_list:
+      init_vars = [state_ops.is_variable_initialized(v) for v in var_list]
     with ops.device("/cpu:0"):
       if not var_list:
         # Return an empty tensor so we only need to check for returned tensor
@@ -1729,9 +1736,7 @@ def report_uninitialized_variables(var_list=None,
         return array_ops.constant([], dtype=dtypes.string)
       else:
         # Get a 1-D boolean tensor listing whether each variable is initialized.
-        variables_mask = math_ops.logical_not(
-            array_ops.stack(
-                [state_ops.is_variable_initialized(v) for v in var_list]))
+        variables_mask = math_ops.logical_not(array_ops.stack(init_vars))
         # Get a 1-D string tensor containing all the variable names.
         variable_names_tensor = array_ops.constant(
             [s.op.name for s in var_list])

@@ -1976,7 +1976,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 
   for (int i = 0; i < item.num_outputs; ++i) {
     const TensorValue val = ctx->release_output(i);
-    if (*ctx->is_output_dead() || val.tensor == nullptr) {
+    if (val.tensor == nullptr) {
       // Unless it's a Switch or a Recv, the node must produce a
       // tensor value at i-th output.
       if (!IsSwitch(node) && !IsRecv(node)) {

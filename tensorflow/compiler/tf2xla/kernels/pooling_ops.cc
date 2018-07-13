@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -61,6 +63,9 @@ class PoolingOp : public XlaOpKernel {
     Padding padding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
     padding_ = (padding == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
+
+    OP_REQUIRES_OK(
+        ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -113,8 +118,8 @@ class PoolingOp : public XlaOpKernel {
     xla::XlaBuilder* const b = ctx->builder();
     auto input =
         XlaHelpers::ConvertElementType(b, ctx->Input(0), reduction_type_);
-    auto reduce = ctx->builder()->ReduceWindow(
-        input, InitValue(b), *Reduction(ctx), ksize, stride, padding_);
+    auto reduce = xla::ReduceWindow(input, InitValue(b), *Reduction(ctx), ksize,
+                                    stride, padding_);
     auto pooled = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
     ctx->SetOutput(0,
                    PostProcessOutput(ctx, pooled, input_type(0), input_shape));
@@ -127,6 +132,7 @@ class PoolingOp : public XlaOpKernel {
   xla::Padding padding_;
   TensorFormat data_format_ = FORMAT_NHWC;
   DataType reduction_type_;
+  xla::PrimitiveType xla_reduction_type_;
 };
 
 class MaxPoolOp : public PoolingOp {
@@ -136,7 +142,7 @@ class MaxPoolOp : public PoolingOp {
                   /*reduction_type=*/ctx->input_type(0)) {}
 
   xla::XlaOp InitValue(xla::XlaBuilder* b) override {
-    return XlaHelpers::MinValue(b, reduction_type_);
+    return xla::MinValue(b, xla_reduction_type_);
   }
 
   const xla::XlaComputation* Reduction(XlaOpKernelContext* ctx) override {
@@ -190,7 +196,7 @@ static xla::XlaOp AvgPoolDivideByCount(
 
     auto divisor =
         XlaHelpers::IntegerLiteral(ctx->builder(), dtype, window_size);
-    return ctx->builder()->Div(output, divisor);
+    return xla::Div(output, divisor);
   } else {
     // For SAME padding, the padding shouldn't be included in the
     // counts. We use another ReduceWindow to find the right counts.
@@ -212,18 +218,18 @@ static xla::XlaOp AvgPoolDivideByCount(
 
     // Build a matrix of all 1s, with the same width/height as the input.
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(dtype);
-    auto ones = ctx->builder()->Broadcast(
+    auto ones = xla::Broadcast(
         XlaHelpers::One(ctx->builder(), accumulation_type), input_dim_sizes);
 
     // Perform a ReduceWindow with the same window size, strides, and padding
     // to count the number of contributions to each result element.
-    auto reduce = ctx->builder()->ReduceWindow(
+    auto reduce = xla::ReduceWindow(
         ones, XlaHelpers::Zero(ctx->builder(), accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type), window_ksize, window_stride,
         xla::Padding::kSame);
     auto counts = XlaHelpers::ConvertElementType(ctx->builder(), reduce, dtype);
 
-    return ctx->builder()->Div(output, counts, window_dims);
+    return xla::Div(output, counts, window_dims);
   }
 }
 
@@ -235,7 +241,7 @@ class AvgPoolOp : public PoolingOp {
                   XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
 
   xla::XlaOp InitValue(xla::XlaBuilder* b) override {
-    return XlaHelpers::Zero(b, reduction_type_);
+    return xla::Zero(b, xla_reduction_type_);
   }
 
   const xla::XlaComputation* Reduction(XlaOpKernelContext* ctx) override {
@@ -347,9 +353,9 @@ class MaxPoolGradOp : public XlaOpKernel {
     xla::XlaOp init_value = XlaHelpers::Zero(ctx->builder(), input_type(2));
     auto select = CreateScalarGeComputation(element_type, ctx->builder());
     auto scatter = CreateScalarAddComputation(element_type, ctx->builder());
-    xla::XlaOp gradients = ctx->builder()->SelectAndScatter(
-        input, select, ksize_, stride_, xla_padding, out_backprop, init_value,
-        scatter);
+    xla::XlaOp gradients =
+        xla::SelectAndScatter(input, select, ksize_, stride_, xla_padding,
+                              out_backprop, init_value, scatter);
 
     ctx->SetOutput(0, gradients);
   }
@@ -485,12 +491,12 @@ class AvgPoolGradOp : public XlaOpKernel {
     }
 
     auto zero = XlaHelpers::Zero(b, dtype);
-    auto padded_gradients = b->Pad(out_backprop_div, zero, padding_config);
+    auto padded_gradients = xla::Pad(out_backprop_div, zero, padding_config);
 
     // in_backprop = padded_gradients <conv> ones
     std::vector<int64> ones(num_dims(), 1LL);
     auto accumulation_type = XlaHelpers::SumAccumulationType(dtype);
-    auto in_backprop = b->ReduceWindow(
+    auto in_backprop = xla::ReduceWindow(
         XlaHelpers::ConvertElementType(b, padded_gradients, accumulation_type),
         XlaHelpers::Zero(b, accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type), ksize_,
@@ -614,58 +620,61 @@ class MaxPoolGradGradOp : public XlaOpKernel {
 
     auto b = ctx->builder();
 
-    auto sixteen = b->ConstantR0<uint32>(16);
+    auto sixteen = xla::ConstantR0<uint32>(b, 16);
     // in (f32) -> round to bf16 -> f32 for correct bitwidth -> 16-high-bit u32
-    auto in_hi = b->BitcastConvertType(
-        b->ConvertElementType(b->ConvertElementType(input, xla::BF16),
-                              xla::F32),
+    auto in_hi = xla::BitcastConvertType(
+        xla::ConvertElementType(xla::ConvertElementType(input, xla::BF16),
+                                xla::F32),
         xla::U32);
-    auto bp_int = b->BitcastConvertType(out_backprop, xla::U32);
-    auto bp_hi = b->ShiftRightLogical(bp_int, sixteen);
-    auto bp_lo = b->ShiftRightLogical(b->ShiftLeft(bp_int, sixteen), sixteen);
-    auto in_hi_bp_hi = b->Add(in_hi, bp_hi);  // Want an unsigned add.
-    auto in_hi_bp_lo = b->Add(in_hi, bp_lo);  // Want an unsigned add.
+    auto bp_int = xla::BitcastConvertType(out_backprop, xla::U32);
+    auto bp_hi = xla::ShiftRightLogical(bp_int, sixteen);
+    auto bp_lo =
+        xla::ShiftRightLogical(xla::ShiftLeft(bp_int, sixteen), sixteen);
+    auto in_hi_bp_hi = xla::Add(in_hi, bp_hi);  // Want an unsigned add.
+    auto in_hi_bp_lo = xla::Add(in_hi, bp_lo);  // Want an unsigned add.
 
-    auto init_value = XlaHelpers::MinValue(b, DT_FLOAT);
+    auto init_value = xla::MinValue(b, xla::F32);
     // We will reduce by taking the maximal value up to 16 bits (ignoring the lo
     // 16 bits of packed-in hi/lo backprop value).
     auto rb = b->CreateSubBuilder("GreaterOrEqOf_ByFirst16Bits");
     {
       // F32 parameters to satisfy lowering type restriction for reduce opcode.
       const xla::Shape scalar = xla::ShapeUtil::MakeShape(xla::F32, {});
-      auto lhs = rb->Parameter(0, scalar, "lhs");
-      auto rhs = rb->Parameter(1, scalar, "rhs");
-      auto sixteen = rb->ConstantR0<int32>(16);
-      auto lhs_criteria = rb->ShiftLeft(
-          rb->ShiftRightLogical(rb->BitcastConvertType(lhs, xla::S32), sixteen),
-          sixteen);
-      auto rhs_criteria = rb->ShiftLeft(
-          rb->ShiftRightLogical(rb->BitcastConvertType(rhs, xla::S32), sixteen),
-          sixteen);
+      auto lhs = xla::Parameter(rb.get(), 0, scalar, "lhs");
+      auto rhs = xla::Parameter(rb.get(), 1, scalar, "rhs");
+      auto sixteen = xla::ConstantR0<int32>(rb.get(), 16);
+      auto lhs_criteria =
+          xla::ShiftLeft(xla::ShiftRightLogical(
+                             xla::BitcastConvertType(lhs, xla::S32), sixteen),
+                         sixteen);
+      auto rhs_criteria =
+          xla::ShiftLeft(xla::ShiftRightLogical(
+                             xla::BitcastConvertType(rhs, xla::S32), sixteen),
+                         sixteen);
       // Must use a F32 comparison, because S32 would not work for negatives.
-      rb->Select(rb->Ge(rb->BitcastConvertType(lhs_criteria, xla::F32),
-                        rb->BitcastConvertType(rhs_criteria, xla::F32)),
-                 lhs, rhs);
+      xla::Select(xla::Ge(xla::BitcastConvertType(lhs_criteria, xla::F32),
+                          xla::BitcastConvertType(rhs_criteria, xla::F32)),
+                  lhs, rhs);
     }
     auto reduce = rb->BuildAndNoteError();
     xla::Padding xla_padding =
         (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
     auto pooled_hi =
-        b->ReduceWindow(b->BitcastConvertType(in_hi_bp_hi, xla::F32),
-                        init_value, reduce, ksize_, stride_, xla_padding);
+        xla::ReduceWindow(xla::BitcastConvertType(in_hi_bp_hi, xla::F32),
+                          init_value, reduce, ksize_, stride_, xla_padding);
     auto pooled_lo =
-        b->ReduceWindow(b->BitcastConvertType(in_hi_bp_lo, xla::F32),
-                        init_value, reduce, ksize_, stride_, xla_padding);
+        xla::ReduceWindow(xla::BitcastConvertType(in_hi_bp_lo, xla::F32),
+                          init_value, reduce, ksize_, stride_, xla_padding);
     auto grads_hi =
-        b->ShiftLeft(b->BitcastConvertType(pooled_hi, xla::U32), sixteen);
-    auto grads_lo = b->ShiftRightLogical(
-        b->ShiftLeft(b->BitcastConvertType(pooled_lo, xla::U32), sixteen),
+        xla::ShiftLeft(xla::BitcastConvertType(pooled_hi, xla::U32), sixteen);
+    auto grads_lo = xla::ShiftRightLogical(
+        xla::ShiftLeft(xla::BitcastConvertType(pooled_lo, xla::U32), sixteen),
         sixteen);
-    auto grads = b->Add(grads_hi, grads_lo);  // Want an unsigned add.
+    auto grads = xla::Add(grads_hi, grads_lo);  // Want an unsigned add.
 
     xla::PrimitiveType element_type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(2), &element_type));
-    ctx->SetOutput(0, b->BitcastConvertType(grads, element_type));
+    ctx->SetOutput(0, xla::BitcastConvertType(grads, element_type));
   }
 
  protected:

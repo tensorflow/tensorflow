@@ -164,6 +164,27 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   tf_http_archive(
+      name = "com_github_googlecloudplatform_google_cloud_cpp",
+      urls = [
+          "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/f875700a023bdd706333cde45aee8758b272c357.tar.gz",
+          "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/f875700a023bdd706333cde45aee8758b272c357.tar.gz",
+      ],
+      sha256 = "a34f3c50b237686dc870b13baaa6a5836ce3473f2f2a02717299f0ff318372db",
+      strip_prefix = "google-cloud-cpp-f875700a023bdd706333cde45aee8758b272c357",
+  )
+
+  tf_http_archive(
+      name = "com_github_googleapis_googleapis",
+      urls = [
+          "https://mirror.bazel.build/github.com/googleapis/googleapis/archive/f81082ea1e2f85c43649bee26e0d9871d4b41cdb.zip",
+          "https://github.com/googleapis/googleapis/archive/f81082ea1e2f85c43649bee26e0d9871d4b41cdb.zip",
+      ],
+      sha256 = "824870d87a176f26bcef663e92051f532fac756d1a06b404055dc078425f4378",
+      strip_prefix="googleapis-f81082ea1e2f85c43649bee26e0d9871d4b41cdb",
+      build_file = clean_dep("//third_party:googleapis.BUILD"),
+  )
+
+  tf_http_archive(
       name = "gemmlowp",
       urls = [
           "https://mirror.bazel.build/github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
@@ -198,12 +219,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "nasm",
       urls = [
-          "https://mirror.bazel.build/www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
-          "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.12.02.tar.bz2/d15843c3fb7db39af80571ee27ec6fad/nasm-2.12.02.tar.bz2",
-          "http://www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
+          "https://mirror.bazel.build/www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.bz2",
+          "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.13.03.tar.bz2/sha512/d7a6b4cee8dfd603d8d4c976e5287b5cc542fa0b466ff989b743276a6e28114e64289bf02a7819eca63142a5278aa6eed57773007e5f589e15768e6456a8919d/nasm-2.13.03.tar.bz2",
+          "http://www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.bz2",
       ],
-      sha256 = "00b0891c678c065446ca59bcee64719d0096d54d6886e6e472aeee2e170ae324",
-      strip_prefix = "nasm-2.12.02",
+      sha256 = "63ec86477ad3f0f6292325fd89e1d93aea2e2fd490070863f17d48f7cd387011",
+      strip_prefix = "nasm-2.13.03",
       build_file = clean_dep("//third_party:nasm.BUILD"),
   )
 
@@ -364,11 +385,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "nsync",
       urls = [
-          "https://mirror.bazel.build/github.com/google/nsync/archive/5e8b19a81e5729922629dd505daa651f6ffdf107.tar.gz",
-          "https://github.com/google/nsync/archive/5e8b19a81e5729922629dd505daa651f6ffdf107.tar.gz",
+          "https://mirror.bazel.build/github.com/google/nsync/archive/1.20.0.tar.gz",
+          "https://github.com/google/nsync/archive/1.20.0.tar.gz",
       ],
-      sha256 = "2723e6db509779fcf05bd01556e51f2e5179197e2c864cd8010f6b7100a5b1e1",
-      strip_prefix = "nsync-5e8b19a81e5729922629dd505daa651f6ffdf107",
+      sha256 = "0c1b03962b2f8450f21e74a5a46116bf2d6009a807c57eb4207e974a8c4bb7dd",
+      strip_prefix = "nsync-1.20.0",
   )
 
   tf_http_archive(
@@ -384,11 +405,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "com_github_gflags_gflags",
       urls = [
-          "https://mirror.bazel.build/github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
-          "https://github.com/gflags/gflags/archive/f8a0efe03aa69b3336d8e228b37d4ccb17324b88.tar.gz",
+          "https://mirror.bazel.build/github.com/gflags/gflags/archive/v2.2.1.tar.gz",
+          "https://github.com/gflags/gflags/archive/v2.2.1.tar.gz",
       ],
-      sha256 = "4d222fab8f1ede4709cdff417d15a1336f862d7334a81abf76d09c15ecf9acd1",
-      strip_prefix = "gflags-f8a0efe03aa69b3336d8e228b37d4ccb17324b88",
+      sha256 = "ae27cdbcd6a2f935baa78e4f21f675649271634c092b1be01469440495609d0e",
+      strip_prefix = "gflags-2.2.1",
   )
 
   tf_http_archive(
@@ -428,13 +449,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "grpc",
       urls = [
-          "https://mirror.bazel.build/github.com/grpc/grpc/archive/v1.12.1.tar.gz",
-          "https://github.com/grpc/grpc/archive/v1.12.1.tar.gz",
+          "https://mirror.bazel.build/github.com/grpc/grpc/archive/v1.13.0.tar.gz",
+          "https://github.com/grpc/grpc/archive/v1.13.0.tar.gz",
       ],
-      sha256 = "f6afbfafa8e7b524727d1ff37ff22fe9c3dcca07bd864e7a9d1efabf1d15d13c",
-      strip_prefix = "grpc-1.12.1",
+      sha256 = "50db9cf2221354485eb7c3bd55a4c27190caef7048a2a1a15fbe60a498f98b44",
+      strip_prefix = "grpc-1.13.0",
   )
-
 
   tf_http_archive(
       name = "linenoise",
@@ -452,11 +472,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/7f7cea53068238fca7b7e4299793a0c77bea7219.tar.gz",
-	  "https://github.com/llvm-mirror/llvm/archive/7f7cea53068238fca7b7e4299793a0c77bea7219.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/ae80745b73e435d07e7fb9c12589304ee29e7f59.tar.gz",
+	  "https://github.com/llvm-mirror/llvm/archive/ae80745b73e435d07e7fb9c12589304ee29e7f59.tar.gz",
       ],
-      sha256 = "b645507080e07c845607f212d45e4ee79253c3c9b762531f51fbaeceb6b47391",
-      strip_prefix = "llvm-7f7cea53068238fca7b7e4299793a0c77bea7219",
+      sha256 = "de69b6f92a634b4d12b9e03ebd8eb34c28f997d9480c28358d6efd4c433fe853",
+      strip_prefix = "llvm-ae80745b73e435d07e7fb9c12589304ee29e7f59",
       build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
   )
 
@@ -538,11 +558,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "kafka",
       urls = [
-          "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.1.tar.gz",
-          "https://github.com/edenhill/librdkafka/archive/v0.11.1.tar.gz",
+          "https://mirror.bazel.build/github.com/edenhill/librdkafka/archive/v0.11.4.tar.gz",
+          "https://github.com/edenhill/librdkafka/archive/v0.11.4.tar.gz",
       ],
-      sha256 = "dd035d57c8f19b0b612dd6eefe6e5eebad76f506e302cccb7c2066f25a83585e",
-      strip_prefix = "librdkafka-0.11.1",
+      sha256 = "9d8f1eb7b0e29e9ab1168347c939cb7ae5dff00a39cef99e7ef033fd8f92737c",
+      strip_prefix = "librdkafka-0.11.4",
       build_file = clean_dep("//third_party:kafka/BUILD"),
       patch_file = clean_dep("//third_party/kafka:config.patch"),
   )
@@ -662,12 +682,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   tf_http_archive(
       name = "cython",
-      sha256 = "05e3eb7f06043f5ff2028338370329e71c29f57315e95f4dc6ad7c4971dd4c6f",
+      sha256 = "bccc9aa050ea02595b2440188813b936eaf345e85fb9692790cecfe095cf91aa",
       urls = [
-          "https://mirror.bazel.build/github.com/cython/cython/archive/0.28.3.tar.gz",
-          "https://github.com/cython/cython/archive/0.28.3.tar.gz",
+          "https://mirror.bazel.build/github.com/cython/cython/archive/0.28.4.tar.gz",
+          "https://github.com/cython/cython/archive/0.28.4.tar.gz",
       ],
-      strip_prefix = "cython-0.28.3",
+      strip_prefix = "cython-0.28.4",
       build_file = clean_dep("//third_party:cython.BUILD"),
       delete = ["BUILD.bazel"],
   )
@@ -675,11 +695,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "bazel_toolchains",
       urls = [
-          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/44200e0c026d86c53470d107b3697a3e46469c43.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/44200e0c026d86c53470d107b3697a3e46469c43.tar.gz",
+          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/37acf1841ab1475c98a152cb9e446460c8ae29e1.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/37acf1841ab1475c98a152cb9e446460c8ae29e1.tar.gz",
       ],
-      strip_prefix = "bazel-toolchains-44200e0c026d86c53470d107b3697a3e46469c43",
-      sha256 = "699b55a6916c687f4b7dc092dbbf5f64672cde0dc965f79717735ec4e5416556",
+      strip_prefix = "bazel-toolchains-37acf1841ab1475c98a152cb9e446460c8ae29e1",
+      sha256 = "3b604699685c5c65dd3f6f17425570a4b2f00ddba2f750db15acc72e55bb098b",
   )
 
   tf_http_archive(
@@ -730,6 +750,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       urls = [
           "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
           "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+      ],
+      build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+  )
+  tf_http_archive(
+      name = "tflite_mobilenet_ssd_quant",
+      sha256 = "a809cd290b4d6a2e8a9d5dad076e0bd695b8091974e0eed1052b480b2f21b6dc",
+      urls = ["https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+          "https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
       ],
       build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
   )

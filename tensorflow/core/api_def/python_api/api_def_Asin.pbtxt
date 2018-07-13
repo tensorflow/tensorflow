@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "asin"
-    deprecation_message: "tf.asin is deprecated, please use tf.math.asin instead."
+    deprecated: true
   }
 }

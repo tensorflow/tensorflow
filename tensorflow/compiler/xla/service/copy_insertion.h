@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -79,11 +78,10 @@ class CopyInsertion : public HloPassInterface {
 };
 
 // Try to remove as many copies from the module as possible without introducing
-// live range interference. Copy instructions (identified by their unique id) in
-// the set copies_to_exclude are not considered for removal.
+// live range interference. Only copy instructions that are eligible for
+// copy elision are considered for removal.
 Status RemoveUnnecessaryCopies(
-    const HloOrdering& ordering,
-    const tensorflow::gtl::FlatSet<int>& copies_to_exclude, HloModule* module,
+    const HloOrdering& ordering, HloModule* module,
     const HloDataflowAnalysis::FusionCanShareBufferFunction&
         fusion_can_share_buffer = nullptr);
 
