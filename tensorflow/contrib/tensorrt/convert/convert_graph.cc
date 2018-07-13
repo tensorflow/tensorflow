@@ -86,27 +86,48 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(jie): Segmentation shouldn't associated with op name.
   //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
-      "Identity",
-      "Snapshot",
-      "Const",
-      "Conv2D",
-      "MaxPool",
-      "BiasAdd",
-      "Relu",
-      "Add",
-      "Mul",
-      "Sub",
-      "Rsqrt",
-      "Pad",
-      "Mean",
-      "AvgPool",
-      "ConcatV2",
-      "DepthwiseConv2dNative",
-      "FusedBatchNorm",
-      "FusedBatchNormV2",
-      // TODO(ben,jie): ...
+    "Identity",
+    "Snapshot",
+    "Const",
+    "Conv2D",
+    "MaxPool",
+    "BiasAdd",
+    "Relu",
+    "Add",
+    "Mul",
+    "Sub",
+    "Rsqrt",
+    "Pad",
+    "Mean",
+    "AvgPool",
+    "ConcatV2",
+    "DepthwiseConv2dNative",
+    "FusedBatchNorm",
+    "FusedBatchNormV2",
+    "Div",
+    "RealDiv",
+    "Rsqrt",
+    "Reciprocal",
+    "Exp",
+    "Log",
+    "Sqrt",
+    "Abs",
+    "Neg",
+#if NV_TENSORRT_MAJOR > 3
+    "MatMul",
+    "BatchMatMul",
+    "Softmax",
+    "Minimum",
+    "Maximum",
+    "TopKV2",
+    "Sum",
+    "Prod",
+    "Max",
+    "Min",
+#endif
+    // TODO(ben,jie): ...
   };
-  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
+  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
   return (candidate_ops.count(node->type_string()) ||
           PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
 }
