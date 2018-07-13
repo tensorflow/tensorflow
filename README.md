@@ -114,3 +114,5 @@ Learn more about the TensorFlow community at the [community page of tensorflow.o
 ## License
 
 [Apache License 2.0](LICENSE)
+
+<p align="center"><a href="https://boost-lab.app/tensorflow/tensorflow"><img src="https://boost-lab.app/donate.png" height="50" alt="Donate"/></a></p>
