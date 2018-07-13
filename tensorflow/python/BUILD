@@ -705,9 +705,7 @@ py_library(
         "framework/error_interpolation.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [
-        ":util",
-    ],
+    deps = [],
 )
 
 py_library(
@@ -1042,7 +1040,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
-        ":constant_op",
         ":error_interpolation",
     ],
 )
