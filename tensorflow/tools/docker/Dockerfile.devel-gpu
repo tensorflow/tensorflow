@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         libcudnn7=7.1.4.18-1+cuda9.0 \
         libcudnn7-dev=7.1.4.18-1+cuda9.0 \
+        libnccl2=2.2.13-1+cuda9.0 \
+        libnccl-dev=2.2.13-1+cuda9.0 \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
