@@ -915,7 +915,11 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
   // We have reached the right-most dimension of the tensor.
   if (dim_index == shape_size - 1) {
     for (int64 i = 0; i < element_count; i++) {
-      if (*data_index >= limit) return;
+      if (*data_index >= limit) {
+        // If not enough elements has been printed, append "...".
+        if (i < element_count) { strings::StrAppend(result, "..."); }
+        return;
+      }
       if (i > 0) strings::StrAppend(result, " ");
       strings::StrAppend(result, PrintOneElement(data[(*data_index)++]));
     }
@@ -933,6 +937,10 @@ void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
                 result);
     if (*data_index < limit || flag) {
       strings::StrAppend(result, "]");
+      if (*data_index >= limit) {
+        // If not enough elements has been printed in this dim, append "...".
+        strings::StrAppend(result, "...");
+      }
       flag = false;
     }
   }
