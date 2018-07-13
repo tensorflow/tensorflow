@@ -20,11 +20,15 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.charset.Charset;
+
 import org.tensorflow.DataType;
 import org.tensorflow.Operand;
 import org.tensorflow.Operation;
 import org.tensorflow.Output;
+import org.tensorflow.Shape;
 import org.tensorflow.Tensor;
+import org.tensorflow.Tensors;
 import org.tensorflow.op.PrimitiveOp;
 import org.tensorflow.op.Scope;
 import org.tensorflow.op.annotation.Operator;
@@ -32,6 +36,7 @@ import org.tensorflow.op.annotation.Operator;
 /** An operator producing a constant value. */
 @Operator
 public final class Constant<T> extends PrimitiveOp implements Operand<T> {
+
   /**
    * Create a constant from a Java object.
    *
@@ -54,6 +59,18 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
   }
 
   /**
+   * Creates a constant containing a single {@code int} element.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param data The value to put into the new constant.
+   */
+  public static Constant<Integer> create(Scope scope, int data) {
+    try (Tensor<Integer> value = Tensors.create(data)) {
+      return createWithTensor(scope, value);
+    }
+  }
+
+  /**
    * Create a {@link DataType#INT32} constant with data from the given buffer.
    *
    * <p>Creates a constant with the given shape by copying elements from the buffer (starting from
@@ -66,8 +83,20 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant<Integer> create(Scope scope, long[] shape, IntBuffer data) {
+  public static Constant<Integer> create(Scope scope, Shape shape, IntBuffer data) {
     try (Tensor<Integer> value = Tensor.create(shape, data)) {
+      return createWithTensor(scope, value);
+    }
+  }
+
+  /**
+   * Creates a constant containing a single {@code float} element.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param data The value to put into the new constant. 
+   */
+  public static Constant<Float> create(Scope scope, float data) {
+    try (Tensor<Float> value = Tensors.create(data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -85,8 +114,20 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant<Float> create(Scope scope, long[] shape, FloatBuffer data) {
+  public static Constant<Float> create(Scope scope, Shape shape, FloatBuffer data) {
     try (Tensor<Float> value = Tensor.create(shape, data)) {
+      return createWithTensor(scope, value);
+    }
+  }
+
+  /**
+   * Creates a constant containing a single {@code double} element.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param data The value to put into the new constant.
+   */
+  public static Constant<Double> create(Scope scope, double data) {
+    try (Tensor<Double> value = Tensors.create(data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -104,8 +145,20 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant<Double> create(Scope scope, long[] shape, DoubleBuffer data) {
+  public static Constant<Double> create(Scope scope, Shape shape, DoubleBuffer data) {
     try (Tensor<Double> value = Tensor.create(shape, data)) {
+      return createWithTensor(scope, value);
+    }
+  }
+
+  /**
+   * Creates a constant containing a single {@code long} element.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param data The value to put into the new constant.
+   */
+  public static Constant<Long> create(Scope scope, long data) {
+    try (Tensor<Long> value = Tensors.create(data)) {
       return createWithTensor(scope, value);
     }
   }
@@ -123,9 +176,46 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @param data a buffer containing the tensor data.
    * @throws IllegalArgumentException If the tensor shape is not compatible with the buffer
    */
-  public static Constant<Long> create(Scope scope, long[] shape, LongBuffer data) {
+  public static Constant<Long> create(Scope scope, Shape shape, LongBuffer data) {
     try (Tensor<Long> value = Tensor.create(shape, data)) {
       return createWithTensor(scope, value);
+    }
+  }
+
+  /**
+   * Creates a constant containing a single {@code boolean} element.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param data The value to put into the new constant.
+   */
+  public static Constant<Boolean> create(Scope scope, boolean data) {
+    try (Tensor<Boolean> value = Tensors.create(data)) {
+      return createWithTensor(scope, value); 
+    }
+  }
+
+  /**
+   * Creates a String constant using the default, UTF-8 encoding.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param data The string to put into the new constant.
+   */
+  public static Constant<String> create(Scope scope, String data) {
+    try (Tensor<String> value = Tensors.create(data)) {
+      return createWithTensor(scope, value); 
+    }
+  }
+
+  /**
+   * Creates a String constant using a specified encoding.
+   *
+   * @param scope is a scope used to add the underlying operation.
+   * @param charset The encoding from String to bytes.
+   * @param data The string to put into the new constant.
+   */
+  public static Constant<String> create(Scope scope, String data, Charset charset) {
+    try (Tensor<String> value = Tensor.create(data.getBytes(charset), String.class)) {
+      return createWithTensor(scope, Tensor.create(data.getBytes(charset), String.class));
     }
   }
 
@@ -144,7 +234,7 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
    * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
    *     buffer
    */
-  public static <T> Constant<T> create(Scope scope, Class<T> type, long[] shape, ByteBuffer data) {
+  public static <T> Constant<T> create(Scope scope, Class<T> type, Shape shape, ByteBuffer data) {
     try (Tensor<T> value = Tensor.create(type, shape, data)) {
       return createWithTensor(scope, value);
     }
