@@ -1,4 +1,4 @@
-//===- Statements.h - MLIR ML Statement Classes ------------*- C++ -*-===//
+//===- Statements.h - MLIR ML Statement Classes -----------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the classes for MLFunction statements.
+// This file defines classes for special kinds of ML Function statements.
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,56 +23,19 @@
 #define MLIR_IR_STATEMENTS_H
 
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/PointerUnion.h"
-
 #include "mlir/IR/Operation.h"
-
-#include <vector>
+#include "mlir/IR/Statement.h"
+#include "mlir/IR/StmtBlock.h"
 
 namespace mlir {
-  class MLFunction;
-  class NodeStmt;
-  class ElseClause;
-
-  typedef PointerUnion<MLFunction *, NodeStmt *> ParentType;
-
-/// Statement is a basic unit of execution within an ML function.
-/// Statements can be nested within each other, effectively forming a tree.
-class Statement {
-public:
-  enum class Kind {
-    Operation,
-    For,
-    If,
-    Else
-  };
-
-  Kind getKind() const { return kind; }
-
-  /// Returns the parent of this statement. The parent of a nested statement
-  /// is the closest surrounding for or if statement. The parent of
-  /// a top-level statement is the function that contains the statement.
-  ParentType getParent() const { return parent; }
-
-  /// Returns the function that this statement is part of.
-  MLFunction *getFunction() const;
-
-  void print(raw_ostream &os) const;
-  void dump() const;
-
-protected:
-  Statement(Kind kind, ParentType parent) : kind(kind), parent(parent) {}
-private:
-  Kind kind;
-  ParentType parent;
-};
 
 /// Operation statements represent operations inside ML functions.
 class OperationStmt : public Operation, public Statement {
 public:
-  explicit OperationStmt(ParentType parent, Identifier name,
-                         ArrayRef<NamedAttribute> attrs, MLIRContext *context)
-      : Operation(name, attrs, context), Statement(Kind::Operation, parent) {}
+  explicit OperationStmt(Identifier name, ArrayRef<NamedAttribute> attrs,
+                         MLIRContext *context)
+      : Operation(name, attrs, context), Statement(Kind::Operation) {}
+  ~OperationStmt() {}
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
@@ -80,25 +43,12 @@ public:
   }
 };
 
-/// Node statement represents a statement that may contain other statements.
-class NodeStmt : public Statement {
-public:
-  // FIXME: wrong representation and API, leaks memory etc
-  std::vector<Statement*> children;
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Statement *stmt) {
-    return stmt->getKind() != Kind::Operation;
-  }
-
-protected:
-  NodeStmt(Kind kind, ParentType parent) : Statement(kind, parent) {}
-};
-
 /// For statement represents an affine loop nest.
-class ForStmt : public NodeStmt {
+class ForStmt : public Statement, public StmtBlock {
 public:
-  explicit ForStmt(ParentType parent) : NodeStmt(Kind::For, parent) {}
+  explicit ForStmt() : Statement(Kind::For), StmtBlock(this) {}
+  //TODO: delete nested statements or assert that they are gone.
+  ~ForStmt() {}
 
   // TODO: represent loop variable, bounds and step
 
@@ -108,39 +58,41 @@ public:
   }
 };
 
-/// If statement restricts execution to a subset of the loop iteration space.
-class IfStmt : public NodeStmt {
+/// If clause represents statements contained within then or else clause
+/// of an if statement.
+class IfClause : public StmtBlock {
 public:
-  explicit IfStmt(ParentType parent) : NodeStmt(Kind::If, parent) {}
+  explicit IfClause(IfStmt *stmt);
 
-  // TODO: Represent condition
+  //TODO: delete nested statements or assert that they are gone.
+  ~IfClause() {}
 
-  // FIXME: most likely wrong representation since it's wrong everywhere else
-  std::vector<ElseClause *> elseClauses;
+  IfStmt *getIf() const;
+};
+
+/// If statement restricts execution to a subset of the loop iteration space.
+class IfStmt : public Statement {
+public:
+  explicit IfStmt()
+    : Statement(Kind::If), thenClause(new IfClause(this)),
+      elseClause(nullptr) {}
+
+  ~IfStmt();
+
+  IfClause *getThenClause() const { return thenClause; }
+  IfClause *getElseClause() const { return elseClause; }
+  bool hasElseClause() const {return elseClause != nullptr;}
+  IfClause *createElseClause() { return (elseClause = new IfClause(this)); }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
     return stmt->getKind() == Kind::If;
   }
-};
-
-/// Else clause reprsents else or else-if clause of an if statement
-class ElseClause : public NodeStmt {
-public:
-  explicit ElseClause(IfStmt *ifStmt, int clauseNum);
-
-  // TODO: Represent optional condition
-
-  // Returns ordinal number of this clause in the list of clauses.
-  int getClauseNumber() const { return clauseNum;}
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Statement *stmt) {
-    return stmt->getKind() == Kind::Else;
-  }
 private:
-  int clauseNum;
+  IfClause *thenClause;
+  IfClause *elseClause;
+  // TODO: Represent IntegerSet condition
 };
-
 } //end namespace mlir
+
 #endif  // MLIR_IR_STATEMENTS_H

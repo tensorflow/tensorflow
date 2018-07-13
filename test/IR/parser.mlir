@@ -70,14 +70,14 @@ mlfunc @loops() {
 
 ; CHECK-LABEL: mlfunc @ifstmt() {
 mlfunc @ifstmt() {
-  for {          ; CHECK   for {
-    if {         ; CHECK     if {
-    } else if {  ; CHECK     } else if {
-    } else {     ; CHECK     } else {
-    }            ; CHECK     }
-  }              ; CHECK   }
-  return         ; CHECK   return
-}                ; CHECK }
+  for {             ; CHECK   for {
+    if () {         ; CHECK     if () {
+    } else if () {  ; CHECK     } else if () {
+    } else {        ; CHECK     } else {
+    }               ; CHECK     }
+  }                 ; CHECK   }
+  return            ; CHECK   return
+}                   ; CHECK }
 
 ; CHECK-LABEL: cfgfunc @attributes() {
 cfgfunc @attributes() {

@@ -1,4 +1,4 @@
-//===- Statements.cpp - MLIR Statement Instruction Classes ------------===//
+//===- StmtBlock.cpp - MLIR Statement Instruction Classes -----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -16,25 +16,17 @@
 // =============================================================================
 
 #include "mlir/IR/MLFunction.h"
-#include "mlir/IR/Statements.h"
+#include "mlir/IR/StmtBlock.h"
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
-// Statement
+// Statement block
 //===----------------------------------------------------------------------===//
 
-MLFunction *Statement::getFunction() const {
-  ParentType p = parent;
-  while (!p.is<MLFunction *>())
-    p = p.get<NodeStmt *>()->getParent();
-  return p.get<MLFunction *>();
-}
+MLFunction *StmtBlock::getFunction() const {
+  StmtBlock *block = const_cast<StmtBlock *>(this);
 
-//===----------------------------------------------------------------------===//
-// ElseClause
-//===----------------------------------------------------------------------===//
-
-ElseClause::ElseClause(IfStmt *ifStmt, int clauseNum)
-      : NodeStmt(Kind::Else, ifStmt), clauseNum(clauseNum) {
-  ifStmt->elseClauses.push_back(this);
+  while (block->getParent() != nullptr)
+    block = block->getParent()->getBlock();
+  return static_cast<MLFunction *>(block);
 }

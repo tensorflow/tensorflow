@@ -1,4 +1,4 @@
-//===- MLFunction.h - MLIR MLFunction Class -------------------*- C++ -*-===//
+//===- MLFunction.h - MLIR MLFunction Class ---------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -23,19 +23,15 @@
 #define MLIR_IR_MLFUNCTION_H_
 
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Statements.h"
-#include <vector>
+#include "mlir/IR/StmtBlock.h"
 
 namespace mlir {
 
 // MLFunction is defined as a sequence of statements that may
-// include nested affine for loops, conditionals and instructions.
-class MLFunction : public Function {
+// include nested affine for loops, conditionals and operations.
+class MLFunction : public Function, public StmtBlock {
 public:
   MLFunction(StringRef name, FunctionType *type);
-
-  // FIXME: wrong representation and API, leaks memory etc
-  std::vector<Statement*> stmtList;
 
   // TODO: add function arguments and return values once
   // SSA values are implemented
