@@ -13,7 +13,7 @@ In this tutorial we'll show how to build an RNN-based recognizer for this
 problem. The model will use a combination of convolutional layers, LSTM layers,
 and a softmax output layer to classify the drawings:
 
-<center> ![RNN model structure](../images/quickdraw_model.png) </center>
+<center> ![RNN model structure](../../images/quickdraw_model.png) </center>
 
 The figure above shows the structure of the model that we will build in this
 tutorial. The input is a drawing that is encoded as a sequence of strokes of
@@ -208,7 +208,7 @@ This data is then reformatted into a tensor of shape `[num_training_samples,
 max_length, 3]`. Then we determine the bounding box of the original drawing in
 screen coordinates and normalize the size such that the drawing has unit height.
 
-<center> ![Size normalization](../images/quickdraw_sizenormalization.png) </center>
+<center> ![Size normalization](../../images/quickdraw_sizenormalization.png) </center>
 
 Finally, we compute the differences between consecutive points and store these
 as a `VarLenFeature` in a
