@@ -38,11 +38,15 @@ class RpropMinusOptimizer(optimizer.Optimizer):
 
   Rprop was originally proposed by Riedmiller and Braun in the paper
   [A direct adaptive method for faster backpropagation learning: the RPROP algorithm](https://doi.org/10.1109/ICNN.1993.298623).
-  The Rprop variant implemented here is described in Riedmiller's article [Advanced supervised learning in multi-layer perceptrons — From backpropagation to adaptive learning algorithms](https://doi.org/10.1016/0920-5489(94)90017-5), and is referred to as Rprop- (Rprop without weight-backtracking) in the article [Empirical evaluation of the improved Rprop learning algorithms](https://doi.org/10.1016/S0925-2312(01)00700-7).
-  
-  **The Rprop algorithms are recommended for batch learning, _not_ for mini-batch learning.**
-  The varint [iRprop+ (improved Rprop with weight-backtracking) algorithm](IRpropPlusOptimizer.md) is empirically found to be
-  faster and more robust than Rprop-.
+  The Rprop variant implemented here is described in Riedmiller's article
+  [Advanced supervised learning in multi-layer perceptrons — From backpropagation to adaptive learning algorithms](https://doi.org/10.1016/0920-5489(94)90017-5),
+  and is referred to as Rprop- (Rprop without weight-backtracking) in the
+  article [Empirical evaluation of the improved Rprop learning algorithms](https://doi.org/10.1016/S0925-2312(01)00700-7).
+
+  **The Rprop algorithms are recommended for batch learning, _not_
+  for mini-batch learning.** The variant
+  [iRprop+ (improved Rprop with weight-backtracking) algorithm](IRpropPlusOptimizer.md)
+  is empirically found to be faster and more robust than Rprop-.
   See [Resilient Backpropagation (Rprop) for Batch-learning in TensorFlow](https://openreview.net/forum?id=r1R0o7yDz)
   for details and references.
   """
@@ -64,9 +68,9 @@ class RpropMinusOptimizer(optimizer.Optimizer):
     t <- 0 (Initialize iteration counter)
     ```
 
-    The following update rule is performed for each individual objective variable (e.g., weight),
-    where `g{t}` denotes the partial derivative of the objective function with respect to the
-    objective variable at iteration `t`:
+    The following update rule is performed for each individual objective
+    variable (e.g., weight), where `g{t}` denotes the partial derivative of the
+    objective function with respect to the objective variable at iteration `t`:
 
     ```
     t <- t + 1
