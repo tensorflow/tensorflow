@@ -1,6 +1,4 @@
 // Test description and protos to work with it.
-//
-// Many of the protos in this file are for unit tests that haven't been written yet.
 
 syntax = "proto2";
 
@@ -8,32 +6,103 @@ import "tensorflow/core/framework/types.proto";
 
 package tensorflow.contrib.proto;
 
-// A TestCase holds a proto and a bunch of assertions
-// about how it should decode.
+// A TestCase holds a proto and assertions about how it should decode.
 message TestCase {
-  // A batch of primitives to be serialized and decoded.
-  repeated RepeatedPrimitiveValue primitive = 1;
-  // The shape of the batch.
-  repeated int32 shape = 2;
+  // Batches of primitive values.
+  repeated TestValue values = 1;
+  // The batch shapes.
+  repeated int32 shapes = 2;
   // Expected sizes for each field.
   repeated int32 sizes = 3;
   // Expected values for each field.
-  repeated FieldSpec field = 4;
+  repeated FieldSpec fields = 4;
 };
 
 // FieldSpec describes the expected output for a single field.
 message FieldSpec {
   optional string name = 1;
   optional tensorflow.DataType dtype = 2;
-  optional RepeatedPrimitiveValue expected = 3;
+  optional TestValue value = 3;
 };
 
+// NOTE: This definition must be kept in sync with PackedTestValue.
 message TestValue {
-  optional PrimitiveValue primitive_value = 1;
-  optional EnumValue enum_value = 2;
-  optional MessageValue message_value = 3;
-  optional RepeatedMessageValue repeated_message_value = 4;
-  optional RepeatedPrimitiveValue repeated_primitive_value = 6;
+  repeated double double_value = 1;
+  repeated float float_value = 2;
+  repeated int64 int64_value = 3;
+  repeated uint64 uint64_value = 4;
+  repeated int32 int32_value = 5;
+  repeated fixed64 fixed64_value = 6;
+  repeated fixed32 fixed32_value = 7;
+  repeated bool bool_value = 8;
+  repeated string string_value = 9;
+  repeated bytes bytes_value = 12;
+  repeated uint32 uint32_value = 13;
+  repeated sfixed32 sfixed32_value = 15;
+  repeated sfixed64 sfixed64_value = 16;
+  repeated sint32 sint32_value = 17;
+  repeated sint64 sint64_value = 18;
+  repeated PrimitiveValue message_value = 19;
+
+  // Optional fields with explicitly-specified defaults.
+  optional double double_value_with_default = 20 [default = 1.0];
+  optional float float_value_with_default = 21 [default = 2.0];
+  optional int64 int64_value_with_default = 22 [default = 3];
+  optional uint64 uint64_value_with_default = 23 [default = 4];
+  optional int32 int32_value_with_default = 24 [default = 5];
+  optional fixed64 fixed64_value_with_default = 25 [default = 6];
+  optional fixed32 fixed32_value_with_default = 26 [default = 7];
+  optional bool bool_value_with_default = 27 [default = true];
+  optional string string_value_with_default = 28 [default = "a"];
+  optional bytes bytes_value_with_default = 29
+      [default = "a longer default string"];
+  optional uint32 uint32_value_with_default = 30 [default = 9];
+  optional sfixed32 sfixed32_value_with_default = 31 [default = 10];
+  optional sfixed64 sfixed64_value_with_default = 32 [default = 11];
+  optional sint32 sint32_value_with_default = 33 [default = 12];
+  optional sint64 sint64_value_with_default = 34 [default = 13];
+}
+
+// A PackedTestValue looks exactly the same as a TestValue in the text format,
+// but the binary serializion is different. We test the packed representations
+// by loading the same test cases using this definition instead of TestValue.
+//
+// NOTE: This definition must be kept in sync with TestValue in every way except
+// the packed=true declaration.
+message PackedTestValue {
+  repeated double double_value = 1 [packed = true];
+  repeated float float_value = 2 [packed = true];
+  repeated int64 int64_value = 3 [packed = true];
+  repeated uint64 uint64_value = 4 [packed = true];
+  repeated int32 int32_value = 5 [packed = true];
+  repeated fixed64 fixed64_value = 6 [packed = true];
+  repeated fixed32 fixed32_value = 7 [packed = true];
+  repeated bool bool_value = 8 [packed = true];
+  repeated string string_value = 9;
+  repeated bytes bytes_value = 12;
+  repeated uint32 uint32_value = 13 [packed = true];
+  repeated sfixed32 sfixed32_value = 15 [packed = true];
+  repeated sfixed64 sfixed64_value = 16 [packed = true];
+  repeated sint32 sint32_value = 17 [packed = true];
+  repeated sint64 sint64_value = 18 [packed = true];
+  repeated PrimitiveValue message_value = 19;
+
+  optional double double_value_with_default = 20 [default = 1.0];
+  optional float float_value_with_default = 21 [default = 2.0];
+  optional int64 int64_value_with_default = 22 [default = 3];
+  optional uint64 uint64_value_with_default = 23 [default = 4];
+  optional int32 int32_value_with_default = 24 [default = 5];
+  optional fixed64 fixed64_value_with_default = 25 [default = 6];
+  optional fixed32 fixed32_value_with_default = 26 [default = 7];
+  optional bool bool_value_with_default = 27 [default = true];
+  optional string string_value_with_default = 28 [default = "a"];
+  optional bytes bytes_value_with_default = 29
+      [default = "a longer default string"];
+  optional uint32 uint32_value_with_default = 30 [default = 9];
+  optional sfixed32 sfixed32_value_with_default = 31 [default = 10];
+  optional sfixed64 sfixed64_value_with_default = 32 [default = 11];
+  optional sint32 sint32_value_with_default = 33 [default = 12];
+  optional sint64 sint64_value_with_default = 34 [default = 13];
 }
 
 message PrimitiveValue {
@@ -54,83 +123,16 @@ message PrimitiveValue {
   optional sint64 sint64_value = 18;
 }
 
-// NOTE: This definition must be kept in sync with PackedPrimitiveValue.
-message RepeatedPrimitiveValue {
-  repeated double double_value = 1;
-  repeated float float_value = 2;
-  repeated int64 int64_value = 3;
-  repeated uint64 uint64_value = 4;
-  repeated int32 int32_value = 5;
-  repeated fixed64 fixed64_value = 6;
-  repeated fixed32 fixed32_value = 7;
-  repeated bool bool_value = 8;
-  repeated string string_value = 9;
-  repeated bytes bytes_value = 12;
-  repeated uint32 uint32_value = 13;
-  repeated sfixed32 sfixed32_value = 15;
-  repeated sfixed64 sfixed64_value = 16;
-  repeated sint32 sint32_value = 17;
-  repeated sint64 sint64_value = 18;
-  repeated PrimitiveValue message_value = 19;
-
-  // Optional fields with explicitly-specified defaults.
-  optional double double_default = 20 [default = 1.0];
-  optional float float_default = 21 [default = 2.0];
-  optional int64 int64_default = 22 [default = 3];
-  optional uint64 uint64_default = 23 [default = 4];
-  optional int32 int32_default = 24 [default = 5];
-  optional fixed64 fixed64_default = 25 [default = 6];
-  optional fixed32 fixed32_default = 26 [default = 7];
-  optional bool bool_default = 27 [default = true];
-  optional string string_default = 28 [default = "a"];
-  optional bytes bytes_default = 29 [default = "a longer default string"];
-  optional uint32 uint32_default = 30 [default = 4294967295];
-  optional sfixed32 sfixed32_default = 31 [default = 10];
-  optional sfixed64 sfixed64_default = 32 [default = 11];
-  optional sint32 sint32_default = 33 [default = 12];
-  optional sint64 sint64_default = 34 [default = 13];
+// Message containing fields with field numbers higher than any field above.
+// An instance of this message is prepended to each binary message in the test
+// to exercise the code path that handles fields encoded out of order of field
+// number.
+message ExtraFields {
+  optional string string_value = 1776;
+  optional bool bool_value = 1777;
 }
 
-// A PackedPrimitiveValue looks exactly the same as a RepeatedPrimitiveValue
-// in the text format, but the binary serializion is different.
-// We test the packed representations by loading the same test cases
-// using this definition instead of RepeatedPrimitiveValue.
-// NOTE: This definition must be kept in sync with RepeatedPrimitiveValue
-// in every way except the packed=true declaration.
-message PackedPrimitiveValue {
-  repeated double double_value = 1 [packed = true];
-  repeated float float_value = 2 [packed = true];
-  repeated int64 int64_value = 3 [packed = true];
-  repeated uint64 uint64_value = 4 [packed = true];
-  repeated int32 int32_value = 5 [packed = true];
-  repeated fixed64 fixed64_value = 6 [packed = true];
-  repeated fixed32 fixed32_value = 7 [packed = true];
-  repeated bool bool_value = 8 [packed = true];
-  repeated string string_value = 9;
-  repeated bytes bytes_value = 12;
-  repeated uint32 uint32_value = 13 [packed = true];
-  repeated sfixed32 sfixed32_value = 15 [packed = true];
-  repeated sfixed64 sfixed64_value = 16 [packed = true];
-  repeated sint32 sint32_value = 17 [packed = true];
-  repeated sint64 sint64_value = 18 [packed = true];
-  repeated PrimitiveValue message_value = 19;
-
-  optional double double_default = 20 [default = 1.0];
-  optional float float_default = 21 [default = 2.0];
-  optional int64 int64_default = 22 [default = 3];
-  optional uint64 uint64_default = 23 [default = 4];
-  optional int32 int32_default = 24 [default = 5];
-  optional fixed64 fixed64_default = 25 [default = 6];
-  optional fixed32 fixed32_default = 26 [default = 7];
-  optional bool bool_default = 27 [default = true];
-  optional string string_default = 28 [default = "a"];
-  optional bytes bytes_default = 29 [default = "a longer default string"];
-  optional uint32 uint32_default = 30 [default = 4294967295];
-  optional sfixed32 sfixed32_default = 31 [default = 10];
-  optional sfixed64 sfixed64_default = 32 [default = 11];
-  optional sint32 sint32_default = 33 [default = 12];
-  optional sint64 sint64_default = 34 [default = 13];
-}
+// The messages below are for yet-to-be created tests.
 
 message EnumValue {
   enum Color {
@@ -170,13 +172,4 @@ message RepeatedMessageValue {
   }
 
   repeated NestedMessageValue message_values = 11;
-}
-
-// Message containing fields with field numbers higher than any field above. An
-// instance of this message is prepended to each binary message in the test to
-// exercise the code path that handles fields encoded out of order of field
-// number.
-message ExtraFields {
-  optional string string_value = 1776;
-  optional bool bool_value = 1777;
 }
