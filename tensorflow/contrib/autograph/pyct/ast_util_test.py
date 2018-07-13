@@ -44,7 +44,8 @@ class AstUtilTest(test.TestCase):
         node, {qual_names.QN('a'): qual_names.QN('renamed_a')})
 
     self.assertIsInstance(node.body[0].value.left.id, str)
-    self.assertEqual(compiler.ast_to_source(node).strip(), 'renamed_a + b')
+    source, _ = compiler.ast_to_source(node)
+    self.assertEqual(source.strip(), 'renamed_a + b')
 
   def test_rename_symbols_attributes(self):
     node = parser.parse_str('b.c = b.c.d')
@@ -53,8 +54,8 @@ class AstUtilTest(test.TestCase):
     node = ast_util.rename_symbols(
         node, {qual_names.from_str('b.c'): qual_names.QN('renamed_b_c')})
 
-    self.assertEqual(
-        compiler.ast_to_source(node).strip(), 'renamed_b_c = renamed_b_c.d')
+    source, _ = compiler.ast_to_source(node)
+    self.assertEqual(source.strip(), 'renamed_b_c = renamed_b_c.d')
 
   def test_rename_symbols_annotations(self):
     node = parser.parse_str('a[i]')
@@ -129,9 +130,9 @@ class AstUtilTest(test.TestCase):
                        'super(Bar, _).__init__(_)')
 
   def _mock_apply_fn(self, target, source):
-    target = compiler.ast_to_source(target).strip()
-    source = compiler.ast_to_source(source).strip()
-    self._invocation_counts[(target, source)] += 1
+    target, _ = compiler.ast_to_source(target)
+    source, _ = compiler.ast_to_source(source)
+    self._invocation_counts[(target.strip(), source.strip())] += 1
 
   def test_apply_to_single_assignments_dynamic_unpack(self):
     node = parser.parse_str('a, b, c = d')
@@ -154,6 +155,25 @@ class AstUtilTest(test.TestCase):
         ('b', 'e'): 1,
         ('c', 'f'): 1,
     })
+
+  def test_parallel_walk(self):
+    ret = ast.Return(
+        ast.BinOp(
+            op=ast.Add(),
+            left=ast.Name(id='a', ctx=ast.Load()),
+            right=ast.Num(1)))
+    node = ast.FunctionDef(
+        name='f',
+        args=ast.arguments(
+            args=[ast.Name(id='a', ctx=ast.Param())],
+            vararg=None,
+            kwarg=None,
+            defaults=[]),
+        body=[ret],
+        decorator_list=[],
+        returns=None)
+    for child_a, child_b in ast_util.parallel_walk(node, node):
+      self.assertEqual(child_a, child_b)
 
 
 if __name__ == '__main__':
