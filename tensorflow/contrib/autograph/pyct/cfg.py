@@ -124,6 +124,8 @@ class _WalkMode(Enum):
   REVERSE = 2
 
 
+# TODO(mdan): Rename to DataFlowAnalyzer.
+# TODO(mdan): Consider specializations that use gen/kill/transfer abstractions.
 class GraphVisitor(object):
   """Base class for a CFG visitors.
 
@@ -161,6 +163,7 @@ class GraphVisitor(object):
     """
     raise NotImplementedError('Subclasses must implement this.')
 
+  # TODO(mdan): Rename to flow?
   def visit_node(self, node):
     """Visitor function.
 
