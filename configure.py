@@ -35,7 +35,7 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_NCCL_VERSION = '1.3'
+_DEFAULT_NCCL_VERSION = '2.2'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
@@ -1097,8 +1097,10 @@ def set_tf_nccl_install_path(environ_cp):
     raise ValueError('Currently NCCL is only supported on Linux platforms.')
 
   ask_nccl_version = (
-      'Please specify the NCCL version you want to use. '
-      '[Leave empty to default to NCCL %s]: ') % _DEFAULT_NCCL_VERSION
+      'Please specify the NCCL version you want to use. If NCCL %s is not '
+      'installed, then you can use version 1.3 that can be fetched '
+      'automatically but it may have worse performance with multiple GPUs. '
+      '[Default is %s]: ') % (_DEFAULT_NCCL_VERSION, _DEFAULT_NCCL_VERSION)
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_nccl_version = get_from_env_or_user_or_default(
