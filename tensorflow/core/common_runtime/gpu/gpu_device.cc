@@ -856,7 +856,7 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
-      streams_[stream_id]->compute->implementation()->CudaStreamMemberHack());
+      streams_[stream_id]->compute->implementation()->GpuStreamMemberHack());
   concrete_device->Reinitialize(context, cuda_stream, tf_gpu_id_, allocator,
                                 scratch_[stream_id]);
 }

@@ -18,7 +18,7 @@
 #                    <COMMAND>
 #
 # CONTAINER_TYPE: Type of the docker container used the run the build:
-#                 e.g., (cpu | gpu | android | tensorboard)
+#                 e.g., (cpu | gpu | rocm | android | tensorboard)
 #
 # DOCKERFILE_PATH: (Optional) Path to the Dockerfile used for docker build.
 #                  If this optional value is not supplied (via the
@@ -103,6 +103,14 @@ if [[ "${CONTAINER_TYPE}" != gpu* ]]; then
   GPU_EXTRA_PARAMS=""
 fi
 
+# Add extra params for rocm devices and libraries for ROCm container.
+if [[ "${CONTAINER_TYPE}" == "rocm" ]]; then
+  ROCM_EXTRA_PARAMS="--device=/dev/kfd --device=/dev/dri --group-add video"
+else
+  ROCM_EXTRA_PARAMS=""
+fi
+
+
 # Determine the docker image name
 DOCKER_IMG_NAME="${BUILD_TAG}.${CONTAINER_TYPE}"
 
@@ -158,6 +166,7 @@ ${DOCKER_BINARY} run --rm --pid=host \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
     ${GPU_EXTRA_PARAMS} \
+    ${ROCM_EXTRA_PARAMS} \
     ${CI_DOCKER_EXTRA_PARAMS[@]} \
     "${DOCKER_IMG_NAME}" \
     ${CI_COMMAND_PREFIX[@]} \

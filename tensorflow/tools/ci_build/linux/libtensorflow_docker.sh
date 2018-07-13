@@ -38,6 +38,11 @@ if [ "${TF_NEED_CUDA}" == "1" ]; then
   DOCKER_BINARY="nvidia-docker"
   DOCKER_FILE="Dockerfile.gpu"
 fi
+if [ "${TF_NEED_ROCM}" == "1" ]; then
+  DOCKER_IMAGE="tf-tensorflow-rocm"
+  DOCKER_BINARY="docker"
+  DOCKER_FILE="Dockerfile.rocm"
+fi
 
 docker build \
   -t "${DOCKER_IMAGE}" \
@@ -52,6 +57,7 @@ ${DOCKER_BINARY} run \
   -e "PYTHON_BIN_PATH=/usr/bin/python" \
   -e "TF_NEED_HDFS=0" \
   -e "TF_NEED_CUDA=${TF_NEED_CUDA}" \
+  -e "TF_NEED_ROCM=${TF_NEED_ROCM}" \
   -e "TF_NEED_OPENCL_SYCL=0" \
   "${DOCKER_IMAGE}" \
   "/workspace/tensorflow/tools/ci_build/linux/libtensorflow.sh"
