@@ -20,17 +20,82 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
+#include <iostream>
 #include <map>
 #include <memory>
-#include "tensorflow/stream_executor/platform/port.h"
 
 #include "tensorflow/stream_executor/launch_dim.h"
+#include "tensorflow/stream_executor/lib/numbers.h"
+#include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/stream_executor/lib/str_util.h"
+#include "tensorflow/stream_executor/lib/stringpiece.h"
+#include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace internal {
 class DeviceDescriptionBuilder;
 }  // namespace internal
+
+// Device hardware version
+//
+// On CUDA platform it holds major and minor compute capability.
+//
+// On ROCm platform the major version is the AMDGCN ISA version, minor version
+// is zero.
+struct DeviceVersion {
+  // Initialize from version_name in the form of "3.5"
+  static port::StatusOr<DeviceVersion> Parse(port::StringPiece version_name) {
+    std::string version_str = std::string(version_name);
+    std::vector<std::string> pieces = port::Split(version_str, '.');
+    int major_part = 0, minor_part = 0;
+    if (pieces.size() < 1 || pieces.size() > 2) {
+      return port::FailedPreconditionError(
+          port::StrCat("Illegal version name #1: [", version_name, "]"));
+    }
+    LOG(INFO) << "major_str: " << pieces[0];
+    if (!port::safe_strto32(pieces[0], &major_part)) {
+      return port::FailedPreconditionError(
+          port::StrCat("Illegal version name #2: [", version_name, "]"));
+    }
+    LOG(INFO) << "major_part: " << major_part;
+    if (pieces.size() == 2) {
+      LOG(INFO) << "minor_str: " << pieces[1];
+      if (!port::safe_strto32(pieces[1], &minor_part)) {
+        return port::FailedPreconditionError(
+            port::StrCat("Illegal version name #3: [", version_name, "]"));
+      }
+      LOG(INFO) << "minor_part: " << minor_part;
+    }
+    return DeviceVersion(major_part, minor_part);
+  }
+  constexpr DeviceVersion() : major_part(0), minor_part(0) {}
+  constexpr explicit DeviceVersion(int major)
+      : major_part(major), minor_part(0) {}
+  constexpr DeviceVersion(int major, int minor)
+      : major_part(major), minor_part(minor) {}
+  bool operator==(const DeviceVersion &other) const {
+    return this->major_part == other.major_part &&
+           this->minor_part == other.minor_part;
+  }
+  bool operator<(const DeviceVersion &other) const {
+    if (this->major_part != other.major_part) {
+      return this->major_part < other.major_part;
+    }
+    return this->minor_part < other.minor_part;
+  }
+  bool operator>=(const DeviceVersion &other) const { return !(*this < other); }
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const DeviceVersion &version) {
+    os << version.major_part << "." << version.minor_part;
+    return os;
+  }
+  bool is_valid() const { return major_part != 0; }
+
+  int major_part;
+  int minor_part;
+};
 
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
@@ -154,10 +219,9 @@ class DeviceDescription {
   // Micro Devices, Inc.", or "GenuineIntel".
   const string &device_vendor() const { return device_vendor_; }
 
-  // Returns the CUDA compute capability if we're running on the CUDA platform.
-  // If a CUDA compute capability is not available, the major version will be
-  // zero, and the return value will be false.
-  bool cuda_compute_capability(int *major, int *minor) const;
+  DeviceVersion device_hardware_version() const {
+    return device_hardware_version_;
+  }
 
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
@@ -224,9 +288,7 @@ class DeviceDescription {
 
   float clock_rate_ghz_;
 
-  // CUDA "CC" major value, -1 if not available.
-  int cuda_compute_capability_major_;
-  int cuda_compute_capability_minor_;
+  DeviceVersion device_hardware_version_;
 
   int numa_node_;
   int core_count_;
@@ -325,9 +387,8 @@ class DeviceDescriptionBuilder {
     device_description_->clock_rate_ghz_ = value;
   }
 
-  void set_cuda_compute_capability(int major, int minor) {
-    device_description_->cuda_compute_capability_major_ = major;
-    device_description_->cuda_compute_capability_minor_ = minor;
+  void set_device_hardware_version(const DeviceVersion &version) {
+    device_description_->device_hardware_version_ = version;
   }
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }

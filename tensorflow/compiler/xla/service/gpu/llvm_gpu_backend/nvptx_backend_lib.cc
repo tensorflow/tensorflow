@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/tracing.h"
 
 namespace xla {
@@ -72,7 +73,7 @@ const int kDefaultInlineThreshold = 1100;
 // presented with a GPU we don't recognize, we just return the libdevice from
 // compute_20.
 static string GetLibdeviceFilename(const string& libdevice_dir_path,
-                                   std::pair<int, int> compute_capability) {
+                                   se::DeviceVersion compute_capability) {
   // Since CUDA 9.0, all GPU versions are included in a single file
   const char* unified_libdevice_filename = "libdevice.10.bc";
   std::vector<string> unified_libdevice_files;
@@ -85,34 +86,34 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
   // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
   // version gets mapped to one of these.  Note in particular that sm_60 and
   // sm_61 map to libdevice.compute_30.
-  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
-                                                           {{2, 1}, 20},
-                                                           {{3, 0}, 30},
-                                                           {{3, 2}, 30},
-                                                           {{3, 5}, 35},
-                                                           {{3, 7}, 35},
-                                                           {{5, 0}, 50},
-                                                           {{5, 2}, 50},
-                                                           {{5, 3}, 50},
-                                                           {{6, 0}, 30},
-                                                           {{6, 1}, 30},
-                                                           {{6, 2}, 30}});
+  static auto* m = new std::map<se::DeviceVersion, int>({{{2, 0}, 20},
+                                                         {{2, 1}, 20},
+                                                         {{3, 0}, 30},
+                                                         {{3, 2}, 30},
+                                                         {{3, 5}, 35},
+                                                         {{3, 7}, 35},
+                                                         {{5, 0}, 50},
+                                                         {{5, 2}, 50},
+                                                         {{5, 3}, 50},
+                                                         {{6, 0}, 30},
+                                                         {{6, 1}, 30},
+                                                         {{6, 2}, 30}});
   int libdevice_version = 20;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
     libdevice_version = it->second;
   } else {
-    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
-                 << ", " << compute_capability.second << ") ."
-                 << "Defaulting to libdevice for compute_" << libdevice_version;
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability
+                 << "). Defaulting to libdevice for compute_"
+                 << libdevice_version;
   }
   return absl::StrCat("libdevice.compute_", libdevice_version, ".10.bc");
 }
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
 // we see an unrecognized compute capability, we return "sm_30".
-static string GetSmName(std::pair<int, int> compute_capability) {
-  static auto* m = new std::map<std::pair<int, int>, int>({
+static string GetSmName(se::DeviceVersion compute_capability) {
+  static auto* m = new std::map<se::DeviceVersion, int>({
       {{3, 0}, 30},
       {{3, 2}, 32},
       {{3, 5}, 35},
@@ -131,10 +132,9 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   if (it != m->end()) {
     sm_version = it->second;
   } else {
-    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
-                 << ", " << compute_capability.second << ") ."
-                 << "Defaulting to telling LLVM that we're compiling for sm_"
-                 << sm_version;
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability
+                 << "). Defaulting to telling LLVM that we're compiling for "
+                 << "sm_" << sm_version;
   }
   return absl::StrCat("sm_", sm_version);
 }
@@ -311,7 +311,7 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
 
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                std::pair<int, int> compute_capability,
+                                se::DeviceVersion compute_capability,
                                 const string& libdevice_dir_path) {
   if (!CouldNeedLibdevice(*module)) {
     return Status::OK();
@@ -339,7 +339,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 }
 
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,
-                                    std::pair<int, int> compute_capability,
+                                    se::DeviceVersion compute_capability,
                                     const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
   // If the module has no functions or globals, there's nothing to compile. Just
@@ -482,7 +482,7 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
 }  // namespace
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
-                              std::pair<int, int> compute_capability,
+                              se::DeviceVersion compute_capability,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;

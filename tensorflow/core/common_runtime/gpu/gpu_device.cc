@@ -825,12 +825,12 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
       gpu_options.per_process_gpu_memory_fraction();
   if (per_process_gpu_memory_fraction > 1.0 ||
       gpu_options.experimental().use_unified_memory()) {
-    int cc_major = 0, cc_minor = 0;
-    if (!se->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                            &cc_minor)) {
+    se::DeviceVersion device_version =
+        se->GetDeviceDescription().device_hardware_version();
+    if (!device_version.is_valid()) {
       return errors::Internal("Failed to get compute capability for device.");
     }
-    if (cc_major < 6) {
+    if (device_version.major_part < 6) {
       return errors::Internal(
           "Unified memory on GPUs with compute capability lower than 6.0 "
           "(pre-Pascal class GPUs) does not support oversubscription.");
@@ -1048,17 +1048,12 @@ Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
 
 static string GetShortDeviceDescription(CudaGpuId cuda_gpu_id,
                                         const se::DeviceDescription& desc) {
-  int cc_major;
-  int cc_minor;
-  if (!desc.cuda_compute_capability(&cc_major, &cc_minor)) {
-    cc_major = 0;
-    cc_minor = 0;
-  }
+  se::DeviceVersion device_version = desc.device_hardware_version();
   // LINT.IfChange
-  return strings::StrCat("device: ", cuda_gpu_id.value(),
-                         ", name: ", desc.name(),
-                         ", pci bus id: ", desc.pci_bus_id(),
-                         ", compute capability: ", cc_major, ".", cc_minor);
+  return strings::StrCat("device: ", cuda_gpu_id.value(), ", name: ",
+                         desc.name(), ", pci bus id: ", desc.pci_bus_id(),
+                         ", compute capability: ", device_version.major_part,
+                         ".", device_version.minor_part);
   // LINT.ThenChange(//tensorflow/python/platform/test.py)
 }
 
@@ -1277,39 +1272,11 @@ static int GetMinGPUMultiprocessorCount(
 
 namespace {
 
-struct CudaVersion {
-  // Initialize from version_name in the form of "3.5"
-  explicit CudaVersion(const std::string& version_name) {
-    size_t dot_pos = version_name.find('.');
-    CHECK(dot_pos != string::npos)
-        << "Illegal version name: [" << version_name << "]";
-    string major_str = version_name.substr(0, dot_pos);
-    CHECK(strings::safe_strto32(major_str, &major_part))
-        << "Illegal version name: [" << version_name << "]";
-    string minor_str = version_name.substr(dot_pos + 1);
-    CHECK(strings::safe_strto32(minor_str, &minor_part))
-        << "Illegal version name: [" << version_name << "]";
-  }
-  CudaVersion() {}
-  bool operator<(const CudaVersion& other) const {
-    if (this->major_part != other.major_part) {
-      return this->major_part < other.major_part;
-    }
-    return this->minor_part < other.minor_part;
-  }
-  friend std::ostream& operator<<(std::ostream& os,
-                                  const CudaVersion& version) {
-    os << version.major_part << "." << version.minor_part;
-    return os;
-  }
-  int major_part = -1;
-  int minor_part = -1;
+std::vector<se::DeviceVersion> supported_cuda_compute_capabilities = {
+    TF_CUDA_CAPABILITIES,
 };
 
-std::vector<CudaVersion> supported_cuda_compute_capabilities = {
-    TF_CUDA_CAPABILITIES,};
-
-std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
+std::vector<se::DeviceVersion> GetSupportedCudaComputeCapabilities() {
   auto cuda_caps = supported_cuda_compute_capabilities;
 #ifdef TF_EXTRA_CUDA_CAPABILITIES
 // TF_EXTRA_CUDA_CAPABILITIES should be defined a sequence separated by commas,
@@ -1323,7 +1290,7 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
 #undef TF_XSTRING
   auto extra_capabilities = str_util::Split(extra_cuda_caps, ',');
   for (const auto& capability : extra_capabilities) {
-    cuda_caps.push_back(CudaVersion(capability));
+    cuda_caps.push_back(se::DeviceVersion::Parse(capability).ValueOrDie());
   }
 #endif
   return cuda_caps;
@@ -1401,16 +1368,10 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       total_bytes = 0;
     }
     const auto& description = stream_exec->GetDeviceDescription();
-    int cc_major;
-    int cc_minor;
-    if (!description.cuda_compute_capability(&cc_major, &cc_minor)) {
-      // Logs internally on failure.
-      cc_major = 0;
-      cc_minor = 0;
-    }
+    se::DeviceVersion device_version = description.device_hardware_version();
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name() << " major: " << cc_major
-              << " minor: " << cc_minor
+              << "\nname: " << description.name()
+              << " compute capability: " << device_version
               << " memoryClockRate(GHz): " << description.clock_rate_ghz()
               << "\npciBusID: " << description.pci_bus_id() << "\ntotalMemory: "
               << strings::HumanReadableNumBytes(total_bytes)
@@ -1427,7 +1388,7 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     return errors::FailedPrecondition(
         "No supported cuda capabilities in binary.");
   }
-  CudaVersion min_supported_capability = *std::min_element(
+  se::DeviceVersion min_supported_capability = *std::min_element(
       cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
 
   int min_gpu_core_count =
@@ -1446,9 +1407,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
     se::StreamExecutor* se = exec_status.ValueOrDie();
     const se::DeviceDescription& desc = se->GetDeviceDescription();
-    CudaVersion device_capability;
-    if (!desc.cuda_compute_capability(&device_capability.major_part,
-                                      &device_capability.minor_part)) {
+    se::DeviceVersion device_version = desc.device_hardware_version();
+    if (!device_version.is_valid()) {
       LOG(INFO) << "Ignoring visible gpu device "
                 << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
                 << ") "
@@ -1457,11 +1417,11 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     }
     // Only GPUs with no less than the minimum supported compute capability is
     // accepted.
-    if (device_capability < min_supported_capability) {
+    if (device_version < min_supported_capability) {
       LOG(INFO) << "Ignoring visible gpu device "
                 << "(" << GetShortDeviceDescription(visible_gpu_id, desc)
                 << ") "
-                << "with Cuda compute capability " << device_capability
+                << "with Cuda compute capability " << device_version
                 << ". The minimum required Cuda capability is "
                 << min_supported_capability << ".";
       continue;

@@ -456,7 +456,7 @@ if (tensorflow_ENABLE_GPU)
   FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
     "#ifndef CUDA_CUDA_CONFIG_H_\n"
     "#define CUDA_CUDA_CONFIG_H_\n"
-    "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.7\"),CudaVersion(\"5.2\"),CudaVersion(\"6.0\"),CudaVersion(\"6.1\"),CudaVersion(\"7.0\")\n"
+    "#define TF_CUDA_CAPABILITIES se::DeviceVersion(3, 7),se::DeviceVersion(5, 2),se::DeviceVersion(6, 0),se::DeviceVersion(6, 1),se::DeviceVersion(7, 0)\n"
     "#define TF_CUDA_VERSION \"64_${short_CUDA_VER}\"\n"
     "#define TF_CUDNN_VERSION \"64_${tensorflow_CUDNN_VERSION}\"\n"
     "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"

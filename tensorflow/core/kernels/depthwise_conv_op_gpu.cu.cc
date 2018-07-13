@@ -659,13 +659,13 @@ using PseudoHalfType = typename detail::PseudoHalfType<T>::Type;
 
 // Returns whether the context's GPU supports efficient fp16 math.
 bool HasFastHalfMath(OpKernelContext* ctx) {
-  int major, minor;
-  ctx->op_device_context()
-      ->stream()
-      ->parent()
-      ->GetDeviceDescription()
-      .cuda_compute_capability(&major, &minor);
-  auto cuda_arch = major * 100 + minor * 10;
+  se::DeviceVersion device_version = ctx->op_device_context()
+                                         ->stream()
+                                         ->parent()
+                                         ->GetDeviceDescription()
+                                         .device_hardware_version();
+  auto cuda_arch =
+      device_version.major_part * 100 + device_version.minor_part * 10;
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
   return cuda_arch >= 530 && cuda_arch != 610;
 }
