@@ -31,6 +31,7 @@ from tensorflow.contrib.autograph.converters import call_trees
 from tensorflow.contrib.autograph.converters import continue_statements
 from tensorflow.contrib.autograph.converters import control_flow
 from tensorflow.contrib.autograph.converters import decorators
+from tensorflow.contrib.autograph.converters import error_handlers
 from tensorflow.contrib.autograph.converters import ifexp
 from tensorflow.contrib.autograph.converters import lists
 from tensorflow.contrib.autograph.converters import logical_expressions
@@ -40,8 +41,10 @@ from tensorflow.contrib.autograph.converters import single_return
 from tensorflow.contrib.autograph.converters import slices
 from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.core import converter
+from tensorflow.contrib.autograph.core import errors
 from tensorflow.contrib.autograph.pyct import ast_util
 from tensorflow.contrib.autograph.pyct import inspect_utils
+from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
 from tensorflow.contrib.autograph.pyct import transformer
@@ -231,6 +234,8 @@ def _add_self_references(namespace, autograph_module):
     ag_internal = imp.new_module('autograph')
     ag_internal.converted_call = autograph_module.converted_call
     ag_internal.utils = utils
+    ag_internal.rewrite_graph_construction_error = (
+        errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -241,9 +246,10 @@ def _add_self_references(namespace, autograph_module):
 
 def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
+
   node, source = parser.parse_entity(f)
   node = node.body[0]
-
+  origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
   namer = program_ctx.new_namer(namespace)
@@ -319,4 +325,5 @@ def node_to_graph(node, context):
   node = _apply_transformer(node, context, logical_expressions)
   node = _apply_transformer(node, context, side_effect_guards)
   node = _apply_transformer(node, context, name_scopes)
+  node = _apply_transformer(node, context, error_handlers)
   return node

@@ -125,13 +125,17 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
                         llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same
-// semantics as the PTX "shfl.down" instruction [0] but works for values of any
-// size. The last operand of the emitted "shfl" is `kWarpSize - 1`.
+// semantics as the PTX "shfl.sync.down" instruction but works for values that
+// aren't 32 bits in size. The last operand of the emitted "shfl" is
+// `kWarpSize - 1`.
 //
-// [0]
-// http://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder);
+// This function emits a "full-warp" shuffle, which all threads of a warp
+// participate in.  *Do not use this function from a divergent context:* You
+// can't correctly do so on both Volta and earlier GPUs.
+//
+// https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder);
 
 }  // namespace gpu
 }  // namespace xla

@@ -32,7 +32,6 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.applications import mobilenet
 from tensorflow.python.keras.optimizers import SGD
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
@@ -60,9 +59,9 @@ def simple_sequential_model():
   return model
 
 
-def simple_functional_model():
+def simple_functional_model(activation='relu'):
   a = keras.layers.Input(shape=_INPUT_SIZE)
-  b = keras.layers.Dense(16, activation='relu')(a)
+  b = keras.layers.Dense(16, activation=activation)(a)
   b = keras.layers.Dropout(0.1)(b)
   b = keras.layers.Dense(_NUM_CLASS, activation='softmax')(b)
   model = keras.models.Model(inputs=[a], outputs=[b])
@@ -474,21 +473,25 @@ class TestKerasEstimator(test_util.TensorFlowTestCase):
         est_keras.train(input_fn=invald_output_name_input_fn, steps=100)
 
   def test_custom_objects(self):
-    keras_mobile = mobilenet.MobileNet(weights=None)
-    keras_mobile.compile(loss='categorical_crossentropy', optimizer='adam')
+    
+    def relu6(x):
+      return keras.backend.relu(x, max_value=6)
+    
+    keras_model = simple_functional_model(activation=relu6)
+    keras_model.compile(loss='categorical_crossentropy', optimizer='adam')
     custom_objects = {
-        'relu6': mobilenet.relu6,
-        'DepthwiseConv2D': mobilenet.DepthwiseConv2D
+        'relu6': relu6
     }
+
     with self.assertRaisesRegexp(ValueError, 'relu6'):
       with self.test_session():
         keras_lib.model_to_estimator(
-            keras_model=keras_mobile,
+            keras_model=keras_model,
             model_dir=tempfile.mkdtemp(dir=self._base_dir))
 
     with self.test_session():
       keras_lib.model_to_estimator(
-          keras_model=keras_mobile,
+          keras_model=keras_model,
           model_dir=tempfile.mkdtemp(dir=self._base_dir),
           custom_objects=custom_objects)
 

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import threading
 
 import numpy as np
 
@@ -137,7 +138,7 @@ class CapturingGraph(ops.Graph):
       inputs[i] = self.capture(inp)
     return super(CapturingGraph, self).create_op(
         op_type, inputs, dtypes, input_types, name, attrs, op_def,
-        compute_shapes, compute_device)
+        compute_device=compute_device)
 
 
 # pylint: disable=invalid-name
@@ -469,7 +470,7 @@ class GraphModeFunction(object):
 
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
-    with self._graph.as_default(), context.graph_mode():
+    with self._graph.as_default():
       c_known_ops = set()
       c_captured_tensors = set()
 
@@ -656,55 +657,58 @@ def _deterministic_dict_values(kwds):
 def _trace_and_define_function(name, func, compiled, args, kwds):
   """Defines and returns graph-mode version of func."""
   graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  with context.graph_mode():
-    captures = {}
-    tmp_graph = CapturingGraph(captures)
-    # Inherit the graph key, since this is used for matching variables in
-    # optimizers.
-    tmp_graph._graph_key = graph_key  # pylint: disable=protected-access
-    # Copy the graph collections to ensure summaries and other things work. This
-    # lets the function access (but not mutate) collections of the containing
-    # graph, such as the global step and the summary writer collections.
-    curr_graph = ops.get_default_graph()
-    for collection in curr_graph.collections:
-      tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
-          collection)
-    with tmp_graph.as_default(), AutomaticControlDependencies() as a:
-      func_args = _get_defun_inputs(args)
-      func_kwds = _get_defun_inputs(kwds)
+  captures = {}
+  tmp_graph = CapturingGraph(captures)
+  # Inherit the graph key, since this is used for matching variables in
+  # optimizers.
+  tmp_graph._graph_key = graph_key  # pylint: disable=protected-access
+  # Copy the graph collections to ensure summaries and other things work. This
+  # lets the function access (but not mutate) collections of the containing
+  # graph, such as the global step and the summary writer collections.
+  curr_graph = ops.get_default_graph()
+  for collection in curr_graph.collections:
+    tmp_graph.get_collection_ref(collection)[:] = curr_graph.get_collection(
+        collection)
+  if context.executing_eagerly():
+    tmp_graph.seed = context.global_seed()
+  else:
+    tmp_graph.seed = curr_graph.seed
+  with tmp_graph.as_default(), AutomaticControlDependencies() as a:
+    func_args = _get_defun_inputs(args)
+    func_kwds = _get_defun_inputs(kwds)
 
-      def convert(x):
-        if x is None:
-          return None
-        x = ops.convert_to_tensor_or_indexed_slices(x)
-        x = a.mark_as_return(x)
-        return x
+    def convert(x):
+      if x is None:
+        return None
+      x = ops.convert_to_tensor_or_indexed_slices(x)
+      x = a.mark_as_return(x)
+      return x
 
-      this_tape = tape.push_new_tape()
-      try:
-        func_outputs = func(*func_args, **func_kwds)
-        func_outputs = nest.map_structure(convert, func_outputs)
-      finally:
-        tape.pop_tape(this_tape)
-      variables = this_tape.watched_variables()
+    this_tape = tape.push_new_tape()
+    try:
+      func_outputs = func(*func_args, **func_kwds)
+      func_outputs = nest.map_structure(convert, func_outputs)
+    finally:
+      tape.pop_tape(this_tape)
+    variables = this_tape.watched_variables()
 
-      # Returning a closed-over tensor as an output does not trigger a
-      # call to convert_to_tensor, so we manually capture all such tensors.
-      outputs_list = _flatten(func_outputs)
-      func_def_outputs = [
-          tmp_graph.capture(x) for x in outputs_list
-          if x is not None
-      ]
+    # Returning a closed-over tensor as an output does not trigger a
+    # call to convert_to_tensor, so we manually capture all such tensors.
+    outputs_list = _flatten(func_outputs)
+    func_def_outputs = [
+        tmp_graph.capture(x) for x in outputs_list
+        if x is not None
+    ]
 
-      ids = list(sorted(captures.keys()))
-      if ids:
-        extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
-      else:
-        extra_inputs = []
-        extra_placeholders = []
-      output_shapes = tuple(
-          x.shape if isinstance(x, ops.Tensor) else None
-          for x in func_def_outputs)
+    ids = list(sorted(captures.keys()))
+    if ids:
+      extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
+    else:
+      extra_inputs = []
+      extra_placeholders = []
+    output_shapes = tuple(
+        x.shape if isinstance(x, ops.Tensor) else None
+        for x in func_def_outputs)
 
   func_kwds_values = _deterministic_dict_values(func_kwds)
   flat_inputs = [
@@ -770,6 +774,11 @@ class _PolymorphicFunction(object):
 
   See the documentation for `defun` for more information on the semantics of
   defined functions.
+
+  _PolymorphicFunction class is thread-compatible meaning that minimal
+  usage of defuns (defining and calling) is thread-safe, but if users call other
+  methods or invoke the base `python_function` themselves, external
+  synchronization is necessary.
   """
 
   def __init__(self, python_function, name, compiled=False):
@@ -786,6 +795,8 @@ class _PolymorphicFunction(object):
     self._compiled = compiled
     self._arguments_to_functions = {}
     self._variables = []
+
+    self._lock = threading.Lock()
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
@@ -825,15 +836,16 @@ class _PolymorphicFunction(object):
     # signature so we don't improperly capture tensors such as variables.
     signature += tuple([context.executing_eagerly() or ops.get_default_graph()])
 
-    if signature not in self._arguments_to_functions:
-      graph_function = _trace_and_define_function(
-          self._name, self._python_function, self._compiled, args, kwds)
-      self._arguments_to_functions[signature] = graph_function
-      self._variables.extend(
-          [v for v in graph_function.variables if v not in self._variables])
-      return graph_function, inputs
-    else:
-      return self._arguments_to_functions[signature], inputs
+    with self._lock:
+      if signature not in self._arguments_to_functions:
+        graph_function = _trace_and_define_function(
+            self._name, self._python_function, self._compiled, args, kwds)
+        self._arguments_to_functions[signature] = graph_function
+        self._variables.extend(
+            [v for v in graph_function.variables if v not in self._variables])
+        return graph_function, inputs
+      else:
+        return self._arguments_to_functions[signature], inputs
 
   def __call__(self, *args, **kwds):
     """Calls a graph function specialized for this input signature."""

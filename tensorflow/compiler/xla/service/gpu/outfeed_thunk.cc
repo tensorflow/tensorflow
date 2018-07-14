@@ -36,7 +36,7 @@ Status OutfeedThunk::ExecuteOnStream(
   auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
   OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* outfeed_buffers =
-      outfeed_manager->BlockingGetNextOutfeedDestination();
+      outfeed_manager->BlockingGetNextDestination();
 
   // Nothing to be done for empty tuples.
   if (ShapeUtil::IsEmptyTuple(hlo_instruction()->operand(0)->shape())) {
