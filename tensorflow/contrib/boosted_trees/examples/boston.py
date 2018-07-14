@@ -80,7 +80,8 @@ def _convert_fn(dtec, sorted_feature_names, num_dense, num_sparse_float,
                 num_sparse_int, export_dir, unused_eval_result):
   universal_format = custom_export_strategy.convert_to_universal_format(
       dtec, sorted_feature_names, num_dense, num_sparse_float, num_sparse_int)
-  with tf.gfile.GFile(os.path.join(compat.as_bytes(export_dir), compat.as_bytes("tree_proto")), "w") as f:
+  with tf.gfile.GFile(os.path.join(
+      compat.as_bytes(export_dir), compat.as_bytes("tree_proto")), "w") as f:
     f.write(str(universal_format))
 
 
