@@ -90,6 +90,7 @@ cc_library(
     ],
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
+    copts = ["-g", "-O0"],
     deps = [
         ":op_types",
         ":utils",
@@ -105,6 +106,7 @@ cc_library(
     ],
     hdrs = ["grappler_item_builder.h"],
     visibility = ["//visibility:public"],
+    copts = ["-g", "-O0"],
     deps = [
         ":grappler_item",
         ":op_types",

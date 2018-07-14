@@ -30,6 +30,7 @@ cc_library(
         ],
     ),
     hdrs = STREAM_EXECUTOR_HEADERS,
+    copts = ["-g", "-O0",],
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -49,6 +50,7 @@ cc_library(
     name = "stream_executor",
     hdrs = STREAM_EXECUTOR_HEADERS,
     visibility = ["//visibility:public"],
+    copts = ["-g", "-O0",],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
@@ -106,6 +108,7 @@ cc_library(
             exclude = ["rocm/rocm_platform_id.cc"],
         ),
     ),
+    copts = ["-g", "-O0",],
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": ["-ldl"],

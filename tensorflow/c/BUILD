@@ -46,6 +46,7 @@ tf_gpu_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
     hdrs = ["c_api_internal.h"],
+    copts = ["-g", "-Og", ],
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/c:__subpackages__",
@@ -72,7 +73,7 @@ tf_gpu_library(
     hdrs = [
         "c_api.h",
     ],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-Og",],
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
@@ -112,7 +113,7 @@ tf_gpu_library(
     hdrs = [
         "c_api_experimental.h",
     ],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-Og", ],
     visibility = ["//visibility:public"],
     deps = [
         ":c_api",
@@ -139,6 +140,7 @@ tf_gpu_library(
     name = "tf_status_helper",
     srcs = ["tf_status_helper.cc"],
     hdrs = ["tf_status_helper.h"],
+    copts = ["-g", "-Og", ],
     visibility = ["//visibility:public"],
     deps = [
         ":c_api",
@@ -151,6 +153,7 @@ tf_gpu_library(
     name = "checkpoint_reader",
     srcs = ["checkpoint_reader.cc"],
     hdrs = ["checkpoint_reader.h"],
+    copts = ["-g", "-Og", ],
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_helper",
@@ -280,6 +283,7 @@ tf_gpu_library(
     name = "python_api",
     srcs = ["python_api.cc"],
     hdrs = ["python_api.h"],
+    copts = ["-g", "-Og", ],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":c_api",

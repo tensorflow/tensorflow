@@ -39,6 +39,7 @@ cc_library(
     srcs = ["graph_properties.cc"],
     hdrs = ["graph_properties.h"],
     visibility = ["//visibility:public"],
+    copts = ["-g", "-O0"],
     deps = [
         ":utils",
         "//tensorflow/core/grappler/utils:topological_sort",
