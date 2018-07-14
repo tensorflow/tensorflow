@@ -64,6 +64,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn as model_fn_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
@@ -72,7 +73,9 @@ from tensorflow.python.keras import optimizers as keras_optimizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 
@@ -208,8 +211,51 @@ class TPURewriteContext(object):
     self._default_placeholder = array_ops.placeholder
     self._default_name_scope = ops.name_scope
     self._default_make_variable = base_layer.make_variable
+    self._default_random_normal = random_ops.random_normal
+    self._default_qr = gen_linalg_ops.qr
 
     array_ops.placeholder = _placeholder
+
+    # Replace random_ops.random_normal with a dummy function because
+    # `random_normal` isn't yet implemented on the TPU. Because these
+    # initialized values are overwritten by the CPU values, this is okay.
+    def random_normal(shape,
+                      mean=0.0,
+                      stddev=1.0,
+                      dtype=dtypes.float32,
+                      seed=None,
+                      name=None):
+      del mean
+      del stddev
+      del seed
+      return array_ops.zeros(shape, dtype=dtype, name=name)
+
+    random_ops.random_normal = random_normal
+
+    # Replace gen_linalg_ops.qr because QR decomposition is not yet implemented.
+    # TODO(saeta): Remove qr override once we confirm the qr implementation is
+    # ok.
+    # pylint: disable=redefined-builtin
+    def qr(input, full_matrices=False, name=None):
+      """Dummy implementation of qr decomposition."""
+      del full_matrices  # TODO(saeta): Properly handle the full matrix case.
+      input_shape = input.shape
+      if len(input_shape) < 2:
+        raise ValueError('Invalid shape passed to qr: %s' % input_shape)
+      p = min(input_shape[-1], input_shape[-2])
+      if len(input_shape) == 2:
+        q = array_ops.zeros((p, p), name=name)
+        r = array_ops.zeros(input_shape, name=name)
+        return (r, q)
+      elif len(input_shape) == 3:
+        n = input_shape[0]
+        q = array_ops.zeros((n, p, p), name=name)
+        r = array_ops.zeros(input_shape, name=name)
+        return (r, q)
+      else:
+        raise ValueError('Invalid shape passed to qr: %s' % input_shape)
+    gen_linalg_ops.qr = qr
+
     ops.name_scope = _name_scope
     base_layer.make_variable = variable_scope.get_variable
     logging.info('Overriding default placeholder.')
@@ -219,6 +265,8 @@ class TPURewriteContext(object):
     array_ops.placeholder = self._default_placeholder
     ops.name_scope = self._default_name_scope
     base_layer.make_variable = self._default_make_variable
+    random_ops.random_normal = self._default_random_normal
+    gen_linalg_ops.qr = self._default_qr
 
 
 class TPUFunction(object):
@@ -287,7 +335,9 @@ class TPUFunction(object):
 
       # Clone our CPU model, running within the TPU device context.
       with TPURewriteContext(tpu_input_map):
-        self._cloned_model = models.clone_model(self.model)
+        # TODO(power): Replicate variables.
+        with ops.device('/device:TPU:0'):
+          self._cloned_model = models.clone_model(self.model)
 
       # Create a copy of the optimizer for this graph.
       if isinstance(self.model.optimizer, keras_optimizers.TFOptimizer):
@@ -529,14 +579,16 @@ class KerasTPUModel(models.Model):
     self._tpu_weights_initialized = False
     self._graph = ops.Graph()
 
-    cluster_resolver = tpu_cluster_resolver.TPUClusterResolver(
+    self._cluster_resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu_name_or_address)
-    cluster_spec = cluster_resolver.cluster_spec()
+    master = self._cluster_resolver.master()
+    cluster_spec = self._cluster_resolver.cluster_spec()
     self._session = tf_session.Session(
         graph=self._graph,
-        target=cluster_resolver.master(),
+        target=master,
         config=config_pb2.ConfigProto(isolate_session_state=True))
 
+    # TODO(saeta): Confirm the lines below work in ClusterSpec propagation env.
     if cluster_spec:
       self._session.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
 
@@ -669,10 +721,10 @@ class KerasTPUModel(models.Model):
       K.set_session(default_session)
 
   def shutdown(self):
-    logging.info('Shutting down TPU session.')
-    with self.tpu_session() as session:
-      session.run(tpu.shutdown_system())
-
+    # TODO(b/111364423): Actually shut down the system.
+    logging.info('Skipping shutting down TPU system.')
+    # with self.tpu_session() as session:
+    #   session.run(tpu.shutdown_system())
     self._session.close()
 
 

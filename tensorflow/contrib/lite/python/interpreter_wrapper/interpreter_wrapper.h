@@ -15,13 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_PYTHON_INTERPRETER_WRAPPER_INTERPRETER_WRAPPER_H_
 #define TENSORFLOW_CONTRIB_LITE_PYTHON_INTERPRETER_WRAPPER_INTERPRETER_WRAPPER_H_
 
+// Place `<locale>` before <Python.h> to avoid build failures in macOS.
+#include <locale>
 #include <memory>
 #include <string>
 #include <vector>
 
-// Place `<locale>` before <Python.h> to avoid build failures in macOS.
 #include <Python.h>
-#include <locale>
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {

@@ -884,6 +884,9 @@ void ConvertFakeQuantOperator(const FakeQuantOperator& src_op,
   if (src_op.num_bits) {
     (*fakequant_op->mutable_attr())["num_bits"].set_i(src_op.num_bits);
   }
+  if (src_op.narrow_range) {
+    (*fakequant_op->mutable_attr())["narrow_range"].set_b(src_op.narrow_range);
+  }
 }
 
 void ConvertMaxPoolOperator(const MaxPoolOperator& src_op,

@@ -41,6 +41,7 @@ class InputPipelineConfig(object):
   PER_SHARD_V1 = 1
   PER_HOST_V1 = 2
   PER_HOST_V2 = 3
+  BROADCAST = 4
 
 
 # TODO(b/72511246) Provide a simplified api to configure model parallelism.
@@ -71,14 +72,16 @@ class TPUConfig(
       the model to multiple cores. Currently num_cores_per_replica must be
       1, 2, 4, or 8.
     per_host_input_for_training: If `True`, `PER_HOST_V1`, or `PER_HOST_V2`,
-      `input_fn` is invoked per-host rather than per-core. With per-host input
-      pipeline configuration, `input_fn` is invoked once on each host. With the
-      per-core input pipeline configuration, it is invoked once for each core.
+      `input_fn` is invoked once on each host. With the per-core input pipeline
+      configuration, it is invoked once for each core.
       With a global batch size `train_batch_size` in `TPUEstimator` constructor,
       the batch size for each shard is `train_batch_size` // #hosts in the
       `True` or `PER_HOST_V1` mode. In `PER_HOST_V2` mode, it is
-      `train_batch_size` // #cores. With the per-core input pipeline
-      configuration, the shard batch size is also `train_batch_size` // #cores.
+      `train_batch_size` // #cores. In `BROADCAST` mode, `input_fn` is only
+      invoked once on host 0 and the tensors are broadcasted to all other
+      replicas. The batch size equals to train_batch_size`. With the per-core
+      input pipeline configuration, the shard batch size is also
+      `train_batch_size` // #cores.
       Note: per_host_input_for_training==PER_SHARD_V1 only supports mode.TRAIN.
     tpu_job_name: The name of the TPU job. Typically, this name is auto-inferred
       within TPUEstimator, however when using ClusterSpec propagation in more

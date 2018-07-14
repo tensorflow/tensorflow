@@ -52,6 +52,13 @@ class FloatMulOpModel : public BaseMulOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+class IntegerMulOpModel : public BaseMulOpModel {
+ public:
+  using BaseMulOpModel::BaseMulOpModel;
+
+  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
 // For quantized Mul, the error shouldn't exceed (2*step + step^2).
 // The param min=-1.0 & max=1.0 is used in the following tests.
 // The tolerance value is ~0.0157.
@@ -129,6 +136,57 @@ TEST(FloatMulOpTest, WithBroadcast) {
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-0.2, 0.02, 0.07, 0.08, 0.11, 0.2})))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerMulOpTest, NoActivation) {
+  IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40}));
+}
+
+TEST(IntegerMulOpTest, ActivationRELU_N1_TO_1) {
+  IntegerMulOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
+}
+
+TEST(IntegerMulOpTest, VariousInputShapes) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5, 11, 1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 4, 21, 40, 121, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerMulOpTest, WithBroadcast) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerMulOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}},  // always a scalar
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear({-20, 2, 7, 8, 11, 20})))
         << "With shape number " << i;
   }
 }
