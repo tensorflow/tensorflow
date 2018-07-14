@@ -262,7 +262,7 @@ Please specify the location where cuDNN 7 library is installed. Refer to README.
 Please specify a list of comma-separated CUDA compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
-[Default is: "3.5,5.2"]: <b>3.0</b>
+[Default is: "3.5,7.0"]: <b>6.0,7.0</b>
 Do you wish to build TensorFlow with MPI support? [y/N]
 MPI support will not be enabled for TensorFlow
 Configuration finished
