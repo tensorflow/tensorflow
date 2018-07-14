@@ -48,5 +48,4 @@ CFGFunction::CFGFunction(StringRef name, FunctionType *type)
 //===----------------------------------------------------------------------===//
 
 MLFunction::MLFunction(StringRef name, FunctionType *type)
-  : Function(name, type, Kind::MLFunc), StmtBlock() {
-}
+    : Function(name, type, Kind::MLFunc), StmtBlock(StmtBlockKind::MLFunc) {}

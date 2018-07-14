@@ -46,7 +46,7 @@ public:
 /// For statement represents an affine loop nest.
 class ForStmt : public Statement, public StmtBlock {
 public:
-  explicit ForStmt() : Statement(Kind::For), StmtBlock(this) {}
+  explicit ForStmt() : Statement(Kind::For), StmtBlock(StmtBlockKind::For) {}
   //TODO: delete nested statements or assert that they are gone.
   ~ForStmt() {}
 
@@ -56,18 +56,34 @@ public:
   static bool classof(const Statement *stmt) {
     return stmt->getKind() == Kind::For;
   }
+
+  static bool classof(const StmtBlock *block) {
+    return block->getStmtBlockKind() == StmtBlockKind::For;
+  }
 };
 
 /// If clause represents statements contained within then or else clause
 /// of an if statement.
 class IfClause : public StmtBlock {
 public:
-  explicit IfClause(IfStmt *stmt);
+  explicit IfClause(IfStmt *stmt)
+      : StmtBlock(StmtBlockKind::IfClause), ifStmt(stmt) {
+    assert(stmt != nullptr && "If clause must have non-null parent");
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast
+  static bool classof(const StmtBlock *block) {
+    return block->getStmtBlockKind() == StmtBlockKind::IfClause;
+  }
 
   //TODO: delete nested statements or assert that they are gone.
   ~IfClause() {}
 
-  IfStmt *getIf() const;
+  /// Returns the if statement that contains this clause.
+  IfStmt *getIf() const { return ifStmt; }
+
+private:
+  IfStmt *ifStmt;
 };
 
 /// If statement restricts execution to a subset of the loop iteration space.
@@ -81,7 +97,7 @@ public:
 
   IfClause *getThenClause() const { return thenClause; }
   IfClause *getElseClause() const { return elseClause; }
-  bool hasElseClause() const {return elseClause != nullptr;}
+  bool hasElseClause() const { return elseClause != nullptr; }
   IfClause *createElseClause() { return (elseClause = new IfClause(this)); }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

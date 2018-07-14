@@ -32,9 +32,17 @@ namespace mlir {
 /// Statement block represents an ordered list of statements.
 class StmtBlock {
 public:
+  enum class StmtBlockKind {
+    MLFunc,  // MLFunction
+    For,     // ForStmt
+    IfClause // IfClause
+  };
+
+  StmtBlockKind getStmtBlockKind() const { return kind; }
+
   /// Returns the closest surrounding statement that contains this block or
   /// nullptr if this is a top-level statement block.
-  Statement *getParent() const { return parent; }
+  Statement *getParentStmt() const;
 
   /// Returns the function that this statement block is part of.
   MLFunction *getFunction() const;
@@ -85,10 +93,10 @@ public:
   }
 
 protected:
-  Statement *parent;
+  StmtBlock(StmtBlockKind kind) : kind(kind) {}
 
-  StmtBlock(Statement *parent=nullptr) : parent(parent) {}
 private:
+  StmtBlockKind kind;
   /// This is the list of statements in the block.
   StmtListType statements;
 

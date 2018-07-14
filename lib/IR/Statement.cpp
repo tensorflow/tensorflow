@@ -98,16 +98,6 @@ void Statement::eraseFromBlock() {
 }
 
 //===----------------------------------------------------------------------===//
-// IfClause
-//===----------------------------------------------------------------------===//
-
-IfClause::IfClause(IfStmt *stmt) : StmtBlock(stmt) {
-  assert(stmt != nullptr && "If clause must have non-null parent");
-}
-
-IfStmt *IfClause::getIf() const { return static_cast<IfStmt *>(parent); }
-
-//===----------------------------------------------------------------------===//
 // IfStmt
 //===----------------------------------------------------------------------===//
 

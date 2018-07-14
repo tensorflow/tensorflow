@@ -36,9 +36,13 @@ public:
   // TODO: add function arguments and return values once
   // SSA values are implemented
 
-  // Methods for support type inquiry through isa, cast, and dyn_cast
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {
-    return func->getKind() == Kind::MLFunc;
+    return func->getKind() == Function::Kind::MLFunc;
+  }
+
+  static bool classof(const StmtBlock *block) {
+    return block->getStmtBlockKind() == StmtBlockKind::MLFunc;
   }
 
   void print(raw_ostream &os) const;
