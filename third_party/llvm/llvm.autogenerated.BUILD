@@ -688,6 +688,7 @@ cc_library(
     deps = [
         ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
+        ":amdgpu_r600_target_gen",
         ":config",
         ":core",
         ":support",
@@ -711,6 +712,7 @@ cc_library(
     deps = [
         ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
+        ":amdgpu_r600_target_gen",
         ":config",
         ":core",
         ":mc",
