@@ -89,10 +89,12 @@ def make_custom_export_strategy(name,
             len(sparse_float_indices), len(sparse_int_indices))
         sorted_by_importance = sorted(
             feature_importances.items(), key=lambda x: -x[1])
-        assets_dir = os.path.join(compat.as_bytes(result_dir), compat.as_bytes("assets.extra"))
+        assets_dir = os.path.join(
+            compat.as_bytes(result_dir), compat.as_bytes("assets.extra"))
         gfile.MakeDirs(assets_dir)
-        with gfile.GFile(os.path.join(compat.as_bytes(assets_dir), compat.as_bytes("feature_importances")),
-                         "w") as f:
+        with gfile.GFile(os.path.join(
+            compat.as_bytes(assets_dir),
+            compat.as_bytes("feature_importances")), "w") as f:
           f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
 
