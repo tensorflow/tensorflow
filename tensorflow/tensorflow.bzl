@@ -1130,6 +1130,27 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+def tf_rocm_kernel_library(name,
+                          prefix=None,
+                          srcs=None,
+                          gpu_srcs=None,
+                          hdrs=None,
+                          deps=None,
+                          alwayslink=1,
+                          copts=tf_copts(),
+                          **kwargs):
+  if_rocm(
+      tf_kernel_library(
+          name,
+          prefix=prefix,
+          srcs=srcs,
+          gpu_srcs=gpu_srcs,
+          hdrs=hdrs,
+          deps=deps,
+          alwayslink=alwayslink,
+          copts=copts,
+          **kwargs))
+  
 # Bazel rules for building swig files.
 def _py_wrap_cc_impl(ctx):
   srcs = ctx.files.srcs

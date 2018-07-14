@@ -153,6 +153,8 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
+
+load("//tensorflow:tensorflow.bzl", "if_rocm")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_proto_library")
 
 exports_files(["ops/ops.pbtxt"])
@@ -609,7 +611,7 @@ cc_library(
         "platform/windows/cpu_info.h",
         "lib/bfloat16/bfloat16.h",
     ] + tf_additional_proto_hdrs(),
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0",],
     deps = tf_lib_proto_parsing_deps() + [
         ":platform_base",
         "@double_conversion//:double-conversion",
@@ -869,6 +871,7 @@ tf_gpu_library(
     }) + if_mkl([
         "util/mkl_util.h",
     ]),
+    copts = ["-g", "-O0", ],
     visibility = ["//visibility:public"],
     deps = [":framework_internal"],
 )
@@ -1217,6 +1220,7 @@ tf_gpu_library(
         "public/session_options.h",
     ],
     visibility = ["//visibility:public"],
+    copts = tf_copts() + ["-g", "-O0", ],
     deps = [
         ":core_cpu_internal",
     ],
@@ -1229,6 +1233,7 @@ cc_library(
         ":core_cpu",
         ":gpu_runtime",
         ":sycl_runtime",
+         ":rtglib_convert",
     ],
 )
 
@@ -1308,6 +1313,8 @@ cc_library(
     ]) + if_cuda([
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
+    ]) + if_rocm([
+        "//tensorflow/core/kernels:rtg_launch_op",
     ]),
 )
 
@@ -2445,7 +2452,7 @@ tf_gpu_library(
         ],
     }),
     hdrs = FRAMEWORK_INTERNAL_PUBLIC_HEADERS,
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0",],
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
@@ -2613,7 +2620,7 @@ tf_gpu_library(
         "public/version.h",
     ],
     hdrs = CORE_CPU_BASE_HDRS,
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0",],
     deps = [
         ":graph",
         ":framework",
@@ -2776,7 +2783,7 @@ tf_gpu_library(
     hdrs = [
         "common_runtime/graph_execution_state.h",
     ] + CORE_CPU_LIB_HEADERS,
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0", ],
     deps = [
         ":framework",
         ":framework_internal",
@@ -2804,6 +2811,39 @@ tf_gpu_library(
 )
 
 cc_library(
+        name = "rtglib_convert",
+        srcs = if_not_windows([
+             "graph/rocm/convert_graph.cc",
+             "graph/rocm/dump_graph.cc",
+             "graph/rocm/rocm_pass.cc",
+             "graph/rocm/attr_to_rtg.cc",             
+             ]),
+        hdrs = CORE_CPU_BASE_HDRS + if_not_windows([
+             "graph/rocm/convert_graph.h",
+             "graph/rocm/dump_graph.h",
+             "graph/rocm/attr_to_rtg.h",
+             "graph/rocm/common_headers.h",
+             ]),
+        copts = tf_copts() + ["-g", "-O0", ] + ["-std=c++14"]
+                + ["-fexceptions"],
+        linkopts = if_rocm(["-lmigraph"] + ["-lmigraph_cpu"] + ["-lmigraph_miopen"]),
+        deps = [
+            ":core_cpu",
+            ":core_cpu_internal",
+            ":framework",
+            ":framework_internal",
+            ":lib",
+            ":lib_internal",
+            ":proto_text",
+            "//tensorflow/core/grappler:grappler_item",
+            "//tensorflow/core/grappler/clusters:utils",
+            "//tensorflow/core/grappler/clusters:virtual_cluster",
+            "//tensorflow/core/grappler/optimizers:meta_optimizer",
+         ] + tf_additional_core_deps(),
+         alwayslink = 1,
+)
+
+cc_library(
     name = "regexp_internal",
     hdrs = [
         "platform/regexp.h",
@@ -2823,7 +2863,7 @@ tf_gpu_library(
         "common_runtime/direct_session.h",
         "util/env_var.h",
     ],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0", ],
     deps = [
         ":core_cpu_internal",
         ":device_tracer",
@@ -2932,7 +2972,7 @@ tf_gpu_library(
         "common_runtime/gpu/process_state.cc",
     ],
     hdrs = GPU_RUNTIME_HEADERS,
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0",],
     deps = [
         ":core_cpu_impl",
         ":core_cpu_lib",
@@ -3017,7 +3057,7 @@ cc_library(
         "common_runtime/sycl/sycl_util.h",
         "common_runtime/sycl/sycl_device_context.h",
     ]),
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0",],
     linkstatic = 0,
     deps = [
         ":core_cpu",
@@ -4560,7 +4600,7 @@ cc_library(
     name = "rocm_rocdl_path",
     srcs = ["platform/rocm_rocdl_path.cc"] + tf_additional_rocdl_srcs(),
     hdrs = ["platform/rocm_rocdl_path.h"],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0",],
     data = tf_additional_rocdl_data(),
     visibility = ["//visibility:public"],
     deps = [

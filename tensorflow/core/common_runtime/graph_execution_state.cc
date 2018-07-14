@@ -578,6 +578,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   optimization_options.graph = &optimized_graph;
   optimization_options.flib_def = optimized_flib.get();
   optimization_options.device_set = device_set_;
+  optimization_options.inputs = inputs_;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));

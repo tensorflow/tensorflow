@@ -162,6 +162,13 @@ class GraphExecutionState {
     return stateful_placements_;
   }
 
+  const std::vector<std::pair<string, Tensor>>* GetInputs() const {
+    return inputs_;
+  }
+  void SetInputs(const std::vector<std::pair<string, Tensor>>* inputs) {
+      inputs_ = inputs;
+  }
+
  private:
   GraphExecutionState(GraphDef* graph_def,
                       const GraphExecutionStateOptions& options);
@@ -203,6 +210,8 @@ class GraphExecutionState {
 
   // The dataflow graph owned by this object.
   Graph* graph_;
+   // Input map
+  const std::vector<std::pair<string, Tensor>>* inputs_ = nullptr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphExecutionState);
 };

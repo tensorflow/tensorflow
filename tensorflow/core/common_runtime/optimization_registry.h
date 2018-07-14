@@ -57,6 +57,7 @@ struct GraphOptimizationPassOptions {
   // Null for pre-partitioning passes.
   std::unordered_map<string, std::unique_ptr<Graph>>* partition_graphs =
       nullptr;
+  const std::vector<std::pair<string, Tensor>>* inputs = nullptr;
 };
 
 // Optimization passes are implemented by inheriting from

@@ -133,6 +133,10 @@ def _host_compiler_includes(repository_ctx, cc):
 
   # Add MIOpen headers
   inc_dirs.append("/opt/rocm/miopen/include")
+
+  # Add rtg headers
+  inc_dirs.append("/opt/rocm/include/migraph")
+  
   entries = []
   for inc_dir in inc_dirs:
     entries.append("  cxx_builtin_include_directory: \"%s\"" % inc_dir)

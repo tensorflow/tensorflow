@@ -39,6 +39,7 @@ load(
     "cc_header_only_library",
     "if_not_windows",
     "if_override_eigen_strong_inline",
+    "tf_rocm_kernel_library",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
@@ -121,6 +122,7 @@ tf_kernel_library(
         "strided_slice_op_impl.h",
         "strided_slice_op_gpu.cu.cc",
     ],
+    copts= ["-g", "-O0"],
     deps = [
         ":bounds_check",
         ":dense_update_functor",
@@ -538,6 +540,7 @@ cc_library(
     deps = [
         "//third_party/eigen3",
     ],
+    copts= ["-g", "-O0"],
 )
 
 cc_library(
@@ -6273,6 +6276,26 @@ tf_kernel_library(
         "//tensorflow/core/util/rpc:rpc_factory_registry",
         "//third_party/eigen3",
     ],
+)
+
+tf_rocm_kernel_library(
+    name = "rtg_launch_op",
+    srcs = ["rtg_launch_op.cc"],
+    hdrs = ["rtg_launch_op.h"],
+    copts= ["-g", "-O0"],
+    deps = [
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",        
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/core:gpu_runtime",
+        ":gpu_util_hdrs",
+        "//tensorflow/core:rtglib_convert",
+    ],
+    alwayslink = 1,
 )
 
 # -----------------------------------------------------------------------------

@@ -662,7 +662,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Check if we already have an executor for these arguments.
   ExecutorsAndKeys* executors_and_keys;
   RunStateArgs run_state_args(run_options.debug_options());
-
+  GraphExecutionState* execution_state = execution_state_.get();
+  if (execution_state != nullptr)
+      execution_state->SetInputs(&inputs);
   TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
                                           target_nodes, &executors_and_keys,
                                           &run_state_args));
