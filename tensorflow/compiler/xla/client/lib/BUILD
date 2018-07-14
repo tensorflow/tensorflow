@@ -119,6 +119,21 @@ xla_test(
 )
 
 cc_library(
+    name = "prng",
+    srcs = ["prng.cc"],
+    hdrs = ["prng.h"],
+    deps = [
+        ":constants",
+        ":math",
+        ":numeric",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "testing",
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],
