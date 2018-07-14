@@ -127,6 +127,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:numeric",
+        "//tensorflow/compiler/xla/client/lib:prng",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
