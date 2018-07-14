@@ -184,6 +184,7 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",
