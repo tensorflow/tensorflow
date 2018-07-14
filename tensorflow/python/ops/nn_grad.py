@@ -85,6 +85,57 @@ def _Conv2DBackpropFilterGrad(op, grad):
           data_format=op.get_attr("data_format"))
   ]
 
+@ops.RegisterGradient("DepthwiseConv2dNativeBackpropInput")
+def _DepthwiseConv2dNativeBackpropInputGrad(op, grad):
+    """The derivatives for deconvolution.
+
+    Args:
+      op: the Deconvolution op.
+      grad: the tensor representing the gradient w.r.t. the output
+
+    Returns:
+      the gradients w.r.t. the input and the filter
+    """
+    return [
+        None,
+        nn_ops.depthwise_conv2d_native_backprop_filter(
+            grad,
+            array_ops.shape(op.inputs[1]),
+            op.inputs[2],
+            dilations=op.get_attr("dilations"),
+            strides=op.get_attr("strides"),
+            padding=op.get_attr("padding"),
+            data_format=op.get_attr("data_format")),
+        nn_ops.depthwise_conv2d_native(
+            grad,
+            op.inputs[1],
+            dilations=op.get_attr("dilations"),
+            strides=op.get_attr("strides"),
+            padding=op.get_attr("padding"),
+            data_format=op.get_attr("data_format"))
+    ]
+
+
+@ops.RegisterGradient("DepthwiseConv2dNativeBackpropFilter")
+def _DepthwiseConv2dNativeBackpropFilterGrad(op, grad):
+    return [
+        nn_ops.depthwise_conv2d_native_backprop_input(
+            array_ops.shape(op.inputs[0]),
+            grad,
+            op.inputs[2],
+            dilations=op.get_attr("dilations"),
+            strides=op.get_attr("strides"),
+            padding=op.get_attr("padding"),
+            data_format=op.get_attr("data_format")), None,
+        nn_ops.depthwise_conv2d_native(
+            op.inputs[0],
+            grad,
+            dilations=op.get_attr("dilations"),
+            strides=op.get_attr("strides"),
+            padding=op.get_attr("padding"),
+            data_format=op.get_attr("data_format"))
+    ]
+
 
 @ops.RegisterGradient("Conv3D")
 def _Conv3DGrad(op, grad):
