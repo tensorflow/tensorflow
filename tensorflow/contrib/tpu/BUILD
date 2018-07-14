@@ -16,7 +16,6 @@ package(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu:__subpackages__",
     ],
 )
 
