@@ -28,16 +28,17 @@ from tensorflow.contrib.autograph.converters import asserts
 from tensorflow.contrib.autograph.converters import break_statements
 from tensorflow.contrib.autograph.converters import builtin_functions
 from tensorflow.contrib.autograph.converters import call_trees
+from tensorflow.contrib.autograph.converters import conditional_expressions
 from tensorflow.contrib.autograph.converters import continue_statements
 from tensorflow.contrib.autograph.converters import control_flow
 from tensorflow.contrib.autograph.converters import decorators
+from tensorflow.contrib.autograph.converters import directives
 from tensorflow.contrib.autograph.converters import error_handlers
-from tensorflow.contrib.autograph.converters import ifexp
 from tensorflow.contrib.autograph.converters import lists
 from tensorflow.contrib.autograph.converters import logical_expressions
 from tensorflow.contrib.autograph.converters import name_scopes
+from tensorflow.contrib.autograph.converters import return_statements
 from tensorflow.contrib.autograph.converters import side_effect_guards
-from tensorflow.contrib.autograph.converters import single_return
 from tensorflow.contrib.autograph.converters import slices
 from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.core import converter
@@ -48,9 +49,6 @@ from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
 from tensorflow.contrib.autograph.pyct import transformer
-from tensorflow.contrib.autograph.pyct.static_analysis import activity
-from tensorflow.contrib.autograph.pyct.static_analysis import live_values
-from tensorflow.contrib.autograph.pyct.static_analysis import type_info
 from tensorflow.python.util import tf_inspect
 
 
@@ -278,16 +276,6 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
   return node, new_name, namespace
 
 
-def _apply_transformer(node, context, converter_module):
-  # TODO(mdan): Clear static analysis here.
-  node = qual_names.resolve(node)
-  node = activity.resolve(node, context.info, None)
-  node = live_values.resolve(node, context.info, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, context.info)
-  node = converter_module.transform(node, context)
-  return node
-
-
 def node_to_graph(node, context):
   """Convert Python code to equivalent TF graph mode code.
 
@@ -301,29 +289,32 @@ def node_to_graph(node, context):
         * deps: A set of strings, the fully qualified names of entity
             dependencies that this node has.
   """
-  # TODO(mdan): Verify arguments for correctness.
+  # TODO(mdan): Insert list_comprehensions somewhere.
 
-  node = _apply_transformer(node, context, ifexp)
+  node = converter.standard_analysis(node, context, is_initial=True)
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   context.info.source_code = None
-  node = _apply_transformer(node, context, decorators)
-  node = _apply_transformer(node, context, break_statements)
-  node = _apply_transformer(node, context, asserts)
+
+  node = converter.apply_(node, context, decorators)
+  node = converter.apply_(node, context, directives)
+  node = converter.apply_(node, context, break_statements)
+  node = converter.apply_(node, context, asserts)
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = _apply_transformer(node, context, continue_statements)
+  node = converter.apply_(node, context, continue_statements)
   context.info.namespace['len'] = len
-  node = _apply_transformer(node, context, single_return)
-  node = _apply_transformer(node, context, lists)
-  node = _apply_transformer(node, context, slices)
-  node = _apply_transformer(node, context, builtin_functions)
-  node = _apply_transformer(node, context, call_trees)
-  node = _apply_transformer(node, context, control_flow)
-  node = _apply_transformer(node, context, logical_expressions)
-  node = _apply_transformer(node, context, side_effect_guards)
-  node = _apply_transformer(node, context, name_scopes)
-  node = _apply_transformer(node, context, error_handlers)
+  node = converter.apply_(node, context, return_statements)
+  node = converter.apply_(node, context, lists)
+  node = converter.apply_(node, context, slices)
+  node = converter.apply_(node, context, builtin_functions)
+  node = converter.apply_(node, context, call_trees)
+  node = converter.apply_(node, context, control_flow)
+  node = converter.apply_(node, context, conditional_expressions)
+  node = converter.apply_(node, context, logical_expressions)
+  node = converter.apply_(node, context, side_effect_guards)
+  node = converter.apply_(node, context, name_scopes)
+  node = converter.apply_(node, context, error_handlers)
   return node

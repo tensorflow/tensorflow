@@ -12,76 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for continue_statements module."""
+"""Tests for conditional_expressions module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.converters import continue_statements
+from tensorflow.contrib.autograph.converters import conditional_expressions
 from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.platform import test
 
 
-class ContinueCanonicalizationTest(converter_testing.TestCase):
+class ConditionalExpressionsTest(converter_testing.TestCase):
 
   def assertTransformedEquivalent(self, test_fn, *inputs):
-    with self.converted(test_fn, continue_statements, {}) as result:
+    ns = {}
+    with self.converted(test_fn, conditional_expressions, ns) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_basic(self):
 
     def test_fn(x):
-      v = []
-      while x > 0:
-        x -= 1
-        if x % 2 == 0:
-          continue
-        v.append(x)
-      return v
+      return 1 if x else 0
 
     self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
     self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 4)
 
-  def test_for_loop(self):
-
-    def test_fn(a):
-      v = []
-      for x in a:
-        x -= 1
-        if x % 2 == 0:
-          continue
-        v.append(x)
-      return v
-
-    self.assertTransformedEquivalent(test_fn, [])
-    self.assertTransformedEquivalent(test_fn, [1])
-    self.assertTransformedEquivalent(test_fn, [2])
-    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
-
-  def test_nested(self):
+  def test_nested_orelse(self):
 
     def test_fn(x):
-      v = []
-      u = []
-      w = []
-      while x > 0:
-        x -= 1
-        if x % 2 == 0:
-          if x % 3 != 0:
-            u.append(x)
-          else:
-            w.append(x)
-            continue
-        v.append(x)
-      return v, u, w
+      y = x * x if x > 0 else x if x else 1
+      return y
 
+    self.assertTransformedEquivalent(test_fn, -2)
     self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
-    self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 4)
+    self.assertTransformedEquivalent(test_fn, 2)
 
 
 if __name__ == '__main__':
