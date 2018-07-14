@@ -236,11 +236,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   std::vector<string> nodes_to_preserve;
   for (const auto& n : item.NodesToPreserve()) {
     auto tokens = str_util::Split(n, ":");
-    string s = tokens.at(0);
-    for (size_t t = 1; t < tokens.size() - 1; ++t) {
-      StrAppend(&s, ":", tokens.at(t));
-    }
-    nodes_to_preserve.push_back(s);
+    nodes_to_preserve.push_back(tokens.at(0));
   }
   cp.input_graph_def = &item.graph;
   cp.output_names = &nodes_to_preserve;
