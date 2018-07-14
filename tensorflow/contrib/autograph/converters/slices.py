@@ -21,7 +21,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.core import converter
-from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.lang import directives
 from tensorflow.contrib.autograph.pyct import templates
 
 
@@ -63,9 +63,10 @@ class SliceTransformer(converter.Base):
       # also available.
       return node
 
-    dtype = anno.getanno(
+    dtype = self.get_definition_directive(
         node.value,
-        'element_type',
+        directives.set_element_type,
+        'dtype',
         default=templates.replace_as_expression('None'))
 
     template = """

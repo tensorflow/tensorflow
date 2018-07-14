@@ -699,7 +699,7 @@ class AstToCfg(gast.NodeVisitor):
     )
     if try_node is None:
       raise ValueError('%s that is not enclosed by any FunctionDef' % node)
-    self.builder.add_error_node(node, try_node, guards)
+    self.builder.add_error_node(node, guards)
 
   def visit_Assert(self, node):
     # Ignoring the effect of exceptions.

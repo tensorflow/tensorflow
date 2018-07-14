@@ -152,9 +152,10 @@ class Analyzer(cfg.GraphVisitor):
       # This Name node below is a literal name, e.g. False
       # This can also happen if activity.py forgot to annotate the node with a
       # scope object.
-      assert isinstance(node.ast_node,
-                        (gast.Name, gast.Break, gast.Continue)), (node.ast_node,
-                                                                  node)
+      assert isinstance(
+          node.ast_node,
+          (gast.Name, gast.Break, gast.Continue, gast.Raise)), (node.ast_node,
+                                                                node)
       defs_out = defs_in
 
     self.in_[node] = defs_in

@@ -28,32 +28,26 @@ from tensorflow.python.platform import test
 
 class ErrorHandlersTest(converter_testing.TestCase):
 
-  def compiled_fn(self, test_fn, add_origin=False):
-    node = self.parse_and_analyze(test_fn, {})
-    if add_origin:
-      anno.setanno(node.body[0], anno.Basic.ORIGIN,
-                   origin_info.OriginInfo(__file__, None, None, None, None))
-    node = error_handlers.transform(node, self.ctx)
-    module = self.compiled(node,)
-    return module
+  def test_basic(self):
+
+    def test_fn():
+      raise ValueError()
+
+    node, ctx = self.prepare(test_fn, {})
+    anno.setanno(node.body[0], anno.Basic.ORIGIN,
+                 origin_info.OriginInfo('test_path', None, None, None, None))
+    node = error_handlers.transform(node, ctx)
+    with self.compiled(node, {}) as result:
+      with self.assertRaises(errors.GraphConstructionError):
+        result.test_fn()
 
   def test_no_origin_annotation(self):
 
     def test_fn():
-      raise ValueError('Crash!')
+      raise ValueError()
 
-    with self.compiled_fn(test_fn) as result:
+    with self.converted(test_fn, error_handlers, {}) as result:
       with self.assertRaises(ValueError):
-        result.test_fn()
-
-  def test_wraps_body(self):
-
-    def test_fn():
-      raise ValueError('Crash!')
-
-    with self.compiled_fn(test_fn, add_origin=True) as result:
-      result.rewrite_graph_construction_error = None
-      with self.assertRaises(errors.GraphConstructionError):
         result.test_fn()
 
 
