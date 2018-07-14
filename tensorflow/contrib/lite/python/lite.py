@@ -132,7 +132,7 @@ class TocoConverter(object):
 
     Args:
 
-      graph_def: TensorFlow GraphDef.
+      graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
         `foo.get_shape()` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
@@ -178,7 +178,7 @@ class TocoConverter(object):
     """Creates a TocoConverter class from a file containing a frozen GraphDef.
 
     Args:
-      graph_def_file: Full filepath of file containing TensorFlow GraphDef.
+      graph_def_file: Full filepath of file containing frozen GraphDef.
       input_arrays: List of input tensors to freeze graph with.
       output_arrays: List of output tensors to freeze graph with.
       input_shapes: Dict of strings representing input tensor names to list of

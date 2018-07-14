@@ -140,6 +140,7 @@ enum class OperatorType : uint8 {
   kEqual,
   kNotEqual,
   kPow,
+  kArgMin,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -790,6 +791,7 @@ struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
   int num_bits = 8;
+  bool narrow_range = false;
 };
 
 // Element-wise division operator.
@@ -837,6 +839,8 @@ struct BatchMatMulOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct TensorFlowMatMulOperator : Operator {
   TensorFlowMatMulOperator() : Operator(OperatorType::kMatMul) {}
+  bool transpose_a = false;
+  bool transpose_b = false;
 };
 
 // Padding operator. Pads a tensor with zeros.
@@ -1526,6 +1530,17 @@ struct ArgMaxOperator : Operator {
   ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 
+// ArgMin operator. It returns the index of the minimum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMin
+struct ArgMinOperator : Operator {
+  ArgMinOperator() : Operator(OperatorType::kArgMin) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
+};
+
 // ResizeBilinear operator. It resizes input images with bilinear interpolation.
 // It does not support align_corners at the moment.
 //
@@ -1840,6 +1855,40 @@ struct Array {
   // If this is non-null, then these quantization parameters are to be used
   // to assign a meaning as real numbers to the elements of this array.
   std::unique_ptr<QuantizationParams> quantization_params;
+  // narrow_range is a detail of how toco handles FakeQuant operators with
+  // narrow_range, see
+  // https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars
+  //
+  // For more context about what that is useful for, see the big comment in
+  // graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc
+  //
+  // The narrow_range flag applies only to quantized arrays, and changes
+  // their quantization in the following way when it is set to 'true':
+  // 1. The computation of {zero_point, scale} from {min, max} needs to be
+  //    amended so that the real min value will get quantized to
+  //    (min_quantized_value + 1) instead of just (min_quantized_value).
+  //    E.g. for uint8 quantization, the real min value should get quantized to
+  //    the uint8 value 1, not 0.
+  // 2. Quantized values should get clamped to the interval
+  //    [min_quantized_value + 1, max_value]. Equivalently, the
+  //    min_quantized_value should get nudged to (min_quantized_value + 1).
+  // The reason why 1. does not imply 2. is that real values may not belong to
+  // the stated [min, max] interval. Concretely, weights recorded at the last
+  // learning step may not fall in the [min, max] interval recorded over
+  // previous learning steps, as the values evolve across learning steps.
+  //
+  // Rationale why this is directly a field on Array:
+  // - This can't be just a field on FakeQuantOperator, because
+  //   FakeQuantOperators are gone (DropFakeQuant) before we get to using that
+  //   information (Quantize). We need a place to store that bit in the interim.
+  // - This can't be in QuantizationParams because we need to record this
+  //   ahead of quantization, and QuantizationParams are only created during
+  //   quantization.
+  // - This could be in MinMax, but that would be an abuse of what MinMax is
+  //   about, and would break existing code that assumes that a MinMax is just
+  //   a min and a max. Unlike MinMax which is agnostic as to the quantized
+  //   data type, narrow_range refers to values in the quantized data type.
+  bool narrow_range = false;
 
  private:
   std::unique_ptr<Shape> array_shape;

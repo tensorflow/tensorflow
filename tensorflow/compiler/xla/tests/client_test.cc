@@ -56,7 +56,7 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
           client_->Execute(computation, {}, &execution_options));
 
       std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>(
+          LiteralUtil::CreateR2WithLayout<int32>(
               {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
       TF_ASSERT_OK_AND_ASSIGN(
@@ -112,9 +112,9 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> const_arg,
-      client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> const_arg,
+                          client_->TransferToServer(
+                              *LiteralUtil::CreateR2<int32>({{5, 6}, {7, 8}})));
 
   XlaBuilder b(TestName() + ".add");
   Add(Parameter(&b, 0, shape, "param_0"),
@@ -136,7 +136,7 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           client_->ExecuteParallel(computation_instances));
-  auto expected_result = Literal::CreateR2<int32>({{6, 8}, {10, 12}});
+  auto expected_result = LiteralUtil::CreateR2<int32>({{6, 8}, {10, 12}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_literal,

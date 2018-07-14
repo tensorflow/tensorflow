@@ -94,8 +94,8 @@ KNOWN_BUGS = {
     r"sigmoid.*input_shape=\[\]": "67645668",
     # Concat doesn't work with a single input tensor
     r"concat.*num_tensors=1": "67378344",
-    # Transposition in MatMul is not supported.
-    r"fully_connected.*transpose_.=True": "67586970",
+    # Transposition in MatMul is not fully supported.
+    "fully_connected.*transpose_a=True": "67586970",
     # Softmax graphs are too complex.
     r"softmax.*dim=0": "67749831",
     # BatchToSpaceND only supports 4D tensors.
@@ -676,6 +676,55 @@ def make_relu6_tests(zip_path):
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_prelu_tests(zip_path):
+  """Make a set of tests to do PReLU."""
+
+  test_parameters = [{
+      # The canonical case for image processing is having a 4D `input` (NHWC)
+      # and `shared_axes`=[1, 2], so the alpha parameter is per channel.
+      "input_shape": [[1, 10, 10, 3], [3, 3, 3, 3]],
+      "shared_axes": [[1, 2], [1]],
+  }]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    prelu = tf.keras.layers.PReLU(shared_axes=parameters["shared_axes"])
+    out = prelu(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+
+    input_shape = parameters["input_shape"]
+    input_values = create_tensor_data(
+        np.float32, input_shape, min_value=-10, max_value=10)
+    shared_axes = parameters["shared_axes"]
+
+    alpha_shape = []
+    for dim in range(1, len(input_shape)):
+      alpha_shape.append(1 if dim in shared_axes else input_shape[dim])
+
+    alpha_values = create_tensor_data(np.float32, alpha_shape)
+
+    # There should be only 1 trainable variable tensor.
+    variables = tf.all_variables()
+    assert len(variables) == 1
+    sess.run(variables[0].assign(alpha_values))
+
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      use_frozen_graph=True)
 
 
 # This function tests various TensorFLow functions that generates Const op,
@@ -1324,6 +1373,12 @@ def make_fully_connected_tests(zip_path):
       "shape2": [[37, 40]],
       "transpose_a": [False],
       "transpose_b": [False],
+      "constant_filter": [True, False],
+  }, {
+      "shape1": [[40, 37]],
+      "shape2": [[40, 37]],
+      "transpose_a": [False],
+      "transpose_b": [True],
       "constant_filter": [True, False],
   }]
 
@@ -2169,7 +2224,7 @@ def make_topk_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_arg_max_tests(zip_path):
+def make_arg_min_max_tests(zip_path):
   """Make a set of tests to do arg_max."""
 
   test_parameters = [{
@@ -2177,6 +2232,7 @@ def make_arg_max_tests(zip_path):
       "input_shape": [[1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
       "output_type": [tf.int32, tf.int64],
       "axis_is_last_dim": [True, False],
+      "is_arg_max": [True],
   }]
 
   def build_graph(parameters):
@@ -2189,7 +2245,10 @@ def make_arg_max_tests(zip_path):
       axis = len(parameters["input_shape"]) - 1
     else:
       axis = random.randint(0, max(len(parameters["input_shape"]) - 2, 0))
-    out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+    if parameters["is_arg_max"]:
+      out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+    else:
+      out = tf.arg_min(input_value, axis, output_type=parameters["output_type"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

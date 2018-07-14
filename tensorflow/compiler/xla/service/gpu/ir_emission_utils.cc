@@ -242,15 +242,17 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder) {
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
+  llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
     return llvm_ir::EmitCallToIntrinsic(
-        llvm::Intrinsic::nvvm_shfl_down_f32,
-        {value, offset, builder->getInt32(kWarpSize - 1)}, {}, builder);
+        llvm::Intrinsic::nvvm_shfl_sync_down_f32,
+        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
+        builder);
   }
 
   // We must split values wider than 32 bits as the "shfl" instruction operates
@@ -264,10 +266,11 @@ llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_shfl_down_i32,
-                                     {builder->CreateExtractElement(x, i),
-                                      offset, builder->getInt32(kWarpSize - 1)},
-                                     {}, builder),
+        llvm_ir::EmitCallToIntrinsic(
+            llvm::Intrinsic::nvvm_shfl_sync_down_i32,
+            {all_warps_mask, builder->CreateExtractElement(x, i), offset,
+             builder->getInt32(kWarpSize - 1)},
+            {}, builder),
         i);
   }
   return builder->CreateBitCast(

@@ -221,6 +221,14 @@ void SetUniqueName(const string& op, GraphDef* graph, NodeDef* node) {
   node->set_name(strings::StrCat(op, "/_", id));
 }
 
+void ReplaceInput(const NodeDef& old_input, const NodeDef& new_input,
+                  GraphView* graph) {
+  GraphView::OutputPort output_port = graph->GetOutputPort(old_input.name(), 0);
+  auto fanout = graph->GetFanout(output_port);
+  for (auto& input_port : fanout)
+    input_port.node->set_input(0, new_input.name());
+}
+
 }  // end namespace graph_utils
 }  // end namespace grappler
 }  // end namespace tensorflow

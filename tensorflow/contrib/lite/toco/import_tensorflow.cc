@@ -755,6 +755,9 @@ tensorflow::Status ConvertFakeQuantWithMinMaxArgs(
   op->outputs.push_back(node.name());
   // tf.fake_quant_with_min_max_args num_bits defaults to 8.
   op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
+  if (HasAttr(node, "narrow_range")) {
+    op->narrow_range = GetBoolAttr(node, "narrow_range");
+  }
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
@@ -774,6 +777,9 @@ tensorflow::Status ConvertFakeQuantWithMinMaxVars(
   }
   op->outputs.push_back(node.name());
   op->num_bits = HasAttr(node, "num_bits") ? GetIntAttr(node, "num_bits") : 8;
+  if (HasAttr(node, "narrow_range")) {
+    op->narrow_range = GetBoolAttr(node, "narrow_range");
+  }
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
@@ -984,18 +990,19 @@ tensorflow::Status ConvertMatMulOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
-  // Transpose flags should be easy to support, but we don't have a
-  // GraphDef with them to test on at the moment.
-  CHECK_EQ(HasAttr(node, "transpose_a") && GetBoolAttr(node, "transpose_a"),
-           false);
-  CHECK_EQ(HasAttr(node, "transpose_b") && GetBoolAttr(node, "transpose_b"),
-           false);
   CHECK(!HasAttr(node, "adjoint_a") ||
         (GetBoolAttr(node, "adjoint_a") == false));
   CHECK(!HasAttr(node, "adjoint_b") ||
         (GetBoolAttr(node, "adjoint_b") == false));
 
   auto* matmul = new TensorFlowMatMulOperator;
+  if (HasAttr(node, "transpose_a")) {
+    matmul->transpose_a = GetBoolAttr(node, "transpose_a");
+  }
+  if (HasAttr(node, "transpose_b")) {
+    matmul->transpose_b = GetBoolAttr(node, "transpose_b");
+  }
+
   matmul->inputs = {node.input(0), node.input(1)};
   matmul->outputs = {node.name()};
   model->operators.emplace_back(matmul);
@@ -1229,10 +1236,11 @@ tensorflow::Status ConvertGatherOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertArgMaxOperator(
+template <typename Op, const char* op_name>
+tensorflow::Status ConvertArgMinMaxOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  CHECK_EQ(node.op(), "ArgMax");
+  CHECK_EQ(node.op(), op_name);
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
   const auto axis_data_type =
       HasAttr(node, "Tidx") ? GetDataTypeAttr(node, "Tidx") : DT_INT32;
@@ -1241,7 +1249,7 @@ tensorflow::Status ConvertArgMaxOperator(
                                : DT_INT64;
   CHECK(axis_data_type == DT_INT64 || axis_data_type == DT_INT32);
   CHECK(output_type == DT_INT64 || output_type == DT_INT32);
-  auto* op = new ArgMaxOperator;
+  auto* op = new Op;
   op->output_data_type = ConvertDataType(output_type);
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
@@ -1832,12 +1840,16 @@ using ConverterType = tensorflow::Status (*)(
     Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
+constexpr char kArgMax[] = "ArgMax";
+constexpr char kArgMin[] = "ArgMin";
+
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
       {"AddN", ConvertSimpleOperator<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
-      {"ArgMax", ConvertArgMaxOperator},
+      {"ArgMax", ConvertArgMinMaxOperator<ArgMaxOperator, kArgMax>},
+      {"ArgMin", ConvertArgMinMaxOperator<ArgMinOperator, kArgMin>},
       {"Assert", ConvertSimpleOperator<TensorFlowAssertOperator>},
       {"AvgPool", ConvertAvgPoolOperator},
       {"BatchMatMul", ConvertBatchMatMulOperator},

@@ -300,6 +300,16 @@ def getsource(object):  # pylint: disable=redefined-builtin
   return _inspect.getsource(tf_decorator.unwrap(object)[1])
 
 
+def getsourcefile(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.getsourcefile."""
+  return _inspect.getsourcefile(tf_decorator.unwrap(object)[1])
+
+
+def getsourcelines(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.getsourcelines."""
+  return _inspect.getsourcelines(tf_decorator.unwrap(object)[1])
+
+
 def isbuiltin(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.isbuiltin."""
   return _inspect.isbuiltin(tf_decorator.unwrap(object)[1])

@@ -263,10 +263,7 @@ class MklReshapeOp : public OpKernel {
             // shape_from != shape_to), then we just copy input tensor to
             // output tensor with target shape (we cannot forward Mkl layout
             // in such case because shape has changed.)
-            std::vector<primitive> net;
-            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor,
-                                                   &net)) {
-              stream(stream::kind::eager).submit(net).wait();
+            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor)) {
             } else {
               OP_REQUIRES(
                   context, output_tensor->CopyFrom(input_tensor, shape_to),

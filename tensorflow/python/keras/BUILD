@@ -451,6 +451,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
+    tags = ["no_windows_gpu"],
 )
 
 py_test(
@@ -720,6 +721,7 @@ py_test(
     size = "medium",
     srcs = ["preprocessing/image_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomsan"],  # TODO(b/110990716) reenable
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

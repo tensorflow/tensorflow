@@ -195,7 +195,7 @@ def json_to_tflite(name, src, out):
 def generated_test_models():
     return [
         "add",
-        "arg_max",
+        "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
         "concat",
@@ -232,7 +232,7 @@ def generated_test_models():
         "not_equal",
         "pad",
         "padv2",
-        # "prelu",
+        "prelu",
         "pow",
         "relu",
         "relu1",
@@ -257,7 +257,7 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        "transpose_conv",
+        #"transpose_conv",   # disabled due to b/111213074
         "where",
     ]
 

@@ -255,14 +255,6 @@ void LstmStep(
                            output_state_ptr);
 }
 
-// TODO(alanchiao): move this to tensor_utils.
-void VectorMultiply(const int8_t* vector, const int v_size, const float scale,
-                    float* result) {
-  for (int i = 0; i < v_size; ++i) {
-    *result++ = scale * *vector++;
-  }
-}
-
 void LstmStep(
     const float* input_ptr_batch, const int8_t* input_to_input_weights_ptr,
     float input_to_input_weights_scale,
@@ -415,8 +407,9 @@ void LstmStep(
   // For each batch and cell: update input gate.
   if (!use_cifg) {
     if (use_peephole && !is_cell_state_all_zeros) {
-      VectorMultiply(cell_to_input_weights_ptr, n_cell,
-                     1. / cell_to_input_weights_scale, recovered_cell_weights);
+      tensor_utils::VectorScalarMultiply(cell_to_input_weights_ptr, n_cell,
+                                         cell_to_input_weights_scale,
+                                         recovered_cell_weights);
       tensor_utils::VectorBatchVectorCwiseProductAccumulate(
           recovered_cell_weights, n_cell, cell_state_ptr, n_batch,
           input_gate_scratch);
@@ -427,8 +420,9 @@ void LstmStep(
 
   // For each batch and cell: update forget gate.
   if (use_peephole && !is_cell_state_all_zeros) {
-    VectorMultiply(cell_to_forget_weights_ptr, n_cell,
-                   1. / cell_to_forget_weights_scale, recovered_cell_weights);
+    tensor_utils::VectorScalarMultiply(cell_to_forget_weights_ptr, n_cell,
+                                       cell_to_forget_weights_scale,
+                                       recovered_cell_weights);
     tensor_utils::VectorBatchVectorCwiseProductAccumulate(
         recovered_cell_weights, n_cell, cell_state_ptr, n_batch,
         forget_gate_scratch);
@@ -459,8 +453,9 @@ void LstmStep(
       tensor_utils::IsZeroVector(cell_state_ptr, n_batch * n_cell);
   // For each batch and cell: update the output gate.
   if (use_peephole && !is_cell_state_all_zeros) {
-    VectorMultiply(cell_to_output_weights_ptr, n_cell,
-                   1. / cell_to_output_weights_scale, recovered_cell_weights);
+    tensor_utils::VectorScalarMultiply(cell_to_output_weights_ptr, n_cell,
+                                       cell_to_output_weights_scale,
+                                       recovered_cell_weights);
     tensor_utils::VectorBatchVectorCwiseProductAccumulate(
         recovered_cell_weights, n_cell, cell_state_ptr, n_batch,
         output_gate_scratch);

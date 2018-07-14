@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import device_util
 
 
@@ -129,32 +130,45 @@ class CrossTowerOpsTestBase(test.TestCase, parameterized.TestCase):
     # test reduce()
     for destinations in all_destinations:
       self._assert_values_equal(
-          cross_tower_ops.reduce("mean", per_device, destinations=destinations),
+          cross_tower_ops.reduce(
+              vs.VariableAggregation.MEAN,
+              per_device,
+              destinations=destinations),
           _fake_mirrored(mean, destinations or per_device))
       self._assert_values_equal(
           cross_tower_ops.reduce(
-              "mean", per_device_2, destinations=destinations),
+              vs.VariableAggregation.MEAN,
+              per_device_2,
+              destinations=destinations),
           _fake_mirrored(mean_2, destinations or per_device))
       self._assert_values_equal(
-          cross_tower_ops.reduce("sum", per_device, destinations=destinations),
+          cross_tower_ops.reduce(
+              vs.VariableAggregation.SUM, per_device,
+              destinations=destinations),
           _fake_mirrored(mean * len(devices), destinations or per_device))
       self._assert_values_equal(
           cross_tower_ops.reduce(
-              "sum", per_device_2, destinations=destinations),
+              vs.VariableAggregation.SUM,
+              per_device_2,
+              destinations=destinations),
           _fake_mirrored(mean_2 * len(devices), destinations or per_device))
 
     # test batch_reduce()
     for d1, d2 in itertools.product(all_destinations, all_destinations):
       self._assert_values_equal(
-          cross_tower_ops.batch_reduce(
-              "mean", [(per_device, d1), (per_device_2, d2)]),
-          [_fake_mirrored(mean, d1 or per_device),
-           _fake_mirrored(mean_2, d2 or per_device_2)])
+          cross_tower_ops.batch_reduce(vs.VariableAggregation.MEAN,
+                                       [(per_device, d1), (per_device_2, d2)]),
+          [
+              _fake_mirrored(mean, d1 or per_device),
+              _fake_mirrored(mean_2, d2 or per_device_2)
+          ])
       self._assert_values_equal(
-          cross_tower_ops.batch_reduce(
-              "sum", [(per_device, d1), (per_device_2, d2)]),
-          [_fake_mirrored(mean * len(devices), d1 or per_device),
-           _fake_mirrored(mean_2 * len(devices), d2 or per_device_2)])
+          cross_tower_ops.batch_reduce(vs.VariableAggregation.SUM,
+                                       [(per_device, d1), (per_device_2, d2)]),
+          [
+              _fake_mirrored(mean * len(devices), d1 or per_device),
+              _fake_mirrored(mean_2 * len(devices), d2 or per_device_2)
+          ])
 
     # test broadcast()
     for destinations in all_destinations:
@@ -255,8 +269,8 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
     t0 = _make_indexed_slices([[1., 2.]], [1], [5, 2], devices[0])
     t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], [5, 2], devices[1])
     per_device = value_lib.PerDevice({devices[0]: t0, devices[1]: t1})
-    result = cross_tower_ops_lib._simple_reduce(per_device, devices[0],
-                                                math_ops.add_n, "sum")
+    result = cross_tower_ops_lib._simple_reduce(
+        per_device, devices[0], math_ops.add_n, vs.VariableAggregation.SUM)
 
     # Test that the result is semantically equal to both the concatenated
     # IndexedSlices with and without duplicate indices.
@@ -267,21 +281,22 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
     self._assert_indexed_slices_equal(total_with_dups, result)
     self._assert_indexed_slices_equal(total_without_dups, result)
 
-  @combinations.generate(combinations.combine(
-      cross_tower_ops_instance=[
-          combinations.NamedObject(
-              "ReductionToOneDeviceCrossTowerOps",
-              cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps()),
-          combinations.NamedObject(
-              "AllReduceCrossTowerOps",
-              cross_tower_ops_lib.AllReduceCrossTowerOps())
-      ],
-      method_string=["sum", "mean"],
-      batch_reduce=[True, False],
-      mode=["graph", "eager"],
-      required_gpus=1))
-  def testIndexedSlicesAllReduce(self, cross_tower_ops_instance,
-                                 method_string, batch_reduce):
+  @combinations.generate(
+      combinations.combine(
+          cross_tower_ops_instance=[
+              combinations.NamedObject(
+                  "ReductionToOneDeviceCrossTowerOps",
+                  cross_tower_ops_lib.ReductionToOneDeviceCrossTowerOps()),
+              combinations.NamedObject(
+                  "AllReduceCrossTowerOps",
+                  cross_tower_ops_lib.AllReduceCrossTowerOps())
+          ],
+          aggregation=[vs.VariableAggregation.SUM, vs.VariableAggregation.MEAN],
+          batch_reduce=[True, False],
+          mode=["graph", "eager"],
+          required_gpus=1))
+  def testIndexedSlicesAllReduce(self, cross_tower_ops_instance, aggregation,
+                                 batch_reduce):
     devices = ["/cpu:0", "/gpu:0"]
     dense_shape = [5, 2]
     t0 = _make_indexed_slices([[1., 2.]], [1], dense_shape, devices[0])
@@ -290,20 +305,19 @@ class SingleWorkerCrossTowerOpsTest(CrossTowerOpsTestBase):
     per_device = value_lib.PerDevice({devices[0]: t0, devices[1]: t1})
 
     if batch_reduce:
-      result = cross_tower_ops_instance.batch_reduce(method_string,
+      result = cross_tower_ops_instance.batch_reduce(aggregation,
                                                      [(per_device, devices)])
     else:
-      result = cross_tower_ops_instance.reduce(method_string, per_device,
-                                               devices)
+      result = cross_tower_ops_instance.reduce(aggregation, per_device, devices)
 
     total_indices_with_dups = [1, 1, 3]
     total_indices_without_dups = [1, 3]
 
-    if method_string == "sum":
+    if aggregation == vs.VariableAggregation.SUM:
       total_values_with_dups = [[1., 2.], [3., 4.], [5., 6.]]
       total_values_without_dups = [[4., 6.], [5., 6.]]
     else:
-      assert method_string == "mean"
+      assert aggregation == vs.VariableAggregation.MEAN
       total_values_with_dups = [[0.5, 1.], [1.5, 2.], [2.5, 3.]]
       total_values_without_dups = [[2., 3.], [2.5, 3.]]
 

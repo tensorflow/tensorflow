@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -111,9 +112,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     // Builds an identity matrix as a broadcast equality of iotas.
     // iota = np.arange(np.prod(ksize), depth)
     // filter = np.equal(np.reshape(iota, [-1, 1]), iota).astype(np.float32)
-    xla::XlaOp iota;
-    TF_CHECK_OK(XlaHelpers::Iota(builder, DataType::DT_INT32,
-                                 kernel_size * depth, &iota));
+    xla::XlaOp iota = xla::Iota(builder, xla::S32, kernel_size * depth);
 
     auto lhs = xla::Reshape(iota, lhs_shape);
     auto filter = xla::ConvertElementType(

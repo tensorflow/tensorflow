@@ -35,12 +35,14 @@ struct AllocationInfo {
 };
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
-                           std::unique_ptr<GraphInfo> graph_info)
+                           std::unique_ptr<GraphInfo> graph_info,
+                           bool preserve_inputs, bool preserve_intermediates)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
-      persistent_arena_(kDefaultArenaAlignment) {}
-
+      persistent_arena_(kDefaultArenaAlignment),
+      preserve_inputs_(preserve_inputs),
+      preserve_intermediates_(preserve_intermediates) {}
 ArenaPlanner::~ArenaPlanner() {}
 
 int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
@@ -112,9 +114,13 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     refcounts[tensor_index]++;
   }
 
-  // Queue all graph inputs for allocation.
+  // Queue all graph inputs for allocation. If preserve_inputs_ is true, make
+  // sure they never be overwritten.
   for (int tensor_index : graph_info_->inputs()) {
     if (tensor_index != kOptionalTensor) {
+      if (preserve_inputs_) {
+        refcounts[tensor_index]++;
+      }
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }
@@ -159,13 +165,15 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
     // Then update the ref-counts of the node's inputs, and if necessary queue
     // them for deallocation.
-    TfLiteIntArray* node_inputs = node.inputs;
-    for (int j = 0; j < node_inputs->size; ++j) {
-      int tensor_index = node_inputs->data[j];
-      if (tensor_index != kOptionalTensor) {
-        refcounts[tensor_index]--;
-        if (refcounts[tensor_index] == 0) {
-          TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
+    if (!preserve_intermediates_) {
+      TfLiteIntArray* node_inputs = node.inputs;
+      for (int j = 0; j < node_inputs->size; ++j) {
+        int tensor_index = node_inputs->data[j];
+        if (tensor_index != kOptionalTensor) {
+          refcounts[tensor_index]--;
+          if (refcounts[tensor_index] == 0) {
+            TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
+          }
         }
       }
     }

@@ -186,6 +186,8 @@ InterpreterBuilder::InterpreterBuilder(const ::tflite::Model* model,
       op_resolver_(op_resolver),
       error_reporter_(ValidateErrorReporter(error_reporter)) {}
 
+InterpreterBuilder::~InterpreterBuilder() {}
+
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
   auto opcodes = model_->operator_codes();
@@ -204,8 +206,9 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
     } else if (builtin_code != BuiltinOperator_CUSTOM) {
       registration = op_resolver_.FindOp(builtin_code, version);
       if (registration == nullptr) {
-        error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
-                                EnumNameBuiltinOperator(builtin_code));
+        error_reporter_->Report(
+            "Didn't find op for builtin opcode '%s' version '%d'\n",
+            EnumNameBuiltinOperator(builtin_code), version);
         status = kTfLiteError;
       }
     } else if (!opcode->custom_code()) {
@@ -661,6 +664,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_ARG_MIN: {
+      auto* params = MallocPOD<TfLiteArgMinParams>();
+      if (const auto* schema_params = op->builtin_options_as_ArgMinOptions()) {
+        ConvertTensorType(schema_params->output_type(), &params->output_type,
+                          error_reporter);
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_TRANSPOSE_CONV: {
       TfLiteTransposeConvParams* params =
           MallocPOD<TfLiteTransposeConvParams>();
@@ -696,6 +708,17 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
+    }
+    case BuiltinOperator_FAKE_QUANT: {
+      auto* params = MallocPOD<TfLiteFakeQuantParams>();
+      if (auto* schema_params = op->builtin_options_as_FakeQuantOptions()) {
+        params->min = schema_params->min();
+        params->max = schema_params->max();
+        params->num_bits = schema_params->num_bits();
+        params->narrow_range = schema_params->narrow_range();
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
     }
 
     // Below are the ops with no builtin_data strcture.
@@ -991,7 +1014,7 @@ TfLiteStatus InterpreterBuilder::operator()(
       variables.push_back(i);
     }
   }
-  (**interpreter).SetVariables(variables);
+  (**interpreter).SetVariables(std::move(variables));
 
   return kTfLiteOk;
 }

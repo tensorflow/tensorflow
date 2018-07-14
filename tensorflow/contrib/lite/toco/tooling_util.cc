@@ -387,6 +387,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Mean)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
     HANDLE_OPERATORTYPENAME_CASE(ArgMax)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMin)
     HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
     HANDLE_OPERATORTYPENAME_CASE(Unsupported)
     HANDLE_OPERATORTYPENAME_CASE(Exp)
@@ -447,8 +448,12 @@ void LogSummary(int log_level, const Model& model) {
 }
 
 void LogArray(int log_level, const Model& model, const string& name) {
-  const auto& array = model.GetArray(name);
   VLOG(log_level) << "Array: " << name;
+  if (!model.HasArray(name)) {
+    VLOG(log_level) << "  DOES NOT EXIST";
+    return;
+  }
+  const auto& array = model.GetArray(name);
   VLOG(log_level) << "  Data type: " << ArrayDataTypeName(array.data_type);
   VLOG(log_level) << "  Final type: "
                   << ArrayDataTypeName(array.final_data_type);
@@ -1261,8 +1266,13 @@ void InsertCopyOperator(Model* model, const string& source_array_name,
   auto* copy_op = new TensorFlowReshapeOperator;
   copy_op->inputs = {
       source_array_name,
-      CreateInt32Array(model, target_array_name + "_copy_shape", shape)};
+      CreateInt32Array(
+          model, AvailableArrayName(*model, target_array_name + "_copy_shape"),
+          shape)};
   copy_op->outputs = {target_array_name};
+  if (target_array.has_shape()) {
+    copy_op->shape = target_array.shape().dims();
+  }
   model->operators.emplace_back(copy_op);
 }
 

@@ -113,10 +113,7 @@ bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // We can fuse reduces and loop fusions.
   return IsInputFusibleReduction(instr) ||
          (instr->opcode() == HloOpcode::kFusion &&
-          instr->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-          // TODO(b/110202584): bitcasts make nested fusions, GPU has no support
-          // for nested fusions.
-          instr->fused_expression_root()->opcode() != HloOpcode::kBitcast);
+          instr->fusion_kind() == HloInstruction::FusionKind::kLoop);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,

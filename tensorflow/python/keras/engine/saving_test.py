@@ -21,7 +21,6 @@ from __future__ import print_function
 import os
 import shutil
 import tempfile
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -31,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import training
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
@@ -247,6 +247,82 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       y = model.predict(x)
 
       self.assertAllClose(y, ref_y)
+
+  def test_sequential_weight_loading_group_name_with_incorrect_length(self):
+    if h5py is None:
+      return
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    num_hidden = 5
+    input_dim = 3
+    num_classes = 2
+    with self.test_session():
+      ref_model = keras.models.Sequential()
+      ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
+                                       name='d1'))
+      ref_model.add(keras.layers.Dense(num_classes, name='d2'))
+      ref_model.compile(loss=keras.losses.MSE,
+                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        metrics=[keras.metrics.categorical_accuracy])
+
+      f_ref_model = h5py.File(h5_path, 'w')
+      saving.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
+
+      f_model = h5py.File(h5_path, 'r')
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden, use_bias=False,
+                                   input_dim=input_dim, name='d1'))
+      model.add(keras.layers.Dense(num_classes, name='d2'))
+      model.compile(loss=keras.losses.MSE,
+                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    metrics=[keras.metrics.categorical_accuracy])
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Layer #0 \(named \"d1\"\) expects 1 '
+                                 r'weight\(s\), but the saved weights have 2 '
+                                 r'element\(s\)\.'):
+      saving.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+
+  def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
+    if h5py is None:
+      return
+
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    num_hidden = 5
+    input_dim = 3
+    num_classes = 2
+    with self.test_session():
+      ref_model = keras.models.Sequential()
+      ref_model.add(keras.layers.Dense(num_hidden, input_dim=input_dim,
+                                       name='d1'))
+      ref_model.add(keras.layers.Dense(num_classes, name='d2'))
+      ref_model.compile(loss=keras.losses.MSE,
+                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        metrics=[keras.metrics.categorical_accuracy])
+
+      f_ref_model = h5py.File(h5_path, 'w')
+      saving.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
+
+      f_model = h5py.File(h5_path, 'r')
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(num_hidden + 5, input_dim=input_dim,
+                                   name='d1'))
+      model.add(keras.layers.Dense(num_classes, name='d2'))
+      model.compile(loss=keras.losses.MSE,
+                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    metrics=[keras.metrics.categorical_accuracy])
+      with self.assertRaisesRegexp(ValueError,
+                                   r'Layer #0 \(named "d1"\), weight '
+                                   r'<tf\.Variable \'d1_1\/kernel:0\' '
+                                   r'shape=\(3, 10\) dtype=float32> has '
+                                   r'shape \(3, 10\), but the saved weight has '
+                                   r'shape \(3, 5\)\.'):
+        saving.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
 
 class TestWholeModelSaving(test.TestCase):

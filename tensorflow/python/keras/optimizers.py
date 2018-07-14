@@ -31,7 +31,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import tracking as checkpointable
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -688,12 +688,13 @@ class Nadam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class TFOptimizer(Optimizer, checkpointable.Checkpointable):
+class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
   """Wrapper class for native TensorFlow optimizers.
   """
 
   def __init__(self, optimizer):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
+    self._track_checkpointable(optimizer, name='optimizer')
     with K.name_scope(self.__class__.__name__):
       self.iterations = K.variable(0, dtype='int64', name='iterations')
 
