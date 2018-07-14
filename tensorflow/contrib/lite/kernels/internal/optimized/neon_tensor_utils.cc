@@ -342,6 +342,77 @@ void NeonClipVector(const float* vector, int v_size, float abs_limit,
   }
 }
 
+void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
+                              const float scale, float* result) {
+  // Here the assumption is that each buffer is 4-byte aligned.
+  const int kWeightsPerUint32 = 4;
+  TFLITE_CHECK_EQ((intptr_t)(&vector[0]) & (kWeightsPerUint32 - 1), 0);
+  // If v_size is not divisible by kWeightsPerNeonLane, we cannot use the main
+  // vectorized loop, and we need to process sequentially. postamble_start shows
+  // the start index where this should happen.
+  const int kWeightsPerNeonLane = 16;
+  const int postamble_start = v_size - (v_size & (kWeightsPerNeonLane - 1));
+
+  // Create a vector of 4 floats with the scale value.
+  const float32x4_t scale_f32x4 = vdupq_n_f32(scale);
+  int v = 0;
+  for (; v < postamble_start; v += kWeightsPerNeonLane) {
+    // Load int8 values, sixteen at a time.
+    const int8x16_t v_i8x16 = vld1q_s8(vector + v);
+    // Split it into two components of size eight.
+    const int8x8_t v0_i8x8 = vget_low_s8(v_i8x16);
+    const int8x8_t v1_i8x8 = vget_high_s8(v_i8x16);
+    // Convert both components to int16 first.
+    const int16x8_t v0_i16x8 = vmovl_s8(v0_i8x8);
+    const int16x8_t v1_i16x8 = vmovl_s8(v1_i8x8);
+    // Split each of them into two components each.
+    const int16x4_t v0_i16x4 = vget_low_s16(v0_i16x8);
+    const int16x4_t v1_i16x4 = vget_high_s16(v0_i16x8);
+    const int16x4_t v2_i16x4 = vget_low_s16(v1_i16x8);
+    const int16x4_t v3_i16x4 = vget_high_s16(v1_i16x8);
+    // Convert these to int32 and then to float.
+    float32x4_t v0_f32x4 = vcvtq_f32_s32(vmovl_s16(v0_i16x4));
+    float32x4_t v1_f32x4 = vcvtq_f32_s32(vmovl_s16(v1_i16x4));
+    float32x4_t v2_f32x4 = vcvtq_f32_s32(vmovl_s16(v2_i16x4));
+    float32x4_t v3_f32x4 = vcvtq_f32_s32(vmovl_s16(v3_i16x4));
+    // Vector multiply four floats at a time.
+    v0_f32x4 = vmulq_f32(v0_f32x4, scale_f32x4);
+    v1_f32x4 = vmulq_f32(v1_f32x4, scale_f32x4);
+    v2_f32x4 = vmulq_f32(v2_f32x4, scale_f32x4);
+    v3_f32x4 = vmulq_f32(v3_f32x4, scale_f32x4);
+    // Store the results.
+    vst1q_f32(result + v, v0_f32x4);
+    vst1q_f32(result + v + 4, v1_f32x4);
+    vst1q_f32(result + v + 8, v2_f32x4);
+    vst1q_f32(result + v + 12, v3_f32x4);
+  }
+
+  if (v_size - postamble_start >= (kWeightsPerNeonLane >> 1)) {
+    // Load eight int8 values, if there is at least eight remaining.
+    const int8x8_t v_i8x8 = vld1_s8(vector + v);
+    // Convert them to int16 first.
+    const int16x8_t v_i16x8 = vmovl_s8(v_i8x8);
+    // Split it into two components.
+    const int16x4_t v0_i16x4 = vget_low_s16(v_i16x8);
+    const int16x4_t v1_i16x4 = vget_high_s16(v_i16x8);
+    // Convert the components two floats.
+    float32x4_t v0_f32x4 = vcvtq_f32_s32(vmovl_s16(v0_i16x4));
+    float32x4_t v1_f32x4 = vcvtq_f32_s32(vmovl_s16(v1_i16x4));
+    // Vector multiply four floats at a time.
+    v0_f32x4 = vmulq_f32(v0_f32x4, scale_f32x4);
+    v1_f32x4 = vmulq_f32(v1_f32x4, scale_f32x4);
+    // Store the results.
+    vst1q_f32(result + v, v0_f32x4);
+    vst1q_f32(result + v + 4, v1_f32x4);
+    v += (kWeightsPerNeonLane >> 1);
+  }
+
+  // Postamble loop.
+  for (; v < v_size; v++) {
+    result[v] = scale * vector[v];
+  }
+}
+
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
                                  float* max, float* scaling_factor) {
