@@ -430,6 +430,10 @@ class BatchNormalization(Layer):
     stddev = math_ops.sqrt(variance + self.epsilon)
     # Compute the average mean and standard deviation, as if they were
     # initialized with this batch's moments.
+    param_dtype = self.renorm_mean.dtype
+    mean = math_ops.cast(mean, param_dtype)
+    stddev = math_ops.cast(stddev, param_dtype)
+
     mixed_renorm_mean = (self.renorm_mean +
                          (1. - self.renorm_mean_weight) * mean)
     mixed_renorm_stddev = (self.renorm_stddev +
@@ -444,10 +448,13 @@ class BatchNormalization(Layer):
     rmin, rmax, dmax = [self.renorm_clipping.get(key)
                         for key in ['rmin', 'rmax', 'dmax']]
     if rmin is not None:
+      rmin = math_ops.cast(rmin, param_dtype)
       r = math_ops.maximum(r, rmin)
     if rmax is not None:
+      rmax = math_ops.cast(rmax, param_dtype)
       r = math_ops.minimum(r, rmax)
     if dmax is not None:
+      dmax = math_ops.cast(dmax, param_dtype)
       d = math_ops.maximum(d, -dmax)
       d = math_ops.minimum(d, dmax)
     # When not training, use r=1, d=0.
@@ -623,6 +630,8 @@ class BatchNormalization(Layer):
     variance = math_ops.cast(variance, inputs.dtype)
     if offset is not None:
       offset = math_ops.cast(offset, inputs.dtype)
+    if scale is not None:
+      scale = math_ops.cast(scale, inputs.dtype)
     outputs = nn.batch_normalization(inputs,
                                      _broadcast(mean),
                                      _broadcast(variance),
