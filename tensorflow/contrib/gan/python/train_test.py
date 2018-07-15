@@ -447,8 +447,8 @@ class GANLossTest(test.TestCase):
       reg_loss_gen_np = reg_loss.generator_loss.eval()
       reg_loss_dis_np = reg_loss.discriminator_loss.eval()
 
-    self.assertTrue(3.0, reg_loss_gen_np - no_reg_loss_gen_np)
-    self.assertTrue(3.0, reg_loss_dis_np - no_reg_loss_dis_np)
+    self.assertEqual(3.0, reg_loss_gen_np - no_reg_loss_gen_np)
+    self.assertEqual(2.0, reg_loss_dis_np - no_reg_loss_dis_np)
 
   def test_regularization_gan(self):
     self._test_regularization_helper(get_gan_model)
