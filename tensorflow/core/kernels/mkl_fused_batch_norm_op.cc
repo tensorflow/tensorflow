@@ -1297,19 +1297,17 @@ class MklFusedBatchNormOp : public OpKernel {
           MklFusedBatchNormFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // check if reorder is needed for src, weights, mean, variance
-      std::vector<primitive> net;
       T* src_data = nullptr;
       if (src_md.data.format != bn_fwd->GetSrcFmt()) {
          src.SetUsrMem(src_md, &src_tensor);
          auto src_target = memory::primitive_desc({{src_dims}, MklDnnType<T>(),
               static_cast<memory::format>(bn_fwd->GetSrcFmt())}, cpu_engine);
-         src.CheckReorderToOpMem(src_target, &net);
+         src.CheckReorderToOpMem(src_target);
          src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(
             const_cast<T*>(src_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       // allocate output (dst) tensor; always set it as MKL-DNN layout
       MklDnnShape dnn_shape_dst;
@@ -1507,7 +1505,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       const Tensor& scale_tensor = MklGetInput(context, kScaleIndex);
       const Tensor& saved_mean_tensor = MklGetInput(context, kMeanIndex);
       const Tensor& saved_variance_tensor =
-                        MklGetInput(context, kVarianceIndex);
+          MklGetInput(context, kVarianceIndex);
 
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
       GetMklShape(context, kSrcIndex, &dnn_shape_src);
@@ -1619,13 +1617,12 @@ class MklFusedBatchNormGradOp : public OpKernel {
           MklFusedBatchNormBwdPrimitiveFactory<T>::Get(bwdParams);
 
       // check if src/diff_dst need to be reordered
-      std::vector<primitive> net;
       T* src_data = nullptr;
       if (src_md.data.format != bn_bwd->GetSrcFmt()) {
         src.SetUsrMem(src_md, &src_tensor);
         auto src_target = memory::primitive_desc({{src_dims}, MklDnnType<T>(),
             static_cast<memory::format>(bn_bwd->GetSrcFmt())}, cpu_engine);
-        src.CheckReorderToOpMem(src_target, &net);
+        src.CheckReorderToOpMem(src_target);
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(
@@ -1638,14 +1635,13 @@ class MklFusedBatchNormGradOp : public OpKernel {
         auto diff_dst_target = memory::primitive_desc({{diff_dst_dims},
             MklDnnType<T>(), static_cast<memory::format>(
             bn_bwd->GetDiffDstFmt())}, cpu_engine);
-        diff_dst.CheckReorderToOpMem(diff_dst_target, &net);
+        diff_dst.CheckReorderToOpMem(diff_dst_target);
         diff_dst_data = static_cast<T*>(
                 diff_dst.GetOpMem().get_data_handle());
       } else {
         diff_dst_data = static_cast<T*>(const_cast<T*>(
                 diff_dst_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       // Indices of output tensors
       const size_t kDiffSrcIndex = 0;  // index of diff_src tensor
@@ -1657,10 +1653,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       auto diff_src_pd = bn_bwd->GetDiffSrcPd();
       dnn_shape_diff_src.SetMklLayout(&diff_src_pd);
       dnn_shape_diff_src.SetElemType(MklDnnType<T>());
-      dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(), src_dims,
+      dnn_shape_diff_src.SetTfLayout(src_dims.size(), src_dims,
                                      format_m);
-      dnn_shape_diff_src.SetTfDimOrder(dnn_shape_src.GetDimension(),
-                                      tensor_format_);
+      dnn_shape_diff_src.SetTfDimOrder(src_dims.size(), tensor_format_);
       tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       AllocateOutputSetMklShape(context, kDiffSrcIndex, &diff_src_tensor,
                                 tf_shape_diff_src, dnn_shape_diff_src);
@@ -1692,7 +1687,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
                   reinterpret_cast<char*>(diff_weights_data),
                   depth_ * sizeof(T));
       std::memcpy(reinterpret_cast<char*>(diff_shift_data),
-                  reinterpret_cast<char*>(diff_weights_data) + depth_,
+                  reinterpret_cast<char*>(diff_weights_data + depth_),
                   depth_ * sizeof(T));
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
