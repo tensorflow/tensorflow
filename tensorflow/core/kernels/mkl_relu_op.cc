@@ -814,11 +814,9 @@ class MklReluOpBase : public OpKernel {
       // check wehther src need to reorder
       if (src_md.data.format != eltwise_fwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
-        std::vector<primitive> net;
         auto src_target_pd = memory::primitive_desc({{src_dims},
             MklDnnType<T>(), eltwise_fwd->GetSrcMemoryFormat()}, cpu_engine);
-        src.CheckReorderToOpMem(src_target_pd, &net);
-        stream(stream::kind::eager).submit(net).wait();
+        src.CheckReorderToOpMem(src_target_pd);
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(
@@ -882,9 +880,8 @@ class MklReluGradOpBase : public OpKernel {
 
   virtual void Compute_Scalar(OpKernelContext* context) = 0;
 
-  void Compute(OpKernelContext* context)  {
+  void Compute(OpKernelContext* context) {
     try {
-      // auto cpu_engine = engine(engine::cpu, 0);
       MklDnnData<T> src(&cpu_engine);
       MklDnnData<T> diff_dst(&cpu_engine);
 
@@ -892,9 +889,9 @@ class MklReluGradOpBase : public OpKernel {
       const size_t src_index = 1;       // index of src input tensor
       const size_t diff_src_index = 0;  // index of diff_src output tensor
 
-      const Tensor& src_tensor      = MklGetInput(context, src_index);
+      const Tensor& src_tensor = MklGetInput(context, src_index);
       const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
-      Tensor* diff_src_tensor       = nullptr;
+      Tensor* diff_src_tensor = nullptr;
 
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
       GetMklShape(context, src_index, &dnn_shape_src);
@@ -969,11 +966,10 @@ class MklReluGradOpBase : public OpKernel {
       // check whether need reorder for src / diff_dst
       T* src_data;
       T* diff_dst_data;
-      std::vector<primitive> net;
       if (src_md.data.format != eltwise_bwd->GetSrcMemoryFormat()) {
         src.SetUsrMem(src_md, &src_tensor);
         src.CheckReorderToOpMem(
-            eltwise_bwd_pd.get()->diff_src_primitive_desc(), &net);
+            eltwise_bwd_pd.get()->diff_src_primitive_desc());
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(
@@ -983,14 +979,13 @@ class MklReluGradOpBase : public OpKernel {
       if (diff_dst_md.data.format != eltwise_bwd->GetDiffDstMemoryFormat()) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
         diff_dst.CheckReorderToOpMem(
-            eltwise_bwd_pd.get()->diff_src_primitive_desc(), &net);
+            eltwise_bwd_pd.get()->diff_src_primitive_desc());
         diff_dst_data = static_cast<T*>(
             diff_dst.GetOpMem().get_data_handle());
       } else {
         diff_dst_data = static_cast<T*>(const_cast<T*>(
             diff_dst_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       // allocate diff_src tensor
       MklDnnShape dnn_shape_diff_src;
