@@ -457,12 +457,6 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       TensorShape input_tensor_shape = input_tensor.shape();
       this->InitMklPoolParameters(context, &pool_params,
           dnn_shape_input, input_tensor_shape);
-      // Get the input memory descriptor
-      memory::desc input_md = dnn_shape_input.IsMklTensor()
-          ? dnn_shape_input.GetMklLayout()
-          : memory::desc(TFShapeToMklDnnDimsInNCHW(input_tensor_shape,
-                this->data_format_tf_),
-                MklDnnType<T>(), this->data_format_mkldnn_);
       OP_REQUIRES_OK(context, context->status());
 
       // Declare output tensor
@@ -491,6 +485,13 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         CHECK_NOTNULL(output_tensor);
         return;
       }
+
+      // Get the input memory descriptor
+      memory::desc input_md = dnn_shape_input.IsMklTensor()
+          ? dnn_shape_input.GetMklLayout()
+          : memory::desc(TFShapeToMklDnnDimsInNCHW(input_tensor_shape,
+                this->data_format_tf_),
+                MklDnnType<T>(), this->data_format_mkldnn_);
 
       // Get src/filter/stride/padding information
       memory::dims src_dims = dnn_shape_input.IsMklTensor()
@@ -524,20 +525,18 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       OP_REQUIRES_OK(context, context->status());
 
       // check whether we need to reorder src
-      std::vector<primitive> net;
       T* src_data = nullptr;
       if (input_md.data.format != pooling_fwd->GetSrcMemoryFormat()) {
         dnn_data_input.SetUsrMem(input_md, &input_tensor);
         auto src_target_primitive_desc = memory::primitive_desc({{src_dims},
             MklDnnType<T>(), pooling_fwd->GetSrcMemoryFormat()}, cpu_engine_);
-        dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc, &net);
+        dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc);
         src_data = static_cast<T*>(
                     dnn_data_input.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(
                     input_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       T* dst_data = static_cast<T*>(
           const_cast<T*>(output_tensor->flat<T>().data()));
@@ -626,19 +625,17 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                                          this->data_format_mkldnn_);
       // Check whether we need to reorder diff_dst
       T* diff_dst_data = nullptr;
-      std::vector<primitive> net;
       if (diff_dst_md.data.format != pooling_bwd->GetDiffDstFormat()) {
         auto target_diff_dst = memory::primitive_desc({{diff_dst_dims},
             MklDnnType<T>(), pooling_bwd->GetDiffDstFormat()}, cpu_engine_);
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
-        grad_dnn_data.CheckReorderToOpMem(target_diff_dst, &net);
+        grad_dnn_data.CheckReorderToOpMem(target_diff_dst);
         diff_dst_data = static_cast<T*>(
             grad_dnn_data.GetOpMem().get_data_handle());
       } else {
         diff_dst_data = static_cast<T*>(const_cast<T*>(
             grad_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
       T* diff_src_data = static_cast<T*>(
           const_cast<T*>(output_tensor->flat<T>().data()));
 
