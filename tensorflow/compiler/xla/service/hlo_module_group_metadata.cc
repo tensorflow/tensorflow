@@ -75,10 +75,23 @@ Status HloModuleGroupMetadata::Build() {
     if (tracked == nullptr) {
       return Status::OK();
     }
-    // Add the parent computation of this channel instruction and its peer
-    // computation (both must be while computations) as companions.
+
+    std::vector<HloComputation*> peers;
     if (IsChannelInstruction(hlo)) {
-      HloComputation* peer_computation = PeerComputation(hlo);
+      peers.push_back(PeerComputation(hlo));
+    } else if (hlo->IsCrossModuleAllReduce()) {
+      for (HloInstruction* instr : GetAllReduceGroup(*hlo->all_reduce_id())) {
+        if (instr == hlo) {
+          continue;
+        }
+        peers.push_back(instr->parent());
+      }
+    }
+
+    // Add the parent computation of this channel (or all-reduce) instruction
+    // and its peer computation(s) (both must be while computations) as
+    // companions.
+    for (HloComputation* peer_computation : peers) {
       const TrackedInstruction* peer_tracked =
           GetTrackedInstruction(peer_computation);
       TF_RET_CHECK(peer_tracked != nullptr)
@@ -175,7 +188,8 @@ bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
 
 bool HloModuleGroupMetadata::InstructionCommunicates(
     HloInstruction* hlo) const {
-  return IsChannelInstruction(hlo) || IsCompanionInstruction(hlo);
+  return IsChannelInstruction(hlo) || IsCompanionInstruction(hlo) ||
+         hlo->IsCrossModuleAllReduce();
 }
 
 const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
@@ -198,6 +212,13 @@ HloComputation* HloModuleGroupMetadata::PeerComputation(
     default:
       LOG(FATAL) << "opcode not supported";
   }
+}
+
+const std::vector<HloInstruction*>& HloModuleGroupMetadata::GetAllReduceGroup(
+    int64 all_reduce_id) const {
+  auto it = all_reduce_map_.find(all_reduce_id);
+  CHECK(it != all_reduce_map_.end());
+  return it->second;
 }
 
 std::vector<HloModuleGroupMetadata::TrackedInstruction>
@@ -278,9 +299,26 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       tracked_instructions_[hlo->to_apply()] =
           TrackedInstruction(hlo, ComputationKind::kCallFunction);
     }
+
+    // Group cross module all-reduce instructions by the all_reduce id.
+    if (hlo->IsCrossModuleAllReduce()) {
+      TF_RET_CHECK(channel_id_map_.find(*hlo->all_reduce_id()) ==
+                   channel_id_map_.end())
+          << "all_reduce_id " << *hlo->all_reduce_id()
+          << " is already used by a send/recv instruction";
+      all_reduce_map_[*hlo->all_reduce_id()].push_back(hlo);
+      max_channel_id_ = std::max(max_channel_id_, *hlo->all_reduce_id());
+      return Status::OK();
+    }
+
     if (!IsChannelInstruction(hlo)) {
       return Status::OK();
     }
+
+    TF_RET_CHECK(all_reduce_map_.find(hlo->channel_id()) ==
+                 all_reduce_map_.end())
+        << "channel id " << hlo->channel_id()
+        << " is already used by an all-reduce instruction";
 
     // Add a new channel if needed.
     if (channel_id_map_.find(hlo->channel_id()) == channel_id_map_.end()) {
@@ -324,6 +362,7 @@ Status HloModuleGroupMetadata::RecordInstructions() {
     }
   }
   VLOG(2) << "Created " << channels_.size() << " channels";
+  VLOG(2) << "Created " << all_reduce_map_.size() << " all-reduce groups";
   return Status::OK();
 }
 

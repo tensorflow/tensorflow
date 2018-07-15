@@ -1845,10 +1845,6 @@ XlaOp XlaBuilder::CrossReplicaSum(
     tensorflow::gtl::ArraySlice<int64> replica_group_ids,
     const tensorflow::gtl::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    if (channel_id.has_value()) {
-      return Unimplemented("channel_id is not supported in AllReduce");
-    }
-
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
     TF_ASSIGN_OR_RETURN(
@@ -1856,6 +1852,10 @@ XlaOp XlaBuilder::CrossReplicaSum(
         ShapeInference::InferCrossReplicaSumShape({&operand_shape}));
     for (int64 replica_group_id : replica_group_ids) {
       instr.add_replica_group_ids(replica_group_id);
+    }
+
+    if (channel_id.has_value()) {
+      instr.set_all_reduce_id(channel_id->handle());
     }
 
     AddCalledComputation(computation, &instr);
