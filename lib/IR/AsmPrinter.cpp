@@ -117,8 +117,6 @@ void FunctionState::printOperation(const Operation *op) {
         [&]() { os << ", "; });
     os << '}';
   }
-
-  os << '\n';
 }
 
 //===----------------------------------------------------------------------===//
@@ -174,10 +172,13 @@ void CFGFunctionState::print(const BasicBlock *block) {
   os << "bb" << getBBID(block) << ":\n";
 
   // TODO Print arguments.
-  for (auto &inst : block->getOperations())
+  for (auto &inst : block->getOperations()) {
     print(&inst);
+    os << "\n";
+  }
 
   print(block->getTerminator());
+  os << "\n";
 }
 
 void CFGFunctionState::print(const Instruction *inst) {
@@ -196,10 +197,10 @@ void CFGFunctionState::print(const OperationInst *inst) {
 }
 
 void CFGFunctionState::print(const BranchInst *inst) {
-  os << "  br bb" << getBBID(inst->getDest()) << "\n";
+  os << "  br bb" << getBBID(inst->getDest());
 }
 void CFGFunctionState::print(const ReturnInst *inst) {
-  os << "  return\n";
+  os << "  return";
 }
 
 //===----------------------------------------------------------------------===//
@@ -248,8 +249,10 @@ void MLFunctionState::print() {
 
 void MLFunctionState::print(const StmtBlock *block) {
   numSpaces += indentWidth;
-  for (auto &stmt : block->getStatements())
+  for (auto &stmt : block->getStatements()) {
     print(&stmt);
+    os << "\n";
+  }
   numSpaces -= indentWidth;
 }
 
@@ -297,6 +300,7 @@ void Instruction::print(raw_ostream &os) const {
 
 void Instruction::dump() const {
   print(llvm::errs());
+  llvm::errs() << "\n";
 }
 
 void AffineMap::dump() const { print(llvm::errs()); }
@@ -417,6 +421,7 @@ void Statement::print(raw_ostream &os) const {
 void Statement::dump() const {
   print(llvm::errs());
 }
+
 void Function::print(raw_ostream &os) const {
   switch (getKind()) {
   case Kind::ExtFunc: return cast<ExtFunction>(this)->print(os);

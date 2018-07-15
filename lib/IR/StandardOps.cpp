@@ -21,7 +21,7 @@
 using namespace mlir;
 
 void AddFOp::print(raw_ostream &os) const {
-  os << "addf xx, yy : sometype\n";
+  os << "addf xx, yy : sometype";
 }
 
 // Return an error message on failure.
@@ -33,7 +33,7 @@ const char *AddFOp::verify() const {
 }
 
 void DimOp::print(raw_ostream &os) const {
-  os << "dim xxx, " << getIndex() << " : sometype\n";
+  os << "dim xxx, " << getIndex() << " : sometype";
 }
 
 const char *DimOp::verify() const {
