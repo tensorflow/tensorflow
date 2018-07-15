@@ -59,7 +59,7 @@ class ArgOp : public OpKernel {
 
     int axis = dim < 0 ? dim + input_dims : dim;
 
-    OP_REQUIRES(context, axis >= 0 && axis < input_dims,
+    OP_REQUIRES(context, FastBoundsCheck(axis, input_dims),
                 errors::InvalidArgument("Expected dimension in the range [",
                                         -input_dims, ", ", input_dims,
                                         "), but got ", dim));
