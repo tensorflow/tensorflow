@@ -100,7 +100,11 @@ Token Lexer::lexToken() {
 
     return formToken(Token::question, tokStart);
 
-  case ';': return lexComment();
+  case '/':
+    if (*curPtr == '/')
+      return lexComment();
+    return emitError(tokStart, "unexpected character");
+
   case '@': return lexAtIdentifier(tokStart);
   case '#':
     LLVM_FALLTHROUGH;
@@ -119,6 +123,10 @@ Token Lexer::lexToken() {
 ///   TODO: add a regex for comments here and to the spec.
 ///
 Token Lexer::lexComment() {
+  // Advance over the second '/' in a '//' comment.
+  assert(*curPtr == '/');
+  ++curPtr;
+
   while (true) {
     switch (*curPtr++) {
     case '\n':
