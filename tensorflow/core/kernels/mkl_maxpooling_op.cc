@@ -71,7 +71,6 @@ class MklMaxPoolingOp : public OpKernel {
     // attribute value.
     OP_REQUIRES_OK(context,
                    context->GetAttr("workspace_enabled", &workspace_enabled_));
-
   }
 
   void Compute(OpKernelContext* context) override {
@@ -512,8 +511,8 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
   void Compute(OpKernelContext* context) override {
     try {
-      const Tensor& input_tensor = MklGetInput(context,
-                this->kInputTensorIndexInput);
+      const Tensor& input_tensor =
+          MklGetInput(context, this->kInputTensorIndexInput);
       MklDnnShape dnn_shape_input;
       GetMklShape(context, this->kInputTensorIndexInput, &dnn_shape_input);
       this->SanityCheckInput(context, input_tensor, dnn_shape_input);
@@ -529,6 +528,35 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       TensorShape input_tensor_shape = input_tensor.shape();
       this->InitMklPoolParameters(context, &pool_params,
           dnn_shape_input, input_tensor_shape);
+      OP_REQUIRES_OK(context, context->status());
+
+      // Declare output tensor
+      Tensor* output_tensor = nullptr;
+      memory::dims output_dims_mkl_order;
+      this->GetOutputDims(pool_params, &output_dims_mkl_order);
+
+      // If input is an empty tensor, allocate an empty output tensor and return
+      if (input_tensor.NumElements() == 0) {
+        MklDnnShape output_mkl_shape;
+        output_mkl_shape.SetMklTensor(false);
+        TensorShape output_tf_shape;
+        if (pool_params.data_format == TensorFormat::FORMAT_NCHW) {
+          output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+        } else {
+          memory::dims output_dims_NHWC_order;
+          output_dims_NHWC_order = {pool_params.tensor_in_batch,
+                                    static_cast<int>(pool_params.out_height),
+                                    static_cast<int>(pool_params.out_width),
+                                    pool_params.out_depth};
+          output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+        }
+        const int kOutputIndex = 0;
+        AllocateOutputSetMklShape(context, kOutputIndex, &output_tensor,
+                                  output_tf_shape, output_mkl_shape);
+        CHECK_NOTNULL(output_tensor);
+        return;
+      }
+
       // Get the input memory descriptor
       memory::desc input_md = dnn_shape_input.IsMklTensor()
                                 ? dnn_shape_input.GetMklLayout()
@@ -537,7 +565,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
                                                  this->data_format_tf_),
                                           MklDnnType<T>(),
                                           this->data_format_mkldnn_);
-      OP_REQUIRES_OK(context, context->status());
 
       // Get src/filter/stride/padding information
       memory::dims src_dims = dnn_shape_input.IsMklTensor()
@@ -555,11 +582,6 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       memory::dims padding_right = memory::dims(
           {static_cast<int>(pool_params.pad_bottom),
           static_cast<int>(pool_params.pad_right)});
-
-      // Declare output tensor
-      Tensor* output_tensor = nullptr;
-      memory::dims output_dims_mkl_order;
-      this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
       // Get a pooling op from the cached pool
       MklPoolingFwdPrimitive<T> *pooling_fwd = nullptr;
@@ -579,21 +601,19 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       OP_REQUIRES_OK(context, context->status());
 
       // check wehther we need to reorder src
-      std::vector<primitive> net;
       T* src_data = nullptr;
       if (input_md.data.format != pooling_fwd->GetSrcMemoryFormat()) {
         dnn_data_input.SetUsrMem(input_md, &input_tensor);
         auto src_target_primitive_desc = memory::primitive_desc(
             {{src_dims}, MklDnnType<T>(), pooling_fwd->GetSrcMemoryFormat()},
             cpu_engine);
-        dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc, &net);
+        dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc);
         src_data = static_cast<T*>(
                     dnn_data_input.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(
                     input_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       T* dst_data = static_cast<T*>(
           const_cast<T*>(output_tensor->flat<T>().data()));
@@ -612,27 +632,28 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
   }
 
  private:
-    const int kOutputTensorIndexWorkspace = 1;
-    engine cpu_engine = engine(engine::cpu, 0);
+  const int kOutputTensorIndexWorkspace = 1;
+  engine cpu_engine = engine(engine::cpu, 0);
 
-    void AllocateWorkspaceTensor(OpKernelContext* context,
-                const pooling_forward::primitive_desc& pool_fwd_prim_desc,
-                MklDnnData<uint8>* dnn_data_wksp) {
-        CHECK_NOTNULL(dnn_data_wksp);
-        Tensor* workspace_tensor = nullptr;
-        memory::primitive_desc workspace_pd
-                    = pool_fwd_prim_desc.workspace_primitive_desc();
-        size_t workspace_bytes = workspace_pd.get_size();
-        MklDnnShape workspace_mkl_shape;
-        workspace_mkl_shape.SetMklTensor(false);
-        TensorShape workspace_tf_shape;
-        workspace_tf_shape.AddDim(workspace_bytes);
-        AllocateOutputSetMklShape(context, kOutputTensorIndexWorkspace,
-                                &workspace_tensor,
-                                workspace_tf_shape, workspace_mkl_shape);
-        CHECK_NOTNULL(workspace_tensor);
-        dnn_data_wksp->SetUsrMem(workspace_pd, workspace_tensor);
-    }
+  void AllocateWorkspaceTensor(
+      OpKernelContext* context,
+      const pooling_forward::primitive_desc& pool_fwd_prim_desc,
+      MklDnnData<uint8>* dnn_data_wksp) {
+    CHECK_NOTNULL(dnn_data_wksp);
+    Tensor* workspace_tensor = nullptr;
+    memory::primitive_desc workspace_pd =
+        pool_fwd_prim_desc.workspace_primitive_desc();
+    size_t workspace_bytes = workspace_pd.get_size();
+    MklDnnShape workspace_mkl_shape;
+    workspace_mkl_shape.SetMklTensor(false);
+    TensorShape workspace_tf_shape;
+    workspace_tf_shape.AddDim(workspace_bytes);
+    AllocateOutputSetMklShape(context, kOutputTensorIndexWorkspace,
+                              &workspace_tensor, workspace_tf_shape,
+                              workspace_mkl_shape);
+    CHECK_NOTNULL(workspace_tensor);
+    dnn_data_wksp->SetUsrMem(workspace_pd, workspace_tensor);
+  }
 };
 
 // The operation to compute MaxPool gradients.
@@ -709,12 +730,11 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                                               this->data_format_mkldnn_);
       // check if diff_dst needs to be reordered
       T* diff_dst_data = nullptr;
-      std::vector<primitive> net;
       if (diff_dst_md.data.format != pooling_bwd->GetDiffDstFormat()) {
         auto target_diff_dst = memory::primitive_desc({{diff_dst_dims},
             MklDnnType<T>(), pooling_bwd->GetDiffDstFormat()}, cpu_engine);
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
-        grad_dnn_data.CheckReorderToOpMem(target_diff_dst, &net);
+        grad_dnn_data.CheckReorderToOpMem(target_diff_dst);
         diff_dst_data = static_cast<T*>(
             grad_dnn_data.GetOpMem().get_data_handle());
       } else {
@@ -731,13 +751,12 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
             pooling_bwd->GetWorkspaceDataType(),
             pooling_bwd->GetWorkspaceFormat()}, cpu_engine);
         workspace_dnn_data.SetUsrMem(ws_md, &workspace_tensor);
-        workspace_dnn_data.CheckReorderToOpMem(target_ws, &net);
+        workspace_dnn_data.CheckReorderToOpMem(target_ws);
         ws_data = workspace_dnn_data.GetOpMem().get_data_handle();
       } else {
         ws_data = static_cast<void*>(const_cast<uint8*>(
             workspace_tensor.flat<uint8>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       T* diff_src_data = static_cast<T*>(
           const_cast<T*>(output_tensor->flat<T>().data()));
