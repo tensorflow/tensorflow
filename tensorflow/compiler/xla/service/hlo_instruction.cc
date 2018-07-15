@@ -988,6 +988,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kTrace:
     case HloOpcode::kHostCompute:
       return true;
+    case HloOpcode::kCrossReplicaSum:
+      return all_reduce_id().has_value();
     default:
       return false;
   }
@@ -1837,6 +1839,10 @@ bool HloInstruction::IsElementwiseImpl(
     default:
       return false;
   }
+}
+
+bool HloInstruction::IsCrossModuleAllReduce() const {
+  return opcode() == HloOpcode::kCrossReplicaSum && all_reduce_id();
 }
 
 string HloInstruction::ToStringWithCanonicalNameMap(
