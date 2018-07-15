@@ -1907,8 +1907,9 @@ class MklPrimitiveFactory {
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const std::string& key) {
-    auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
-    if (stream_iter == MklPrimitiveFactory<T>::GetHashMap().end()) {
+    auto &map = MklPrimitiveFactory<T>::GetHashMap();
+    auto stream_iter = map.find(key);
+    if (stream_iter == map.end()) {
       return nullptr;
     } else {
       return stream_iter->second;
@@ -1916,11 +1917,12 @@ class MklPrimitiveFactory {
   }
 
   void SetOp(const std::string& key, MklPrimitive* op) {
-    auto stream_iter = MklPrimitiveFactory<T>::GetHashMap().find(key);
+    auto &map = MklPrimitiveFactory<T>::GetHashMap();
+    auto stream_iter = map.find(key);
 
-    CHECK(stream_iter == MklPrimitiveFactory<T>::GetHashMap().end());
+    CHECK(stream_iter == map.end());
 
-    MklPrimitiveFactory<T>::GetHashMap()[key] = op;
+    map[key] = op;
   }
 
  private:
