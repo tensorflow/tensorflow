@@ -1444,8 +1444,23 @@ void BufferAssigner::BuildColocatedBufferSets(
             });
       } else if (opcode == HloOpcode::kCall) {
         const HloInstruction* call_hlo = instruction;
-        const HloInstruction* root_hlo =
-            call_hlo->to_apply()->root_instruction();
+        const HloComputation* callee = call_hlo->to_apply();
+        const HloInstruction* root_hlo = callee->root_instruction();
+        for (int64 i = 0; i < call_hlo->operand_count(); i++) {
+          const HloInstruction* call_param = callee->parameter_instruction(i);
+          const HloInstruction* call_operand = call_hlo->operand(i);
+          ShapeUtil::ForEachSubshape(
+              call_operand->shape(),
+              [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+                std::vector<const LogicalBuffer*> colocated_set;
+                AddBufferToColocatedSet(call_param, index, points_to_analysis,
+                                        &colocated_set);
+                AddBufferToColocatedSet(call_operand, index, points_to_analysis,
+                                        &colocated_set);
+                AddSetToColocatedBufferSets(colocated_set,
+                                            colocated_buffer_sets);
+              });
+        }
         ShapeUtil::ForEachSubshape(
             call_hlo->shape(),
             [this, call_hlo, root_hlo, &points_to_analysis,
