@@ -24,6 +24,7 @@ from tensorflow.contrib.opt.python.training import irprop_plus
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 
 from tensorflow.python.platform import test
@@ -40,45 +41,31 @@ def irprop_update_numpy(params,
                         error,
                         old_error):
 
-  # hold an extra var to restore
-  # the previous weight
+  # Hold an extra var to restore the previous weight
   old_params = np.copy(params)
   old_g = np.copy(g_t)
 
-  # print("Iteration: " + str(t))
-
   for i, _ in enumerate(g_t):
-
     if g_t[i] * old_g_t[i] > 0:
       delta_t[i] = np.fmin(delta_max, delta_t[i] * eta_plus)
-      # print("+")
-
       params[i] -= np.sign(g_t[i]) * delta_t[i]
 
     elif g_t[i] * old_g_t[i] < 0:
-
-      # print("-")
       delta_t[i] = np.fmax(delta_min, delta_t[i] * eta_minus)
-
       if error > old_error:
-        #retract step
-        # print("e")
+        # retract step
         params[i] = old_w_t[i]
-
       old_g[i] = 0
 
     else:
-
       params[i] -= np.sign(g_t[i]) * delta_t[i]
-      # print("/")
-
-
   return params, delta_t, old_g, old_params
 
 
 class IRpropPlusTest(test.TestCase):
 
   def _testDense(self,
+                 use_resource=False,
                  eta_minus=0.5,
                  eta_plus=1.2,
                  delta_min=1e-6,
@@ -87,7 +74,6 @@ class IRpropPlusTest(test.TestCase):
 
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session(use_gpu=True):
-
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
@@ -106,8 +92,12 @@ class IRpropPlusTest(test.TestCase):
         old_grads1 = np.array([0, 0], dtype=dtype.as_numpy_dtype)
         delta1 = np.array([delta_zero, delta_zero], dtype=dtype.as_numpy_dtype)
 
-        var0 = variables.Variable(var0_np)
-        var1 = variables.Variable(var1_np)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable(var0_np)
+          var1 = resource_variable_ops.ResourceVariable(var1_np)
+        else:
+          var0 = variables.Variable(var0_np)
+          var1 = variables.Variable(var1_np)
 
         loss0_var = variables.Variable(loss0_np)
         large_loss0_var = variables.Variable(large_loss0_np)
@@ -121,7 +111,6 @@ class IRpropPlusTest(test.TestCase):
                                               delta_max=delta_max,
                                               delta_zero=delta_zero)
 
-        # update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]), loss0_var)
         pos_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
                                          loss0_var)
         neg_update = opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
@@ -155,7 +144,7 @@ class IRpropPlusTest(test.TestCase):
         # - first iteration won't retract the weight (neg sign)
         # - second it will have 0 sign
         # - third iteration will retract the weight (neg sign)
-        # - forth iteration 0 sign
+        # - fourth iteration 0 sign
         for t in range(1, 11):
           loss0 = loss0_np
           old_loss0 = old_loss0_np
@@ -163,11 +152,11 @@ class IRpropPlusTest(test.TestCase):
           if t < 4:
             grads0_sign = grads0_np
             grads1_sign = grads1_np
-            # pos_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]), loss0_var)
             if not context.executing_eagerly():
               self.evaluate(pos_update)
             elif t > 1:
-              pos_update
+              opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
+                                  loss0_var)
 
           elif t < 7:
             grads0_sign = neg_grads0_np
@@ -175,37 +164,40 @@ class IRpropPlusTest(test.TestCase):
 
             if not context.executing_eagerly():
               loss0 = large_loss0_np
-              # update = opt.apply_gradients(
-              # zip([-grads0, -grads1], [var0, var1]), large_loss0_var)
               self.evaluate(neg_large_update)
-              # self.evaluate(update)
             else:
-              neg_large_update
-              # opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]))
+              opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
+                                  large_loss0_var)
           else:
-            if t % 2 == 0:
+            if t & 1 == 0:
               grads0_sign = neg_grads0_np
               grads1_sign = neg_grads1_np
               # retract weight
               update = neg_update
-              # update = opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]), loss0_var)
+              if context.executing_eagerly():
+                opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]),
+                                    loss0_var)
             else:
               # pos grad
               grads0_sign = grads0_np
               grads1_sign = grads1_np
               old_loss0 = loss0
-              # update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]), loss0_var)
               update = pos_update
 
               if t > 8:
                 loss0 = large_loss0_np
                 update = pos_large_update
+                if context.executing_eagerly():
+                  pos_large_update = opt.apply_gradients(zip([grads0, grads1],
+                                                             [var0, var1]),
+                                                         large_loss0_var)
+              else:
+                if context.executing_eagerly():
+                  opt.apply_gradients(zip([grads0, grads1], [var0, var1]),
+                                      loss0_var)
 
             if not context.executing_eagerly():
               self.evaluate(update)
-            else:
-              # opt.apply_gradients(zip(grads, [var0, var1]))
-              update
 
           var0_np, delta0, old_grads0, old_w_t0 = irprop_update_numpy(
               var0_np,
@@ -251,8 +243,6 @@ class IRpropPlusTest(test.TestCase):
       grads0 = constant_op.constant(grads0_np)
 
       opt = irprop_plus.IRpropPlusOptimizer()
-      # update = opt.apply_gradients(zip([grads0], [var0]), loss_var_vector)
-      # self.evaluate(update)
       grads = zip([grads0], [var0])
       self.assertRaises(ValueError, opt.apply_gradients, grads, loss_var_none)
       self.assertRaises(ValueError, opt.apply_gradients, grads, loss_var_vector)
@@ -261,14 +251,22 @@ class IRpropPlusTest(test.TestCase):
 
   def testDense(self):
 
-    self._testDense()
-    self._testDense(eta_minus=0.3,
+    self._testDense(use_resource=False)
+    self._testDense(use_resource=False,
+                    eta_minus=0.3,
                     eta_plus=1.5,
                     delta_min=1e-8,
                     delta_max=30,
                     delta_zero=0.0125)
-    self._testInvalidLoss()
+    self._testDense(use_resource=True)
+    self._testDense(use_resource=True,
+                    eta_minus=0.3,
+                    eta_plus=1.5,
+                    delta_min=1e-8,
+                    delta_max=30,
+                    delta_zero=0.0125)
 
+    self._testInvalidLoss()
 
 if __name__ == '__main__':
   test.main()

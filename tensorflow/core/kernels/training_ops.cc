@@ -3836,7 +3836,14 @@ class ApplyIRpropPlusOp : public OpKernel {
 #define REGISTER_KERNELS(D, T)                                           \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("ApplyIRpropPlus").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyIRpropPlusOp<D##Device, T>);
+      ApplyIRpropPlusOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyIRpropPlus")                \
+                              .Device(DEVICE_##D)                        \
+                              .HostMemory("var")                         \
+                              .HostMemory("old_grad")                    \
+                              .HostMemory("delta_update")                \
+                              .TypeConstraint<T>("T"),                   \
+                          ApplyIRpropPlusOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -3965,7 +3972,14 @@ class ApplyRpropMinusOp : public OpKernel {
 #define REGISTER_KERNELS(D, T)                                           \
   REGISTER_KERNEL_BUILDER(                                               \
       Name("ApplyRpropMinus").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyRpropMinusOp<D##Device, T>);
+      ApplyRpropMinusOp<D##Device, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyRpropMinus")                \
+                              .Device(DEVICE_##D)                        \
+                              .HostMemory("var")                         \
+                              .HostMemory("old_grad")                    \
+                              .HostMemory("delta_update")                \
+                              .TypeConstraint<T>("T"),                   \
+                          ApplyRpropMinusOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);

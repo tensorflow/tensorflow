@@ -1095,6 +1095,23 @@ REGISTER_OP("ApplyIRpropPlus")
       return ApplyRpropShapeFn(c, /*error=*/true);
     });
 
+REGISTER_OP("ResourceApplyIRpropPlus")
+    .Input("var: resource")
+    .Input("old_grad: resource")
+    .Input("delta_update: resource")
+    .Input("eta_minus: T")
+    .Input("eta_plus: T")
+    .Input("delta_min: T")
+    .Input("delta_max: T")
+    .Input("error: T")
+    .Input("old_error: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyRpropShapeFn(c, /*error=*/true);
+    });
+
 REGISTER_OP("ApplyRpropMinus")
     .Input("var: Ref(T)")
     .Input("old_grad: Ref(T)")
@@ -1105,6 +1122,21 @@ REGISTER_OP("ApplyRpropMinus")
     .Input("delta_max: T")
     .Input("grad: T")
     .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyRpropShapeFn(c, /*error=*/false);
+    });
+
+REGISTER_OP("ResourceApplyRpropMinus")
+    .Input("var: resource")
+    .Input("old_grad: resource")
+    .Input("delta_update: resource")
+    .Input("eta_minus: T")
+    .Input("eta_plus: T")
+    .Input("delta_min: T")
+    .Input("delta_max: T")
+    .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
     .SetShapeFn([](InferenceContext* c) {

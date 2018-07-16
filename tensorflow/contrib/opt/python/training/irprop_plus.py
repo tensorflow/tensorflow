@@ -164,7 +164,6 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
 
   # Called by apply_gradients in Optimizer base class
   def _apply_dense(self, grad, var):
-
     old_grad = self.get_slot(var, 'old_grad')
     delta_update = self.get_slot(var, "delta_update")
 
@@ -187,6 +186,30 @@ class IRpropPlusOptimizer(optimizer.Optimizer):
         error_t,
         old_error_t,
         grad, use_locking=self._use_locking).op
+
+  def _resource_apply_dense(self, grad, var):
+    old_grad = self.get_slot(var, "old_grad")
+    delta_update = self.get_slot(var, "delta_update")
+
+    eta_minus_t = math_ops.cast(self._eta_minus_t, var.dtype.base_dtype)
+    eta_plus_t = math_ops.cast(self._eta_plus_t, var.dtype.base_dtype)
+    delta_min_t = math_ops.cast(self._delta_min_t, var.dtype.base_dtype)
+    delta_max_t = math_ops.cast(self._delta_max_t, var.dtype.base_dtype)
+    error_t = math_ops.cast(self._error, var.dtype.base_dtype)
+    old_error_t = math_ops.cast(self._old_error, var.dtype.base_dtype)
+
+    return training_ops.resource_apply_i_rprop_plus(
+        var.handle,
+        old_grad.handle,
+        delta_update.handle,
+        eta_minus_t,
+        eta_plus_t,
+        delta_min_t,
+        delta_max_t,
+        error_t,
+        old_error_t,
+        grad, use_locking=self._use_locking)
+
 
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,

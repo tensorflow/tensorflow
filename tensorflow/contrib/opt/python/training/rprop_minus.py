@@ -143,3 +143,23 @@ class RpropMinusOptimizer(optimizer.Optimizer):
         delta_min_t,
         delta_max_t,
         grad, use_locking=self._use_locking).op
+
+  def _resource_apply_dense(self, grad, var):
+    old_grad = self.get_slot(var, "old_grad")
+    delta_update = self.get_slot(var, "delta_update")
+
+    eta_minus_t = math_ops.cast(self._eta_minus_t, var.dtype.base_dtype)
+    eta_plus_t = math_ops.cast(self._eta_plus_t, var.dtype.base_dtype)
+    delta_min_t = math_ops.cast(self._delta_min_t, var.dtype.base_dtype)
+    delta_max_t = math_ops.cast(self._delta_max_t, var.dtype.base_dtype)
+
+    return training_ops.resource_apply_rprop_minus(
+        var.handle,
+        old_grad.handle,
+        delta_update.handle,
+        eta_minus_t,
+        eta_plus_t,
+        delta_min_t,
+        delta_max_t,
+        grad, use_locking=self._use_locking)
+

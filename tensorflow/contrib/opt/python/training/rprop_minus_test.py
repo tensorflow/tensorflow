@@ -24,6 +24,7 @@ from tensorflow.contrib.opt.python.training import rprop_minus
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -54,6 +55,7 @@ def rprop_update_numpy(params,
 class RpropMinusTest(test.TestCase):
 
   def _testDense(self,
+                 use_resource=False,
                  eta_minus=0.5,
                  eta_plus=1.2,
                  delta_min=1e-6,
@@ -75,8 +77,12 @@ class RpropMinusTest(test.TestCase):
         old_grads1 = np.array([0, 0], dtype=dtype.as_numpy_dtype)
         delta1 = np.array([delta_zero, delta_zero], dtype=dtype.as_numpy_dtype)
 
-        var0 = variables.Variable(var0_np)
-        var1 = variables.Variable(var1_np)
+        if use_resource:
+          var0 = resource_variable_ops.ResourceVariable(var0_np)
+          var1 = resource_variable_ops.ResourceVariable(var1_np)
+        else:
+          var0 = variables.Variable(var0_np)
+          var1 = variables.Variable(var1_np)
 
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -108,7 +114,6 @@ class RpropMinusTest(test.TestCase):
               self.evaluate(pos_update)
             elif t > 1:
               opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-              # pos_update
           elif t < 7:
             grads0_sign = neg_grads0_np
             grads1_sign = neg_grads1_np
@@ -116,21 +121,21 @@ class RpropMinusTest(test.TestCase):
               self.evaluate(neg_update)
             else:
               opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]))
-              # neg_update
           else:
-            if t % 2 == 0:
+            if t & 1 == 0:
               grads0_sign = neg_grads0_np
               grads1_sign = neg_grads1_np
-              update = neg_update
+              if not context.executing_eagerly():
+                self.evaluate(neg_update)
+              else:
+                opt.apply_gradients(zip([-grads0, -grads1], [var0, var1]))
             else:
               grads0_sign = grads0_np
               grads1_sign = grads1_np
-              update = pos_update
-            if not context.executing_eagerly():
-              self.evaluate(update)
-            else:
-              # pos_update
-              opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+              if not context.executing_eagerly():
+                self.evaluate(pos_update)
+              else:
+                opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
           var0_np, delta0, old_grads0 = rprop_update_numpy(
               var0_np,
@@ -156,8 +161,16 @@ class RpropMinusTest(test.TestCase):
 
   def testDense(self):
 
-    self._testDense()
-    self._testDense(eta_minus=0.25,
+    self._testDense(use_resource=False)
+    self._testDense(use_resource=False,
+                    eta_minus=0.25,
+                    eta_plus=1.5,
+                    delta_min=1e-8,
+                    delta_max=25,
+                    delta_zero=1)
+    self._testDense(use_resource=True)
+    self._testDense(use_resource=True,
+                    eta_minus=0.25,
                     eta_plus=1.5,
                     delta_min=1e-8,
                     delta_max=25,
