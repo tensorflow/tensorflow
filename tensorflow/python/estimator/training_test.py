@@ -472,6 +472,7 @@ class _TrainingExecutorTrainingTest(object):
         job_name=mock_est.config.task_type,
         task_index=mock_est.config.task_id,
         config=test.mock.ANY,
+        protocol=None,
         start=False)
 
     self.assertTrue(mock_server_instance.start.called)
@@ -502,6 +503,7 @@ class _TrainingExecutorTrainingTest(object):
         job_name=mock_est.config.task_type,
         task_index=mock_est.config.task_id,
         config=test.mock.ANY,
+        protocol=None,
         start=False)
 
     self.assertTrue(mock_server_instance.start.called)
@@ -729,6 +731,7 @@ class TrainingExecutorRunMasterTest(test.TestCase):
         job_name=mock_est.config.task_type,
         task_index=mock_est.config.task_id,
         config=test.mock.ANY,
+        protocol=None,
         start=False)
 
     self.assertTrue(mock_server_instance.start.called)
@@ -1481,6 +1484,7 @@ class TrainingExecutorRunPsTest(test.TestCase):
         job_name=mock_est.config.task_type,
         task_index=mock_est.config.task_id,
         config=test.mock.ANY,
+        protocol=None,
         start=False)
 
     self.assertTrue(mock_server_instance.start.called)
