@@ -82,5 +82,28 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
   std::vector<float> expected = {4, 1, 32, 0.4, 0.4472, 111.1080};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
+
+XLA_TEST_F(MathTest, Lgamma) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.5,
+                                        2.5, -1.5, -3.5, -5.5});
+  Lgamma(x);
+
+  std::vector<float> expected = {
+      0,
+      0,
+      static_cast<float>(std::log(2)),
+      static_cast<float>(std::log(6)),
+      static_cast<float>(std::log(24)),
+      static_cast<float>(std::log(120)),
+      static_cast<float>(std::log(M_PI) / 2),
+      static_cast<float>(std::log(M_PI) / 2 - std::log(2)),
+      static_cast<float>(std::log(M_PI) / 2 - std::log(4) + std::log(3)),
+      static_cast<float>(std::log(M_PI) / 2 - std::log(3) + std::log(4)),
+      static_cast<float>(std::log(M_PI) / 2 - std::log(105) + std::log(16)),
+      static_cast<float>(std::log(M_PI) / 2 - std::log(10395) + std::log(64))};
+  error_spec_ = ErrorSpec{0.001};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
 }  // namespace
 }  // namespace xla
