@@ -1,3 +1,59 @@
+# Release 1.10.0
+
+## Major Features And Improvements
+
+* `tf.lite`:
+  * Add complex64 support to `tf.lite` runtime.
+* `tf.data`:
+  * Initial tf.data Bigtable integration
+  * Make max_receive_message_size configurable. (Bigtable)
+  * Support sampling row keys. (Bigtable)
+  * `tf.contrib.data.group_by_reducer()` is now available via the public API.
+  * `tf.contrib.data.choose_from_datasets()` is now available via the public API.
+  * Adding `drop_remainder` argument to `tf.data.Dataset.batch()` and `tf.data.Dataset.padded_batch()`, deprecating tf.contrib.data.batch_and_drop_remainder()` and `tf.contrib.data.padded_batch_and_drop_remainder()`.
+* `tf.estimator`:
+  * Estimators now use custom savers included in EstimatorSpec scaffolds for saving SavedModels during export.
+  * EstimatorSpec will now add a default prediction output for export if no export_output is provided, eliminating the need to explicitly include a PredictOutput object in the model_fn for simple use-cases.
+  * Support sparse_combiner in canned Linear Estimators.
+  * Improved local run behavior in estimator.train_and_evaluate.
+  * Added batch normalization to DNNClassifier, DNNRegressor, and DNNEstimator.
+* Eager Execution
+  * tf.losses.* do not add to the global collection when executing eagerly (avoids leaking memory).
+* Support different summary and checkpoint directories in tf.train.MonitoredTrainingSession()
+* Added IndRNN, IndyGRU, and IndyLSTM cells to tf.contrib.rnn.
+* Add `synchronization` and `aggregation` args to the layer `add_weight()` API. These args will be used for distributed variables.
+* Add safe static constructor functions to the sparse tensor library and convert
+* Adding ranking support.
+* adding center bias option.
+* Make the Bigtable client connection pool configurable & increase the default # of connections for performance.
+* Add `synchronization` and `aggregation` args to get_variable(). These args will be used for distributed variables.
+* Added support for Type III DCT, and `tf.spectral.idct(type=2|3)`.
+* Correctly handle CuDNN RNN weight loaded when nest in `TimeDistributed`.
+* Adding per-element weight support for `WALSComputePartialLhsAndRhsOp`.
+* ZerosLike and OnesLike ops treated as constants by Graph Transform Tool.
+* Gamma distribution and the derived distributions (Beta, Dirichlet, Student's t, inverse Gamma) are fully reparameterized.
+* RunConfig now sets device_filters to restrict how workers and PS can communicate. This can speed up training and ensure clean shutdowns in some situations. But if you have jobs that require communication between workers, you will have to set custom session_options in your RunConfig.
+RELNOTES=Adding new endpoints for existing tensorflow symbols. These endpoints are going to be the preferred endpoints going forward and will replace some of the existing endpoints when TensorFlow 2.0 is released. List of new endpoints:
+* Derivative of `tf.random_gamma` with respect to the alpha parameter.
+* Derivative of `tf.igamma(a, x)` and `tf.igammac(a, x)` with respect to a.
+* Move Distributions and Bijectors from `tf.contrib.distributions` to Tensorflow Probability (TFP). `tf.contrib.distributions` is now deprecated and will be removed by the end of 2018.
+* Build & link in secure gRPC components (switch from the insecure grpc dependency to secure grpc dependency).
+* Modified Bessel functions of order zero and one.
+* Add FillTriangular Bijector to create triangular matrices.
+
+## Bug Fixes and Other Changes
+
+* Prebuilt binaries are now built against NCCL 2.2. TensorFlow usage with multiple GPUs requires upgrade to NCCL 2.2
+* Java: Experimental wrapper classes to make graph generation easier. Thanks @karllessard and @kbsriram
+* Replace `distribution_util.assert_close` with `tf.assert_near`.
+* Fix minor typos in linear_operator.py docstrings.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, Andrei Nigmatulin, Andrew Ginns, BjøRn Moholt, Brett Koonce, Chengzhi Chen, Chinmay Das, Christian Ertler, Christoph Boeddeker, Clayne Robison, Courtial Florian, ctiijima, Dan Douthit, Dan J, Dan Ringwalt, EFanZh, Emanuele Ballarin, eqy, Evgeniy Zheltonozhskiy, Freedom" Koan-Sin Tan, FréDéRic Branchaud-Charron, G K, gracehoney, Guillaume Klein, Guozhong Zhuang, Hsien-Yang Li, hsm207, ImSheridan, Jayaram Bobba, Jiandong Ruan, Jie, Joel Shor, Jonas Rauber, Jongmin Baek, jsawruk, Karan Kaw, Karl Lessard, karl@kubx.ca, Kb Sriram, KinmanLam, leiiwang, Li, Yiqiang, Loo Rong Jie, Mahmoud Abuzaina, Mahmoud Aslan, ManHyuk, Martin Patz, Martin Zeitler, mktozk, Mohammad Ashraf Bhuiyan, mrTsjolder, Naman Bhalla, Nick Felt, Nicolas Lopez, Niranjan Hasabnis, Nishidha Panpaliya, Nitish, nrstott, Nutti, Parag Jain, PeterLee, Philipp Jund, Rach L, Rafal Wojdyla, Roland Zimmermann, Sergei Lebedev, SneakyFish5, Soila Kavulya, Sriram Veturi, Steven Schmatz, Taehoon Lee, Tang, Wenyi, Taras Sereda, Ted Chang, Tim Zaman, Tristan Rice, tucan, vchigrin, Vikram Tiwari, Vincent, WeberXie, William D. Irons, Yan Facai (颜发才), Yong Tang, Yu Yi, Yuxin Wu, Zé ViníCius
+
 # Release 1.9.0
 
 ## Major Features And Improvements
