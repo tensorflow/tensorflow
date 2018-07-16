@@ -504,6 +504,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "proio_dataset_ops",
+    srcs = ["proio_dataset_ops.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@proio_archive//:proio",
+    ],
+)
+
+tf_kernel_library(
     name = "sql_dataset_ops",
     srcs = [
         "sql_dataset_ops.cc",
@@ -571,6 +584,7 @@ tf_kernel_library(
         ":random_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
+        ":proio_dataset_ops",
         ":repeat_dataset_op",
         ":scan_dataset_op",
         ":shuffle_dataset_op",

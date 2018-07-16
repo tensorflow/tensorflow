@@ -291,3 +291,27 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return dtypes.string
+
+@tf_export("data.ProIODataset")
+class ProIODataset(dataset_ops.Dataset):
+    def __init__(self, filename):
+        super(ProIODataset, self).__init__()
+        self._filename = filename
+
+    def _as_variant_tensor(self):
+        return gen_dataset_ops.pro_io_dataset(
+                filename=self._filename,
+                )
+
+    @property
+    def output_types(self):
+        return dtypes.string
+
+    @property
+    def output_shapes(self):
+        return tensor_shape.scalar()
+
+    @property
+    def output_classes(self):
+        return ops.Tensor
+

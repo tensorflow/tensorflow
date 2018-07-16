@@ -34831,3 +34831,15 @@ op {
     minimum: 1
   }
 }
+op {
+  name: "ProIODataset"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}

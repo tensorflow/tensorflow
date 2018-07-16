@@ -335,6 +335,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "846d907acf472ae233ec0882ef3a2d24edbbe834b80c305e867ac65a1f2c59e3",
       strip_prefix = "protobuf-396336eb961b75f03b25824fe86cf6490fb75e3a",
+      build_file = clean_dep("//third_party:protobuf/BUILD"),
   )
 
   # We need to import the protobuf library under the names com_google_protobuf
@@ -752,6 +753,28 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
       strip_prefix = "ovic",
+  )
+
+  tf_http_archive(
+      name = "proio_archive",
+      sha256 = "413be106812f5e22f140704dbc4698172567a37b7c0d93552dcfae25f4b7e3df",
+      urls = [
+          "https://mirror.bazel.build/github.com/decibelcooper/proio/archive/3de7105835bf561e809f4ead4a315a9db1b3983e.zip",
+          "https://github.com/decibelcooper/proio/archive/3de7105835bf561e809f4ead4a315a9db1b3983e.zip",
+      ],
+      build_file = clean_dep("//third_party:proio.BUILD"),
+      strip_prefix = "proio-3de7105835bf561e809f4ead4a315a9db1b3983e/",
+  )
+
+  tf_http_archive(
+      name = "lz4_archive",
+      sha256 = "6df2bc7b830d4a23ca6f0a19a772fc0a61100f98baa843f9bbf873a80b6840d5",
+      urls = [
+          "https://mirror.bazel.build/github.com/lz4/lz4/archive/v1.8.2.zip",
+          "https://github.com/lz4/lz4/archive/v1.8.2.zip",
+      ],
+      build_file = clean_dep("//third_party:lz4.BUILD"),
+      strip_prefix = "lz4-1.8.2/lib/",
   )
 
   ##############################################################################
