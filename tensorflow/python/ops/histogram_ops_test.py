@@ -97,6 +97,9 @@ class HistogramFixedWidthTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, "Input must be scalar but has rank 1"):
       histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=[1, 2])
+    with self.assertRaisesRegexp(
+        ValueError, "Requires nbins > 0"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=-5)
 
   def test_empty_input_gives_all_zero_counts(self):
     # Bins will be:
