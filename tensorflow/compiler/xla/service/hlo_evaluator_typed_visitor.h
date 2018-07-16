@@ -301,6 +301,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleFloor<ReturnT>(floor);
   }
 
+  Status HandleImag(HloInstruction* imag) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[imag],
+                        ElementWiseUnaryOp(imag, [](ElementwiseT elem_operand) {
+                          return std::imag(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
   Status HandleLog(HloInstruction* log) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[log],
                         ElementWiseUnaryOp(log, [](ElementwiseT elem_operand) {
@@ -600,6 +608,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
                                                       ElementwiseT rhs_el) {
                           return std::pow(lhs_el, rhs_el);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleReal(HloInstruction* real) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[real],
+                        ElementWiseUnaryOp(real, [](ElementwiseT elem_operand) {
+                          return std::real(elem_operand);
                         }));
     return Status::OK();
   }
