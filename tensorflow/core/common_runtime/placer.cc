@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/util/status_util.h"
 
 namespace tensorflow {
 
@@ -822,10 +823,10 @@ Status Placer::Run() {
     std::vector<Device*>* devices;
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(
-          errors::InvalidArgument("Cannot assign a device for operation '",
-                                  node->name(), "': ", status.error_message()),
-          *node);
+      return AttachDef(errors::InvalidArgument(
+                           "Cannot assign a device for operation ",
+                           RichNodeName(node), ": ", status.error_message()),
+                       *node);
     }
 
     // Returns the first device in sorted devices list so we will always
@@ -869,10 +870,10 @@ Status Placer::Run() {
     std::vector<Device*>* devices;
     Status status = colocation_graph.GetDevicesForNode(node, &devices);
     if (!status.ok()) {
-      return AttachDef(
-          errors::InvalidArgument("Cannot assign a device for operation '",
-                                  node->name(), "': ", status.error_message()),
-          *node);
+      return AttachDef(errors::InvalidArgument(
+                           "Cannot assign a device for operation ",
+                           RichNodeName(node), ": ", status.error_message()),
+                       *node);
     }
 
     int assigned_device = -1;
@@ -941,6 +942,19 @@ void Placer::LogDeviceAssignment(const Node* node) const {
 bool Placer::ClientHandlesErrorFormatting() const {
   return options_ != nullptr &&
          options_->config.experimental().client_handles_error_formatting();
+}
+
+// Returns the node name in single quotes. If the client handles formatted
+// errors, appends a formatting tag which the client will reformat into, for
+// example, " (defined at filename:123)".
+string Placer::RichNodeName(const Node* node) const {
+  string quoted_name = strings::StrCat("'", node->name(), "'");
+  if (ClientHandlesErrorFormatting()) {
+    string file_and_line = error_format_tag(*node, "${file}:${line}");
+    return strings::StrCat(quoted_name, " (defined at ", file_and_line, ")");
+  } else {
+    return quoted_name;
+  }
 }
 
 }  // namespace tensorflow
