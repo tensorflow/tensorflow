@@ -118,7 +118,7 @@ class _VariableCapturingScope(object):
         initializer=None,
         regularizer=None,
         reuse=None,
-        trainable=True,
+        trainable=None,
         collections=None,
         caching_device=None,  # pylint: disable=redefined-outer-name
         partitioner=None,
@@ -156,7 +156,7 @@ class _VariableCapturingScope(object):
         initializer=None,
         regularizer=None,
         reuse=None,
-        trainable=True,
+        trainable=None,
         collections=None,
         caching_device=None,  # pylint: disable=redefined-outer-name
         partitioner=None,

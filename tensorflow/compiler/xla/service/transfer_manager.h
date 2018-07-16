@@ -167,16 +167,6 @@ class TransferManager {
       const se::Platform* platform);
 
  protected:
-  // Transfer a memory block of the given size from 'source' buffer to the
-  // Infeed interface of the device using the given executor.
-  //
-  // size is the size to transfer from source in bytes.
-  //
-  // source is the source data that must be in the target-dependent layout that
-  // the Infeed HLO used in the computation expects.
-  virtual Status TransferBufferToInfeed(se::StreamExecutor* executor,
-                                        int64 size, const void* source) = 0;
-
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
   //

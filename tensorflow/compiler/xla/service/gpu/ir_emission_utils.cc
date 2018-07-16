@@ -271,9 +271,10 @@ llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder, llvm::Module* module) {
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder, llvm::Module* module) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
+  llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {

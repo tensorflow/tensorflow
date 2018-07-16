@@ -145,7 +145,7 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
 
   llvm::Value* typed_ir_value;
   if (llvm::isa<llvm::GlobalVariable>(ir_value)) {
-    typed_ir_value = llvm::ConstantExpr::getAddrSpaceCast(
+    typed_ir_value = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
         llvm::cast<llvm::GlobalVariable>(ir_value), dest_type);
   } else {
     typed_ir_value =

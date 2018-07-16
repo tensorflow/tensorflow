@@ -24,7 +24,6 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.contrib.opt.python.training import addsign
 from tensorflow.contrib.opt.python.training import sign_decay
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -64,9 +63,6 @@ class AddSignTest(xla_test.XLATestCase):
                  alpha=1.0,
                  beta=0.9):
     for dtype in self.float_types:
-      # TODO(b/111123982): remove once the bug is fixed.
-      if dtype == dtypes.float16:
-        continue
       with self.test_session(), self.test_scope():
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
@@ -128,7 +124,8 @@ class AddSignTest(xla_test.XLATestCase):
           )
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
+          self.assertAllCloseAccordingToType(
+              var0_np, var0.eval(), half_rtol=1e-2)
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
   def testDense(self):

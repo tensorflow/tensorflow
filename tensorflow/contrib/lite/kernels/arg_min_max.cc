@@ -177,6 +177,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
   return kTfLiteOk;
 }
 
+TfLiteStatus ArgMinEval(TfLiteContext* context, TfLiteNode* node) {
+  return Eval(context, node, false);
+}
+
 TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
   return Eval(context, node, true);
 }
@@ -186,6 +190,12 @@ TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_ARG_MAX() {
   static TfLiteRegistration r = {nullptr, nullptr, arg_min_max::Prepare,
                                  arg_min_max::ArgMaxEval};
+  return &r;
+}
+
+TfLiteRegistration* Register_ARG_MIN() {
+  static TfLiteRegistration r = {nullptr, nullptr, arg_min_max::Prepare,
+                                 arg_min_max::ArgMinEval};
   return &r;
 }
 

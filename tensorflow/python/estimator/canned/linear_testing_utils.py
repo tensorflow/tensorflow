@@ -261,6 +261,8 @@ class BaseLinearRegressorEvaluationTest(object):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 9.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -286,6 +288,8 @@ class BaseLinearRegressorEvaluationTest(object):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 18.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -316,6 +320,8 @@ class BaseLinearRegressorEvaluationTest(object):
     self.assertDictEqual({
         metric_keys.MetricKeys.LOSS: 27.,
         metric_keys.MetricKeys.LOSS_MEAN: 9.,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 13.,
+        metric_keys.MetricKeys.LABEL_MEAN: 10.,
         ops.GraphKeys.GLOBAL_STEP: 100
     }, eval_metrics)
 
@@ -346,7 +352,9 @@ class BaseLinearRegressorEvaluationTest(object):
 
     self.assertItemsEqual(
         (metric_keys.MetricKeys.LOSS, metric_keys.MetricKeys.LOSS_MEAN,
-         ops.GraphKeys.GLOBAL_STEP), eval_metrics.keys())
+         metric_keys.MetricKeys.PREDICTION_MEAN,
+         metric_keys.MetricKeys.LABEL_MEAN, ops.GraphKeys.GLOBAL_STEP),
+        eval_metrics.keys())
 
     # Logit is
     #   [2., 4., 5.] * [1.0, 2.0] + [7.0, 8.0] = [39, 50] + [7.0, 8.0]
@@ -383,7 +391,9 @@ class BaseLinearRegressorEvaluationTest(object):
     eval_metrics = est.evaluate(input_fn=input_fn, steps=1)
     self.assertItemsEqual(
         (metric_keys.MetricKeys.LOSS, metric_keys.MetricKeys.LOSS_MEAN,
-         ops.GraphKeys.GLOBAL_STEP), eval_metrics.keys())
+         metric_keys.MetricKeys.PREDICTION_MEAN,
+         metric_keys.MetricKeys.LABEL_MEAN, ops.GraphKeys.GLOBAL_STEP),
+        eval_metrics.keys())
 
     # Logit is [(20. * 10.0 + 4 * 2.0 + 5.0), (40. * 10.0 + 8 * 2.0 + 5.0)] =
     # [213.0, 421.0], while label is [213., 421.]. Loss = 0.
