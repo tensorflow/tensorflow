@@ -111,7 +111,7 @@ class InMemoryEvaluatorHookTest(test.TestCase):
     self.assertEqual(4.5, step_keyword_to_value[8]['mean_of_features'])
     # end
     self.assertEqual(4.5, step_keyword_to_value[10]['mean_of_features'])
-    self.assertEqual([0, 4, 8, 10], list(step_keyword_to_value.keys()))
+    self.assertEqual(set([0, 4, 8, 10]), set(step_keyword_to_value.keys()))
 
   def test_uses_latest_variable_value(self):
 
