@@ -109,6 +109,8 @@ class TensorHandle : public core::RefCounted {
                          tensorflow::Device** device,
                          tensorflow::Device** op_device);
 
+  Status Shape(tensorflow::TensorShape* shape);
+
   Status NumDims(int* num_dims);
   Status Dim(int dim_index, int64* dim);
 
