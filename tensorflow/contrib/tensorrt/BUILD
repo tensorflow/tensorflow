@@ -11,7 +11,6 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -20,6 +19,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -33,7 +33,6 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["tensorrt_test.cc"],
     tags = [
-        "manual",
         "notap",
     ],
     deps = [
@@ -311,7 +310,6 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
     tags = [
-        "manual",
         "notap",
     ],
     deps = [
@@ -325,20 +323,25 @@ tf_cuda_cc_test(
     ]),
 )
 
-py_test(
-    name = "tf_trt_integration_test",
-    srcs = ["test/tf_trt_integration_test.py"],
-    main = "test/tf_trt_integration_test.py",
-    srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "notap",
-    ],
+py_library(
+    name = "tf_trt_integration_test_base",
+    srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
         ":init_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+)
+
+cuda_py_tests(
+    name = "tf_trt_integration_test",
+    srcs = ["test/base_test.py"],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    prefix = "integration_test",
 )
 
 py_test(
@@ -362,7 +365,6 @@ py_test(
     main = "test/unit_tests.py",
     srcs_version = "PY2AND3",
     tags = [
-        "manual",
         "notap",
     ],
     deps = [
