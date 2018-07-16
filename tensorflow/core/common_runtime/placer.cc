@@ -938,4 +938,9 @@ void Placer::LogDeviceAssignment(const Node* node) const {
   }
 }
 
+bool Placer::ClientHandlesErrorFormatting() const {
+  return options_ != nullptr &&
+         options_->config.experimental().client_handles_error_formatting();
+}
+
 }  // namespace tensorflow
