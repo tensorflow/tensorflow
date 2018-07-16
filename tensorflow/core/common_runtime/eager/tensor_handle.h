@@ -140,6 +140,12 @@ class TensorHandle : public core::RefCounted {
     remote_shape_ = std::move(remote_shape);
   }
 
+  bool OnHostCPU() {
+    mutex_lock ml(ctx_mutex_);
+    return device_ == nullptr ||
+           (ctx_ == nullptr || ctx_->HostCPU() == device_);
+  }
+
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that compuatation is
