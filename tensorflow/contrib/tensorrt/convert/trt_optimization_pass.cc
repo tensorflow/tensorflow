@@ -232,8 +232,14 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   tensorflow::grappler::GraphProperties static_graph_properties(item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   tensorflow::tensorrt::convert::ConversionParams cp;
+
+  std::vector<string> nodes_to_preserve;
+  for (const auto& n : item.NodesToPreserve()) {
+    auto tokens = str_util::Split(n, ":");
+    nodes_to_preserve.push_back(tokens.at(0));
+  }
   cp.input_graph_def = &item.graph;
-  cp.output_names = &item.fetch;
+  cp.output_names = &nodes_to_preserve;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = maximum_workspace_size_;
   cp.output_graph_def = optimized_graph;
