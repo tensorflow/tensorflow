@@ -1,4 +1,4 @@
-# Installing TensorFlow from Sources
+# Install TensorFlow from Sources
 
 This guide explains how to build TensorFlow sources into a TensorFlow
 binary and how to install that TensorFlow binary.  Note that we provide
