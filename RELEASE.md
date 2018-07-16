@@ -12,19 +12,19 @@
   * `tf.contrib.data.choose_from_datasets()` is now available via the public API.
   * Adding `drop_remainder` argument to `tf.data.Dataset.batch()` and `tf.data.Dataset.padded_batch()`, deprecating tf.contrib.data.batch_and_drop_remainder()` and `tf.contrib.data.padded_batch_and_drop_remainder()`.
 * `tf.estimator`:
-  * Estimators now use custom savers included in EstimatorSpec scaffolds for saving SavedModels during export.
-  * EstimatorSpec will now add a default prediction output for export if no export_output is provided, eliminating the need to explicitly include a PredictOutput object in the model_fn for simple use-cases.
+  * `Estimator`s now use custom savers included in `EstimatorSpec` scaffolds for saving SavedModels during export.
+  * `EstimatorSpec` will now add a default prediction output for export if no `export_output` is provided, eliminating the need to explicitly include a `PredictOutput` object in the `model_fn` for simple use-cases.
   * Support sparse_combiner in canned Linear Estimators.
-  * Improved local run behavior in estimator.train_and_evaluate.
-  * Added batch normalization to DNNClassifier, DNNRegressor, and DNNEstimator.
+  * Improved local run behavior in `estimator.train_and_evaluate`.
+  * Added batch normalization to `DNNClassifier`, `DNNRegressor`, and `DNNEstimator`.
 * Eager Execution
-  * tf.losses.* do not add to the global collection when executing eagerly (avoids leaking memory).
-* Support different summary and checkpoint directories in tf.train.MonitoredTrainingSession()
-* Added IndRNN, IndyGRU, and IndyLSTM cells to tf.contrib.rnn.
+  * `tf.losses.*` do not add to the global collection when executing eagerly (avoids leaking memory).
+* Support different summary and checkpoint directories in `tf.train.MonitoredTrainingSession()`.
+* Added IndRNN, IndyGRU, and IndyLSTM cells to `tf.contrib.rnn`.
 * Add `synchronization` and `aggregation` args to the layer `add_weight()` API. These args will be used for distributed variables.
-* Add safe static constructor functions to the sparse tensor library and convert
-* Adding ranking support.
-* adding center bias option.
+* Add safe static constructor functions to the sparse tensor library and convert all CHECKs to DCHECKs.
+* Adding ranking support for boosted trees.
+* Adding center bias option for boosted trees.
 * Make the Bigtable client connection pool configurable & increase the default # of connections for performance.
 * Add `synchronization` and `aggregation` args to get_variable(). These args will be used for distributed variables.
 * Added support for Type III DCT, and `tf.spectral.idct(type=2|3)`.
@@ -32,8 +32,7 @@
 * Adding per-element weight support for `WALSComputePartialLhsAndRhsOp`.
 * ZerosLike and OnesLike ops treated as constants by Graph Transform Tool.
 * Gamma distribution and the derived distributions (Beta, Dirichlet, Student's t, inverse Gamma) are fully reparameterized.
-* RunConfig now sets device_filters to restrict how workers and PS can communicate. This can speed up training and ensure clean shutdowns in some situations. But if you have jobs that require communication between workers, you will have to set custom session_options in your RunConfig.
-RELNOTES=Adding new endpoints for existing tensorflow symbols. These endpoints are going to be the preferred endpoints going forward and will replace some of the existing endpoints when TensorFlow 2.0 is released. List of new endpoints:
+* `RunConfig` now sets device_filters to restrict how workers and PS can communicate. This can speed up training and ensure clean shutdowns in some situations. But if you have jobs that require communication between workers, you will have to set custom session_options in your `RunConfig`.
 * Derivative of `tf.random_gamma` with respect to the alpha parameter.
 * Derivative of `tf.igamma(a, x)` and `tf.igammac(a, x)` with respect to a.
 * Move Distributions and Bijectors from `tf.contrib.distributions` to Tensorflow Probability (TFP). `tf.contrib.distributions` is now deprecated and will be removed by the end of 2018.
@@ -47,6 +46,16 @@ RELNOTES=Adding new endpoints for existing tensorflow symbols. These endpoints a
 * Java: Experimental wrapper classes to make graph generation easier. Thanks @karllessard and @kbsriram
 * Replace `distribution_util.assert_close` with `tf.assert_near`.
 * Fix minor typos in linear_operator.py docstrings.
+* Adding new endpoints for existing tensorflow symbols. These endpoints are going to be the preferred endpoints going forward and will replace some of the existing endpoints when TensorFlow 2.0 is released. List of new endpoints:
+  * New endpoints in `tf.image` namespace: `tf.image.extract_image_patches`
+  * New endpoints in `tf.debugging` namespace: `tf.debugging.check_numerics`, `tf.debugging.is_finite`, `tf.debugging.is_inf`, `tf.debugging.is_nan`.
+  * New endpoints in `tf.dtypes` namespace: `tf.dtypes.as_string`.
+  * New endpoints in `tf.io` namespace: `tf.io.decode_base64`, `tf.io.decode_compressed`, `tf.io.decode_json_example`, `tf.io.decode_raw`, `tf.io.encode_base64`, `tf.io.matching_files`, `tf.io.parse_tensor`, `tf.io.read_file, `tf.io.write_file`.
+  * New endpoints in tf.linalg namespace: `tf.linalg.cross`, `tf.linalg.tensor_diag` (corresponds to `tf.diag`), `tf.linalg.tensor_diag_part` (corresponds to `tf.diag_part`).
+  * New endpoints in tf.manip namespace: `tf.manip.batch_to_space_nd`, `tf.manip.gather_nd`, `tf.manip.reshape`, `tf.manip.reverse`, `tf.manip.scatter_nd`, `tf.manip.space_to_batch_nd`, `tf.manip.tile`
+  * New endpoints in tf.math namespace: `tf.math.acos`, `tf.math.acosh`, `tf.math.add`, `tf.math.asin`, `tf.math.asinh`, `tf.math.atan`, `tf.math.atan2`, `tf.math.atanh`, `tf.math.betainc`, `tf.math.ceil`, `tf.math.cos`, `tf.math.cosh`, `tf.math.digamma`, `tf.math.equal`, `tf.math.erfc`, `tf.math.exp`, `tf.math.expm1`, `tf.math.floor`, `tf.math.greater`, `tf.math.greater_equal`, `tf.math.igamma`, `tf.math.igammac`, `tf.math.invert_permutation`, `tf.math.less`, `tf.math.less_equal`, `tf.math.lgamma`, `tf.math.log`, `tf.math.log1p`, `tf.math.logical_and`, `tf.math.logical_not`, `tf.math.logical_or`, `tf.math.maximum`, `tf.math.minimum`, `tf.math.not_equal`, `tf.math.polygamma`, `tf.math.reciprocal`, `tf.math.rint`, `tf.math.rsqrt`, `tf.math.segment_max`, `tf.math.segment_mean`, `tf.math.segment_min`, `tf.math.segment_prod`, `tf.math.segment_sum`, `tf.math.sin`, `tf.math.sinh`, `tf.math.softplus`, `tf.math.softsign`, `tf.math.squared_difference`, `tf.math.tan`, `tf.math.unsorted_segment_max`, `tf.math.unsorted_segment_min`, `tf.math.unsorted_segment_prod`, `tf.math.unsorted_segment_sum`, `tf.math.zeta`.
+  * New endpoints in `tf.quantization` namespace: `tf.quantization.dequantize`, `tf.quantization.fake_quant_with_min_max_args`, `tf.quantization.fake_quant_with_min_max_args_gradient`, `tf.quantization.fake_quant_with_min_max_vars`,  `tf.quantization.fake_quant_with_min_max_vars_gradient`, `tf.quantization.fake_quant_with_min_max_vars_per_channel`,  `tf.quantization.fake_quant_with_min_max_vars_per_channel_gradient`.
+  * New endpoints in tf.strings namespace: `tf.strings.join` (corresponds to `tf.string_join`), `tf.strings.regex_replace`, `tf.strings.to_number` (corresponds to `tf.string_to_number`), `tf.strings.strip` (corresponds to `tf.string_strip`), `tf.strings.substr`, `tf.strings.to_hash_bucket` (corresponds to `tf.string_to_hash_bucket), `tf.strings.to_hash_bucket_fast` (corresponds to `tf.string_to_hash_bucket_fast`), `tf.strings.to_hash_bucket_strong` (corresponds to `tf.string_to_hash_bucket_strong`).
 
 ## Thanks to our Contributors
 
