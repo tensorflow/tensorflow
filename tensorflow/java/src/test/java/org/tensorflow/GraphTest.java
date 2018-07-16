@@ -239,8 +239,20 @@ public class GraphTest {
       Output<?>[] grad0 = g.addGradients(null, toArray(y0), toArray(x), null);
       assertTrue(grad0[0].op().name().startsWith("gradients/"));
 
-      Output<?>[] grad1 = g.addGradients("more_gradients", toArray(y0), toArray(x), null);
-      assertTrue(grad1[0].op().name().startsWith("more_gradients/"));
+      Output<?>[] grad1 = g.addGradients(null, toArray(y0), toArray(x), null);
+      assertTrue(grad1[0].op().name().startsWith("gradients_1/"));
+
+      Output<?>[] grad2 = g.addGradients("more_gradients", toArray(y0), toArray(x), null);
+      assertTrue(grad2[0].op().name().startsWith("more_gradients/"));
+
+      Output<?>[] grad3 = g.addGradients("even_more_gradients", toArray(y0), toArray(x), null);
+      assertTrue(grad3[0].op().name().startsWith("even_more_gradients/"));
+
+      try {
+        g.addGradients("even_more_gradients", toArray(y0), toArray(x), null);
+      } catch (IllegalArgumentException e) {
+        // expected exception
+      }
     }
   }
   

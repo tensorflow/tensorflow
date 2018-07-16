@@ -88,7 +88,11 @@ public class Gradients implements Op, Iterable<Operand<?>> {
         }
       }
     }
-    Output<?>[] dy = scope.graph().addGradients(scope.prefix(), Operands.asOutputs(y), Operands.asOutputs(x), dx);
+    Output<?>[] dy = scope.graph().addGradients(
+        scope.makeOpName("Gradients"), 
+        Operands.asOutputs(y), 
+        Operands.asOutputs(x), 
+        dx);
     return new Gradients(Arrays.asList(dy));
   }
 

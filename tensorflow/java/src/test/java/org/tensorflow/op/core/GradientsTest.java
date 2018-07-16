@@ -108,17 +108,18 @@ public class GradientsTest {
   }
 
   @Test
-  public void createGradientsWithScopeName() {
+  public void validateGradientsNames() {
     try (Graph g = new Graph()) {
-      Scope scope = new Scope(g);
+      Scope scope = new Scope(g).withSubScope("sub");
 
       Output<Float> x = TestUtil.placeholder(g, "x1", Float.class);
       Output<Float> y = TestUtil.square(g, "y", x);
       
-      Scope gradScope = scope.withSubScope("grads").withSubScope("test");
-      Gradients grads = Gradients.create(gradScope, y, Arrays.asList(x));
+      Gradients grad0 = Gradients.create(scope, y, Arrays.asList(x));
+      assertTrue(grad0.dy(0).op().name().startsWith("sub/Gradients/"));
       
-      assertTrue(grads.dy(0).op().name().startsWith("grads/test/"));
+      Gradients grad1 = Gradients.create(scope.withName("MyGradients"), y, Arrays.asList(x));
+      assertTrue(grad1.dy(0).op().name().startsWith("sub/MyGradients/"));
     }
   }
 }

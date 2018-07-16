@@ -56,10 +56,6 @@ final class NameScope {
     String actualName = (opName != null) ? opName : name;
     return fullyQualify(makeUnique(actualName));
   }
-  
-  String opPrefix() {
-    return opPrefix;
-  }
 
   /**
    * Create a new, root-level namescope.
