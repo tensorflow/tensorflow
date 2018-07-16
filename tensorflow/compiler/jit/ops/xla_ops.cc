@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-REGISTER_OP("_XlaLaunch")
+REGISTER_OP("XlaLaunch")
     .Input("constants: Tconstants")
     .Attr("Tconstants: list(type) >= 0")
     .Input("args: Targs")
@@ -28,7 +28,7 @@ REGISTER_OP("_XlaLaunch")
     .Attr("Tresults: list(type) >= 0")
     .Attr("function: func")
     // XLA random-number generation ops are stateful.
-    // TODO(phawkins): create stateful and non-stateful variants of _XlaLaunch.
+    // TODO(phawkins): create stateful and non-stateful variants of XlaLaunch.
     .SetIsStateful()
     .Doc("XLA Launch Op. For use by the XLA JIT only.");
 

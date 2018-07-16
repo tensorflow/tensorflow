@@ -17,8 +17,7 @@ limitations under the License.
 // runtime.
 //
 // Operators assigned to an XlaDevice are compiled into XLA computations.
-// Tensors on an XlaDevice are thin wrappers around XLA GlobalDataHandles; state
-// is managed by XLA.
+// Tensors on an XlaDevice are thin wrappers around XLA ScopedShapedBuffers.
 //
 // XlaDevice is instantiated separately for each XLA backend (e.g., CPU or GPU),
 // under different names (e.g., XLA_CPU or XLA_GPU).
@@ -27,6 +26,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 
 #include "tensorflow/compiler/jit/xla_tensor.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -45,12 +45,19 @@ namespace tensorflow {
 
 class XlaDevice : public LocalDevice {
  public:
+  // Given a tensor, sets `xla::Shape*` the shape of tensor's representation
+  // on device, fully padded. On error, the contents of `xla::Shape*`
+  // are undefined.
+  typedef std::function<Status(const Tensor&, xla::Shape*)> PaddedShapeFn;
+
   // Wrapper class to store metadata about the XlaDevice, where it can be
   // retrieved e.g., when lazily creating the XlaCompilationCache device.
   class Metadata {
    public:
     Metadata(int device_ordinal, se::Platform* platform,
-             const DeviceType& device_type);
+             const DeviceType& device_type,
+             XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+             PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -58,11 +65,20 @@ class XlaDevice : public LocalDevice {
     se::Platform* platform() const;
     xla::LocalClient* client() const;
     const DeviceType& jit_device_type() const;
+    const XlaCompiler::ShapeRepresentationFn& shape_representation_fn() const {
+      return shape_representation_fn_;
+    }
+    const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
+
+    bool UseMultipleStreams() const { return use_multiple_streams_; }
 
    private:
     const int device_ordinal_;
     const DeviceType device_type_;
     se::Platform* platform_;  // Not owned.
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+    PaddedShapeFn padded_shape_fn_;
+    const bool use_multiple_streams_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
   };
@@ -76,16 +92,28 @@ class XlaDevice : public LocalDevice {
   // 'transfer_as_literal' is true if device<->host transfers must be done using
   // XLA's TransferLiteral{To,From}Device interface. If false, we can use
   // ThenMemcpy instead.
-  static Status Create(const string& platform_name, const string& device_name,
-                       int device_ordinal, const string& jit_device_name,
-                       const SessionOptions& options, const string& name_prefix,
-                       const XlaOpRegistry::DeviceRegistration& registration,
-                       bool transfer_as_literal,
-                       std::unique_ptr<XlaDevice>* device);
+  // If 'use_multiple_streams' is true, we create separate streams for
+  // host-to-device and device-to-host communication.
+  // If padded_shape_fn is empty, a default implementation that returns
+  // the on-host shape is used.
+  static Status Create(
+      const string& platform_name, const string& device_name,
+      int device_ordinal, const string& jit_device_name,
+      const SessionOptions& options, const string& name_prefix,
+      const XlaOpRegistry::DeviceRegistration& registration,
+      bool transfer_as_literal, bool use_multiple_streams,
+      const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
+      const PaddedShapeFn& padded_shape_fn, std::unique_ptr<XlaDevice>* device);
 
+  // Creates a new XLA Device.
+  // If padded_shape_fn is empty, a default implementation that returns
+  // the logical on-device shape without padding is used.
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
-            se::Platform* platform, bool transfer_as_literal);
+            se::Platform* platform, bool transfer_as_literal,
+            bool use_multiple_streams,
+            const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
+            const PaddedShapeFn& padded_shape_fn);
   ~XlaDevice() override;
 
   Allocator* GetAllocator(AllocatorAttributes attr) override;
@@ -102,7 +130,10 @@ class XlaDevice : public LocalDevice {
                              Tensor* tensor) override;
 
   xla::LocalClient* client() const;
+  const Metadata& metadata() { return xla_metadata_; }
   xla::StatusOr<se::Stream*> GetStream();
+  xla::StatusOr<se::Stream*> GetHostToDeviceStream();
+  xla::StatusOr<se::Stream*> GetDeviceToHostStream();
 
   // If not already set, create and set GpuDeviceInfo.
   // Not thread-safe
@@ -116,16 +147,27 @@ class XlaDevice : public LocalDevice {
   // The name of the device that is used to compile Ops for this XlaDevice.
   DeviceType jit_device_name_;
   // Memory allocator associated with this device.
-  Allocator* xla_allocator_;                   // Not owned.
-  se::Platform* platform_;                     // Not owned.
+  Allocator* xla_allocator_;  // Not owned.
+  se::Platform* platform_;    // Not owned.
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
   // copying back and forth between CPU and the device, and
   // computations enqueued by XLA.
   xla::Backend::StreamPtr stream_;
+  // If true, only stream_ is valid and all computation and transfers use
+  // stream_. If false, computation is performed by stream_ and transfers are
+  // performed by host_to_device/device_to_host_stream.
+  bool use_multiple_streams_;
+  // If use_multiple_streams_, host to device transfers are performed using this
+  // stream.
+  xla::Backend::StreamPtr host_to_device_stream_;
+  // If use_multiple_streams_, device to host transfers are performed using this
+  // stream.
+  xla::Backend::StreamPtr device_to_host_stream_;
   // Must we use XLA's transfer manager for correct host<->device transfers? if
   // false, we can use ThenMemcpy() instead.
   bool transfer_as_literal_;
+  XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 
   // If set, holds default device context (that we must Unref)
   // and its stream.

@@ -35,7 +35,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-@test_util.with_c_api
 class BatchNormalizationTest(test.TestCase):
 
   def _npBatchNorm(self, x, m, v, beta, gamma, epsilon,
@@ -341,7 +340,6 @@ class BatchNormalizationTest(test.TestCase):
                                        param_dtype=dtypes.float32, atol=0.001)
 
 
-@test_util.with_c_api
 class SufficientStatisticsTest(test.TestCase):
 
   def _npSuffStats(self, x, axes, shift, keep_dims):
@@ -401,7 +399,6 @@ class SufficientStatisticsTest(test.TestCase):
           self._testSuffStats([1, 2, 3], [0, 2], shift, keep_dims, has_shape)
 
 
-@test_util.with_c_api
 class NormalizeMomentsTest(test.TestCase):
 
   def _npNormalizeMoments(self, counts, mean_ss, variance_ss, shift):
@@ -445,7 +442,6 @@ class NormalizeMomentsTest(test.TestCase):
       self._testNormalizeMoments([2, 3], shift)
 
 
-@test_util.with_c_api
 class MomentsTest(test.TestCase):
 
   def _unweighted_moments(self, x, axes, keep_dims=False, extra_out_grads=None):
@@ -583,7 +579,6 @@ class MomentsTest(test.TestCase):
     self._testGlobalGradient(from_y="var")
 
 
-@test_util.with_c_api
 class WeightedMomentsTest(MomentsTest):
   """Tests for nn.weighted_moments.
 

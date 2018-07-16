@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -116,6 +117,28 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
+  // For MOF we give the loop emitter an array for every output it should
+  // generate.
+  if (hlo.IsMultiOutputFusion()) {
+    const int64 num_elems = ShapeUtil::TupleElementCount(hlo.shape());
+    std::vector<llvm_ir::IrArray> target_arrays;
+    target_arrays.reserve(num_elems);
+    for (int64 i = 0; i != num_elems; ++i) {
+      target_arrays.push_back(GetIrArray(hlo, hlo, {i}));
+    }
+    TF_RETURN_IF_ERROR(
+        llvm_ir::LoopEmitter(element_generator, target_arrays, &ir_builder_)
+            .EmitLoop());
+
+    std::vector<llvm::Value*> tuple_operand_ptrs;
+    tuple_operand_ptrs.reserve(num_elems);
+    for (const llvm_ir::IrArray& array : target_arrays) {
+      tuple_operand_ptrs.push_back(array.GetBasePointer());
+    }
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), tuple_operand_ptrs, &ir_builder_,
+                       module_);
+    return Status::OK();
+  }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
                               &ir_builder_)
       .EmitLoop();

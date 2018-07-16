@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/create_xla_launch_op.h"
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -66,8 +66,28 @@ class SinglePassSearch {
 
 Status CompilationRequested(const FunctionLibraryRuntime& flr,
                             const NodeDef& node_def) {
+  const FunctionDef* function_def =
+      flr.GetFunctionLibraryDefinition()->Find(node_def.name());
+  if (function_def == nullptr) {
+    // The node def is not calling a function. Individual ops can be
+    // run directly using on-demand mode, no need to create XlaLaunch
+    // kernel for them.
+    // TODO(b/110359382): Make custom kernel creation return a bool instead of
+    // status.
+    // We don't set error messages here to avoid unnecessary string copy.
+    // Similarly below.
+    return Status(error::INVALID_ARGUMENT, "");
+  }
+
+  // If kXlaCompileAttr is set on the node_def, use its value.
+  const auto& it = node_def.attr().find(kXlaCompileAttr);
+  if (it != node_def.attr().end()) {
+    return it->second.b() ? Status::OK() : Status(error::INVALID_ARGUMENT, "");
+  }
+
+  // kXlaCompileAttr is not set on node_def, check if it is set on
+  // FunctionDef.
   bool xla_compile = false;
-  // Check if op is marked _XlaCompile=true.
   Status status = flr.GetFunctionLibraryDefinition()->GetAttr(
       node_def, kXlaCompileAttr, &xla_compile);
   if (!status.ok() || !xla_compile) {
@@ -203,8 +223,8 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
       &fbody->fdef.signature(), flr, fbody->arg_types, input_memory_types,
       fbody->ret_types, output_memory_types, flr->graph_def_version(), &s);
 
-  *kernel = absl::make_unique<XlaLocalLaunchBase>(
-      &construction, constant_arg_indices, resource_arg_indices, function);
+  *kernel = MakeUnique<XlaLocalLaunchBase>(&construction, constant_arg_indices,
+                                           resource_arg_indices, function);
   return s;
 }
 

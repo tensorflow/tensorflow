@@ -248,13 +248,31 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
+  Status HandleDomain(HloInstruction* domain) override;
   Status HandleSlice(HloInstruction* slice) override;
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleSelect(HloInstruction* select) override;
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
 
   string ToString() const;
+
+  // Returns true if 'user' cannot possibly use the buffer at 'index' in
+  // 'operand'. Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                               const ShapeIndex& index,
+                               const HloInstruction* user) const;
+
+  // Returns true if 'user' (at 'user_index') can share a buffer with its
+  // operand 'operand' (at 'operand_index'). Returns false otherwise.
+  //
+  // REQUIRES: 'operand' is an operand of 'user'.
+  bool CanShareOperandBufferWithUser(HloInstruction* operand,
+                                     const ShapeIndex& operand_index,
+                                     HloInstruction* user,
+                                     const ShapeIndex& user_index) const;
 
  private:
   explicit TuplePointsToAnalysis(
@@ -309,6 +327,13 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     DCHECK_LT(id, per_instruction_.size());
     return &per_instruction_[id];
   }
+
+  std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
+      HloInstruction* instruction, const ShapeIndex& index) const;
+  bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
+                                    const ShapeIndex& operand_index,
+                                    HloInstruction* fusion,
+                                    const int64 use_operand_index) const;
 
   // The module this analysis is performed on.
   const HloModule* module_;

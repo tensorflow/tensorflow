@@ -23,28 +23,77 @@ limitations under the License.
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
+
 namespace tflite {
 
-// TODO(aselle): FATAL leaves resources hanging.
-void FATAL(const char* format, ...) {
+void logError(const char* format, ...) {
+  // TODO(mikie): use android logging, stderr is not captured for Java
+  // applications
   va_list args;
   va_start(args, format);
   vfprintf(stderr, format, args);
   va_end(args);
+  fprintf(stderr, "\n");
   fflush(stderr);
-  exit(1);
 }
 
+#define FATAL(...)       \
+  logError(__VA_ARGS__); \
+  exit(1);
+
 // TODO(aselle): Change the error model to use status codes.
-#define CHECK_TFLITE_SUCCESS(x)                       \
-  if (x != kTfLiteOk) {                               \
-    FATAL("Aborting since tflite returned failure."); \
+#define CHECK_TFLITE_SUCCESS(x)                                           \
+  if (x != kTfLiteOk) {                                                   \
+    FATAL("Aborting since tflite returned failure nnapi_delegate.cc:%d.", \
+          __LINE__);                                                      \
   }
 
-#define CHECK_NN(x)                                   \
-  if (x != ANEURALNETWORKS_NO_ERROR) {                \
-    FATAL("Aborting since tflite returned failure."); \
+#define CHECK_NN(x)                                                     \
+  if (x != ANEURALNETWORKS_NO_ERROR) {                                  \
+    FATAL("Aborting since NNAPI returned failure nnapi_delegate.cc:%d", \
+          __LINE__);                                                    \
   }
+
+#define RETURN_ERROR_IF_NN_FAILED(x)                                          \
+  if (x != ANEURALNETWORKS_NO_ERROR) {                                        \
+    logError(                                                                 \
+        "Returning error since NNAPI returned failure nnapi_delegate.cc:%d.", \
+        __LINE__);                                                            \
+    return kTfLiteError;                                                      \
+  }
+
+// Tracking of NNAPI operand ids
+static const int64_t kOperandIdNotSet = -1;
+static const int64_t kOperandNotNeeded = -2;
+
+namespace {
+
+int32_t GetAndroidSdkVersion() {
+#ifdef __ANDROID__
+  const char* sdkProp = "ro.build.version.sdk";
+  char sdkVersion[PROP_VALUE_MAX];
+  int length = __system_property_get(sdkProp, sdkVersion);
+  if (length != 0) {
+    for (int i = 0; i < length; ++i) {
+      int digit = sdkVersion[i] - '0';
+      if (digit < 0 || digit > 9) {
+        // Non-numeric SDK version, assume it's higher then expected;
+        return 0xFFFF;
+      }
+    }
+    return atoi(sdkVersion);
+  }
+  FATAL("No %s prop", sdkProp);
+#endif  // __ANDROID__
+  return 0;
+}
+
+static const int32_t kAndroidSdkVersion = GetAndroidSdkVersion();
+
+}  // namespace
 
 NNAPIAllocation::NNAPIAllocation(const char* filename,
                                  ErrorReporter* error_reporter)
@@ -74,21 +123,16 @@ NNAPIDelegate::~NNAPIDelegate() {
 }
 
 // Adds the tensors of the interpreter to the NN API model.
-// Returns the number of operands added.
-uint32_t addTensorOperands(tflite::Interpreter* interpreter,
-                           ANeuralNetworksModel* nn_model,
-                           const std::vector<uint32_t>& skip_list) {
+TfLiteStatus addTensorOperands(tflite::Interpreter* interpreter,
+                               ANeuralNetworksModel* nn_model,
+                               uint32_t* no_of_operands_added,
+                               std::vector<int64_t>* nnapi_ids) {
   uint32_t next_id = 0;
   for (size_t i = 0; i < interpreter->tensors_size(); i++) {
-    // skip temporaries tensors.
-    bool shouldSkip = false;
-    for (auto skip_idx : skip_list) {
-      if (i == skip_idx) {
-        shouldSkip = true;
-        break;
-      }
-    }
-    if (shouldSkip) continue;
+    // Skip temporaries and RNN back-edges.
+    if ((*nnapi_ids)[i] == kOperandNotNeeded) continue;
+
+    (*nnapi_ids)[i] = int64_t(next_id);
 
     int32_t nn_type = 0;
     // NNAPI requires 32-bit float scale to be zero, tflite doesn't care
@@ -114,7 +158,18 @@ uint32_t addTensorOperands(tflite::Interpreter* interpreter,
         zeroPoint = tensor->params.zero_point;
         break;
       default:
-        FATAL("Unsupported type.");
+        logError("Unsupported tensor type %d", tensor->type);
+        return kTfLiteError;
+    }
+    if (tensor->dims->size == 0) {
+      logError("NNAPI doesn't support tensors with rank 0 (index %d name %s)",
+               i, tensor->name);
+      return kTfLiteError;
+    }
+    if (tensor->dims->size > 4) {
+      logError("NNAPI doesn't support tensors with rank > 4 (index %d name %s)",
+               i, tensor->name);
+      return kTfLiteError;
     }
     // TODO(aselle): Note, many of these are intermediate results. Do I need
     // to ever specify these sizes. I am currently below doing setValue
@@ -124,30 +179,53 @@ uint32_t addTensorOperands(tflite::Interpreter* interpreter,
     ANeuralNetworksOperandType operand_type{
         nn_type, static_cast<uint32_t>(tensor->dims->size),
         reinterpret_cast<uint32_t*>(tensor->dims->data), scale, zeroPoint};
-    CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type));
-
+    RETURN_ERROR_IF_NN_FAILED(
+        ANeuralNetworksModel_addOperand(nn_model, &operand_type));
     // TODO(aselle): Based on Michael's suggestion, limiting this to read
     // only memory
     if (tensor->allocation_type == kTfLiteMmapRo) {
       if (const NNAPIAllocation* alloc = dynamic_cast<const NNAPIAllocation*>(
               static_cast<const Allocation*>(tensor->allocation))) {
-        CHECK_NN(ANeuralNetworksModel_setOperandValueFromMemory(
-            nn_model, next_id, alloc->memory(), alloc->offset(tensor->data.raw),
-            tensor->bytes));
+        RETURN_ERROR_IF_NN_FAILED(
+            ANeuralNetworksModel_setOperandValueFromMemory(
+                nn_model, next_id, alloc->memory(),
+                alloc->offset(tensor->data.raw), tensor->bytes));
       } else {
-        CHECK_NN(ANeuralNetworksModel_setOperandValue(
+        RETURN_ERROR_IF_NN_FAILED(ANeuralNetworksModel_setOperandValue(
             nn_model, next_id, tensor->data.raw, tensor->bytes));
       }
+    } else if (tensor->bytes == 0) {
+      // These size 0 tensors are optional tensors reserved.
+      RETURN_ERROR_IF_NN_FAILED(
+          ANeuralNetworksModel_setOperandValue(nn_model, next_id, nullptr, 0));
     }
+
     ++next_id;
   }
-  return next_id;
+  *no_of_operands_added = next_id;
+  return kTfLiteOk;
+}
+
+void MapAndAddTensorIds(const int* from_ids_buf, size_t from_ids_count,
+                        std::vector<uint32_t>* into,
+                        const std::vector<int64_t>& map) {
+  for (size_t i = 0; i < from_ids_count; i++) {
+    int from_id = from_ids_buf[i];
+    if (from_id == kOptionalTensor) {
+      into->push_back(from_id);
+    } else {
+      into->push_back(map[from_id]);
+    }
+  }
 }
 
 // Adds the operations and their parameters to the NN API model.
 // 'next-id' is the operand ID of the next operand of the model.
-void AddOpsAndParams(tflite::Interpreter* interpreter,
-                     ANeuralNetworksModel* nn_model, uint32_t next_id) {
+TfLiteStatus AddOpsAndParams(
+    tflite::Interpreter* interpreter, ANeuralNetworksModel* nn_model,
+    uint32_t next_id, std::vector<int>* model_state_inputs,
+    std::vector<int>* model_state_outputs,
+    const std::vector<int64_t>& tensor_id_to_nnapi_id) {
   for (size_t i = 0; i < interpreter->nodes_size(); i++) {
     const auto* node_and_registration = interpreter->node_and_registration(i);
     const TfLiteNode& node = node_and_registration->first;
@@ -156,8 +234,11 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
         static_cast<tflite::BuiltinOperator>(registration.builtin_code);
 
     // Add the parameters.
-    std::vector<uint32_t> augmented_inputs(
-        node.inputs->data, node.inputs->data + node.inputs->size);
+    std::vector<uint32_t> augmented_inputs, augmented_outputs;
+    MapAndAddTensorIds(node.inputs->data, node.inputs->size, &augmented_inputs,
+                       tensor_id_to_nnapi_id);
+    MapAndAddTensorIds(node.outputs->data, node.outputs->size,
+                       &augmented_outputs, tensor_id_to_nnapi_id);
 
     auto add_scalar_int32 = [&nn_model, &augmented_inputs,
                              &next_id](int value) {
@@ -177,46 +258,83 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       augmented_inputs.push_back(next_id++);
     };
 
+    auto add_vector_int32 = [&](const int* values, uint32_t num_values) {
+      ANeuralNetworksOperandType operand_type{
+          .type = ANEURALNETWORKS_TENSOR_INT32,
+          .dimensionCount = 1,
+          .dimensions = &num_values};
+      CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type))
+      CHECK_NN(ANeuralNetworksModel_setOperandValue(
+          nn_model, next_id, values, sizeof(int32_t) * num_values));
+      augmented_inputs.push_back(next_id++);
+    };
+
+    // Handle state tensors of RNN, LSTM, SVDF.
+    // For each state_out tensor, a corresponding state_in operand needs to be
+    // created for NNAPI.
     auto duplicate_state_tensor_float32 =
-        [interpreter, &nn_model, &augmented_inputs](int tensor_id) {
+        [interpreter, &nn_model, &next_id, &augmented_inputs,
+         &model_state_inputs, &model_state_outputs](int tensor_id) {
           const TfLiteTensor* tensor = interpreter->tensor(tensor_id);
-          CHECK_NN(ANeuralNetworksModel_setOperandValue(
-              nn_model, tensor_id, tensor->data.raw, tensor->bytes));
-          augmented_inputs.push_back(tensor_id);
+          ANeuralNetworksOperandType operand_type{
+              ANEURALNETWORKS_TENSOR_FLOAT32,
+              static_cast<uint32_t>(tensor->dims->size),
+              reinterpret_cast<uint32_t*>(tensor->dims->data),
+              tensor->params.scale, tensor->params.zero_point};
+          CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type));
+          augmented_inputs.push_back(next_id);
+          model_state_inputs->push_back(next_id);
+          model_state_outputs->push_back(tensor_id);
+          next_id++;
         };
+    auto check_and_add_activation = [&add_scalar_int32](int activation) {
+      if (activation > kTfLiteActRelu6) {
+        FATAL("NNAPI only supports RELU, RELU1 and RELU6 activations");
+      }
+      add_scalar_int32(activation);
+    };
 
-    auto add_add_params = [&add_scalar_int32]() { add_scalar_int32(0); };
+    auto add_add_params = [&add_scalar_int32](void* data) {
+      auto* builtin = reinterpret_cast<TfLiteAddParams*>(data);
+      if (builtin->activation > kTfLiteActRelu6) {
+        FATAL("NNAPI only supports RELU, RELU1 and RELU6 activations");
+      }
+      add_scalar_int32(builtin->activation);
+    };
 
-    auto add_pooling_params = [&add_scalar_int32](void* data) {
+    auto add_pooling_params = [&add_scalar_int32,
+                               &check_and_add_activation](void* data) {
       auto builtin = reinterpret_cast<TfLitePoolParams*>(data);
       add_scalar_int32(builtin->padding);
       add_scalar_int32(builtin->stride_width);
       add_scalar_int32(builtin->stride_height);
       add_scalar_int32(builtin->filter_width);
       add_scalar_int32(builtin->filter_height);
-      add_scalar_int32(builtin->activation);
+      check_and_add_activation(builtin->activation);
     };
 
-    auto add_convolution_params = [&add_scalar_int32](void* data) {
+    auto add_convolution_params = [&add_scalar_int32,
+                                   &check_and_add_activation](void* data) {
       auto builtin = reinterpret_cast<TfLiteConvParams*>(data);
       add_scalar_int32(builtin->padding);
       add_scalar_int32(builtin->stride_width);
       add_scalar_int32(builtin->stride_height);
-      add_scalar_int32(builtin->activation);
+      check_and_add_activation(builtin->activation);
     };
 
-    auto add_depthwise_conv_params = [&add_scalar_int32](void* data) {
+    auto add_depthwise_conv_params = [&add_scalar_int32,
+                                      &check_and_add_activation](void* data) {
       auto builtin = reinterpret_cast<TfLiteDepthwiseConvParams*>(data);
       add_scalar_int32(builtin->padding);
       add_scalar_int32(builtin->stride_width);
       add_scalar_int32(builtin->stride_height);
       add_scalar_int32(builtin->depth_multiplier);
-      add_scalar_int32(builtin->activation);
+      check_and_add_activation(builtin->activation);
     };
 
-    auto add_fully_connected_params = [&add_scalar_int32](void* data) {
+    auto add_fully_connected_params = [&check_and_add_activation](void* data) {
       auto builtin = reinterpret_cast<TfLiteFullyConnectedParams*>(data);
-      add_scalar_int32(builtin->activation);
+      check_and_add_activation(builtin->activation);
     };
 
     auto add_concatenation_params = [&add_scalar_int32](void* data) {
@@ -245,33 +363,71 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       add_scalar_float32(builtin->proj_clip);
     };
 
-#if 0
-    auto add_reshape_params = [&](void* data) {
-      auto builtin = reinterpret_cast<TfLiteReshapeParams*>(data);
-      uint32_t tensor_size_shape = builtin->num_dimensions;
+    // LSTM in NNAPI requires scratch tensor as an output operand.
+    auto add_lstm_scratch_tensor_float32 = [interpreter, &node, &nn_model,
+                                            &next_id, &augmented_outputs]() {
+      if (node.temporaries->size == 0) return;
+      int scratch_buffer_index = node.temporaries->data[0];
+      const TfLiteTensor* tensor = interpreter->tensor(scratch_buffer_index);
       ANeuralNetworksOperandType operand_type{
-          ANEURALNETWORKS_TENSOR_INT32,
-          {static_cast<uint32_t>(1),
-           reinterpret_cast<uint32_t*>(&tensor_size_shape)},
-          0,
-          0};
-      CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type))
-      CHECK_NN(ANeuralNetworksModel_setOperandValue(
-          nn_model, next_id, builtin->shape,
-          sizeof(int) * builtin->num_dimensions));
-      augmented_inputs.push_back(next_id++);
+          ANEURALNETWORKS_TENSOR_FLOAT32,
+          static_cast<uint32_t>(tensor->dims->size),
+          reinterpret_cast<uint32_t*>(tensor->dims->data), tensor->params.scale,
+          tensor->params.zero_point};
+      CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type));
+      augmented_outputs.insert(augmented_outputs.begin(), next_id++);
     };
-#endif
 
+    auto add_mean_params = [&add_scalar_int32](void* data) {
+      auto builtin = reinterpret_cast<TfLiteReducerParams*>(data);
+      add_scalar_int32(builtin->keep_dims);
+    };
+
+    auto add_svdf_params = [&add_scalar_int32](void* data) {
+      auto builtin = reinterpret_cast<TfLiteSVDFParams*>(data);
+      add_scalar_int32(builtin->rank);
+      add_scalar_int32(builtin->activation);
+    };
+
+    auto add_rnn_params = [&add_scalar_int32](void* data) {
+      auto builtin = reinterpret_cast<TfLiteRNNParams*>(data);
+      add_scalar_int32(builtin->activation);
+    };
+
+    auto add_squeeze_params = [&](void* data) {
+      const auto* builtin = reinterpret_cast<TfLiteSqueezeParams*>(data);
+      // Note that we add the squeeze dimensions even if the dimensions were
+      // unspecified (empty), as NNAPI requires the operand.
+      add_vector_int32(builtin->squeeze_dims,
+                       static_cast<uint32_t>(builtin->num_squeeze_dims));
+    };
+
+    // Handle optional input tensors.
+    auto add_optional_tensors = [&nn_model, &augmented_inputs,
+                                 &next_id](int nn_type) {
+      for (size_t idx = 0; idx < augmented_inputs.size(); idx++) {
+        if (augmented_inputs[idx] == kOptionalTensor) {
+          const std::vector<uint32_t> dim = {0, 0};
+          ANeuralNetworksOperandType operand_type{nn_type, 2, dim.data(), 0, 0};
+          CHECK_NN(ANeuralNetworksModel_addOperand(nn_model, &operand_type))
+          CHECK_NN(ANeuralNetworksModel_setOperandValue(nn_model, next_id,
+                                                        nullptr, 0))
+          augmented_inputs[idx] = next_id++;
+        }
+      }
+    };
+
+    int nnapi_version = 10;
     ANeuralNetworksOperationType nn_op_type;
+
     switch (builtin) {
       case tflite::BuiltinOperator_ADD:
         nn_op_type = ANEURALNETWORKS_ADD;
-        add_add_params();
+        add_add_params(node.builtin_data);
         break;
       case tflite::BuiltinOperator_MUL:
         nn_op_type = ANEURALNETWORKS_MUL;
-        add_add_params();
+        add_add_params(node.builtin_data);
         break;
       case tflite::BuiltinOperator_AVERAGE_POOL_2D:
         add_pooling_params(node.builtin_data);
@@ -285,7 +441,14 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
         add_pooling_params(node.builtin_data);
         nn_op_type = ANEURALNETWORKS_L2_POOL_2D;
         break;
-      case tflite::BuiltinOperator_CONV_2D:
+      case tflite::BuiltinOperator_CONV_2D: {
+        auto builtin = reinterpret_cast<TfLiteConvParams*>(node.builtin_data);
+        if (builtin->dilation_width_factor != 1 ||
+            builtin->dilation_height_factor != 1 || node.inputs->size != 3) {
+          logError("NNAPI does not support dilated Conv2D.");
+          return kTfLiteError;
+        }
+      }
         add_convolution_params(node.builtin_data);
         nn_op_type = ANEURALNETWORKS_CONV_2D;
         break;
@@ -329,28 +492,84 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
         nn_op_type = ANEURALNETWORKS_SPACE_TO_DEPTH;
         break;
       case tflite::BuiltinOperator_LSTM: {
+        if (node.inputs->size + /* no of params */ 3 != 21) {
+          logError("NNAPI only supports 21-input LSTMs");
+          return kTfLiteError;
+        }
         duplicate_state_tensor_float32(
-            node.outputs->data[/*kOutputStateTensor*/ 1]);
+            node.outputs->data[/*kOutputStateTensor*/ 0]);
         duplicate_state_tensor_float32(
-            node.outputs->data[/*kCellStateTensor*/ 2]);
+            node.outputs->data[/*kCellStateTensor*/ 1]);
         add_lstm_params(node.builtin_data);
+        add_lstm_scratch_tensor_float32();
+        add_optional_tensors(ANEURALNETWORKS_TENSOR_FLOAT32);
         nn_op_type = ANEURALNETWORKS_LSTM;
         break;
       }
+      case tflite::BuiltinOperator_SVDF: {
+        duplicate_state_tensor_float32(node.outputs->data[/*kStateTensor*/ 0]);
+        add_svdf_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_SVDF;
+        break;
+      }
+      case tflite::BuiltinOperator_RNN: {
+        duplicate_state_tensor_float32(
+            node.outputs->data[/*kHiddenStateTensor*/ 0]);
+        add_rnn_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_RNN;
+        break;
+      }
+      case tflite::BuiltinOperator_EMBEDDING_LOOKUP:
+        nn_op_type = ANEURALNETWORKS_EMBEDDING_LOOKUP;
+        break;
+      case tflite::BuiltinOperator_PAD:
+        nnapi_version = 11;  // require NNAPI 1.1
+        nn_op_type = ANEURALNETWORKS_PAD;
+        break;
+      case tflite::BuiltinOperator_MEAN:
+        nnapi_version = 11;  // require NNAPI 1.1
+        add_mean_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_MEAN;
+        break;
+      case tflite::BuiltinOperator_DIV:
+        nnapi_version = 11;  // require NNAPI 1.1
+        nn_op_type = ANEURALNETWORKS_DIV;
+        check_and_add_activation(
+            reinterpret_cast<TfLiteDivParams*>(node.builtin_data)->activation);
+        break;
+      case tflite::BuiltinOperator_SUB:
+        nnapi_version = 11;  // require NNAPI 1.1
+        nn_op_type = ANEURALNETWORKS_SUB;
+        check_and_add_activation(
+            reinterpret_cast<TfLiteSubParams*>(node.builtin_data)->activation);
+        break;
+      case tflite::BuiltinOperator_SQUEEZE:
+        nnapi_version = 11;  // requires NNAPI 1.1
+        add_squeeze_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_SQUEEZE;
+        break;
+      case tflite::BuiltinOperator_TRANSPOSE:
+        // The permutation input tensor value dictates the output dimensions.
+        // TODO(b/110888333): Support dynamically-sized tensors in delegates.
+        if ((node.inputs->size > 1) &&
+            (interpreter->tensor(node.inputs->data[1])->allocation_type !=
+             kTfLiteMmapRo)) {
+          logError("NNAPI does not yet support dynamic tensors.");
+          return kTfLiteError;
+        }
+        nnapi_version = 11;  // require NNAPI 1.1
+        nn_op_type = ANEURALNETWORKS_TRANSPOSE;
+        break;
       case tflite::BuiltinOperator_CONCAT_EMBEDDINGS:
       case tflite::BuiltinOperator_LSH_PROJECTION:
-      case tflite::BuiltinOperator_SVDF:
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
-      case tflite::BuiltinOperator_RNN:
       case tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
-      case tflite::BuiltinOperator_EMBEDDING_LOOKUP:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE:
       case tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_L2_NORMALIZATION:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
-      case tflite::BuiltinOperator_PAD:
       case tflite::BuiltinOperator_PADV2:
       case tflite::BuiltinOperator_RESIZE_BILINEAR:
       case tflite::BuiltinOperator_CALL:
@@ -360,12 +579,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_SPACE_TO_BATCH_ND:
       case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
       case tflite::BuiltinOperator_TOPK_V2:
-      case tflite::BuiltinOperator_TRANSPOSE:
-      case tflite::BuiltinOperator_MEAN:
-      case tflite::BuiltinOperator_DIV:
-      case tflite::BuiltinOperator_SUB:
       case tflite::BuiltinOperator_SPLIT:
-      case tflite::BuiltinOperator_SQUEEZE:
       case tflite::BuiltinOperator_STRIDED_SLICE:
       case tflite::BuiltinOperator_EXP:
       case tflite::BuiltinOperator_LOG_SOFTMAX:
@@ -376,55 +590,112 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_MAXIMUM:
       case tflite::BuiltinOperator_MINIMUM:
       case tflite::BuiltinOperator_ARG_MAX:
+      case tflite::BuiltinOperator_ARG_MIN:
       case tflite::BuiltinOperator_GREATER:
       case tflite::BuiltinOperator_GREATER_EQUAL:
       case tflite::BuiltinOperator_LESS:
       case tflite::BuiltinOperator_LESS_EQUAL:
       case tflite::BuiltinOperator_NEG:
       case tflite::BuiltinOperator_SELECT:
-        FATAL("Op code %d is currently not delegated to NNAPI", builtin);
-        nn_op_type = -1;  // set to invalid
+      case tflite::BuiltinOperator_SLICE:
+      case tflite::BuiltinOperator_SIN:
+      case tflite::BuiltinOperator_LOG:
+      case tflite::BuiltinOperator_TRANSPOSE_CONV:
+      case tflite::BuiltinOperator_TILE:
+      case tflite::BuiltinOperator_EXPAND_DIMS:
+      case tflite::BuiltinOperator_SPARSE_TO_DENSE:
+      case tflite::BuiltinOperator_EQUAL:
+      case tflite::BuiltinOperator_NOT_EQUAL:
+      case tflite::BuiltinOperator_SUM:
+      case tflite::BuiltinOperator_SQRT:
+      case tflite::BuiltinOperator_RSQRT:
+      case tflite::BuiltinOperator_SHAPE:
+      case tflite::BuiltinOperator_POW:
+      case tflite::BuiltinOperator_FAKE_QUANT:
+        logError("Op code %d is currently not delegated to NNAPI", builtin);
+        return kTfLiteError;
         break;
       case tflite::BuiltinOperator_CUSTOM:
-        FATAL("Custom operations are not supported when using NNAPI.");
-        nn_op_type = -1;  // set to invalid
+        logError("Custom operations are not supported when using NNAPI.");
+        return kTfLiteError;
         break;
+    }
+
+    if (nnapi_version == 11 && kAndroidSdkVersion < 28) {
+      FATAL("Op %d needs NNAPI1.1", builtin);
     }
 
     // Add the operation.
-    CHECK_NN(ANeuralNetworksModel_addOperation(
+    RETURN_ERROR_IF_NN_FAILED(ANeuralNetworksModel_addOperation(
         nn_model, nn_op_type, static_cast<uint32_t>(augmented_inputs.size()),
-        augmented_inputs.data(), static_cast<uint32_t>(node.outputs->size),
-        reinterpret_cast<uint32_t*>(node.outputs->data)));
+        augmented_inputs.data(),
+        static_cast<uint32_t>(augmented_outputs.size()),
+        reinterpret_cast<uint32_t*>(augmented_outputs.data())));
   }
+  return kTfLiteOk;
 }
 
 TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
-  // TODO(aselle): This is not correct. need to handle resize invalidation.
-  if (nn_model_ && nn_compiled_model_) return kTfLiteOk;
+  if (nn_model_ && nn_compiled_model_) return model_status_;
 
+  // TODO(aselle): This is not correct. need to handle resize invalidation.
   if (!nn_model_) {
     CHECK_NN(ANeuralNetworksModel_create(&nn_model_));
 
-    // Find all the temporary tensors and put them in a skip_list.
-    std::vector<uint32_t> skip_list;
+    // Find which tensors should be added to NNAPI. TFLite has temporaries
+    // and RNN back-edges which are are not valid for NNAPI. We look through all
+    // inputs and outputs and mark the mapping in tensor_id_to_nnapi_id with
+    // kOperandIdNotSet. addTensorOperands will replace those with the
+    // corresponding NNAPI operand ids and skip kOperandNotNeeded entries.
+    std::vector<int64_t> tensor_id_to_nnapi_id(interpreter->tensors_size(),
+                                               kOperandNotNeeded);
+    auto set_ids_to_not_set = [&tensor_id_to_nnapi_id](const int* buf,
+                                                       size_t count) {
+      for (int j = 0; j < count; j++) {
+        auto tensor_id = buf[j];
+        if (tensor_id != kOptionalTensor) {
+          tensor_id_to_nnapi_id[tensor_id] = kOperandIdNotSet;
+        }
+      }
+    };
     for (size_t i = 0; i < interpreter->nodes_size(); i++) {
       const auto* node_and_registration = interpreter->node_and_registration(i);
       const TfLiteNode& node = node_and_registration->first;
-      if (node.temporaries != nullptr) {
-        for (int j = 0; j < node.temporaries->size; j++) {
-          skip_list.push_back(static_cast<uint32_t>(node.temporaries->data[j]));
-        }
-      }
+      set_ids_to_not_set(node.inputs->data, node.inputs->size);
+      set_ids_to_not_set(node.outputs->data, node.outputs->size);
     }
+    set_ids_to_not_set(interpreter->inputs().data(),
+                       interpreter->inputs().size());
+    set_ids_to_not_set(interpreter->outputs().data(),
+                       interpreter->outputs().size());
 
-    uint32_t next_id = addTensorOperands(interpreter, nn_model_, skip_list);
-    AddOpsAndParams(interpreter, nn_model_, next_id);
+    uint32_t next_id = 0;
+    RETURN_ERROR_IF_NN_FAILED(addTensorOperands(
+        interpreter, nn_model_, &next_id, &tensor_id_to_nnapi_id));
+    RETURN_ERROR_IF_NN_FAILED(
+        AddOpsAndParams(interpreter, nn_model_, next_id, &model_states_inputs_,
+                        &model_states_outputs_, tensor_id_to_nnapi_id));
+
+    std::vector<uint32_t> augmented_inputs;
+    MapAndAddTensorIds(interpreter->inputs().data(),
+                       interpreter->inputs().size(), &augmented_inputs,
+                       tensor_id_to_nnapi_id);
+    augmented_inputs.insert(augmented_inputs.end(),
+                            model_states_inputs_.begin(),
+                            model_states_inputs_.end());
+    std::vector<uint32_t> augmented_outputs;
+    MapAndAddTensorIds(interpreter->outputs().data(),
+                       interpreter->outputs().size(), &augmented_outputs,
+                       tensor_id_to_nnapi_id);
+    MapAndAddTensorIds(model_states_outputs_.data(),
+                       model_states_outputs_.size(), &augmented_outputs,
+                       tensor_id_to_nnapi_id);
+
     CHECK_NN(ANeuralNetworksModel_identifyInputsAndOutputs(
-        nn_model_, static_cast<uint32_t>(interpreter->inputs().size()),
-        reinterpret_cast<const uint32_t*>(interpreter->inputs().data()),
-        static_cast<uint32_t>(interpreter->outputs().size()),
-        reinterpret_cast<const uint32_t*>(interpreter->outputs().data())));
+        nn_model_, static_cast<uint32_t>(augmented_inputs.size()),
+        reinterpret_cast<const uint32_t*>(augmented_inputs.data()),
+        static_cast<uint32_t>(augmented_outputs.size()),
+        reinterpret_cast<const uint32_t*>(augmented_outputs.data())));
     CHECK_NN(ANeuralNetworksModel_finish(nn_model_));
   }
   if (!nn_compiled_model_) {
@@ -436,7 +707,13 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
 
 TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
   if (!nn_model_) {
-    TF_LITE_ENSURE_STATUS(BuildGraph(interpreter));
+    model_status_ = BuildGraph(interpreter);
+    if (model_status_ != kTfLiteOk) {
+      logError("Failed to build graph for NNAPI");
+    }
+  }
+  if (model_status_ != kTfLiteOk) {
+    return model_status_;
   }
 
   ANeuralNetworksExecution* execution = nullptr;
@@ -451,6 +728,7 @@ TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
     CHECK_NN(ANeuralNetworksExecution_setInput(
         execution, i, nullptr, tensor->data.raw, tensor->bytes));
   }
+
   // Tell nn api where to place final data.
   for (size_t i = 0; i < interpreter->outputs().size(); i++) {
     int output = interpreter->outputs()[i];
@@ -458,6 +736,24 @@ TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
     CHECK_NN(ANeuralNetworksExecution_setOutput(
         execution, i, nullptr, tensor->data.raw, tensor->bytes));
   }
+
+  // The state_out of previous invocation need to be mapped to state_in of
+  // current invocation.
+  for (size_t i = 0; i < model_states_outputs_.size(); i++) {
+    int state_tensor_idx = model_states_outputs_[i];
+    TfLiteTensor* tensor = interpreter->tensor(state_tensor_idx);
+    // Here we are using a deep copy for state_in tensors so that we are not
+    // reading and writing into the same buffer during a invocation.
+    // TODO(miaowang): using double shared buffer to minimize the copies.
+    CHECK_NN(ANeuralNetworksExecution_setInput(
+        execution, i + interpreter->inputs().size(), nullptr, tensor->data.raw,
+        tensor->bytes));
+    // Tell NNAPI where to output the state_out.
+    CHECK_NN(ANeuralNetworksExecution_setOutput(
+        execution, i + interpreter->outputs().size(), nullptr, tensor->data.raw,
+        tensor->bytes));
+  }
+
   // Currently use blocking compute.
   ANeuralNetworksEvent* event = nullptr;
   CHECK_NN(ANeuralNetworksExecution_startCompute(execution, &event));

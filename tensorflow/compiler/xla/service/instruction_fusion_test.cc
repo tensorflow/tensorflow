@@ -16,14 +16,99 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 
 namespace op = xla::testing::opcode_matchers;
 
 using InstructionFusionTest = HloTestBase;
+
+// Subclass of InstructionFusion exposing the protected methods Fuse and
+// FuseIntoMultiOutput for testing.
+class InstructionFusionForTesting : public InstructionFusion {
+ public:
+  explicit InstructionFusionForTesting(HloModule* module)
+      : InstructionFusion(InstructionFusion::IsExpensive) {
+    module_ = module;
+    computation_ = module->entry_computation();
+  }
+
+  HloInstruction* Fuse(HloInstruction* producer,
+                       HloInstruction* consumer) override {
+    return InstructionFusion::Fuse(producer, consumer);
+  }
+
+  HloInstruction* FuseIntoMultiOutput(HloInstruction* producer,
+                                      HloInstruction* consumer) override {
+    return InstructionFusion::FuseIntoMultiOutput(producer, consumer);
+  }
+};
+
+TEST_F(InstructionFusionTest, FuseInstructions) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    add = f32[4,3]{1,0} add(p0, p0)
+    ROOT sub = f32[4,3]{1,0} subtract(add, p0)
+  })")
+                    .ValueOrDie();
+  HloInstruction* sub = module->entry_computation()->root_instruction();
+  HloInstruction* add = sub->mutable_operand(0);
+  HloInstruction* fusion =
+      InstructionFusionForTesting(module.get()).Fuse(add, sub);
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Subtract(op::Add(), op::Parameter()))
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseIntoFusionInstruction) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  fused_computation {
+    p1 = f32[4,3] parameter(0)
+    add = f32[4,3] add(p1, p1)
+  }
+  ENTRY entry_computation {
+    p0 = f32[4,3] parameter(0)
+    abs = f32[4,3] abs(p0)
+    ROOT fusion = f32[4,3] fusion(abs), kind=kLoop, calls=fused_computation
+  })")
+                    .ValueOrDie();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* abs = root->mutable_operand(0);
+  HloInstruction* fusion =
+      InstructionFusionForTesting(module.get()).Fuse(abs, root);
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(), op::Add(op::Abs(), op::Abs()))
+      << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+  ENTRY entry_computation {
+    p0 = f32[4,3]{1,0} parameter(0)
+    abs = f32[4,3]{1,0} abs(p0)
+    tanh = f32[4,3]{1,0} tanh(abs)
+    ROOT add = f32[4,3]{1,0} add(abs, tanh)
+  })")
+                    .ValueOrDie();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction* abs = root->mutable_operand(0);
+  HloInstruction* tanh = root->mutable_operand(1);
+  HloInstruction* fusion =
+      InstructionFusionForTesting(module.get()).FuseIntoMultiOutput(abs, tanh);
+
+  ASSERT_THAT(fusion, op::Fusion()) << module->ToString();
+  EXPECT_THAT(fusion->fused_expression_root(), op::Tuple(op::Tanh(), op::Abs()))
+      << module->ToString();
+}
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
   HloComputation::Builder builder(TestName());
@@ -82,7 +167,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
       builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
-  builder.AddInstruction(HloInstruction::CreateSend(binary1, 0));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -92,7 +178,8 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
   EXPECT_FALSE(
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
-          .ValueOrDie());
+          .ValueOrDie())
+      << module->ToString();
 }
 
 // Counts the number of HLO ops with a given op code in the specified module.
@@ -109,7 +196,7 @@ static int Count(const HloModule& module, HloOpcode op) {
 }
 
 TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -134,7 +221,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   //
   // p0 -> add -------------------------> sub
   //           \-> abs1 -> rng -> abs2 -/
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
@@ -151,7 +238,11 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
           .Run(module.get())
           .ValueOrDie())
       << module->ToString();
-  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Subtract(op::Abs(op::Parameter()), op::Parameter()))
+      << module->ToString();
 
   // Make sure the add hasn't been duplicated.
   EXPECT_EQ(Count(*module, HloOpcode::kAdd), 1) << module->ToString();
@@ -161,14 +252,15 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   // p0 -> add -------------------------> sub
   //           \-> abs1 -> log -> abs2 -/
   //                           \-> send
-  module = tools::Parse(R"(
+  module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
     add = f32[4,3]{1,0} add(p0, p0)
     abs1 = f32[4,3]{1,0} abs(add)
     log = f32[4,3]{1,0} log(abs1)
-    send = f32[4,3]{1,0} send(log), channel_id=0
+    token = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token), channel_id=0
     abs2 = f32[4,3]{1,0} abs(log)
     ROOT root = f32[4,3]{1,0} subtract(abs2, add)
   })")
@@ -192,13 +284,14 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   //    \         \-> add2 -/
   //     \-> log -/
   //             \-> send
-  module = tools::Parse(R"(
+  module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
     add1 = f32[4,3]{1,0} add(p0, p0)
     log = f32[4,3]{1,0} log(p0)
-    send = f32[4,3]{1,0} send(log), channel_id=0
+    token = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token), channel_id=0
     add2 = f32[4,3]{1,0} add(log, add1)
     ROOT root = f32[4,3]{1,0} subtract(add1, add2)
   })")
@@ -224,14 +317,15 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   //                       \------> sub1
   //                        log -/
   //                            \-> send
-  module = tools::Parse(R"(
+  module = ParseHloString(R"(
   HloModule test_module
   ENTRY OutputFusion {
     p0 = f32[4,3]{1,0} parameter(0)
     add1 = f32[4,3]{1,0} add(p0, p0)
     add2 = f32[4,3]{1,0} add(add1, add1)
     log = f32[4,3]{1,0} log(add2)
-    send = f32[4,3]{1,0} send(log), channel_id=0
+    token = token[] after-all()
+    send = f32[4,3]{1,0} send(log, token), channel_id=0
     sub1 = f32[4,3]{1,0} subtract(log, add2)
     sub2 = f32[4,3]{1,0} subtract(add2, add1)
     ROOT root = (f32[4,3]{1,0}, f32[4,3]{1,0}) tuple(sub1, sub2)
@@ -244,7 +338,12 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
           .Run(module.get())
           .ValueOrDie())
       << module->ToString();
-  EXPECT_EQ(Count(*module, HloOpcode::kFusion), 1) << module->ToString();
+  root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Tuple(op::Subtract(op::Parameter(), op::Parameter()),
+                        op::Subtract(op::Parameter(), op::Parameter())))
+      << module->ToString();
 
   // Make sure we didn't duplicate any adds.
   EXPECT_EQ(Count(*module, HloOpcode::kAdd), 2) << module->ToString();
@@ -257,7 +356,8 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "0"));
   HloInstruction* unary1 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
-  builder.AddInstruction(HloInstruction::CreateSend(unary1, 0));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateSend(unary1, token, 0));
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
@@ -280,7 +380,8 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
       builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
   HloInstruction* binary1 = builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
-  builder.AddInstruction(HloInstruction::CreateSend(binary1, 0));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, token, 0));
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
@@ -295,7 +396,7 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
 
 TEST_F(InstructionFusionTest,
        WideningConvertsAreAlwaysDuplicableIntoConsumers) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
   HloModule test_module
   ENTRY Test {
     p0 = f16[100] parameter(0)

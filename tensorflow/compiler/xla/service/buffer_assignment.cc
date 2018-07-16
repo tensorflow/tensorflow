@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/buffer_value_containers.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -134,6 +135,7 @@ Status GatherComputationsByAllocationType(
             worklist.push_back(std::make_pair(subcomputation,
                                               false));  // Not thread local.
             break;
+          case HloOpcode::kCrossReplicaSum:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
           case HloOpcode::kReduceWindow:
@@ -631,7 +633,7 @@ Status BufferAssignment::ComputeSummaryStats() {
   if (module_sequence.size() == module_->computation_count()) {
     TF_ASSIGN_OR_RETURN(
         const int64 min_size,
-        MinimumMemoryForSequence(module_sequence, buffer_size_));
+        HeapSimulator::MinimumMemoryForModule(module_sequence, buffer_size_));
     stats_.total_fragmentation_bytes = stats_.total_allocation_bytes - min_size;
   }
 
@@ -699,7 +701,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
         BufferAssignmentProto::BufferAlias* proto_alias =
             proto.add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
-            LogicalBuffer::ToLocationProto(*alias.instruction(), alias.index());
+            BufferValue::ToLocationProto(*alias.instruction(), alias.index());
         proto_alias->set_source_buffer_id(buffer.id());
         proto_alias->mutable_location()->Swap(&proto_alias_location);
       }
@@ -1083,7 +1085,9 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       VLOG(2) << "Simulating heap for color " << color;
       int64 alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
-      options.buffers_to_assign = &single_colored_set.second;
+      BufferValueFlatSet buffer_value_set =
+          ToBufferValueFlatSet(single_colored_set.second);
+      options.buffers_to_assign = &buffer_value_set;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
@@ -1111,7 +1115,9 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         VLOG(2) << "Simulating heap for color " << color;
         int64 alignment = assignment->color_alignment_(color);
         HeapSimulator::Options options;
-        options.buffers_to_assign = &single_colored_set.second;
+        BufferValueFlatSet buffer_value_set =
+            ToBufferValueFlatSet(single_colored_set.second);
+        options.buffers_to_assign = &buffer_value_set;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
@@ -1224,7 +1230,10 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
   BufferAllocation* allocation = assignment->NewEmptyAllocation(
       result.heap_size, /*is_thread_local=*/false, /*is_reusable=*/true, color);
   for (const auto& buffer_chunk : result.chunk_map) {
-    const LogicalBuffer& buffer = *buffer_chunk.first;
+    // TODO(lauj) Remove this down_cast after downstream users of
+    // BufferAllocation::assigned_buffers() are updated to use BufferValue.
+    const LogicalBuffer& buffer =
+        *CHECK_NOTNULL(dynamic_cast<const LogicalBuffer*>(buffer_chunk.first));
     const HeapSimulator::Chunk& chunk = buffer_chunk.second;
     assignment->AddAssignment(allocation, buffer, chunk.offset, chunk.size);
   }

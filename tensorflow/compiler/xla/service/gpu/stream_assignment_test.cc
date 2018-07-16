@@ -28,6 +28,14 @@ namespace gpu {
 
 class StreamAssignmentTest : public HloTestBase {
  protected:
+  std::unique_ptr<HloModule> CreateNewModule() {
+    HloModuleConfig config;
+    auto debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_disable_multi_streaming(false);
+    config.set_debug_options(debug_options);
+    return MakeUnique<HloModule>("test_module", config);
+  }
+
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
 };

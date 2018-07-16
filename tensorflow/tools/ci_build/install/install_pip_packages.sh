@@ -51,8 +51,8 @@ pip2 install --upgrade markdown==2.6.8
 pip3 install --upgrade markdown==2.6.8
 
 # Install protobuf.
-pip2 install --upgrade protobuf==3.3.0
-pip3 install --upgrade protobuf==3.3.0
+pip2 install --upgrade protobuf==3.6.0
+pip3 install --upgrade protobuf==3.6.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -109,3 +109,17 @@ pip2 install --upgrade gast
 pip3 install --upgrade gast
 pip2 install --upgrade termcolor
 pip3 install --upgrade termcolor
+
+# Install last working version of setuptools.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0
+
+# Keras
+pip2 install keras_applications==1.0.2
+pip3 install keras_applications==1.0.2
+pip2 install keras_preprocessing==1.0.1
+pip3 install keras_preprocessing==1.0.1
+
+# Install last working version of setuptools.
+pip2 install --upgrade setuptools==39.1.0
+pip3 install --upgrade setuptools==39.1.0

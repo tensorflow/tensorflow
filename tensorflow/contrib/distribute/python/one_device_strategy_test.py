@@ -24,7 +24,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 
 
-@test_util.with_c_api
 class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
 
   def _get_distribution_strategy(self):
@@ -45,7 +44,7 @@ class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
   def testTowerId(self):
     self._test_tower_id(self._get_distribution_strategy())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
     self._test_call_and_merge_exceptions(self._get_distribution_strategy())
 

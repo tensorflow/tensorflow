@@ -20,6 +20,7 @@ from __future__ import print_function
 import threading
 import warnings
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
@@ -52,6 +53,9 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
     "`next_element` as the input to some computation that is invoked inside "
     "the loop.")
 
+# Collection of all IteratorResources in the `Graph`.
+GLOBAL_ITERATORS = "iterators"
+
 
 @tf_export("data.Iterator")
 class Iterator(object):
@@ -75,8 +79,7 @@ class Iterator(object):
       output_shapes: A nested structure of `tf.TensorShape` objects
         corresponding to each component of an element of this dataset.
       output_classes: A nested structure of Python `type` object corresponding
-        to each
-        component of an element of this iterator.
+        to each component of an element of this iterator.
     """
     self._iterator_resource = iterator_resource
     self._initializer = initializer
@@ -86,6 +89,7 @@ class Iterator(object):
     self._string_handle = gen_dataset_ops.iterator_to_string_handle(
         self._iterator_resource)
     self._get_next_call_count = 0
+    ops.add_to_collection(GLOBAL_ITERATORS, self._iterator_resource)
 
   @staticmethod
   def from_structure(output_types,
@@ -169,13 +173,32 @@ class Iterator(object):
     nest.assert_same_structure(output_types, output_shapes)
     if shared_name is None:
       shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="",
-        shared_name=shared_name,
-        output_types=nest.flatten(
-            sparse.as_dense_types(output_types, output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(output_shapes, output_classes)))
+    if compat.forward_compatible(2018, 8, 3):
+      if not ops.get_default_graph()._graph_device_function_stack:  # pylint: disable=protected-access
+        with ops.device("/cpu:0"):
+          iterator_resource = gen_dataset_ops.iterator_v2(
+              container="",
+              shared_name=shared_name,
+              output_types=nest.flatten(
+                  sparse.as_dense_types(output_types, output_classes)),
+              output_shapes=nest.flatten(
+                  sparse.as_dense_shapes(output_shapes, output_classes)))
+      else:
+        iterator_resource = gen_dataset_ops.iterator_v2(
+            container="",
+            shared_name=shared_name,
+            output_types=nest.flatten(
+                sparse.as_dense_types(output_types, output_classes)),
+            output_shapes=nest.flatten(
+                sparse.as_dense_shapes(output_shapes, output_classes)))
+    else:
+      iterator_resource = gen_dataset_ops.iterator(
+          container="",
+          shared_name=shared_name,
+          output_types=nest.flatten(
+              sparse.as_dense_types(output_types, output_classes)),
+          output_shapes=nest.flatten(
+              sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -239,12 +262,29 @@ class Iterator(object):
       output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
-    iterator_resource = gen_dataset_ops.iterator_from_string_handle(
-        string_handle,
-        output_types=nest.flatten(
-            sparse.as_dense_types(output_types, output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(output_shapes, output_classes)))
+    if compat.forward_compatible(2018, 8, 3):
+      if not ops.get_default_graph()._graph_device_function_stack:  # pylint: disable=protected-access
+        with ops.device("/cpu:0"):
+          iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
+              string_handle,
+              output_types=nest.flatten(
+                  sparse.as_dense_types(output_types, output_classes)),
+              output_shapes=nest.flatten(
+                  sparse.as_dense_shapes(output_shapes, output_classes)))
+      else:
+        iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
+            string_handle,
+            output_types=nest.flatten(
+                sparse.as_dense_types(output_types, output_classes)),
+            output_shapes=nest.flatten(
+                sparse.as_dense_shapes(output_shapes, output_classes)))
+    else:
+      iterator_resource = gen_dataset_ops.iterator_from_string_handle(
+          string_handle,
+          output_types=nest.flatten(
+              sparse.as_dense_types(output_types, output_classes)),
+          output_shapes=nest.flatten(
+              sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -468,9 +508,7 @@ class EagerIterator(object):
           sparse.as_dense_types(self._output_types, self._output_classes))
       self._flat_output_shapes = nest.flatten(
           sparse.as_dense_shapes(self._output_shapes, self._output_classes))
-      self._resource = gen_dataset_ops.iterator(
-          shared_name="",
-          container=_generate_shared_name("eageriterator"),
+      self._resource = gen_dataset_ops.anonymous_iterator(
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       gen_dataset_ops.make_iterator(ds_variant, self._resource)

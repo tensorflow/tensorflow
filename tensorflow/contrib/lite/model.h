@@ -37,6 +37,7 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/op_resolver.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -131,18 +132,6 @@ class FlatBufferModel {
   Allocation* allocation_ = nullptr;
 };
 
-// Abstract interface that returns TfLiteRegistrations given op codes or custom
-// op names. This is the mechanism that ops being referenced in the flatbuffer
-// model are mapped to executable function pointers (TfLiteRegistrations).
-class OpResolver {
- public:
-  // Finds the op registration for a builtin operator by enum code.
-  virtual TfLiteRegistration* FindOp(tflite::BuiltinOperator op) const = 0;
-  // Finds the op registration of a custom operator by op name.
-  virtual TfLiteRegistration* FindOp(const char* op) const = 0;
-  virtual ~OpResolver() {}
-};
-
 // Build an interpreter capable of interpreting `model`.
 //
 // model: a scoped model whose lifetime must be at least as long as
@@ -167,6 +156,7 @@ class InterpreterBuilder {
   InterpreterBuilder(const ::tflite::Model* model,
                      const OpResolver& op_resolver,
                      ErrorReporter* error_reporter = DefaultErrorReporter());
+  ~InterpreterBuilder();
   InterpreterBuilder(const InterpreterBuilder&) = delete;
   InterpreterBuilder& operator=(const InterpreterBuilder&) = delete;
   TfLiteStatus operator()(std::unique_ptr<Interpreter>* interpreter);
@@ -187,7 +177,7 @@ class InterpreterBuilder {
   const OpResolver& op_resolver_;
   ErrorReporter* error_reporter_;
 
-  std::vector<TfLiteRegistration*> flatbuffer_op_index_to_registration_;
+  std::vector<const TfLiteRegistration*> flatbuffer_op_index_to_registration_;
   std::vector<BuiltinOperator> flatbuffer_op_index_to_registration_types_;
   const Allocation* allocation_ = nullptr;
 };

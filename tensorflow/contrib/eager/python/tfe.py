@@ -68,6 +68,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@async_clear_error
 
 @@run_test_in_graph_and_eager_modes
+@@run_all_tests_in_graph_and_eager_modes
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
@@ -115,14 +116,15 @@ from tensorflow.python.eager.execution_callbacks import seterr
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
+from tensorflow.python.framework.test_util import run_all_in_graph_and_eager_modes as run_all_tests_in_graph_and_eager_modes
 from tensorflow.python.ops.custom_gradient import custom_gradient
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
-from tensorflow.python.training.checkpointable import Checkpointable
-from tensorflow.python.training.checkpointable_utils import CheckpointableSaver
-from tensorflow.python.training.checkpointable_utils import Checkpoint
+from tensorflow.python.training.checkpointable.tracking import Checkpointable
+from tensorflow.python.training.checkpointable.util import CheckpointableSaver
+from tensorflow.python.training.checkpointable.util import Checkpoint
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func

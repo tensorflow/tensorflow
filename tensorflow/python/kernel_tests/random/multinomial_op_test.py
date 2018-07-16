@@ -54,7 +54,7 @@ native_sampler = random_ops.multinomial
 
 class MultinomialTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSmallEntropy(self):
     random_seed.set_random_seed(1618)
     for output_dtype in [np.int32, np.int64]:

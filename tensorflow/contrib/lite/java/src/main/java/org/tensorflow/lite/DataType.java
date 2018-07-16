@@ -27,10 +27,7 @@ enum DataType {
   UINT8(3),
 
   /** 64-bit signed integer. */
-  INT64(4),
-
-  /** A {@link ByteBuffer}. */
-  BYTEBUFFER(999);
+  INT64(4);
 
   private final int value;
 
@@ -69,8 +66,6 @@ enum DataType {
         return 1;
       case INT64:
         return 8;
-      case BYTEBUFFER:
-        return 1;
     }
     throw new IllegalArgumentException(
         "DataType error: DataType " + this + " is not supported yet");
@@ -87,8 +82,6 @@ enum DataType {
         return "byte";
       case INT64:
         return "long";
-      case BYTEBUFFER:
-        return "ByteBuffer";
     }
     throw new IllegalArgumentException(
         "DataType error: DataType " + this + " is not supported yet");

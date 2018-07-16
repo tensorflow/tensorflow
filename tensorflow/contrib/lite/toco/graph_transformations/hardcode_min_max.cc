@@ -133,24 +133,20 @@ bool HardcodeMinMaxForConcatenation(Model* model, Operator* op) {
 }
 
 bool HardcodeMinMaxForSplit(Model* model, Operator* op) {
-  for (const auto& output : op->outputs) {
-    if (model->GetArray(output).minmax) {
-      LOG(WARNING) << "Skipping min-max setting for " << LogName(*op)
-                   << " because output " << output << " already has min-max.";
-      return false;
-    }
-  }
   // Data is in second input.
   auto& input_array = model->GetArray(op->inputs[1]);
   if (!input_array.minmax) {
     return false;
-  } else {
-    for (const auto& output : op->outputs) {
-      auto& array = model->GetArray(output);
+  }
+  bool changed = false;
+  for (const auto& output : op->outputs) {
+    auto& array = model->GetArray(output);
+    if (!array.minmax || !(array.GetMinMax() == input_array.GetMinMax())) {
+      changed = true;
       array.GetOrCreateMinMax() = *input_array.minmax;
     }
-    return true;
   }
+  return changed;
 }
 
 // The output of average or max pooling is within the same range as its input.
@@ -188,6 +184,32 @@ bool HardcodeMinMaxFromFirstInput(Model* model, Operator* op) {
   return true;
 }
 
+bool HardcodeMinMaxForSelect(Model* model, Operator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+  const auto& input_array_1 = model->GetArray(op->inputs[1]);
+  if (!input_array_1.minmax) {
+    return false;
+  }
+  const auto& input_array_2 = model->GetArray(op->inputs[2]);
+  if (!input_array_2.minmax) {
+    return false;
+  }
+
+  const auto& input_minmax_1 = input_array_1.GetMinMax();
+  const auto& input_minmax_2 = input_array_2.GetMinMax();
+
+  CHECK_EQ(input_minmax_1.min, input_minmax_2.min);
+  CHECK_EQ(input_minmax_1.max, input_minmax_2.max);
+  CHECK(!output_array.minmax);
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = input_minmax_1.min;
+  output_minmax.max = input_minmax_1.max;
+  return true;
+}
+
 bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
                              double max) {
   CHECK_EQ(op->outputs.size(), 1);
@@ -204,6 +226,14 @@ bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
   output_minmax.min = min;
   output_minmax.max = max;
   return true;
+}
+
+bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
+  const double magnitude =
+      std::min(minmax1.max - minmax1.min, minmax2.max - minmax2.min);
+  const double tolerated = 1e-6 * magnitude;
+  return std::abs(minmax1.min - minmax2.min) < tolerated &&
+         std::abs(minmax1.max - minmax2.max) < tolerated;
 }
 
 // Propagates MinMax from any of the listed arrays, to all others.
@@ -228,7 +258,7 @@ bool PropagateMinMaxAmongArrays(Model* model,
   for (const string& array_name : array_names) {
     auto& array = model->GetArray(array_name);
     if (array.minmax) {
-      CHECK(*array.minmax == *reference_minmax)
+      CHECK(MinMaxApproximatelyEqual(*array.minmax, *reference_minmax))
           << "Both the following arrays have minmax, and they disagree: "
           << reference_array_name << " (" << reference_minmax->min << ","
           << reference_minmax->max << ") and " << array_name << " ("
@@ -327,7 +357,7 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForConcatenation(model, op);
       break;
 
-    case OperatorType::kTensorFlowSplit:
+    case OperatorType::kSplit:
       changed = HardcodeMinMaxForSplit(model, op);
       break;
 
@@ -336,16 +366,20 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForAverageOrMaxPool(model, op);
       break;
 
+    case OperatorType::kResizeBilinear:
+    case OperatorType::kSlice:
     case OperatorType::kStridedSlice:
     case OperatorType::kSqueeze:
-    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kReshape:
     case OperatorType::kPad:
     case OperatorType::kGather:
     case OperatorType::kTranspose:
     case OperatorType::kMean:
       changed = HardcodeMinMaxFromFirstInput(model, op);
       break;
-
+    case OperatorType::kSelect:
+      changed = HardcodeMinMaxForSelect(model, op);
+      break;
     case OperatorType::kLogistic:
       // We hardcode quantization_params to: zero_point=0, scale=1/256.
       // This choice of minmax is the one that is equivalent to that.

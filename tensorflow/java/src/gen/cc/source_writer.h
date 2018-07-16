@@ -93,7 +93,7 @@ class SourceWriter {
   // This method appends a new opening brace to the current data and indent the
   // next lines according to Google Java Style Guide. The block can optionally
   // be preceded by an expression (e.g. Append("if(true)").BeginBlock();)
-  SourceWriter& BeginBlock(const string& expr = "");
+  SourceWriter& BeginBlock(const string& expression = "");
 
   // Ends the current block of source code.
   //
@@ -108,7 +108,7 @@ class SourceWriter {
   // in parameter to define the access scope of this method and, optionally,
   // a Javadoc.
   SourceWriter& BeginMethod(const Method& method, int modifiers,
-      const Javadoc* javadoc = nullptr);
+                            const Javadoc* javadoc = nullptr);
 
   // Ends the current method.
   //
@@ -125,9 +125,9 @@ class SourceWriter {
   //
   // If not null, all types found in the 'extra_dependencies' list will be
   // imported before declaring the new type.
-  SourceWriter& BeginType(const Type& clazz, int modifiers,
-      const std::list<Type>* extra_dependencies = nullptr,
-      const Javadoc* javadoc = nullptr);
+  SourceWriter& BeginType(const Type& type, int modifiers,
+                          const std::list<Type>* extra_dependencies = nullptr,
+                          const Javadoc* javadoc = nullptr);
 
   // Begins to write a new inner type.
   //
@@ -136,7 +136,7 @@ class SourceWriter {
   // in parameter to define the accesses and the scope of this type and,
   // optionally, a Javadoc.
   SourceWriter& BeginInnerType(const Type& type, int modifiers,
-      const Javadoc* javadoc = nullptr);
+                               const Javadoc* javadoc = nullptr);
 
   // Ends the current type.
   //
@@ -150,7 +150,7 @@ class SourceWriter {
   // or BeginInnerType()). Modifiers are also be passed in parameter to define
   // the accesses and the scope of this field and, optionally, a Javadoc.
   SourceWriter& WriteField(const Variable& field, int modifiers,
-      const Javadoc* javadoc = nullptr);
+                           const Javadoc* javadoc = nullptr);
 
  protected:
   virtual void DoAppend(const StringPiece& str) = 0;

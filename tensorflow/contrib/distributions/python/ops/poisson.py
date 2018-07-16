@@ -28,6 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Poisson",
@@ -65,6 +66,14 @@ class Poisson(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                rate=None,
                log_rate=None,
@@ -93,7 +102,7 @@ class Poisson(distribution.Distribution):
       TypeError: if `rate` is not a float-type.
       TypeError: if `log_rate` is not a float-type.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name, values=[rate]) as name:
       if (rate is None) == (log_rate is None):
         raise ValueError("Must specify exactly one of `rate` and `log_rate`.")

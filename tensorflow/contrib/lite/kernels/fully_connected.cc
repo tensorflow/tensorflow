@@ -63,6 +63,7 @@ constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
+constexpr int kShuffledInputWorkspaceTensor = 1;
 constexpr int kScratchBufferTensor = 1;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -87,11 +88,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Check we have all the inputs and outputs we need.
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 3);
-  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+  // Shuffled formats need a workspace to store the shuffled input activations.
+  const int expected_outputs_count =
+      params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault ? 1
+                                                                          : 2;
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, expected_outputs_count);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // Check all the parameters of tensor match within themselves and match the
@@ -101,16 +106,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     input_size *= input->dims->data[i];
   }
 
+  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
-  TF_LITE_ASSERT_EQ(input_size, batch_size * filter->dims->data[1]);
+  TF_LITE_ENSURE_EQ(context, input_size, batch_size * filter->dims->data[1]);
   if (bias) {
-    TF_LITE_ASSERT_EQ(bias->dims->data[0], num_units);
+    TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
-
-  TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 2);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(bias), 1);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -119,11 +122,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
-    QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
-                                     &data->output_shift);
-    CalculateActivationRangeUint8(params->activation, output,
-                                  &data->output_activation_min,
-                                  &data->output_activation_max);
+    TF_LITE_ENSURE(context, real_multiplier < 1.0);
+    QuantizeMultiplierSmallerThanOneExp(
+        real_multiplier, &data->output_multiplier, &data->output_shift);
+    data->output_shift *= -1;
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   }
 
   // If we have to perform on-the-fly quantization (with quantized weights and
@@ -158,8 +163,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
                      TfLiteFullyConnectedParams* params, OpData* data,
-                     TfLiteTensor* input, TfLiteTensor* filter,
-                     TfLiteTensor* bias, TfLiteTensor* output) {
+                     const TfLiteTensor* input, const TfLiteTensor* filter,
+                     const TfLiteTensor* bias, TfLiteTensor* output) {
   int total_input_size = 1;
   for (int i = 0; i < input->dims->size; i++) {
     total_input_size *= input->dims->data[i];
@@ -191,8 +196,10 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
                               TfLiteFullyConnectedParams* params, OpData* data,
-                              TfLiteTensor* input, TfLiteTensor* filter,
-                              TfLiteTensor* bias, TfLiteTensor* input_quantized,
+                              const TfLiteTensor* input,
+                              const TfLiteTensor* filter,
+                              const TfLiteTensor* bias,
+                              TfLiteTensor* input_quantized,
                               TfLiteTensor* output) {
   // Check the types for this hybrid Op.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
@@ -217,11 +224,8 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
     tensor_utils::ZeroVector(output->data.f, batch_size * num_units);
   }
 
-  // TODO(mirkov): change std::minmax_element with a vectorized call.
-  auto minmax_element =
-      std::minmax_element(input->data.f, input->data.f + total_input_size);
   // Save matrix multiplication computation for all zero input.
-  if (*minmax_element.first == 0.0 && *minmax_element.second == 0.0) {
+  if (tensor_utils::IsZeroVector(input->data.f, total_input_size)) {
     tensor_utils::ApplyActivationToVector(output->data.f,
                                           batch_size * num_units,
                                           params->activation, output->data.f);
@@ -271,37 +275,57 @@ TfLiteStatus EvalPieQuantized(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteFullyConnectedParams* params, OpData* data,
-                           TfLiteTensor* input, TfLiteTensor* filter,
-                           TfLiteTensor* bias, TfLiteTensor* output) {
+                           const TfLiteTensor* input,
+                           const TfLiteTensor* filter, const TfLiteTensor* bias,
+                           TfLiteTensor* output) {
   gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
 
   int32_t input_offset = -input->params.zero_point;
   int32_t filter_offset = -filter->params.zero_point;
   int32_t output_offset = output->params.zero_point;
-#define TF_LITE_FULLY_CONNECTED(type)                                       \
+#define TF_LITE_FULLY_CONNECTED(type, output_data_type)                     \
   type::FullyConnected(                                                     \
       GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,    \
       GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset, \
       GetTensorData<int32_t>(bias), GetTensorDims(bias), output_offset,     \
       data->output_multiplier, data->output_shift,                          \
       data->output_activation_min, data->output_activation_max,             \
-      GetTensorData<uint8_t>(output), GetTensorDims(output), gemm_context)
+      GetTensorData<output_data_type>(output), GetTensorDims(output),       \
+      gemm_context)
   if (kernel_type == kReference) {
-    TF_LITE_FULLY_CONNECTED(reference_ops);
-  } else if (kernel_type == kPie) {
-    if (input->type == kTfLiteFloat32) {
-      // Pie currently only supports quantized models and float inputs/outputs.
-      TfLiteTensor* input_quantized =
-          &context->tensors[node->temporaries->data[0]];
-      return EvalPieQuantized(context, node, params, data, input, filter, bias,
-                              input_quantized, output);
-    } else {
-      // TODO(ahentz): we don't have a quantized version of the PIE kernels, so
-      // we just defer to the MINI ones.
-      TF_LITE_FULLY_CONNECTED(optimized_ops);
+    switch (output->type) {
+      case kTfLiteUInt8:
+        TF_LITE_FULLY_CONNECTED(reference_ops, uint8_t);
+        break;
+      case kTfLiteInt16:
+        TF_LITE_FULLY_CONNECTED(reference_ops, int16_t);
+        break;
+      default:
+        context->ReportError(
+            context,
+            "Quantized FullyConnected expects output data type uint8 or int16");
+        return kTfLiteError;
     }
+  } else if (kernel_type == kPie && input->type == kTfLiteFloat32) {
+    // Pie currently only supports quantized models and float inputs/outputs.
+    TfLiteTensor* input_quantized =
+        &context->tensors[node->temporaries->data[0]];
+    return EvalPieQuantized(context, node, params, data, input, filter, bias,
+                            input_quantized, output);
   } else {
-    TF_LITE_FULLY_CONNECTED(optimized_ops);
+    switch (output->type) {
+      case kTfLiteUInt8:
+        TF_LITE_FULLY_CONNECTED(optimized_ops, uint8_t);
+        break;
+      case kTfLiteInt16:
+        TF_LITE_FULLY_CONNECTED(optimized_ops, int16_t);
+        break;
+      default:
+        context->ReportError(
+            context,
+            "Quantized FullyConnected expects output data type uint8 or int16");
+        return kTfLiteError;
+    }
   }
 #undef TF_LITE_FULLY_CONNECTED
 
@@ -309,13 +333,51 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 }
 
 template <KernelType kernel_type>
+TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
+                                   TfLiteFullyConnectedParams* params,
+                                   OpData* data, const TfLiteTensor* input,
+                                   const TfLiteTensor* filter,
+                                   const TfLiteTensor* bias,
+                                   TfLiteTensor* output,
+                                   TfLiteTensor* shuffled_input_workspace) {
+  gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+
+  // TODO(b/110697972) decide more consistently if / how / where we want
+  // to perform this kind of runtime data type checks.
+  if (input->type != kTfLiteUInt8 || filter->type != kTfLiteUInt8 ||
+      bias->type != kTfLiteInt32 || output->type != kTfLiteInt16 ||
+      shuffled_input_workspace->type != kTfLiteUInt8) {
+    context->ReportError(context, "Unexpected data type");
+    return kTfLiteError;
+  }
+
+#define TF_LITE_SHUFFLED_FULLY_CONNECTED(type)                  \
+  type::ShuffledFullyConnected(                                 \
+      GetTensorData<uint8_t>(input), GetTensorDims(input),      \
+      GetTensorData<uint8_t>(filter), GetTensorDims(filter),    \
+      GetTensorData<int32_t>(bias), GetTensorDims(bias),        \
+      data->output_multiplier, data->output_shift,              \
+      data->output_activation_min, data->output_activation_max, \
+      GetTensorData<int16_t>(output), GetTensorDims(output),    \
+      GetTensorData<uint8_t>(shuffled_input_workspace), gemm_context)
+  if (kernel_type == kReference) {
+    TF_LITE_SHUFFLED_FULLY_CONNECTED(reference_ops);
+  } else {
+    TF_LITE_SHUFFLED_FULLY_CONNECTED(optimized_ops);
+  }
+#undef TF_LITE_SHUFFLED_FULLY_CONNECTED
+
+  return kTfLiteOk;
+}
+
+template <KernelType kernel_type>
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        TfLiteFullyConnectedParams* params, OpData* data,
-                       TfLiteTensor* input, TfLiteTensor* filter,
-                       TfLiteTensor* bias, TfLiteTensor* output) {
+                       const TfLiteTensor* input, const TfLiteTensor* filter,
+                       const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
 #define TF_LITE_FULLY_CONNECTED(type)                                       \
   type::FullyConnected(GetTensorData<float>(input), GetTensorDims(input),   \
                        GetTensorData<float>(filter), GetTensorDims(filter), \
@@ -342,9 +404,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
-  TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (filter->type) {  // Already know in/out types are same.
@@ -352,10 +414,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalFloat<kernel_type>(context, node, params, data, input, filter,
                                     bias, output);
     case kTfLiteUInt8:
-      return EvalQuantized<kernel_type>(context, node, params, data, input,
-                                        filter, bias, output);
+      if (params->weights_format ==
+          kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8) {
+        TfLiteTensor* shuffled_input_workspace =
+            GetOutput(context, node, kShuffledInputWorkspaceTensor);
+        return EvalShuffledQuantized<kernel_type>(context, node, params, data,
+                                                  input, filter, bias, output,
+                                                  shuffled_input_workspace);
+      } else if (params->weights_format ==
+                 kTfLiteFullyConnectedWeightsFormatDefault) {
+        return EvalQuantized<kernel_type>(context, node, params, data, input,
+                                          filter, bias, output);
+      } else {
+        context->ReportError(context,
+                             "Unhandled fully-connected weights format");
+        return kTfLiteError;
+      }
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

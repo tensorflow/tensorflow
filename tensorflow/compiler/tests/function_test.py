@@ -20,17 +20,15 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
 
-@test_util.with_c_api
-class FunctionTest(XLATestCase):
+class FunctionTest(xla_test.XLATestCase):
 
   def testFunction(self):
     """Executes a simple TensorFlow function."""

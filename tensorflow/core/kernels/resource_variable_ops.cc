@@ -51,6 +51,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -72,40 +73,33 @@ namespace tensorflow {
 
 REGISTER_RESOURCE_HANDLE_KERNEL(Var);
 
-class ReadVariableOp : public OpKernel {
- public:
-  explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
-    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
-  }
+ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+  OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+}
 
-  void Compute(OpKernelContext* ctx) override {
-    Var* variable = nullptr;
-    ResourceHandle handle = HandleFromInput(ctx, 0);
-    const auto status = LookupResource(ctx, handle, &variable);
-    OP_REQUIRES(ctx, status.ok(),
-                errors::FailedPrecondition(
-                    "Error while reading resource variable ", handle.name(),
-                    " from Container: ", handle.container(),
-                    ". This could mean that the variable was uninitialized. ",
-                    status.ToString()));
+void ReadVariableOp::Compute(OpKernelContext* ctx) {
+  Var* variable = nullptr;
+  ResourceHandle handle = HandleFromInput(ctx, 0);
+  const auto status = LookupResource(ctx, handle, &variable);
+  OP_REQUIRES(ctx, status.ok(),
+              errors::FailedPrecondition(
+                  "Error while reading resource variable ", handle.name(),
+                  " from Container: ", handle.container(),
+                  ". This could mean that the variable was uninitialized. ",
+                  status.ToString()));
 
-    core::ScopedUnref s(variable);
-    // We're acquiring a reference to the underlying buffer while
-    // holding a shared lock to guarantee ordering of reads and
-    // writes.
-    tf_shared_lock ml(*variable->mu());
-    const Tensor& t = *variable->tensor();
-    OP_REQUIRES(
-        ctx, dtype_ == t.dtype(),
-        errors::InvalidArgument(
-            "Trying to read variable with wrong dtype. Expected ",
-            DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
-    ctx->set_output(0, t);
-  }
-
- private:
-  DataType dtype_;
-};
+  core::ScopedUnref s(variable);
+  // We're acquiring a reference to the underlying buffer while
+  // holding a shared lock to guarantee ordering of reads and
+  // writes.
+  tf_shared_lock ml(*variable->mu());
+  const Tensor& t = *variable->tensor();
+  OP_REQUIRES(ctx, dtype_ == t.dtype(),
+              errors::InvalidArgument(
+                  "Trying to read variable with wrong dtype. Expected ",
+                  DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
+  ctx->set_output(0, t);
+}
 
 REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
@@ -180,25 +174,20 @@ REGISTER_KERNEL_BUILDER(Name("VariableShape")
 
 #endif  // GOOGLE_CUDA
 
-class DestroyResourceOp : public OpKernel {
- public:
-  explicit DestroyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
-  }
+DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
+    : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx,
+                 ctx->GetAttr("ignore_lookup_error", &ignore_lookup_error_));
+}
 
-  void Compute(OpKernelContext* ctx) override {
-    const ResourceHandle& p = HandleFromInput(ctx, 0);
-    Status status = DeleteResource(ctx, p);
-    if (ignore_lookup_error_ && errors::IsNotFound(status)) {
-      return;
-    }
-    OP_REQUIRES_OK(ctx, status);
+void DestroyResourceOp::Compute(OpKernelContext* ctx) {
+  const ResourceHandle& p = HandleFromInput(ctx, 0);
+  Status status = DeleteResource(ctx, p);
+  if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+    return;
   }
-
- private:
-  bool ignore_lookup_error_;
-};
+  OP_REQUIRES_OK(ctx, status);
+}
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);

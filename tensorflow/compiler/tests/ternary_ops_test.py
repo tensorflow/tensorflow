@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class TernaryOpsTest(XLATestCase):
+class TernaryOpsTest(xla_test.XLATestCase):
 
   def _testTernary(self, op, a, b, c, expected):
     with self.test_session() as session:

@@ -48,7 +48,7 @@ bool ParseModelFlagsFromCommandLineFlags(
            "that information from the input file."),
       Flag("input_arrays", parsed_flags.input_arrays.bind(),
            parsed_flags.input_arrays.default_value(),
-           "Names of the output arrays, comma-separated. If not specified, "
+           "Names of the input arrays, comma-separated. If not specified, "
            "will try to read that information from the input file."),
       Flag("output_array", parsed_flags.output_array.bind(),
            parsed_flags.output_array.default_value(),
@@ -74,16 +74,16 @@ bool ParseModelFlagsFromCommandLineFlags(
            "height, input array width, input array depth."),
       Flag("batch_size", parsed_flags.batch_size.bind(),
            parsed_flags.batch_size.default_value(),
-           "Batch size for the model. Replaces the first dimension of an "
-           "input size array if undefined. Use only with SavedModels when "
-           "--input_shapes flag is not specified. Always use --input_shapes "
-           "flag with frozen graphs."),
+           "Deprecated. Batch size for the model. Replaces the first dimension "
+           "of an input size array if undefined. Use only with SavedModels "
+           "when --input_shapes flag is not specified. Always use "
+           "--input_shapes flag with frozen graphs."),
       Flag("input_data_type", parsed_flags.input_data_type.bind(),
            parsed_flags.input_data_type.default_value(),
            "Deprecated: use --input_data_types instead. Input array type, if "
            "not already provided in the graph. "
            "Typically needs to be specified when passing arbitrary arrays "
-           "to --input_array."),
+           "to --input_arrays."),
       Flag("input_data_types", parsed_flags.input_data_types.bind(),
            parsed_flags.input_data_types.default_value(),
            "Input arrays types, comma-separated, if not already provided in "
@@ -124,14 +124,6 @@ bool ParseModelFlagsFromCommandLineFlags(
            parsed_flags.model_checks.default_value(),
            "A list of model checks to be applied to verify the form of the "
            "model.  Applied after the graph transformations after import."),
-      Flag("graphviz_first_array", parsed_flags.graphviz_first_array.bind(),
-           parsed_flags.graphviz_first_array.default_value(),
-           "If set, defines the start of the sub-graph to be dumped to "
-           "GraphViz."),
-      Flag(
-          "graphviz_last_array", parsed_flags.graphviz_last_array.bind(),
-          parsed_flags.graphviz_last_array.default_value(),
-          "If set, defines the end of the sub-graph to be dumped to GraphViz."),
       Flag("dump_graphviz", parsed_flags.dump_graphviz.bind(),
            parsed_flags.dump_graphviz.default_value(),
            "Dump graphviz during LogDump call. If string is non-empty then "
@@ -180,8 +172,6 @@ bool ParseModelFlagsFromCommandLineFlags(
     if (!tensorflow::Flags::Parse(argc, argv, flags)) return false;
   }
   auto& dump_options = *GraphVizDumpOptions::singleton();
-  dump_options.graphviz_first_array = parsed_flags.graphviz_first_array.value();
-  dump_options.graphviz_last_array = parsed_flags.graphviz_last_array.value();
   dump_options.dump_graphviz_video = parsed_flags.dump_graphviz_video.value();
   dump_options.dump_graphviz = parsed_flags.dump_graphviz.value();
 

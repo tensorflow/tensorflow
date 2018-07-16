@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 
 #ifndef IS_MOBILE_PLATFORM
-#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -281,6 +280,118 @@ class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
   NodeBuilder::NodeOut from_tensor_;
 };
 
+template <class Map>
+Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
+                    const Map& tensor2device,
+                    const tensorflow::DeviceAttributes** out_device_attrs) {
+  *out_device_attrs = nullptr;
+  if (tensor2device.empty()) {
+    *out_device_attrs = &device_set.client_device()->attributes();
+    return Status::OK();
+  }
+  const auto it = tensor2device.find(tensor_name);
+  if (it == tensor2device.end()) {
+    *out_device_attrs = &device_set.client_device()->attributes();
+    return Status::OK();
+  }
+  DeviceNameUtils::ParsedName parsed_name;
+  if (!DeviceNameUtils::ParseFullName(it->second, &parsed_name)) {
+    return errors::InvalidArgument("Invalid device name ('", it->second,
+                                   "') provided for the tensor '", tensor_name,
+                                   "' in CallableOptions");
+  }
+  Device* device = device_set.FindDeviceByName(
+      DeviceNameUtils::ParsedNameToString(parsed_name));
+  if (device == nullptr) {
+    return errors::InvalidArgument("Device '", it->second,
+                                   "' specified for tensor '", tensor_name,
+                                   "' in CallableOptions does not exist");
+  }
+  *out_device_attrs = &device->attributes();
+  return Status::OK();
+}
+
+struct TensorAndDevice {
+  // WARNING: backing memory for the 'tensor' field is NOT owend.
+  const TensorId tensor;
+  // WARNING: device pointer is not owned, so must outlive TensorAndDevice.
+  const DeviceAttributes* device;
+};
+
+// Tensors of some DataTypes cannot placed in device memory as feeds or
+// fetches. Validate against a whitelist of those known to work.
+bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
+  // The mechanism for supporting feeds of device-backed Tensors requires
+  // the _Arg kernel to be registered for the corresponding type (and that
+  // the input to the kernel be in device and not host memory).
+  //
+  // The mechanism for supporting fetches of device-backed Tensors requires
+  // the _Retval kernel to be registered for the corresponding type (and
+  // that the output is produced in device and not host memory).
+  //
+  // For now, we return true iff there are _Arg AND _Retval kernels for dtype on
+  // the device. False negatives are okay, false positives would be bad.
+  //
+  // TODO(ashankar): Instead of a whitelist here, perhaps we could query
+  // the kernel registry for _Arg and _Retval kernels instead.
+  if (device_type == DEVICE_CPU) return true;
+  if (device_type != DEVICE_GPU) return false;
+  switch (dtype) {
+    case DT_BFLOAT16:
+    case DT_BOOL:
+    case DT_COMPLEX128:
+    case DT_COMPLEX64:
+    case DT_DOUBLE:
+    case DT_FLOAT:
+    case DT_HALF:
+    case DT_INT16:
+    case DT_INT64:
+    case DT_INT8:
+    case DT_UINT16:
+    case DT_UINT8:
+      return true;
+    default:
+      return false;
+  }
+}
+
+Status ValidateFeedAndFetchDevices(
+    const Graph& graph,
+    const std::vector<TensorAndDevice>& tensors_and_devices) {
+  if (tensors_and_devices.empty()) return Status::OK();
+  std::vector<bool> found(tensors_and_devices.size(), false);
+  for (const Node* node : graph.nodes()) {
+    // Linearly looping through all nodes and then all feed+fetch tensors isn't
+    // quite efficient. At the time of this writing, the expectation was that
+    // tensors_and_devices.size() is really small in practice, so this won't be
+    // problematic.
+    // Revist and make a more efficient lookup possible if needed (e.g., perhaps
+    // Graph can maintain a map from node name to Node*).
+    for (int i = 0; i < tensors_and_devices.size(); ++i) {
+      const TensorAndDevice& td = tensors_and_devices[i];
+      if (td.tensor.first != node->name()) continue;
+      found[i] = true;
+      TF_RETURN_IF_ERROR(graph.IsValidOutputTensor(node, td.tensor.second));
+      const DataType dtype = node->output_type(td.tensor.second);
+      if (!IsFeedAndFetchSupported(dtype, td.device->device_type())) {
+        return errors::Unimplemented(
+            "Cannot feed or fetch tensor '", td.tensor.ToString(),
+            "' from device ", td.device->name(), " as feeding/fetching from ",
+            td.device->device_type(), " devices is not yet supported for ",
+            DataTypeString(dtype), " tensors");
+      }
+    }
+  }
+  for (int i = 0; i < found.size(); ++i) {
+    if (!found[i]) {
+      return errors::InvalidArgument(
+          "Tensor ", tensors_and_devices[i].tensor.ToString(),
+          ", specified in either feed_devices or fetch_devices was not found "
+          "in the Graph");
+    }
+  }
+  return Status::OK();
+}
 }  // namespace
 
 Status GraphExecutionState::PruneGraph(
@@ -290,18 +401,52 @@ Status GraphExecutionState::PruneGraph(
   feed_rewrites.reserve(options.callable_options.feed_size());
   std::vector<std::unique_ptr<subgraph::PruneRewrite>> fetch_rewrites;
   fetch_rewrites.reserve(options.callable_options.fetch_size());
-  const DeviceAttributes* device_info =
-      &device_set_->client_device()->attributes();
   if (options.use_function_convention) {
+    std::vector<TensorAndDevice> tensors_and_devices;
     for (int i = 0; i < options.callable_options.feed_size(); ++i) {
-      feed_rewrites.emplace_back(new subgraph::ArgFeedRewrite(
-          &options.callable_options.feed(i), device_info, i));
+      // WARNING: feed MUST be a reference, since ArgFeedRewrite and
+      // tensors_and_devices holds on to its address.
+      const string& feed = options.callable_options.feed(i);
+      const DeviceAttributes* device_info;
+      TF_RETURN_IF_ERROR(LookupDevice(*device_set_, feed,
+                                      options.callable_options.feed_devices(),
+                                      &device_info));
+      feed_rewrites.emplace_back(
+          new subgraph::ArgFeedRewrite(&feed, device_info, i));
+      tensors_and_devices.push_back({ParseTensorName(feed), device_info});
+    }
+    if (!options.callable_options.fetch_devices().empty() &&
+        !options.callable_options.fetch_skip_sync()) {
+      return errors::Unimplemented(
+          "CallableOptions.fetch_skip_sync = false is not yet implemented. You "
+          "can set it to true instead, but MUST ensure that Device::Sync() is "
+          "invoked on the Device corresponding to the fetched tensor before "
+          "dereferencing the Tensor's memory.");
     }
     for (int i = 0; i < options.callable_options.fetch_size(); ++i) {
-      fetch_rewrites.emplace_back(new subgraph::RetvalFetchRewrite(
-          &options.callable_options.fetch(i), device_info, i));
+      // WARNING: fetch MUST be a reference, since RetvalFetchRewrite and
+      // tensors_and_devices holds on to its address.
+      const string& fetch = options.callable_options.fetch(i);
+      const DeviceAttributes* device_info;
+      TF_RETURN_IF_ERROR(LookupDevice(*device_set_, fetch,
+                                      options.callable_options.fetch_devices(),
+                                      &device_info));
+      fetch_rewrites.emplace_back(
+          new subgraph::RetvalFetchRewrite(&fetch, device_info, i));
+      tensors_and_devices.push_back({ParseTensorName(fetch), device_info});
     }
+    TF_RETURN_IF_ERROR(
+        ValidateFeedAndFetchDevices(*graph, tensors_and_devices));
   } else {
+    if (!options.callable_options.feed_devices().empty() ||
+        !options.callable_options.fetch_devices().empty()) {
+      return errors::Unimplemented(
+          "CallableOptions::feed_devices and CallableOptions::fetch_devices "
+          "to configure feeding/fetching tensors to/from device memory is not "
+          "yet supported when using a remote session.");
+    }
+    const DeviceAttributes* device_info =
+        &device_set_->client_device()->attributes();
     for (const string& feed : options.callable_options.feed()) {
       feed_rewrites.emplace_back(
           new subgraph::RecvFeedRewrite(&feed, device_info));
@@ -456,11 +601,11 @@ Status GraphExecutionState::OptimizeGraph(
           return errors::InvalidArgument("Missing node shape or type");
         }
         TensorShapeProto shape_proto(node.attr().at("shape").shape());
-        // If the shape of the placeholder value is only partially known, we're
-        // free to use any dimension we want to feed the placeholder. We choose
-        // 1 to minimize the memory impact. Note that this only matters if an
-        // optimizer choose to run the graph to build its cost model, which
-        // doesn't happen (yet)
+        // If the shape of the placeholder value is only partially known,
+        // we're free to use any dimension we want to feed the placeholder. We
+        // choose 1 to minimize the memory impact. Note that this only matters
+        // if an optimizer choose to run the graph to build its cost model,
+        // which doesn't happen (yet)
         if (shape_proto.unknown_rank()) {
           shape_proto.set_unknown_rank(false);
         }
@@ -476,21 +621,15 @@ Status GraphExecutionState::OptimizeGraph(
       }
     }
 
-    std::unordered_map<string, DeviceProperties> device_map;
     Device* cpu_device = nullptr;
     for (const auto& device : device_set_->devices()) {
-      DeviceProperties props = grappler::GetDeviceInfo(device->parsed_name());
-      if (props.type() == "UNKNOWN") {
-        continue;
-      }
-      device_map[device->name()] = props;
       if (device->parsed_name().id == 0 &&
           StringPiece(device->parsed_name().type) == "CPU" &&
           device->GetAllocator(AllocatorAttributes()) != nullptr) {
         cpu_device = device;
       }
     }
-    grappler::VirtualCluster cluster(device_map, device_set_);
+    grappler::VirtualCluster cluster(device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
         item, rewrite_options, cpu_device, &cluster, &new_graph));
@@ -520,10 +659,10 @@ Status GraphExecutionState::OptimizeGraph(
     opts.allow_internal_ops = true;
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph(opts, new_graph, optimized_graph->get()));
-    // The graph conversion sets the requested device names but not the assigned
-    // device names. However, since at this point the graph is placed TF expects
-    // an assigned device name for every node. Therefore we copy the requested
-    // device into the assigned device field.
+    // The graph conversion sets the requested device names but not the
+    // assigned device names. However, since at this point the graph is placed
+    // TF expects an assigned device name for every node. Therefore we copy
+    // the requested device into the assigned device field.
     for (Node* node : optimized_graph->get()->nodes()) {
       node->set_assigned_device_name(node->requested_device());
     }

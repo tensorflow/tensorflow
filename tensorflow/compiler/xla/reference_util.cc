@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -510,8 +511,8 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
     std::pair<int64, int64> lhs_dilation, std::pair<int64, int64> rhs_dilation,
     ConvolutionDimensionNumbers dnums) {
   HloComputation::Builder b("ConvArray4DGeneralDimensionDilated");
-  auto lhs_literal = Literal::CreateR4FromArray4D<float>(lhs);
-  auto rhs_literal = Literal::CreateR4FromArray4D<float>(rhs);
+  auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(lhs);
+  auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(rhs);
 
   std::array<int64, 2> ordered_kernel_strides;
   std::array<int64, 2> ordered_input_dimensions;

@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -87,18 +88,10 @@ llvm::Value* EmitCallToIntrinsic(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
     llvm::IRBuilder<>* ir_builder) {
-  std::vector<llvm::Type*> types;
-  for (auto type : overloaded_types) {
-    types.push_back(type);
-  }
   llvm::Module* module = ModuleFromIRBuilder(ir_builder);
-  llvm::Function* intrinsic =
-      llvm::Intrinsic::getDeclaration(module, intrinsic_id, types);
-  std::vector<llvm::Value*> operands_vec;
-  for (auto operand : operands) {
-    operands_vec.push_back(operand);
-  }
-  return ir_builder->CreateCall(intrinsic, operands_vec);
+  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+      module, intrinsic_id, AsArrayRef(overloaded_types));
+  return ir_builder->CreateCall(intrinsic, AsArrayRef(operands));
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -201,6 +194,10 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     // An Opaque is like a void*, use i8*.
     case OPAQUE:
       return llvm::Type::getInt8PtrTy(module->getContext());
+    case TOKEN:
+      // Tokens do not have a physical representation, but the compiler needs
+      // some placeholder type, so use int8*.
+      return llvm::Type::getInt8PtrTy(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -253,130 +250,14 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
   return shape;
 }
 
-namespace {
-
-// Recursively construct a multidimensional LLVM constant which represents the
-// given literal. The minor-to-major dimension ordering in the constant matches
-// that of the literal. For example, given a [2 x 3 x 4] Literal (dimension 0
-// has size 4, dimension 1 has size 3, etc) of primitive type F32 with a
-// minor_to_major value of [2, 1, 0] (column major), a LLVM constant of type
-// [4 x [3 x [2 x float]] will be returned.
-//
-// multi_index is a multidimensional index into the array. dimension_index is an
-// index into the minor_to_major field in the literal shape. This determines
-// which dimension is iterated over in this level of the recursion. Dimensions
-// are iterated from most major down to most minor (highest dimension_index
-// value down to zero).
-llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
-                                  std::vector<int64>* multi_index,
-                                  llvm::Module* module) {
-  const Shape& shape = literal.shape();
-  llvm::Type* ir_element_type =
-      llvm_ir::PrimitiveTypeToIrType(shape.element_type(), module);
-  if (dimension_index == -1) {
-    // Base case of the recursion. Index into the data field of the protobuf
-    // with the multi index.
-    llvm::Constant* value;
-    switch (shape.element_type()) {
-      case PRED:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<bool>(*multi_index));
-        break;
-      case U8:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<uint8>(*multi_index));
-        break;
-      case S32:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<int32>(*multi_index));
-        break;
-      case U32:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<uint32>(*multi_index));
-        break;
-      case S64:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<int64>(*multi_index));
-        break;
-      case U64:
-        value = llvm::ConstantInt::get(ir_element_type,
-                                       literal.Get<uint64>(*multi_index));
-        break;
-      case F32:
-        value = llvm::ConstantFP::get(ir_element_type,
-                                      literal.Get<float>(*multi_index));
-        break;
-      case BF16:
-        value = llvm::ConstantInt::get(
-            ir_element_type,
-            tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
-        break;
-      case F16:
-        value = llvm::ConstantFP::get(
-            ir_element_type,
-            static_cast<float>(literal.Get<half>(*multi_index)));
-        break;
-      case F64:
-        value = llvm::ConstantFP::get(ir_element_type,
-                                      literal.Get<double>(*multi_index));
-        break;
-      case C64: {
-        complex64 x = literal.Get<complex64>(*multi_index);
-        value = llvm::ConstantStruct::get(
-            static_cast<llvm::StructType*>(ir_element_type),
-            llvm::ConstantFP::get(llvm_ir::PrimitiveTypeToIrType(F32, module),
-                                  x.real()),
-            llvm::ConstantFP::get(llvm_ir::PrimitiveTypeToIrType(F32, module),
-                                  x.imag()));
-        break;
-      }
-      default:
-        LOG(FATAL) << "unsupported type " << shape.element_type();
-    }
-    return value;
-  }
-
-  // The dimension index starts at the one less than the rank of the array and
-  // decrements with each recursive call. We want to iterate through the
-  // dimensions in major-to-minor order as we recurse so just index into
-  // minor_to_major to get the dimension number for this level of the recursion.
-  int64 dimension = LayoutUtil::Minor(shape.layout(), dimension_index);
-
-  // Recursively call LiteralToConstant to construct subarrays for the
-  // more-minor dimensions. Gather the subarrays into a vector for bundling into
-  // a new (higher-dimensional) ConstantArray.
-  std::vector<llvm::Constant*> elements;
-  for (int64 i = 0; i < shape.dimensions(dimension); ++i) {
-    (*multi_index)[dimension] = i;
-    elements.push_back(
-        LiteralToConstant(literal, dimension_index - 1, multi_index, module));
-  }
-
-  llvm::Type* element_type;
-  if (elements.empty()) {
-    element_type = ir_element_type;
-    for (int i = 0; i < dimension_index; ++i) {
-      int64 index = LayoutUtil::Minor(shape.layout(), i);
-      element_type =
-          llvm::ArrayType::get(element_type, shape.dimensions(index));
-    }
-  } else {
-    element_type = elements[0]->getType();
-  }
-  llvm::ArrayType* aggregate_type =
-      llvm::ArrayType::get(element_type, shape.dimensions(dimension));
-  return llvm::ConstantArray::get(aggregate_type, elements);
-}
-
-}  // namespace
-
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
-  std::vector<int64> multi_index(ShapeUtil::Rank(literal.shape()), 0);
-  llvm::Constant* value = LiteralToConstant(
-      literal, /*dimension_index=*/ShapeUtil::Rank(literal.shape()) - 1,
-      &multi_index, module);
-  return value;
+  const char* data = static_cast<const char*>(literal.untyped_data());
+  CHECK_EQ(module->getDataLayout().isLittleEndian(),
+           tensorflow::port::kLittleEndian);
+  return llvm::ConstantDataArray::getString(
+      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
+      /*AddNull=*/false);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,

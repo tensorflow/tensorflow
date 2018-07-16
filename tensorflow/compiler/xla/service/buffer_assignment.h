@@ -415,10 +415,10 @@ class BufferAssignment {
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
 
-  explicit BufferAssignment(const HloModule* module,
-                            std::unique_ptr<BufferLiveness> liveness,
-                            LogicalBuffer::SizeFunction buffer_size,
-                            LogicalBuffer::AlignmentFunction color_alignment)
+  BufferAssignment(const HloModule* module,
+                   std::unique_ptr<BufferLiveness> liveness,
+                   LogicalBuffer::SizeFunction buffer_size,
+                   LogicalBuffer::AlignmentFunction color_alignment)
       : module_(module),
         liveness_(std::move(liveness)),
         buffer_size_(std::move(buffer_size)),

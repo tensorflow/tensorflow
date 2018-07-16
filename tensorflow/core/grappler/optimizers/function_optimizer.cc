@@ -98,7 +98,7 @@ struct FunctionSpecializationSignature {
     for (const auto& lhs : body_parameters) {
       auto it = other.body_parameters.find(lhs.first);
       if (it == other.body_parameters.end()) return false;
-      if (!AreAttrValuesEqual(lhs.second, (*it).second)) return false;
+      if (!FastAreAttrValuesEqual(lhs.second, (*it).second)) return false;
     }
 
     return true;
@@ -123,7 +123,7 @@ struct FunctionSpecializationSignature {
                                        s.body_parameters.end());
       for (const auto& pair : body) {
         h = Hash64Combine(Hash64(pair.first), h);
-        h = Hash64Combine(AttrValueHash(pair.second), h);
+        h = Hash64Combine(FastAttrValueHash(pair.second), h);
       }
 
       std::map<int, string> inputs(s.const_inputs.begin(),
@@ -144,11 +144,18 @@ struct FunctionSpecialization {
   std::unordered_set<string> control_deps;
 };
 
+class FakeCPUDevice : public Device {
+ public:
+  FakeCPUDevice(Env* env, const DeviceAttributes& attr) : Device(env, attr) {}
+  Status Sync() override { return Status::OK(); }
+};
+
 class FunctionOptimizerContext {
  public:
   explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
                                     const GrapplerItem& item)
-      : function_library_(OpRegistry::Global(), item.graph.library()) {
+      : graph_version_(item.graph.versions().producer()),
+        function_library_(OpRegistry::Global(), item.graph.library()) {
     InitializeTrulyConstNodes(item);
     InitializeInlinedFunctions(opt_level, item);
   }
@@ -159,6 +166,11 @@ class FunctionOptimizerContext {
 
   FunctionLibraryDefinition* mutable_function_library() {
     return &function_library_;
+  }
+
+  FunctionLibraryRuntime* mutable_function_library_runtime() {
+    InitializeFunctionLibraryRuntime();
+    return flr_;
   }
 
   bool IsInlinedFunction(const string& name) const {
@@ -222,12 +234,35 @@ class FunctionOptimizerContext {
     }
   }
 
+  void InitializeFunctionLibraryRuntime() {
+    if (!flr_) {
+      Env* env = Env::Default();
+      DeviceAttributes attr;
+      attr.set_name("/device:CPU:0");
+      attr.set_device_type("CPU");
+      Device* device = new FakeCPUDevice(env, attr);
+      device_mgr_.reset(new DeviceMgr({device}));
+      OptimizerOptions optimizer_opts;
+      optimizer_opts.set_do_function_inlining(true);
+      process_flr_.reset(new ProcessFunctionLibraryRuntime(
+          device_mgr_.get(), env, graph_version_, &function_library_,
+          optimizer_opts));
+      flr_ = process_flr_->GetFLR(device->name());
+    }
+  }
+
+  const int graph_version_;
   FunctionLibraryDefinition function_library_;
+
+  // These fields initialized lazily only if needed.
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> process_flr_;
+  FunctionLibraryRuntime* flr_ = nullptr;
+
   // Functions that can be inlined into optimized graph.
   std::unordered_map<string, const FunctionDef*> inlined_functions_;
   // Nodes that are Const and not in feed.
   std::unordered_map<string, const NodeDef*> truly_const_nodes_;
-
   // Specialized functions.
   std::unordered_map<FunctionSpecializationSignature,
                      const FunctionSpecialization,
@@ -497,63 +532,46 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   return Status::OK();
 }
 
-// Copy input/output argument type to the type_list. Return error if argument
-// type is not explicitly defined, and not specified in function attributes.
-Status CopyArgType(const NodeDef& func_node,
-                   const std::unordered_map<string, AttrValue>& func_attr,
-                   const string& arg_kind, const OpDef::ArgDef& arg,
-                   AttrValue::ListValue* type_list) {
-  if (arg.type() != DT_INVALID) {
-    type_list->add_type(arg.type());
-  } else {
-    auto it = func_attr.find(arg.type_attr());
-    if (it == func_attr.end() || it->second.type() == DT_INVALID) {
-      return errors::InvalidArgument(
-          "Invalid ", arg_kind, " argument ", arg.name(), " for function ",
-          func_node.op(), " instantiated by ", func_node.name());
-    }
-    type_list->add_type(it->second.type());
-  }
-  return Status::OK();
-}
-
-// Add an IdentityN op to hook the function inputs to: this ensures that
+// Create an IdentityN node to hook the function inputs to: this ensures that
 // they're all evaluated before the evaluation of the function body starts.
-Status HookInlinedFunctionInputs(
-    const NodeDef& func_node, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr, NodeDef* inputs) {
-  inputs->set_name(strings::StrCat(func_node.name(), "/", "inlined_inputs"));
-  inputs->set_op("IdentityN");
-  inputs->set_device(func_node.device());
-  *inputs->mutable_input() = func_node.input();
+NodeDef InlinedFunctionInputsNode(const NodeDef& func_node,
+                                  const GrapplerFunctionItem& item) {
+  NodeDef inputs;
+  inputs.set_name(strings::StrCat(func_node.name(), "/", "inlined_inputs"));
+  inputs.set_op("IdentityN");
+  inputs.set_device(func_node.device());
+  *inputs.mutable_input() = func_node.input();
   AttrValue::ListValue* type_list =
-      (*inputs->mutable_attr())["T"].mutable_list();
-  for (const OpDef::ArgDef& arg : func.signature().input_arg()) {
-    TF_RETURN_IF_ERROR(
-        CopyArgType(func_node, func_attr, "input", arg, type_list));
+      (*inputs.mutable_attr())["T"].mutable_list();
+
+  for (const InputArgExpansion& input_arg : item.inputs()) {
+    for (int i = 0; i < input_arg.placeholders.size(); ++i) {
+      type_list->add_type(input_arg.data_type);
+    }
   }
-  return Status::OK();
+
+  return inputs;
 }
 
-// Add an IdentityN op to hook the function outputs to: this ensures that the
-// function body is fully evaluated before its fanout gets scheduled.
-Status HookInlinedFunctionOutputs(
-    const NodeDef& func_node, const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr,
-    const gtl::ArraySlice<string> fetch, NodeDef* outputs) {
-  outputs->set_name(func_node.name());
-  outputs->set_op("IdentityN");
-  outputs->set_device(func_node.device());
+// Create an IdentityN node to hook the function outputs to: this ensures that
+// the function body is fully evaluated before its fanout gets scheduled.
+NodeDef InlinedFunctionOutputsNode(const NodeDef& func_node,
+                                   const GrapplerFunctionItem& item) {
+  NodeDef outputs;
+  outputs.set_name(func_node.name());
+  outputs.set_op("IdentityN");
+  outputs.set_device(func_node.device());
   AttrValue::ListValue* type_list =
-      (*outputs->mutable_attr())["T"].mutable_list();
-  for (int i = 0; i < func.signature().output_arg_size(); ++i) {
-    const OpDef::ArgDef& arg = func.signature().output_arg(i);
-    TF_RETURN_IF_ERROR(
-        CopyArgType(func_node, func_attr, "output", arg, type_list));
-    // Use the fetch names since they take into account the output mapping.
-    outputs->add_input(strings::StrCat(func_node.name(), "/", fetch[i]));
+      (*outputs.mutable_attr())["T"].mutable_list();
+
+  for (const OutputArgExpansion& output_arg : item.outputs()) {
+    for (const string& output_tensor : output_arg.output_tensors) {
+      type_list->add_type(output_arg.data_type);
+      outputs.add_input(strings::StrCat(func_node.name(), "/", output_tensor));
+    }
   }
-  return Status::OK();
+
+  return outputs;
 }
 
 Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
@@ -574,27 +592,30 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
                                    ". Error: ", item_status.error_message());
   }
 
-  std::unordered_map<string, int> input_nodes;
-  for (int i = 0; i < func.signature().input_arg_size(); ++i) {
-    const OpDef::ArgDef& arg = func.signature().input_arg(i);
-    input_nodes[arg.name()] = i;
+  // Mapping from input placeholder name to function input position.
+  int idx = 0;
+  std::unordered_map<string, int> input_placeholders_idx;
+  for (const InputArgExpansion& input_arg : item.inputs()) {
+    for (const string& placeholder : input_arg.placeholders) {
+      input_placeholders_idx[placeholder] = idx++;
+    }
   }
 
-  // Hook inlined function inputs to IdentityN node
+  // Hook inlined function inputs to IdentityN node.
   NodeDef* func_inputs = optimized_graph->add_node();
-  TF_RETURN_IF_ERROR(
-      HookInlinedFunctionInputs(func_node, func, func_attr, func_inputs));
+  *func_inputs = InlinedFunctionInputsNode(func_node, item);
 
   for (NodeDef& func_body_node : *item.mutable_function_body().mutable_node()) {
-    if (input_nodes.find(func_body_node.name()) != input_nodes.end()) {
+    if (item.IsInputPlaceholder(func_body_node.name())) {
+      // Turn input placeholders into identity nodes.
       CHECK_EQ(0, func_body_node.input_size());
-      // Turn input placeholders into identity nodes
-      if (IsPlaceholder(func_body_node)) {
-        func_body_node.set_op("Identity");
-      }
-      int input_id = input_nodes[func_body_node.name()];
+      func_body_node.set_op("Identity");
+      (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
+      func_body_node.mutable_attr()->erase("dtype");
+      func_body_node.mutable_attr()->erase("shape");
+      int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(
-          strings::StrCat(func_inputs->name(), ":", input_id));
+          strings::StrCat(func_inputs->name(), ":", input_idx));
     } else {
       // Update the input names if any.
       for (string& input : *func_body_node.mutable_input()) {
@@ -608,18 +629,21 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       }
     }
 
-    // Add the node name as a prefix to avoid collisions after inlining
-    func_body_node.set_name(
-        strings::StrCat(func_node.name(), "/", func_body_node.name()));
+    // Add the function node name as a prefix 1) to node name to avoid
+    // collisions; 2) to frame name to avoid multiple LoopCond nodes in one
+    // frame after inlining.
+    const string prefix = strings::StrCat(func_node.name(), "/");
+    TF_RETURN_IF_ERROR(
+        AddPrefixAndSuffixToNode(prefix, "" /* suffix */, &func_body_node));
 
-    // Make sure the node is placed
+    // Make sure the node is placed.
     func_body_node.set_device(func_node.device());
 
-    // Check if a body node is itself a function
+    // Check if a body node is itself a function.
     const FunctionDef* func_body_node_func =
         ctx.FindInlinedFunction(func_body_node.op());
     if (func_body_node_func != nullptr) {
-      // Recursively inline function calls
+      // Recursively inline function calls.
       TF_RETURN_IF_ERROR(InlineFunction(func_body_node, *func_body_node_func,
                                         ctx, optimized_graph));
     } else {
@@ -627,73 +651,21 @@ Status InlineFunction(const NodeDef& func_node, const FunctionDef& func,
       for (const auto& attr : func.attr()) {
         func_body_node.mutable_attr()->insert(attr);
       }
-      // Move the node to the main graph
+      // Move the node to the main graph.
       optimized_graph->add_node()->Swap(&func_body_node);
     }
   }
 
-  // Hook inlined function outputs to IdentityN node
+  // Hook inlined function outputs to IdentityN node.
   NodeDef* func_outputs = optimized_graph->add_node();
-  std::vector<string> fetch = OutputTensors(item);
-  TF_RETURN_IF_ERROR(HookInlinedFunctionOutputs(func_node, func, func_attr,
-                                                fetch, func_outputs));
+  *func_outputs = InlinedFunctionOutputsNode(func_node, item);
 
   return Status::OK();
 }
 
-class FakeCPUDevice : public Device {
- public:
-  FakeCPUDevice(Env* env, const DeviceAttributes& attr) : Device(env, attr) {}
-  Status Sync() override { return Status::OK(); }
-};
-
-class SymbolicGradientEnv {
- public:
-  SymbolicGradientEnv(int graph_version, const FunctionDefLibrary& library)
-      : graph_version_(graph_version), library_(library) {}
-
-  FunctionLibraryDefinition* function_library() {
-    InitializeIfNeeded();
-    return fld_.get();
-  }
-  FunctionLibraryRuntime* function_library_runtime() {
-    InitializeIfNeeded();
-    return flr_;
-  }
-
- private:
-  // This initialization is expensive. Do it lazily to avoid paying for it
-  // unless it's needed.
-  void InitializeIfNeeded() {
-    if (flr_) {
-      return;
-    }
-    Env* env = Env::Default();
-    DeviceAttributes attr;
-    attr.set_name("/device:CPU:0");
-    attr.set_device_type("CPU");
-    FakeCPUDevice* dev = new FakeCPUDevice(env, attr);
-    std::vector<Device*> devices;
-    devices.push_back(dev);
-    dvc_mgr_.reset(new DeviceMgr(devices));
-    fld_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), library_));
-    OptimizerOptions optimizer_opts;
-    optimizer_opts.set_do_function_inlining(true);
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
-        dvc_mgr_.get(), env, graph_version_, fld_.get(), optimizer_opts));
-    flr_ = pflr_->GetFLR(dev->name());
-  }
-
-  const int graph_version_;
-  const FunctionDefLibrary& library_;
-  std::unique_ptr<DeviceMgr> dvc_mgr_;
-  std::unique_ptr<FunctionLibraryDefinition> fld_;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  FunctionLibraryRuntime* flr_ = nullptr;
-};
-
-Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
-                              GraphDef* inlined_graph) {
+Status InlineSymbolicGradient(const NodeDef& node,
+                              FunctionOptimizerContext* ctx,
+                              GraphDef* optimized_graph) {
   VLOG(2) << "Inline symbolic gradient: " << SummarizeNodeDef(node);
 
   GraphDef graph_def;
@@ -732,15 +704,15 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
   GraphConstructorOptions graph_ctor_opts;
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
-  Graph graph(env->function_library());
+  Graph graph(ctx->function_library());
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &graph));
 
   // Recursively inline the functions until there is nothing more to inline. We
   // should at least expand one function.
   int counter = 0;
-  while (counter < 50 &&
-         ExpandInlineFunctions(env->function_library_runtime(), &graph)) {
+  while (counter < 50 && ExpandInlineFunctions(
+                             ctx->mutable_function_library_runtime(), &graph)) {
     ++counter;
   }
 
@@ -781,7 +753,7 @@ Status InlineSymbolicGradient(const NodeDef& node, SymbolicGradientEnv* env,
       }
     }
     inlined_node.set_device(node.device());
-    inlined_graph->add_node()->Swap(&inlined_node);
+    optimized_graph->add_node()->Swap(&inlined_node);
   }
 
   return Status::OK();
@@ -801,8 +773,6 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
   FunctionOptimizerContext ctx(opt_level_, item);
-  SymbolicGradientEnv env(item.graph.versions().producer(),
-                          item.graph.library());
 
   bool inline_gradients = options_.enable_symbolic_gradient_inlining;
   bool inline_func = options_.enable_function_inlining;
@@ -811,32 +781,62 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const NodeDef& node : item.graph.node()) {
     const string func_name = node.op();
 
+    // Each node optimization can modify optimized graph only by adding new
+    // nodes, we can check node size to make sure that graph was not modified.
+    const int num_nodes_before = optimized_graph->node_size();
+    const auto is_graph_modified = [&]() {
+      int num_nodes = optimized_graph->node_size();
+      CHECK_GE(num_nodes, num_nodes_before) << "Nodes should not be removed";
+      return num_nodes > num_nodes_before;
+    };
+
+    // Add a copy of an input graph node to the optimized graph.
+    const auto add_node_copy = [&]() { *optimized_graph->add_node() = node; };
+
+// Skip errors if optimized graph was not modified before error happened.
+#define TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(...)                     \
+  do {                                                             \
+    const Status _status = (__VA_ARGS__);                          \
+    if (TF_PREDICT_FALSE(!_status.ok() && is_graph_modified()))    \
+      return _status;                                              \
+    if (TF_PREDICT_FALSE(!_status.ok() && !is_graph_modified())) { \
+      VLOG(3) << "Skip error: " << _status.error_message();        \
+      add_node_copy();                                             \
+    }                                                              \
+  } while (0)
+
+    // 1. Inline symbolic gradients into the optimized graph.
     if (func_name == "SymbolicGradient" && inline_gradients) {
       // Inline symbolic gradients only if the corresponding function is inlined
       const auto* f_attr = gtl::FindOrNull(node.attr(), "f");
       string f_name = f_attr != nullptr ? f_attr->func().name() : "";
       if (ctx.IsInlinedFunction(f_name)) {
-        TF_RETURN_IF_ERROR(InlineSymbolicGradient(node, &env, optimized_graph));
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+            InlineSymbolicGradient(node, &ctx, optimized_graph));
         continue;
       }
     }
 
+    // 2. Check if a node op is a function call.
     const FunctionDef* func = ctx.function_library().Find(func_name);
     if (func != nullptr) {
+      // 2a. Inline it if it's allowed to do so.
       if (inline_func && ctx.IsInlinedFunction(func_name)) {
         // Inline function body into the optimized graph}
-        TF_RETURN_IF_ERROR(InlineFunction(node, *func, ctx, optimized_graph));
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
+            InlineFunction(node, *func, ctx, optimized_graph));
         continue;
       }
 
       // Do not specialize if function has custom gradient.
       const string grad_func = ctx.function_library().FindGradient(func_name);
 
+      // 2b. Specialize it to it's instantiation context if can't be inlined.
       if (specialize_func && grad_func.empty() &&
           (IsParametrized(*func) || HasTrulyConstInputs(node, ctx))) {
         // TODO(ezhulenev): Specialize function call if input has a known shape.
         // Specialize function body for its instantiation attributes and inputs.
-        TF_RETURN_IF_ERROR(
+        TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED(
             SpecializeFunction(node, *func, &ctx, optimized_graph));
         continue;
       }
@@ -844,7 +844,9 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     // If we reached this point, node was not handled by any of the stages
     // (inline, specialize), simply add a copy to the graph.
-    *optimized_graph->add_node() = node;
+    add_node_copy();
+
+#undef TF_SKIP_ERROR_IF_GRAPH_UNMODIFIED
   }
 
   *optimized_graph->mutable_versions() = item.graph.versions();

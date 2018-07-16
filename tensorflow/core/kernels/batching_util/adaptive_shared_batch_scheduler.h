@@ -92,6 +92,9 @@ class AdaptiveSharedBatchScheduler
     // for num_batch_threads allows for large in_flight_batches_limit_, which
     // will harm latency for some time once load increases again.
     int64 num_batch_threads = port::NumSchedulableCPUs();
+    // Lower bound for in_flight_batches_limit_. As discussed above, can be used
+    // to minimize the damage caused by the random walk under low load.
+    int64 min_in_flight_batches_limit = 1;
     // Although batch selection is primarily based on age, this parameter
     // specifies a preference for larger batches.  A full batch will be
     // scheduled before an older, nearly empty batch as long as the age gap is
@@ -286,6 +289,16 @@ Status AdaptiveSharedBatchScheduler<TaskType>::Create(
     return errors::InvalidArgument("num_batch_threads must be positive; was ",
                                    options.num_batch_threads);
   }
+  if (options.min_in_flight_batches_limit < 1) {
+    return errors::InvalidArgument(
+        "min_in_flight_batches_limit must be >= 1; was ",
+        options.min_in_flight_batches_limit);
+  }
+  if (options.min_in_flight_batches_limit > options.num_batch_threads) {
+    return errors::InvalidArgument(
+        "min_in_flight_batches_limit (", options.min_in_flight_batches_limit,
+        ") must be <= num_batch_threads (", options.num_batch_threads, ")");
+  }
   if (options.full_batch_scheduling_boost_micros < 0) {
     return errors::InvalidArgument(
         "full_batch_scheduling_boost_micros can't be negative; was ",
@@ -298,11 +311,12 @@ Status AdaptiveSharedBatchScheduler<TaskType>::Create(
         ") should not be larger than num_batch_threads (",
         options.num_batch_threads, ")");
   }
-  if (options.initial_in_flight_batches_limit < 1) {
-    return errors::InvalidArgument(
-        "initial_in_flight_batches_limit should be "
-        "greater than or equal to 1; was ",
-        options.initial_in_flight_batches_limit);
+  if (options.initial_in_flight_batches_limit <
+      options.min_in_flight_batches_limit) {
+    return errors::InvalidArgument("initial_in_flight_batches_limit (",
+                                   options.initial_in_flight_batches_limit,
+                                   "must be >= min_in_flight_batches_limit (",
+                                   options.min_in_flight_batches_limit, ")");
   }
   if (options.batches_to_average_over < 1) {
     return errors::InvalidArgument(
@@ -437,7 +451,9 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
     in_flight_batches_limit_ =
         std::min(in_flight_batches_limit_,
                  static_cast<double>(options_.num_batch_threads));
-    in_flight_batches_limit_ = std::max(in_flight_batches_limit_, 1.0);
+    in_flight_batches_limit_ =
+        std::max(in_flight_batches_limit_,
+                 static_cast<double>(options_.min_in_flight_batches_limit));
     last_avg_latency_ms_ = current_avg_latency_ms;
     last_latency_decreased_ = current_latency_decreased;
     batch_count_ = 0;

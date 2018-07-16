@@ -100,6 +100,15 @@ void ZeroVector(float* vector, int v_size) {
 
 float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
+// Check if all entries of a vector are zero.
+bool IsZeroVector(const float* vector, int v_size) {
+  return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);
+}
+
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result) {
+  NEON_OR_PORTABLE(VectorScalarMultiply, vector, v_size, scale, result);
+}
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result) {
   NEON_OR_PORTABLE(ClipVector, vector, v_size, abs_limit, result);

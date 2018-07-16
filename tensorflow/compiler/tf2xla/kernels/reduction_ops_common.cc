@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -31,6 +32,8 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
   OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
 
   OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
+  OP_REQUIRES_OK(
+      ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }
 
 // Unless BuildFinalizer is overridden the reduction has no
@@ -56,9 +59,9 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   // Evaluate the constant, reshaping to a 1-vector if it is a scalar.
   xla::Literal axes_literal;
-  OP_REQUIRES_OK(ctx,
-                 ctx->ConstantInputReshaped(
-                     1, {axes_tensor_shape.num_elements()}, &axes_literal));
+  OP_REQUIRES_OK(
+      ctx, ctx->ConstantInputReshaped(1, {axes_tensor_shape.num_elements()},
+                                      &axes_literal));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
   VLOG(1) << "axes      : " << axes_literal.ToString();
@@ -101,20 +104,20 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
 
-  auto data = b->ConvertElementType(ctx->Input(0), type);
+  auto data = xla::ConvertElementType(ctx->Input(0), type);
   // Call virtual method to get the initial value.
-  auto initial = b->ConvertElementType(InitialValue(b), type);
+  auto initial = xla::ConvertElementType(InitialValue(b), type);
   // Make two scalar parameters of the desired type for the lambda.
-  auto rx = r.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  auto ry = r.Parameter(1, xla::ShapeUtil::MakeShape(type, {}), "y");
+  auto rx = xla::Parameter(&r, 0, xla::ShapeUtil::MakeShape(type, {}), "x");
+  auto ry = xla::Parameter(&r, 1, xla::ShapeUtil::MakeShape(type, {}), "y");
   // Call virtual method to build the reduction lambda.
   BuildReducer(&r, rx, ry);
   xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
-  auto reduce = b->Reduce(data, initial, reduction_computation, xla_axes);
+  auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
   auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
   auto finalized = BuildFinalizer(b, deconverted, num_elements_reduced);
-  auto result = keep_dims_ ? b->Reshape(finalized, final_shape) : finalized;
+  auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
 }
 

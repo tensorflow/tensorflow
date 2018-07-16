@@ -14,24 +14,41 @@
 # ==============================================================================
 """Tools for working with object-based checkpoints.
 
-
-For creating and managing dependencies:
-@@CheckpointableObjectGraph
+Visualization and inspection:
 @@dot_graph_from_checkpoint
+@@list_objects
 @@object_metadata
+
+Managing dependencies:
+@@capture_dependencies
+@@Checkpointable
+@@CheckpointableBase
+@@CheckpointableObjectGraph
 @@NoDependency
 @@split_dependency
+
+Checkpointable data structures:
+@@List
+@@Mapping
+@@UniqueNameTracker
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.checkpoint.python.containers import UniqueNameTracker
 from tensorflow.contrib.checkpoint.python.split_dependency import split_dependency
 from tensorflow.contrib.checkpoint.python.visualize import dot_graph_from_checkpoint
 from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import CheckpointableObjectGraph
-from tensorflow.python.training.checkpointable import NoDependency
-from tensorflow.python.training.checkpointable_utils import object_metadata
+from tensorflow.python.training.checkpointable.base import CheckpointableBase
+from tensorflow.python.training.checkpointable.data_structures import List
+from tensorflow.python.training.checkpointable.data_structures import Mapping
+from tensorflow.python.training.checkpointable.data_structures import NoDependency
+from tensorflow.python.training.checkpointable.tracking import Checkpointable
+from tensorflow.python.training.checkpointable.util import capture_dependencies
+from tensorflow.python.training.checkpointable.util import list_objects
+from tensorflow.python.training.checkpointable.util import object_metadata
 
 from tensorflow.python.util.all_util import remove_undocumented
 

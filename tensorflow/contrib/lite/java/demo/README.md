@@ -1,5 +1,14 @@
 # TF Lite Android App
 
+## Building in Android Studio with TensorFlow Lite AAR from JCenter.
+The build.gradle is configured to use TensorFlow Lite's nightly build.
+
+If you see a build error related to compatibility with Tensorflow Lite's Java API (example: method X is
+undefined for type Interpreter), there has likely been a backwards compatible
+change to the API. You will need to pull new app code that's compatible with the
+nightly build and may need to first wait a few days for our external and internal
+code to merge.
+
 ## Building from Source with Bazel
 
 1. Follow the [Bazel steps for the TF Demo App](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#bazel):

@@ -1,0 +1,11 @@
+op {
+  visibility: HIDDEN
+  graph_op_name: "WindowDataset"
+  in_arg {
+    name: "window_size"
+    description: <<END
+A scalar representing the number of elements to accumulate in a window.
+END
+  }
+  summary: "A dataset that creates window datasets from the input dataset."
+}

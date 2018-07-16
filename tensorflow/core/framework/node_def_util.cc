@@ -378,15 +378,20 @@ Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                                  node_def.name());
 }
 
+Status OutputTypesForNode(const NodeDef& node_def, const OpDef& op_def,
+                          DataTypeVector* outputs) {
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, outputs));
+  }
+  return Status::OK();
+}
+
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
   for (const auto& arg : op_def.input_arg()) {
     TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, inputs));
   }
-  for (const auto& arg : op_def.output_arg()) {
-    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, outputs));
-  }
-  return Status::OK();
+  return OutputTypesForNode(node_def, op_def, outputs);
 }
 
 Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
@@ -688,5 +693,18 @@ void AddAttr(StringPiece name, const AttrValue& value, AttrValueMap* map) {
   }
 ADD_ATTR(bool)
 #undef ADD_ATTR
+
+Status AddPrefixAndSuffixToNode(StringPiece prefix, StringPiece suffix,
+                                NodeDef* node_def) {
+  node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
+  if (node_def->op() == "Enter" || node_def->op() == "RefEnter") {
+    string frame_name;
+    TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
+    AttrValue& attr = (*node_def->mutable_attr())["frame_name"];
+    frame_name = strings::StrCat(prefix, frame_name, suffix);
+    attr.set_s(frame_name);
+  }
+  return Status::OK();
+}
 
 }  // namespace tensorflow

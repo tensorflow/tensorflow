@@ -112,9 +112,10 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   // this is more obviously correct.)
   core::ScopedUnref cache_ref(cache);
 
-  const XlaDevice::Metadata* metadata;
+  const XlaDevice::Metadata* metadata = nullptr;
   Status s = XlaDevice::GetMetadata(ctx, &metadata);
   bool allocate_xla_tensors = s.ok();
+  bool use_multiple_streams = s.ok() && metadata->UseMultipleStreams();
 
   // Get the platform_id_ for XLA_* devices.
   if (platform_id_ == nullptr) {
@@ -148,14 +149,14 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
 
   XlaCompiler::Options options;
   options.client = client;
-  options.device_type = &cache->device_type();
+  options.device_type = cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == se::host::kHostPlatformId);
   options.device_allocator = xla_allocator;
-  // TODO(b/77671268): We don't set variable_representation_shape_fn here. This
-  // is restricted to Variables, but we need something like this to apply to
-  // normal Tensors too.
+  if (metadata) {
+    options.shape_representation_fn = metadata->shape_representation_fn();
+  }
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
@@ -164,14 +165,24 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   for (int i : constants_) {
     constant_args.insert({i, ctx->input(i)});
   }
-  OP_REQUIRES_OK(ctx, cache->Compile(options, function_, constant_args,
-                                     variables, ctx, &kernel, &executable,
-                                     /*compile_options=*/nullptr));
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.is_entry_computation = true;
+  // Optimization: don't resolve constants. If we resolve constants we never
+  // emit them on the device, meaning that if they are needed by a following
+  // computation the host has to transfer them.
+  compile_options.resolve_compile_time_constants = false;
+  // Optimization: where possible, have the computation return a naked array
+  // rather than a one-element tuple.
+  compile_options.always_return_tuple = false;
+
+  OP_REQUIRES_OK(
+      ctx, cache->Compile(options, function_, constant_args, variables, ctx,
+                          &kernel, &executable, &compile_options));
 
   VLOG(1) << "Executing XLA Computation...";
 
-  XlaComputationLaunchContext launch_context(client, xla_allocator,
-                                             allocate_xla_tensors);
+  XlaComputationLaunchContext launch_context(
+      client, xla_allocator, allocate_xla_tensors, use_multiple_streams);
   launch_context.PopulateInputs(ctx, kernel, variables);
 
   // Execute the computation.
@@ -254,10 +265,9 @@ XlaLocalLaunchOp::~XlaLocalLaunchOp() {
   VLOG(1) << "XlaLocalLaunchOp destroyed";
 }
 
-REGISTER_KERNEL_BUILDER(Name("_XlaLaunch").Device(DEVICE_CPU),
-                        XlaLocalLaunchOp);
+REGISTER_KERNEL_BUILDER(Name("XlaLaunch").Device(DEVICE_CPU), XlaLocalLaunchOp);
 
-REGISTER_KERNEL_BUILDER(Name("_XlaLaunch")
+REGISTER_KERNEL_BUILDER(Name("XlaLaunch")
                             .Device(DEVICE_GPU)
                             .HostMemory("constants")
                             .HostMemory("resources"),

@@ -192,6 +192,7 @@ string ToVlogString(dnn::DataType data_type) {
     case dnn::DataType::kInt8:
       return "dnn::DataType::kInt8";
   }
+  return "unknown DataType";
 }
 
 // Used together with PARAM to VLOG calls made to the stream. Intended
@@ -276,7 +277,7 @@ Stream::~Stream() {
 Stream &Stream::Init() {
   VLOG_CALL();
 
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   CHECK_EQ(false, allocated_)
       << "stream appears to already have been initialized";
   CHECK(!ok_) << "stream should be in !ok() state pre-initialization";
@@ -1899,7 +1900,7 @@ Stream &Stream::ThenCopyDevice2HostBuffer(
 }
 
 Stream *Stream::GetOrCreateSubStream() {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   for (auto &stream : sub_streams_) {
     if (stream.second) {
       stream.second = false;
@@ -1916,7 +1917,7 @@ Stream *Stream::GetOrCreateSubStream() {
 }
 
 void Stream::ReturnSubStream(Stream *sub_stream) {
-  mutex_lock lock{mu_};
+  mutex_lock lock(mu_);
   for (auto &stream : sub_streams_) {
     if (stream.first.get() == sub_stream) {
       stream.second = true;
@@ -5227,24 +5228,11 @@ port::Status Stream::BlockHostUntilDone() {
     return status;
   }
 
-  port::Status first_error;
-  {
-    // Wait until all active sub-streams have done their tasks.
-    mutex_lock lock{mu_};
-    for (auto &stream : sub_streams_) {
-      if (!stream.second) {
-        first_error.Update(stream.first->BlockHostUntilDone());
-        // Set this sub-stream as available.
-        stream.second = true;
-      }
-    }
-  }
-
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  first_error.Update(parent_->BlockHostUntilDone(this));
-  CheckError(first_error.ok());
-  return first_error;
+  port::Status error = parent_->BlockHostUntilDone(this);
+  CheckError(error.ok());
+  return error;
 }
 
 }  // namespace stream_executor

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -55,12 +56,17 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
   };
 
   // If the given instruction is a companion instruction, we need to find the
-  // predecessors of all of its companion instructions.
+  // predecessors of all of its companion instructions. If the instruction is an
+  // all-reduce, we need to find the predecessors of all the peer all-reduce
+  // instructions.
   std::vector<HloInstruction*> instruction_group;
   if (metadata_.IsCompanionInstruction(instruction)) {
     for (HloInstruction* companion : metadata_.Companions(instruction)) {
       instruction_group.push_back(companion);
     }
+  } else if (instruction->IsCrossModuleAllReduce()) {
+    instruction_group =
+        metadata_.GetAllReduceGroup(*instruction->all_reduce_id());
   } else {
     instruction_group.push_back(instruction);
   }
@@ -111,12 +117,17 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
   };
 
   // If the given instruction is a companion instruction, we need to find the
-  // successors of all of its companion instructions.
+  // successors of all of its companion instructions. If the instruction is an
+  // all-reduce, we need to find the successors of all its peer all-reduce
+  // instructions.
   std::vector<HloInstruction*> instruction_group;
   if (metadata_.IsCompanionInstruction(instruction)) {
     for (HloInstruction* companion : metadata_.Companions(instruction)) {
       instruction_group.push_back(companion);
     }
+  } else if (instruction->IsCrossModuleAllReduce()) {
+    instruction_group =
+        metadata_.GetAllReduceGroup(*instruction->all_reduce_id());
   } else {
     instruction_group.push_back(instruction);
   }
@@ -169,15 +180,17 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
     HloInstruction* hlo = stack.top();
 
     // Find the instruction group of the currently visited instruction. The
-    // instruction group represents all companion instructions of the
-    // current instruction, and are considered to be a single entity for the
-    // purpose of the traversal (i.e., they must always be in the same visit
-    // state).
+    // instruction group represents all companion instructions of the current
+    // instruction, or all the all-reduce instructions that belong to the same
+    // group, or are considered to be a single entity for the purpose of the
+    // traversal (i.e., they must always be in the same visit state).
     std::vector<HloInstruction*> instruction_group;
     if (metadata_.IsCompanionInstruction(hlo)) {
       for (HloInstruction* companion : metadata_.Companions(hlo)) {
         instruction_group.push_back(companion);
       }
+    } else if (hlo->IsCrossModuleAllReduce()) {
+      instruction_group = metadata_.GetAllReduceGroup(*hlo->all_reduce_id());
     } else {
       instruction_group.push_back(hlo);
     }
@@ -276,7 +289,7 @@ Status HloModuleGroupUtil::VerifyComputations(
 StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
     tensorflow::gtl::ArraySlice<HloComputation*> computations) {
-  std::list<HloInstruction*> post_order;
+  std::vector<HloInstruction*> post_order;
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
@@ -289,9 +302,9 @@ HloModuleGroupUtil::ComputeReachability(
     TF_RETURN_IF_ERROR(
         VisitTopologicalOrder(&visit_states, visit_function, root));
   }
-  auto reachability = absl::make_unique<HloReachabilityMap>(post_order);
+  auto reachability = MakeUnique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
-    reachability->SetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
+    reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }
   return std::move(reachability);
 }

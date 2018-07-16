@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/numpy_bridge.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -340,13 +341,13 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
   return result;
 }
 
-PyObject* PyObjectFromXlaLiteral(const Literal& literal) {
+PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
   if (ShapeUtil::IsTuple(literal.shape())) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {
-      PyTuple_SET_ITEM(
-          tuple, i, PyObjectFromXlaLiteral(LiteralView::Create(literal, {i})));
+      PyTuple_SET_ITEM(tuple, i,
+                       PyObjectFromXlaLiteral(LiteralSlice(literal, {i})));
     }
     return tuple;
   } else {
@@ -374,7 +375,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
       TF_ASSIGN_OR_RETURN(auto literal, XlaLiteralFromPyObject(element));
       elements.push_back(std::move(literal));
     }
-    return Literal::MakeTupleOwned(std::move(elements));
+    return LiteralUtil::MakeTupleOwned(std::move(elements));
   } else if (PyArray_Check(o)) {
     PyArrayObject* py_array = reinterpret_cast<PyArrayObject*>(o);
     int rank = PyArray_NDIM(py_array);
@@ -383,7 +384,7 @@ StatusOr<std::unique_ptr<Literal>> XlaLiteralFromPyObject(PyObject* o) {
       dimensions[i] = PyArray_DIM(py_array, i);
     }
     int np_type = PyArray_TYPE(py_array);
-    auto literal = Literal::CreateFromDimensions(
+    auto literal = LiteralUtil::CreateFromDimensions(
         NumpyTypeToPrimitiveType(np_type), dimensions);
     TF_RETURN_IF_ERROR(
         CopyNumpyArrayToLiteral(np_type, py_array, literal.get()));
@@ -431,7 +432,7 @@ Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
   return Status::OK();
 }
 
-void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
+void CopyLiteralToNumpyArray(int np_type, const LiteralSlice& literal,
                              PyArrayObject* py_array) {
   switch (np_type) {
     case NPY_BOOL:

@@ -66,6 +66,15 @@ namespace xla {
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
 class HloTestBase : public ::testing::Test {
+ public:
+  // Creates a new HLO module for a test. The module created will have
+  // TestName() for its name; it will also automatically populate its debug
+  // options from command-line flags. If you want a fresh HloModule object and
+  // then add HloComputations to it, it's recommended to use this method in your
+  // tests.
+  static std::unique_ptr<HloModule> CreateNewModule(
+      const string& name = TestName());
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -80,18 +89,17 @@ class HloTestBase : public ::testing::Test {
 
   ~HloTestBase() override {}
 
-  // Creates a new HLO module for a test. The module created will have
-  // TestName() for its name; it will also automatically populate its debug
-  // options from command-line flags. If you want a fresh HloModule object and
-  // then add HloComputations to it, it's recommended to use this method in your
-  // tests.
-  static std::unique_ptr<HloModule> CreateNewModule(
-      const string& name = TestName());
-
   // Populates debug options from command-line flags and adjusts the options for
   // testing. It is recommended to use this when you need to pass in
   // DebugOptions, e.g. when creating a module from a string or a file.
   static DebugOptions GetDebugOptionsForTest();
+
+  // Gets an HloModuleConfig with options appropriate for tests.
+  static HloModuleConfig GetModuleConfigForTest() {
+    HloModuleConfig config;
+    config.set_debug_options(GetDebugOptionsForTest());
+    return config;
+  }
 
   // Executes the given module and return the result as a Literal.
   StatusOr<std::unique_ptr<Literal>> Execute(
@@ -177,13 +185,9 @@ class HloTestBase : public ::testing::Test {
   // 'layout'.
   void ForceParameterLayout(HloModule* module, int64 param_no,
                             const Layout& layout) {
-    ASSERT_LT(
-        param_no,
-        module->mutable_host_entry_computation_layout()->parameter_count());
-    module->mutable_host_entry_computation_layout()
-        ->mutable_parameter_layout(param_no)
-        ->ResetLayout(layout);
-    module->mutable_device_entry_computation_layout()
+    ASSERT_LT(param_no,
+              module->mutable_entry_computation_layout()->parameter_count());
+    module->mutable_entry_computation_layout()
         ->mutable_parameter_layout(param_no)
         ->ResetLayout(layout);
   }
@@ -191,21 +195,22 @@ class HloTestBase : public ::testing::Test {
   // Convenience method to force the layout of the computation result in a
   // module. The result layout of 'module' is set to 'layout'.
   void ForceResultLayout(HloModule* module, const Layout& layout) {
-    module->mutable_host_entry_computation_layout()
+    module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->ResetLayout(layout);
-    module->mutable_device_entry_computation_layout()
+  }
+
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
         ->mutable_result_layout()
-        ->ResetLayout(layout);
+        ->ResetLayout(layout, shape_index);
   }
 
   // Convenience method to clear the layout of the computation result in
   // 'module'.
   void ForceClearResultLayout(HloModule* module) {
-    module->mutable_host_entry_computation_layout()
-        ->mutable_result_layout()
-        ->Clear();
-    module->mutable_device_entry_computation_layout()
+    module->mutable_entry_computation_layout()
         ->mutable_result_layout()
         ->Clear();
   }

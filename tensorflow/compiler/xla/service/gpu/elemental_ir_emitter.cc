@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -53,11 +53,17 @@ using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 using tensorflow::strings::StrAppend;
 
+namespace {
 // Returns whether operand is a floating-point literal with the given value.
 bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
-  return operand->opcode() == HloOpcode::kConstant &&
-         operand->literal().IsAllFloat(value);
+  if (operand->opcode() == HloOpcode::kConstant &&
+      operand->literal().IsAllFloat(value)) {
+    return true;
+  }
+  return operand->opcode() == HloOpcode::kBroadcast &&
+         IsFPLiteralWithValue(operand->operand(0), value);
 }
+}  // namespace
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
@@ -227,6 +233,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog(
   return EmitLibdeviceMathCall("__nv_log", {value}, {prim_type}, prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLog1p(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_log1p", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSin(
     PrimitiveType prim_type, llvm::Value* value) const {
   return EmitLibdeviceMathCall("__nv_sin", {value}, {prim_type}, prim_type);
@@ -240,6 +251,11 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitCos(
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExp(
     PrimitiveType prim_type, llvm::Value* value) const {
   return EmitLibdeviceMathCall("__nv_exp", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitExpm1(
+    PrimitiveType prim_type, llvm::Value* value) const {
+  return EmitLibdeviceMathCall("__nv_expm1", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
@@ -360,11 +376,17 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
             "reduce_window_accum_ptr", ir_builder_);
         {
           TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
-                              operand_to_generator.at(hlo->operand(1))({}));
+                              operand_to_generator.at(hlo->operand(1))(
+                                  IrArray::Index(index.GetType())));
           ir_builder_->CreateStore(init_value, accum_ptr);
         }
 
-        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
+        llvm::Type* index_type = index.GetType();
+        auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
+          return index.GetConstantWithIndexType(c);
+        };
+
+        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_, index_type);
         std::vector<int64> window_size;
         for (const auto& dim : window.dimensions()) {
           window_size.push_back(dim.size());
@@ -375,14 +397,14 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), ir_builder_);
 
-        IrArray::Index input_index(index.size());
+        IrArray::Index input_index(index_type, index.size());
         llvm::Value* in_bounds = ir_builder_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = ir_builder_->CreateNSWMul(
-              index[i], ir_builder_->getInt64(window.dimensions(i).stride()));
+              index[i], index_typed_const(window.dimensions(i).stride()));
           input_index[i] = ir_builder_->CreateNSWSub(
               ir_builder_->CreateNSWAdd(stridden_index, window_index[i]),
-              ir_builder_->getInt64(window.dimensions(i).padding_low()));
+              index_typed_const(window.dimensions(i).padding_low()));
 
           // We must check whether 0 ≤ input_index[i] < bound, as otherwise
           // we are in the pad and so can skip the computation. This
@@ -393,7 +415,7 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
               in_bounds,
               ir_builder_->CreateICmpULT(
                   input_index[i],
-                  ir_builder_->getInt64(operand->shape().dimensions(i))));
+                  index_typed_const(operand->shape().dimensions(i))));
         }
 
         llvm_ir::LlvmIfData if_data =
@@ -419,11 +441,13 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         llvm::Value* accum_ptr =
             ir_builder()->CreateAlloca(llvm_ir::PrimitiveTypeToIrType(
                 hlo->shape().element_type(), module_));
+        llvm::Type* index_type = output_index.GetType();
         TF_ASSIGN_OR_RETURN(llvm::Value * init_value,
-                            operand_to_generator.at(hlo->operand(1))({}));
+                            operand_to_generator.at(hlo->operand(1))(
+                                IrArray::Index(index_type)));
         ir_builder()->CreateStore(init_value, accum_ptr);
 
-        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_);
+        llvm_ir::ForLoopNest loops(IrName(hlo), ir_builder_, index_type);
         IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
             operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {

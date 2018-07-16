@@ -4,6 +4,7 @@ tflite/index.md
 tflite/devguide.md
 tflite/demo_android.md
 tflite/demo_ios.md
+tflite/performance.md
 >>>
 ### TensorFlow Mobile
 mobile_intro.md

@@ -25,11 +25,12 @@ import os
 import six
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.estimator import util
 from tensorflow.python.util import compat_internal
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import function_utils
+from tensorflow.python.util.tf_export import estimator_export
 
 
 _USE_DEFAULT = object()
@@ -283,7 +284,7 @@ def _validate_properties(run_config):
             message='tf_random_seed must be integer.')
 
   _validate('device_fn', lambda device_fn: six.callable(device_fn) and
-            set(util.fn_args(device_fn)) == _VALID_DEVICE_FN_ARGS,
+            set(function_utils.fn_args(device_fn)) == _VALID_DEVICE_FN_ARGS,
             message='device_fn must be callable with exactly'
                     ' one argument "op".')
 
@@ -296,7 +297,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
-@tf_export('estimator.RunConfig')
+@estimator_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 
@@ -483,6 +484,52 @@ class RunConfig(object):
         device_fn=device_fn)
 
     self._init_distributed_setting_from_environment_var(tf_config)
+
+    self._maybe_overwrite_session_config_for_distributed_training()
+
+  def _maybe_overwrite_session_config_for_distributed_training(self):
+    """Overwrites the session_config for distributed training.
+
+    The default overwrite is optimized for between-graph training. Subclass
+    should override this method if necessary.
+    """
+    # Get session_config only for between-graph distributed mode (cluster_spec
+    # is present).
+    if not self._session_config and self._cluster_spec:
+      RunConfig._replace(
+          self,
+          allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
+          session_config=self._get_default_session_config())
+
+  def _get_default_session_config(self):
+    """Returns None or tf.ConfigProto instance with default device_filters set.
+
+    Device filters are set such that chief/master and worker communicates with
+    only ps. session_config=None for evaluators or any other TaskType.
+    """
+
+    rewrite_opts = rewriter_config_pb2.RewriterConfig(
+        meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE)
+    graph_opts = config_pb2.GraphOptions(rewrite_options=rewrite_opts)
+
+    device_filters = None
+    if self._task_type == TaskType.MASTER:
+      device_filters = ['/job:ps', '/job:master']
+    elif self._task_type == TaskType.CHIEF:
+      device_filters = ['/job:ps', '/job:chief']
+    elif self._task_type == TaskType.WORKER:
+      device_filters = ['/job:ps', '/job:worker/task:%d' % self._task_id]
+    elif self._task_type == TaskType.PS:
+      device_filters = ['/job:ps', '/job:worker', '/job:master']
+    else:
+      # If the task_type is `EVALUATOR` or something other than the ones in
+      # TaskType then don't set any device filters.
+      return None
+
+    return config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        graph_options=graph_opts,
+        device_filters=device_filters)
 
   def _init_distributed_setting_from_environment_var(self, tf_config):
     """Initialize distributed properties based on `tf_config`."""

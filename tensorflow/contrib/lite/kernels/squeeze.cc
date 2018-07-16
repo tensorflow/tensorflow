@@ -26,13 +26,12 @@ namespace builtin {
 namespace squeeze {
 
 struct SqueezeContext {
-  SqueezeContext(TfLiteContext* context, TfLiteNode* node) {
-    params = reinterpret_cast<TfLiteSqueezeParams*>(node->builtin_data);
-    input = GetInput(context, node, 0);
-    output = GetOutput(context, node, 0);
-  }
+  SqueezeContext(TfLiteContext* context, TfLiteNode* node)
+      : params(reinterpret_cast<TfLiteSqueezeParams*>(node->builtin_data)),
+        input(GetInput(context, node, 0)),
+        output(GetOutput(context, node, 0)) {}
   TfLiteSqueezeParams* params;
-  TfLiteTensor* input;
+  const TfLiteTensor* const input;
   TfLiteTensor* output;
 };
 

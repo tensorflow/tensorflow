@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -57,11 +58,13 @@ class KernelThunk : public Thunk {
   int unroll_factor() const { return unroll_factor_; }
   void SetLaunchDimensions(const LaunchDimensions& launch_dims);
 
-  tensorflow::Status Initialize(const GpuExecutable& executable) override;
+  Status Initialize(const GpuExecutable& executable,
+                    se::StreamExecutor* executor) override;
 
   // Executes the kernel for the thunk on "stream", which must be non-null.
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
   // Buffers passed to the kernel as arguments.
@@ -83,7 +86,8 @@ class KernelThunk : public Thunk {
   mutable tensorflow::mutex mutex_;
   std::unique_ptr<se::MultiKernelLoaderSpec> loader_spec_ GUARDED_BY(mutex_);
 
-  // Loaded kernels for each `StreamExecutor`
+  // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
+  // values.
   std::unordered_map<se::StreamExecutor*, se::KernelBase> kernel_cache_
       GUARDED_BY(mutex_);
 };

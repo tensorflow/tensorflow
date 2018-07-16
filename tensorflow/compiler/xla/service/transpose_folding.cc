@@ -178,7 +178,6 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
 
   auto new_conv = HloInstruction::CreateConvolve(
       convolution.shape(), new_lhs, new_rhs, convolution.window(), new_dnums);
-  convolution.SetupDerivedInstruction(new_conv.get());
   TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 
@@ -215,7 +214,7 @@ StatusOr<bool> TransposeFolding::Run(HloModule* module) {
             std::make_pair(instruction, operand_indices));
       }
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   };
 
   for (auto* comp : module->MakeNonfusionComputations()) {

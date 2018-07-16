@@ -23,6 +23,9 @@ namespace tensor_utils {
 // Limit a float input f between +abs_limit and -abs_limit.
 float Clip(float f, float abs_limit);
 
+// Checks if all entries of vector are zero.
+bool IsZeroVector(const float* vector, int v_size);
+
 // Quantizes a buffer of floating point values using a symmetric quantization
 // (i.e. linear quantization without an offset) to 8-bit signed integers.
 // It also outputs the range (min, max) of the floating point buffer, and the
@@ -120,6 +123,10 @@ void Sub1Vector(const float* vector, int v_size, float* result);
 
 // Fill vector with 0.f.
 void ZeroVector(float* vector, int v_size);
+
+// Multiply all elements of vector with a scalar.
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result);
 
 // Clip elements of a vector using a abs_limit value.
 void ClipVector(const float* vector, int v_size, float abs_limit,

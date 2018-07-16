@@ -73,7 +73,7 @@ CpuExecutable::CpuExecutable(
 
 Status CpuExecutable::AllocateBuffers(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<se::DeviceMemoryBase>* buffers) {
+    std::vector<OwningDeviceMemory>* buffers) {
   CHECK_EQ(buffers->size(), assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
@@ -201,60 +201,18 @@ Status CpuExecutable::ExecuteComputeFunction(
   return Status::OK();
 }
 
-static void LogLiveAddresses(
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
-    const std::vector<bool>& buffers_in_result) {
-  if (!VLOG_IS_ON(3)) {
-    return;
-  }
-
-  CHECK_EQ(buffers.size(), buffers_in_result.size());
-  std::vector<const void*> live_out_buffers;
-  for (int i = 0; i < buffers.size(); ++i) {
-    if (buffers_in_result[i]) {
-      live_out_buffers.push_back(buffers[i].opaque());
-    }
-  }
-  VLOG(3) << "Live addresses in output marking found "
-          << live_out_buffers.size() << " addresses:\n"
-          << tensorflow::str_util::Join(
-                 live_out_buffers, ", ", [](string* out, const void* address) {
-                   tensorflow::strings::StrAppend(
-                       out, tensorflow::strings::Printf("%p", address));
-                 });
-}
-
-static Status DeallocateTempBuffers(
-    DeviceMemoryAllocator* allocator, se::Stream* stream,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
-    const std::vector<bool>& buffers_in_result) {
-  // Keep those buffers in the output of the marked live because they are needed
-  // by the service. They will be deallocated by the service.
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    se::DeviceMemoryBase alloc = buffers[i];
-    if (!buffers_in_result[i] && !alloc.is_null()) {
-      VLOG(3) << "CpuExecutable deallocating buffer #" << i << " ["
-              << alloc.opaque() << "]";
-      TF_RETURN_IF_ERROR(
-          allocator->Deallocate(stream->parent()->device_ordinal(), &alloc));
-    }
-  }
-
-  return Status::OK();
-}
-
 StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> allocated_buffers,
-    std::vector<bool>* buffers_in_result) {
+    tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers) {
   se::Stream* stream = run_options->stream();
   ScopedShapedBuffer result_buffer(
-      /*on_host_shape=*/host_result_shape(),
-      /*on_device_shape=*/host_result_shape(), run_options->allocator(),
+      /*on_host_shape=*/result_shape(),
+      /*on_device_shape=*/result_shape(), run_options->allocator(),
       stream->parent()->device_ordinal());
 
-  // Copy DeviceMemoryBase values which contain the array(s) of the result into
-  // the respective location in ShapedBuffer which is returned to the caller.
+  // Move OwningDeviceMemory values which contain the array(s) of the result
+  // into the respective location in ScopedShapedBuffer which is returned to the
+  // caller.
   TF_RETURN_IF_ERROR(result_buffer.buffers().ForEachMutableElementWithStatus(
       [&](const ShapeIndex& index, se::DeviceMemoryBase* device_memory) {
         const auto& sources = this->GetRootPointsToSet().element(index);
@@ -273,10 +231,9 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
         CHECK(!slice.allocation()->is_entry_computation_parameter());
 
         const BufferAllocation::Index buffer_index = slice.index();
-        const se::DeviceMemoryBase& buffer = allocated_buffers[buffer_index];
+        OwningDeviceMemory& buffer = buffers[buffer_index];
         CHECK(!buffer.is_null() || buffer.size() == 0);
-        *device_memory = buffer;
-        (*buffers_in_result)[buffer_index] = true;
+        *device_memory = buffer.Forget();
         return Status::OK();
       }));
   return std::move(result_buffer);
@@ -292,23 +249,21 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
 
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
+  std::vector<OwningDeviceMemory> buffers(assignment_->Allocations().size());
 
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
-      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
 
-  std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
-  TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer result_buffer,
-      CreateResultShapedBuffer(run_options, buffers, &buffers_in_result));
+  std::vector<se::DeviceMemoryBase> unowning_buffers;
+  unowning_buffers.reserve(buffers.size());
+  for (auto& buffer : buffers) {
+    unowning_buffers.push_back(buffer.AsDeviceMemoryBase());
+  }
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(&run_options->run_options(),
+                                            arguments, unowning_buffers,
+                                            hlo_execution_profile));
 
-  // Free all buffers not in the result.
-  TF_RETURN_IF_ERROR(DeallocateTempBuffers(memory_allocator, stream, buffers,
-                                           buffers_in_result));
-
-  return std::move(result_buffer);
+  return CreateResultShapedBuffer(run_options, &buffers);
 }
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
@@ -324,30 +279,53 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
       run_options->stream()->implementation());
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
-
+  std::vector<OwningDeviceMemory> buffers(assignment_->Allocations().size());
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
 
-  std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
-  TF_ASSIGN_OR_RETURN(
-      ScopedShapedBuffer result_buffer,
-      CreateResultShapedBuffer(run_options, buffers, &buffers_in_result));
+  std::vector<se::DeviceMemoryBase> unowning_buffers;
+  unowning_buffers.reserve(buffers.size());
+  for (auto& buffer : buffers) {
+    unowning_buffers.push_back(buffer.AsDeviceMemoryBase());
+  }
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      CreateResultShapedBuffer(run_options, &buffers));
 
-  LogLiveAddresses(buffers, buffers_in_result);
+  // At this point, `unowning_buffers` contains unowning pointers to all of our
+  // buffers, and `buffers` contains owning pointers to the non-live-out
+  // buffers.  Enqueue a task which keeps alive the non-live-out buffers.
+  //
+  // Logically we want this lambda to capture `buffers` by move, ultimately our
+  // functor needs to be wrapped in an std::function, and that requires its
+  // functor to be copyable.  Thus we perpitrate the hack of capturing buffers
+  // "by shared pointer".
+  //
+  // We also need to change the types of some of the variables we capture:
+  // run_options needs to change from a pointer to a value type, and arguments
+  // needs to change from an ArraySlice into a vector.  We use a struct instead
+  // of a lambda to make this explicit.
+  struct AsyncRunTask {
+    CpuExecutable* executable;
+    ServiceExecutableRunOptions run_options;
+    std::vector<const ShapedBuffer*> arguments;
+    std::vector<se::DeviceMemoryBase> unowning_buffers;
+    std::shared_ptr<std::vector<OwningDeviceMemory>> buffers;
 
-  host_stream->EnqueueTask([this, run_options, arguments, buffers,
-                            buffers_in_result, memory_allocator, stream]() {
-    // Failing a CHECK here is not great, but I don't see an obvious way to
-    // return a failed Status asynchronously.
-    TF_CHECK_OK(ExecuteComputeFunction(&run_options->run_options(), arguments,
-                                       buffers,
-                                       /*hlo_execution_profile=*/nullptr));
-    TF_CHECK_OK(DeallocateTempBuffers(memory_allocator, stream, buffers,
-                                      buffers_in_result));
-  });
+    void operator()() {
+      // Failing a CHECK here is not great, but I don't see an obvious way to
+      // return a failed Status asynchronously.
+      TF_CHECK_OK(executable->ExecuteComputeFunction(
+          &run_options.run_options(), arguments, unowning_buffers,
+          /*hlo_execution_profile=*/nullptr));
+    }
+  };
+  host_stream->EnqueueTask(AsyncRunTask{
+      this, *run_options,
+      std::vector<const ShapedBuffer*>(arguments.begin(), arguments.end()),
+      unowning_buffers,
+      std::make_shared<std::vector<OwningDeviceMemory>>(std::move(buffers))});
 
-  return std::move(result_buffer);
+  return std::move(result);
 }
 
 /*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {

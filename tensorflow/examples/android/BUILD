@@ -1,6 +1,8 @@
 # Description:
 #   TensorFlow camera demo app for Android.
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -36,7 +38,7 @@ cc_binary(
         "-z defs",
         "-s",
         "-Wl,--version-script",  # This line must be directly followed by LINKER_SCRIPT.
-        LINKER_SCRIPT,
+        "$(location {})".format(LINKER_SCRIPT),
     ],
     linkshared = 1,
     linkstatic = 1,

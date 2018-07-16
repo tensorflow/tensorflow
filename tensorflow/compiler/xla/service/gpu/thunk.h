@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -53,6 +54,7 @@ class Thunk {
     kKernel,
     kMemset32BitValue,
     kMemzero,
+    kOutfeed,
     kSequential,
     kTuple,
     kWhile,
@@ -70,11 +72,14 @@ class Thunk {
   Kind kind() const { return kind_; }
   const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
 
-  // Prepares for executing the thunk. This method is called only once over
-  // Thunk's lifetime. For example, KernelThunk::Initialize loads the PTX of a
-  // kernel, which is the same in every execution.
-  virtual tensorflow::Status Initialize(const GpuExecutable& executable) {
-    return tensorflow::Status::OK();
+  // Prepares the thunk for execution on the given StreamExecutor.
+  //
+  // This may be called multiple times.  Its main purpose is to give us a chance
+  // to do initialization outside of ExecuteOnStream() so that the
+  // time spent initializing doesn't count towards our execution profile.
+  virtual Status Initialize(const GpuExecutable& /*executable*/,
+                            se::StreamExecutor* /*executor*/) {
+    return Status::OK();
   }
 
   // Users of Thunk should call ShouldHaltAllActivityBeforeRunning(stream)
@@ -89,21 +94,14 @@ class Thunk {
     return false;
   }
 
-  // Indicates whether thunks scheduled after this one should wait for this one
-  // to complete before running. For example, a convolution thunk creates a
-  // scratch allocator, then kicks off a convolution in cudnn via the stream
-  // executor. When the stream executor call returns, the scratch allocator goes
-  // out of scope, and the scratch memory is deallocated. In this case, the
-  // convolution thunk needs to return true so that future thunks wait for the
-  // convolution thunk to avoid reusing the deallocated memory until the
-  // convolution thunk is done with it.
-  virtual bool ShouldBlockFutureThunks() { return false; }
-
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's
-  // lifetime. Stream argument must be non-null.
-  virtual tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations, se::Stream* stream) = 0;
+  // lifetime. 'stream' and 'profiler' must be non-null.
+  //
+  // Precondition: Initialize(stream->parent()) has been called.
+  virtual Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                 se::Stream* stream,
+                                 HloExecutionProfiler* profiler) = 0;
 
  private:
   Kind kind_;

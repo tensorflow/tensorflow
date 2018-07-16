@@ -38,8 +38,7 @@ using ElementGenerator =
 // Emits a loop for every element in the given shape.
 class LoopEmitter {
  public:
-  using BodyEmitter =
-      std::function<tensorflow::Status(const IrArray::Index& index)>;
+  using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
 
   LoopEmitter(const BodyEmitter& body_emitter, const Shape& shape,
               llvm::IRBuilder<>* ir_builder);
@@ -66,13 +65,16 @@ class LoopEmitter {
   // specifies the element, will return multiple indices if the loop is
   // unrolled.
   std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock() {
-    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"");
+    return EmitIndexAndSetExitBasicBlock(/*loop_name=*/"",
+                                         ir_builder_->getInt64Ty());
   }
+
   virtual std::vector<IrArray::Index> EmitIndexAndSetExitBasicBlock(
-      tensorflow::StringPiece loop_name);
+      tensorflow::StringPiece loop_name, llvm::Type* index_type);
 
   // Emits a complete loop nest for every element in the given shape.
-  tensorflow::Status EmitLoop(tensorflow::StringPiece loop_name = "");
+  Status EmitLoop(tensorflow::StringPiece loop_name = "",
+                  llvm::Type* index_type = nullptr);
 
  protected:
   // An IR emitter that generates the loop body.

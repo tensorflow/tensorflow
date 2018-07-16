@@ -97,7 +97,11 @@ class SquareLinearOperatorKroneckerTest(
         build_info((3, 6, 6), factors=[(3, 1, 1), (1, 2, 2), (1, 3, 3)]),
     ]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  @property
+  def _tests_to_skip(self):
+    return ["det", "solve", "solve_with_broadcast"]
+
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     expected_factors = build_info.__dict__["factors"]
     matrices = [
@@ -106,26 +110,15 @@ class SquareLinearOperatorKroneckerTest(
         for block_shape in expected_factors
     ]
 
+    lin_op_matrices = matrices
+
     if use_placeholder:
-      matrices_ph = [
-          array_ops.placeholder(dtype=dtype) for _ in expected_factors
-      ]
-      # Evaluate here because (i) you cannot feed a tensor, and (ii)
-      # values are random and we want the same value used for both mat and
-      # feed_dict.
-      matrices = self.evaluate(matrices)
-      operator = kronecker.LinearOperatorKronecker(
-          [linalg.LinearOperatorFullMatrix(
-              m_ph, is_square=True) for m_ph in matrices_ph],
-          is_square=True)
-      feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
-    else:
-      operator = kronecker.LinearOperatorKronecker(
-          [linalg.LinearOperatorFullMatrix(
-              m, is_square=True) for m in matrices])
-      feed_dict = None
-      # Should be auto-set.
-      self.assertTrue(operator.is_square)
+      lin_op_matrices = [
+          array_ops.placeholder_with_default(m, shape=None) for m in matrices]
+
+    operator = kronecker.LinearOperatorKronecker(
+        [linalg.LinearOperatorFullMatrix(
+            l, is_square=True) for l in lin_op_matrices])
 
     matrices = linear_operator_util.broadcast_matrix_batch_dims(matrices)
 
@@ -134,7 +127,7 @@ class SquareLinearOperatorKroneckerTest(
     if not use_placeholder:
       kronecker_dense.set_shape(shape)
 
-    return operator, kronecker_dense, feed_dict
+    return operator, kronecker_dense
 
   def test_is_x_flags(self):
     # Matrix with two positive eigenvalues, 1, and 1.

@@ -48,12 +48,14 @@ class BufferAllocations {
     // `device_ordinal` is the number of the device this function allocates
     // memory on.
     StatusOr<std::unique_ptr<BufferAllocations>> Build(
-        const BufferAssignment& buffer_assignment, int device_ordinal,
+        const BufferAssignment* buffer_assignment, int device_ordinal,
         DeviceMemoryAllocator* memory_allocator);
 
    private:
     std::map<BufferAllocation::Index, se::DeviceMemoryBase> registered_buffers_;
   };
+
+  ~BufferAllocations();
 
   BufferAllocations(const BufferAllocations&) = delete;
   BufferAllocations& operator=(const BufferAllocations&) = delete;
@@ -76,16 +78,16 @@ class BufferAllocations {
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  tensorflow::Status TearDown(
-      const std::set<se::DeviceMemoryBase>& live_addresses,
-      const BufferAssignment& buffer_assignment);
+  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses);
 
  private:
   BufferAllocations(BufferAllocation::Index buffer_count, int device_ordinal,
-                    DeviceMemoryAllocator* memory_allocator)
+                    DeviceMemoryAllocator* memory_allocator,
+                    const BufferAssignment* buffer_assignment)
       : buffers_(buffer_count),
         device_ordinal_(device_ordinal),
-        memory_allocator_(memory_allocator) {}
+        memory_allocator_(memory_allocator),
+        buffer_assignment_(buffer_assignment) {}
 
   // Sets the device address of buffer `buffer_index`.
   void SetBuffer(BufferAllocation::Index buffer_index,
@@ -100,8 +102,9 @@ class BufferAllocations {
   se::DeviceMemoryBase temp_buffer_base_;
 
   int device_ordinal_;
-
   DeviceMemoryAllocator* memory_allocator_;
+  const BufferAssignment* buffer_assignment_;
+  bool torn_down_ = false;
 };
 
 }  // namespace gpu

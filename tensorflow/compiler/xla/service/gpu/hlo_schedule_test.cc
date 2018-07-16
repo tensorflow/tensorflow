@@ -42,6 +42,14 @@ class HloScheduleTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<HloModule> CreateNewModule() {
+    HloModuleConfig config;
+    auto debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_disable_multi_streaming(false);
+    config.set_debug_options(debug_options);
+    return MakeUnique<HloModule>("test_module", config);
+  }
+
   HloVec RemoveHlo(const HloVec& input,
                    const std::unordered_set<const HloInstruction*>& remove) {
     HloVec result(input);

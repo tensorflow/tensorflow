@@ -83,9 +83,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   bool hasBias = NumInputs(node) == 3;
 
   TF_LITE_ENSURE(context, hasBias || NumInputs(node) == 2);
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  TfLiteTensor* bias = nullptr;
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* bias = nullptr;
 
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -151,8 +151,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
-    QuantizeMultiplierSmallerThanOne(real_multiplier, &data->output_multiplier,
-                                     &data->output_shift);
+    int exponent;
+    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
+    data->output_shift = -exponent;
     CalculateActivationRangeUint8(params->activation, output,
                                   &data->output_activation_min,
                                   &data->output_activation_max);
@@ -169,11 +170,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteDepthwiseConvParams* params, OpData* data,
-               TfLiteTensor* input, TfLiteTensor* filter, TfLiteTensor* bias,
-               TfLiteTensor* output) {
+               const TfLiteTensor* input, const TfLiteTensor* filter,
+               const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
 
   void (*depthwise_conv)(const float*, const Dims<4>&, const float*,
                          const Dims<4>&, const float*, const Dims<4>&, int, int,
@@ -196,8 +197,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteDepthwiseConvParams* params, OpData* data,
-                   TfLiteTensor* input, TfLiteTensor* filter,
-                   TfLiteTensor* bias, TfLiteTensor* output) {
+                   const TfLiteTensor* input, const TfLiteTensor* filter,
+                   const TfLiteTensor* bias, TfLiteTensor* output) {
   auto input_offset = -input->params.zero_point;
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
@@ -230,9 +231,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  TfLiteTensor* bias =
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
+  const TfLiteTensor* bias =
       (NumInputs(node) == 3) ? GetInput(context, node, kBiasTensor) : nullptr;
 
   // TODO(aselle): Consider whether float conv and quantized conv should be
@@ -247,7 +248,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  bias, output);
       break;
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

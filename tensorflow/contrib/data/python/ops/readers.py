@@ -17,16 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import csv
-from math import ceil
 
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import batching
+from tensorflow.contrib.data.python.ops import gen_dataset_ops as contrib_gen_dataset_ops
 from tensorflow.contrib.data.python.ops import interleave_ops
 from tensorflow.contrib.data.python.ops import shuffle_ops
+from tensorflow.contrib.data.python.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,9 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import deprecation
 
@@ -68,7 +69,7 @@ def _is_valid_float(str_val, float_dtype):
     return False
 
 
-def _infer_type(str_val, na_value, prev_type, float_dtype):
+def _infer_type(str_val, na_value, prev_type):
   """Given a string, infers its tensor type.
 
   Infers the type of a value by picking the least 'permissive' type possible,
@@ -79,29 +80,34 @@ def _infer_type(str_val, na_value, prev_type, float_dtype):
     na_value: Additional string to recognize as a NA/NaN CSV value.
     prev_type: Type previously inferred based on values of this column that
       we've seen up till now.
-    float_dtype: Either `tf.float32` or `tf.float64`. Denotes what float type
-      to parse float strings as.
   Returns:
     Inferred dtype.
   """
   if str_val in ("", na_value):
+    # If the field is null, it gives no extra information about its type
     return prev_type
 
-  if _is_valid_int32(str_val) and prev_type in (None, dtypes.int32):
-    return dtypes.int32
+  type_list = [
+      dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64, dtypes.string
+  ]  # list of types to try, ordered from least permissive to most
 
-  if _is_valid_int64(str_val) and prev_type in (None, dtypes.int32,
-                                                dtypes.int64):
-    return dtypes.int64
+  type_functions = [
+      _is_valid_int32,
+      _is_valid_int64,
+      lambda str_val: _is_valid_float(str_val, dtypes.float32),
+      lambda str_val: _is_valid_float(str_val, dtypes.float64),
+      lambda str_val: True,
+  ]  # Corresponding list of validation functions
 
-  if _is_valid_float(str_val, float_dtype) and prev_type != dtypes.string:
-    return float_dtype
+  for i in range(len(type_list)):
+    validation_fn = type_functions[i]
+    if validation_fn(str_val) and (prev_type is None or
+                                   prev_type in type_list[:i + 1]):
+      return type_list[i]
 
-  return dtypes.string
 
-
-def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header,
-                  comment):
+def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header):
+  """Generator that yields rows of CSV file(s) in order."""
   for fn in filenames:
     with file_io.FileIO(fn, "r") as f:
       rdr = csv.reader(
@@ -112,9 +118,6 @@ def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header,
         next(rdr)  # Skip header lines
 
       for csv_row in rdr:
-        if comment is not None and csv_row[0].startswith(comment):
-          continue  # Skip comment lines
-
         if len(csv_row) != num_cols:
           raise ValueError(
               "Problem inferring types: CSV row has different number of fields "
@@ -123,22 +126,21 @@ def _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header,
 
 
 def _infer_column_defaults(filenames, num_cols, field_delim, use_quote_delim,
-                           na_value, header, comment, float_dtype,
-                           num_rows_for_inference, select_columns):
+                           na_value, header, num_rows_for_inference,
+                           select_columns):
   """Infers column types from the first N valid CSV records of files."""
   if select_columns is None:
     select_columns = range(num_cols)
   inferred_types = [None] * len(select_columns)
 
   for i, csv_row in enumerate(
-      _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header,
-                    comment)):
+      _next_csv_row(filenames, num_cols, field_delim, use_quote_delim, header)):
     if num_rows_for_inference is not None and i >= num_rows_for_inference:
       break
 
     for j, col_index in enumerate(select_columns):
       inferred_types[j] = _infer_type(csv_row[col_index], na_value,
-                                      inferred_types[j], float_dtype)
+                                      inferred_types[j])
 
   # Replace None's with a default type
   inferred_types = [t or dtypes.string for t in inferred_types]
@@ -198,6 +200,112 @@ def _get_sorted_col_indices(select_columns, column_names):
   return result
 
 
+def _maybe_shuffle_and_repeat(
+    dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed):
+  """Optionally shuffle and repeat dataset, as requested."""
+  if num_epochs != 1 and shuffle:
+    # Use shuffle_and_repeat for perf
+    return dataset.apply(
+        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
+                                       shuffle_seed))
+  elif shuffle:
+    return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  elif num_epochs != 1:
+    return dataset.repeat(num_epochs)
+  return dataset
+
+
+def make_tf_record_dataset(
+    file_pattern,
+    batch_size,
+    parser_fn=None,
+    num_epochs=None,
+    shuffle=True,
+    shuffle_buffer_size=None,
+    shuffle_seed=None,
+    prefetch_buffer_size=None,
+    num_parallel_reads=None,
+    num_parallel_parser_calls=None,
+    drop_final_batch=False):
+  """Reads and optionally parses TFRecord files into a dataset.
+
+  Provides common functionality such as batching, optional parsing, shuffling,
+  and performant defaults.
+
+  Args:
+    file_pattern: List of files or patterns of TFRecord file paths.
+      See @{tf.gfile.Glob} for pattern rules.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
+    parser_fn: (Optional.) A function accepting string input to parse
+      and process the record contents. This function must map records
+      to components of a fixed shape, so they may be batched. By
+      default, uses the record contents unmodified.
+    num_epochs: (Optional.) An int specifying the number of times this
+      dataset is repeated.  If None (the default), cycles through the
+      dataset forever.
+    shuffle: (Optional.) A bool that indicates whether the input
+      should be shuffled. Defaults to `True`.
+    shuffle_buffer_size: (Optional.) Buffer size to use for
+      shuffling. A large buffer size ensures better shuffling, but
+      increases memory usage and startup time.
+    shuffle_seed: (Optional.) Randomization seed to use for shuffling.
+    prefetch_buffer_size: (Optional.) An int specifying the number of
+      feature batches to prefetch for performance improvement.
+      Defaults to auto-tune. Set to 0 to disable prefetching.
+    num_parallel_reads: (Optional.) Number of threads used to read
+      records from files. By default or if set to a value >1, the
+      results will be interleaved.
+    num_parallel_parser_calls: (Optional.) Number of parallel
+      records to parse in parallel. Defaults to an automatic selection.
+    drop_final_batch: (Optional.) Whether the last batch should be
+      dropped in case its size is smaller than `batch_size`; the
+      default behavior is not to drop the smaller batch.
+
+  Returns:
+    A dataset, where each element matches the output of `parser_fn`
+    except it will have an additional leading `batch-size` dimension,
+    or a `batch_size`-length 1-D tensor of strings if `parser_fn` is
+    unspecified.
+  """
+  files = dataset_ops.Dataset.list_files(
+      file_pattern, shuffle=shuffle, seed=shuffle_seed)
+
+  if num_parallel_reads is None:
+    # Note: We considered auto-tuning this value, but there is a concern
+    # that this affects the mixing of records from different files, which
+    # could affect training convergence/accuracy, so we are defaulting to
+    # a constant for now.
+    num_parallel_reads = 24
+  dataset = core_readers.TFRecordDataset(
+      files, num_parallel_reads=num_parallel_reads)
+
+  if shuffle_buffer_size is None:
+    # TODO(josh11b): Auto-tune this value when not specified
+    shuffle_buffer_size = 10000
+  dataset = _maybe_shuffle_and_repeat(
+      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
+
+  if parser_fn is None:
+    if drop_final_batch:
+      dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
+    else:
+      dataset = dataset.batch(batch_size)
+  else:
+    # TODO(josh11b): if num_parallel_parser_calls is None, use some function
+    # of num cores instead of map_and_batch's default behavior of one batch.
+    dataset = dataset.apply(batching.map_and_batch(
+        parser_fn, batch_size, num_parallel_calls=num_parallel_parser_calls,
+        drop_remainder=drop_final_batch))
+
+  if prefetch_buffer_size is None:
+    prefetch_buffer_size = -1  # tf.config.data.AUTOTUNE
+  if prefetch_buffer_size == 0:
+    return dataset
+  else:
+    return dataset.prefetch(buffer_size=prefetch_buffer_size)
+
+
 def make_csv_dataset(
     file_pattern,
     batch_size,
@@ -209,7 +317,6 @@ def make_csv_dataset(
     use_quote_delim=True,
     na_value="",
     header=True,
-    comment=None,
     num_epochs=None,
     shuffle=True,
     shuffle_buffer_size=10000,
@@ -218,7 +325,6 @@ def make_csv_dataset(
     num_parallel_reads=1,
     num_parallel_parser_calls=2,
     sloppy=False,
-    default_float_type=dtypes.float32,
     num_rows_for_inference=100,
 ):
   """Reads CSV files into a dataset.
@@ -231,8 +337,8 @@ def make_csv_dataset(
   Args:
     file_pattern: List of files or patterns of file paths containing CSV
       records. See @{tf.gfile.Glob} for pattern rules.
-    batch_size: An int representing the number of consecutive elements of this
-      dataset to combine in a single batch.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     column_names: An optional list of strings that corresponds to the CSV
       columns, in order. One per column of the input record. If this is not
       provided, infers the column names from the first row of the records.
@@ -272,15 +378,11 @@ def make_csv_dataset(
     header: A bool that indicates whether the first rows of provided CSV files
       correspond to header lines with column names, and should not be included
       in the data.
-    comment: An optional character string that marks lines that should not be
-      parsed as csv records. If this is provided, all lines that start with
-      this character will not be parsed.
     num_epochs: An int specifying the number of times this dataset is repeated.
       If None, cycles through the dataset forever.
     shuffle: A bool that indicates whether the input should be shuffled.
     shuffle_buffer_size: Buffer size to use for shuffling. A large buffer size
-      ensures better shuffling, but would increase memory usage and startup
-      time.
+      ensures better shuffling, but increases memory usage and startup time.
     shuffle_seed: Randomization seed to use for shuffling.
     prefetch_buffer_size: An int specifying the number of feature batches to
       prefetch for performance improvement. Recommended value is the number of
@@ -294,8 +396,6 @@ def make_csv_dataset(
       produced is deterministic prior to shuffling (elements are still
       randomized if `shuffle=True`. Note that if the seed is set, then order
       of elements after shuffling is deterministic). Defaults to `False`.
-    default_float_type: Either `tf.float32` or `tf.float64`. If defaults are
-      not provided, float-like strings are interpreted to be this type.
     num_rows_for_inference: Number of rows of a file to use for type inference
       if record_defaults is not provided. If None, reads all the rows of all
       the files. Defaults to 100.
@@ -317,8 +417,6 @@ def make_csv_dataset(
     dataset = dataset.shuffle(len(filenames), shuffle_seed)
 
   # Clean arguments; figure out column names and defaults
-  if comment is not None and len(comment) != 1:
-    raise ValueError("`comment` arg must be a single-character string or None")
 
   if column_names is None:
     if not header:
@@ -341,8 +439,7 @@ def make_csv_dataset(
     # construction time
     column_defaults = _infer_column_defaults(
         filenames, len(column_names), field_delim, use_quote_delim, na_value,
-        header, comment, default_float_type, num_rows_for_inference,
-        select_columns)
+        header, num_rows_for_inference, select_columns)
 
   if select_columns is not None and len(column_defaults) != len(select_columns):
     raise ValueError(
@@ -356,69 +453,187 @@ def make_csv_dataset(
   if label_name is not None and label_name not in column_names:
     raise ValueError("`label_name` provided must be one of the columns.")
 
-  # Define map and filter functions
-  def filter_fn(line):
-    return math_ops.not_equal(string_ops.substr(line, 0, 1), comment)
-
   def filename_to_dataset(filename):
-    ds = core_readers.TextLineDataset(filename)
-    if header:
-      ds = ds.skip(1)
-    if comment is not None:
-      ds = ds.filter(filter_fn)
-    return ds
-
-  def decode_csv(line):
-    """Decodes CSV line into features.
-
-    Args:
-      line: String tensor corresponding to one csv record.
-    Returns:
-      A dictionary of feature names to values for that particular record. If
-      label_name is provided, extracts the label feature to be returned as the
-      second element of the tuple.
-    """
-    columns = parsing_ops.decode_csv(
-        line,
-        column_defaults,
+    return CsvDataset(
+        filename,
+        record_defaults=column_defaults,
         field_delim=field_delim,
         use_quote_delim=use_quote_delim,
         na_value=na_value,
         select_cols=select_columns,
-    )
-    features = dict(zip(column_names, columns))
+        header=header)
+
+  def map_fn(*columns):
+    """Organizes columns into a features dictionary.
+
+    Args:
+      *columns: list of `Tensor`s corresponding to one csv record.
+    Returns:
+      An OrderedDict of feature names to values for that particular record. If
+      label_name is provided, extracts the label feature to be returned as the
+      second element of the tuple.
+    """
+    features = collections.OrderedDict(zip(column_names, columns))
     if label_name is not None:
       label = features.pop(label_name)
       return features, label
     return features
 
-  # Read files sequentially or in parallel
+  # Read files sequentially (if num_parallel_reads=1) or in parallel
   dataset = dataset.apply(
       interleave_ops.parallel_interleave(
           filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
 
-  if num_epochs != 1 and shuffle:
-    # Use shuffle_and_repeat for perf
-    dataset = dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
-  elif shuffle:
-    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
-  elif num_epochs != 1:
-    dataset = dataset.repeat(num_epochs)
+  dataset = _maybe_shuffle_and_repeat(
+      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
 
-  # Use map_and_batch for perf
-  # TODO(b/76425672): use num_parallel_calls for better performance tuning when
-  # that is added
-  dataset = dataset.apply(
-      batching.map_and_batch(
-          map_func=decode_csv,
-          batch_size=batch_size,
-          num_parallel_batches=int(
-              ceil(num_parallel_parser_calls / batch_size))))
-
+  # Apply batch before map for perf, because map has high overhead relative
+  # to the size of the computation in each map
+  dataset = dataset.batch(batch_size=batch_size)
+  dataset = dataset.map(map_fn, num_parallel_calls=num_parallel_parser_calls)
   dataset = dataset.prefetch(prefetch_buffer_size)
+
   return dataset
+
+
+_DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
+
+
+class CsvDataset(dataset_ops.Dataset):
+  """A Dataset comprising lines from one or more CSV files."""
+
+  def __init__(self,
+               filenames,
+               record_defaults,
+               buffer_size=None,
+               header=False,
+               field_delim=",",
+               use_quote_delim=True,
+               na_value="",
+               select_cols=None):
+    """Creates a `CsvDataset` by reading and decoding CSV files.
+
+    The elements of this dataset correspond to records from the file(s).
+    RFC 4180 format is expected for CSV files
+    (https://tools.ietf.org/html/rfc4180)
+    Note that we allow leading and trailing spaces with int or float field.
+
+
+    For example, suppose we have a file 'my_file0.csv' with four CSV columns of
+    different data types:
+    ```
+    abcdefg,4.28E10,5.55E6,12
+    hijklmn,-5.3E14,,2
+    ```
+
+    We can construct a CsvDataset from it as follows:
+    ```python
+    dataset = tf.contrib.data.CsvDataset(
+      "my_file*.csv",
+      [tf.float32,  # Required field, use dtype or empty tensor
+       tf.constant([0.0], dtype=tf.float32),  # Optional field, default to 0.0
+       tf.int32,  # Required field, use dtype or empty tensor
+       ],
+      select_cols=[1,2,3]  # Only parse last three columns
+    )
+    ```
+
+    The expected output of its iterations is:
+    ```python
+    next_element = dataset.make_one_shot_iterator().get_next()
+    with tf.Session() as sess:
+      while True:
+        try:
+          print(sess.run(next_element))
+        except tf.errors.OutOfRangeError:
+          break
+
+    >> (4.28e10, 5.55e6, 12)
+    >> (-5.3e14, 0.0, 2)
+    ```
+
+    Args:
+      filenames: A `tf.string` tensor containing one or more filenames.
+      record_defaults: A list of default values for the CSV fields. Each item in
+        the list is either a valid CSV `DType` (float32, float64, int32, int64,
+        string), or a `Tensor` object with one of the above types. One per
+        column of CSV data, with either a scalar `Tensor` default value for the
+        column if it is optional, or `DType` or empty `Tensor` if required. If
+        both this and `select_columns` are specified, these must have the same
+        lengths, and `column_defaults` is assumed to be sorted in order of
+        increasing column index.
+      buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
+        to buffer while reading files. Defaults to 4MB.
+      header: (Optional.) A `tf.bool` scalar indicating whether the CSV file(s)
+        have header line(s) that should be skipped when parsing. Defaults to
+        `False`.
+      field_delim: (Optional.) A `tf.string` scalar containing the delimiter
+        character that separates fields in a record. Defaults to `","`.
+      use_quote_delim: (Optional.) A `tf.bool` scalar. If `False`, treats
+        double quotation marks as regular characters inside of string fields
+        (ignoring RFC 4180, Section 2, Bullet 5). Defaults to `True`.
+      na_value: (Optional.) A `tf.string` scalar indicating a value that will
+        be treated as NA/NaN.
+      select_cols: (Optional.) A sorted list of column indices to select from
+        the input data. If specified, only this subset of columns will be
+        parsed. Defaults to parsing all columns.
+    """
+    super(CsvDataset, self).__init__()
+    self._filenames = ops.convert_to_tensor(
+        filenames, dtype=dtypes.string, name="filenames")
+    record_defaults = [
+        constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
+        for x in record_defaults
+    ]
+    self._record_defaults = ops.convert_n_to_tensor(
+        record_defaults, name="record_defaults")
+    self._buffer_size = convert.optional_param_to_tensor(
+        "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
+    self._header = ops.convert_to_tensor(
+        header, dtype=dtypes.bool, name="header")
+    self._field_delim = ops.convert_to_tensor(
+        field_delim, dtype=dtypes.string, name="field_delim")
+    self._use_quote_delim = ops.convert_to_tensor(
+        use_quote_delim, dtype=dtypes.bool, name="use_quote_delim")
+    self._na_value = ops.convert_to_tensor(
+        na_value, dtype=dtypes.string, name="na_value")
+    self._select_cols = convert.optional_param_to_tensor(
+        "select_cols",
+        select_cols,
+        argument_default=[],
+        argument_dtype=dtypes.int64,
+    )
+    self._output_shapes = tuple(
+        tensor_shape.scalar() for _ in range(len(record_defaults)))
+    self._output_types = tuple(d.dtype for d in self._record_defaults)
+    self._output_classes = tuple(
+        ops.Tensor for _ in range(len(record_defaults)))
+
+  def _as_variant_tensor(self):
+    # Constructs graph node for the dataset op.
+    return contrib_gen_dataset_ops.csv_dataset(
+        filenames=self._filenames,
+        record_defaults=self._record_defaults,
+        buffer_size=self._buffer_size,
+        header=self._header,
+        output_shapes=self._output_shapes,
+        field_delim=self._field_delim,
+        use_quote_delim=self._use_quote_delim,
+        na_value=self._na_value,
+        select_cols=self._select_cols,
+    )
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_classes(self):
+    return self._output_classes
 
 
 def make_batched_features_dataset(file_pattern,
@@ -480,8 +695,8 @@ def make_batched_features_dataset(file_pattern,
   Args:
     file_pattern: List of files or patterns of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int representing the number of consecutive elements of this
-      dataset to combine in a single batch.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
     reader: A function or class that can be
@@ -537,16 +752,10 @@ def make_batched_features_dataset(file_pattern,
     dataset = dataset.map(lambda _, v: v)
 
   # Apply dataset repeat and shuffle transformations.
-  repeat_dataset = (num_epochs != 1)
-  if repeat_dataset and shuffle:
-    # Used fused shuffle_and_repeat operation for better performance
-    dataset = dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
-  elif repeat_dataset:
-    dataset = dataset.repeat(num_epochs)
-  elif shuffle:
-    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  dataset = _maybe_shuffle_and_repeat(
+      dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
+
+  dataset = dataset.apply(stats_ops.feature_stats("record_stats"))
 
   if drop_final_batch:
     dataset = dataset.apply(batching.batch_and_drop_remainder(batch_size))
@@ -620,8 +829,8 @@ def read_batch_features(file_pattern,
   Args:
     file_pattern: List of files or patterns of file paths containing
       `Example` records. See `tf.gfile.Glob` for pattern rules.
-    batch_size: An int representing the number of consecutive elements of this
-      dataset to combine in a single batch.
+    batch_size: An int representing the number of records to combine
+      in a single batch.
     features: A `dict` mapping feature keys to `FixedLenFeature` or
       `VarLenFeature` values. See `tf.parse_example`.
     reader: A function or class that can be

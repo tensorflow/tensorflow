@@ -38,14 +38,15 @@ class CpuTransferManager : public GenericTransferManager {
   ~CpuTransferManager() override {}
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const Literal& literal) override;
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source) override;
+                                 const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
                                     Literal* literal) override;
 
  private:
+  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
+                                const void* source);
+
   // Transfers infeed data to device. InfeedBuffer->Done() must be
   // called to clean up the memory allocated for InfeedBuffer.
   StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(

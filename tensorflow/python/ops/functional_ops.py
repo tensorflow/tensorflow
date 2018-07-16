@@ -455,7 +455,8 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         lambda i, _: i < n, compute, (i, accs_ta),
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
-        swap_memory=swap_memory)
+        swap_memory=swap_memory,
+        maximum_iterations=n)
     results_flat = [r.stack() for r in r_a]
 
     n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
@@ -475,7 +476,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
 @tf_export("scan")
 def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
-         swap_memory=False, infer_shape=True, name=None):
+         swap_memory=False, infer_shape=True, reverse=False, name=None):
   """scan on the list of tensors unpacked from `elems` on dimension 0.
 
   The simplest version of `scan` repeatedly applies the callable `fn` to a
@@ -487,6 +488,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
   of the result tensor is `[len(values)] + fn(initializer, values[0]).shape`.
+  If reverse=True, it's fn(initializer, values[-1]).shape.
 
   This method also allows multi-arity `elems` and accumulator.  If `elems`
   is a (possibly nested) list or tuple of tensors, then each of these tensors
@@ -525,12 +527,15 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     infer_shape: (optional) False disables tests for consistent output shapes.
+    reverse: (optional) True scans the tensor last to first (instead of first
+      to last).
     name: (optional) Name prefix for the returned tensors.
 
   Returns:
     A tensor or (possibly nested) sequence of tensors.  Each tensor packs the
     results of applying `fn` to tensors unpacked from `elems` along the first
-    dimension, and the previous accumulator value(s), from first to last.
+    dimension, and the previous accumulator value(s), from first to last (or
+    last to first, if `reverse=True`).
 
   Raises:
     TypeError: if `fn` is not callable or the structure of the output of
@@ -543,6 +548,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems = np.array([1, 2, 3, 4, 5, 6])
     sum = scan(lambda a, x: a + x, elems)
     # sum == [1, 3, 6, 10, 15, 21]
+    sum = scan(lambda a, x: a + x, elems, reverse=True)
+    # sum == [22, 21, 18, 15, 11, 6]
     ```
 
     ```python
@@ -614,7 +621,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         elem_ta.unstack(elem) for elem_ta, elem in zip(elems_ta, elems_flat)]
 
     if initializer is None:
-      a_flat = [elem.read(0) for elem in elems_ta]
+      a_flat = [elem.read(n - 1 if reverse else 0) for elem in elems_ta]
       i = constant_op.constant(1)
     else:
       initializer_flat = output_flatten(initializer)
@@ -631,7 +638,8 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         for init in a_flat]
 
     if initializer is None:
-      accs_ta = [acc_ta.write(0, a) for (acc_ta, a) in zip(accs_ta, a_flat)]
+      accs_ta = [acc_ta.write(n - 1 if reverse else 0, a)
+                 for (acc_ta, a) in zip(accs_ta, a_flat)]
 
     def compute(i, a_flat, tas):
       """The loop body of scan.
@@ -656,10 +664,20 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           elems if initializer is None else initializer, a_out)
       flat_a_out = output_flatten(a_out)
       tas = [ta.write(i, value) for (ta, value) in zip(tas, flat_a_out)]
-      return (i + 1, flat_a_out, tas)
+      if reverse:
+        next_i = i - 1
+      else:
+        next_i = i + 1
+      return (next_i, flat_a_out, tas)
 
+    if reverse:
+      initial_i = n - 1 - i
+      condition = lambda i, _1, _2: i >= 0
+    else:
+      initial_i = i
+      condition = lambda i, _1, _2: i < n
     _, _, r_a = control_flow_ops.while_loop(
-        lambda i, _1, _2: i < n, compute, (i, a_flat, accs_ta),
+        condition, compute, (initial_i, a_flat, accs_ta),
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory,
         maximum_iterations=n)
@@ -757,7 +775,7 @@ def While(input_, cond, body, name=None, hostmem=None):
       a string, non-empty means True and empty means False. If the
       tensor is not a scalar, non-emptiness means True and False
       otherwise.
-    body: . A funcion takes a list of tensors and returns another
+    body: . A function takes a list of tensors and returns another
       list tensors. Both lists have the same types as specified
       by T.
     name: A name for the operation (optional).
@@ -843,7 +861,9 @@ def _ForUsingWhile(start,
     return (i + 1, n, start, delta) + tuple(for_result) + extra_args
 
   if hostmem is not None:
-    hostmem = [(4 + _) for _ in hostmem]
+    hostmem = [0, 1, 2, 3] + [(4 + _) for _ in hostmem]
+  else:
+    hostmem = [0, 1, 2, 3]
 
   results = While(
       input_=[0, n, start, delta] + inputs + WhileBody.captured_inputs,
@@ -925,6 +945,61 @@ def For(start,
 # pylint: enable=invalid-name,protected-access
 
 
-def partitioned_call(args, f):
-  return gen_functional_ops.partitioned_call(
-      args=args, Tout=[o.type for o in f.definition.signature.output_arg], f=f)
+def partitioned_call(args, f, tout=None, executing_eagerly=None):
+  """Executes a function while respecting device annotations.
+
+  Currently, only those functions that execute within the same address space
+  can be executed.
+
+  Args:
+    args: The arguments of the function, including captured inputs.
+    f: The function to execute; an instance of `_DefinedFunction` or
+      `_EagerDefinedFunction`.
+    tout: a list containing the output dtypes enums; if `None`, inferred from
+      the signature of `f`.
+    executing_eagerly: (Optional) A boolean indicating whether the context is
+      executing eagerly. If `None`, fetched from the global context.
+
+  Returns:
+    The list of `Tensor`s returned by invoking `f(args)`. If the function does
+    not return anything, then returns `None` if eager execution is enabled, or
+    the `Operation` if not.
+  """
+
+  if tout is None:
+    tout = tuple(x.type for x in f.definition.signature.output_arg)
+
+  if executing_eagerly is None:
+    executing_eagerly = context.executing_eagerly()
+
+  if executing_eagerly or len(tout):
+    if f.stateful_ops:
+      outputs = gen_functional_ops.stateful_partitioned_call(
+          args=args, Tout=tout, f=f)
+    else:
+      outputs = gen_functional_ops.partitioned_call(args=args, Tout=tout, f=f)
+    return outputs if outputs else None
+
+  # The generated binding returns an empty list for functions that don't
+  # return any Tensors, hence the need to use `create_op` directly.
+  args = [ops.internal_convert_to_tensor(x) for x in args]
+  tin_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(
+          type=[x.dtype.as_datatype_enum for x in args]))
+  tout_attr = attr_value_pb2.AttrValue(
+      list=attr_value_pb2.AttrValue.ListValue(type=tout))
+  func_attr = attr_value_pb2.AttrValue(
+      func=attr_value_pb2.NameAttrList(name=f.name))
+
+  graph = ops.get_default_graph()
+  f.add_to_graph(graph)
+  op_name = "StatefulPartitionedCall" if f.stateful_ops else "PartitionedCall"
+  op = graph.create_op(
+      op_name,
+      args,
+      tout,
+      compute_shapes=False,
+      name="PartitionedFunctionCall",
+      attrs={"Tin": tin_attr, "Tout": tout_attr, "f": func_attr})
+  outputs = op.outputs
+  return outputs if outputs else op

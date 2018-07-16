@@ -1,108 +1,70 @@
 path: "tensorflow.AttrValue.ListValue"
-tf_class {
-  is_instance: "<class \'tensorflow.core.framework.attr_value_pb2.ListValue\'>"
-  is_instance: "<type \'google.protobuf.pyext._message.CMessage\'>"
-  member {
-    name: "B_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "DESCRIPTOR"
-    mtype: "<type \'google.protobuf.pyext._message.MessageDescriptor\'>"
-  }
-  member {
-    name: "Extensions"
-    mtype: "<type \'getset_descriptor\'>"
-  }
-  member {
-    name: "FUNC_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "F_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "I_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "SHAPE_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "S_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TENSOR_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member {
-    name: "TYPE_FIELD_NUMBER"
-    mtype: "<type \'int\'>"
-  }
-  member_method {
-    name: "ByteSize"
-  }
-  member_method {
-    name: "Clear"
-  }
-  member_method {
-    name: "ClearExtension"
-  }
-  member_method {
-    name: "ClearField"
-  }
-  member_method {
-    name: "CopyFrom"
-  }
-  member_method {
-    name: "DiscardUnknownFields"
-  }
-  member_method {
-    name: "FindInitializationErrors"
-  }
-  member_method {
-    name: "FromString"
-  }
-  member_method {
-    name: "HasExtension"
-  }
-  member_method {
-    name: "HasField"
-  }
-  member_method {
-    name: "IsInitialized"
-  }
-  member_method {
-    name: "ListFields"
-  }
-  member_method {
-    name: "MergeFrom"
-  }
-  member_method {
-    name: "MergeFromString"
-  }
-  member_method {
-    name: "ParseFromString"
-  }
-  member_method {
-    name: "RegisterExtension"
-  }
-  member_method {
-    name: "SerializePartialToString"
-  }
-  member_method {
-    name: "SerializeToString"
-  }
-  member_method {
-    name: "SetInParent"
-  }
-  member_method {
-    name: "WhichOneof"
-  }
-  member_method {
-    name: "__init__"
+tf_proto {
+  descriptor {
+    name: "ListValue"
+    field {
+      name: "s"
+      number: 2
+      label: LABEL_REPEATED
+      type: TYPE_BYTES
+    }
+    field {
+      name: "i"
+      number: 3
+      label: LABEL_REPEATED
+      type: TYPE_INT64
+      options {
+        packed: true
+      }
+    }
+    field {
+      name: "f"
+      number: 4
+      label: LABEL_REPEATED
+      type: TYPE_FLOAT
+      options {
+        packed: true
+      }
+    }
+    field {
+      name: "b"
+      number: 5
+      label: LABEL_REPEATED
+      type: TYPE_BOOL
+      options {
+        packed: true
+      }
+    }
+    field {
+      name: "type"
+      number: 6
+      label: LABEL_REPEATED
+      type: TYPE_ENUM
+      type_name: ".tensorflow.DataType"
+      options {
+        packed: true
+      }
+    }
+    field {
+      name: "shape"
+      number: 7
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TensorShapeProto"
+    }
+    field {
+      name: "tensor"
+      number: 8
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TensorProto"
+    }
+    field {
+      name: "func"
+      number: 9
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.NameAttrList"
+    }
   }
 }

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -55,18 +56,42 @@ class RetvalOp : public XlaOpKernel {
       }
 
       XlaContext& tc = XlaContext::Get(ctx);
-      if (input_shape.num_elements() == 0 || is_constant.ValueOrDie()) {
+      if (tc.resolve_compile_time_constants() &&
+          (input_shape.num_elements() == 0 || is_constant.ValueOrDie())) {
         xla::Literal literal;
         OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
         OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
-        // The core from which a return value is returned depends on the core
-        // assignment of the input to the retval .Since we can't change the core
-        // assignment of <input> as this point, create a tuple/get-tuple-element
-        // combination so that the core will be set on them.
-        auto tuple_elem =
-            ctx->builder()->GetTupleElement(ctx->builder()->Tuple({input}), 0);
-        tc.AddRetval(index_, dtype_, tuple_elem);
+        TensorShape shape = ctx->InputShape(0);
+        ctx->SetStatus(is_constant.status());
+        TensorShape representation_shape;
+        if (tc.is_entry_computation()) {
+          xla::StatusOr<TensorShape> shape_or_status =
+              tc.RepresentationShape(shape, ctx->input_type(0));
+          if (!shape_or_status.ok()) {
+            ctx->SetStatus(shape_or_status.status());
+            return;
+          } else {
+            representation_shape = shape_or_status.ValueOrDie();
+          }
+        } else {
+          representation_shape = shape;
+        }
+
+        xla::XlaOp output = input;
+        if (tc.is_entry_computation()) {
+          output = xla::Reshape(input, representation_shape.dim_sizes());
+        } else {
+          // The core from which a return value is returned depends on the
+          // device assignment of the input to the retval. Since we can't change
+          // the device assignment of "input" at this point, we must always
+          // introduce an operator here, even if the shape does not change.
+          // TODO(b/76097077): propagate device assignments onto arguments and
+          // return values of functions, and then reshape unconditionally.
+          output =
+              xla::GetTupleElement(xla::Tuple(ctx->builder(), {output}), 0);
+        }
+        tc.AddRetval(index_, dtype_, shape, output);
       }
     }
   }

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
@@ -148,7 +149,8 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile);
+  Status RunHloPasses(HloModule* module, bool is_aot_compile,
+                      llvm::TargetMachine* target_machine);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

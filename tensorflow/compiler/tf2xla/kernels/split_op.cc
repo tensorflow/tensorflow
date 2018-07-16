@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -98,7 +99,7 @@ class SplitOp : public XlaOpKernel {
       // Slice out the ith split from the split dimension.
       begin[split_dim] = i * slice_size;
       limits[split_dim] = (i + 1) * slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
+      ctx->SetOutput(i, xla::Slice(input, begin, limits, strides));
     }
   }
 };
@@ -134,7 +135,7 @@ class SplitVOp : public XlaOpKernel {
         errors::InvalidArgument(
             "Number of ways to split should be > 0, but got ", num_split));
 
-    // check that sizes are correct
+    // Check that sizes are correct.
     int total_split_size = 0;
     int neg_one_dim = -1;
     std::vector<int64> split_sizes_vec(num_split, -1);
@@ -148,7 +149,7 @@ class SplitVOp : public XlaOpKernel {
                     " number of elements as the output. Got ",
                     split_size_shape.dims(), "-D and ",
                     split_size_shape.num_elements(), " elements"));
-    // get the dimension of this split
+    // Get the dimension of this split.
     xla::Literal split_size_literal;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &split_size_literal));
 
@@ -199,7 +200,7 @@ class SplitVOp : public XlaOpKernel {
 
       // Slice out the ith split from the split dimension.
       limits[split_dim] = begin[split_dim] + slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
+      ctx->SetOutput(i, xla::Slice(input, begin, limits, strides));
       begin[split_dim] = limits[split_dim];
     }
   }

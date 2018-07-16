@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import random
 import os
 import sys
 import threading
@@ -62,7 +63,6 @@ from tensorflow.python.util import compat
 ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 
-@test_util.with_c_api
 class SessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -172,21 +172,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(exc_predicate):
         # Run with a bogus handle.
         s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
-
-  def testOpConstructionErrorPayload(self):
-    if ops._USE_C_API:
-      return  # No shape registration for 'ConstructionFails'
-
-    with session.Session():
-      failing_op = ops.get_default_graph().create_op(
-          'ConstructionFails', [], [], name='f')
-
-      def exc_predicate(e):
-        return (e.op == failing_op and
-                e.error_code == error_codes_pb2.INVALID_ARGUMENT)
-
-      with self.assertRaisesOpError(exc_predicate):
-        failing_op.run()
 
   def testErrorBasedOn(self):
     with session.Session() as sess:
@@ -1056,41 +1041,70 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
-  def testParallelRunAndBuild(self):
+  @staticmethod
+  def _build_graph():
+    time.sleep(random.random() * 0.1)
+    # Do some graph construction. Try to exercise non-trivial paths.
+    graph = ops.get_default_graph()
+    gdef = None
+    for _ in range(10):
+      x = array_ops.placeholder(dtype=dtypes.float32)
+      with ops.colocate_with(x):
+        y = array_ops.placeholder(dtype=dtypes.float32)
+      with ops.device('/cpu:0'):
+        z = control_flow_ops.while_loop(
+            lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
+      with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
+        gradients_impl.gradients(z, [x, y])
+        if gdef is None:
+          gdef = graph.as_graph_def()
+        else:
+          importer.import_graph_def(gdef, name='import')
+
+  def testParallelRunAndSingleBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
       stop = threading.Event()
 
       def run_loop():
         while not stop.is_set():
+          time.sleep(random.random() * 0.1)
           self.assertEqual(sess.run(c), 5.0)
 
-      threads = [self.checkedThread(target=run_loop) for _ in range(100)]
+      threads = [self.checkedThread(target=run_loop) for _ in range(10)]
       for t in threads:
         t.start()
 
-      # Do some graph construction. Try to exercise non-trivial paths.
-      graph = ops.get_default_graph()
-      gdef = None
-      for _ in range(10):
-        x = array_ops.placeholder(dtype=dtypes.float32)
-        with ops.colocate_with(x):
-          y = array_ops.placeholder(dtype=dtypes.float32)
-        with ops.device('/cpu:0'):
-          z = control_flow_ops.while_loop(
-              lambda x, y: x < 10, lambda x, y: (x + 1, x * y), [x, y])
-        with graph._attr_scope({'_a': attr_value_pb2.AttrValue(b=False)}):
-          gradients_impl.gradients(z, [x, y])
-          if gdef is None:
-            gdef = graph.as_graph_def()
-          else:
-            # NOTE(skyewm): import_graph_def breaks the running threads without
-            # the C API enabled. This is not a regression so I didn't fix it.
-            if ops._USE_C_API:
-              importer.import_graph_def(gdef, name='import')
+      SessionTest._build_graph()
 
       stop.set()
       for t in threads:
+        t.join()
+
+  def testParallelRunAndParallelBuild(self):
+    with session.Session() as sess:
+      c = constant_op.constant(5.0)
+      stop = threading.Event()
+
+      def run_loop():
+        while not stop.is_set():
+          time.sleep(random.random() * 0.1)
+          self.assertEqual(sess.run(c), 5.0)
+
+      run_threads = [self.checkedThread(target=run_loop) for _ in range(10)]
+      for t in run_threads:
+        t.start()
+
+      build_threads = [self.checkedThread(target=SessionTest._build_graph)
+                       for _ in range(10)]
+      for t in build_threads:
+        t.start()
+      for t in build_threads:
+        t.join()
+
+      # Let the run_threads run until the build threads are finished.
+      stop.set()
+      for t in run_threads:
         t.join()
 
   def testRunFeedDict(self):
@@ -1383,6 +1397,20 @@ class SessionTest(test_util.TensorFlowTestCase):
         for _ in range(5):
           self.assertEqual([2.0], callable_fn(np.array(1.0, dtype=np.float32)))
 
+  def testOptimizedMakeCallableWithRunMetadata(self):
+    with session.Session() as sess:
+      ph = array_ops.placeholder(dtypes.float32)
+      a = math_ops.add(ph, 1.0)
+      callable_opts = config_pb2.CallableOptions()
+      callable_opts.feed.append(ph.name)
+      callable_opts.fetch.append(a.name)
+      callable_opts.run_options.trace_level = config_pb2.RunOptions.FULL_TRACE
+      callable_fn = sess._make_callable_from_options(callable_opts)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual([2.0], callable_fn(np.array(1.0, dtype=np.float32),
+                                          run_metadata=run_metadata))
+      self.assertGreater(len(run_metadata.step_stats.dev_stats), 0)
+
   def testFeedError(self):
     with session.Session() as sess:
       feed_t = array_ops.placeholder(dtype=dtypes.float32)
@@ -1584,10 +1612,6 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
   def testFeedShapeCompatibility(self):
-    # TODO(nolivia): C API doesn't yet handle marking nodes as not feedable.
-    if ops._USE_C_API:
-      return
-
     with session.Session() as sess:
       some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
       new_shape = constant_op.constant([2, 2])
@@ -1596,7 +1620,10 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
         sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
 
-      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          'Input to reshape is a tensor with 4 values, '
+          'but the requested shape has 21'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
 
   def testInferShapesFalse(self):

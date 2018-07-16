@@ -448,8 +448,7 @@ class _BatchReshapeTest(object):
 
     else:
       with self.test_session():
-        with self.assertRaisesOpError(r"`batch_shape` size must match "
-                                      r"`distributions.batch_shape` size"):
+        with self.assertRaisesOpError(r"Shape sizes do not match."):
           batch_reshape_lib.BatchReshape(
               distribution=mvn,
               batch_shape=new_batch_shape_ph,
@@ -457,8 +456,13 @@ class _BatchReshapeTest(object):
 
   def test_non_positive_shape(self):
     dims = 2
-    new_batch_shape = [-1, -2]   # -1*-2=2 so will pass size check.
-    old_batch_shape = [2]
+    old_batch_shape = [4]
+    if self.is_static_shape:
+      # Unknown first dimension does not trigger size check. Note that
+      # any dimension < 0 is treated statically as unknown.
+      new_batch_shape = [-1, 0]
+    else:
+      new_batch_shape = [-2, -2]  # -2 * -2 = 4, same size as the old shape.
 
     new_batch_shape_ph = (
         constant_op.constant(np.int32(new_batch_shape)) if self.is_static_shape
@@ -471,7 +475,7 @@ class _BatchReshapeTest(object):
     mvn = mvn_lib.MultivariateNormalDiag(scale_diag=scale_ph)
 
     if self.is_static_shape:
-      with self.assertRaisesRegexp(ValueError, r".*must be positive.*"):
+      with self.assertRaisesRegexp(ValueError, r".*must be >=-1.*"):
         batch_reshape_lib.BatchReshape(
             distribution=mvn,
             batch_shape=new_batch_shape_ph,
@@ -479,7 +483,7 @@ class _BatchReshapeTest(object):
 
     else:
       with self.test_session():
-        with self.assertRaisesOpError(r".*must be positive.*"):
+        with self.assertRaisesOpError(r".*must be >=-1.*"):
           batch_reshape_lib.BatchReshape(
               distribution=mvn,
               batch_shape=new_batch_shape_ph,

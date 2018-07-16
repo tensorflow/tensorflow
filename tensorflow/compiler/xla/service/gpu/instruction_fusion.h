@@ -31,6 +31,9 @@ class GpuInstructionFusion : public InstructionFusion {
 
   bool ShouldFuse(HloInstruction* consumer, int64 operand_index) override;
 
+  bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
+                                 int64 operand_index) override;
+
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 };

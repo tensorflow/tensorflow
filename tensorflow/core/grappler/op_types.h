@@ -38,6 +38,7 @@ bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
 bool IsCast(const NodeDef& node);
 bool IsCheckNumerics(const NodeDef& node);
+bool IsCollective(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
@@ -48,11 +49,13 @@ bool IsConstant(const NodeDef& node);
 bool IsConv2D(const NodeDef& node);
 bool IsConv2DBackpropFilter(const NodeDef& node);
 bool IsConv2DBackpropInput(const NodeDef& node);
+bool IsConv3D(const NodeDef& node);
 bool IsDepthwiseConv2dNative(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropFilter(const NodeDef& node);
 bool IsDepthwiseConv2dNativeBackpropInput(const NodeDef& node);
 bool IsDequeueOp(const NodeDef& node);
 bool IsDiv(const NodeDef& node);
+bool IsElementWiseMonotonic(const NodeDef& node);
 bool IsEluGrad(const NodeDef& node);
 bool IsEnter(const NodeDef& node);
 bool IsEqual(const NodeDef& node);
@@ -72,11 +75,13 @@ bool IsImag(const NodeDef& node);
 bool IsInvGrad(const NodeDef& node);
 bool IsLess(const NodeDef& node);
 bool IsLessEqual(const NodeDef& node);
+bool IsLog(const NodeDef& node);
 bool IsLogicalAnd(const NodeDef& node);
 bool IsLogicalNot(const NodeDef& node);
 bool IsLogicalOr(const NodeDef& node);
 bool IsMax(const NodeDef& node);
 bool IsMaximum(const NodeDef& node);
+bool IsMaxPoolGrad(const NodeDef& node);
 bool IsMean(const NodeDef& node);
 bool IsMerge(const NodeDef& node);
 bool IsMin(const NodeDef& node);
@@ -165,6 +170,10 @@ bool IsCommutative(const NodeDef& node);
 bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
+
+// Returns true if the takes a tensor reference as input, or if looking up its
+// OpDef failed.
+bool MaybeHasRefInput(const NodeDef& node);
 
 bool ModifiesFrameInfo(const NodeDef& node);
 

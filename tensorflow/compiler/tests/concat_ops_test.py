@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class ConcatTest(XLATestCase):
+class ConcatTest(xla_test.XLATestCase):
 
   def testHStack(self):
     with self.test_session():
@@ -292,7 +292,7 @@ class ConcatTest(XLATestCase):
           array_ops.concat([scalar, scalar, scalar], dim)
 
 
-class ConcatOffsetTest(XLATestCase):
+class ConcatOffsetTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_session() as sess:
@@ -306,7 +306,7 @@ class ConcatOffsetTest(XLATestCase):
         self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
 
 
-class PackTest(XLATestCase):
+class PackTest(xla_test.XLATestCase):
 
   def testBasic(self):
     with self.test_session() as sess:

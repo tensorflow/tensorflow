@@ -42,6 +42,7 @@ counterparts:
     *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other) and the
     crops attribute is not used*
 *   [tf.exp](https://www.tensorflow.org/api_docs/python/tf/exp)
+*   [tf.fake_quant*](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
 *   [tf.matmul](https://www.tensorflow.org/api_docs/python/tf/matmul) - *as long
     as the second argument is constant and transposition is not used*
 *   [tf.nn.avg_pool](https://www.tensorflow.org/api_docs/python/tf/nn/avg_pool)
@@ -95,11 +96,7 @@ Here is a list of TensorFlow operations that are usually removed from the graph:
 *   [tf.divide](https://www.tensorflow.org/api_docs/python/tf/divide)
 *   [tf.fake_quant_with_min_max_args](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
 *   [tf.fake_quant_with_min_max_vars](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars)
-*   [tf.greater](https://www.tensorflow.org/api_docs/python/tf/greater)
-*   [tf.greater_equal](https://www.tensorflow.org/api_docs/python/tf/greater_equal)
 *   [tf.identity](https://www.tensorflow.org/api_docs/python/tf/identity)
-*   [tf.less](https://www.tensorflow.org/api_docs/python/tf/less)
-*   [tf.less_equal](https://www.tensorflow.org/api_docs/python/tf/less_equal)
 *   [tf.maximum](https://www.tensorflow.org/api_docs/python/tf/maximum)
 *   [tf.minimum](https://www.tensorflow.org/api_docs/python/tf/minimum)
 *   [tf.multiply](https://www.tensorflow.org/api_docs/python/tf/multiply)
@@ -132,9 +129,7 @@ TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
 *   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
-*   [tf.gather](https://www.tensorflow.org/api_docs/python/tf/gather)
 *   [tf.image.resize_bilinear](https://www.tensorflow.org/api_docs/python/tf/image/resize_bilinear)
-*   [tf.slice](https://www.tensorflow.org/api_docs/python/tf/slice)
 *   [tf.tanh](https://www.tensorflow.org/api_docs/python/tf/tanh)
 
 ## TensorFlow Lite Operations
@@ -222,6 +217,23 @@ Options {
 }
 ```
 
+**CONV_2D_TRANSPOSE**
+
+```
+Inputs {
+  0: output_shape
+  1: filter
+  2: 4D tensor
+}
+Outputs {
+  0: the transpose (gradient) of conv2d
+}
+Options {
+  padding: SAME|VALID
+  stride_w,stride_h: stride of the filter window
+}
+```
+
 **DEPTHWISE_CONV_2D**
 
 ```
@@ -239,6 +251,19 @@ Options {
   stride_w,stride_h: stride of the filter window
   depth_multiplier: relation between the last dimension of the input and output
     tensors
+}
+```
+
+**EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is
+  equal to the corresponding element of the second tensor.
 }
 ```
 
@@ -278,6 +303,19 @@ Outputs {
 }
 Options {
   fused_activation_function:  NONE|RELU|RELU6
+}
+```
+
+**GATHER**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
+  2: axis tensor (optional)
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
 }
 ```
 
@@ -392,6 +430,17 @@ Outputs {
 }
 ```
 
+**LOG**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to log(input)
+}
+```
+
 **LOG_SOFTMAX**
 
 ```
@@ -475,6 +524,19 @@ Options {
 }
 ```
 
+**NOT_EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is not
+  equal to the corresponding element of the second tensor.
+}
+```
+
 **RELU**
 
 ```
@@ -523,6 +585,44 @@ Options {
 }
 ```
 
+**RSQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**SHAPE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 1D tensor representing the shape of the input tensor
+}
+Options {
+  out_type: the output type of the op (int32 or int64). Defaults to int32.
+}
+```
+
+**SLICE**
+
+```
+Inputs {
+  0: tensor
+  1: 1D tensor
+  2: 1D tensor
+}
+Outputs {
+  0: slice of the input tensor of the given size from the given begin index.
+}
+```
+
 **SOFTMAX**
 
 ```
@@ -566,6 +666,21 @@ Outputs {
 }
 ```
 
+**SPARSE_TO_DENSE**
+
+```
+Inputs {
+  0: 0D or 1D or 2D tensor
+  1: 1D tensor
+  2: 0D or 1D tensor
+  3: 0D tensor
+  4: a boolean value
+}
+Outputs {
+  0: Dense Tensor of shape output_shape. Has the same type as sparse_values.
+}
+```
+
 **SPLIT**
 
 ```
@@ -578,6 +693,17 @@ Outputs {
 }
 Options {
   num_splits: Specifies number of outputs
+}
+```
+
+**SQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise square root of the input tensor
 }
 ```
 
@@ -608,7 +734,7 @@ Outputs {
   0: slice of the input tensor of the given size
 }
 Options {
-  begin_mask: mask for begin indicies
+  begin_mask: mask for begin indices
   end_mask: mask for end indices
   shrink_axis_mask: mask that indicates which dimensions to remove
 }
@@ -623,7 +749,7 @@ Inputs {
 }
 Outputs {
   0: k largest element along each last dimensional slice
-  1: indicies of values within the last dimension of the input ensor
+  1: indices of values within the last dimension of the input ensor
 }
 ```
 
@@ -650,6 +776,42 @@ Inputs {
 Outputs {
   0: tensor that contains the elementwise values of 'tensor 1' if the
   corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
+}
+```
+
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
+}
+```
+
+**ARG_MAX**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of maximum values.
+}
+```
+
+**ARG_MIN**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of minium values.
 }
 ```
 

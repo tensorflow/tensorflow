@@ -42,7 +42,6 @@ from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import nest
 
 
-@test_util.with_c_api
 class DistributedValuesTest(test.TestCase):
 
   def testGetEager(self):
@@ -81,10 +80,9 @@ class DistributedValuesTest(test.TestCase):
       v = values.DistributedValues({"/device:cpu:0": 42})
 
 
-@test_util.with_c_api
 class DistributedDelegateTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGetAttr(self):
     with ops.device("/device:CPU:0"):
 
@@ -99,7 +97,7 @@ class DistributedDelegateTest(test.TestCase):
       with self.assertRaises(AttributeError):
         _ = v.y
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testOperatorOverride(self):
     with ops.device("/device:CPU:0"):
       v = values.DistributedDelegate({"/device:CPU:0": 7, "/device:GPU:0": 8})
@@ -160,11 +158,11 @@ def _make_mirrored():
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
       index[d] = v[-1]
-  mirrored = values.MirroredVariable(index, v[0])
+  mirrored = values.MirroredVariable(index, v[0],
+                                     variable_scope.VariableAggregation.SUM)
   return v, devices, mirrored
 
 
-@test_util.with_c_api
 class RegroupAndSelectDeviceTest(test.TestCase):
 
   def _is_per_device(self, result, expected, klass=values.PerDevice):
@@ -280,7 +278,8 @@ class RegroupAndSelectDeviceTest(test.TestCase):
       v = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
       index = {d: v}
-    mirrored = values.MirroredVariable(index, v)
+    mirrored = values.MirroredVariable(index, v,
+                                       variable_scope.VariableAggregation.SUM)
     result = values.regroup(index)
     self.assertIs(mirrored, result)
 
@@ -317,7 +316,6 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                                                merged_estimator_spec))
 
 
-@test_util.with_c_api
 class PerDeviceDatasetTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -367,7 +365,7 @@ class PerDeviceDatasetTest(test.TestCase):
     self._test_iterator_no_prefetch(devices, dataset, expected_values)
     self._test_iterator_with_prefetch(devices, dataset, expected_values)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testOneDevice(self):
     devices = ["/device:CPU:0"]
     dataset = dataset_ops.Dataset.range(10)
@@ -564,7 +562,6 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         multi_worker_iterator.get_next()
 
 
-@test_util.with_c_api
 class MirroredVariableTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -586,7 +583,8 @@ class MirroredVariableTest(test.TestCase):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     index = {"/job:foo/device:CPU:0": v}
-    mirrored = values.MirroredVariable(index, v)
+    mirrored = values.MirroredVariable(index, v,
+                                       variable_scope.VariableAggregation.MEAN)
 
     self.assertEquals(v.name, mirrored.name)
     self.assertEquals(v.dtype, mirrored.dtype)
@@ -721,7 +719,9 @@ class MirroredVariableTest(test.TestCase):
       with ops.device("/device:GPU:0"):
         v = variable_scope.get_variable(
             name="v", initializer=1., use_resource=True)
-      mirrored = values.MirroredVariable({"/device:GPU:0": v}, v)
+      mirrored = values.MirroredVariable({
+          "/device:GPU:0": v
+      }, v, variable_scope.VariableAggregation.MEAN)
       sess.run(variables_lib.global_variables_initializer())
       sess.run({"complicated": mirrored})
 
@@ -741,7 +741,6 @@ def _make_tower_local(method):
   return v, tower_local
 
 
-@test_util.with_c_api
 class TowerLocalVariableTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
@@ -752,24 +751,27 @@ class TowerLocalVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    v, tower_local = _make_tower_local("sum")
+    v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
     self.assertEquals(v[0].name, tower_local.name)
     self.assertEquals(v[0].dtype, tower_local.dtype)
     self.assertEquals(v[0].shape, tower_local.shape)
-    self.assertEquals("sum", tower_local.reduce_method)
+    self.assertEquals(variable_scope.VariableAggregation.SUM,
+                      tower_local.aggregation)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testVariableOnAnotherDevice(self):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     index = {"/job:foo/device:CPU:0": v}
-    tower_local = values.TowerLocalVariable(index, v, "mean")
+    tower_local = values.TowerLocalVariable(
+        index, v, variable_scope.VariableAggregation.MEAN)
 
     self.assertEquals(v.name, tower_local.name)
     self.assertEquals(v.dtype, tower_local.dtype)
     self.assertEquals(v.shape, tower_local.shape)
-    self.assertEquals("mean", tower_local.reduce_method)
+    self.assertEquals(variable_scope.VariableAggregation.MEAN,
+                      tower_local.aggregation)
 
   def _assign_tower_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):
@@ -795,7 +797,7 @@ class TowerLocalVariableTest(test.TestCase):
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     with self.test_session() as sess:
-      v, tower_local = _make_tower_local("sum")
+      v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
       self._assign_tower_local(_devices, v, [3., 4.])
@@ -818,7 +820,8 @@ class TowerLocalVariableTest(test.TestCase):
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     with self.test_session() as sess:
-      v, tower_local = _make_tower_local("mean")
+      v, tower_local = _make_tower_local(
+          variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
       self._assign_tower_local(_devices, v, [3., 4.])
@@ -837,7 +840,8 @@ class TowerLocalVariableTest(test.TestCase):
   def _save_tower_local_mean(self):
     """Save variables with mirroring, returns save_path."""
     with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local("mean")
+      v, tower_local = _make_tower_local(
+          variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
       self._assign_tower_local(_devices, v, [3., 4.])
@@ -899,7 +903,8 @@ class TowerLocalVariableTest(test.TestCase):
   def _restore_tower_local_mean(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
     with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local("mean")
+      v, tower_local = _make_tower_local(
+          variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
       self._assign_tower_local(_devices, v, [7., 8.])
@@ -913,7 +918,7 @@ class TowerLocalVariableTest(test.TestCase):
   def _restore_tower_local_sum(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
     with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local("sum")
+      v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
       self._assign_tower_local(_devices, v, [7., 8.])
@@ -971,6 +976,18 @@ class TowerLocalVariableTest(test.TestCase):
 
     save_path = self._save_normal()
     self._restore_tower_local_sum(save_path)
+
+  def testTensorConversion(self):
+    with context.graph_mode():
+      _, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
+      converted = ops.internal_convert_to_tensor(tower_local, as_ref=False)
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, tower_local.dtype)
+
+      converted = ops.internal_convert_to_tensor(tower_local, as_ref=True)
+      # Resources variable are converted to tensors as well when as_ref is True.
+      self.assertIsInstance(converted, ops.Tensor)
+      self.assertEqual(converted.dtype, tower_local.dtype)
 
 
 if __name__ == "__main__":

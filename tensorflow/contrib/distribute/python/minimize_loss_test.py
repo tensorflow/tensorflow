@@ -56,6 +56,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
               is_tpu=[True]))
   def testTrainNetwork(self, distribution, optimizer_fn, use_callable_loss,
                        is_tpu):
+    # TODO(priyag): Remove this once the step TPU Strategy is stable.
+    if is_tpu:
+      self.skipTest("TPU tests are WIP.")
+
     with distribution.scope():
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
@@ -84,8 +88,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       for _ in range(10):
         run_step()
 
-        weights.append(self.evaluate(distribution.fetch(layer.kernel)))
-        biases.append(self.evaluate(distribution.fetch(layer.bias)))
+        weights.append(self.evaluate(layer.kernel))
+        biases.append(self.evaluate(layer.bias))
 
       if is_tpu:
         with self.test_session() as sess:
@@ -111,6 +115,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           is_tpu=[True]))
 
   def testOptimizerInsideModelFn(self, distribution, optimizer_fn, is_tpu):
+    # TODO(priyag): Remove this once the step TPU Strategy is stable.
+    if is_tpu:
+      self.skipTest("TPU tests are WIP.")
+
     created_variables = []
     trainable_variables = []
 
@@ -186,7 +194,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                   # towers will re-execute UPDATE_OPS of previous towers.
                   update_ops_in_cross_tower_mode=[True])) +
           combinations.combine(
-              distribution=[combinations.tpu_strategy_single_iteration],
+              distribution=[combinations.tpu_strategy],
               optimizer_fn=[
                   combinations.gradient_descent_optimizer_v1_fn,
                   combinations.gradient_descent_optimizer_v2_fn
@@ -198,6 +206,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                                     renorm, is_tpu,
                                     update_ops_in_cross_tower_mode):
     """Verifies that moving mean updates are reduced across towers."""
+    # TODO(priyag): Remove this once the step TPU Strategy is stable.
+    if is_tpu:
+      self.skipTest("TPU tests are WIP.")
+
     with distribution.scope():
       num_towers = len(distribution.worker_devices)
       model_fn, dataset_fn, batchnorm = batchnorm_example(
@@ -207,11 +219,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           renorm=renorm,
           update_ops_in_tower_mode=not update_ops_in_cross_tower_mode)
 
-      # Disable prefetching since that makes the specific input on each device
-      # to be non deterministic, and this test relies on specific input being
-      # on each device.
+      # Make sure prefetching is disabled since that makes the
+      # specific input on each device to be non deterministic, and
+      # this test relies on specific input being on each device.
       if isinstance(distribution, mirrored_strategy.MirroredStrategy):
-        distribution._prefetch_on_device = False
+        self.assertFalse(distribution._prefetch_on_device)
       iterator = distribution.distribute_dataset(
           dataset_fn).make_one_shot_iterator()
 
@@ -242,7 +254,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       for _ in range(10):
         run_step()
-        moving_means = self.evaluate(distribution.fetch(batchnorm.moving_mean))
+        moving_means = self.evaluate(batchnorm.moving_mean)
 
         # We make sure that the moving_mean is updated as if the sample mean is
         # calculated over all towers.
@@ -279,12 +291,16 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                   mode=["graph"], use_callable_loss=[True, False]) +
               combinations.combine(mode=["eager"], use_callable_loss=[True])) +
           combinations.combine(
-              distribution=[combinations.tpu_strategy_single_iteration],
+              distribution=[combinations.tpu_strategy],
               is_tpu=[True],
               mode=["graph"],
               use_callable_loss=[True, False])))
   def testMeanVsSum(self, distribution, optimizer_fn, loss_reduction,
                     use_callable_loss, is_tpu):
+    # TODO(priyag): Remove this once the step TPU Strategy is stable.
+    if is_tpu:
+      self.skipTest("TPU tests are WIP.")
+
     with distribution.scope():
       all_vars = []
 
@@ -329,7 +345,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       v = all_vars[0]
       self.assertTrue(all([v is vi for vi in all_vars[1:]]))
-      weight = numpy.squeeze(self.evaluate(distribution.fetch(v)))
+      weight = numpy.squeeze(self.evaluate(v))
       # Our model is:
       #   predict = x * w
       #   loss = (predict - y)^2

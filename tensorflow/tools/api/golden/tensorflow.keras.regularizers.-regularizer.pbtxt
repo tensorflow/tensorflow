@@ -1,6 +1,6 @@
 path: "tensorflow.keras.regularizers.Regularizer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras._impl.keras.regularizers.Regularizer\'>"
+  is_instance: "<class \'tensorflow.python.keras.regularizers.Regularizer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

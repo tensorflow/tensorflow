@@ -229,6 +229,7 @@ def _rnn_logit_fn_builder(output_units, rnn_cell_fn, sequence_feature_columns,
     rnn_outputs, _ = rnn.dynamic_rnn(
         cell=cell,
         inputs=sequence_input,
+        sequence_length=sequence_length,
         dtype=dtypes.float32,
         time_major=False)
     last_activations = _select_last_activations(rnn_outputs, sequence_length)

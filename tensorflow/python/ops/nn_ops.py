@@ -1596,12 +1596,12 @@ def leaky_relu(features, alpha=0.2, name=None):
   Returns:
     The activation value.
   """
-  with ops.name_scope(name, "LeakyRelu", [features, alpha]):
+  with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
-    return math_ops.maximum(alpha * features, features)
+    return math_ops.maximum(alpha * features, features, name=name)
 
 
 def _flatten_outer_dims(logits):
@@ -2009,7 +2009,8 @@ def sparse_softmax_cross_entropy_with_logits(
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32`, or
+      `float64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2100,11 +2101,10 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   Args:
     value: A 4-D `Tensor` of shape `[batch, height, width, channels]` and type
       `float32`, `float64`, `qint8`, `quint8`, or `qint32`.
-    ksize: A 1-D int Tensor of 4 elements.
-      The size of the window for each dimension of the input tensor.
-    strides: A 1-D int Tensor of 4 elements
-      The stride of the sliding window for each dimension of the
-      input tensor.
+    ksize: A list or tuple of 4 ints. The size of the window for each dimension
+      of the input tensor.
+    strides: A list or tuple of 4 ints. The stride of the sliding window for
+      each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
     data_format: A string. 'NHWC' and 'NCHW' are supported.
@@ -2130,10 +2130,10 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
 
   Args:
     value: A 4-D `Tensor` of the format specified by `data_format`.
-    ksize: A 1-D int Tensor of 4 elements.  The size of the window for
+    ksize: A list or tuple of 4 ints. The size of the window for each dimension
+      of the input tensor.
+    strides: A list or tuple of 4 ints. The stride of the sliding window for
       each dimension of the input tensor.
-    strides: A 1-D int Tensor of 4 elements.  The stride of the sliding
-      window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
       See the @{tf.nn.convolution$comment here}
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
@@ -2167,7 +2167,7 @@ def _calc_conv_flops(graph, node):
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
   filter_in_depth = int(filter_shape[2])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats(
       "flops",
       (output_count * filter_in_depth * filter_height * filter_width * 2))
@@ -2185,7 +2185,7 @@ def _calc_depthwise_conv_flops(graph, node):
   output_shape.assert_is_fully_defined()
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
@@ -2312,13 +2312,22 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     if isinstance(keep_prob, numbers.Real) and not 0 < keep_prob <= 1:
       raise ValueError("keep_prob must be a scalar tensor or a float in the "
                        "range (0, 1], got %g" % keep_prob)
-    keep_prob = ops.convert_to_tensor(
-        keep_prob, dtype=x.dtype, name="keep_prob")
-    keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
 
-    # Do nothing if we know keep_prob == 1
-    if tensor_util.constant_value(keep_prob) == 1:
+    # Early return if nothing needs to be dropped.
+    if isinstance(keep_prob, float) and keep_prob == 1:
       return x
+    if context.executing_eagerly():
+      if isinstance(keep_prob, ops.EagerTensor):
+        if keep_prob.numpy() == 1:
+          return x
+    else:
+      keep_prob = ops.convert_to_tensor(
+          keep_prob, dtype=x.dtype, name="keep_prob")
+      keep_prob.get_shape().assert_is_compatible_with(tensor_shape.scalar())
+
+      # Do nothing if we know keep_prob == 1
+      if tensor_util.constant_value(keep_prob) == 1:
+        return x
 
     noise_shape = _get_noise_shape(x, noise_shape)
 
@@ -2586,7 +2595,7 @@ def _calc_dilation2d_flops(graph, node):
   output_shape.assert_is_fully_defined()
   filter_height = int(filter_shape[0])
   filter_width = int(filter_shape[1])
-  output_count = np.prod(output_shape.as_list())
+  output_count = np.prod(output_shape.as_list(), dtype=np.int64)
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 

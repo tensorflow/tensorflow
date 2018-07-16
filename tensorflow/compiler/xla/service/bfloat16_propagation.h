@@ -194,17 +194,11 @@ class BFloat16Propagation : public HloPassInterface {
   // are subject to further adjustment, then finally applied to the HLOs. This
   // avoids setting changed_ to true but all changes are reverted during
   // adjustment.
-  struct IndexHasher {
-    int64 operator()(const ShapeIndex& index) const {
-      int64 hash = 0;
-      for (int64 i : index) {
-        hash = tensorflow::Hash64Combine(hash, std::hash<int64>()(i));
-      }
-      return hash;
-    }
-  };
+  //
+  // For each HloInstruction, changes_to_bf16_ stores the affected buffers in
+  // the output as a map from in-place pointers to subshapes to shape indices.
   tensorflow::gtl::FlatMap<HloInstruction*,
-                           tensorflow::gtl::FlatSet<ShapeIndex, IndexHasher>>
+                           tensorflow::gtl::FlatMap<Shape*, ShapeIndex>>
       changes_to_bf16_;
 
   // Whether the last processed HLO module has been changed by this pass.

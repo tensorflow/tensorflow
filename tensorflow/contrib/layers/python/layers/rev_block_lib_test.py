@@ -21,9 +21,11 @@ from __future__ import print_function
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.layers.python.layers import rev_block_lib
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.layers import normalization as normalization_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -341,6 +343,54 @@ class RecomputeTest(test.TestCase):
     grads = gradients_impl.gradients(out, [inputs] + tvars)
     for grad in grads:
       self.assertTrue(grad is not None)
+
+  def testWithIsRecomputeKwarg(self):
+
+    kwarg_values = []
+
+    @rev_block_lib.recompute_grad
+    def layer_with_recompute(inputs, is_recomputing=False):
+      kwarg_values.append(is_recomputing)
+      out = core_layers.dense(inputs, 2)
+      out = normalization_layers.batch_normalization(out, training=True)
+      if is_recomputing:
+        # Ensure that the updates are not duplicated by popping off the latest
+        # 2 additions.
+        update_ops = ops.get_collection_ref(ops.GraphKeys.UPDATE_OPS)
+        update_ops.pop()
+        update_ops.pop()
+      return out
+
+    x = array_ops.ones((2, 4), dtypes.float32)
+    with variable_scope.variable_scope("layer1", use_resource=True):
+      y = layer_with_recompute(x)
+    loss = math_ops.reduce_sum(y)
+    tvars = variables.trainable_variables()
+    gradients_impl.gradients(loss, [x] + tvars)
+
+    update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+    self.assertEqual(2, len(update_ops))
+    self.assertEqual([False, True], kwarg_values)
+
+  def testWithoutVariables(self):
+
+    def concat_n(layer_list, num_inputs):
+      return math_ops.reduce_sum(
+          array_ops.concat([x for x in layer_list[-num_inputs:]], axis=-1),
+          axis=1, keepdims=True)
+
+    @rev_block_lib.recompute_grad
+    def concat_n_wrap(*args):
+      return concat_n(args, 3)
+
+    # DenseNet-style layers
+    layer_list = [random_ops.random_uniform((4, 8))]
+    for _ in range(5):
+      layer_list.append(math_ops.sqrt(concat_n_wrap(*layer_list)))
+
+    grads = gradients_impl.gradients(layer_list[-1], layer_list[0])
+    with self.test_session() as sess:
+      sess.run(grads)
 
 
 if __name__ == "__main__":

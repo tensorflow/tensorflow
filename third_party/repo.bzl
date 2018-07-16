@@ -16,8 +16,6 @@
 
 _SINGLE_URL_WHITELIST = depset([
     "arm_compiler",
-    "ortools_archive",
-    "gemmlowp",
 ])
 
 def _is_windows(ctx):
@@ -36,6 +34,15 @@ def _get_env_var(ctx, name):
     return ctx.os.environ[name]
   else:
     return None
+
+# Checks if we should use the system lib instead of the bundled one
+def _use_system_lib(ctx, name):
+  syslibenv = _get_env_var(ctx, "TF_SYSTEM_LIBS")
+  if syslibenv:
+    for n in syslibenv.strip().split(","):
+      if n.strip() == name:
+        return True
+  return False
 
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
@@ -77,18 +84,31 @@ def _tf_http_archive(ctx):
          "Even if you don't have permission to mirror the file, please " +
          "put the correctly formatted mirror URL there anyway, because " +
          "someone will come along shortly thereafter and mirror the file.")
-  ctx.download_and_extract(
-      ctx.attr.urls,
-      "",
-      ctx.attr.sha256,
-      ctx.attr.type,
-      ctx.attr.strip_prefix)
-  if ctx.attr.delete:
-    _apply_delete(ctx, ctx.attr.delete)
-  if ctx.attr.patch_file != None:
-    _apply_patch(ctx, ctx.attr.patch_file)
-  if ctx.attr.build_file != None:
-    ctx.template("BUILD", ctx.attr.build_file, {
+
+  use_syslib = _use_system_lib(ctx, ctx.attr.name)
+  if not use_syslib:
+    ctx.download_and_extract(
+        ctx.attr.urls,
+        "",
+        ctx.attr.sha256,
+        ctx.attr.type,
+        ctx.attr.strip_prefix)
+    if ctx.attr.delete:
+      _apply_delete(ctx, ctx.attr.delete)
+    if ctx.attr.patch_file != None:
+      _apply_patch(ctx, ctx.attr.patch_file)
+
+  if use_syslib and ctx.attr.system_build_file != None:
+    # Use BUILD.bazel to avoid conflict with third party projects with
+    # BUILD or build (directory) underneath.
+    ctx.template("BUILD.bazel", ctx.attr.system_build_file, {
+        "%prefix%": ".." if _repos_are_siblings() else "external",
+    }, False)
+
+  elif ctx.attr.build_file != None:
+    # Use BUILD.bazel to avoid conflict with third party projects with
+    # BUILD or build (directory) underneath.
+    ctx.template("BUILD.bazel", ctx.attr.build_file, {
         "%prefix%": ".." if _repos_are_siblings() else "external",
     }, False)
 
@@ -102,7 +122,11 @@ tf_http_archive = repository_rule(
         "delete": attr.string_list(),
         "patch_file": attr.label(),
         "build_file": attr.label(),
-    })
+        "system_build_file": attr.label(),
+    },
+    environ=[
+	"TF_SYSTEM_LIBS",
+    ])
 """Downloads and creates Bazel repos for dependencies.
 
 This is a swappable replacement for both http_archive() and

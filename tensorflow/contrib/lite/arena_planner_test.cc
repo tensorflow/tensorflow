@@ -100,12 +100,18 @@ class TestGraph {
   std::vector<TfLiteTensor>* tensors() { return &tensors_; }
   const std::vector<int>& inputs() { return inputs_; }
   const std::vector<int>& outputs() { return outputs_; }
+  const std::vector<int>& variables() { return variables_; }
+
+  void SetVariables(const std::vector<int>& variables) {
+    variables_ = variables;
+  }
 
  private:
   std::vector<TfLiteNode> nodes_;
   std::vector<TfLiteTensor> tensors_;
   std::vector<int> inputs_;
   std::vector<int> outputs_;
+  std::vector<int> variables_;
 };
 
 // The GraphInfo for a TestGraph.
@@ -123,6 +129,9 @@ class TestGraphInfo : public GraphInfo {
   }
   const std::vector<int>& inputs() const override { return graph_->inputs(); }
   const std::vector<int>& outputs() const override { return graph_->outputs(); }
+  const std::vector<int>& variables() const override {
+    return graph_->variables();
+  }
 
  private:
   TestGraph* graph_;
@@ -142,11 +151,12 @@ void ReportError(TfLiteContext* context, const char* format, ...) {
 
 class ArenaPlannerTest : public ::testing::Test {
  protected:
-  void SetGraph(TestGraph* graph) {
+  void SetGraph(TestGraph* graph, bool preserve_inputs = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
     planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph))));
+        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
+        preserve_inputs, /*preserve intermediates*/ false));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
@@ -209,11 +219,8 @@ TEST_F(ArenaPlannerTest, ZeroSizedTensors) {
   TestGraph graph({1}, {{{1}, {2}, {}}}, {2});
   (*graph.tensors())[1].bytes = 0;
   SetGraph(&graph);
-  // TODO(ahentz): this is currently broken because the arena finds two
-  // allocations with the same offset and returns an error.
-  ASSERT_FALSE(planner_->ExecuteAllocations(0, 10) == kTfLiteOk);
-  // EXPECT_EQ(GetOffset(1), 0);
-  // EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  ASSERT_EQ(planner_->ExecuteAllocations(0, 10), kTfLiteOk);
+  EXPECT_EQ((*graph_->tensors())[1].data.raw, nullptr);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraph) {
@@ -235,6 +242,30 @@ TEST_F(ArenaPlannerTest, SimpleGraph) {
   EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
   EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
   EXPECT_EQ(GetOffset(3), 0);
+}
+
+TEST_F(ArenaPlannerTest, SimpleGraphInputsPreserved) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {3});
+  SetGraph(&graph, /*preserve_inputs=*/true);
+  Execute(0, 10);
+
+  // Alloc(+) and dealloc(-) order: +0 +1 +2 +4 +5 -2 +3 -4 -5
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  // Because we are keeping the inputs alive until the end (due to
+  // preserve_inputs=true), the output tensor will not be able to use that
+  // space. It will end up using the same are as tensor #2.
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithTemporary) {
@@ -309,13 +340,15 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentTensor) {
                   {
                       /* in, out, tmp */
                       {{0, 1}, {2}, {}},   // First op
-                      {{2, 0}, {4}, {5}},  // Second op, with temporary
+                      {{2, 0}, {4}, {5}},  // Second op, with persistent
                       {{4, -1}, {3}, {}}   // Third op, with optional
                   },
                   {3});
 
   // Make #1 persistent so it goes into its own arena.
   (*graph.tensors())[1].allocation_type = kTfLiteArenaRwPersistent;
+  // The only use case for kTfLiteArenaRwPersistent is variable tensor now.
+  graph.SetVariables({1});
 
   SetGraph(&graph);
   Execute(0, 10);

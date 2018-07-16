@@ -24,14 +24,16 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#include "mkl_dnn.h"
-#include "mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 #ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::stream;
+#else
+#include "mkl_dnn.h"
+#include "mkl_dnn_types.h"
 #endif
+
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
@@ -250,7 +252,7 @@ class MklReshapeOp : public OpKernel {
                 memory::primitive_desc(output_tf_md, cpu_engine);
 
             Tensor* output_tensor = nullptr;
-            MklShape mkl_shape_output;
+            MklDnnShape mkl_shape_output;
             mkl_shape_output.SetMklTensor(false);
             // We allocate output tensor in the shape expected by Reshape.
             AllocateOutputSetMklShape(context, kOutputSlotIdx, &output_tensor,
@@ -261,10 +263,7 @@ class MklReshapeOp : public OpKernel {
             // shape_from != shape_to), then we just copy input tensor to
             // output tensor with target shape (we cannot forward Mkl layout
             // in such case because shape has changed.)
-            std::vector<primitive> net;
-            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor,
-                                                   &net)) {
-              stream(stream::kind::eager).submit(net).wait();
+            if (dnn_data_input.CheckReorderToOpMem(output_tf_pd, output_tensor)) {
             } else {
               OP_REQUIRES(
                   context, output_tensor->CopyFrom(input_tensor, shape_to),

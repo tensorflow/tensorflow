@@ -43,8 +43,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
   std::vector<std::vector<int64>> layouts = {{0, 1}, {1, 0}};
   for (const std::vector<int64>& execute_layout : layouts) {
     for (const std::vector<int64>& transfer_layout : layouts) {
-      b.Add(b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-            b.ConstantR2<int32>({{10, 20}, {30, 40}}));
+      Add(ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+          ConstantR2<int32>(&b, {{10, 20}, {30, 40}}));
       TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
       ExecutionOptions execution_options = execution_options_;
@@ -56,15 +56,15 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
           client_->Execute(computation, {}, &execution_options));
 
       std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>(
+          LiteralUtil::CreateR2WithLayout<int32>(
               {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, client_->Transfer(*data, &expected_literal->shape()));
 
-      LiteralTestUtil::AssertEqualShapesAndLayouts(expected_literal->shape(),
-                                                   computed->shape());
-      LiteralTestUtil::ExpectEqual(*expected_literal, *computed);
+      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
+          expected_literal->shape(), computed->shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
     }
   }
 }
@@ -72,8 +72,8 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
 XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   XlaBuilder b(TestName());
 
-  b.Tuple({b.ConstantR2<int32>({{1, 2}, {3, 4}}),
-           b.ConstantR2<int32>({{10, 20}, {30, 40}})});
+  Tuple(&b, {ConstantR2<int32>(&b, {{1, 2}, {3, 4}}),
+             ConstantR2<int32>(&b, {{10, 20}, {30, 40}})});
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
@@ -91,9 +91,9 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
       auto result,
       client_->ExecuteAndTransfer(computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
-                                        LiteralView::Create(*result, {0}));
+                                        LiteralSlice(*result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
-                                        LiteralView::Create(*result, {1}));
+                                        LiteralSlice(*result, {1}));
 
   EXPECT_TRUE(ShapeUtil::IsTuple(result->shape()));
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->shape()));
@@ -112,13 +112,13 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> const_arg,
-      client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> const_arg,
+                          client_->TransferToServer(
+                              *LiteralUtil::CreateR2<int32>({{5, 6}, {7, 8}})));
 
   XlaBuilder b(TestName() + ".add");
-  b.Add(b.Parameter(0, shape, "param_0"),
-        b.ConstantR2<int32>({{1, 2}, {3, 4}}));
+  Add(Parameter(&b, 0, shape, "param_0"),
+      ConstantR2<int32>(&b, {{1, 2}, {3, 4}}));
   TF_ASSERT_OK_AND_ASSIGN(add_with_one_arg, b.Build());
 
   // We can't really test parallel execution on CPU since all of the cores in a
@@ -136,13 +136,13 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           client_->ExecuteParallel(computation_instances));
-  auto expected_result = Literal::CreateR2<int32>({{6, 8}, {10, 12}});
+  auto expected_result = LiteralUtil::CreateR2<int32>({{6, 8}, {10, 12}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_literal,
       client_->Transfer(*results[0], &expected_result->shape()));
 
-  LiteralTestUtil::ExpectEqual(*expected_result, *result_literal);
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected_result, *result_literal));
 }
 
 }  // namespace
