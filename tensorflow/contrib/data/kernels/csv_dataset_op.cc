@@ -18,7 +18,10 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
 
 namespace tensorflow {
 namespace {
@@ -36,6 +39,10 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(
         ctx, filenames_tensor->dims() <= 1,
         errors::InvalidArgument("`filenames` must be a scalar or a vector."));
+
+    string compression_type;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
+                                                    &compression_type));
 
     OpInputList record_defaults_list;
     OP_REQUIRES_OK(ctx,
@@ -86,6 +93,19 @@ class CSVDatasetOp : public DatasetOpKernel {
       filenames.push_back(filenames_tensor->flat<string>()(i));
     }
 
+    io::ZlibCompressionOptions zlib_compression_options =
+        io::ZlibCompressionOptions::DEFAULT();
+    if (compression_type == "ZLIB") {
+      zlib_compression_options = io::ZlibCompressionOptions::DEFAULT();
+    } else if (compression_type == "GZIP") {
+      zlib_compression_options = io::ZlibCompressionOptions::GZIP();
+    } else {
+      OP_REQUIRES(ctx, compression_type.empty(),
+                  errors::InvalidArgument("Unsupported compression_type: ",
+                                          compression_type, "."));
+    }
+    zlib_compression_options.input_buffer_size = buffer_size;
+
     std::vector<int64> select_cols;
     select_cols.reserve(select_cols_tensor->NumElements());
     for (int i = 0; i < select_cols_tensor->NumElements(); ++i) {
@@ -103,31 +123,34 @@ class CSVDatasetOp : public DatasetOpKernel {
         ctx, select_cols.empty() || select_cols.front() >= 0,
         errors::InvalidArgument("select_cols should be non-negative indices"));
 
-    *output = new Dataset(ctx, std::move(filenames), header, buffer_size,
-                          output_types_, output_shapes_,
-                          std::move(record_defaults), std::move(select_cols),
-                          use_quote_delim, delim[0], std::move(na_value));
+    *output = new Dataset(
+        ctx, std::move(filenames), header, std::move(compression_type),
+        zlib_compression_options, output_types_, output_shapes_,
+        std::move(record_defaults), std::move(select_cols), use_quote_delim,
+        delim[0], std::move(na_value));
   }
 
  private:
   class Dataset : public GraphDatasetBase {
    public:
     Dataset(OpKernelContext* ctx, std::vector<string> filenames, bool header,
-            int64 buffer_size, const DataTypeVector& output_types,
+            string compression_type, io::ZlibCompressionOptions options,
+            const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::vector<Tensor> record_defaults, std::vector<int64> select_cols,
             bool use_quote_delim, char delim, string na_value)
         : GraphDatasetBase(ctx),
           filenames_(std::move(filenames)),
           header_(header),
-          buffer_size_(buffer_size),
           out_type_(output_types),
           output_shapes_(output_shapes),
           record_defaults_(std::move(record_defaults)),
           select_cols_(std::move(select_cols)),
           use_quote_delim_(use_quote_delim),
           delim_(delim),
-          na_value_(std::move(na_value)) {}
+          na_value_(std::move(na_value)),
+          use_compression_(!compression_type.empty()),
+          options_(options) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
@@ -510,7 +533,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 
       Status FillBuffer(string* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         result->clear();
-        Status s = input_stream_->ReadNBytes(dataset()->buffer_size_, result);
+        Status s = input_stream_->ReadNBytes(
+            dataset()->options_.input_buffer_size, result);
 
         if (errors::IsOutOfRange(s) && !result->empty()) {
           // Ignore OutOfRange error when ReadNBytes read < N bytes.
@@ -675,8 +699,17 @@ class CSVDatasetOp : public DatasetOpKernel {
         // Actually move on to next file.
         TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
             dataset()->filenames_[current_file_index_], &file_));
-        input_stream_.reset(
-            new io::RandomAccessInputStream(file_.get(), false));
+        random_access_input_stream_ =
+            std::make_shared<io::RandomAccessInputStream>(file_.get(), false);
+
+        if (dataset()->use_compression_) {
+          input_stream_ = std::make_shared<io::ZlibInputStream>(
+              random_access_input_stream_.get(),
+              dataset()->options_.input_buffer_size,
+              dataset()->options_.input_buffer_size, dataset()->options_);
+        } else {
+          input_stream_ = random_access_input_stream_;
+        }
         buffer_.clear();
         pos_ = 0;
         if (dataset()->header_) {
@@ -704,8 +737,9 @@ class CSVDatasetOp : public DatasetOpKernel {
       string buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
       size_t pos_ GUARDED_BY(
           mu_);  // Index into the buffer must be maintained between iters
-      std::unique_ptr<io::RandomAccessInputStream> input_stream_
+      std::shared_ptr<io::RandomAccessInputStream> random_access_input_stream_
           GUARDED_BY(mu_);
+      std::shared_ptr<io::InputStreamInterface> input_stream_ GUARDED_BY(mu_);
       size_t current_file_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
           GUARDED_BY(mu_);  // must outlive input_stream_
@@ -713,7 +747,6 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     const std::vector<string> filenames_;
     const bool header_;
-    const int64 buffer_size_;
     const DataTypeVector out_type_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::vector<Tensor> record_defaults_;
@@ -721,6 +754,8 @@ class CSVDatasetOp : public DatasetOpKernel {
     const bool use_quote_delim_;
     const char delim_;
     const string na_value_;
+    const bool use_compression_;
+    const io::ZlibCompressionOptions options_;
   };  // class Dataset
 
   DataTypeVector output_types_;
