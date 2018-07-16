@@ -245,7 +245,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     // If the last token is not an integer, it must be part of the name.
     // Otherwise it is port number.
     if (tokens.size() > 1 &&
-       !strings::safe_strto32(tokens.back(), &dumm_port)) {
+        !strings::safe_strto32(tokens.back(), &dumm_port)) {
       StrAppend(&s, ":", tokens.back());
     }
     nodes_to_preserve.push_back(s);
