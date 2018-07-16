@@ -99,6 +99,8 @@ FileCopyAllocation::FileCopyAllocation(const char* filename,
                             filename);
     return;
   }
+  // Versions of GCC before 6.2.0 don't support std::move from non-const char[] to
+  // const char[] unique_ptrs.
   copied_buffer_.reset(const_cast<char const *>(buffer.release()));
 }
 
