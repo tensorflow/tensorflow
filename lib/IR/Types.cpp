@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Types.h"
+#include "mlir/IR/AffineMap.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Support/STLExtras.h"
 using namespace mlir;
@@ -49,6 +50,19 @@ RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
 
 UnrankedTensorType::UnrankedTensorType(Type *elementType, MLIRContext *context)
   : TensorType(Kind::UnrankedTensor, elementType, context) {
+}
+
+MemRefType::MemRefType(ArrayRef<int> shape, Type *elementType,
+                       ArrayRef<AffineMap*> affineMapList,
+                       unsigned memorySpace, MLIRContext *context)
+  : Type(Kind::MemRef, context, shape.size()),
+    elementType(elementType), shapeElements(shape.data()),
+    numAffineMaps(affineMapList.size()), affineMapList(affineMapList.data()),
+    memorySpace(memorySpace) {
+}
+
+ArrayRef<AffineMap*> MemRefType::getAffineMaps() const {
+  return ArrayRef<AffineMap*>(affineMapList, numAffineMaps);
 }
 
 void Type::print(raw_ostream &os) const {
@@ -107,6 +121,25 @@ void Type::print(raw_ostream &os) const {
   case Kind::UnrankedTensor: {
     auto *v = cast<UnrankedTensorType>(this);
     os << "tensor<??" << *v->getElementType() << '>';
+    return;
+  }
+  case Kind::MemRef: {
+    auto *v = cast<MemRefType>(this);
+    os << "memref<";
+    for (auto dim : v->getShape()) {
+      if (dim < 0)
+        os << '?';
+      else
+        os << dim;
+      os << 'x';
+    }
+    os << *v->getElementType();
+    for (auto map : v->getAffineMaps()) {
+      os << ", ";
+      map->print(os);
+    }
+    os << ", " << v->getMemorySpace();
+    os << '>';
     return;
   }
   }

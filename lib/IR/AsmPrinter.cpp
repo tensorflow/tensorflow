@@ -303,7 +303,10 @@ void Instruction::dump() const {
   llvm::errs() << "\n";
 }
 
-void AffineMap::dump() const { print(llvm::errs()); }
+void AffineMap::dump() const {
+  print(llvm::errs());
+  llvm::errs() << "\n";
+}
 
 void AffineExpr::dump() const {
   print(llvm::errs());
@@ -393,7 +396,6 @@ void AffineMap::print(raw_ostream &os) const {
   os << ")";
 
   if (!isBounded()) {
-    os << "\n";
     return;
   }
 
@@ -401,7 +403,7 @@ void AffineMap::print(raw_ostream &os) const {
   os << " size (";
   interleave(getRangeSizes(), [&](AffineExpr *expr) { os << *expr; },
              [&]() { os << ", "; });
-  os << ")\n";
+  os << ")";
 }
 
 void BasicBlock::print(raw_ostream &os) const {
@@ -449,6 +451,7 @@ void Module::print(raw_ostream &os) const {
   for (auto *map : affineMapList) {
     os << "#" << id++ << " = ";
     map->print(os);
+    os << '\n';
   }
   for (auto *fn : functionList)
     fn->print(os);

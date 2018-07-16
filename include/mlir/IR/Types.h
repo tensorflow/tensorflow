@@ -22,9 +22,10 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-  class MLIRContext;
-  class PrimitiveType;
-  class IntegerType;
+class AffineMap;
+class MLIRContext;
+class PrimitiveType;
+class IntegerType;
 
 /// Instances of the Type class are immutable, uniqued, immortal, and owned by
 /// MLIRContext.  As such, they are passed around by raw non-const pointer.
@@ -52,8 +53,7 @@ public:
     Vector,
     RankedTensor,
     UnrankedTensor,
-
-    // TODO: MemRef types.
+    MemRef,
   };
 
   /// Return the classification for this type.
@@ -277,6 +277,55 @@ public:
 
 private:
   UnrankedTensorType(Type *elementType, MLIRContext *context);
+};
+
+/// MemRef types represent a region of memory that have a shape with a fixed
+/// number of dimensions. Each shape element can be a positive integer or
+/// unknown (represented by any negative integer). MemRef types also have an
+/// affine map composition, represented as an array AffineMap pointers.
+// TODO: Use -1 for unknown dimensions (rather than arbitrary negative numbers).
+class MemRefType : public Type {
+public:
+  /// Get or create a new MemRefType based on shape, element type, affine
+  /// map composition, and memory space.
+  static MemRefType *get(ArrayRef<int> shape, Type *elementType,
+                         ArrayRef<AffineMap*> affineMapComposition,
+                         unsigned memorySpace);
+
+  /// Returns an array of memref shape dimension sizes.
+  ArrayRef<int> getShape() const {
+    return ArrayRef<int>(shapeElements, getSubclassData());
+  }
+
+  /// Returns the elemental type for this memref shape.
+  Type *getElementType() const { return elementType; }
+
+  /// Returns an array of affine map pointers representing the memref affine
+  /// map composition.
+  ArrayRef<AffineMap*> getAffineMaps() const;
+
+  /// Returns the memory space in which data referred to by this memref resides.
+  unsigned getMemorySpace() const { return memorySpace; }
+
+  static bool classof(const Type *type) {
+    return type->getKind() == Kind::MemRef;
+  }
+
+private:
+  /// The type of each scalar element of the memref.
+  Type *elementType;
+  /// An array of integers which stores the shape dimension sizes.
+  const int *shapeElements;
+  /// The number of affine maps in the 'affineMapList' array.
+  unsigned numAffineMaps;
+  /// List of affine maps in affine map composition.
+  AffineMap *const *const affineMapList;
+  /// Memory space in which data referenced by memref resides.
+  unsigned memorySpace;
+
+  MemRefType(ArrayRef<int> shape, Type *elementType,
+             ArrayRef<AffineMap*> affineMapList, unsigned memorySpace,
+             MLIRContext *context);
 };
 
 } // end namespace mlir

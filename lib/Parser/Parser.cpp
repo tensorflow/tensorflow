@@ -132,9 +132,10 @@ public:
     return true;
   }
 
-  ParseResult parseCommaSeparatedList(Token::Kind rightToken,
-                               const std::function<ParseResult()> &parseElement,
-                                      bool allowEmptyList = true);
+  ParseResult parseCommaSeparatedList(
+      Token::Kind rightToken,
+      const std::function<ParseResult()> &parseElement,
+      bool allowEmptyList = true);
 
   // We have two forms of parsing methods - those that return a non-null
   // pointer on success, and those that return a ParseResult to indicate whether
@@ -158,6 +159,7 @@ public:
 
   // Polyhedral structures.
   AffineMap *parseAffineMapInline();
+  AffineMap *parseAffineMapReference();
 
   // SSA
   ParseResult parseSSAUse();
@@ -414,14 +416,50 @@ Type *Parser::parseMemRefType() {
   if (!elementType)
     return nullptr;
 
-  // TODO: Parse semi-affine-map-composition.
-  // TODO: Parse memory-space.
+  if (!consumeIf(Token::comma))
+    return (emitError("expected ',' in memref type"), nullptr);
 
-  if (!consumeIf(Token::greater))
-    return (emitError("expected '>' in memref type"), nullptr);
+  // Parse semi-affine-map-composition.
+  SmallVector<AffineMap*, 2> affineMapComposition;
+  unsigned memorySpace;
+  bool parsedMemorySpace = false;
 
-  // FIXME: Add an IR representation for memref types.
-  return builder.getIntegerType(1);
+  auto parseElt = [&]() -> ParseResult {
+    if (getToken().is(Token::integer)) {
+      // Parse memory space.
+      if (parsedMemorySpace)
+        return emitError("multiple memory spaces specified in memref type");
+      auto v = getToken().getUnsignedIntegerValue();
+      if (!v.hasValue())
+        return emitError("invalid memory space in memref type");
+      memorySpace = v.getValue();
+      consumeToken(Token::integer);
+      parsedMemorySpace = true;
+    } else {
+      // Parse affine map.
+      if (parsedMemorySpace)
+        return emitError("affine map after memory space in memref type");
+      auto* affineMap = parseAffineMapReference();
+      if (affineMap == nullptr)
+        return ParseFailure;
+      affineMapComposition.push_back(affineMap);
+    }
+    return ParseSuccess;
+  };
+
+  // Parse comma separated list of affine maps, followed by memory space.
+  if (parseCommaSeparatedList(Token::greater, parseElt,
+                              /*allowEmptyList=*/false)) {
+    return nullptr;
+  }
+  // Check that MemRef type specifies at least one affine map in composition.
+  if (affineMapComposition.empty())
+    return (emitError("expected semi-affine-map in memref type"), nullptr);
+  if (!parsedMemorySpace)
+    return (emitError("expected memory space in memref type"), nullptr);
+
+  return MemRefType::get(dimensions, elementType, affineMapComposition,
+                         memorySpace);
 }
 
 /// Parse a function type.
@@ -1104,6 +1142,20 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
 
 AffineMap *Parser::parseAffineMapInline() {
   return AffineMapParser(state).parseAffineMapInline();
+}
+
+AffineMap *Parser::parseAffineMapReference() {
+  if (getToken().is(Token::hash_identifier)) {
+    // Parse affine map identifier and verify that it exists.
+    StringRef affineMapId = getTokenSpelling().drop_front();
+    if (getState().affineMapDefinitions.count(affineMapId) == 0)
+      return (emitError("undefined affine map id '" + affineMapId + "'"),
+              nullptr);
+    consumeToken(Token::hash_identifier);
+    return getState().affineMapDefinitions[affineMapId];
+  }
+  // Try to parse inline affine map.
+  return parseAffineMapInline();
 }
 
 //===----------------------------------------------------------------------===//

@@ -113,6 +113,30 @@ struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorType*> {
   }
 };
 
+struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType*> {
+  // MemRefs are uniqued based on their element type, shape, affine map
+  // composition, and memory space.
+  using KeyTy = std::tuple<Type*, ArrayRef<int>, ArrayRef<AffineMap*>,
+                           unsigned>;
+  using DenseMapInfo<MemRefType*>::getHashValue;
+  using DenseMapInfo<MemRefType*>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(
+        DenseMapInfo<Type*>::getHashValue(std::get<0>(key)),
+        hash_combine_range(std::get<1>(key).begin(), std::get<1>(key).end()),
+        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()),
+        std::get<3>(key));
+  }
+
+  static bool isEqual(const KeyTy &lhs, const MemRefType *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == std::make_tuple(rhs->getElementType(), rhs->getShape(),
+                                  rhs->getAffineMaps(), rhs->getMemorySpace());
+  }
+};
+
 struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttr*> {
   // Array attributes are uniqued based on their elements.
   using KeyTy = ArrayRef<Attribute*>;
@@ -194,6 +218,10 @@ public:
 
   /// Unranked tensor type uniquing.
   DenseMap<Type*, UnrankedTensorType*> unrankedTensors;
+
+  /// MemRef type uniquing.
+  using MemRefTypeSet = DenseSet<MemRefType*, MemRefTypeKeyInfo>;
+  MemRefTypeSet memrefs;
 
   // Attribute uniquing.
   BoolAttr *boolAttrs[2] = { nullptr };
@@ -401,6 +429,39 @@ UnrankedTensorType *UnrankedTensorType::get(Type *elementType) {
   // Initialize the memory using placement new.
   new (result) UnrankedTensorType(elementType, context);
   return result;
+}
+
+MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
+                            ArrayRef<AffineMap*> affineMapComposition,
+                            unsigned memorySpace) {
+  auto *context = elementType->getContext();
+  auto &impl = context->getImpl();
+
+  // Look to see if we already have this memref type.
+  auto key = std::make_tuple(elementType, shape, affineMapComposition,
+                             memorySpace);
+  auto existing = impl.memrefs.insert_as(nullptr, key);
+
+  // If we already have it, return that value.
+  if (!existing.second)
+    return *existing.first;
+
+  // On the first use, we allocate them into the bump pointer.
+  auto *result = impl.allocator.Allocate<MemRefType>();
+
+  // Copy the shape into the bump pointer.
+  shape = impl.copyInto(shape);
+
+  // Copy the affine map composition into the bump pointer.
+  // TODO(andydavis) Assert that the structure of the composition is valid.
+  affineMapComposition = impl.copyInto(ArrayRef<AffineMap*>(
+      affineMapComposition));
+
+  // Initialize the memory using placement new.
+  new (result) MemRefType(shape, elementType, affineMapComposition, memorySpace,
+                          context);
+  // Cache and return it.
+  return *existing.first = result;
 }
 
 //===----------------------------------------------------------------------===//
