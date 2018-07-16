@@ -33,8 +33,8 @@ inline float LogSumExp(float log_prob_1, float log_prob_2) {
   // blowing up.
   if (log_prob_1 == kLogZero) {
     return log_prob_2;
-  } else if (log_prob_2 == kLogZero){
-      return log_prob_1;
+  } else if (log_prob_2 == kLogZero) {
+    return log_prob_1;
   } else {
     return (log_prob_1 > log_prob_2)
                ? log_prob_1 + log1pf(expf(log_prob_2 - log_prob_1))
