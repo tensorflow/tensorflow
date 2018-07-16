@@ -234,7 +234,7 @@ class _InternalTPUContext(object):
   def mode(self):
     return self._assert_mode()
 
-  def master_address(self):
+  def _get_master_address(self):
     mode = self._assert_mode()
     config = self._config
     master = (
@@ -244,7 +244,7 @@ class _InternalTPUContext(object):
 
   def _get_tpu_system_metadata(self):
     """Gets the (maybe cached) TPU system metadata."""
-    master = self.master_address()
+    master = self._get_master_address()
     tpu_system_metadata = self._lazy_tpu_system_metadata_dict.get(master)
     if tpu_system_metadata is not None:
       return tpu_system_metadata
@@ -261,7 +261,7 @@ class _InternalTPUContext(object):
 
   def _get_device_assignment(self):
     """Gets the (maybe cached) TPU device assignment."""
-    master = self.master_address()
+    master = self._get_master_address()
     device_assignment = self._lazy_device_assignment_dict.get(master)
     if device_assignment is not None:
       return device_assignment
@@ -589,7 +589,7 @@ class _InternalTPUContext(object):
             'model-parallelism, the total number of TPU cores should be '
             'num_cores_per_replica * num_replicas. Please set it '
             'accordingly or leave it as `None`'.format(
-                self.master_address(), num_replicas,
+                self._get_master_address(), num_replicas,
                 user_provided_num_replicas))
 
         raise ValueError(message)
@@ -644,7 +644,7 @@ class _OneCoreTPUContext(_InternalTPUContext):
 
   def _get_tpu_system_metadata(self):
     """Gets the (maybe cached) TPU system metadata."""
-    master = self.master_address()
+    master = self._get_master_address()
     tpu_system_metadata = self._lazy_tpu_system_metadata_dict.get(master)
     if tpu_system_metadata is not None:
       return tpu_system_metadata
