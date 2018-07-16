@@ -31,8 +31,10 @@ const float kLogZero = -std::numeric_limits<float>::infinity();
 inline float LogSumExp(float log_prob_1, float log_prob_2) {
   // Always have 'b' be the smaller number to avoid the exponential from
   // blowing up.
-  if (log_prob_1 == kLogZero && log_prob_2 == kLogZero) {
-    return kLogZero;
+  if (log_prob_1 == kLogZero) {
+    return log_prob_2;
+  } else if (log_prob_2 == kLogZero){
+      return log_prob_1;
   } else {
     return (log_prob_1 > log_prob_2)
                ? log_prob_1 + log1pf(expf(log_prob_2 - log_prob_1))
