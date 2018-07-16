@@ -1393,6 +1393,10 @@ REGISTER_OP("HistogramFixedWidth")
       if (nbins_input != nullptr) {
         int64 nbins;
         TF_RETURN_IF_ERROR(c->GetScalarFromTensor(nbins_input, &nbins));
+        // nbins has to be positive.
+        if (nbins <= 0) {
+          return errors::InvalidArgument("Requires nbins > 0: ", nbins);
+        }
         c->set_output(0, c->Vector(nbins));
       } else {
         c->set_output(0, c->UnknownShapeOfRank(1));
