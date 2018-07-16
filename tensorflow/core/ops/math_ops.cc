@@ -1380,6 +1380,14 @@ REGISTER_OP("HistogramFixedWidth")
     .Attr("T: {int32, int64, float32, float64}")
     .Attr("dtype: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
+      // value_range should be a vector.
+      ShapeHandle value_range_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &value_range_shape));
+      // value_range should have two elements.
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(value_range_shape, 0), 2, &unused));
+
+      // If nbins is available, set the shape from nbins.
       const Tensor* nbins_input = c->input_tensor(2);
       if (nbins_input != nullptr) {
         int64 nbins;
