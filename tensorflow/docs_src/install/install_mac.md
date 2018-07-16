@@ -1,4 +1,4 @@
-# Installing TensorFlow on macOS
+# Install TensorFlow on macOS
 
 This guide explains how to install TensorFlow on macOS. Although these
 instructions might also work on other macOS variants, we have only
