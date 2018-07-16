@@ -1387,6 +1387,9 @@ REGISTER_OP("HistogramFixedWidth")
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
           c->WithValue(c->Dim(value_range_shape, 0), 2, &unused));
+      // nbins should be a scalar.
+      ShapeHandle nbins_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &nbins_shape));
 
       // If nbins is available, set the shape from nbins.
       const Tensor* nbins_input = c->input_tensor(2);

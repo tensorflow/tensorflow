@@ -532,8 +532,12 @@ TEST(MathOpsTest, Cross_ShapeFn) {
 TEST(MathOpsTest, HistogramFixedWidth_ShapeFn) {
   ShapeInferenceTestOp op("HistogramFixedWidth");
 
+  // value_range should be vector.
   INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];[];[]");
+  // value_range should have 2 elements.
   INFER_ERROR("Dimension must be 2 but is 3", op, "[];[3];[]");
+  // nbins should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[];[2];[2]");
 
   INFER_OK(op, "?;?;?", "[?]");
   INFER_OK(op, "[?];[2];[]", "[?]");
