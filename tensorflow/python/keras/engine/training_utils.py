@@ -128,7 +128,7 @@ def standardize_input_data(data,
     except KeyError as e:
       raise ValueError('No data provided for "' + e.args[0] + '". Need data '
                        'for each key in: ' + str(names))
-  elif isinstance(data, list):
+  elif isinstance(data, (list, tuple)):
     if isinstance(data[0], list):
       data = [np.asarray(d) for d in data]
     elif len(names) == 1 and isinstance(data[0], (float, int)):
