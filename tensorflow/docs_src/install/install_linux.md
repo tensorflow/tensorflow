@@ -1,4 +1,4 @@
-# Installing TensorFlow on Ubuntu
+# Install TensorFlow on Ubuntu
 
 This guide explains how to install TensorFlow on Ubuntu Linux. While these
 instructions may work on other Linux variants, they are tested and supported with
@@ -511,6 +511,8 @@ on your system:
   list of supported GPU cards.
 * [GPU drivers](http://nvidia.com/drivers) that support your version of the CUDA
   Toolkit.
+* NCCL 2.2 to use TensorFlow with multiple GPUs. For details, see [NVIDIA's
+  documentation](https://developer.nvidia.com/nccl).
 * The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
   library provides advanced profiling support. To install this library,
   use the following command for CUDA Toolkit >= 8.0:
