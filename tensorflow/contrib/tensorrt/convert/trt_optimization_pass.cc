@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -236,7 +237,16 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   std::vector<string> nodes_to_preserve;
   for (const auto& n : item.NodesToPreserve()) {
     auto tokens = str_util::Split(n, ":");
-    nodes_to_preserve.push_back(tokens.at(0));
+    string s=tokens.at(0);
+    for(int i=1;i<tokens.size()-1;++i){
+      StrAppend(&s,":",tokens.at(i));
+    }
+    int dumm_port=-1;
+    // make sure last token is a port and append it to string if not
+    if(tokens.size() > 1 && !strings::safe_strto32(tokens.back(),&dumm_port)){
+      StrAppend(&s,":",tokens.back());
+    }
+    nodes_to_preserve.push_back(s);
   }
   cp.input_graph_def = &item.graph;
   cp.output_names = &nodes_to_preserve;
