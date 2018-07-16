@@ -135,17 +135,8 @@ public final class Scope {
    * }</pre>
    *
    * <p><b>Note:</b> if you provide a composite operator building class (i.e, a class that adds a
-   * set of related operations to the graph by calling other operator building code) you should also
-   * create a {@link #withSubScope(String)} scope for the underlying operators to group them under a
-   * meaningful name.
-   *
-   * <pre>{@code
-   * public static Stddev create(Scope scope, ...) {
-   *   // group sub-operations under a common name
-   *   Scope group = scope.withSubScope("stddev");
-   *   ... Sqrt.create(group, Mean.create(group, ...))
-   * }
-   * }</pre>
+   * set of related operations to the graph by calling other operator building code), the provided name 
+   * will act as a subscope to all underlying operators.
    *
    * @param defaultName name for the underlying operator.
    * @return unique name for the operator.
@@ -153,19 +144,6 @@ public final class Scope {
    */
   public String makeOpName(String defaultName) {
     return nameScope.makeOpName(defaultName);
-  }
-  
-  /**
-   * The name prefix of this scope.
-   * <p>
-   * This value is the combination of the name of this scope and all of its parents, seperated by a '/', e.g.
-   * <pre>{@code
-   * Scope scope = new Scope(graph);
-   * assertEquals(scope.withSubScope("sub1").withSubScope("sub2").prefix(), "sub1/sub2");
-   * }</pre>
-   */
-  public String prefix() {
-    return nameScope.opPrefix();
   }
 
   private Scope(Graph graph, NameScope nameScope) {

@@ -17,7 +17,6 @@ package org.tensorflow.op;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 import java.util.HashMap;
@@ -181,20 +180,6 @@ public class ScopeTest {
       assertEquals(21704, result.intValue());
       result = sess.runner().fetch(var2.output()).run().get(0).expect(Integer.class);
       assertEquals(21704, result.intValue());
-    }
-  }
-  
-  @Test
-  public void prefix() {
-    try (Graph g = new Graph()) {
-      Scope s = new Scope(g);
-      assertNull(s.prefix());
-      
-      Scope sub1 = s.withSubScope("sub1");
-      assertEquals("sub1", sub1.prefix());
-
-      Scope sub2 = sub1.withSubScope("sub2");
-      assertEquals("sub1/sub2", sub2.prefix());
     }
   }
 

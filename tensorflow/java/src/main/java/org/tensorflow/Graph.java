@@ -152,8 +152,14 @@ public final class Graph implements AutoCloseable {
    * <p>
    * If {@code dx} is null, the implementation will use dx of {@link org.tensorflow.op.core.OnesLike OnesLike} for all
    * shapes in {@code y}.
+   * <p>
+   * {@code prefix} is used as the name prefix applied to all nodes added to the graph to compute gradients. It must
+   * be unique within the provided graph or the operation will fail. 
+   * <p>
+   * If {@code prefix} is null, then the nodes will be added to under the default prefix, which is "gradients" for the 
+   * first invocation, then "gradients_1", "gradients_2", etc. for any subsequent calls to the same graph.
    * 
-   * @param prefix string prefix applied to names of nodes added to the graph to compute gradients.
+   * @param prefix unique string prefix applied before the names of nodes added to the graph to compute gradients.
    *               If null, defaults to "gradients".
    * @param y output of the function to derive
    * @param x inputs of the function for which partial derivatives are computed

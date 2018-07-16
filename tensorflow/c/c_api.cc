@@ -2411,9 +2411,24 @@ void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
 
     const int first_new_node_id = g->graph.num_node_ids();
 
+    const char* child_scope_name = prefix;
+    if (child_scope_name != nullptr) {
+      // The operation should fail if the provided name prefix has already been
+      // used in this graph
+      for (const auto& pair: g->name_map) {
+        const string& name = pair.first;
+        if (name.compare(0, name.find_last_of('/'), prefix) == 0) {
+          status->status =
+              InvalidArgument("Duplicate node name in graph: '", prefix, "'");
+          return;
+        }
+      }
+    } else {
+      child_scope_name = "gradients";
+    }
     tensorflow::Scope scope =
         NewInternalScope(&g->graph, &status->status, &g->refiner)
-            .NewSubScope(prefix != nullptr ? prefix : "gradients");
+            .NewSubScope(child_scope_name);
 
     if (dx != nullptr) {
       std::vector<tensorflow::Output> dx_arg = OutputsFromTFOutputs(dx, ny);

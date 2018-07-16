@@ -1129,17 +1129,36 @@ TF_CAPI_EXPORT extern void TF_FinishWhile(const TF_WhileParams* params,
 // called after a successful TF_NewWhile() call.
 TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 
-// Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s.
+// Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
+// i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
 //
-// This method is the equivalent of calling TF_AddGradientsWithPrefix with a
-// nullptr prefix (which will create all gradients operations under "gradients/"
-// by default). See TF_AddGradientsWithPrefix for more details.
+// `dx` are used as initial gradients (which represent the symbolic partial
+// derivatives of some loss function `L` w.r.t. `y`).
+// `dx` must be nullptr or have size `ny`.
+// If `dx` is nullptr, the implementation will use dx of `OnesLike` for all
+// shapes in `y`.
+// The partial derivatives are returned in `dy`. `dy` should be allocated to
+// size `nx`.
+//
+// Gradient nodes are automatically named under the "gradients/" prefix. To
+// guarantee name uniqueness, subsequent calls to the same graph will
+// append an incremental tag to the prefix: "gradients_1/", "gradients_2/", ...
+// See TF_AddGradientsWithPrefix, which provides a means to specify a custom
+// name prefix for operations added to a graph to compute the gradients.
+//
+// WARNING: This function does not yet support all the gradients that python
+// supports. See
+// https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
+// for instructions on how to add C++ more gradients.
 TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
                                     TF_Output* x, int nx, TF_Output* dx,
                                     TF_Status* status, TF_Output* dy);
 
 // Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
 // i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
+// This is a variant of TF_AddGradients that allows to caller to pass a custom
+// name prefix to the operations added to a graph to compute the gradients.
+//
 // `dx` are used as initial gradients (which represent the symbolic partial
 // derivatives of some loss function `L` w.r.t. `y`).
 // `dx` must be nullptr or have size `ny`.
@@ -1148,7 +1167,9 @@ TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
 // The partial derivatives are returned in `dy`. `dy` should be allocated to
 // size `nx`.
 // `prefix` names the scope into which all gradients operations are being added.
-// If `prefix` is nullptr, "gradients" is used by default.
+// `prefix` must be unique within the provided graph otherwise this operation
+// will fail. If `prefix` is nullptr, the default prefixing behaviour takes
+// place, see TF_AddGradients for more details.
 //
 // WARNING: This function does not yet support all the gradients that python
 // supports. See
