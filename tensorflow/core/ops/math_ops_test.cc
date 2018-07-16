@@ -528,4 +528,15 @@ TEST(MathOpsTest, Cross_ShapeFn) {
   INFER_OK(op, "[?];[?]", "in0");
   INFER_OK(op, "[1,?,3];[?,?,?]", "in0");
 }
+
+TEST(MathOpsTest, HistogramFixedWidth_ShapeFn) {
+  ShapeInferenceTestOp op("HistogramFixedWidth");
+
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];[];[]");
+  INFER_ERROR("Dimension must be 2 but is 3", op, "[];[3];[]");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "[?];[2];[]", "[?]");
+  INFER_OK(op, "[?];[2];?", "[?]");
+}
 }  // end namespace tensorflow
