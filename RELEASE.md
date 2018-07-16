@@ -40,6 +40,10 @@
 * Modified Bessel functions of order zero and one.
 * Add FillTriangular Bijector to create triangular matrices.
 
+## Breaking Changes
+
+* Starting from TensorFlow 1.11, Windows builds will use Bazel. Therefore, we will drop official support for cmake.
+
 ## Bug Fixes and Other Changes
 
 * Prebuilt binaries are now built against NCCL 2.2. TensorFlow usage with multiple GPUs requires upgrade to NCCL 2.2
