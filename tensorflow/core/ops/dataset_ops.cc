@@ -623,6 +623,12 @@ REGISTER_OP("TFRecordDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ProIODataset")
+    .Input("filename: string")
+    .Output("handle: variant")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("Iterator")
     .Output("handle: resource")
     .Attr("shared_name: string")

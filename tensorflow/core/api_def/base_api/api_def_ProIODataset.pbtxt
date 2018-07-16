@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "ProIODataset"
+  in_arg {
+    name: "filename"
+    description: <<END
+A scalar containing a filename.
+END
+  }
+  summary: "Creates a dataset that emits the events from a ProIO stream."
+}
