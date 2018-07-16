@@ -138,7 +138,7 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
-  def disabled_testRandomSeed(self):
+  def testRandomSeed(self):
 
     @function.defun
     def f():
