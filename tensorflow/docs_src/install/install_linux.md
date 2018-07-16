@@ -1,4 +1,4 @@
-# Installing TensorFlow on Ubuntu
+# Install TensorFlow on Ubuntu
 
 This guide explains how to install TensorFlow on Ubuntu Linux. While these
 instructions may work on other Linux variants, they are tested and supported with
