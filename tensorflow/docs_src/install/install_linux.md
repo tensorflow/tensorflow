@@ -514,14 +514,16 @@ on your system:
 * NCCL 2.2 to use TensorFlow with multiple GPUs. For details, see [NVIDIA's
   documentation](https://developer.nvidia.com/nccl).
 * The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
-  library provides advanced profiling support. To install this library,
-  use the following command for CUDA Toolkit >= 8.0:
+  library provides advanced profiling support. It is installed by default; if for some 
+  reason it hasn't been installed use the following command for CUDA Toolkit >= 8.0:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools</code>
+  <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools-8-0</code>
 </pre>
 
-Add this path to the `LD_LIBRARY_PATH` environmental variable:
+for Cuda 8.0, or cuda-command-line-tools-9-0 or 9-1 as appropriate for your cuda version.
+
+Then add this path to the `LD_LIBRARY_PATH` environmental variable:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</code>
