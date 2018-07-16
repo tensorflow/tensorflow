@@ -258,8 +258,8 @@ void MLFunctionState::print(const StmtBlock *block) {
 
 void MLFunctionState::print(const Statement *stmt) {
   switch (stmt->getKind()) {
-  case Statement::Kind::Operation: // TODO
-    llvm_unreachable("Operation statement is not yet implemented");
+  case Statement::Kind::Operation:
+    return print(cast<OperationStmt>(stmt));
   case Statement::Kind::For:
     return print(cast<ForStmt>(stmt));
   case Statement::Kind::If:
@@ -274,7 +274,7 @@ void MLFunctionState::print(const OperationStmt *stmt) {
 void MLFunctionState::print(const ForStmt *stmt) {
   os.indent(numSpaces) << "for {\n";
   print(static_cast<const StmtBlock *>(stmt));
-  os.indent(numSpaces) << "}\n";
+  os.indent(numSpaces) << "}";
 }
 
 void MLFunctionState::print(const IfStmt *stmt) {
@@ -286,7 +286,6 @@ void MLFunctionState::print(const IfStmt *stmt) {
     print(stmt->getElseClause());
     os.indent(numSpaces) << "}";
   }
-  os << "\n";
 }
 
 //===----------------------------------------------------------------------===//

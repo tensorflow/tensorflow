@@ -19,6 +19,8 @@
 #define MLIR_IR_BUILDERS_H
 
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Statements.h"
 
 namespace mlir {
 class MLIRContext;
@@ -146,7 +148,54 @@ private:
   BasicBlock::iterator insertPoint;
 };
 
-// TODO: MLFuncBuilder
+/// This class helps build an MLFunction.  Statements that are created are
+/// automatically inserted at an insertion point or added to the current
+/// statement block.
+class MLFuncBuilder : public Builder {
+public:
+  MLFuncBuilder(MLFunction *function) : Builder(function->getContext()) {}
+
+  MLFuncBuilder(StmtBlock *block) : MLFuncBuilder(block->getFunction()) {
+    setInsertionPoint(block);
+  }
+
+  /// Reset the insertion point to no location.  Creating an operation without a
+  /// set insertion point is an error, but this can still be useful when the
+  /// current insertion point a builder refers to is being removed.
+  void clearInsertionPoint() {
+    this->block = nullptr;
+    insertPoint = StmtBlock::iterator();
+  }
+
+  /// Set the insertion point to the end of the specified block.
+  void setInsertionPoint(StmtBlock *block) {
+    this->block = block;
+    insertPoint = block->end();
+  }
+
+  OperationStmt *createOperation(Identifier name,
+                                 ArrayRef<NamedAttribute> attributes) {
+    auto op = new OperationStmt(name, attributes, context);
+    block->getStatements().push_back(op);
+    return op;
+  }
+
+  ForStmt *createFor() {
+    auto stmt = new ForStmt();
+    block->getStatements().push_back(stmt);
+    return stmt;
+  }
+
+  IfStmt *createIf() {
+    auto stmt = new IfStmt();
+    block->getStatements().push_back(stmt);
+    return stmt;
+  }
+
+private:
+  StmtBlock *block = nullptr;
+  StmtBlock::iterator insertPoint;
+};
 
 } // namespace mlir
 

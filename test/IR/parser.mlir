@@ -78,10 +78,20 @@ bb4:         // CHECK: bb3:
   return     // CHECK:   return
 }            // CHECK: }
 
-// CHECK-LABEL: mlfunc @simpleMLF() {
-mlfunc @simpleMLF() {
+// CHECK-LABEL: mlfunc @emptyMLF() {
+mlfunc @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
+
+// CHECK-LABEL: mlfunc @mlfunc_with_ops() {
+mlfunc @mlfunc_with_ops() {
+  // CHECK: dim xxx, 2 : sometype
+  %a = "dim"(%42){index: 2}
+
+  // CHECK: addf xx, yy : sometype
+  "addf"()
+  return
+}
 
 // CHECK-LABEL: mlfunc @loops() {
 mlfunc @loops() {
