@@ -124,6 +124,12 @@ void PortableCopyVector(const float* vector, int v_size, float* result);
 // Fill vector with 0.f.
 void PortableZeroVector(float* vector, int v_size);
 
+// Multiply all elements of vector with a scalar.
+void PortableVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                                  float* result);
+void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                              float* result);
+
 // Limit a float input f between +abs_limit and -abs_limit.
 float PortableClip(float f, float abs_limit);
 

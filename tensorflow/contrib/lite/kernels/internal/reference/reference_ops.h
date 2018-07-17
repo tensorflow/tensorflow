@@ -1666,10 +1666,11 @@ inline void Div(const float* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+inline void Sub(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
@@ -3467,7 +3468,8 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
                    const int num_axis, int* input_iter,
-                   Out reducer(Out current, const In in), Out* output_data) {
+                   Out reducer(const Out current, const In in),
+                   Out* output_data) {
   // Reset input iterator.
   TFLITE_DCHECK(input_num_dims > 0);
   for (int idx = 0; idx < input_num_dims; ++idx) {
@@ -3485,11 +3487,12 @@ inline bool Reduce(const In* input_data, const int* input_dims,
   return true;
 }
 
-inline bool ResolveAxis(const int num_dims, const int* axis, const int num_axis,
-                        int* out_axis, int* out_num_axis) {
+inline bool ResolveAxis(const int num_dims, const int* axis,
+                        const int64_t num_axis, int* out_axis,
+                        int* out_num_axis) {
   *out_num_axis = 0;  // Just in case.
   // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
-  for (int idx = 0; idx < num_axis; ++idx) {
+  for (int64_t idx = 0; idx < num_axis; ++idx) {
     // Handle negative index.
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
     TFLITE_DCHECK(current >= 0 && current < num_dims);
@@ -3515,13 +3518,31 @@ inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
                           const int output_num_dims, const int* axis,
                           const int num_axis, int* input_iter,
                           Out* output_data) {
-  auto reducer = [](Out current, const In in) -> Out {
+  auto reducer = [](const Out current, const In in) -> Out {
     const Out actual_in = static_cast<Out>(in);
     return current + actual_in;
   };
   return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
                          output_num_dims, axis, num_axis, input_iter, reducer,
                          output_data);
+}
+
+template <typename T>
+inline bool InitTensorDataForReduce(const int* dims, const int num_dims,
+                                    const T init_value, T* data) {
+  size_t num_elements = 1;
+  for (int idx = 0; idx < num_dims; ++idx) {
+    size_t current = static_cast<size_t>(dims[idx]);
+    // Overflow prevention.
+    if (num_elements > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_elements *= current;
+  }
+  for (size_t idx = 0; idx < num_elements; ++idx) {
+    data[idx] = init_value;
+  }
+  return true;
 }
 
 // Computes the sum of elements across dimensions given in axis.
@@ -3532,17 +3553,9 @@ inline bool Sum(const T* input_data, const int* input_dims,
                 const int* axis, const int num_axis_dimensions, bool keep_dims,
                 int* temp_index, int* resolved_axis) {
   // Reset output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    size_t current = static_cast<size_t>(output_dims[idx]);
-    // Overflow prevention.
-    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_outputs *= current;
-  }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = T();
+  if (!InitTensorDataForReduce(output_dims, output_num_dims, static_cast<T>(0),
+                               output_data)) {
+    return false;
   }
 
   // Resolve axis.
@@ -3555,6 +3568,61 @@ inline bool Sum(const T* input_data, const int* input_dims,
   return ReduceSumImpl<T, T>(input_data, input_dims, output_dims,
                              input_num_dims, output_num_dims, resolved_axis,
                              num_resolved_axis, temp_index, output_data);
+}
+
+// Computes the max of elements across dimensions given in axis.
+template <typename T>
+inline bool ReduceMax(const T* input_data, const int* input_dims,
+                      const int input_num_dims, T* output_data,
+                      const int* output_dims, const int output_num_dims,
+                      const int* axis, const int64_t num_axis_dimensions,
+                      bool keep_dims, int* temp_index, int* resolved_axis) {
+  T init_value = std::numeric_limits<T>::lowest();
+  // Reset output data.
+  if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
+                               output_data)) {
+    return false;
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  auto reducer = [](const T current, const T in) -> T {
+    return (in > current) ? in : current;
+  };
+  return Reduce<T, T>(input_data, input_dims, output_dims, input_num_dims,
+                      output_num_dims, resolved_axis, num_resolved_axis,
+                      temp_index, reducer, output_data);
+}
+
+// Computes the prod of elements across dimensions given in axis.
+template <typename T>
+inline bool ReduceProd(const T* input_data, const int* input_dims,
+                       const int input_num_dims, T* output_data,
+                       const int* output_dims, const int output_num_dims,
+                       const int* axis, const int64_t num_axis_dimensions,
+                       bool keep_dims, int* temp_index, int* resolved_axis) {
+  // Reset output data.
+  if (!InitTensorDataForReduce(output_dims, output_num_dims, static_cast<T>(1),
+                               output_data)) {
+    return false;
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  auto reducer = [](const T current, const T in) -> T { return in * current; };
+  return Reduce<T, T>(input_data, input_dims, output_dims, input_num_dims,
+                      output_num_dims, resolved_axis, num_resolved_axis,
+                      temp_index, reducer, output_data);
 }
 
 // Computes the mean of elements across dimensions given in axis.

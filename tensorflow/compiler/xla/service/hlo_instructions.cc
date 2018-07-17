@@ -291,8 +291,6 @@ HloAllReduceInstruction::HloAllReduceInstruction(
       replica_group_ids_(replica_group_ids.begin(), replica_group_ids.end()),
       cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
       all_reduce_id_(all_reduce_id) {
-  // TODO(b/79737069): Remove the CHECK when supported.
-  CHECK(!all_reduce_id_);
   for (auto operand : operands) {
     AppendOperand(operand);
   }

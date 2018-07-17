@@ -85,6 +85,7 @@ enum class OperatorType : uint8 {
   kBatchToSpaceND,
   kPad,
   kPadV2,
+  kReduceProd,  // Reduction product
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -106,10 +107,10 @@ enum class OperatorType : uint8 {
   kIdentity,
   kLess,
   kLessEqual,
-  kMax,      //  Reduction Max
-  kMaximum,  //  Element-wise Maximum
-  kMin,      //  Reduction Min
-  kMinimum,  //  Element-wise Minimum
+  kReduceMax,  //  Reduction Max
+  kMaximum,    //  Element-wise Maximum
+  kMin,        //  Reduction Min
+  kMinimum,    //  Element-wise Minimum
   kMatMul,
   kMerge,
   kNeg,
@@ -1229,6 +1230,19 @@ struct SubOperator : Operator {
 // TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kSum) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
+};
+
+// Prod reduction: computes the product of all of entries across the axes.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Prod
+struct TensorFlowProdOperator : Operator {
+  TensorFlowProdOperator() : Operator(OperatorType::kReduceProd) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1388,16 +1402,15 @@ struct TensorFlowNotEqualOperator : Operator {
   TensorFlowNotEqualOperator() : Operator(OperatorType::kNotEqual) {}
 };
 
-// Global max reduction: computes the max of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Max reduction: computes the max of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Max --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Max
 struct TensorFlowMaxOperator : Operator {
-  TensorFlowMaxOperator() : Operator(OperatorType::kMax) {}
+  TensorFlowMaxOperator() : Operator(OperatorType::kReduceMax) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 

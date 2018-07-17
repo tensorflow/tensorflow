@@ -242,7 +242,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def testIdempotence(self):
     # Test that applying tensorrt optimizer or offline conversion tools multiple
     # times to the same graph will result in same graph.
-    # TODO(aaroey): implement this.
+    #
+    # TODO(aaroey): currently the conversion is not deterministic, this is
+    # mainly because during tensorflow::ConvertGraphDefToGraph(), the graph uses
+    # EdgeSet which use a map keyed by Edge*, so the order of input/output edges
+    # of a node is nondeterministic, thus the order for segmenter to contract
+    # edges is nondeterministic. Need to evaluate whether we should fix this.
     pass
 
 
@@ -309,4 +314,5 @@ def _AddTests(test_class):
                  dynamic_calib_engine))
 
 
-_AddTests(TfTrtIntegrationTestBase)
+if trt.is_tensorrt_enabled():
+  _AddTests(TfTrtIntegrationTestBase)

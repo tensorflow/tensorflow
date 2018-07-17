@@ -2772,23 +2772,23 @@ class Graph(object):
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)
+    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
     try:
       yield
     finally:
-      self._thread_local._variable_creator_stack = old
+      self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @property
   def _variable_creator_stack(self):
     if not hasattr(self._thread_local, "_variable_creator_stack"):
-      self._thread_local._variable_creator_stack = []
-    return list(self._thread_local._variable_creator_stack)
+      self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
+    return list(self._thread_local._variable_creator_stack)  # pylint: disable=protected-access
 
   @_variable_creator_stack.setter
   def _variable_creator_stack(self, variable_creator_stack):
-    self._thread_local._variable_creator_stack = variable_creator_stack
+    self._thread_local._variable_creator_stack = variable_creator_stack  # pylint: disable=protected-access
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -3558,9 +3558,13 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method with the `with` keyword
-    to specify that ops created within the scope of a block should be
-    added to this graph.
+    create a new graph explicitly.
+
+    Use this method with the `with` keyword to specify that ops created within
+    the scope of a block should be added to this graph. In this case, once
+    the scope of the `with` is exited, the previous default graph is set again
+    as default. There is a stack, so it's ok to have multiple nested levels
+    of `as_default` calls.
 
     The default graph is a property of the current thread. If you
     create a new thread, and wish to use the default graph in that

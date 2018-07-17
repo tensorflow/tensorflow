@@ -1094,7 +1094,7 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
 
   // Allocations for the call computation should not be thread-local.
   auto& call_param_alloc = GetTopLevelAllocation(*assignment, call_param);
-  EXPECT_FALSE(call_param_alloc.is_entry_computation_parameter());
+  EXPECT_TRUE(call_param_alloc.is_entry_computation_parameter());
   EXPECT_FALSE(call_param_alloc.maybe_live_out());
   EXPECT_FALSE(call_param_alloc.is_thread_local());
 
@@ -1253,16 +1253,18 @@ TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
 
   auto assignment = RunBufferAssignment(module.get());
 
-  EXPECT_EQ(3, assignment->Allocations().size());
+  EXPECT_EQ(2, assignment->Allocations().size());
   // Buffers for call are colocated with the sub-computation.
   EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{}),
             GetAllocation(*assignment, sub_tuple, /*index=*/{}));
   EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{0}),
             GetAllocation(*assignment, sub_param, /*index=*/{}));
-  // The parameter isn't aliased with anything.
+
+  // The parameter isn't aliased with the result tuple, but it is aliased with
+  // the call operand.
   EXPECT_NE(GetTopLevelAllocation(*assignment, param),
             GetTopLevelAllocation(*assignment, sub_tuple));
-  EXPECT_NE(GetTopLevelAllocation(*assignment, param),
+  EXPECT_EQ(GetTopLevelAllocation(*assignment, param),
             GetTopLevelAllocation(*assignment, sub_param));
 }
 
@@ -1326,13 +1328,15 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
             GetAllocation(*assignment, c_call, /*index=*/{0}));
   EXPECT_EQ(GetAllocation(*assignment, c_call, /*index=*/{0}),
             GetAllocation(*assignment, d_param, /*index=*/{0}));
-  // The parameters aren't aliased with anything.
+
   EXPECT_TRUE(BuffersDistinct({a_param}, {b_param}, *assignment));
   EXPECT_TRUE(BuffersDistinct({a_param}, {c_param}, *assignment));
   EXPECT_TRUE(BuffersDistinct({a_param}, {d_param}, *assignment));
-  EXPECT_TRUE(BuffersDistinct({b_param}, {c_param}, *assignment));
-  EXPECT_TRUE(BuffersDistinct({b_param}, {d_param}, *assignment));
-  EXPECT_TRUE(BuffersDistinct({c_param}, {d_param}, *assignment));
+
+  EXPECT_EQ(GetAllocation(*assignment, b_param, /*index=*/{0}),
+            GetAllocation(*assignment, c_param, /*index=*/{0}));
+  EXPECT_EQ(GetAllocation(*assignment, c_param, /*index=*/{0}),
+            GetAllocation(*assignment, d_param, /*index=*/{0}));
 }
 
 TEST_F(BufferAssignmentTest, BitcastAsOutput) {
@@ -2029,6 +2033,56 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
   auto assignment = RunBufferAssignment(module.get());
 
   EXPECT_TRUE(BuffersDistinct({call1}, {call2}, *assignment));
+}
+
+TEST_F(BufferAssignmentTest, CallParamCoAllocation) {
+  const char* hlo_text = R"(
+HloModule CallParamCoAllocation
+
+Callee {
+  param0 = (f32[100],(f32[200],f32[300])) parameter(0)
+  param1 = s32[20] parameter(1)
+  ROOT constant = f32[] constant(1)
+}
+
+ENTRY Main {
+  entry_param0 = f32[100] parameter(0)
+  entry_param1 = s32[20]  parameter(1)
+  custom_call = (f32[200],f32[300]) custom-call(), custom_call_target="call-target"
+  call_op0 = (f32[100],(f32[200],f32[300])) tuple(entry_param0, custom_call)
+  ROOT call_result = f32[] call(call_op0, entry_param1), to_apply=Callee
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      HloRunner::CreateModuleFromString(
+          hlo_text, legacy_flags::GetDebugOptionsFromFlags()));
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  HloComputation* main = module->entry_computation();
+  HloComputation* callee = module->GetComputationWithName("Callee");
+  EXPECT_NE(callee, nullptr);
+
+  HloInstruction* param0 = callee->parameter_instruction(0);
+  HloInstruction* param1 = callee->parameter_instruction(1);
+
+  HloInstruction* entry_param0 = main->parameter_instruction(0);
+  HloInstruction* entry_param1 = main->parameter_instruction(1);
+  HloInstruction* custom_call = main->GetInstructionWithName("custom_call");
+
+  EXPECT_EQ(GetAllocation(*buffers, entry_param0, {}),
+            GetAllocation(*buffers, param0, {0}));
+  EXPECT_EQ(GetAllocation(*buffers, entry_param1, {}),
+            GetAllocation(*buffers, param1, {}));
+
+  EXPECT_EQ(GetAllocation(*buffers, custom_call, {}),
+            GetAllocation(*buffers, param0, {1}));
+  EXPECT_EQ(GetAllocation(*buffers, custom_call, {0}),
+            GetAllocation(*buffers, param0, {1, 0}));
+  EXPECT_EQ(GetAllocation(*buffers, custom_call, {1}),
+            GetAllocation(*buffers, param0, {1, 1}));
 }
 
 static bool IsPostOrderTraversal(

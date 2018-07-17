@@ -396,7 +396,8 @@ class Base(gast.NodeTransformer):
 
   def _get_source(self, node):
     try:
-      return compiler.ast_to_source(node)
+      source, _ = compiler.ast_to_source(node)
+      return source
     except AssertionError:
       return '<could not convert AST to source>'
 

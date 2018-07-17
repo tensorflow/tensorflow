@@ -58,7 +58,7 @@ def lecun_normal(seed=None):
       Backprop](http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf)
   """
   return VarianceScaling(
-      scale=1., mode='fan_in', distribution='normal', seed=seed)
+      scale=1., mode='fan_in', distribution='truncated_normal', seed=seed)
 
 
 @tf_export('keras.initializers.lecun_uniform')
@@ -101,7 +101,7 @@ def he_normal(seed=None):
       He et al., http://arxiv.org/abs/1502.01852
   """
   return VarianceScaling(
-      scale=2., mode='fan_in', distribution='normal', seed=seed)
+      scale=2., mode='fan_in', distribution='truncated_normal', seed=seed)
 
 
 @tf_export('keras.initializers.he_uniform')
