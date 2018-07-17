@@ -3105,7 +3105,7 @@ class PngTest(test_util.TensorFlowTestCase):
   def testExisting(self):
     # Read some real PNGs, converting to different channel numbers
     prefix = "tensorflow/core/lib/png/testdata/"
-    inputs = (1, "lena_gray.png"), (4, "lena_rgba.png")
+    inputs = (1, "lena_gray.png"), (4, "lena_rgba.png"), (3, "lena_palette.png"), (4, "lena_palette_trns.png")
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
         with self.test_session(use_gpu=True) as sess:
