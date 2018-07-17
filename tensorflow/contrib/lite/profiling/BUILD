@@ -20,6 +20,7 @@ cc_test(
     srcs = ["profiler_test.cc"],
     copts = ["-DTFLITE_PROFILING_ENABLED"],
     defines = ["TFLITE_PROFILING_ENABLED"],
+    tags = ["no_oss"],
     deps = [
         ":profiler",
         "//tensorflow/contrib/lite/testing:util",
@@ -58,6 +59,7 @@ cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
     copts = common_copts,
+    tags = ["no_oss"],
     deps = [
         ":profile_summarizer",
         "//tensorflow/contrib/lite:framework",
@@ -75,6 +77,7 @@ cc_test(
     srcs = ["profile_buffer_test.cc"],
     copts = ["-DTFLITE_PROFILING_ENABLED"],
     defines = ["TFLITE_PROFILING_ENABLED"],
+    tags = ["no_oss"],
     deps = [
         ":profile_buffer",
         "//tensorflow/contrib/lite/testing:util",

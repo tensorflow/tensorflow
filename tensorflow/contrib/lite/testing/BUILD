@@ -112,6 +112,7 @@ cc_library(
 cc_test(
     name = "message_test",
     srcs = ["message_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":message",
         "@com_google_googletest//:gtest_main",
@@ -131,6 +132,7 @@ cc_test(
     name = "split_test",
     size = "small",
     srcs = ["split_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":split",
         "@com_google_googletest//:gtest_main",
@@ -147,6 +149,7 @@ cc_test(
     name = "join_test",
     size = "small",
     srcs = ["join_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":join",
         "@com_google_googletest//:gtest_main",
@@ -172,6 +175,7 @@ cc_test(
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
+        "no_oss",
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
@@ -193,6 +197,7 @@ cc_library(
 cc_test(
     name = "tokenize_test",
     srcs = ["tokenize_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":tokenize",
         "@com_google_googletest//:gtest_main",
@@ -215,6 +220,7 @@ cc_library(
 cc_test(
     name = "test_runner_test",
     srcs = ["test_runner_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":test_runner",
         "@com_google_googletest//:gtest_main",
@@ -253,6 +259,7 @@ cc_test(
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -279,6 +286,7 @@ cc_test(
     size = "small",
     srcs = ["generate_testspec_test.cc"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
