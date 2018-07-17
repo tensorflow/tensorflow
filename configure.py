@@ -36,7 +36,7 @@ except ImportError:
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_NCCL_VERSION = '2.2'
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
+_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
@@ -1138,9 +1138,7 @@ def set_tf_nccl_install_path(environ_cp):
 
     nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
     nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
-    nccl_license_path = os.path.join(nccl_install_path, 'NCCL-SLA.txt')
-    if os.path.exists(nccl_lib_path) and os.path.exists(
-        nccl_hdr_path) and os.path.exists(nccl_license_path):
+    if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
       # Set NCCL_INSTALL_PATH
       environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
       write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
@@ -1451,6 +1449,11 @@ def main():
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
+    environ_cp['TF_ENABLE_XLA'] = '0'
+    environ_cp['TF_NEED_GDR'] = '0'
+    environ_cp['TF_NEED_VERBS'] = '0'
+    environ_cp['TF_NEED_MPI'] = '0'
+    environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
