@@ -624,7 +624,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
         edge->src()->output_type(edge->src_output()));
     VLOG(1) << " input " << nout.node << ":" << nout.index
             << " dtype=" << tensorflow::DataTypeString(nout.data_type);
-    node_builder.Input({nout});
+    // nvcc complains that Input(<brace-enclosed initializer list>) is
+    // ambiguous, so do not use Input({nout}).
+    node_builder.Input(nout);
     TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
                            .Attr("index", i)
                            .Finalize(&nd));
@@ -829,7 +831,9 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
     // to use unique_ptr here.
-    std::unique_ptr<nvinfer1::IGpuAllocator> alloc;
+    // TODO(aaroey): nvinfer1::IGpuAllocator doesn't have a virtual destructor
+    // and destructing the unique_ptr will result in segfault, fix it.
+    std::unique_ptr<TRTDeviceAllocator> alloc;
     auto device_alloc = GetDeviceAndAllocator(params, engine);
     int cuda_device_id = 0;
     if (device_alloc.first >= 0) {
