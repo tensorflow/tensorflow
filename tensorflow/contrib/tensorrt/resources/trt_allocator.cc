@@ -43,13 +43,13 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   void* mem = allocator_->AllocateRaw(alignment, size + alignment);
   CHECK(mem);
 
-  CHECK(mem_pool.insert(mem).second);
+  CHECK(mem_pool_.insert(mem).second);
   void* alloc_mem = mem;
   uint64_t total_size = size + alignment;
   std::align(alignment, size, mem, total_size);
   CHECK(mem);
   if (mem != alloc_mem) {
-    CHECK(mem_map.insert({mem, alloc_mem}).second);
+    CHECK(mem_map_.insert({mem, alloc_mem}).second);
   }
   VLOG(2) << "Allocated " << size << " bytes with alignment " << alignment
           << " @ " << mem;
@@ -65,12 +65,12 @@ void TRTDeviceAllocator::free(void* memory) {
   VLOG(2) << "Deallocating @ " << memory;
   // allocated memory adjusted for alignment, restore the original pointer
   
-  auto alloc_mem = mem_map.find(memory);
-  if (alloc_mem != mem_map.end()) {
+  auto alloc_mem = mem_map_.find(memory);
+  if (alloc_mem != mem_map_.end()) {
     memory = alloc_mem->second;
-    mem_map.erase(alloc_mem->first);
+    mem_map_.erase(alloc_mem->first);
   }
-  CHECK(mem_pool.erase(memory) != 0);
+  CHECK(mem_pool_.erase(memory) != 0);
   allocator_->DeallocateRaw(memory);
 }
 
