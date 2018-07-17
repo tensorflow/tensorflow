@@ -217,4 +217,56 @@ xla::XlaOp Lgamma(xla::XlaOp input) {
   return result;
 }
 
+// Compute the Digamma function using Lanczos' approximation from "A Precision
+// Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
+// series B. Vol. 1:
+// digamma(z + 1) = log(t(z)) + A'(z) / A(z) - kLanczosGamma / t(z)
+// t(z) = z + kLanczosGamma + 1/2
+// A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
+// A'(z) = sigma(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
+xla::XlaOp Digamma(xla::XlaOp input) {
+  xla::XlaOp zero = xla::ScalarLike(input, 0);
+  xla::XlaOp one_half = xla::ScalarLike(input, 0.5);
+  xla::XlaOp one = xla::ScalarLike(input, 1);
+
+  xla::XlaOp pi = xla::ScalarLike(input, M_PI);
+
+  xla::XlaOp lanczos_gamma = xla::ScalarLike(input, kLanczosGamma);
+  xla::XlaOp lanczos_gamma_plus_one_half =
+      xla::ScalarLike(input, kLanczosGamma + 0.5);
+  xla::XlaOp log_lanczos_gamma_plus_one_half =
+      xla::ScalarLike(input, std::log(kLanczosGamma + 0.5));
+
+  xla::XlaOp base_lanczos_coeff = xla::ScalarLike(input, kBaseLanczosCoeff);
+
+  // If the input is less than 0.5 use Gauss's reflection formula:
+  // digamma(x) = digamma(1 - x) - pi * cot(pi * x)
+  xla::XlaOp need_to_reflect = xla::Lt(xla::Real(input), one_half);
+  xla::XlaOp z = xla::Select(need_to_reflect, -input, input - one);
+
+  xla::XlaOp num = zero;
+  xla::XlaOp denom = base_lanczos_coeff;
+  for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    xla::XlaOp lanczos_coefficient =
+        xla::ScalarLike(input, kLanczosCoefficients[i]);
+    xla::XlaOp index = xla::ScalarLike(input, i);
+    num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
+    denom = denom + lanczos_coefficient / (z + index + one);
+  }
+
+  // To improve accuracy on platforms with less-precise log implementations,
+  // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
+  // the device.
+  // log(t) = log(kLanczosGamma + 0.5 + z)
+  //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
+  xla::XlaOp t = lanczos_gamma_plus_one_half + z;
+  xla::XlaOp log_t = log_lanczos_gamma_plus_one_half +
+                     xla::Log1p(z / lanczos_gamma_plus_one_half);
+
+  xla::XlaOp y = log_t + num / denom - lanczos_gamma / t;
+  xla::XlaOp reflection = y - pi * xla::Cos(pi * input) / xla::Sin(pi * input);
+  xla::XlaOp result = xla::Select(need_to_reflect, reflection, y);
+  return result;
+}
+
 }  // namespace xla
