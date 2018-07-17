@@ -476,7 +476,7 @@ _CODE_TO_EXCEPTION_CLASS = {
 c_api.PyExceptionRegistry_Init(_CODE_TO_EXCEPTION_CLASS)
 
 _EXCEPTION_CLASS_TO_CODE = {
-  class_: code for code, class_ in _CODE_TO_EXCEPTION_CLASS.items()}
+    class_: code for code, class_ in _CODE_TO_EXCEPTION_CLASS.items()}
 
 
 @tf_export("errors.exception_type_from_error_code")
