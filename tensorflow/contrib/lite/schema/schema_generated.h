@@ -351,11 +351,13 @@ enum BuiltinOperator {
   BuiltinOperator_POW = 78,
   BuiltinOperator_ARG_MIN = 79,
   BuiltinOperator_FAKE_QUANT = 80,
+  BuiltinOperator_REDUCE_PROD = 81,
+  BuiltinOperator_REDUCE_MAX = 82,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_FAKE_QUANT
+  BuiltinOperator_MAX = BuiltinOperator_REDUCE_MAX
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[80] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[82] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -436,7 +438,9 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[80] {
     BuiltinOperator_SHAPE,
     BuiltinOperator_POW,
     BuiltinOperator_ARG_MIN,
-    BuiltinOperator_FAKE_QUANT
+    BuiltinOperator_FAKE_QUANT,
+    BuiltinOperator_REDUCE_PROD,
+    BuiltinOperator_REDUCE_MAX
   };
   return values;
 }
@@ -524,6 +528,8 @@ inline const char **EnumNamesBuiltinOperator() {
     "POW",
     "ARG_MIN",
     "FAKE_QUANT",
+    "REDUCE_PROD",
+    "REDUCE_MAX",
     nullptr
   };
   return names;

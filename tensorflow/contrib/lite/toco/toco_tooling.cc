@@ -113,7 +113,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
-  transformations->Add(new ResolveMeanAttributes);
+  transformations->Add(new ResolveReduceAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new UnpartitionEmbeddingLookup);

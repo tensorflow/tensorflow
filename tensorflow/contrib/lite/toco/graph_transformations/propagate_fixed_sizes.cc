@@ -524,10 +524,12 @@ bool KeepDims(const Operator& op) {
   switch (op.type) {
     case OperatorType::kMin:  //  Reduction Min
       return static_cast<const TensorFlowMinOperator&>(op).keep_dims;
-    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kReduceMax:  //  Reduction Max
       return static_cast<const TensorFlowMaxOperator&>(op).keep_dims;
     case OperatorType::kSum:
       return static_cast<const TensorFlowSumOperator&>(op).keep_dims;
+    case OperatorType::kReduceProd:
+      return static_cast<const TensorFlowProdOperator&>(op).keep_dims;
     case OperatorType::kMean:
       return static_cast<const MeanOperator&>(op).keep_dims;
     default:
@@ -1606,8 +1608,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessL2PoolOperator(model, static_cast<L2PoolOperator*>(op));
       break;
     case OperatorType::kMin:  //  Reduction Min
-    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kReduceMax:  //  Reduction Max
     case OperatorType::kSum:
+    case OperatorType::kReduceProd:
     case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
