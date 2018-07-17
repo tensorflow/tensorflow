@@ -39,10 +39,6 @@ public:
   // TODO(someone): This should switch to llvm::iplist<Function>.
   std::vector<Function*> functionList;
 
-  // FIXME: wrong representation and API.
-  // These affine maps are immutable
-  std::vector<const AffineMap *> affineMapList;
-
   /// Perform (potentially expensive) checks of invariants, used to detect
   /// compiler bugs.  This aborts on failure.
   void verify() const;

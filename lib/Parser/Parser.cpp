@@ -1642,7 +1642,6 @@ ParseResult ModuleParser::parseAffineMapDef() {
   if (!entry)
     return ParseFailure;
 
-  getModule()->affineMapList.push_back(entry);
   return ParseSuccess;
 }
 
