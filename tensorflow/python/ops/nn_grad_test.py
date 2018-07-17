@@ -51,81 +51,92 @@ class Relu6OpTest(test.TestCase):
 
 class Conv2dOpTest(test.TestCase):
 
-    def run_test(self, x, y):
-        with self.test_session():
-            error = gradient_checker.compute_gradient_error(
-                x,
-                x.get_shape().as_list(),
-                y,
-                y.get_shape().as_list())
-            self.assertLess(error, 1e-3)
+  def run_test(self, x, y):
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          x,
+          x.get_shape().as_list(),
+          y,
+          y.get_shape().as_list())
+      self.assertLess(error, 1e-3)
 
+  def testConv2dGradWRTInput(self):
+    x = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[1, 4, 4, 3], name='input')
+    f = constant_op.constant(
+        [0.5], dtype=dtypes.float32, shape=[2, 2, 3, 2], name='filter')
+    y = nn_ops.conv2d(x, f, [1, 1, 1, 1], "SAME")
+    self.run_test(x, y)
 
-    def testConv2dGradWRTInput(self):
-        input = array_ops.placeholder(dtype = dtypes.float32, shape=[1,4,4,3], name='input')
-        filter = constant_op.constant([0.5], dtype = dtypes.float32, shape=[2,2,3,2], name='filter')
-        y = nn_ops.conv2d(input, filter, [1,1,1,1], "SAME")
-        self.run_test(input, y)
+  def testConv2dGradWRTFilter(self):
+    x = constant_op.constant(
+        [0.5], dtype=dtypes.float32, shape=[1, 4, 4, 3], name='input')
+    f = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[2, 2, 3, 2], name='filter')
+    y = nn_ops.conv2d(x, f, [1, 1, 1, 1], "SAME")
+    self.run_test(f, y)
 
-    def testConv2dGradWRTFilter(self):
-        input = constant_op.constant([0.5], dtype = dtypes.float32, shape=[1,4,4,3], name='input')
-        filter = array_ops.placeholder(dtype = dtypes.float32, shape=[2,2,3,2], name='filter')
-        y = nn_ops.conv2d(input, filter, [1,1,1,1], "SAME")
-        self.run_test(filter, y)
+  def testConv2dBackpropFilterGrad(self):
+    x = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[1, 4, 4, 3], name='input')
+    f = constant_op.constant(
+        [0.5], dtype=dtypes.float32, shape=[2, 2, 3, 2], name='filter')
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+    out = nn_impl.depthwise_conv2d(x, f, strides, padding)
 
-    def testConv2dBackpropFilterGrad(self):
-        input = array_ops.placeholder(dtype = dtypes.float32, shape=[1,4,4,3], name='input')
-        filter = constant_op.constant([0.5], dtype = dtypes.float32, shape=[2,2,3,2], name='filter')
-        strides = [1,1,1,1]
-        padding = "SAME"
-        out = nn_impl.depthwise_conv2d(input, filter, strides, padding)
+    grad_wrt_input = gradients_impl.gradients(out, x)[0]
+    self.run_test(f, grad_wrt_input)
 
-        grad_wrt_input = gradients_impl.gradients(out, input)[0]
-        self.run_test(filter, grad_wrt_input)
-
-        grad_wrt_filter = gradients_impl.gradients(out, filter)[0]
-        self.run_test(input, grad_wrt_filter)
+    grad_wrt_filter = gradients_impl.gradients(out, f)[0]
+    self.run_test(x, grad_wrt_filter)
 
 
 class DepthwiseConv2dTest(test.TestCase):
 
-    def run_test(self, x, y):
-        with self.test_session():
-            error = gradient_checker.compute_gradient_error(
-                x,
-                x.get_shape().as_list(),
-                y,
-                y.get_shape().as_list())
-            self.assertLess(error, 1e-3)
+  def run_test(self, x, y):
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          x,
+          x.get_shape().as_list(),
+          y,
+          y.get_shape().as_list())
+      self.assertLess(error, 1e-3)
 
-    def testDepthwiseConv2dGradWRTInput(self):
-        input = array_ops.placeholder(dtype = dtypes.float32, shape=[1,4,4,3], name='input')
-        filter = constant_op.constant([0.5], dtype = dtypes.float32, shape=[2,2,3,2], name='filter')
-        strides = [1,1,1,1]
-        padding = "SAME"
-        y = nn_impl.depthwise_conv2d(input, filter, strides, padding)
-        self.run_test(input, y)
+  def testDepthwiseConv2dGradWRTInput(self):
+    x = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[1, 4, 4, 3], name='input')
+    f = constant_op.constant(
+        [0.5], dtype=dtypes.float32, shape=[2, 2, 3, 2], name='filter')
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+    y = nn_impl.depthwise_conv2d(x, f, strides, padding)
+    self.run_test(x, y)
 
-    def testDepthwiseConv2dGradWRTFilter(self):
-        input = constant_op.constant([0.5], dtype = dtypes.float32, shape=[1,4,4,3], name='input')
-        filter = array_ops.placeholder(dtype = dtypes.float32, shape=[2,2,3,2], name='filter')
-        strides = [1,1,1,1]
-        padding = "SAME"
-        y = nn_impl.depthwise_conv2d(input, filter, strides, padding)
-        self.run_test(filter, y)
+  def testDepthwiseConv2dGradWRTFilter(self):
+    x = constant_op.constant(
+        [0.5], dtype=dtypes.float32, shape=[1, 4, 4, 3], name='input')
+    f = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[2, 2, 3, 2], name='filter')
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+    y = nn_impl.depthwise_conv2d(x, f, strides, padding)
+    self.run_test(f, y)
 
-    def testDepthwiseConv2dBackpropFilterGrad(self):
-        input = array_ops.placeholder(dtype = dtypes.float32, shape=[1,4,4,3], name='input')
-        filter = constant_op.constant([0.5], dtype = dtypes.float32, shape=[2,2,3,2], name='filter')
-        strides = [1,1,1,1]
-        padding = "SAME"
-        out = nn_impl.depthwise_conv2d(input, filter, strides, padding)
+  def testDepthwiseConv2dBackpropFilterGrad(self):
+    x = array_ops.placeholder(
+        dtype=dtypes.float32, shape=[1, 4, 4, 3], name='input')
+    f = constant_op.constant(
+        [0.5], dtype=dtypes.float32, shape=[2, 2, 3, 2], name='filter')
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+    out = nn_impl.depthwise_conv2d(x, f, strides, padding)
 
-        grad_wrt_input = gradients_impl.gradients(out, input)[0]
-        self.run_test(filter, grad_wrt_input)
+    grad_wrt_input = gradients_impl.gradients(out, x)[0]
+    self.run_test(f, grad_wrt_input)
 
-        grad_wrt_filter = gradients_impl.gradients(out, filter)[0]
-        self.run_test(input, grad_wrt_filter)
+    grad_wrt_filter = gradients_impl.gradients(out, f)[0]
+    self.run_test(x, grad_wrt_filter)
 
 
 if __name__ == "__main__":
