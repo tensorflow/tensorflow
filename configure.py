@@ -680,7 +680,7 @@ def create_android_sdk_rule(environ_cp):
   if is_windows() or is_cygwin():
     default_sdk_path = cygpath('%s/Android/Sdk' % environ_cp['APPDATA'])
   elif is_macos():
-    default_sdk_path = '%s/library/Android/Sdk/ndk-bundle' % environ_cp['HOME']
+    default_sdk_path = '%s/library/Android/Sdk' % environ_cp['HOME']
   else:
     default_sdk_path = '%s/Android/Sdk' % environ_cp['HOME']
 
