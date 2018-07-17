@@ -181,7 +181,8 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
                                                       name=name)
 
 
-class ResourceVariable(variables.Variable):
+# TODO(apassos) make this be variables.Variable
+class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
   See the @{$variables$Variables How To} for a high level overview.
