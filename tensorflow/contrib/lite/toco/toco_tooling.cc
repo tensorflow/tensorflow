@@ -105,14 +105,15 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new IdentifyPRelu);
   transformations->Add(new RemoveTrivialBinaryOperator);
-  transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveFakeQuantArgsFromVars);
+  transformations->Add(new ReadArrayMinmaxAndNarrowRangeFromFakeQuant);
   transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
   transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
-  transformations->Add(new ResolveMeanAttributes);
+  transformations->Add(new ResolveReduceAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new UnpartitionEmbeddingLookup);

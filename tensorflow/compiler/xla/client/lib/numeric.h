@@ -29,6 +29,9 @@ XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
 // else.
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
 
+// Get the diagonals of the last two dimensions.
+XlaOp Diagonal(XlaOp x);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_

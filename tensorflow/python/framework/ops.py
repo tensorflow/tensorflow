@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import linecache
 import os
 import re
 import sys
@@ -48,7 +47,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
+from tensorflow.python.util import tf_stack
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
@@ -1713,7 +1714,7 @@ class Operation(object):
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
-    self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
+    self._traceback = tf_stack.extract_stack()
     self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
 
     # Initialize self._c_op.
@@ -2154,7 +2155,7 @@ class Operation(object):
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return self._graph._convert_stack(self._traceback)  # pylint: disable=protected-access
+    return tf_stack.convert_stack(self._traceback)
 
   @property
   def traceback_with_start_lines(self):
@@ -2163,9 +2164,8 @@ class Operation(object):
     Returns:
       A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
     """
-    return self._graph._convert_stack(  # pylint: disable=protected-access
-        self._traceback,
-        include_func_start_lineno=True)
+    return tf_stack.convert_stack(self._traceback,
+                                  include_func_start_lineno=True)
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
@@ -2617,7 +2617,6 @@ def _name_from_scope_name(name):
 _MUTATION_LOCK_GROUP = 0
 _SESSION_RUN_LOCK_GROUP = 1
 
-
 @tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
@@ -2726,7 +2725,7 @@ class Graph(object):
     self._building_function = False
     # Stack of colocate_with ops. After switch_to_thread_local(),
     # self._thread_local._colocation_stack is used instead.
-    self._graph_colocation_stack = []
+    self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
     # Set of operations that are dangerous to fetch!
@@ -2766,36 +2765,6 @@ class Graph(object):
     """Temporary hack; can be overridden to force C API usage."""
     return _USE_C_API
 
-  def _convert_stack(self, stack, include_func_start_lineno=False):
-    """Converts a stack extracted using _extract_stack() to a traceback stack.
-
-    Args:
-      stack: A list of n 5-tuples,
-        (filename, lineno, name, frame_globals, func_start_lineno).
-      include_func_start_lineno: True if function start line number should be
-        included as the 5th entry in return tuples.
-
-    Returns:
-      A list of n 4-tuples or 5-tuples
-      (filename, lineno, name, code, [optional: func_start_lineno]), where the
-      code tuple element is calculated from the corresponding elements of the
-      input tuple.
-    """
-    ret = []
-    for (filename, lineno, name, frame_globals, func_start_lineno,
-         unused_frame_info) in stack:
-      linecache.checkcache(filename)
-      line = linecache.getline(filename, lineno, frame_globals)
-      if line:
-        line = line.strip()
-      else:
-        line = None
-      if include_func_start_lineno:
-        ret.append((filename, lineno, name, line, func_start_lineno))
-      else:
-        ret.append((filename, lineno, name, line))
-    return ret
-
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
@@ -2803,63 +2772,23 @@ class Graph(object):
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)
+    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
     try:
       yield
     finally:
-      self._thread_local._variable_creator_stack = old
+      self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @property
   def _variable_creator_stack(self):
     if not hasattr(self._thread_local, "_variable_creator_stack"):
-      self._thread_local._variable_creator_stack = []
-    return list(self._thread_local._variable_creator_stack)
+      self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
+    return list(self._thread_local._variable_creator_stack)  # pylint: disable=protected-access
 
   @_variable_creator_stack.setter
   def _variable_creator_stack(self, variable_creator_stack):
-    self._thread_local._variable_creator_stack = variable_creator_stack
-
-  def _extract_stack(self):
-    """A lightweight, extensible re-implementation of traceback.extract_stack.
-
-    NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-      each stack frame using linecache, which results in an abundance of stat()
-      calls. This implementation does not retrieve the code, and any consumer
-      should apply _convert_stack to the result to obtain a traceback that can
-      be formatted etc. using traceback methods.
-
-    Derived classes can implement _extract_frame_info() to add extra information
-    to the traceback.
-
-    Returns:
-      A list of 6-tuples
-      (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
-      corresponding to the call stack of the current thread.
-    """
-    try:
-      raise ZeroDivisionError
-    except ZeroDivisionError:
-      f = sys.exc_info()[2].tb_frame.f_back
-    ret = []
-    while f is not None:
-      lineno = f.f_lineno
-      co = f.f_code
-      filename = co.co_filename
-      name = co.co_name
-      frame_globals = f.f_globals
-      func_start_lineno = co.co_firstlineno
-      frame_info = self._extract_frame_info(f)
-      ret.append((filename, lineno, name, frame_globals, func_start_lineno,
-                  frame_info))
-      f = f.f_back
-    ret.reverse()
-    return ret
-
-  def _extract_frame_info(self, frame):  # pylint: disable=unused-argument
-    """Extracts custom information from a frame in an op traceback."""
-    return None
+    self._thread_local._variable_creator_stack = variable_creator_stack  # pylint: disable=protected-access
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -3301,7 +3230,7 @@ class Graph(object):
 
     if self._colocation_stack:
       all_colocation_groups = []
-      for colocation_op in self._colocation_stack:
+      for colocation_op in self._colocation_stack.peek_objs():
         all_colocation_groups.extend(colocation_op.colocation_groups())
         if colocation_op.device:
           # Make this device match the device of the colocated op, to provide
@@ -4074,10 +4003,10 @@ class Graph(object):
 
     if ignore_existing:
       current_stack = self._colocation_stack
-      self._colocation_stack = []
+      self._colocation_stack = traceable_stack.TraceableStack()
 
     if op is not None:
-      self._colocation_stack.append(op)
+      self._colocation_stack.push_obj(op, name=op.name, offset=1)
 
     try:
       yield
@@ -4085,7 +4014,7 @@ class Graph(object):
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
       if op is not None:
-        self._colocation_stack.pop()
+        self._colocation_stack.pop_obj()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
@@ -4712,11 +4641,15 @@ class Graph(object):
 
   @property
   def _colocation_stack(self):
+    """Return thread-local copy of colocation stack."""
     if self._stack_state_is_thread_local:
       # This may be called from a thread where colocation_stack doesn't yet
       # exist.
       if not hasattr(self._thread_local, "_colocation_stack"):
-        self._thread_local._colocation_stack = self._graph_colocation_stack[:]
+        stack_copy_for_this_thread = self._graph_colocation_stack.copy()
+        # pylint: disable=protected-access
+        self._thread_local._colocation_stack = stack_copy_for_this_thread
+        # pylint: enable=protected-access
       return self._thread_local._colocation_stack
     else:
       return self._graph_colocation_stack

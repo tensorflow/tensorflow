@@ -73,7 +73,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools:__pkg__",
-        "//tensorflow/tools/api/generator:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -705,7 +705,9 @@ py_library(
         "framework/error_interpolation.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        ":util",
+    ],
 )
 
 py_library(
@@ -822,6 +824,7 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_shape",
+        ":traceable_stack",
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -887,6 +890,17 @@ py_library(
     ],
 )
 
+# This target is maintained separately from :util to provide separate visibility
+# for legacy users who were granted visibility when the functions were private
+# members of ops.Graph.
+py_library(
+    name = "tf_stack",
+    srcs = ["util/tf_stack.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
 py_library(
     name = "tensor_shape",
     srcs = ["framework/tensor_shape.py"],
@@ -918,6 +932,16 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "traceable_stack",
+    srcs = ["framework/traceable_stack.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
     ],
 )
 
@@ -1018,6 +1042,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":error_interpolation",
     ],
 )
@@ -1204,6 +1229,21 @@ py_test(
         ":random_ops",
         ":training",
         ":variables",
+    ],
+)
+
+py_test(
+    name = "framework_traceable_stack_test",
+    size = "small",
+    srcs = ["framework/traceable_stack_test.py"],
+    main = "framework/traceable_stack_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+        ":traceable_stack",
+        ":util",
     ],
 )
 
@@ -3297,6 +3337,9 @@ py_library(
         ],
     ),
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",

@@ -38,21 +38,11 @@ bool GetQuantizedDataTypeNumericalRange(ArrayDataType data_type,
 ArrayDataType GetQuantizedDataType(const Array& array,
                                    ArrayDataType default_type);
 
-// Returns the quantization params for the array with the given data type and
-// minmax.
-void GetQuantizationParams(ArrayDataType data_type, const MinMax& minmax,
-                           QuantizationParams* quantization_params);
-
-// Returns the quantization params for the data type and minmax values.
-template <ArrayDataType A>
-void GetQuantizationParamsFromMinMax(const MinMax& minmax,
-                                     QuantizationParams* quantization_params) {
-  using Integer = DataType<A>;
-  const double rmin = minmax.min;
-  const double rmax = minmax.max;
-  *quantization_params =
-      ::tflite::ChooseQuantizationParams<Integer>(rmin, rmax);
-}
+// Chooses the quantization params for a given array and a given target
+// quantized data type (which may not be the array's current data type).
+void ChooseQuantizationParamsForArrayAndQuantizedDataType(
+    const Array& array, ArrayDataType quantized_data_type,
+    QuantizationParams* quantization_params);
 
 // Quantizes an array by setting its data type and (if constant) quantizing
 // all values in the array.

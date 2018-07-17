@@ -290,8 +290,8 @@ class FakeQuant
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateFakeQuantOptions(*builder, op.minmax->min,
-                                            op.minmax->max, op.num_bits);
+    return ::tflite::CreateFakeQuantOptions(
+        *builder, op.minmax->min, op.minmax->max, op.num_bits, op.narrow_range);
   }
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
@@ -300,9 +300,13 @@ class FakeQuant
     minmax->max = options.max();
     op->minmax.reset(minmax);
     op->num_bits = options.num_bits();
+    op->narrow_range = options.narrow_range();
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& fq_op = static_cast<const FakeQuantOperator&>(op);
+    return fq_op.narrow_range ? 2 : 1;
+  }
 };
 
 class FullyConnected
@@ -763,6 +767,44 @@ class Sum
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class ReduceMax
+    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class ReduceProd
+    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class ResizeBilinear
     : public BuiltinOperator<ResizeBilinearOperator,
                              ::tflite::ResizeBilinearOptions,
@@ -1179,6 +1221,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
   ops.emplace_back(new Sum(::tflite::BuiltinOperator_SUM, OperatorType::kSum));
+  ops.emplace_back(new ReduceProd(::tflite::BuiltinOperator_REDUCE_PROD,
+                                  OperatorType::kReduceProd));
+  ops.emplace_back(new ReduceMax(::tflite::BuiltinOperator_REDUCE_MAX,
+                                 OperatorType::kReduceMax));
   ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
                                       OperatorType::kResizeBilinear));
   ops.emplace_back(

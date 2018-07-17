@@ -222,13 +222,16 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       return shape;
     case HloOpcode::kReal:
     case HloOpcode::kImag:
-      if (!ShapeUtil::ElementIsComplex(shape)) {
+      if (ShapeUtil::ElementIsComplex(shape)) {
+        return ShapeUtil::ComplexComponentShape(shape);
+      } else if (ShapeUtil::ElementIsFloating(shape)) {
+        return shape;
+      } else {
         return InvalidArgument(
-            "Expected element type in shape to be complex for real/imag "
-            "operation; got %s.",
+            "Expected element type in shape to be floating or complex for "
+            "real/imag operation; got %s.",
             PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return ShapeUtil::ChangeElementType(shape, F32);
     case HloOpcode::kAbs:
       if (ShapeUtil::ElementIsComplex(shape)) {
         return ShapeUtil::ChangeElementType(

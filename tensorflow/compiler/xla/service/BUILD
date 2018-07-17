@@ -182,6 +182,7 @@ tf_cc_test(
     name = "shape_inference_test",
     srcs = ["shape_inference_test.cc"],
     deps = [
+        ":hlo",
         ":shape_inference",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",

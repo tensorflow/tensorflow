@@ -918,10 +918,13 @@ Status IrEmitterUnnested::EmitReductionToScalar(
             ir_builder_.CreateBitCast(partial_reduction_result_addresses[i],
                                       shuffle_ir_type->getPointerTo()),
             "partial_reduction_result");
+        CHECK_EQ(launch_dimensions.threads_per_block() % kWarpSize, 0)
+            << "Requires block size a multiple of the warp size, otherwise we "
+               "will read undefined elements.";
         ir_builder_.CreateStore(
-            EmitShuffleDown(partial_reduction_result,
-                            ir_builder_.getInt32(shuffle_distance),
-                            &ir_builder_),
+            EmitFullWarpShuffleDown(partial_reduction_result,
+                                    ir_builder_.getInt32(shuffle_distance),
+                                    &ir_builder_),
             ir_builder_.CreateBitCast(result_from_other_lane,
                                       shuffle_ir_type->getPointerTo()));
         TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
@@ -1498,10 +1501,13 @@ Status IrEmitterUnnested::EmitRowReduction(
             ir_builder_.CreateBitCast(partial_reduction_result_addresses[i],
                                       shuffle_ir_type->getPointerTo()),
             "partial_reduction_result");
+        CHECK_EQ(launch_dimensions.threads_per_block() % kWarpSize, 0)
+            << "Requires block size a multiple of the warp size, otherwise we "
+               "will read undefined elements.";
         ir_builder_.CreateStore(
-            EmitShuffleDown(partial_reduction_result,
-                            ir_builder_.getInt32(shuffle_distance),
-                            &ir_builder_),
+            EmitFullWarpShuffleDown(partial_reduction_result,
+                                    ir_builder_.getInt32(shuffle_distance),
+                                    &ir_builder_),
             ir_builder_.CreateBitCast(result_from_other_lane,
                                       shuffle_ir_type->getPointerTo()));
         TF_RETURN_IF_ERROR(EmitCallToNestedComputation(

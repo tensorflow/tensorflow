@@ -3146,7 +3146,7 @@ def while_loop(cond,
   happen is that the thread updating `x` can never get ahead of the
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
-  
+
   ```python
   import tensorflow as tf
 

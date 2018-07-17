@@ -16,16 +16,9 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_util.h"
 
 // Place `<locale>` before <Python.h> to avoid build failure in macOS.
-#include <Python.h>
 #include <locale>
 
-#undef toupper
-#undef tolower
-#undef isspace
-#undef isupper
-#undef islower
-#undef isalpha
-#undef isalnum
+#include <Python.h>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"

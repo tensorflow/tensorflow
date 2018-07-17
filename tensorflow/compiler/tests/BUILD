@@ -418,7 +418,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "eager_test",
-    size = "small",
+    size = "large",
     srcs = ["eager_test.py"],
     disabled_backends = [
         # TODO(b/78199195) Support XLA CPU devices in eager runtime

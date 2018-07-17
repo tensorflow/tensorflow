@@ -7,7 +7,6 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
@@ -104,6 +103,7 @@ py_library(
         "//tensorflow/contrib/summary:summary",
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
+        "//tensorflow/contrib/tensorrt:init_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",
@@ -114,9 +114,7 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
-        "//tensorflow/contrib/tensorrt:init_py",
-    ]) + select({
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka",

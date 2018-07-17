@@ -152,10 +152,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  // Resize output to the same as input (except the last dimension which is
-  // determined by the number of units).
-  TfLiteIntArray* output_size_array = TfLiteIntArrayCopy(input->dims);
-  output_size_array->data[input->dims->size - 1] = num_units;
+  // Resize output.
+  TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(2);
+  output_size_array->data[0] = batch_size;
+  output_size_array->data[1] = num_units;
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size_array));
   return kTfLiteOk;

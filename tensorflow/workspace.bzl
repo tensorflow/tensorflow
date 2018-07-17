@@ -9,6 +9,7 @@ load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
@@ -37,6 +38,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
   poplar_configure(name="local_config_poplar")
+  syslibs_configure(name="local_config_syslibs")
   python_configure(name="local_config_python")
 
   # For windows bazel build
@@ -163,6 +165,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "2f945446b71336e7f5a2bcace1abcf0b23fbba368266c6a1be33de3de3b3c912",
       strip_prefix = "re2-2018-04-01",
+      system_build_file = clean_dep("//third_party/systemlibs:re2.BUILD"),
   )
 
   tf_http_archive(
@@ -228,6 +231,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "63ec86477ad3f0f6292325fd89e1d93aea2e2fd490070863f17d48f7cd387011",
       strip_prefix = "nasm-2.13.03",
       build_file = clean_dep("//third_party:nasm.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:nasm.BUILD"),
   )
 
   tf_http_archive(
@@ -239,6 +243,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "1a17020f859cb12711175a67eab5c71fc1904e04b587046218e36106e07eabde",
       strip_prefix = "libjpeg-turbo-1.5.3",
       build_file = clean_dep("//third_party/jpeg:jpeg.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:jpeg.BUILD"),
   )
 
   tf_http_archive(
@@ -251,6 +256,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "libpng-1.6.34",
       build_file = clean_dep("//third_party:png.BUILD"),
       patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
+      system_build_file = clean_dep("//third_party/systemlibs:png.BUILD"),
   )
 
   tf_http_archive(
@@ -262,6 +268,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "ad68c1216c3a474cf360c7581a4001e952515b3649342100f2d7ca7c8e313da6",
       strip_prefix = "sqlite-amalgamation-3240000",
       build_file = clean_dep("//third_party:sqlite.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:sqlite.BUILD"),
   )
 
   tf_http_archive(
@@ -273,6 +280,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
       strip_prefix = "giflib-5.1.4",
       build_file = clean_dep("//third_party:gif.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:gif.BUILD"),
   )
 
   tf_http_archive(
@@ -284,6 +292,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
       build_file = clean_dep("//third_party:six.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:six.BUILD"),
   )
 
   tf_http_archive(
@@ -295,6 +304,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "ff6d2e2962d834acb125cc4dcc80c54a8c17c253f4cc9d9c43b5102a560bb75d",
       strip_prefix = "astor-0.6.2",
       build_file = clean_dep("//third_party:astor.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:astor.BUILD"),
   )
 
   tf_http_archive(
@@ -317,6 +327,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "1d6d69ce66211143803fbc56652b41d73b4a400a2891d7bf7a1cdf4c02de613b",
       strip_prefix = "termcolor-1.1.0",
       build_file = clean_dep("//third_party:termcolor.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:termcolor.BUILD"),
   )
 
   tf_http_archive(
@@ -423,6 +434,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "pcre-8.42",
       build_file = clean_dep("//third_party:pcre.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:pcre.BUILD"),
   )
 
   tf_http_archive(
@@ -435,6 +447,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "swig-3.0.8",
       build_file = clean_dep("//third_party:swig.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:swig.BUILD"),
   )
 
   tf_http_archive(
@@ -446,6 +459,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "curl-7.60.0",
       build_file = clean_dep("//third_party:curl.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
   )
 
   tf_http_archive(
@@ -456,6 +470,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "50db9cf2221354485eb7c3bd55a4c27190caef7048a2a1a15fbe60a498f98b44",
       strip_prefix = "grpc-1.13.0",
+      system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
   )
 
   tf_http_archive(
@@ -474,11 +489,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/d5d94ca3a7f8526c2e4e5f663f9dc79ae5d39d93.tar.gz",
-	  "https://github.com/llvm-mirror/llvm/archive/d5d94ca3a7f8526c2e4e5f663f9dc79ae5d39d93.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/bd8c8d759852871609ba2e4e79868420f751949d.tar.gz",
+	  "https://github.com/llvm-mirror/llvm/archive/bd8c8d759852871609ba2e4e79868420f751949d.tar.gz",
       ],
-      sha256 = "280fdc888e2eb88a3a8cc4e7d3034fffc87f98e3e686be31f8c719c6e5b67d2d",
-      strip_prefix = "llvm-d5d94ca3a7f8526c2e4e5f663f9dc79ae5d39d93",
+      sha256 = "0c63e8583b213543309e8577ffe87a0cf34cc22269630d2c5c2f0a2345fda4a8",
+      strip_prefix = "llvm-bd8c8d759852871609ba2e4e79868420f751949d",
       build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
   )
 
@@ -491,6 +506,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "f3927859882eb608868c8c31586bb7eb84562a40a6bf5cc3e13b6b564641ea28",
       strip_prefix = "lmdb-LMDB_0.9.22/libraries/liblmdb",
       build_file = clean_dep("//third_party:lmdb.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:lmdb.BUILD"),
   )
 
   tf_http_archive(
@@ -502,6 +518,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "c49deac9e0933bcb7044f08516861a2d560988540b23de2ac1ad443b219afdb6",
       strip_prefix = "jsoncpp-1.8.4",
       build_file = clean_dep("//third_party:jsoncpp.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:jsoncpp.BUILD"),
   )
 
   tf_http_archive(
@@ -523,6 +540,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
       strip_prefix = "zlib-1.2.11",
       build_file = clean_dep("//third_party:zlib.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:zlib.BUILD"),
   )
 
   tf_http_archive(
@@ -544,6 +562,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "3dfa02e873ff51a11ee02b9ca391807f0c8ea0529a4924afa645fbf97163f9d4",
       strip_prefix = "snappy-1.1.7",
       build_file = clean_dep("//third_party:snappy.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:snappy.BUILD"),
   )
 
   tf_http_archive(
@@ -614,6 +633,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
       strip_prefix = "jemalloc-4.4.0",
       build_file = clean_dep("//third_party:jemalloc.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:jemalloc.BUILD"),
   )
 
   java_import_external(
@@ -692,6 +712,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "cython-0.28.4",
       build_file = clean_dep("//third_party:cython.BUILD"),
       delete = ["BUILD.bazel"],
+      system_build_file = clean_dep("//third_party/systemlibs:cython.BUILD"),
   )
 
   tf_http_archive(
@@ -724,6 +745,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://github.com/google/flatbuffers/archive/v1.9.0.tar.gz",
       ],
       build_file = clean_dep("//third_party/flatbuffers:flatbuffers.BUILD"),
+      system_build_file = clean_dep("//third_party/systemlibs:flatbuffers.BUILD"),
   )
 
   native.new_http_archive(

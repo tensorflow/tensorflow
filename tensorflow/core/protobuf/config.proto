@@ -448,6 +448,9 @@ message ConfigProto {
   message Experimental {
     // Task name for group resolution.
     string collective_group_leader = 1;
+    // Whether the client will format templated errors. For example, the string:
+    // "The node was defined on ^^node:Foo:${file}:${line}^^".
+    bool client_handles_error_formatting = 2;
   };
 
   Experimental experimental = 16;

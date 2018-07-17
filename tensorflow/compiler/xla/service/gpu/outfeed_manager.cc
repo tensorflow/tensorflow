@@ -23,25 +23,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-void OutfeedManager::EnqueueOutfeedDestination(
-    ShapeTree<std::unique_ptr<OutfeedBuffer>>* buffers) {
-  tensorflow::mutex_lock l(mu_);
-  enqueued_buffers_.push_back(buffers);
-  cv_.notify_one();
-}
-
-ShapeTree<std::unique_ptr<OutfeedBuffer>>*
-OutfeedManager::BlockingGetNextOutfeedDestination() {
-  tensorflow::mutex_lock l(mu_);
-  while (enqueued_buffers_.empty()) {
-    cv_.wait(l);
-  }
-  ShapeTree<std::unique_ptr<OutfeedBuffer>>* current_buffer =
-      enqueued_buffers_.front();
-  enqueued_buffers_.pop_front();
-  return current_buffer;
-}
-
 OutfeedManager* GetOrCreateOutfeedManager() {
   static auto* manager = new OutfeedManager;
   return manager;

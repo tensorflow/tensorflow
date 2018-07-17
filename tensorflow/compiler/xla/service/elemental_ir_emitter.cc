@@ -468,6 +468,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);
+    case HloOpcode::kReal:
+      return operand_value;
+    case HloOpcode::kImag:
+      return llvm::ConstantFP::get(operand_value->getType(), 0.0);
     default:
       return Unimplemented("unary floating-point op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
@@ -1568,16 +1572,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     // to officially document different behavior.
     start_index_value =
         ir_builder_->CreateSExtOrTrunc(start_index_value, index_type);
-    llvm::Value* operand_dim_size =
-        index_typed_const(input_hlo->shape().dimensions(i));
-    llvm::Value* output_dim_size =
-        index_typed_const(hlo->shape().dimensions(i));
+    int64 largest_valid_start_index =
+        input_hlo->shape().dimensions(i) - hlo->shape().dimensions(i);
+    CHECK_GE(largest_valid_start_index, 0);
 
+    bool is_signed = ShapeUtil::ElementIsSigned(hlo->operand(1)->shape());
     start_index_value = EmitIntegralMin(
-        ir_builder_->CreateSub(operand_dim_size, output_dim_size),
-        EmitIntegralMax(index_typed_const(0), start_index_value,
-                        /*is_signed=*/true),
-        /*is_signed=*/true);
+        index_typed_const(largest_valid_start_index),
+        EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
+        is_signed);
 
     start_index_value->setName(
         AsStringRef(IrName(hlo, StrCat("start_idx", i))));
@@ -1663,14 +1666,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
 
     // TODO(b/111078873): This is implementation defined behavior.
-
     bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
     auto gather_dim_component_extended_inbound = EmitIntegralMin(
         index.GetConstantWithIndexType(largest_valid_start_index),
         EmitIntegralMax(index.GetConstantWithIndexType(0),
-                        gather_dim_component_extended,
-                        /*is_signed=*/is_signed),
-        /*is_signed=*/is_signed);
+                        gather_dim_component_extended, is_signed),
+        is_signed);
 
     operand_index[operand_dim] = ir_builder_->CreateAdd(
         operand_index[operand_dim], gather_dim_component_extended_inbound);
@@ -1726,16 +1727,17 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     // to officially document different behavior.
     start_index_value =
         ir_builder_->CreateSExtOrTrunc(start_index_value, index_type);
-    llvm::Value* input_dim_size =
-        index_typed_const(input_hlo->shape().dimensions(i));
     llvm::Value* update_dim_size =
         index_typed_const(update_hlo->shape().dimensions(i));
+    int64 largest_valid_start_index =
+        input_hlo->shape().dimensions(i) - update_hlo->shape().dimensions(i);
+    CHECK_GE(largest_valid_start_index, 0);
 
-    start_index_value =
-        EmitIntegralMin(ir_builder_->CreateSub(input_dim_size, update_dim_size),
-                        EmitIntegralMax(index_typed_const(0), start_index_value,
-                                        /*is_signed=*/true),
-                        /*is_signed=*/true);
+    bool is_signed = ShapeUtil::ElementIsSigned(start_hlo->shape());
+    start_index_value = EmitIntegralMin(
+        index_typed_const(largest_valid_start_index),
+        EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
+        is_signed);
 
     start_index_value->setName(
         AsStringRef(IrName(hlo, StrCat("start_idx", i))));
