@@ -24,6 +24,7 @@ from __future__ import print_function
 
 import collections
 import itertools
+import os
 import re
 import string
 
@@ -41,7 +42,10 @@ _INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX)
 
 _ParseTag = collections.namedtuple("_ParseTag", ["type", "name", "format"])
 
-_BAD_FILE_SUBSTRINGS = ["tensorflow/python", "<embedded"]
+_BAD_FILE_SUBSTRINGS = [
+    os.path.join("tensorflow", "python"),
+    "<embedded",
+]
 
 
 def _parse_message(message):
