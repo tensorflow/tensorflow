@@ -13,27 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TENSORRT_CONVERT_UTILS_H_
-#define TENSORFLOW_CONTRIB_TENSORRT_CONVERT_UTILS_H_
-
-#include <memory>
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-template <typename T>
-struct TrtDestroyer {
-  void operator()(T* t) {
-    if (t) t->destroy();
-  }
-};
-
-template <typename T>
-using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
-
-bool IsGoogleTensorRTEnabled();
+bool IsGoogleTensorRTEnabled() {
+  // TODO(laigd): consider also checking if tensorrt shared libraries are
+  // accessible. We can then direct users to this function to make sure they can
+  // safely write code that uses tensorrt conditionally. E.g. if it does not
+  // check for for tensorrt, and user mistakenly uses tensorrt, they will just
+  // crash and burn.
+#ifdef GOOGLE_TENSORRT
+  return true;
+#else
+  return false;
+#endif
+}
 
 }  // namespace tensorrt
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_UTILS_H_
