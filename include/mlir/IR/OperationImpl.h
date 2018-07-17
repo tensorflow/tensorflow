@@ -116,8 +116,11 @@ protected:
       : state(const_cast<Operation *>(state)) {}
 
 private:
+  template <typename... Types>
+  struct BaseVerifier;
+
   template <typename First, typename... Rest>
-  struct BaseVerifier {
+  struct BaseVerifier<First, Rest...> {
     static const char *verifyBase(const Operation *op) {
       if (auto error = First::verifyBase(op))
         return error;
@@ -129,6 +132,13 @@ private:
   struct BaseVerifier<First> {
     static const char *verifyBase(const Operation *op) {
       return First::verifyBase(op);
+    }
+  };
+
+  template <>
+  struct BaseVerifier<> {
+    static const char *verifyBase(const Operation *op) {
+      return nullptr;
     }
   };
 
