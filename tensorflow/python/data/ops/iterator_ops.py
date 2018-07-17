@@ -211,7 +211,7 @@ class Iterator(object):
 
     This method allows you to define a "feedable" iterator where you can choose
     between concrete iterators by feeding a value in a @{tf.Session.run} call.
-    In that case, `string_handle` would a @{tf.placeholder}, and you would feed
+    In that case, `string_handle` would be a @{tf.placeholder}, and you would feed
     it with the value of @{tf.data.Iterator.string_handle} in each step.
 
     For example, if you had two iterators that marked the current position in
