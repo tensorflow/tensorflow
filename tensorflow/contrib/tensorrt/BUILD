@@ -32,9 +32,7 @@ tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
     srcs = ["tensorrt_test.cc"],
-    tags = [
-        "notap",
-    ],
+    tags = ["no_windows"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -184,6 +182,9 @@ tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
     copts = tf_copts(),
+    swig_includes = [
+        "//tensorflow/python:platform/base.i",
+    ],
     deps = [
         ":trt_conversion",
         ":trt_engine_op_kernel",
@@ -274,6 +275,7 @@ tf_cc_test(
     name = "segment_test",
     size = "small",
     srcs = ["segment/segment_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":segment",
         "//tensorflow/c:c_api",
@@ -309,9 +311,6 @@ tf_cuda_cc_test(
     name = "trt_plugin_factory_test",
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
-    tags = [
-        "notap",
-    ],
     deps = [
         ":trt_plugins",
         "//tensorflow/core:lib",
@@ -342,6 +341,10 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
     ],
     prefix = "integration_test",
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
 )
 
 py_test(
@@ -378,5 +381,7 @@ py_test(
 
 cc_library(
     name = "utils",
+    srcs = ["convert/utils.cc"],
     hdrs = ["convert/utils.h"],
+    copts = tf_copts(),
 )

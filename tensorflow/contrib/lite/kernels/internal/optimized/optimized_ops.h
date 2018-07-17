@@ -3318,6 +3318,19 @@ inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
   }
 }
 
+inline void Sub(const int32* input1_data, const Dims<4>& input1_dims,
+                const int32* input2_data, const Dims<4>& input2_dims,
+                int32 output_activation_min, int32 output_activation_max,
+                int32* output_data, const Dims<4>& output_dims) {
+  gemmlowp::ScopedProfilingLabel label("Sub/int32");
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = ActivationFunctionWithMinMax(
+        input1_data[i] - input2_data[i], output_activation_min,
+        output_activation_max);
+  }
+}
+
 // TODO(jiawen): We can implement BroadcastSub on buffers of arbitrary
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then

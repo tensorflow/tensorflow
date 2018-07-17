@@ -24,7 +24,10 @@ load(
     "if_mkl",
     "if_mkl_lnx_x64"
 )
-
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_mkl_open_source_only",
+)
 def register_extension_info(**kwargs):
     pass
 
@@ -180,9 +183,13 @@ def get_win_copts(is_external=False):
         "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
-        "/U_HAS_EXCEPTIONS",
-        "/D_HAS_EXCEPTIONS=1",
-        "/EHsc",  # -fno-exceptions
+        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+        # default. We can't pass /EHs-c- to disable exception, otherwise
+        # we will get a waterfall of flag conflict warnings. Wait for
+        # Bazel to fix this.
+        # "/D_HAS_EXCEPTIONS=0",
+        # "/EHs-c-",
+        "/wd4577",
         "/DNOGDI",
     ]
     if is_external:
@@ -214,6 +221,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
+      + if_mkl_open_source_only(["-DDO_NOT_USE_ML"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])

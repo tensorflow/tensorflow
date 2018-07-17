@@ -1156,6 +1156,19 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     return Status::OK();
   }
 
+  // 0*A => 0. Only applies for integral types for correct NaN-handling.
+  if (IsAll(lhs, 0) &&
+      primitive_util::IsIntegralType(multiply->shape().element_type()) &&
+      ReplaceInstructionIfSameShape(multiply, lhs)) {
+    return Status::OK();
+  }
+  // A*0 => 0
+  if (IsAll(rhs, 0) &&
+      primitive_util::IsIntegralType(multiply->shape().element_type()) &&
+      ReplaceInstructionIfSameShape(multiply, rhs)) {
+    return Status::OK();
+  }
+
   // exp(A) * exp(B) => exp(A+B)
   if (Match(multiply, m::Multiply(m::Exp(m::Op(&lhs)), m::Exp(m::Op(&rhs))))) {
     auto add = computation_->AddInstruction(HloInstruction::CreateBinary(

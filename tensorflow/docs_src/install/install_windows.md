@@ -1,4 +1,4 @@
-# Installing TensorFlow on Windows
+# Install TensorFlow on Windows
 
 This guide explains how to install TensorFlow on Windows. Although these
 instructions might also work on other Windows variants, we have only

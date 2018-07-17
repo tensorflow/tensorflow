@@ -74,6 +74,26 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   EXPECT_EQ(root, param0);
 }
 
+// Test that A * 0 is simplified to 0
+TEST_F(AlgebraicSimplifierTest, MulZero) {
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0s32, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0s32, HloOpcode::kMultiply, param0, zero));
+
+  auto computation = module().AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(&module()).ValueOrDie());
+  EXPECT_EQ(computation->root_instruction(), zero);
+}
+
 // Test that Reduce(Reduce(A)) -> Reduce(A)
 TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   HloComputation::Builder builder(TestName());

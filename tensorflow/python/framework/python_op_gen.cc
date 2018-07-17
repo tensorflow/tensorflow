@@ -943,6 +943,7 @@ from tensorflow.python.framework import common_shapes as _common_shapes
 from tensorflow.python.framework import op_def_registry as _op_def_registry
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import op_def_library as _op_def_library
+from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util.tf_export import tf_export
 
 )");

@@ -97,9 +97,12 @@ cc_library(
     srcs = ["numeric.cc"],
     hdrs = ["numeric.h"],
     deps = [
+        ":arithmetic",
+        ":constants",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -115,6 +118,21 @@ xla_test(
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "prng",
+    srcs = ["prng.cc"],
+    hdrs = ["prng.h"],
+    deps = [
+        ":constants",
+        ":math",
+        ":numeric",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:lib",
     ],
 )
 

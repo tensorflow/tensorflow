@@ -42,10 +42,10 @@
 
 @@TPUEstimator
 @@TPUEstimatorSpec
+@@export_estimator_savedmodel
 @@RunConfig
 @@InputPipelineConfig
 @@TPUConfig
-
 @@bfloat16_scope
 """
 

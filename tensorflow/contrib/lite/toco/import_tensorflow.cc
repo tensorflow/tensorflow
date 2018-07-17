@@ -805,22 +805,6 @@ tensorflow::Status ConvertSqueezeOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertSumOperator(
-    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model) {
-  CHECK_EQ(node.op(), "Sum");
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
-  auto* op = new TensorFlowSumOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
-    op->keep_dims = GetBoolAttr(node, "keep_dims");
-  }
-  return tensorflow::Status::OK();
-}
-
 tensorflow::Status ConvertSplitOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -1056,22 +1040,6 @@ tensorflow::Status ConvertSimpleOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
   return ConvertSimpleOperator<Op>(node, tf_import_flags, model);
-}
-
-tensorflow::Status ConvertMaxOperator(
-    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model) {
-  CHECK_EQ(node.op(), "Max");
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
-  auto* op = new TensorFlowMaxOperator;
-  op->inputs.push_back(node.input(0));
-  op->inputs.push_back(node.input(1));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-  if (HasAttr(node, "keep_dims")) {
-    op->keep_dims = GetBoolAttr(node, "keep_dims");
-  }
-  return tensorflow::Status::OK();
 }
 
 tensorflow::Status ConvertMinOperator(
@@ -1412,12 +1380,12 @@ tensorflow::Status ConvertBatchToSpaceNDOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertMeanOperator(
+template <typename T>
+tensorflow::Status ConvertReduceOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  CHECK_EQ(node.op(), "Mean");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
-  auto* op = new MeanOperator;
+  auto* op = new T;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
@@ -1893,10 +1861,10 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Log", ConvertSimpleOperator<LogOperator, 1>},
       {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
       {"MatMul", ConvertMatMulOperator},
-      {"Max", ConvertMaxOperator},
+      {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2>},
-      {"Mean", ConvertMeanOperator},
+      {"Mean", ConvertReduceOperator<MeanOperator>},
       {"Merge", ConvertSimpleOperator<TensorFlowMergeOperator, 2>},
       {"Min", ConvertMinOperator},
       {"Minimum", ConvertSimpleOperator<TensorFlowMinimumOperator, 2>},
@@ -1912,6 +1880,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Placeholder", ConvertPlaceholderOperator},
       {"PlaceholderWithDefault", ConvertIdentityOperator},
       {"Pow", ConvertSimpleOperator<PowOperator, 2>},
+      {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
       {"Rank", ConvertSimpleOperator<RankOperator, 1>},
@@ -1938,7 +1907,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},
       {"Sub", ConvertSimpleOperator<SubOperator, 2>},
-      {"Sum", ConvertSumOperator},
+      {"Sum", ConvertReduceOperator<TensorFlowSumOperator>},
       {"Svdf", ConvertSvdfOperator},
       {"Switch", ConvertSwitchOperator},
       {"Tanh", ConvertSimpleOperator<TanhOperator, 1>},

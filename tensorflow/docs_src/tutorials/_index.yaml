@@ -175,7 +175,7 @@ landing_page:
               <a href="/guide/estimators">Estimators guide</a>.
             </p>
             <ol style="padding-left: 20px;">
-              <li><a href="/guide/premade_estimators">Premade Estimators guide</a></li>
+              <li><a href="/tutorials/estimators/linear">Build a linear model with Estimators</a></li>
               <li><a href="https://github.com/tensorflow/models/tree/master/official/wide_deep" class="external">Wide and deep learning with Estimators</a></li>
               <li><a href="https://github.com/tensorflow/models/tree/master/official/boosted_trees" class="external">Boosted trees</a></li>
               <li><a href="/hub/tutorials/text_classification_with_tf_hub">How to build a simple text classifier with TF-Hub</a></li>

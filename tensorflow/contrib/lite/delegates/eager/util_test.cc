@@ -23,6 +23,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using tensorflow::DT_FLOAT;
+using tensorflow::Tensor;
 using ::testing::ElementsAre;
 
 struct TestContext : public TfLiteContext {
@@ -72,9 +74,6 @@ TEST(UtilTest, CopyShape) {
   context.ReportError = ReportError;
   context.ResizeTensor = ResizeTensor;
 
-  using tensorflow::DT_FLOAT;
-  using tensorflow::Tensor;
-
   TfLiteTensor dst;
 
   EXPECT_EQ(CopyShape(&context, Tensor(), &dst), kTfLiteOk);
@@ -88,6 +87,18 @@ TEST(UtilTest, CopyShape) {
   EXPECT_EQ(context.error,
             "Dimension value in TensorFlow shape is larger than supported by "
             "TF Lite");
+}
+
+TEST(UtilTest, TypeConversions) {
+  EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteNoType));
+  EXPECT_EQ(TF_FLOAT, GetTensorFlowDataType(kTfLiteFloat32));
+  EXPECT_EQ(TF_INT16, GetTensorFlowDataType(kTfLiteInt16));
+  EXPECT_EQ(TF_INT32, GetTensorFlowDataType(kTfLiteInt32));
+  EXPECT_EQ(TF_UINT8, GetTensorFlowDataType(kTfLiteUInt8));
+  EXPECT_EQ(TF_INT64, GetTensorFlowDataType(kTfLiteInt64));
+  EXPECT_EQ(TF_COMPLEX64, GetTensorFlowDataType(kTfLiteComplex64));
+  EXPECT_EQ(TF_STRING, GetTensorFlowDataType(kTfLiteString));
+  EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
 }
 
 }  // namespace

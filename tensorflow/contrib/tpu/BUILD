@@ -16,7 +16,6 @@ package(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu:__subpackages__",
     ],
 )
 
@@ -184,6 +183,7 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:engine",

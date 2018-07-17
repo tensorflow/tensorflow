@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
-
 #include <numeric>
 #include <vector>
+
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
@@ -28,7 +31,7 @@ XlaOp MakeIota(XlaBuilder* builder, int64 size) {
   for (int64 i = 0; i < size; ++i) {
     values[i] = static_cast<T>(i);
   }
-  return xla::ConstantR1<T>(builder, values);
+  return ConstantR1<T>(builder, values);
 }
 
 }  // namespace
@@ -74,6 +77,28 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
   auto b = Iota(builder, type, n);
   auto indicator = Eq(a, Broadcast(b, {m}), /*broadcast_dimensions=*/{0});
   return ConvertElementType(indicator, type);
+}
+
+XlaOp Diagonal(XlaOp x) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    const int64 n_dims = ShapeUtil::Rank(shape);
+    TF_RET_CHECK(n_dims >= 2);
+    const int64 n = shape.dimensions(n_dims - 1);
+    const int64 m = shape.dimensions(n_dims - 2);
+    tensorflow::gtl::ArraySlice<int64> major_dims(
+        AsInt64Slice(shape.dimensions()), /*pos=*/0, /*len=*/n_dims - 2);
+    auto a = Iota(builder, U32, n);
+    auto b = Iota(builder, U32, m);
+    auto indicator = Eq(a, Broadcast(b, {n}), /*broadcast_dimensions=*/{0});
+    auto mask = Broadcast(indicator, major_dims);
+    XlaComputation add =
+        CreateScalarAddComputation(shape.element_type(), builder);
+    auto diag = Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
+                       add, {n_dims - 1});
+    return diag;
+  });
 }
 
 }  // namespace xla

@@ -1,38 +1,38 @@
-# Installing TensorFlow on Ubuntu
+# Install TensorFlow on Ubuntu
 
 This guide explains how to install TensorFlow on Ubuntu Linux. While these
-instructions may work on other Linux variants, they are tested and supported with
-the following system requirements:
+instructions may work on other Linux variants, they are tested and supported
+with the following system requirements:
 
-* 64-bit desktops or laptops
-* Ubuntu 16.04 or higher
-
+*   64-bit desktops or laptops
+*   Ubuntu 16.04 or higher
 
 ## Choose which TensorFlow to install
 
 The following TensorFlow variants are available for installation:
 
-* __TensorFlow with CPU support only__. If your system does not have a
-  NVIDIA®&nbsp;GPU, you must install this version. This version of TensorFlow is
-  usually easier to install, so even if you have an NVIDIA GPU, we recommend
-  installing this version first.
-* __TensorFlow with GPU support__. TensorFlow programs usually run much faster on
-  a GPU instead of a CPU. If you run performance-critical applications and your
-  system has an NVIDIA®&nbsp;GPU that meets the prerequisites, you should install
-  this version. See [TensorFlow GPU support](#NVIDIARequirements) for details.
-
+*   __TensorFlow with CPU support only__. If your system does not have a
+    NVIDIA®&nbsp;GPU, you must install this version. This version of TensorFlow
+    is usually easier to install, so even if you have an NVIDIA GPU, we
+    recommend installing this version first.
+*   __TensorFlow with GPU support__. TensorFlow programs usually run much faster
+    on a GPU instead of a CPU. If you run performance-critical applications and
+    your system has an NVIDIA®&nbsp;GPU that meets the prerequisites, you should
+    install this version. See [TensorFlow GPU support](#NVIDIARequirements) for
+    details.
 
 ## How to install TensorFlow
 
 There are a few options to install TensorFlow on your machine:
 
-* [Use pip in a virtual environment](#InstallingVirtualenv) *(recommended)*
-* [Use pip in your system environment](#InstallingNativePip)
-* [Configure a Docker container](#InstallingDocker)
-* [Use pip in Anaconda](#InstallingAnaconda)
-* [Install TensorFlow from source](/install/install_sources)
+*   [Use pip in a virtual environment](#InstallingVirtualenv) *(recommended)*
+*   [Use pip in your system environment](#InstallingNativePip)
+*   [Configure a Docker container](#InstallingDocker)
+*   [Use pip in Anaconda](#InstallingAnaconda)
+*   [Install TensorFlow from source](/install/install_sources)
 
 <a name="InstallingVirtualenv"></a>
+
 ### Use `pip` in a virtual environment
 
 Key Point: Using a virtual environment is the recommended install method.
@@ -41,8 +41,8 @@ The [Virtualenv](https://virtualenv.pypa.io/en/stable/) tool creates virtual
 Python environments that are isolated from other Python development on the same
 machine. In this scenario, you install TensorFlow and its dependencies within a
 virtual environment that is available when *activated*. Virtualenv provides a
-reliable way to install and run TensorFlow while avoiding conflicts with the rest
-of the system.
+reliable way to install and run TensorFlow while avoiding conflicts with the
+rest of the system.
 
 ##### 1. Install Python, `pip`, and `virtualenv`.
 
@@ -62,7 +62,7 @@ To install these packages on Ubuntu:
 </pre>
 
 We *recommend* using `pip` version 8.1 or higher. If using a release before
-version 8.1,  upgrade `pip`:
+version 8.1, upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">sudo pip install -U pip</code>
@@ -112,10 +112,10 @@ affecting packages outside the `virtualenv`.
 
 Choose one of the available TensorFlow packages for installation:
 
-* `tensorflow` —Current release for CPU
-* `tensorflow-gpu` —Current release with GPU support
-* `tf-nightly` —Nightly build for CPU
-* `tf-nightly-gpu` —Nightly build with GPU support
+*   `tensorflow` —Current release for CPU
+*   `tensorflow-gpu` —Current release with GPU support
+*   `tf-nightly` —Nightly build for CPU
+*   `tf-nightly-gpu` —Nightly build with GPU support
 
 Within an active Virtualenv environment, use `pip` to install the package:
 
@@ -160,14 +160,14 @@ To uninstall TensorFlow, remove the Virtualenv directory you created in step 2:
   <code class="devsite-terminal">rm -r ~/tensorflow/<var>venv</var></code>
 </pre>
 
-
 <a name="InstallingNativePip"></a>
+
 ### Use `pip` in your system environment
 
 Use `pip` to install the TensorFlow package directly on your system without
 using a container or virtual environment for isolation. This method is
-recommended for system administrators that want a TensorFlow installation that is
-available to everyone on a multi-user system.
+recommended for system administrators that want a TensorFlow installation that
+is available to everyone on a multi-user system.
 
 Since a system install is not isolated, it could interfere with other
 Python-based installations. But if you understand `pip` and your Python
@@ -195,7 +195,7 @@ To install these packages on Ubuntu:
 </pre>
 
 We *recommend* using `pip` version 8.1 or higher. If using a release before
-version 8.1,  upgrade `pip`:
+version 8.1, upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">sudo pip install -U pip</code>
@@ -212,10 +212,10 @@ installed, use `easy_install` to install `pip`:
 
 Choose one of the available TensorFlow packages for installation:
 
-* `tensorflow` —Current release for CPU
-* `tensorflow-gpu` —Current release with GPU support
-* `tf-nightly` —Nightly build for CPU
-* `tf-nightly-gpu` —Nightly build with GPU support
+*   `tensorflow` —Current release for CPU
+*   `tensorflow-gpu` —Current release with GPU support
+*   `tf-nightly` —Nightly build for CPU
+*   `tf-nightly-gpu` —Nightly build with GPU support
 
 And use `pip` to install the package for Python 2 or 3:
 
@@ -260,37 +260,36 @@ To uninstall TensorFlow on your system, use one of following commands:
 </pre>
 
 <a name="InstallingDocker"></a>
+
 ### Configure a Docker container
 
-Docker completely isolates the TensorFlow installation
-from pre-existing packages on your machine. The Docker container contains
-TensorFlow and all its dependencies. Note that the Docker image can be quite
-large (hundreds of MBs). You might choose the Docker installation if you are
-incorporating TensorFlow into a larger application architecture that already
-uses Docker.
+Docker completely isolates the TensorFlow installation from pre-existing
+packages on your machine. The Docker container contains TensorFlow and all its
+dependencies. Note that the Docker image can be quite large (hundreds of MBs).
+You might choose the Docker installation if you are incorporating TensorFlow
+into a larger application architecture that already uses Docker.
 
 Take the following steps to install TensorFlow through Docker:
 
-  1. Install Docker on your machine as described in the
-     [Docker documentation](http://docs.docker.com/engine/installation/).
-  2. Optionally, create a Linux group called <code>docker</code> to allow
-     launching containers without sudo as described in the
-     [Docker documentation](https://docs.docker.com/engine/installation/linux/linux-postinstall/).
-     (If you don't do this step, you'll have to use sudo each time
-     you invoke Docker.)
-  3. To install a version of TensorFlow that supports GPUs, you must first
-     install [nvidia-docker](https://github.com/NVIDIA/nvidia-docker), which
-     is stored in github.
-  4. Launch a Docker container that contains one of the
-     [TensorFlow binary images](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
+1.  Install Docker on your machine as described in the
+    [Docker documentation](http://docs.docker.com/engine/installation/).
+2.  Optionally, create a Linux group called <code>docker</code> to allow
+    launching containers without sudo as described in the
+    [Docker documentation](https://docs.docker.com/engine/installation/linux/linux-postinstall/).
+    (If you don't do this step, you'll have to use sudo each time you invoke
+    Docker.)
+3.  To install a version of TensorFlow that supports GPUs, you must first
+    install [nvidia-docker](https://github.com/NVIDIA/nvidia-docker), which is
+    stored in github.
+4.  Launch a Docker container that contains one of the
+    [TensorFlow binary images](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 The remainder of this section explains how to launch a Docker container.
 
-
 #### CPU-only
 
-To launch a Docker container with CPU-only support (that is, without
-GPU support), enter a command of the following format:
+To launch a Docker container with CPU-only support (that is, without GPU
+support), enter a command of the following format:
 
 <pre>
 $ docker run -it <i>-p hostPort:containerPort TensorFlowCPUImage</i>
@@ -298,29 +297,31 @@ $ docker run -it <i>-p hostPort:containerPort TensorFlowCPUImage</i>
 
 where:
 
-  * <tt><i>-p hostPort:containerPort</i></tt> is optional.
-    If you plan to run TensorFlow programs from the shell, omit this option.
-    If you plan to run TensorFlow programs as Jupyter notebooks, set both
-    <tt><i>hostPort</i></tt> and <tt><i>containerPort</i></tt>
-    to <tt>8888</tt>.  If you'd like to run TensorBoard inside the container,
-    add a second `-p` flag, setting both <i>hostPort</i> and <i>containerPort</i>
-    to 6006.
-  * <tt><i>TensorFlowCPUImage</i></tt> is required. It identifies the Docker
+*   <tt><i>-p hostPort:containerPort</i></tt> is optional. If you plan to run
+    TensorFlow programs from the shell, omit this option. If you plan to run
+    TensorFlow programs as Jupyter notebooks, set both <tt><i>hostPort</i></tt>
+    and <tt><i>containerPort</i></tt> to <tt>8888</tt>. If you'd like to run
+    TensorBoard inside the container, add a second `-p` flag, setting both
+    <i>hostPort</i> and <i>containerPort</i> to 6006.
+*   <tt><i>TensorFlowCPUImage</i></tt> is required. It identifies the Docker
     container. Specify one of the following values:
-    * <tt>tensorflow/tensorflow</tt>, which is the TensorFlow CPU binary image.
-    * <tt>tensorflow/tensorflow:latest-devel</tt>, which is the latest
-      TensorFlow CPU Binary image plus source code.
-    * <tt>tensorflow/tensorflow:<i>version</i></tt>, which is the
-      specified version (for example, 1.1.0rc1) of TensorFlow CPU binary image.
-    * <tt>tensorflow/tensorflow:<i>version</i>-devel</tt>, which is
-      the specified version (for example, 1.1.0rc1) of the TensorFlow GPU
-      binary image plus source code.
+
+    *   <tt>tensorflow/tensorflow</tt>, which is the TensorFlow CPU binary
+        image.
+    *   <tt>tensorflow/tensorflow:latest-devel</tt>, which is the latest
+        TensorFlow CPU Binary image plus source code.
+    *   <tt>tensorflow/tensorflow:<i>version</i></tt>, which is the specified
+        version (for example, 1.1.0rc1) of TensorFlow CPU binary image.
+    *   <tt>tensorflow/tensorflow:<i>version</i>-devel</tt>, which is the
+        specified version (for example, 1.1.0rc1) of the TensorFlow GPU binary
+        image plus source code.
 
     TensorFlow images are available at
     [dockerhub](https://hub.docker.com/r/tensorflow/tensorflow/).
 
-For example, the following command launches the latest TensorFlow CPU binary image
-in a Docker container from which you can run TensorFlow programs in a shell:
+For example, the following command launches the latest TensorFlow CPU binary
+image in a Docker container from which you can run TensorFlow programs in a
+shell:
 
 <pre>
 $ <b>docker run -it tensorflow/tensorflow bash</b>
@@ -336,10 +337,11 @@ $ <b>docker run -it -p 8888:8888 tensorflow/tensorflow</b>
 
 Docker will download the TensorFlow binary image the first time you launch it.
 
-
 #### GPU support
 
-To launch a Docker container with NVidia GPU support, enter a command of the following format (this [does not require any local CUDA installation](https://github.com/nvidia/nvidia-docker/wiki/CUDA#requirements)):
+To launch a Docker container with NVidia GPU support, enter a command of the
+following format (this
+[does not require any local CUDA installation](https://github.com/nvidia/nvidia-docker/wiki/CUDA#requirements)):
 
 <pre>
 $ <b>nvidia-docker run -it</b> <i>-p hostPort:containerPort TensorFlowGPUImage</i>
@@ -347,34 +349,34 @@ $ <b>nvidia-docker run -it</b> <i>-p hostPort:containerPort TensorFlowGPUImage</
 
 where:
 
-  * <tt><i>-p hostPort:containerPort</i></tt> is optional. If you plan
-    to run TensorFlow programs from the shell, omit this option. If you plan
-    to run TensorFlow programs as Jupyter notebooks, set both
-    <tt><i>hostPort</i></tt> and <code><em>containerPort</em></code> to `8888`.
-  * <i>TensorFlowGPUImage</i> specifies the Docker container. You must
-    specify one of the following values:
-    * <tt>tensorflow/tensorflow:latest-gpu</tt>, which is the latest
-      TensorFlow GPU binary image.
-    * <tt>tensorflow/tensorflow:latest-devel-gpu</tt>, which is
-      the latest TensorFlow GPU Binary image plus source code.
-    * <tt>tensorflow/tensorflow:<i>version</i>-gpu</tt>, which is the
-      specified version (for example, 0.12.1) of the TensorFlow GPU
-      binary image.
-    * <tt>tensorflow/tensorflow:<i>version</i>-devel-gpu</tt>, which is
-      the specified version (for example, 0.12.1) of the TensorFlow GPU
-      binary image plus source code.
+*   <tt><i>-p hostPort:containerPort</i></tt> is optional. If you plan to run
+    TensorFlow programs from the shell, omit this option. If you plan to run
+    TensorFlow programs as Jupyter notebooks, set both <tt><i>hostPort</i></tt>
+    and <code><em>containerPort</em></code> to `8888`.
+*   <i>TensorFlowGPUImage</i> specifies the Docker container. You must specify
+    one of the following values:
+    *   <tt>tensorflow/tensorflow:latest-gpu</tt>, which is the latest
+        TensorFlow GPU binary image.
+    *   <tt>tensorflow/tensorflow:latest-devel-gpu</tt>, which is the latest
+        TensorFlow GPU Binary image plus source code.
+    *   <tt>tensorflow/tensorflow:<i>version</i>-gpu</tt>, which is the
+        specified version (for example, 0.12.1) of the TensorFlow GPU binary
+        image.
+    *   <tt>tensorflow/tensorflow:<i>version</i>-devel-gpu</tt>, which is the
+        specified version (for example, 0.12.1) of the TensorFlow GPU binary
+        image plus source code.
 
-We recommend installing one of the `latest` versions. For example, the
-following command launches the latest TensorFlow GPU binary image in a
-Docker container from which you can run TensorFlow programs in a shell:
+We recommend installing one of the `latest` versions. For example, the following
+command launches the latest TensorFlow GPU binary image in a Docker container
+from which you can run TensorFlow programs in a shell:
 
 <pre>
 $ <b>nvidia-docker run -it tensorflow/tensorflow:latest-gpu bash</b>
 </pre>
 
-The following command also launches the latest TensorFlow GPU binary image
-in a Docker container. In this Docker container, you can run TensorFlow
-programs in a Jupyter notebook:
+The following command also launches the latest TensorFlow GPU binary image in a
+Docker container. In this Docker container, you can run TensorFlow programs in a
+Jupyter notebook:
 
 <pre>
 $ <b>nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:latest-gpu</b>
@@ -390,14 +392,12 @@ Docker will download the TensorFlow binary image the first time you launch it.
 For more details see the
 [TensorFlow docker readme](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/docker).
 
-
 #### Next Steps
 
-You should now
-[validate your installation](#ValidateYourInstallation).
-
+You should now [validate your installation](#ValidateYourInstallation).
 
 <a name="InstallingAnaconda"></a>
+
 ### Use `pip` in Anaconda
 
 Anaconda provides the `conda` utility to create a virtual environment. However,
@@ -410,60 +410,58 @@ not tested on new TensorFlow releases.
 
 Take the following steps to install TensorFlow in an Anaconda environment:
 
-  1. Follow the instructions on the
-     [Anaconda download site](https://www.continuum.io/downloads)
-     to download and install Anaconda.
+1.  Follow the instructions on the
+    [Anaconda download site](https://www.continuum.io/downloads) to download and
+    install Anaconda.
 
-  2. Create a conda environment named <tt>tensorflow</tt> to run a version
-     of Python by invoking the following command:
+2.  Create a conda environment named <tt>tensorflow</tt> to run a version of
+    Python by invoking the following command:
 
      <pre>$ <b>conda create -n tensorflow pip python=2.7 # or python=3.3, etc.</b></pre>
 
-  3. Activate the conda environment by issuing the following command:
+3.  Activate the conda environment by issuing the following command:
 
      <pre>$ <b>source activate tensorflow</b>
      (tensorflow)$  # Your prompt should change </pre>
 
-  4. Issue a command of the following format to install
-     TensorFlow inside your conda environment:
+4.  Issue a command of the following format to install TensorFlow inside your
+    conda environment:
 
      <pre>(tensorflow)$ <b>pip install --ignore-installed --upgrade</b> <i>tfBinaryURL</i></pre>
 
-     where <code><em>tfBinaryURL</em></code> is the
-     [URL of the TensorFlow Python package](#the_url_of_the_tensorflow_python_package).
-     For example, the following command installs the CPU-only version of
-     TensorFlow for Python 3.4:
+    where <code><em>tfBinaryURL</em></code> is the
+    [URL of the TensorFlow Python package](#the_url_of_the_tensorflow_python_package).
+    For example, the following command installs the CPU-only version of
+    TensorFlow for Python 3.4:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
      https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.9.0rc0-cp34-cp34m-linux_x86_64.whl</b></pre>
 
 <a name="ValidateYourInstallation"></a>
+
 ## Validate your installation
 
 To validate your TensorFlow installation, do the following:
 
-  1. Ensure that your environment is prepared to run TensorFlow programs.
-  2. Run a short TensorFlow program.
-
+1.  Ensure that your environment is prepared to run TensorFlow programs.
+2.  Run a short TensorFlow program.
 
 ### Prepare your environment
 
-If you installed on native pip, Virtualenv, or Anaconda, then
-do the following:
+If you installed on native pip, Virtualenv, or Anaconda, then do the following:
 
-  1. Start a terminal.
-  2. If you installed with Virtualenv or Anaconda, activate your container.
-  3. If you installed TensorFlow source code, navigate to any
-     directory *except* one containing TensorFlow source code.
+1.  Start a terminal.
+2.  If you installed with Virtualenv or Anaconda, activate your container.
+3.  If you installed TensorFlow source code, navigate to any directory *except*
+    one containing TensorFlow source code.
 
-If you installed through Docker, start a Docker container
-from which you can run bash. For example:
+If you installed through Docker, start a Docker container from which you can run
+bash. For example:
 
 <pre>
 $ <b>docker run -it tensorflow/tensorflow bash</b>
 </pre>
-
 
 ### Run a short TensorFlow program
 
@@ -486,96 +484,71 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If the system outputs an error message instead of a greeting, see [Common
-installation problems](#common_installation_problems).
+If the system outputs an error message instead of a greeting, see
+[Common installation problems](#common_installation_problems).
 
 To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 <a name="NVIDIARequirements"></a>
+
 ## TensorFlow GPU support
 
-To install TensorFlow with GPU support, configure the following NVIDIA® software
-on your system:
+Note: Due to the number of libraries required, using [Docker](#InstallingDocker)
+is recommended over installing directly on the host system.
 
-* [CUDA Toolkit 9.0](http://nvidia.com/cuda). For details, see
-  [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/).
-  Append the relevant CUDA pathnames to the `LD_LIBRARY_PATH` environmental
-  variable as described in the NVIDIA documentation.
-* [cuDNN SDK v7](http://developer.nvidia.com/cudnn). For details, see
-  [NVIDIA's documentation](http://docs.nvidia.com/deeplearning/sdk/cudnn-install/).
-  Create the `CUDA_HOME` environment variable as described in the NVIDIA
-  documentation.
-* A GPU card with CUDA Compute Capability 3.0 or higher for building TensorFlow
-  from source. To use the TensorFlow binaries, version 3.5 or higher is required.
-  See the [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a
-  list of supported GPU cards.
-* [GPU drivers](http://nvidia.com/drivers) that support your version of the CUDA
-  Toolkit.
-* NCCL 2.2 to use TensorFlow with multiple GPUs. For details, see [NVIDIA's
-  documentation](https://developer.nvidia.com/nccl).
-* The `libcupti-dev` library is the NVIDIA CUDA Profile Tools Interface. This
-  library provides advanced profiling support. To install this library,
-  use the following command for CUDA Toolkit >= 8.0:
+The following NVIDIA® <i>hardware</i> must be installed on your system:
 
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-get install cuda-command-line-tools</code>
-</pre>
+*   GPU card with CUDA Compute Capability 3.5 or higher. See
+    [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for a list of
+    supported GPU cards.
 
-Add this path to the `LD_LIBRARY_PATH` environmental variable:
+The following NVIDIA® <i>software</i> must be installed on your system:
 
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}/usr/local/cuda/extras/CUPTI/lib64</code>
-</pre>
+*   [GPU drivers](http://nvidia.com/driver). CUDA 9.0 requires 384.x or higher.
+*   [CUDA Toolkit 9.0](http://nvidia.com/cuda).
+*   [cuDNN SDK](http://developer.nvidia.com/cudnn) (>= 7.0). Version 7.1 is
+    recommended.
+*   [CUPTI](http://docs.nvidia.com/cuda/cupti/) ships with the CUDA Toolkit, but
+    you also need to append its path to the `LD_LIBRARY_PATH` environment
+    variable: `export
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda/extras/CUPTI/lib64`
+*   *OPTIONAL*: [NCCL 2.2](https://developer.nvidia.com/nccl) to use TensorFlow
+    with multiple GPUs.
+*   *OPTIONAL*:
+    [TensorRT](http://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html)
+    which can improve latency and throughput for inference for some models.
 
-* *OPTIONAL*:  For optimized performance during inference, install
-  *NVIDIA&nbsp;TensorRT&nbsp;3.0*. To install the minimal amount of TensorRT
-  runtime components required to use with the pre-built `tensorflow-gpu` package:
+To use a GPU with CUDA Compute Capability 3.0, or different versions of the
+preceding NVIDIA libraries see
+@{$install_sources$installing TensorFlow from Sources}. If using Ubuntu 16.04
+and possibly other Debian based linux distros, `apt-get` can be used with the
+NVIDIA repository to simplify installation.
 
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1404/x86_64/nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</code>
-  <code class="devsite-terminal">sudo dpkg -i nvinfer-runtime-trt-repo-ubuntu1404-3.0.4-ga-cuda9.0_1.0-1_amd64.deb</code>
-  <code class="devsite-terminal">sudo apt-get update</code>
-  <code class="devsite-terminal">sudo apt-get install -y --allow-downgrades libnvinfer-dev libcudnn7-dev=7.0.5.15-1+cuda9.0 libcudnn7=7.0.5.15-1+cuda9.0</code>
-</pre>
-
-Note: For compatibility with the pre-built `tensorflow-gpu` package, use the
-Ubuntu *14.04* package of TensorRT (shown above). Use this even when installing
-on an Ubuntu 16.04 system.
-
-To build the TensorFlow-TensorRT integration module from source instead of using
-the pre-built binaries, see the
-[module documentation](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/tensorrt#using-tensorrt-in-tensorflow).
-For detailed TensorRT installation instructions, see
-[NVIDIA's TensorRT documentation](http://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html).
-
-To avoid cuDNN version conflicts during later system upgrades, hold the cuDNN
-version at 7.0.5:
-
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-mark hold libcudnn7 libcudnn7-dev</code>
-</pre>
-
-To allow upgrades, remove the this hold:
-
-<pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">sudo apt-mark unhold libcudnn7 libcudnn7-dev</code>
-</pre>
-
-If you have an earlier version of the preceding packages, upgrade to the
-specified versions. If upgrading is not possible, you can still run TensorFlow
-with GPU support by @{$install_sources}.
-
+```bash
+# Adds NVIDIA package repository.
+sudo apt-key adv --fetch-keys http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/7fa2af80.pub
+wget http://developer.download.nvidia.com/compute/cuda/repos/ubuntu1604/x86_64/cuda-repo-ubuntu1604_9.1.85-1_amd64.deb
+wget http://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1604/x86_64/nvidia-machine-learning-repo-ubuntu1604_1.0.0-1_amd64.deb
+sudo dpkg -i cuda-repo-ubuntu1604_9.1.85-1_amd64.deb
+sudo dpkg -i nvidia-machine-learning-repo-ubuntu1604_1.0.0-1_amd64.deb
+sudo apt-get update
+# Includes optional NCCL 2.x.
+sudo apt-get install cuda9.0 cuda-cublas-9-0 cuda-cufft-9-0 cuda-curand-9-0 \
+  cuda-cusolver-9-0 cuda-cusparse-9-0 libcudnn7=7.1.4.18-1+cuda9.0 \
+   libnccl2=2.2.13-1+cuda9.0 cuda-command-line-tools-9-0
+# Optionally install TensorRT runtime, must be done after above cuda install.
+sudo apt-get update
+sudo apt-get install libnvinfer4=4.1.2-1+cuda9.0
+```
 
 ## Common installation problems
 
 We are relying on Stack Overflow to document TensorFlow installation problems
-and their remedies.  The following table contains links to Stack Overflow
-answers for some common installation problems.
-If you encounter an error message or other
-installation problem not listed in the following table, search for it
-on Stack Overflow.  If Stack Overflow doesn't show the error message,
-ask a new question about it on Stack Overflow and specify
-the `tensorflow` tag.
+and their remedies. The following table contains links to Stack Overflow answers
+for some common installation problems. If you encounter an error message or
+other installation problem not listed in the following table, search for it on
+Stack Overflow. If Stack Overflow doesn't show the error message, ask a new
+question about it on Stack Overflow and specify the `tensorflow` tag.
 
 <table>
 <tr> <th>Link to GitHub or Stack&nbsp;Overflow</th> <th>Error Message</th> </tr>
@@ -659,19 +632,18 @@ the `tensorflow` tag.
 
 </table>
 
-
 <a name="TF_PYTHON_URL"></a>
+
 ## The URL of the TensorFlow Python package
 
 A few installation mechanisms require the URL of the TensorFlow Python package.
 The value you specify depends on three factors:
 
-  * operating system
-  * Python version
-  * CPU only vs. GPU support
+*   operating system
+*   Python version
+*   CPU only vs. GPU support
 
 This section documents the relevant values for Linux installations.
-
 
 ### Python 2.7
 
@@ -680,7 +652,6 @@ CPU only:
 <pre>
 https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.9.0rc0-cp27-none-linux_x86_64.whl
 </pre>
-
 
 GPU support:
 
@@ -691,7 +662,6 @@ https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.9.0rc0-cp27
 Note that GPU support requires the NVIDIA hardware and software described in
 [NVIDIA requirements to run TensorFlow with GPU support](#NVIDIARequirements).
 
-
 ### Python 3.4
 
 CPU only:
@@ -699,7 +669,6 @@ CPU only:
 <pre>
 https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.9.0rc0-cp34-cp34m-linux_x86_64.whl
 </pre>
-
 
 GPU support:
 
@@ -710,7 +679,6 @@ https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.9.0rc0-cp34
 Note that GPU support requires the NVIDIA hardware and software described in
 [NVIDIA requirements to run TensorFlow with GPU support](#NVIDIARequirements).
 
-
 ### Python 3.5
 
 CPU only:
@@ -719,13 +687,11 @@ CPU only:
 https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.9.0rc0-cp35-cp35m-linux_x86_64.whl
 </pre>
 
-
 GPU support:
 
 <pre>
 https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.9.0rc0-cp35-cp35m-linux_x86_64.whl
 </pre>
-
 
 Note that GPU support requires the NVIDIA hardware and software described in
 [NVIDIA requirements to run TensorFlow with GPU support](#NVIDIARequirements).
@@ -738,13 +704,11 @@ CPU only:
 https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.9.0rc0-cp36-cp36m-linux_x86_64.whl
 </pre>
 
-
 GPU support:
 
 <pre>
 https://storage.googleapis.com/tensorflow/linux/gpu/tensorflow_gpu-1.9.0rc0-cp36-cp36m-linux_x86_64.whl
 </pre>
-
 
 Note that GPU support requires the NVIDIA hardware and software described in
 [NVIDIA requirements to run TensorFlow with GPU support](#NVIDIARequirements).

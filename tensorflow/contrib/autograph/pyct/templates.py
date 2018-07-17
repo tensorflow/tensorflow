@@ -45,6 +45,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.replacements = replacements
     self.in_replacements = False
     self.preserved_annos = {
+        anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
         anno.Static.ORIG_DEFINITIONS,
     }

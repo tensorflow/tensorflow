@@ -25,10 +25,10 @@ using ::testing::ElementsAreArray;
 
 class BaseOpModel : public SingleOpModel {
  public:
-  void SetAxis(std::initializer_list<int> data) { PopulateTensor(axis_, data); }
+  void SetAxis(const std::vector<int>& data) { PopulateTensor(axis_, data); }
 
   template <class T>
-  void SetInput(std::initializer_list<T> data) {
+  void SetInput(std::vector<T> data) {
     PopulateTensor(input_, data);
   }
 
@@ -110,14 +110,72 @@ class SumOpDynamicModel : public BaseOpModel {
   }
 };
 
+// Model for the tests case where axis is a const tensor.
+class ProdOpConstModel : public BaseOpModel {
+ public:
+  ProdOpConstModel(const TensorData& input, const TensorData& output,
+                   std::initializer_list<int> axis_shape,
+                   std::initializer_list<int> axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_REDUCE_PROD, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+// Model for the tests case where axis is a dynamic tensor.
+class ProdOpDynamicModel : public BaseOpModel {
+ public:
+  ProdOpDynamicModel(const TensorData& input, const TensorData& output,
+                     const TensorData& axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddInput(axis);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_REDUCE_PROD, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+// Model for the tests case where axis is a const tensor.
+class MaxOpConstModel : public BaseOpModel {
+ public:
+  MaxOpConstModel(const TensorData& input, const TensorData& output,
+                  std::initializer_list<int> axis_shape,
+                  std::initializer_list<int> axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_REDUCE_MAX, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+// Model for the tests case where axis is a dynamic tensor.
+class MaxOpDynamicModel : public BaseOpModel {
+ public:
+  MaxOpDynamicModel(const TensorData& input, const TensorData& output,
+                    const TensorData& axis, bool keep_dims) {
+    input_ = AddInput(input);
+    axis_ = AddInput(axis);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_REDUCE_MAX, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
 // for quantized Add, the error shouldn't exceed step
 float GetTolerance(int min, int max) { return (max - min) / 255.0; }
 
 // Tests for reduce_mean
 TEST(ConstFloatMeanOpTest, NotKeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   MeanOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
                      {4}, {1, 0, -3, -3}, false);
   m.SetInput(data);
@@ -127,9 +185,9 @@ TEST(ConstFloatMeanOpTest, NotKeepDims) {
 }
 
 TEST(ConstFloatMeanOpTest, KeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   MeanOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {3}},
                      {2}, {0, 2}, true);
   m.SetInput(data);
@@ -140,13 +198,13 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
 }
 
 TEST(DynamicFloatMeanOpTest, NotKeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   MeanOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
                        {TensorType_FLOAT32, {2}}, {TensorType_INT32, {4}},
                        false);
-  std::initializer_list<int> axis = {1, 0, -3, -3};
+  std::vector<int> axis = {1, 0, -3, -3};
   m.SetAxis(axis);
   m.SetInput(data);
   m.Invoke();
@@ -155,13 +213,13 @@ TEST(DynamicFloatMeanOpTest, NotKeepDims) {
 }
 
 TEST(DynamicFloatMeanOpTest, KeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   MeanOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
                        {TensorType_FLOAT32, {3}}, {TensorType_INT32, {2}},
                        true);
-  std::initializer_list<int> axis = {0, 2};
+  std::vector<int> axis = {0, 2};
   m.SetAxis(axis);
   m.SetInput(data);
   m.Invoke();
@@ -171,10 +229,10 @@ TEST(DynamicFloatMeanOpTest, KeepDims) {
 }
 
 TEST(DynamicFloatMeanOpTest, Scale) {
-  std::initializer_list<float> data = {9.527};
+  std::vector<float> data = {9.527};
   MeanOpDynamicModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}},
                        {TensorType_INT32, {1}}, true);
-  std::initializer_list<int> axis = {0};
+  std::vector<int> axis = {0};
   m.SetAxis(axis);
   m.SetInput(data);
   m.Invoke();
@@ -185,7 +243,7 @@ TEST(DynamicFloatMeanOpTest, Scale) {
 
 TEST(ConstUint8MeanOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::initializer_list<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
   MeanOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
                      {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
@@ -197,7 +255,7 @@ TEST(ConstUint8MeanOpTest, NotKeepDims) {
 
 TEST(ConstUint8MeanOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::initializer_list<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
   MeanOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
                      {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
@@ -210,11 +268,11 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
 
 TEST(DynamicUint8MeanOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
-  std::initializer_list<float> data = {1.3, -4.8, -3.6, 0.24};
+  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
   MeanOpDynamicModel m({TensorType_UINT8, {2, 2}, -5.0, 2.0},
                        {TensorType_UINT8, {2}, -5.0, 2.0},
                        {TensorType_INT32, {1}}, false);
-  std::initializer_list<int> axis = {1};
+  std::vector<int> axis = {1};
   m.SetAxis(axis);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
@@ -226,11 +284,11 @@ TEST(DynamicUint8MeanOpTest, NotKeepDims) {
 
 TEST(DynamicUint8MeanOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::initializer_list<float> data = {11.14, -0.14, 7.423, 0.879};
+  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
   MeanOpDynamicModel m({TensorType_UINT8, {2, 2}, -10.0, 12.0},
                        {TensorType_UINT8, {2}, -10.0, 12.0},
                        {TensorType_INT32, {1}}, true);
-  std::initializer_list<int> axis = {0};
+  std::vector<int> axis = {0};
   m.SetAxis(axis);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
@@ -243,9 +301,9 @@ TEST(DynamicUint8MeanOpTest, KeepDims) {
 // Tests for reduce_sum
 
 TEST(ConstFloatSumOpTest, NotKeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   SumOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
                     {4}, {1, 0, -3, -3}, false);
   m.SetInput(data);
@@ -256,9 +314,9 @@ TEST(ConstFloatSumOpTest, NotKeepDims) {
 }
 
 TEST(ConstFloatSumOpTest, KeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   SumOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {3}},
                     {2}, {0, 2}, true);
   m.SetInput(data);
@@ -269,13 +327,13 @@ TEST(ConstFloatSumOpTest, KeepDims) {
 }
 
 TEST(DynamicFloatSumOpTest, NotKeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   SumOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
                       {TensorType_FLOAT32, {2}}, {TensorType_INT32, {4}},
                       false);
-  std::initializer_list<int> axis = {1, 0, -3, -3};
+  std::vector<int> axis = {1, 0, -3, -3};
   m.SetAxis(axis);
   m.SetInput(data);
   m.Invoke();
@@ -285,12 +343,12 @@ TEST(DynamicFloatSumOpTest, NotKeepDims) {
 }
 
 TEST(DynamicFloatSumOpTest, KeepDims) {
-  std::initializer_list<float> data = {
-      1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0,
-      13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
   SumOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
                       {TensorType_FLOAT32, {3}}, {TensorType_INT32, {2}}, true);
-  std::initializer_list<int> axis = {0, 2};
+  std::vector<int> axis = {0, 2};
   m.SetAxis(axis);
   m.SetInput(data);
   m.Invoke();
@@ -300,10 +358,10 @@ TEST(DynamicFloatSumOpTest, KeepDims) {
 }
 
 TEST(DynamicFloatSumOpTest, Scale) {
-  std::initializer_list<float> data = {9.527};
+  std::vector<float> data = {9.527};
   SumOpDynamicModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}},
                       {TensorType_INT32, {1}}, true);
-  std::initializer_list<int> axis = {0};
+  std::vector<int> axis = {0};
   m.SetAxis(axis);
   m.SetInput(data);
   m.Invoke();
@@ -313,7 +371,7 @@ TEST(DynamicFloatSumOpTest, Scale) {
 
 TEST(ConstUint8SumOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::initializer_list<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
   SumOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
                     {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
@@ -326,7 +384,7 @@ TEST(ConstUint8SumOpTest, NotKeepDims) {
 
 TEST(ConstUint8SumOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::initializer_list<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
   SumOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
                     {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
@@ -339,11 +397,11 @@ TEST(ConstUint8SumOpTest, KeepDims) {
 
 TEST(DynamicUint8SumOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
-  std::initializer_list<float> data = {1.3, -4.8, -3.6, 0.24};
+  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
   SumOpDynamicModel m({TensorType_UINT8, {2, 2}, -5.0, 2.0},
                       {TensorType_UINT8, {2}, -5.0, 2.0},
                       {TensorType_INT32, {1}}, false);
-  std::initializer_list<int> axis = {1};
+  std::vector<int> axis = {1};
   m.SetAxis(axis);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
@@ -355,11 +413,11 @@ TEST(DynamicUint8SumOpTest, NotKeepDims) {
 
 TEST(DynamicUint8SumOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
-  std::initializer_list<float> data = {11.14, -0.14, 7.423, 0.879};
+  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
   SumOpDynamicModel m({TensorType_UINT8, {2, 2}, -10.0, 12.0},
                       {TensorType_UINT8, {2}, -10.0, 12.0},
                       {TensorType_INT32, {1}}, true);
-  std::initializer_list<int> axis = {0};
+  std::vector<int> axis = {0};
   m.SetAxis(axis);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
@@ -367,6 +425,209 @@ TEST(DynamicUint8SumOpTest, KeepDims) {
   EXPECT_THAT(
       m.GetDequantizedOutput(),
       ElementsAreArray(ArrayFloatNear({6.47059, 10.698}, kQuantizedTolerance)));
+}
+
+// Tests for reduce_prod
+
+TEST(ConstFloatProdOpTest, NotKeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  ProdOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
+                     {4}, {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({3.162341376e+11, 1.9619905536e+12})));
+}
+
+TEST(ConstFloatProdOpTest, KeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  ProdOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {3}},
+                     {2}, {0, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(
+                  ArrayFloatNear({7.74592e+06, 1.197504e+08, 6.6889152e+08})));
+}
+
+TEST(DynamicFloatProdOpTest, NotKeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  ProdOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
+                       {TensorType_FLOAT32, {2}}, {TensorType_INT32, {4}},
+                       false);
+  std::vector<int> axis = {1, 0, -3, -3};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear({3.16234143225e+11, 1.9619905536e+12})));
+}
+
+TEST(DynamicFloatProdOpTest, KeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  ProdOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
+                       {TensorType_FLOAT32, {3}}, {TensorType_INT32, {2}},
+                       true);
+  std::vector<int> axis = {0, 2};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(
+                  ArrayFloatNear({7.74592e+06, 1.197504e+08, 6.6889152e+08})));
+}
+
+TEST(DynamicFloatProdOpTest, Scale) {
+  std::vector<float> data = {9.527};
+  ProdOpDynamicModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}},
+                       {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
+}
+
+// Tests for reduce_max
+
+TEST(ConstFloatMaxOpTest, NotKeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MaxOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {2}},
+                    {4}, {1, 0, -3, -3}, false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({23, 24})));
+}
+
+TEST(ConstFloatMaxOpTest, KeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MaxOpConstModel m({TensorType_FLOAT32, {4, 3, 2}}, {TensorType_FLOAT32, {3}},
+                    {2}, {0, 2}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({20, 22, 24})));
+}
+
+TEST(DynamicFloatMaxOpTest, NotKeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MaxOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
+                      {TensorType_FLOAT32, {2}}, {TensorType_INT32, {4}},
+                      false);
+  std::vector<int> axis = {1, 0, -3, -3};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({23, 24})));
+}
+
+TEST(DynamicFloatMaxOpTest, KeepDims) {
+  std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
+                             9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
+                             17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0};
+  MaxOpDynamicModel m({TensorType_FLOAT32, {4, 3, 2}},
+                      {TensorType_FLOAT32, {3}}, {TensorType_INT32, {2}}, true);
+  std::vector<int> axis = {0, 2};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({20, 22, 24})));
+}
+
+TEST(DynamicFloatMaxOpTest, Scale) {
+  std::vector<float> data = {9.527};
+  MaxOpDynamicModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.SetAxis(axis);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
+}
+
+TEST(ConstUint8MaxOpTest, NotKeepDims) {
+  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MaxOpConstModel m({TensorType_UINT8, {1, 3, 2}, -1.0, 1.0},
+                    {TensorType_UINT8, {2}, -1.0, 1.0}, {1}, {1}, false);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({0.501961, 0.603922}, kQuantizedTolerance)));
+}
+
+TEST(ConstUint8MaxOpTest, KeepDims) {
+  float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
+  MaxOpConstModel m({TensorType_UINT8, {3, 2}, -1.0, 1.0},
+                    {TensorType_UINT8, {3}, -1.0, 1.0}, {1}, {1}, true);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({0.4, 0.4, 0.603922}, kQuantizedTolerance)));
+}
+
+TEST(DynamicUint8MaxOpTest, NotKeepDims) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
+  std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
+  MaxOpDynamicModel m({TensorType_UINT8, {2, 2}, -5.0, 2.0},
+                      {TensorType_UINT8, {2}, -5.0, 2.0},
+                      {TensorType_INT32, {1}}, false);
+  std::vector<int> axis = {1};
+  m.SetAxis(axis);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({1.2902, 0.247059}, kQuantizedTolerance)));
+}
+
+TEST(DynamicUint8MaxOpTest, KeepDims) {
+  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
+  std::vector<float> data = {11.14, -0.14, 7.423, 0.879};
+  MaxOpDynamicModel m({TensorType_UINT8, {2, 2}, -10.0, 12.0},
+                      {TensorType_UINT8, {2}, -10.0, 12.0},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.SetAxis(axis);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({11.1294, 0.862745}, kQuantizedTolerance)));
 }
 
 }  // namespace

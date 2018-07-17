@@ -46,6 +46,12 @@ XlaOp Erf(XlaOp x);
 // Computes an approximation of the inverse of the error function.
 XlaOp ErfInv(XlaOp x);
 
+// Computes an approximation of the lgamma function.
+XlaOp Lgamma(XlaOp input);
+
+// Computes an approximation of the digamma function.
+XlaOp Digamma(XlaOp input);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_
