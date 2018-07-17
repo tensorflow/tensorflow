@@ -265,13 +265,12 @@ bool Converter::isRegistered(const Node * node) {
 bool Converter::isCandidate(const Node * node) {
     if (!node->IsOp() || !isRegistered(node))
         return false;
-    const char * const gpuDeviceSubStr = "gpu";
     const NodeDef& nodeDef = node->def();
     // If user has specified a non-GPU device.
-    if (!nodeDef.device().empty() && !contains(nodeDef.device(), gpuDeviceSubStr))
+    if (!nodeDef.device().empty() && !contains(nodeDef.device(), Converter::gpuDeviceSubStr))
         return false;
     // If runtime has assigned a non-GPU device.
-    if (!node->assigned_device_name().empty() && !contains(node->assigned_device_name(), gpuDeviceSubStr))
+    if (!node->assigned_device_name().empty() && !contains(node->assigned_device_name(), Converter::gpuDeviceSubStr))
         return false;
     return true;
 }

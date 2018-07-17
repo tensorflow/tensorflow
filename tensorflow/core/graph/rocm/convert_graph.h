@@ -137,13 +137,16 @@ struct Converter {
     static const string postfix;
     static const string param_prefix;
     static const string literal_prefix;
+    static const string gpuDeviceSubStr;
     string device;
 };
 
 const string Converter::prefix = "@";
 const string Converter::postfix = "@";
 const string Converter::param_prefix = "@param";
-const string Converter::literal_prefix = "@literal"; 
+const string Converter::literal_prefix = "@literal";
+const string Converter::gpuDeviceSubStr = "GPU";
+
  
 Status AddActivation(Converter&, const NodeDef&, const T_RTG_INST_REFS&);
 Status AddBiasAdd(Converter&, const NodeDef&, const T_RTG_INST_REFS&);
