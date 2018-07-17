@@ -87,7 +87,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     self._devices = [device_util.resolve(d) for d in devices]
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerDevice(
-            {d: i for i, d in enumerate(devices)})
+        {d: i for i, d in enumerate(devices)})
     self._cross_tower_ops = cross_tower_ops
     self._prefetch_on_device = prefetch_on_device
     # TODO(yuefengz): consider setting the default device.
