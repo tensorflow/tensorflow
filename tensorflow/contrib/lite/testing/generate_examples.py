@@ -879,14 +879,22 @@ def make_reduce_tests(reduce_op):
 
 def make_mean_tests(zip_path):
   """Make a set of tests to do mean."""
-
   return make_reduce_tests(tf.reduce_mean)(zip_path)
 
 
 def make_sum_tests(zip_path):
   """Make a set of tests to do sum."""
-
   return make_reduce_tests(tf.reduce_sum)(zip_path)
+
+
+def make_reduce_prod_tests(zip_path):
+  """Make a set of tests to do prod."""
+  return make_reduce_tests(tf.reduce_prod)(zip_path)
+
+
+def make_reduce_max_tests(zip_path):
+  """Make a set of tests to do max."""
+  return make_reduce_tests(tf.reduce_max)(zip_path)
 
 
 def make_exp_tests(zip_path):

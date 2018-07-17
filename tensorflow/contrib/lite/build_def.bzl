@@ -234,6 +234,8 @@ def generated_test_models():
         "padv2",
         "prelu",
         "pow",
+        "reduce_max",
+        "reduce_prod",
         "relu",
         "relu1",
         "relu6",
