@@ -793,6 +793,19 @@ py_test(
 )
 
 py_test(
+    name = "training_utils_test",
+    size = "medium",
+    srcs = ["engine/training_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],

@@ -150,6 +150,7 @@ def gen_api_init_files(
         visibility = ["//visibility:public"],
         deps = [
             package_dep,
+            "//tensorflow/python:util",
             "//tensorflow/python/tools/api/generator:doc_srcs",
         ],
     )

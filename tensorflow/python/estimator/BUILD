@@ -707,6 +707,14 @@ py_library(
 )
 
 py_library(
+    name = "expect_h5py_installed",
+    # This is a dummy rule used as a numpy dependency in open-source.
+    # We expect h5py to already be installed on the system, e.g. via
+    # `pip install h5py'
+    visibility = ["//visibility:public"],
+)
+
+py_library(
     name = "expect_six_installed",
     # This is a dummy rule used as a numpy dependency in open-source.
     # We expect six to already be installed on the system, e.g. via

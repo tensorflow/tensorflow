@@ -100,6 +100,7 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 %}
 
 %ignoreall
@@ -107,6 +108,7 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 %unignore calib_convert;
 %unignore get_linked_tensorrt_version;
 %unignore get_loaded_tensorrt_version;
+%unignore is_tensorrt_enabled;
 
 %{
 
@@ -167,7 +169,8 @@ version_struct get_linked_tensorrt_version() {
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
   return s;
 }
-version_struct get_loaded_tensorrt_version(){
+
+version_struct get_loaded_tensorrt_version() {
   // Return the version from the loaded library.
   version_struct s;
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -179,11 +182,16 @@ version_struct get_loaded_tensorrt_version(){
   return s;
 }
 
+bool is_tensorrt_enabled() {
+  return tensorflow::tensorrt::IsGoogleTensorRTEnabled();
+}
+
 %}
 
 std::pair<string, string> calib_convert(
     string graph_def_string, bool is_dyn_op);
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
+bool is_tensorrt_enabled();
 
 %unignoreall

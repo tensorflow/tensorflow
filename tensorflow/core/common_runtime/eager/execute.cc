@@ -512,7 +512,8 @@ Status EagerLocalExecute(EagerOperation* op,
     // See WARNING comment in Execute (before kernel->Run) - would be nice to
     // rework to avoid this subtlety.
     tf_shared_lock l(*ctx->FunctionsMu());
-    status = KernelAndDevice::Init(ndef, ctx->func_lib(device), kernel);
+    status = KernelAndDevice::Init(ndef, ctx->func_lib(device), ctx->runner(),
+                                   kernel);
     if (!status.ok()) {
       delete kernel;
       return status;

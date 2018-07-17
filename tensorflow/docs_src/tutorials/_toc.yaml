@@ -44,6 +44,8 @@ toc:
 - title: ML at production scale
   style: accordion
   section:
+  - title: Linear model with Estimators
+    path: /tutorials/estimators/linear
   - title: Wide and deep learning
     path: https://github.com/tensorflow/models/tree/master/official/wide_deep
     status: external

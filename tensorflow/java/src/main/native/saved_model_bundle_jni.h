@@ -26,10 +26,10 @@ extern "C" {
  * Class:     org_tensorflow_SavedModelBundle
  * Method:    load
  * Signature:
- * (Ljava/lang/String;[Ljava/lang/String;[B)Lorg/tensorflow/SavedModelBundle;
+ * (Ljava/lang/String;[Ljava/lang/String;[B;[B)Lorg/tensorflow/SavedModelBundle;
  */
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
-    JNIEnv *, jclass, jstring, jobjectArray, jbyteArray);
+    JNIEnv *, jclass, jstring, jobjectArray, jbyteArray, jbyteArray);
 
 #ifdef __cplusplus
 }  // extern "C"

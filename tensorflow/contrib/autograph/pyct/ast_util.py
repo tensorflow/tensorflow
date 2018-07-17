@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import ast
 
+import collections
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
@@ -184,7 +185,6 @@ class PatternMatcher(gast.NodeVisitor):
         if v != p:
           return self.no_match()
 
-
 def matches(node, pattern):
   """Basic pattern matcher for AST.
 
@@ -251,3 +251,32 @@ def apply_to_single_assignments(targets, values, apply_fn):
         apply_to_single_assignments(target_el, value_el, apply_fn)
     else:
       apply_fn(target, values)
+
+
+def iter_fields(node):
+  for field in sorted(node._fields):
+    try:
+      yield getattr(node, field)
+    except AttributeError:
+      pass
+
+
+def iter_child_nodes(node):
+  for field in iter_fields(node):
+    if isinstance(field, gast.AST):
+      yield field
+    elif isinstance(field, list):
+      for item in field:
+        if isinstance(item, gast.AST):
+          yield item
+
+
+def parallel_walk(node_a, node_b):
+  todo_a = collections.deque([node_a])
+  todo_b = collections.deque([node_b])
+  while todo_a and todo_b:
+    node_a = todo_a.popleft()
+    node_b = todo_b.popleft()
+    todo_a.extend(iter_child_nodes(node_a))
+    todo_b.extend(iter_child_nodes(node_b))
+    yield node_a, node_b

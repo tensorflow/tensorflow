@@ -846,6 +846,7 @@ tf_cuda_library(
         "util/sparse/sparse_tensor.h",
         "util/stat_summarizer.h",
         "util/stat_summarizer_options.h",
+        "util/status_util.h",
         "util/stream_executor_util.h",
         "util/strided_slice_op.h",
         "util/tensor_format.h",
@@ -2464,6 +2465,7 @@ tf_cuda_library(
             "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/stats_calculator.*",
             "util/version_info.cc",
         ],
     ) + select({
@@ -2490,6 +2492,7 @@ tf_cuda_library(
         ":protos_all_proto_text",
         ":error_codes_proto_text",
         ":protos_all_cc",
+        ":stats_calculator_portable",
         ":version_lib",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",

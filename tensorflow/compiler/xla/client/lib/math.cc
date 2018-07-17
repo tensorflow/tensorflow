@@ -149,4 +149,124 @@ XlaOp ErfInv(XlaOp x) {
   });
 }
 
+namespace {
+// Coefficients for the Lanczos approximation of the gamma function. The
+// coefficients are uniquely determined by the choice of g and n (kLanczosGamma
+// and kLanczosCoefficients.size() + 1). The coefficients below correspond to
+// [7, 9]. [5, 7], [7, 9], [9, 10], and [607/128.0, 15] were evaluated and [7,
+// 9] seemed to be the least sensitive to the quality of the log function. In
+// particular, [5, 7] is the only choice where -1.5e-5 <= lgamma(2) <= 1.5e-5
+// for a particularly inaccurate log function.
+static constexpr double kLanczosGamma = 7;  // aka g
+static constexpr double kBaseLanczosCoeff = 0.99999999999980993227684700473478;
+static constexpr std::array<double, 8> kLanczosCoefficients = {
+    676.520368121885098567009190444019, -1259.13921672240287047156078755283,
+    771.3234287776530788486528258894,   -176.61502916214059906584551354,
+    12.507343278686904814458936853,     -0.13857109526572011689554707,
+    9.984369578019570859563e-6,         1.50563273514931155834e-7};
+}  // namespace
+
+// Compute the Lgamma function using Lanczos' approximation from "A Precision
+// Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
+// series B. Vol. 1:
+// lgamma(z + 1) = (log(2) + log(pi)) / 2 + (z + 1/2) * log(t(z)) - t(z) + A(z)
+// t(z) = z + kLanczosGamma + 1/2
+// A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
+xla::XlaOp Lgamma(xla::XlaOp input) {
+  xla::XlaOp one_half = xla::ScalarLike(input, 0.5);
+  xla::XlaOp one = xla::ScalarLike(input, 1);
+
+  xla::XlaOp pi = xla::ScalarLike(input, M_PI);
+  xla::XlaOp log_pi = xla::ScalarLike(input, std::log(M_PI));
+  xla::XlaOp log_sqrt_two_pi =
+      xla::ScalarLike(input, (std::log(2) + std::log(M_PI)) / 2);
+
+  xla::XlaOp lanczos_gamma_plus_one_half =
+      xla::ScalarLike(input, kLanczosGamma + 0.5);
+  xla::XlaOp log_lanczos_gamma_plus_one_half =
+      xla::ScalarLike(input, std::log(kLanczosGamma + 0.5));
+
+  xla::XlaOp base_lanczos_coeff = xla::ScalarLike(input, kBaseLanczosCoeff);
+
+  // If the input is less than 0.5 use Gauss's reflection formula:
+  // gamma(x) = pi / sin(pi * x) * gamma(1 - x)
+  xla::XlaOp need_to_reflect = xla::Lt(xla::Real(input), one_half);
+  xla::XlaOp z = xla::Select(need_to_reflect, -input, input - one);
+
+  xla::XlaOp x = base_lanczos_coeff;
+  for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    xla::XlaOp lanczos_coefficient =
+        xla::ScalarLike(input, kLanczosCoefficients[i]);
+    xla::XlaOp index = xla::ScalarLike(input, i);
+    x = x + lanczos_coefficient / (z + index + one);
+  }
+
+  // To improve accuracy on platforms with less-precise log implementations,
+  // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
+  // the device.
+  // log(t) = log(kLanczosGamma + 0.5 + z)
+  //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
+  xla::XlaOp t = lanczos_gamma_plus_one_half + z;
+  xla::XlaOp log_t = log_lanczos_gamma_plus_one_half +
+                     xla::Log1p(z / lanczos_gamma_plus_one_half);
+
+  xla::XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + xla::Log(x);
+
+  xla::XlaOp reflection = log_pi - xla::Log(xla::Sin(pi * input)) - log_y;
+  xla::XlaOp result = xla::Select(need_to_reflect, reflection, log_y);
+  return result;
+}
+
+// Compute the Digamma function using Lanczos' approximation from "A Precision
+// Approximation of the Gamma Function". SIAM Journal on Numerical Analysis
+// series B. Vol. 1:
+// digamma(z + 1) = log(t(z)) + A'(z) / A(z) - kLanczosGamma / t(z)
+// t(z) = z + kLanczosGamma + 1/2
+// A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
+// A'(z) = sigma(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
+xla::XlaOp Digamma(xla::XlaOp input) {
+  xla::XlaOp zero = xla::ScalarLike(input, 0);
+  xla::XlaOp one_half = xla::ScalarLike(input, 0.5);
+  xla::XlaOp one = xla::ScalarLike(input, 1);
+
+  xla::XlaOp pi = xla::ScalarLike(input, M_PI);
+
+  xla::XlaOp lanczos_gamma = xla::ScalarLike(input, kLanczosGamma);
+  xla::XlaOp lanczos_gamma_plus_one_half =
+      xla::ScalarLike(input, kLanczosGamma + 0.5);
+  xla::XlaOp log_lanczos_gamma_plus_one_half =
+      xla::ScalarLike(input, std::log(kLanczosGamma + 0.5));
+
+  xla::XlaOp base_lanczos_coeff = xla::ScalarLike(input, kBaseLanczosCoeff);
+
+  // If the input is less than 0.5 use Gauss's reflection formula:
+  // digamma(x) = digamma(1 - x) - pi * cot(pi * x)
+  xla::XlaOp need_to_reflect = xla::Lt(xla::Real(input), one_half);
+  xla::XlaOp z = xla::Select(need_to_reflect, -input, input - one);
+
+  xla::XlaOp num = zero;
+  xla::XlaOp denom = base_lanczos_coeff;
+  for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    xla::XlaOp lanczos_coefficient =
+        xla::ScalarLike(input, kLanczosCoefficients[i]);
+    xla::XlaOp index = xla::ScalarLike(input, i);
+    num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
+    denom = denom + lanczos_coefficient / (z + index + one);
+  }
+
+  // To improve accuracy on platforms with less-precise log implementations,
+  // compute log(lanczos_gamma_plus_one_half) at compile time and use log1p on
+  // the device.
+  // log(t) = log(kLanczosGamma + 0.5 + z)
+  //        = log(kLanczosGamma + 0.5) + log1p(z / (kLanczosGamma + 0.5))
+  xla::XlaOp t = lanczos_gamma_plus_one_half + z;
+  xla::XlaOp log_t = log_lanczos_gamma_plus_one_half +
+                     xla::Log1p(z / lanczos_gamma_plus_one_half);
+
+  xla::XlaOp y = log_t + num / denom - lanczos_gamma / t;
+  xla::XlaOp reflection = y - pi * xla::Cos(pi * input) / xla::Sin(pi * input);
+  xla::XlaOp result = xla::Select(need_to_reflect, reflection, y);
+  return result;
+}
+
 }  // namespace xla
