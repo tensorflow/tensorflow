@@ -293,7 +293,7 @@ class HashTableOpTest(test.TestCase):
       output = table.lookup(input_tensor)
 
       result = output.eval()
-      self.assertAllEqual(["brain", "salad", "n/a"], result)
+      self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
 
 
 class MutableHashTableOpTest(test.TestCase):
