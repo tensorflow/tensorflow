@@ -33,7 +33,7 @@ limitations under the License.
 
 #include <string.h>
 
-#include <poplar/DeviceSet.hpp>
+#include <poplar/DeviceManager.hpp>
 #include <poplar/IPUModel.hpp>
 #include <poplar/Tensor.hpp>
 
@@ -266,7 +266,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
     tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
 
-    static poplar::DeviceSet device_set = poplar::DeviceSet::getDeviceSet();
+    static poplar::DeviceManager device_mgr =
+        poplar::DeviceManager::getDeviceManager();
 
     int num_ipus = cfg.ipu_model_config().num_ipus();
     int tiles_per_ipu = cfg.ipu_model_config().tiles_per_ipu();
@@ -275,8 +276,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       num_ipus = 1;
     }
 
-    static auto device_list = device_set.getDevices(poplar::TargetType::IPU,
-                                                    num_ipus);
+    static auto device_list =
+        device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
 
     if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
       if (device_list.size() > 0) {
@@ -302,7 +303,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
               // Temporary fix to prevent many long compilation times
               if (tiles_per_ipu == 0) {
-                tiles_per_ipu = 4;
+                tiles_per_ipu = 8;
               }
 
               if (tiles_per_ipu > 0) {
