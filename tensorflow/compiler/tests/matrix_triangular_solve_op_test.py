@@ -22,7 +22,7 @@ import itertools
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -35,7 +35,7 @@ def MakePlaceholder(x):
   return array_ops.placeholder(dtypes.as_dtype(x.dtype), shape=x.shape)
 
 
-class MatrixTriangularSolveOpTest(XLATestCase):
+class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
 
   #  MatrixTriangularSolve defined for float64, float32, complex64, complex128
   # (https://www.tensorflow.org/api_docs/python/tf/matrix_triangular_solve)

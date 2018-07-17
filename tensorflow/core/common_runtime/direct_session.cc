@@ -1188,12 +1188,11 @@ Status DirectSession::CreateExecutors(
         delete kernel;
       }
     };
-    params.node_outputs_cb = node_outputs_callback_;
 
     optimizer.Optimize(lib, options_.env, device, &iter->second,
                        /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes in the graph.
+    // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     const DebugOptions& debug_options =
         options.callable_options.run_options().debug_options();
     if (!debug_options.debug_tensor_watch_opts().empty()) {
@@ -1625,15 +1624,6 @@ Status DirectSession::MakeCallable(const CallableOptions& callable_options,
                                    CallableHandle* out_handle) {
   TF_RETURN_IF_ERROR(CheckNotClosed());
   TF_RETURN_IF_ERROR(CheckGraphCreated("MakeCallable()"));
-
-  if (!callable_options.run_options()
-           .debug_options()
-           .debug_tensor_watch_opts()
-           .empty()) {
-    return errors::Unimplemented(
-        "Debug options are not currently supported via the C++ MakeCallable "
-        "interface.");
-  }
 
   std::unique_ptr<ExecutorsAndKeys> ek;
   std::unique_ptr<FunctionInfo> func_info;

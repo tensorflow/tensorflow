@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "string_to_hash_bucket_fast"
-    deprecation_message: "tf.string_to_hash_bucket_fast is deprecated, please use tf.strings.to_hash_bucket_fast instead."
+    deprecated: true
   }
 }

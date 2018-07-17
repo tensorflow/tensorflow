@@ -64,20 +64,29 @@ class XlaSortOpTest(xla_test.XLATestCase):
     if self.device in ["XLA_CPU", "XLA_GPU"]:
       return
 
-    # Only bfloat16 is implemented.
-    bfloat16 = dtypes.bfloat16.as_numpy_dtype
-    if bfloat16 in self.numeric_types:
-      for x in [np.arange(20)]:
+    supported_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
+    for dtype in supported_types.intersection(self.numeric_types):
+      # Use small input size for bfloat16. Otherwise, we'll get duplicate values
+      # after conversion to bfloat16, so the possible resulting index array is
+      # no longer unique.
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        array_size = 20
+        k_options = [0, 1, 2, 10, 20]
+      else:
+        array_size = 200 * 1000
+        k_options = [0, 1, 2, 10, 20, 100, 1000, 200 * 1000]
+      for x in [np.arange(array_size)]:
         np.random.shuffle(x)
-        for k in [0, 1, 2, 10, 20]:
+        for k in k_options:
           indices = x.argsort()[::-1][:k]
 
           def topk(v, k=k):
             return nn_ops.top_k(v, k=k, sorted=True)
 
           self._assertOpOutputMatchesExpected(
-              topk, [x.astype(bfloat16)],
-              expected=[x[indices].astype(bfloat16), indices])
+              topk, [x.astype(dtype)],
+              expected=[x[indices].astype(dtype), indices])
 
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
@@ -99,7 +108,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
           {p: np.array([0., -0., 0., 3., -0., -4., 0., -0.], dtype=bfloat16)})
       self.assertAllEqual(
           np.array([3., 0., 0., 0.], dtype=bfloat16), results[0])
-      self.assertEqual(list([3, 0, 1, 2]), list(results[1]))
+      self.assertEqual(list([3, 0, 2, 6]), list(results[1]))
 
   def testTopKInfinities(self):
     """Tests that positive and negative infinity sort correctly."""

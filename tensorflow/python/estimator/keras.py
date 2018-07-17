@@ -39,12 +39,13 @@ from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
-from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import data_structures
 
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -69,16 +70,22 @@ def _convert_tensor(x):
   return x
 
 
-def _any_variable_initialized():
-  """Check if any variable has been initialized in the Keras model.
+def _any_weight_initialized(keras_model):
+  """Check if any weights has been initialized in the Keras model.
+
+  Args:
+    keras_model: An instance of compiled keras model.
 
   Returns:
-    boolean, True if at least one variable has been initialized, else False.
+    boolean, True if at least one weight has been initialized, else False.
+    Currently keras initialize all weights at get_session().
   """
-  variables = variables_module.global_variables()
-  for v in variables:
-    if getattr(v, '_keras_initialized', False):
-      return True
+  if keras_model is None:
+    return False
+  for layer in keras_model.layers:
+    for weight in layer.weights:
+      if hasattr(weight, '_keras_initialized'):
+        return True
   return False
 
 
@@ -122,8 +129,8 @@ def _create_ordered_io(keras_model, estimator_io, is_input=True):
             'It needs to match one '
             'of the following: %s' % ('input' if is_input else 'output', key,
                                       ', '.join(keras_io_names)))
-      tensors = [_convert_tensor(estimator_io[io_name])
-                 for io_name in keras_io_names]
+    tensors = [_convert_tensor(estimator_io[io_name])
+               for io_name in keras_io_names]
     return tensors
   else:
     # Plain array.
@@ -241,8 +248,17 @@ def _in_place_subclassed_model_state_restoration(model):
   # Restore layers and build attributes
   if (hasattr(model, '_original_attributes_cache') and
       model._original_attributes_cache is not None):
-    model._layers = []
+    # Models have sticky attribute assignment, so we want to be careful to add
+    # back the previous attributes and track Layers by their original names
+    # without adding dependencies on "utility" attributes which Models exempt
+    # when they're constructed.
+    model._layers = data_structures.NoDependency([])
     for name, value in model._original_attributes_cache.items():
+      if not isinstance(value, checkpointable.CheckpointableBase):
+        # If this value is not already checkpointable, it's probably that way
+        # for a reason; we don't want to start tracking data structures that the
+        # original Model didn't.
+        value = data_structures.NoDependency(value)
       setattr(model, name, value)
     model._original_attributes_cache = None
   else:
@@ -509,7 +525,7 @@ def model_to_estimator(keras_model=None,
       keras_model_fn, model_dir=model_dir, config=config)
 
   # Check if we need to call get_weights:
-  if _any_variable_initialized():
+  if _any_weight_initialized(keras_model):
     keras_weights = keras_model.get_weights()
     # Warn if config passed to estimator tries to update GPUOptions. If a
     # session has already been created, the GPUOptions passed to the first

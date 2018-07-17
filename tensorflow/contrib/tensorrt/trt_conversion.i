@@ -100,6 +100,7 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+#include "tensorflow/contrib/tensorrt/convert/utils.h"
 %}
 
 %ignoreall
@@ -108,6 +109,7 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 %unignore calib_convert;
 %unignore get_linked_tensorrt_version;
 %unignore get_loaded_tensorrt_version;
+%unignore is_tensorrt_enabled;
 
 %{
 
@@ -140,7 +142,7 @@ std::pair<string, string> trt_convert(
     return std::pair<string, string>{out_status, ""};
   }
 
-  if(precision_mode < 0 || precision_mode > 2){
+  if (precision_mode < 0 || precision_mode > 2) {
     out_status = "InvalidArgument;Invalid precision_mode";
     return std::pair<string, string>{out_status, ""};
   }
@@ -221,23 +223,32 @@ std::pair<string, string> calib_convert(
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 }
 
-version_struct get_linked_tensorrt_version(){
+version_struct get_linked_tensorrt_version() {
   // Return the version at the link time.
-  const auto &lv = tensorflow::tensorrt::convert::GetLinkedTensorRTVersion();
   version_struct s;
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+  const auto &lv = tensorflow::tensorrt::convert::GetLinkedTensorRTVersion();
   s.vmajor = lv[0];
   s.vminor = lv[1];
   s.vpatch = lv[2];
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
   return s;
 }
-version_struct get_loaded_tensorrt_version(){
+
+version_struct get_loaded_tensorrt_version() {
   // Return the version from the loaded library.
-  const auto &lv = tensorflow::tensorrt::convert::GetLoadedTensorRTVersion();
   version_struct s;
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+  const auto &lv = tensorflow::tensorrt::convert::GetLoadedTensorRTVersion();
   s.vmajor = lv[0];
   s.vminor = lv[1];
   s.vpatch = lv[2];
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
   return s;
+}
+
+bool is_tensorrt_enabled() {
+  return tensorflow::tensorrt::IsGoogleTensorRTEnabled();
 }
 
 %}
@@ -254,5 +265,6 @@ std::pair<string, string> trt_convert(string graph_def_string,
                                       std::vector<int> cached_engine_batches);
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
+bool is_tensorrt_enabled();
 
 %unignoreall

@@ -2932,7 +2932,8 @@ class WhileContext(ControlFlowContext):
 
     return original_body_result, exit_vars
 
-  def BuildLoop(self, pred, body, loop_vars, shape_invariants):
+  def BuildLoop(self, pred, body, loop_vars, shape_invariants,
+                return_same_structure):
     """Add the loop termination condition and body to the graph."""
 
     # Keep original_loop_vars to identify which are TensorArrays
@@ -2943,9 +2944,10 @@ class WhileContext(ControlFlowContext):
     loop_vars = ops.convert_n_to_tensor_or_indexed_slices(loop_vars)
     try:
       self.Enter()
-      # _BuildLoop calls _update_input in several places. _lock ensures a
-      # Session.run call cannot occur between creating and mutating new ops.
-      with ops.get_default_graph()._lock:  # pylint: disable=protected-access
+      # _BuildLoop calls _update_input in several places. _mutation_lock()
+      # ensures a Session.run call cannot occur between creating and mutating
+      # new ops.
+      with ops.get_default_graph()._mutation_lock():  # pylint: disable=protected-access
         original_body_result, exit_vars = self._BuildLoop(
             pred, body, original_loop_vars, loop_vars, shape_invariants)
     finally:
@@ -2959,7 +2961,11 @@ class WhileContext(ControlFlowContext):
     packed_exit_vars = nest.pack_sequence_as(
         structure=original_body_result,
         flat_sequence=exit_vars_with_tensor_arrays)
-    return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
+
+    if return_same_structure:
+      return packed_exit_vars
+    else:
+      return packed_exit_vars[0] if len(exit_vars) == 1 else packed_exit_vars
 
   def _FixControlInputsAndContext(self, enters):
     graph = ops.get_default_graph()
@@ -2999,7 +3005,8 @@ def while_loop(cond,
                back_prop=True,
                swap_memory=False,
                name=None,
-               maximum_iterations=None):
+               maximum_iterations=None,
+               return_same_structure=False):
   """Repeat `body` while the condition `cond` is true.
 
   `cond` is a callable returning a boolean scalar tensor. `body` is a callable
@@ -3075,11 +3082,16 @@ def while_loop(cond,
       to run.  If provided, the `cond` output is AND-ed with an additional
       condition ensuring the number of iterations executed is no greater than
       `maximum_iterations`.
+    return_same_structure: If True, output has same structure as `loop_vars`. If
+      eager execution is enabled, this is ignored (and always treated as True).
 
   Returns:
-    The output tensors for the loop variables after the loop. When the length
-    of `loop_vars` is 1 this is a Tensor, TensorArray or IndexedSlice and when
-    the length of `loop_vars` is greater than 1 it returns a list.
+    The output tensors for the loop variables after the loop.
+     If `return_same_structure` is True, the return value has the same
+     structure as `loop_vars`.
+     If `return_same_structure` is False, the return value is a Tensor,
+     TensorArray or IndexedSlice if the length of `loop_vars` is 1, or a list
+     otherwise.
 
   Raises:
     TypeError: if `cond` or `body` is not callable.
@@ -3134,6 +3146,7 @@ def while_loop(cond,
   happen is that the thread updating `x` can never get ahead of the
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
+
   ```python
   import tensorflow as tf
 
@@ -3215,7 +3228,8 @@ def while_loop(cond,
     # be encapsulated in the root context.
     if loop_context.outer_context is None:
       ops.add_to_collection(ops.GraphKeys.WHILE_CONTEXT, loop_context)
-    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants)
+    result = loop_context.BuildLoop(cond, body, loop_vars, shape_invariants,
+                                    return_same_structure)
     if maximum_iterations is not None:
       return result[1]
     else:

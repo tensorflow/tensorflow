@@ -19,7 +19,7 @@ Table of contents:
 
 The following high level flags specify the details of the input and output
 files. The flag `--output_file` is always required. Additionally, either
-`--graph_def_file` or `--saved_model_dir` is required.
+`--graph_def_file`, `--saved_model_dir` or `--keras_model_file` is required.
 
 *   `--output_file`. Type: string. Specifies the full path of the output file.
 *   `--graph_def_file`. Type: string. Specifies the full path of the input
@@ -27,6 +27,8 @@ files. The flag `--output_file` is always required. Additionally, either
     [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py).
 *   `--saved_model_dir`. Type: string. Specifies the full path to the directory
     containing the SavedModel.
+*   `--keras_model_file`. Type: string. Specifies the full path of the HDF5 file
+    containing the tf.keras model.
 *   `--output_format`. Type: string. Default: `TFLITE`. Specifies the format of
     the output file. Allowed values:
     *   `TFLITE`: TensorFlow Lite FlatBuffer format.

@@ -951,6 +951,19 @@ inline void Relu6(const float* input_data, const RuntimeShape& input_shape,
   }
 }
 
+inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
+                  const RuntimeShape& input_shape, uint8* output_data,
+                  const RuntimeShape& output_shape) {
+  gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const uint8 val = input_data[i];
+    const uint8 clamped =
+        val > max_value ? max_value : val < min_value ? min_value : val;
+    output_data[i] = clamped;
+  }
+}
+
 template <FusedActivationFunctionType Ac>
 void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
                      float* output_data, const RuntimeShape& output_shape) {
@@ -1051,10 +1064,11 @@ inline void L2Normalization(const uint8* input_data,
   }
 }
 
-inline void Add(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+inline void Add(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
@@ -1415,10 +1429,11 @@ inline void BroadcastAddFivefold(
                        output_activation_max, output_data, output_dims);
 }
 
-inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+inline void Mul(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
@@ -1651,10 +1666,11 @@ inline void Div(const float* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+inline void Sub(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
@@ -2259,13 +2275,10 @@ inline int NodeOffset(int b, int h, int w, int height, int width) {
   return (b * height + h) * width + w;
 }
 
-inline void AveragePool(const float* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
-                        float output_activation_min,
-                        float output_activation_max, float* output_data,
-                        const RuntimeShape& output_shape) {
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const float* input_data,
+                        const RuntimeShape& output_shape, float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2274,20 +2287,24 @@ inline void AveragePool(const float* input_data,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           float total = 0.f;
           float filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
@@ -2303,22 +2320,20 @@ inline void AveragePool(const float* input_data,
           }
           const float average = total / filter_count;
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(average, output_activation_min,
-                                           output_activation_max);
+              ActivationFunctionWithMinMax(average, params.float_activation_min,
+                                           params.float_activation_max);
         }
       }
     }
   }
 }
 
-inline void AveragePool(const uint8* input_data,
-                        const RuntimeShape& input_shape, int stride_width,
-                        int stride_height, int pad_width, int pad_height,
-                        int filter_width, int filter_height,
-                        int32 output_activation_min,
-                        int32 output_activation_max, uint8* output_data,
-                        const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
+inline void AveragePool(const PoolParams& params,
+                        const RuntimeShape& input_shape,
+                        const uint8* input_data,
+                        const RuntimeShape& output_shape, uint8* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2327,20 +2342,24 @@ inline void AveragePool(const uint8* input_data,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           int32 acc = 0;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
@@ -2355,8 +2374,8 @@ inline void AveragePool(const uint8* input_data,
             }
           }
           acc = (acc + filter_count / 2) / filter_count;
-          acc = std::max(acc, output_activation_min);
-          acc = std::min(acc, output_activation_max);
+          acc = std::max(acc, params.quantized_activation_min);
+          acc = std::min(acc, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               static_cast<uint8>(acc);
         }
@@ -2365,11 +2384,9 @@ inline void AveragePool(const uint8* input_data,
   }
 }
 
-inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
-                   int stride_width, int stride_height, int pad_width,
-                   int pad_height, int filter_width, int filter_height,
-                   float output_activation_min, float output_activation_max,
-                   float* output_data, const RuntimeShape& output_shape) {
+inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
+                   const float* input_data, const RuntimeShape& output_shape,
+                   float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2378,20 +2395,24 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           float sum_squares = 0.f;
           int filter_count = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
@@ -2408,19 +2429,18 @@ inline void L2Pool(const float* input_data, const RuntimeShape& input_shape,
           }
           const float l2pool_result = std::sqrt(sum_squares / filter_count);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(l2pool_result, output_activation_min,
-                                           output_activation_max);
+              ActivationFunctionWithMinMax(l2pool_result,
+                                           params.float_activation_min,
+                                           params.float_activation_max);
         }
       }
     }
   }
 }
 
-inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int filter_width, int filter_height,
-                    float output_activation_min, float output_activation_max,
-                    float* output_data, const RuntimeShape& output_shape) {
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const float* input_data, const RuntimeShape& output_shape,
+                    float* output_data) {
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2429,20 +2449,24 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           float max = std::numeric_limits<float>::lowest();
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -2456,22 +2480,21 @@ inline void MaxPool(const float* input_data, const RuntimeShape& input_shape,
             }
           }
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
-              ActivationFunctionWithMinMax(max, output_activation_min,
-                                           output_activation_max);
+              ActivationFunctionWithMinMax(max, params.float_activation_min,
+                                           params.float_activation_max);
         }
       }
     }
   }
 }
 
-inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
-                    int stride_width, int stride_height, int pad_width,
-                    int pad_height, int filter_width, int filter_height,
-                    int32 output_activation_min, int32 output_activation_max,
-                    uint8* output_data, const RuntimeShape& output_shape) {
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  TFLITE_DCHECK_GE(output_activation_min, 0);
-  TFLITE_DCHECK_LE(output_activation_max, 255);
+inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
+                    const uint8* input_data, const RuntimeShape& output_shape,
+                    uint8* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  TFLITE_DCHECK_GE(params.quantized_activation_min, 0);
+  TFLITE_DCHECK_LE(params.quantized_activation_max, 255);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
@@ -2480,20 +2503,24 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const int stride_height = params.stride_height;
+  const int stride_width = params.stride_width;
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int channel = 0; channel < depth; ++channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
           // Compute the boundaries of the filter region clamped so as to
           // ensure that the filter window fits in the input array.
           const int filter_x_start = std::max(0, -in_x_origin);
           const int filter_x_end =
-              std::min(filter_width, input_width - in_x_origin);
+              std::min(params.filter_width, input_width - in_x_origin);
           const int filter_y_start = std::max(0, -in_y_origin);
           const int filter_y_end =
-              std::min(filter_height, input_height - in_y_origin);
+              std::min(params.filter_height, input_height - in_y_origin);
           uint8 max = 0;
           for (int filter_y = filter_y_start; filter_y < filter_y_end;
                ++filter_y) {
@@ -2506,8 +2533,8 @@ inline void MaxPool(const uint8* input_data, const RuntimeShape& input_shape,
                   input_data[Offset(input_shape, batch, in_y, in_x, channel)]);
             }
           }
-          max = std::max<uint8>(max, output_activation_min);
-          max = std::min<uint8>(max, output_activation_max);
+          max = std::max<uint8>(max, params.quantized_activation_min);
+          max = std::min<uint8>(max, params.quantized_activation_max);
           output_data[Offset(output_shape, batch, out_y, out_x, channel)] =
               static_cast<uint8>(max);
         }
@@ -3342,7 +3369,7 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
-                         int begin_mask, int end_mask,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
                          const std::vector<int>& start_indices,
                          const std::vector<int>& stop_indices,
                          const std::vector<int>& strides, T* output_data,
@@ -3354,20 +3381,24 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
   TFLITE_DCHECK_EQ(strides.size(), 4);
   const int start_b = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 3);
-  const int stop_b = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 3);
+  const int stop_b =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 3, start_b);
   const int start_h = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 2);
-  const int stop_h = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 2);
+  const int stop_h =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 2, start_h);
   const int start_w = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 1);
-  const int stop_w = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 1);
+  const int stop_w =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 1, start_w);
   const int start_d = strided_slice::StartForAxis(begin_mask, start_indices,
                                                   strides, input_dims.sizes, 0);
-  const int stop_d = strided_slice::StopForAxis(end_mask, stop_indices, strides,
-                                                input_dims.sizes, 0);
+  const int stop_d =
+      strided_slice::StopForAxis(end_mask, shrink_axis_mask, stop_indices,
+                                 strides, input_dims.sizes, 0, start_d);
 
   T* out_ptr = output_data;
   for (int in_b = start_b;
@@ -3437,7 +3468,8 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    const int* output_dims, const int input_num_dims,
                    const int output_num_dims, const int* axis,
                    const int num_axis, int* input_iter,
-                   Out reducer(Out current, const In in), Out* output_data) {
+                   Out reducer(const Out current, const In in),
+                   Out* output_data) {
   // Reset input iterator.
   TFLITE_DCHECK(input_num_dims > 0);
   for (int idx = 0; idx < input_num_dims; ++idx) {
@@ -3455,11 +3487,12 @@ inline bool Reduce(const In* input_data, const int* input_dims,
   return true;
 }
 
-inline bool ResolveAxis(const int num_dims, const int* axis, const int num_axis,
-                        int* out_axis, int* out_num_axis) {
+inline bool ResolveAxis(const int num_dims, const int* axis,
+                        const int64_t num_axis, int* out_axis,
+                        int* out_num_axis) {
   *out_num_axis = 0;  // Just in case.
   // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
-  for (int idx = 0; idx < num_axis; ++idx) {
+  for (int64_t idx = 0; idx < num_axis; ++idx) {
     // Handle negative index.
     int current = axis[idx] < 0 ? (axis[idx] + num_dims) : axis[idx];
     TFLITE_DCHECK(current >= 0 && current < num_dims);
@@ -3485,13 +3518,31 @@ inline bool ReduceSumImpl(const In* input_data, const int* input_dims,
                           const int output_num_dims, const int* axis,
                           const int num_axis, int* input_iter,
                           Out* output_data) {
-  auto reducer = [](Out current, const In in) -> Out {
+  auto reducer = [](const Out current, const In in) -> Out {
     const Out actual_in = static_cast<Out>(in);
     return current + actual_in;
   };
   return Reduce<In, Out>(input_data, input_dims, output_dims, input_num_dims,
                          output_num_dims, axis, num_axis, input_iter, reducer,
                          output_data);
+}
+
+template <typename T>
+inline bool InitTensorDataForReduce(const int* dims, const int num_dims,
+                                    const T init_value, T* data) {
+  size_t num_elements = 1;
+  for (int idx = 0; idx < num_dims; ++idx) {
+    size_t current = static_cast<size_t>(dims[idx]);
+    // Overflow prevention.
+    if (num_elements > std::numeric_limits<size_t>::max() / current) {
+      return false;
+    }
+    num_elements *= current;
+  }
+  for (size_t idx = 0; idx < num_elements; ++idx) {
+    data[idx] = init_value;
+  }
+  return true;
 }
 
 // Computes the sum of elements across dimensions given in axis.
@@ -3502,17 +3553,9 @@ inline bool Sum(const T* input_data, const int* input_dims,
                 const int* axis, const int num_axis_dimensions, bool keep_dims,
                 int* temp_index, int* resolved_axis) {
   // Reset output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    size_t current = static_cast<size_t>(output_dims[idx]);
-    // Overflow prevention.
-    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_outputs *= current;
-  }
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-    output_data[idx] = T();
+  if (!InitTensorDataForReduce(output_dims, output_num_dims, static_cast<T>(0),
+                               output_data)) {
+    return false;
   }
 
   // Resolve axis.
@@ -3525,6 +3568,61 @@ inline bool Sum(const T* input_data, const int* input_dims,
   return ReduceSumImpl<T, T>(input_data, input_dims, output_dims,
                              input_num_dims, output_num_dims, resolved_axis,
                              num_resolved_axis, temp_index, output_data);
+}
+
+// Computes the max of elements across dimensions given in axis.
+template <typename T>
+inline bool ReduceMax(const T* input_data, const int* input_dims,
+                      const int input_num_dims, T* output_data,
+                      const int* output_dims, const int output_num_dims,
+                      const int* axis, const int64_t num_axis_dimensions,
+                      bool keep_dims, int* temp_index, int* resolved_axis) {
+  T init_value = std::numeric_limits<T>::lowest();
+  // Reset output data.
+  if (!InitTensorDataForReduce(output_dims, output_num_dims, init_value,
+                               output_data)) {
+    return false;
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  auto reducer = [](const T current, const T in) -> T {
+    return (in > current) ? in : current;
+  };
+  return Reduce<T, T>(input_data, input_dims, output_dims, input_num_dims,
+                      output_num_dims, resolved_axis, num_resolved_axis,
+                      temp_index, reducer, output_data);
+}
+
+// Computes the prod of elements across dimensions given in axis.
+template <typename T>
+inline bool ReduceProd(const T* input_data, const int* input_dims,
+                       const int input_num_dims, T* output_data,
+                       const int* output_dims, const int output_num_dims,
+                       const int* axis, const int64_t num_axis_dimensions,
+                       bool keep_dims, int* temp_index, int* resolved_axis) {
+  // Reset output data.
+  if (!InitTensorDataForReduce(output_dims, output_num_dims, static_cast<T>(1),
+                               output_data)) {
+    return false;
+  }
+
+  // Resolve axis.
+  int num_resolved_axis = 0;
+  if (!ResolveAxis(input_num_dims, axis, num_axis_dimensions, resolved_axis,
+                   &num_resolved_axis)) {
+    return false;
+  }
+
+  auto reducer = [](const T current, const T in) -> T { return in * current; };
+  return Reduce<T, T>(input_data, input_dims, output_dims, input_num_dims,
+                      output_num_dims, resolved_axis, num_resolved_axis,
+                      temp_index, reducer, output_data);
 }
 
 // Computes the mean of elements across dimensions given in axis.
@@ -3699,9 +3797,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-template <typename T1, typename T2, typename T3>
-void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
-            T2* output_data, const Dims<4>& output_dims) {
+template <typename T1, typename T2, typename T3, typename Cmp>
+void ArgMinMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
+               T2* output_data, const Dims<4>& output_dims, const Cmp& cmp) {
   // The current ArgMax implemention can only determine the index of the maximum
   // value in the last dimension. So the axis argument is ignored.
 
@@ -3714,17 +3812,26 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
   const int depth = ArraySize(input_dims, 0);
 
   for (int i = 0; i < outer_size; ++i) {
-    auto max_value = input_data[i * depth];
-    int max_index = 0;
+    auto min_max_value = input_data[i * depth];
+    int min_max_index = 0;
     for (int d = 1; d < depth; ++d) {
       const auto& curr_value = input_data[i * depth + d];
-      if (curr_value > max_value) {
-        max_value = curr_value;
-        max_index = d;
+      if (cmp(curr_value, min_max_value)) {
+        min_max_value = curr_value;
+        min_max_index = d;
       }
     }
-    output_data[i] = max_index;
+    output_data[i] = min_max_index;
   }
+}
+
+// TODO(renjieliu): Remove this one.
+template <typename T1, typename T2, typename T3>
+void ArgMax(const T3* axis, const T1* input_data,
+            const tflite::Dims<4>& input_dims, T2* output_data,
+            const tflite::Dims<4>& output_dims) {
+  ArgMinMax(axis, input_data, input_dims, output_data, output_dims,
+            std::greater<T1>());
 }
 
 template <typename T>
@@ -4066,6 +4173,36 @@ inline void SparseToDense(const std::vector<std::vector<I>>& indices,
     const T value = values[i];
     output_data[Offset(output_dims, index[3], index[2], index[1], index[0])] =
         value;
+  }
+}
+
+template <typename T>
+inline void Pow(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T* output_data, const Dims<4>& output_dims) {
+  const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = std::pow(input1_data[i], input2_data[i]);
+  }
+}
+
+template <typename T>
+inline void BroadcastPow(const T* input1_data, const Dims<4>& input1_dims,
+                         const T* input2_data, const Dims<4>& input2_dims,
+                         T* output_data, const Dims<4>& output_dims) {
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(input1_dims, input2_dims, &desc1, &desc2);
+  for (int b = 0; b < ArraySize(output_dims, 3); ++b) {
+    for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
+      for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
+        for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              std::pow(input1_data[SubscriptToIndex(desc1, c, x, y, b)],
+                       input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+        }
+      }
+    }
   }
 }
 

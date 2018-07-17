@@ -151,17 +151,13 @@ class TemplatesTest(test.TestCase):
     self.assertEqual(node.func.id, 'bar')
     self.assertEqual(node.func.args[0].id, 'baz')
 
-  def replace_as_expression_restrictions(self):
+  def test_replace_as_expression_restrictions(self):
     template = """
       foo(a)
       bar(b)
     """
     with self.assertRaises(ValueError):
       templates.replace_as_expression(template)
-    with self.assertRaises(ValueError):
-      templates.replace('')
-    with self.assertRaises(ValueError):
-      templates.replace('a = b')
 
 
 if __name__ == '__main__':

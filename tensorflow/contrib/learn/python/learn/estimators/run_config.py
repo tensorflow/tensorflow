@@ -240,6 +240,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
+               protocol=None,
                evaluation_master='',
                model_dir=None,
                session_config=None):
@@ -289,6 +290,8 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
       session_config: a ConfigProto used to set session parameters, or None.
         Note - using this argument, it is easy to provide settings which break
         otherwise perfectly good models. Use with care.
+      protocol: An optional argument which specifies the protocol used when
+        starting server. None means default to grpc.
     """
     # Neither parent class calls super().__init__(), so here we have to
     # manually call their __init__() methods.
@@ -313,6 +316,7 @@ class RunConfig(ClusterConfig, core_run_config.RunConfig):
     self._save_summary_steps = save_summary_steps
     self._save_checkpoints_secs = save_checkpoints_secs
     self._log_step_count_steps = log_step_count_steps
+    self._protocol = protocol
     self._session_config = session_config
     if save_checkpoints_secs == RunConfig._USE_DEFAULT:
       if save_checkpoints_steps is None:

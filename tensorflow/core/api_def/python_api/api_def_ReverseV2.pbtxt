@@ -5,10 +5,10 @@ op {
   }
   endpoint {
     name: "reverse"
-    deprecation_message: "tf.reverse is deprecated, please use tf.manip.reverse instead."
+    deprecated: true
   }
   endpoint {
     name: "reverse_v2"
-    deprecation_message: "tf.reverse_v2 is deprecated, please use tf.manip.reverse instead."
+    deprecated: true
   }
 }

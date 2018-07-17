@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -87,6 +89,8 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
 }
 }  // namespace
 Status GraphCompiler::Compile() {
+  // Check that the graph has no illegal cycles.
+  TF_RETURN_IF_ERROR(graph::ValidateGraphHasNoCycle(*graph_));
   // Maintain a mapping from node id to node outputs.
   using NodeOutputs = std::vector<TensorValue>;
   std::vector<NodeOutputs> output_registry(graph_->num_node_ids());
@@ -157,9 +161,8 @@ Status GraphCompiler::Compile() {
     outputs.resize(n->num_outputs());
     for (int o = 0; o < n->num_outputs(); ++o) {
       outputs[o] = op_context.release_output(o);
-      if (*op_context.is_output_dead() || outputs[o].tensor == nullptr) {
+      if (outputs[o].tensor == nullptr) {
         return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                (*op_context.is_output_dead() ? "(dead)" : ""),
                                 SummarizeNode(*n));
       }
     }
@@ -227,7 +230,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   XlaContext& context = XlaContext::Get(op_context);
   auto* b = context.builder();
 
-  auto output_handle = b->Call(*result.computation, handles);
+  auto output_handle = xla::Call(b, *result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
   // that it can fit into future computations.
   int computation_output = 0;
@@ -236,7 +239,7 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
       xla_op_context.SetConstantOutput(i, result.outputs[i].constant_value);
     } else {
       xla_op_context.SetOutput(
-          i, b->GetTupleElement(output_handle, computation_output));
+          i, xla::GetTupleElement(output_handle, computation_output));
       ++computation_output;
     }
   }

@@ -155,7 +155,7 @@ void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
     tensorflow::shape_inference::ShapeHandle shape;
     status->status =
         ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
-    if (status->status.ok()) return;
+    if (!status->status.ok()) return;
     shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype());
   }
   ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);

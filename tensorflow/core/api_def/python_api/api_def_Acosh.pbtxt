@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "acosh"
-    deprecation_message: "tf.acosh is deprecated, please use tf.math.acosh instead."
+    deprecated: true
   }
 }

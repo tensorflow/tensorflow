@@ -7,8 +7,8 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
 py_library(
     name = "contrib_py",
@@ -26,8 +26,6 @@ py_library(
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/checkpoint/python:checkpoint",
-        "//tensorflow/contrib/cloud:cloud_py",
-        "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/coder:coder_py",
         "//tensorflow/contrib/compiler:compiler_py",
@@ -45,7 +43,6 @@ py_library(
         "//tensorflow/contrib/factorization:factorization_py",
         "//tensorflow/contrib/feature_column:feature_column_py",
         "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/contrib/fused_conv:fused_conv_py",
         "//tensorflow/contrib/gan",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/contrib/grid_rnn:grid_rnn_py",
@@ -105,6 +102,7 @@ py_library(
         "//tensorflow/contrib/summary:summary",
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
+        "//tensorflow/contrib/tensorrt:init_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",
@@ -115,15 +113,23 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
-        "//tensorflow/contrib/tensorrt:init_py",
-    ]) + select({
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka",
         ],
         "//conditions:default": [],
-    }) + if_not_windows([
+    }) + select({
+        "//tensorflow:with_aws_support_windows_override": [],
+        "//tensorflow:with_aws_support": [
+            "//tensorflow/contrib/kinesis",
+        ],
+        "//conditions:default": [],
+    }) + if_not_windows_cuda([
+        "//tensorflow/contrib/fused_conv:fused_conv_py",  # unresolved symbols, need to export more symbols
+    ]) + if_not_windows([
+        "//tensorflow/contrib/bigtable",  # depends on bigtable
+        "//tensorflow/contrib/cloud:cloud_py",  # doesn't compile on Windows
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),
@@ -154,6 +160,12 @@ cc_library(
             "//tensorflow/contrib/kafka:dataset_kernels",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_aws_support_windows_override": [],
+        "//tensorflow:with_aws_support": [
+            "//tensorflow/contrib/kinesis:dataset_kernels",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -181,6 +193,12 @@ cc_library(
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka:dataset_ops_op_lib",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:with_aws_support_windows_override": [],
+        "//tensorflow:with_aws_support": [
+            "//tensorflow/contrib/kinesis:dataset_ops_op_lib",
         ],
         "//conditions:default": [],
     }),

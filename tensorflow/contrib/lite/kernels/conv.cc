@@ -309,18 +309,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* hwcn_weights =
         &context->tensors[node->temporaries->data[data->hwcn_weights_index]];
     hwcn_weights->type = data_type;
-    hwcn_weights->allocation_type = kTfLiteDynamic;
-    // Make sure we release any previous allocations before we reallocate.
-    // TODO(petewarden): Persistent arenas would be a better fit for this, but
-    // they aren't fully implemented yet.
-    if (hwcn_weights->data.raw) {
-      free(hwcn_weights->data.raw);
-      hwcn_weights->data.raw = nullptr;
-    }
+    hwcn_weights->allocation_type = kTfLiteArenaRwPersistent;
 
-    // Note that hwcn_weights_status is a kTfLiteDynamic tensor, and
-    // ResizeTensor will actually allocate space for it. The would be more
-    // efficient if we placed hwcn_weights_status in the persistent arena.
     auto hwcn_weights_status =
         context->ResizeTensor(context, hwcn_weights, hwcn_weights_size);
     if (hwcn_weights_status != kTfLiteOk) return hwcn_weights_status;
@@ -382,8 +372,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
                TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
   KernelType effective_kernel_type;
   if (((kernel_type == kMultithreadOptimized) ||
        (kernel_type == kCblasOptimized)) &&
@@ -428,6 +418,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         filter_data = GetTensorData<float>(filter);
       }
       multithreaded_ops::Conv(
+          *eigen_support::GetThreadPoolDevice(context),
           GetTensorData<float>(input), GetTensorDims(input), filter_data,
           GetTensorDims(filter), GetTensorData<float>(bias),
           GetTensorDims(bias), params->stride_width, params->stride_height,

@@ -282,25 +282,31 @@ class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
-class FakeQuant : public CustomOperator<FakeQuantOperator> {
+class FakeQuant
+    : public BuiltinOperator<FakeQuantOperator, ::tflite::FakeQuantOptions,
+                             ::tflite::BuiltinOptions_FakeQuantOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Float("min", op.minmax->min);
-    fbb->Float("max", op.minmax->max);
-    fbb->Int("num_bits", op.num_bits);
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateFakeQuantOptions(
+        *builder, op.minmax->min, op.minmax->max, op.num_bits, op.narrow_range);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
     auto* minmax = new MinMax;
-    minmax->min = m["min"].AsFloat();
-    minmax->max = m["max"].AsFloat();
+    minmax->min = options.min();
+    minmax->max = options.max();
     op->minmax.reset(minmax);
-    const auto& num_bits = m["num_bits"];
-    op->num_bits = num_bits.IsInt() ? num_bits.AsInt32() : 8;
+    op->num_bits = options.num_bits();
+    op->narrow_range = options.narrow_range();
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& fq_op = static_cast<const FakeQuantOperator&>(op);
+    return fq_op.narrow_range ? 2 : 1;
+  }
 };
 
 class FullyConnected
@@ -314,16 +320,47 @@ class FullyConnected
       flatbuffers::FlatBufferBuilder* builder) const override {
     auto activation_function =
         ActivationFunction::Serialize(op.fused_activation_function);
-    return ::tflite::CreateFullyConnectedOptions(*builder, activation_function);
+    ::tflite::FullyConnectedOptionsWeightsFormat tflite_weights_format;
+    switch (op.weights_format) {
+      case FullyConnectedWeightsFormat::kDefault:
+        tflite_weights_format =
+            ::tflite::FullyConnectedOptionsWeightsFormat_DEFAULT;
+        break;
+      case FullyConnectedWeightsFormat::kShuffled4x16Int8:
+        tflite_weights_format =
+            ::tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8;
+        break;
+      default:
+        LOG(ERROR) << "Unhandled FC weights format";
+        tflite_weights_format =
+            ::tflite::FullyConnectedOptionsWeightsFormat_DEFAULT;
+    }
+    return ::tflite::CreateFullyConnectedOptions(*builder, activation_function,
+                                                 tflite_weights_format);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
+    switch (options.weights_format()) {
+      case ::tflite::FullyConnectedOptionsWeightsFormat_DEFAULT:
+        op->weights_format = FullyConnectedWeightsFormat::kDefault;
+        break;
+      case ::tflite::FullyConnectedOptionsWeightsFormat_SHUFFLED4x16INT8:
+        op->weights_format = FullyConnectedWeightsFormat::kShuffled4x16Int8;
+        break;
+      default:
+        LOG(ERROR) << "Unhandled FC weights format";
+        op->weights_format = FullyConnectedWeightsFormat::kDefault;
+    }
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& fc_op = static_cast<const FullyConnectedOperator&>(op);
+    return fc_op.weights_format == FullyConnectedWeightsFormat::kDefault ? 1
+                                                                         : 2;
+  }
 };
 
 class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
@@ -730,6 +767,44 @@ class Sum
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class ReduceMax
+    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class ReduceProd
+    : public BuiltinOperator<TensorFlowSumOperator, ::tflite::ReducerOptions,
+                             ::tflite::BuiltinOptions_ReducerOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReducerOptions(*builder, op.keep_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->keep_dims = options.keep_dims();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class ResizeBilinear
     : public BuiltinOperator<ResizeBilinearOperator,
                              ::tflite::ResizeBilinearOptions,
@@ -843,6 +918,25 @@ class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
     return ::tflite::CreateArgMaxOptions(
+        *builder, DataType::Serialize(op.output_data_type));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->output_data_type = DataType::Deserialize(options.output_type());
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class ArgMin : public BuiltinOperator<ArgMinOperator, ::tflite::ArgMinOptions,
+                                      ::tflite::BuiltinOptions_ArgMinOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateArgMinOptions(
         *builder, DataType::Serialize(op.output_data_type));
   }
 
@@ -1127,6 +1221,10 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
   ops.emplace_back(new Sum(::tflite::BuiltinOperator_SUM, OperatorType::kSum));
+  ops.emplace_back(new ReduceProd(::tflite::BuiltinOperator_REDUCE_PROD,
+                                  OperatorType::kReduceProd));
+  ops.emplace_back(new ReduceMax(::tflite::BuiltinOperator_REDUCE_MAX,
+                                 OperatorType::kReduceMax));
   ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
                                       OperatorType::kResizeBilinear));
   ops.emplace_back(
@@ -1144,6 +1242,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
   ops.emplace_back(
+      new ArgMin(::tflite::BuiltinOperator_ARG_MIN, OperatorType::kArgMin));
+  ops.emplace_back(
       new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTile));
   ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,
                                   OperatorType::kExpandDims));
@@ -1153,11 +1253,12 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                      OperatorType::kSparseToDense));
   ops.emplace_back(
       new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
+  ops.emplace_back(new FakeQuant(::tflite::BuiltinOperator_FAKE_QUANT,
+                                 OperatorType::kFakeQuant));
 
   // Custom Operators.
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
-  ops.emplace_back(new FakeQuant("FAKE_QUANT", OperatorType::kFakeQuant));
   ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
                                              OperatorType::kUnsupported));
 
@@ -1206,6 +1307,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new SimpleOperator<SelectOperator>("SELECT", OperatorType::kSelect));
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
+  ops.emplace_back(new SimpleOperator<PowOperator>("POW", OperatorType::kPow));
   // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
   ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));

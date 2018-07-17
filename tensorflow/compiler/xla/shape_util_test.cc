@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_util.h"
 
+#include <numeric>
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -22,11 +23,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+
+TEST(ShapeUtilTest, ShapeIndexViewTest) {
+  ShapeIndex index = {1, 2, 3, 4};
+  ShapeIndexView index_view(index, 1);
+  EXPECT_EQ(3, index_view.size());
+  EXPECT_EQ(ShapeIndexView({2, 3, 4}), index_view);
+  EXPECT_EQ(ShapeIndexView({3, 4}), index_view.ConsumeFront());
+  EXPECT_EQ(ShapeIndexView({2, 3}), index_view.ConsumeBack());
+}
 
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
@@ -240,6 +252,24 @@ TEST(ShapeUtilTest, IncompatibleDifferentElementShapes) {
   Shape shape_1 = ShapeUtil::MakeShape(F32, {3, 2});
   Shape shape_2 = ShapeUtil::MakeShape(PRED, {3, 2});
   EXPECT_FALSE(ShapeUtil::Compatible(shape_1, shape_2));
+}
+
+TEST(ShapeUtilTest, EqualIgnoringFpPrecision) {
+  EXPECT_TRUE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {4, 3}, {0, 1})));
+}
+
+TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {3, 4}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(F16, {3, 4}, {1, 0})));
+  EXPECT_FALSE(ShapeUtil::EqualIgnoringFpPrecision(
+      ShapeUtil::MakeShapeWithLayout(F32, {4, 3}, {0, 1}),
+      ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
 }
 
 TEST(ShapeUtilTest, CompatibleTuples) {
@@ -801,6 +831,28 @@ TEST(ShapeUtilTest, HasDegenerateDimensions) {
       ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 3, 5})));
   EXPECT_FALSE(
       ShapeUtil::HasDegenerateDimensions(ShapeUtil::MakeShape(F32, {3, 0, 5})));
+}
+
+TEST(ShapeUtilTest, PermuteDimensionsLayout) {
+  std::vector<int64> layout(3);
+  std::iota(layout.begin(), layout.end(), 0);
+  do {
+    Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
+    SCOPED_TRACE(tensorflow::strings::StrCat("s=", ShapeUtil::HumanString(s)));
+
+    std::vector<int64> permutation(3);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    do {
+      SCOPED_TRACE(tensorflow::strings::StrCat(
+          "permutation=", tensorflow::str_util::Join(permutation, ",")));
+
+      // TransposeIsBitcast takes the inverse of the permutation that
+      // PermuteDimensions takes.
+      EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(
+          s, ShapeUtil::PermuteDimensions(permutation, s),
+          InversePermutation(permutation)));
+    } while (std::next_permutation(permutation.begin(), permutation.end()));
+  } while (std::next_permutation(layout.begin(), layout.end()));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

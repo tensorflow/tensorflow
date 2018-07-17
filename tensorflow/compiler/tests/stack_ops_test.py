@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -28,7 +28,7 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.platform import test
 
 
-class StackOpTest(XLATestCase):
+class StackOpTest(xla_test.XLATestCase):
 
   def testStackPushPop(self):
     with self.test_session(), self.test_scope():

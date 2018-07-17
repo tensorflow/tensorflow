@@ -107,6 +107,10 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -124,7 +128,10 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     shard_count = 5,
-    tags = ["optonly"],  # Test is flaky without optimization.
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -141,6 +148,10 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 cuda_py_test(
@@ -178,11 +189,15 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )
 
 cuda_py_test(
     name = "linear_operator_low_rank_update_test",
-    size = "medium",
+    size = "large",
     srcs = ["linear_operator_low_rank_update_test.py"],
     additional_deps = [
         "//tensorflow/python/ops/linalg",
@@ -214,4 +229,8 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
     ],
     shard_count = 5,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
 )

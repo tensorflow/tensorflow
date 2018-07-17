@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -84,6 +85,7 @@ enum class OperatorType : uint8 {
   kBatchToSpaceND,
   kPad,
   kPadV2,
+  kReduceProd,  // Reduction product
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -105,10 +107,10 @@ enum class OperatorType : uint8 {
   kIdentity,
   kLess,
   kLessEqual,
-  kMax,      //  Reduction Max
-  kMaximum,  //  Element-wise Maximum
-  kMin,      //  Reduction Min
-  kMinimum,  //  Element-wise Minimum
+  kReduceMax,  //  Reduction Max
+  kMaximum,    //  Element-wise Maximum
+  kMin,        //  Reduction Min
+  kMinimum,    //  Element-wise Minimum
   kMatMul,
   kMerge,
   kNeg,
@@ -138,6 +140,8 @@ enum class OperatorType : uint8 {
   kSparseToDense,
   kEqual,
   kNotEqual,
+  kPow,
+  kArgMin,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -160,15 +164,16 @@ enum class AxesOrder {
 
 // The type of the scalars in an array.
 // Note that the type does not by itself tell whether the values in the array
-// are real (are literally interpreted as real numbers) or quantized (only
-// acquire a meaning as real numbers in conjunction with QuantizationParams).
+// are non-quantized (can be accessed directly) or quantized (must be
+// interpreted in conjunction with QuantizationParams).
 //
 // In practice though:
-//   float values are always real
+//   float values are never quantized
 //   uint8 values are always quantized
-//   int32 values are either real or quantized (depending on whether
+//   int32 values are sometimes quantized (depending on whether
 //   QuantizationParams are present).
-//   other types are unused at the moment.
+//   complex values are never quantized
+//   other types are never quantized at the moment.
 //
 // kNone means that we don't know the data type yet, or that we don't care
 // because we'll be dropping the array anyway (e.g. some exotic array types
@@ -186,7 +191,8 @@ enum class ArrayDataType : uint8 {
   kUint32,
   kInt64,
   kUint64,  // 10
-  kString
+  kString,
+  kComplex64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -239,6 +245,10 @@ struct DataTypeImpl<ArrayDataType::kUint64> {
 template <>
 struct DataTypeImpl<ArrayDataType::kString> {
   typedef string Type;
+};
+template <>
+struct DataTypeImpl<ArrayDataType::kComplex64> {
+  typedef std::complex<float> Type;
 };
 
 template <ArrayDataType A>
@@ -782,6 +792,7 @@ struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
   int num_bits = 8;
+  bool narrow_range = false;
 };
 
 // Element-wise division operator.
@@ -829,6 +840,8 @@ struct BatchMatMulOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct TensorFlowMatMulOperator : Operator {
   TensorFlowMatMulOperator() : Operator(OperatorType::kMatMul) {}
+  bool transpose_a = false;
+  bool transpose_b = false;
 };
 
 // Padding operator. Pads a tensor with zeros.
@@ -1217,6 +1230,19 @@ struct SubOperator : Operator {
 // TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kSum) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
+};
+
+// Prod reduction: computes the product of all of entries across the axes.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Prod
+struct TensorFlowProdOperator : Operator {
+  TensorFlowProdOperator() : Operator(OperatorType::kReduceProd) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1376,16 +1402,15 @@ struct TensorFlowNotEqualOperator : Operator {
   TensorFlowNotEqualOperator() : Operator(OperatorType::kNotEqual) {}
 };
 
-// Global max reduction: computes the max of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Max reduction: computes the max of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Max --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Max
 struct TensorFlowMaxOperator : Operator {
-  TensorFlowMaxOperator() : Operator(OperatorType::kMax) {}
+  TensorFlowMaxOperator() : Operator(OperatorType::kReduceMax) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1518,6 +1543,17 @@ struct ArgMaxOperator : Operator {
   ArrayDataType output_data_type = ArrayDataType::kInt64;
 };
 
+// ArgMin operator. It returns the index of the minimum value along axis.
+//
+// Inputs:
+//   inputs[0]: required: the input tensor
+//
+// TensorFlow equivalent: ArgMin
+struct ArgMinOperator : Operator {
+  ArgMinOperator() : Operator(OperatorType::kArgMin) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt64;
+};
+
 // ResizeBilinear operator. It resizes input images with bilinear interpolation.
 // It does not support align_corners at the moment.
 //
@@ -1635,6 +1671,17 @@ struct DynamicStitchOperator : Operator {
 struct SparseToDenseOperator : Operator {
   SparseToDenseOperator() : Operator(OperatorType::kSparseToDense) {}
   bool validate_indices;
+};
+
+// Pow operator:
+//
+// Inputs:
+// Inputs[0]: required: A tensor.
+// Inputs[1]: required: A tensor.
+//
+// TensorFlow equivalent: Pow.
+struct PowOperator : Operator {
+  PowOperator() : Operator(OperatorType::kPow) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
@@ -1821,6 +1868,40 @@ struct Array {
   // If this is non-null, then these quantization parameters are to be used
   // to assign a meaning as real numbers to the elements of this array.
   std::unique_ptr<QuantizationParams> quantization_params;
+  // narrow_range is a detail of how toco handles FakeQuant operators with
+  // narrow_range, see
+  // https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars
+  //
+  // For more context about what that is useful for, see the big comment in
+  // graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc
+  //
+  // The narrow_range flag applies only to quantized arrays, and changes
+  // their quantization in the following way when it is set to 'true':
+  // 1. The computation of {zero_point, scale} from {min, max} needs to be
+  //    amended so that the real min value will get quantized to
+  //    (min_quantized_value + 1) instead of just (min_quantized_value).
+  //    E.g. for uint8 quantization, the real min value should get quantized to
+  //    the uint8 value 1, not 0.
+  // 2. Quantized values should get clamped to the interval
+  //    [min_quantized_value + 1, max_value]. Equivalently, the
+  //    min_quantized_value should get nudged to (min_quantized_value + 1).
+  // The reason why 1. does not imply 2. is that real values may not belong to
+  // the stated [min, max] interval. Concretely, weights recorded at the last
+  // learning step may not fall in the [min, max] interval recorded over
+  // previous learning steps, as the values evolve across learning steps.
+  //
+  // Rationale why this is directly a field on Array:
+  // - This can't be just a field on FakeQuantOperator, because
+  //   FakeQuantOperators are gone (DropFakeQuant) before we get to using that
+  //   information (Quantize). We need a place to store that bit in the interim.
+  // - This can't be in QuantizationParams because we need to record this
+  //   ahead of quantization, and QuantizationParams are only created during
+  //   quantization.
+  // - This could be in MinMax, but that would be an abuse of what MinMax is
+  //   about, and would break existing code that assumes that a MinMax is just
+  //   a min and a max. Unlike MinMax which is agnostic as to the quantized
+  //   data type, narrow_range refers to values in the quantized data type.
+  bool narrow_range = false;
 
  private:
   std::unique_ptr<Shape> array_shape;
