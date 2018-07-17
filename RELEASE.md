@@ -19,6 +19,7 @@
   * Added batch normalization to `DNNClassifier`, `DNNRegressor`, and `DNNEstimator`.
 * Eager Execution
   * `tf.losses.*` do not add to the global collection when executing eagerly (avoids leaking memory).
+* Prebuilt binaries are now built against NCCL 2.2. TensorFlow usage with multiple GPUs and NCCL requires upgrade to NCCL 2.2
 * Support different summary and checkpoint directories in `tf.train.MonitoredTrainingSession()`.
 * Added IndRNN, IndyGRU, and IndyLSTM cells to `tf.contrib.rnn`.
 * Add `synchronization` and `aggregation` args to the layer `add_weight()` API. These args will be used for distributed variables.
@@ -42,11 +43,14 @@
 
 ## Breaking Changes
 
+* Prebuilt binaries are now (as of TF 1.10) built against NCCL 2.2 and no longer include NCCL in the binary install.
+  TensorFlow usage with multiple GPUs and NCCL requires upgrade to [NCCL 2.2](https://developer.nvidia.com/nccl).
+  See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
+  and [Install TensorFlow from Sources](https://www.tensorflow.org/install/install_sources#optional_install_tensorflow_for_gpu_prerequisites).
 * Starting from TensorFlow 1.11, Windows builds will use Bazel. Therefore, we will drop official support for cmake.
 
 ## Bug Fixes and Other Changes
 
-* Prebuilt binaries are now built against NCCL 2.2. TensorFlow usage with multiple GPUs requires upgrade to NCCL 2.2
 * Java: Experimental wrapper classes to make graph generation easier. Thanks @karllessard and @kbsriram
 * Replace `distribution_util.assert_close` with `tf.assert_near`.
 * Fix minor typos in linear_operator.py docstrings.
