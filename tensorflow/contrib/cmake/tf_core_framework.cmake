@@ -260,14 +260,21 @@ add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
 # ${VERSION_INFO_CC} would cache, but it depends on a phony never produced
 # target.
-set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
-add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
-add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
-add_custom_command(OUTPUT
-    ${VERSION_INFO_CC}
-    COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
-    ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
-    DEPENDS __force_rebuild)
+# This code forces rebuild every time, not needed as version from git is fetched only once
+# move to make.bat which mimicks make.sh
+
+if (NOT WIN32)
+
+  set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+  add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
+  add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
+  add_custom_command(OUTPUT
+      ${VERSION_INFO_CC}
+      COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
+      ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
+      DEPENDS __force_rebuild)
+endif()
+
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
