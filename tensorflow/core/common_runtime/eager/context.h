@@ -211,7 +211,10 @@ class EagerContext {
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  // One FunctionLibraryRuntime per device.
+  // func_libs[i] is the FunctionLibraryRuntime corresponding to
+  // session->devices[i].
+  const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
 
   std::function<void(std::function<void()>)> runner_;
 
@@ -235,8 +238,6 @@ class EagerContext {
       GUARDED_BY(async_map_mu_);
 
   const std::unique_ptr<DeviceMgr> remote_device_manager_;
-
-  tensorflow::Env* const env_;
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
