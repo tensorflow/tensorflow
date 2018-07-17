@@ -1207,17 +1207,19 @@ void ConvertRangeOperator(const Model& model, const RangeOperator& src_op,
       GetTensorFlowDataType(src_op.dtype));
 }
 
-void ConvertStackOperator(const Model& model, const StackOperator& src_op,
-                          GraphDef* tensorflow_graph) {
-  tensorflow::NodeDef* stack_op = tensorflow_graph->add_node();
-  stack_op->set_op("Stack");
-  stack_op->set_name(src_op.outputs[0]);
+void ConvertPackOperator(const Model& model, const PackOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* pack_op = tensorflow_graph->add_node();
+  pack_op->set_op("Pack");
+  pack_op->set_name(src_op.outputs[0]);
   for (const auto& input : src_op.inputs) {
-    *stack_op->add_input() = input;
+    *pack_op->add_input() = input;
   }
-  (*stack_op->mutable_attr())["elem_type"].set_type(
+  (*pack_op->mutable_attr())["elem_type"].set_type(
       GetTensorFlowDataType(model, src_op.outputs[0]));
-  (*stack_op->mutable_attr())["axis"].set_i(src_op.axis);
+  (*pack_op->mutable_attr())["axis"].set_i(src_op.axis);
+  (*pack_op->mutable_attr())["N"].set_i(src_op.inputs.size());
+  (*pack_op->mutable_attr())["T"].set_type(GetTensorFlowDataType(src_op.dtype));
 }
 
 void ConvertFillOperator(const Model& model, const FillOperator& src_op,
@@ -2015,9 +2017,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kRange) {
     ConvertRangeOperator(model, static_cast<const RangeOperator&>(src_op),
                          tensorflow_graph);
-  } else if (src_op.type == OperatorType::kStack) {
-    ConvertStackOperator(model, static_cast<const StackOperator&>(src_op),
-                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kPack) {
+    ConvertPackOperator(model, static_cast<const PackOperator&>(src_op),
+                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kFill) {
     ConvertFillOperator(model, static_cast<const FillOperator&>(src_op),
                         tensorflow_graph);
