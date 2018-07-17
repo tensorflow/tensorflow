@@ -340,6 +340,19 @@ Status BaseVisitor::HandleConditional(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status BaseVisitor::HandleReal(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  poplar::Tensor in;
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+
+  out = graph_.clone(in);
+  sequence.add(poplar::program::Copy(in, out));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return Status::OK();
+}
+
 Status BaseVisitor::HandlePad(HloInstruction* inst) {
   return Unimplemented(inst);
 }
