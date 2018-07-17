@@ -76,15 +76,6 @@ SpecialCaseCopyPolicy GetSpecialCaseCopyPolicy(const CallGraphNode& node,
     policy.copy_parameters_and_constants = true;
     policy.copy_root_replicated_buffers = true;
   }
-  for (const CallSite& site : node.caller_callsites()) {
-    // The AddCopiesForConditional() already adds copies, but the copy remover
-    // removes them, so we re-add them by returning the policy here. But really
-    // the copy remover should not be removing them.
-    if (site.instruction()->opcode() == HloOpcode::kConditional) {
-      policy.copy_parameters_and_constants = true;
-      policy.copy_root_replicated_buffers = true;
-    }
-  }
   return policy;
 }
 
