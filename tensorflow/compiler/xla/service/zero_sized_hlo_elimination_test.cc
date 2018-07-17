@@ -67,7 +67,7 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateParameter) {
 }
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
-  auto token = builder_.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token = builder_.AddInstruction(HloInstruction::CreateToken());
   builder_.AddInstruction(
       HloInstruction::CreateSend(zero_sized_param_, token, 0));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());

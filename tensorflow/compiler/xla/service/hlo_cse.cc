@@ -143,10 +143,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
       if (instruction->operand_count() == 0) {
         continue;
       }
-      // Skip instructions which have side effects or are a domain (which must
-      // not be CSE-ed).
-      if (instruction->HasSideEffect() ||
-          instruction->opcode() == HloOpcode::kDomain) {
+      // Skip instructions which have side effects.
+      if (instruction->HasSideEffect()) {
         continue;
       }
 

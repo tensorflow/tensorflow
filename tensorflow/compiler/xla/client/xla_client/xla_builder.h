@@ -533,6 +533,8 @@ class XlaBuilder {
   // Enqueues an infeed instruction onto the computation, which writes data of
   // the given shape to the infeed buffer of the device.
   XlaOp Infeed(const Shape& shape, const string& config = "");
+  XlaOp InfeedWithToken(const XlaOp& token, const Shape& shape,
+                        const string& config = "");
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
@@ -542,6 +544,9 @@ class XlaBuilder {
   // will occur.
   void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
                const string& outfeed_config);
+  XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
+                         const Shape& shape_with_layout,
+                         const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
   XlaOp Call(const XlaComputation& computation,
@@ -789,17 +794,23 @@ class XlaBuilder {
 
   // Enqueues a sort (as increasing order) instruction onto the computation.
   // If only keys are provided:
-  // * The keys must be a rank-1 tensor (i.e. an array).
-  // * The result is a sorted array of keys.
+  // * If the keys are an rank-1 tensor (an array), the result is a sorted array
+  // of keys, in ascending order.
+  // * If the keys have higher rank, the keys are sorted along the provided
+  // dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
+  // value of 0 will indepenently sort every column, and a dimension value of 1
+  // will independently sort each row. If no dimension number is provided, then
+  // the last dimension is chosen by default.
   //
   // If both keys and values are provided:
-  // * The keys and the values must be rank-1 tensors with the same dimensions.
-  // The element types of the tensors may be different.
-  // * The result is a tuple that consists of a sorted array of keys as the
-  // first element, and an array with their corresponding values as the second
-  // element.
-  XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values =
-                             tensorflow::gtl::nullopt);
+  // * The keys and the values must tensors with the same dimensions. The
+  // element types of the tensors may be different.
+  // * The result is a tuple that consists of a sorted tensor of keys (along the
+  // provided dimension, as above) as the first element, and a tensor with their
+  // corresponding values as the second element.
+  XlaOp Sort(XlaOp keys,
+             tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt,
+             int64 dimension = -1);
 
   // Enqueues a clamp instruction onto the computation.
   XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
@@ -840,11 +851,23 @@ class XlaBuilder {
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
   void Send(const XlaOp& operand, const ChannelHandle& handle);
+  XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
+                      const ChannelHandle& handle);
+
+  // Enqueues an AfterAll operation with no operands producing a token-shaped
+  // value.
+  XlaOp CreateToken();
+
+  // Enqueues an AfterAll operation with no operands producing a token-shaped
+  // value.
+  XlaOp AfterAll(tensorflow::gtl::ArraySlice<XlaOp> tokens);
 
   // Enqueues a Recv node onto the computation. The data comes from a Send
   // instruction that shares the same channel handle and its shape must
   // be the same as the given shape.
   XlaOp Recv(const Shape& shape, const ChannelHandle& handle);
+  XlaOp RecvWithToken(const XlaOp& token, const Shape& shape,
+                      const ChannelHandle& handle);
 
   // Normalizes operand across spatial and batch dimensions for each feature.
   //
@@ -1230,7 +1253,8 @@ class XlaBuilder {
                          tensorflow::gtl::ArraySlice<int64> permutation);
   friend XlaOp Rev(const XlaOp& operand,
                    tensorflow::gtl::ArraySlice<int64> dimensions);
-  friend XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values);
+  friend XlaOp Sort(XlaOp keys, tensorflow::gtl::optional<XlaOp> values,
+                    int64 dimension);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder,
                    tensorflow::gtl::ArraySlice<XlaOp> operands,
@@ -1265,6 +1289,18 @@ class XlaBuilder {
                              const XlaOp& batch_mean, const XlaOp& batch_var,
                              const XlaOp& grad_output, float epsilon,
                              int64 feature_index);
+  friend XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
+                             const ChannelHandle& handle);
+  friend XlaOp RecvWithToken(const XlaOp& token, const Shape& shape,
+                             const ChannelHandle& handle);
+  friend XlaOp InfeedWithToken(const XlaOp& token, const Shape& shape,
+                               const string& config);
+  friend XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
+                                const Shape& shape_with_layout,
+                                const string& outfeed_config);
+  friend XlaOp CreateToken(XlaBuilder* builder);
+  friend XlaOp AfterAll(XlaBuilder* builder,
+                        tensorflow::gtl::ArraySlice<XlaOp> tokens);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -1596,6 +1632,13 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
              const string& config = "");
 
+// Variant of Infeed which takes a token-shaped operand and produces a
+// two-element tuple containing the data value and a token-shaped value.
+// Tokens are used for ordering side-effecting operations.
+// TODO(b/110532604): Replace all uses of the non-token form with this variant.
+XlaOp InfeedWithToken(const XlaOp& token, const Shape& shape,
+                      const string& config = "");
+
 // Enqueues an outfeed instruction onto the computation. This instruction
 // generates outgoing data transfers for the given data.
 //
@@ -1604,6 +1647,13 @@ XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
 // will occur.
 void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
              const string& outfeed_config);
+
+// Variant of Outfeed which takes a token-shaped operand and produces a
+// token-shaped value. Tokens are used for ordering side-effecting operations.
+// TODO(b/110532604): Replace all uses of the non-token form with this variant.
+XlaOp OutfeedWithToken(const XlaOp& operand, const XlaOp& token,
+                       const Shape& shape_with_layout,
+                       const string& outfeed_config);
 
 // Enqueues a call instruction onto the computation.
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
@@ -1845,16 +1895,25 @@ XlaOp Transpose(const XlaOp& operand,
 // is moved to index dimension_size - 1 - i).
 XlaOp Rev(const XlaOp& operand, tensorflow::gtl::ArraySlice<int64> dimensions);
 
-// * The result is a sorted array of keys.
+// Enqueues a sort (as increasing order) instruction onto the computation.
+// If only keys are provided:
+// * If the keys are an rank-1 tensor (an array), the result is a sorted array
+// of keys, in ascending order.
+// * If the keys have higher rank, the keys are sorted along the provided
+// dimension. For example, for a rank-2 tensor (a matrix) of keys, a dimension
+// value of 0 will indepenently sort every column, and a dimension value of 1
+// will independently sort each row. If no dimension number is provided, then
+// the last dimension is chosen by default.
 //
 // If both keys and values are provided:
-// * The keys and the values must be rank-1 tensors with the same dimensions.
-// The element types of the tensors may be different.
-// * The result is a tuple that consists of a sorted array of keys as the
-// first element, and an array with their corresponding values as the second
-// element.
+// * The keys and the values must tensors with the same dimensions. The
+// element types of the tensors may be different.
+// * The result is a tuple that consists of a sorted tensor of keys (along the
+// provided dimension, as above) as the first element, and a tensor with their
+// corresponding values as the second element.
 XlaOp Sort(XlaOp keys,
-           tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt);
+           tensorflow::gtl::optional<XlaOp> values = tensorflow::gtl::nullopt,
+           int64 dimension = -1);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
@@ -1896,11 +1955,37 @@ XlaOp Gather(const XlaOp& input, const XlaOp& gather_indices,
 // a Recv instruction that shares the same channel handle.
 void Send(const XlaOp& operand, const ChannelHandle& handle);
 
+// Variant of Send which takes a token-shaped operand and produces a
+// token-shaped value.  Tokens are used for ordering side-effecting operations.
+// TODO(b/110532604): Replace all uses of the non-token form with this variant.
+XlaOp SendWithToken(const XlaOp& operand, const XlaOp& token,
+                    const ChannelHandle& handle);
+
 // Enqueues a Recv node onto the computation. The data comes from a Send
 // instruction that shares the same channel handle and its shape must
 // be the same as the given shape.
 XlaOp Recv(XlaBuilder* builder, const Shape& shape,
            const ChannelHandle& handle);
+
+// Variant of Recv which takes a token-shaped operand and produces a two-element
+// tuple containing the data value and a token-shaped value. Tokens are used
+// for ordering side-effecting operations.
+// TODO(b/110532604): Replace all uses of the non-token form with this variant.
+XlaOp RecvWithToken(const XlaOp& token, const Shape& shape,
+                    const ChannelHandle& handle);
+
+// Enqueues an operation (AfterAll) with no operands that produces a
+// token-shaped value.  Tokens are used for ordering side-effecting operations.
+// This is a separate method from AfterAll to facility the removal of
+// operand-less AfterAll instructions.
+// TODO(b/110532604): Remove this function when all tokens are derived from a
+// single token generated or passed into the entry computation.
+XlaOp CreateToken(XlaBuilder* builder);
+
+// Enqueues an AfterAll instruction which produces a token-shaped value and
+// takes a variadic number of token-shaped operands. The number of operands must
+// be greater than zero. Used for joining tokens.
+XlaOp AfterAll(XlaBuilder* builder, tensorflow::gtl::ArraySlice<XlaOp> tokens);
 
 // Normalizes operand across spatial and batch dimensions for each feature.
 //

@@ -32,8 +32,8 @@ class AssertsTest(converter_testing.TestCase):
     def test_fn(a):
       assert a > 0
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = asserts.transform(node, self.ctx)
+    node, ctx = self.prepare(test_fn, {})
+    node = asserts.transform(node, ctx)
 
     self.assertTrue(isinstance(node.body[0].body[0].value, gast.Call))
 

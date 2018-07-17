@@ -20,7 +20,7 @@ load(
     "tf_additional_binary_deps",
 )
 load(
-    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
 )
 

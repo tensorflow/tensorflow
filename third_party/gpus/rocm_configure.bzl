@@ -576,7 +576,7 @@ def _create_local_rocm_repository(repository_ctx):
                                '":miopen-include",'),
        })
   # Set up crosstool/
-  _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty"})
+  _tpl(repository_ctx, "crosstool:BUILD", {"%{linker_files}": ":empty", "%{win_linker_files}": ":empty"})
   cc = find_cc(repository_ctx)
   host_compiler_includes = _host_compiler_includes(repository_ctx, cc)
   rocm_defines = {

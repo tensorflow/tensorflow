@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "matrix_set_diag"
-    deprecation_message: "tf.matrix_set_diag is deprecated, please use tf.linalg.set_diag instead."
+    deprecated: true
   }
 }

@@ -140,6 +140,7 @@ cc_library(
         "xla_op_registry.cc",
         "xla_resource.cc",
         "xla_cpu_backend.cc",
+        "legacy_flags/backend_registration_flags.cc",
     ] + if_cuda_is_configured([
         "xla_gpu_backend.cc",
     ]) + if_rocm_is_configured([
@@ -148,6 +149,7 @@ cc_library(
     hdrs = [
         "const_analysis.h",
         "graph_compiler.h",
+        "legacy_flags/backend_registration_flags.h",
         "xla_compilation_device.h",
         "xla_compiler.h",
         "xla_context.h",
@@ -178,9 +180,11 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:numeric",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
+        "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

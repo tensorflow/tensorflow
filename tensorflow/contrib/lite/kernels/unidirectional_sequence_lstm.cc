@@ -274,7 +274,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  CheckInputTensorDimensions(context, node, n_input, n_output, n_cell);
+  TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(context, node, n_input,
+                                                        n_output, n_cell));
 
   // Get the pointer to output, output_state and cell_state buffer tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);

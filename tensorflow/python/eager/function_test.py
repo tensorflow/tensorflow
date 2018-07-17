@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -39,11 +40,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 
@@ -135,6 +137,18 @@ class FunctionTest(test.TestCase):
     self.assertEqual(sq_op.output_shapes, tensor_shape.TensorShape([2, 2]))
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
+
+  def disabled_testRandomSeed(self):
+
+    @function.defun
+    def f():
+      return random_ops.random_normal(())
+
+    random_seed.set_random_seed(1)
+    x = f()
+    self.assertNotEqual(x, f())
+    random_seed.set_random_seed(1)
+    self.assertAllEqual(f(), x)
 
   def testNestedInputsDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)
@@ -1140,7 +1154,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     def loss(v):
       return v**2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
     @function.defun
     def train():
@@ -1157,7 +1171,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     def loss():
       return v**2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
     @function.defun
     def train():
