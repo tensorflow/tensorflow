@@ -29,8 +29,6 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.saved_model.simple_save import simple_save
+from tensorflow.python.saved_model.simple_load import simple_load
 # pylint: enable=unused-import
-# pylint: disable=wildcard-import
-from tensorflow.python.saved_model.simple_save import *
-# pylint: enable=wildcard-import
-

@@ -76,7 +76,56 @@ saved_model.pb
 ## APIs
 The APIs for building and loading a SavedModel are described in this section.
 
+### Simple
+
+The highest level API for exporting the model components described above
+is using the [simple_save](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_save.py)
+module. For most use-cases this functionality is sufficient to export
+a model which is compatible with TensorFlow serving. A corresponding [simple_load](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_load.py)
+module is implemented in python which enables SavedModels to be reloaded
+within a python TensorFlow session.
+
+#### Simple Save Usage
+~~~python
+import tensorflow as tf
+
+# Define model graph
+x = tf.placeholder(dtype=tf.int32)
+y = x + 1
+
+# Export the model to the given directory
+export_dir = "example_model_directory"
+with tf.Session() as sess:
+    tf.saved_model.simple_save(sess, export_dir, {"x": x}, {"y": y})
+~~~
+
+After calling the `simple_save` function, the model components will be
+exported to the given `export_dir`. These artifacts can be used with
+TensorFlow serving or using the python `simple_load` method. Though the
+final target may be to host the model in TensorFlow serving, it is often
+useful to test the artifact in python.
+
+For example, to load and execute the model exported in the example
+above, the `simple_load` function would be used in the following way:
+
+#### Simple Load Usage
+~~~python
+import tensorflow as tf
+
+# Load exported model from the given directory
+export_dir = "example_model_directory"
+with tf.Session() as sess:
+    inputs, outputs = tf.saved_model.simple_load(sess, export_dir)
+    result = sess.run(outputs["y"], feed_dict={inputs["x"]: 1})
+
+assert result == 2
+~~~
+
 ### Builder
+
+In specific use-cases the [simple_save](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_save.py)
+API may not provide the level of control to export a more complex model.
+
 The SavedModel [builder](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py)
 is implemented in Python.
 
