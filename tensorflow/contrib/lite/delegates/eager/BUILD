@@ -8,10 +8,41 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 cc_library(
+    name = "buffer_map",
+    srcs = ["buffer_map.cc"],
+    hdrs = ["buffer_map.h"],
+    deps = [
+        ":util",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:kernel_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_test(
+    name = "buffer_map_test",
+    size = "small",
+    srcs = ["buffer_map_test.cc"],
+    tags = [
+        "tflite_not_portable",
+    ],
+    deps = [
+        ":buffer_map",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:kernel_api",
         "//tensorflow/core:framework",
