@@ -803,6 +803,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 py_test(

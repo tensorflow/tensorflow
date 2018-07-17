@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
@@ -604,7 +605,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                                  /*is_top_level_computation=*/true,
                                  &module_sequence.at(entry_computation)));
 
-  string function_name = llvm_ir::AsString(entry_function->getName());
+  string function_name = [&]() {
+    llvm::SmallVector<char, 40> function_name_vector;
+    llvm::Mangler::getNameWithPrefix(
+        function_name_vector, entry_function->getName(), jit->data_layout());
+    return string(function_name_vector.begin(), function_name_vector.end());
+  }();
+
   string ir_module_string;
   if (embed_ir_in_executable) {
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);

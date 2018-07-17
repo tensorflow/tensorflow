@@ -40,7 +40,11 @@ REGISTER_OP("SymbolicGradient")
         if (types[i] == DT_RESOURCE) {
           const std::vector<shape_inference::ShapeAndType>* handle_type =
               c->input_handle_shapes_and_types(i);
-          c->set_output(i, handle_type->at(0).shape);
+          if (handle_type != nullptr) {
+            c->set_output(i, handle_type->at(0).shape);
+          } else {
+            c->set_output(i, c->UnknownShape());
+          }
         } else {
           c->set_output(i, c->input(i));
         }

@@ -11,8 +11,9 @@ those tools. It explains:
      deep learning to get the advantages of both.
 
 Read this overview to decide whether the Estimator's linear model tools  might
-be useful to you. Then do the @{$wide$Linear Models tutorial} to
-give it a try. This overview uses code samples from the tutorial, but the
+be useful to you. Then work through the
+[Estimator wide and deep learning tutorial](https://github.com/tensorflow/models/tree/master/official/wide_deep)
+to give it a try. This overview uses code samples from the tutorial, but the
 tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
@@ -176,7 +177,7 @@ the name of a `FeatureColumn`. Each key's value is a tensor containing the
 values of that feature for all data instances. See
 @{$premade_estimators#input_fn} for a
 more comprehensive look at input functions, and `input_fn` in the
-[linear models tutorial code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py)
+[wide and deep learning tutorial](https://github.com/tensorflow/models/tree/master/official/wide_deep)
 for an example implementation of an input function.
 
 The input function is passed to the `train()` and `evaluate()` calls that
@@ -234,4 +235,5 @@ e = tf.estimator.DNNLinearCombinedClassifier(
     dnn_feature_columns=deep_columns,
     dnn_hidden_units=[100, 50])
 ```
-For more information, see the @{$wide_and_deep$Wide and Deep Learning tutorial}.
+For more information, see the
+[wide and deep learning tutorial](https://github.com/tensorflow/models/tree/master/official/wide_deep).

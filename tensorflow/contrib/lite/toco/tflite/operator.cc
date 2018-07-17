@@ -282,25 +282,31 @@ class DepthToSpace : public CustomOperator<DepthToSpaceOperator> {
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
-class FakeQuant : public CustomOperator<FakeQuantOperator> {
+class FakeQuant
+    : public BuiltinOperator<FakeQuantOperator, ::tflite::FakeQuantOptions,
+                             ::tflite::BuiltinOptions_FakeQuantOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Float("min", op.minmax->min);
-    fbb->Float("max", op.minmax->max);
-    fbb->Int("num_bits", op.num_bits);
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateFakeQuantOptions(
+        *builder, op.minmax->min, op.minmax->max, op.num_bits, op.narrow_range);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
     auto* minmax = new MinMax;
-    minmax->min = m["min"].AsFloat();
-    minmax->max = m["max"].AsFloat();
+    minmax->min = options.min();
+    minmax->max = options.max();
     op->minmax.reset(minmax);
-    const auto& num_bits = m["num_bits"];
-    op->num_bits = num_bits.IsInt() ? num_bits.AsInt32() : 8;
+    op->num_bits = options.num_bits();
+    op->narrow_range = options.narrow_range();
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const Operator& op) const override {
+    const auto& fq_op = static_cast<const FakeQuantOperator&>(op);
+    return fq_op.narrow_range ? 2 : 1;
+  }
 };
 
 class FullyConnected
@@ -885,6 +891,25 @@ class ArgMax : public BuiltinOperator<ArgMaxOperator, ::tflite::ArgMaxOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class ArgMin : public BuiltinOperator<ArgMinOperator, ::tflite::ArgMinOptions,
+                                      ::tflite::BuiltinOptions_ArgMinOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateArgMinOptions(
+        *builder, DataType::Serialize(op.output_data_type));
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->output_data_type = DataType::Deserialize(options.output_type());
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class TransposeConv
     : public BuiltinOperator<TransposeConvOperator,
                              ::tflite::TransposeConvOptions,
@@ -1175,6 +1200,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new ArgMax(::tflite::BuiltinOperator_ARG_MAX, OperatorType::kArgMax));
   ops.emplace_back(
+      new ArgMin(::tflite::BuiltinOperator_ARG_MIN, OperatorType::kArgMin));
+  ops.emplace_back(
       new Tile(::tflite::BuiltinOperator_TILE, OperatorType::kTile));
   ops.emplace_back(new ExpandDims(::tflite::BuiltinOperator_EXPAND_DIMS,
                                   OperatorType::kExpandDims));
@@ -1184,11 +1211,12 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                      OperatorType::kSparseToDense));
   ops.emplace_back(
       new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
+  ops.emplace_back(new FakeQuant(::tflite::BuiltinOperator_FAKE_QUANT,
+                                 OperatorType::kFakeQuant));
 
   // Custom Operators.
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
-  ops.emplace_back(new FakeQuant("FAKE_QUANT", OperatorType::kFakeQuant));
   ops.emplace_back(new TensorFlowUnsupported("TENSORFLOW_UNSUPPORTED",
                                              OperatorType::kUnsupported));
 

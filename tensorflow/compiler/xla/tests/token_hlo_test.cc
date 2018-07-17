@@ -31,7 +31,7 @@ class TokenHloTest : public HloTestBase {};
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
-  builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  builder.AddInstruction(HloInstruction::CreateToken());
 
   module->AddEntryComputation(builder.Build());
 
@@ -43,9 +43,9 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
 XLA_TEST_F(TokenHloTest, TokenTree) {
   std::unique_ptr<HloModule> module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
-  auto token0 = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
-  auto token1 = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
-  auto token2 = builder.AddInstruction(HloInstruction::CreateAfterAll({}));
+  auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
+  auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
+  auto token2 = builder.AddInstruction(HloInstruction::CreateToken());
   builder.AddInstruction(
       HloInstruction::CreateAfterAll({token0, token0, token1, token2}));
 

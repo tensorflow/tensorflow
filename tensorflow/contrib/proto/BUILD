@@ -19,9 +19,7 @@ py_library(
 
 py_library(
     name = "proto_pip",
-    data = [
-        "//tensorflow/contrib/proto/python/kernel_tests:test_messages",
-    ] + if_static(
+    data = if_static(
         [],
         otherwise = ["//tensorflow/contrib/proto/python/kernel_tests:libtestexample.so"],
     ),

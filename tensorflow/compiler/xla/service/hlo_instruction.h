@@ -615,7 +615,7 @@ class HloInstruction {
 
   // Creates a sort op, with a keys operand, and an optional values operand.
   static std::unique_ptr<HloInstruction> CreateSort(
-      const Shape& shape, HloInstruction* keys,
+      const Shape& shape, int64 dimension, HloInstruction* keys,
       HloInstruction* values = nullptr);
 
   // Creates a while instruction, given a condition computation, a body
@@ -687,17 +687,18 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
 
-  // Creates a token instruction used for joining or creating new values of
-  // token type which thread through side-effecting operations.
+  // Creates a Afterall instruction used for joining or creating new values of
+  // token type which thread through side-effecting operations. Operands must
+  // all be tokens, and there must be at least one operand.
   static std::unique_ptr<HloInstruction> CreateAfterAll(
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Creates an instance of GatherDimensionNumbers.
-  static GatherDimensionNumbers MakeGatherDimNumbers(
-      tensorflow::gtl::ArraySlice<int64> output_window_dims,
-      tensorflow::gtl::ArraySlice<int64> elided_window_dims,
-      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
-      int64 index_vector_dim);
+  // Creates an AfterAll instruction which creates a token type out of thin air
+  // (no operands). This is a separate method from CreateAfterAll to facility
+  // the removal of operand-less AfterAll instructions.
+  // TODO(b/110532604): Remove this capability of creating a token from nothing
+  // when we plumb a primordial token from the entry computation.
+  static std::unique_ptr<HloInstruction> CreateToken();
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -1073,19 +1074,6 @@ class HloInstruction {
   // Returns the dump string of the dot dimension numbers.
   string DotDimensionNumbersToString() const;
 
-  const GatherDimensionNumbers& gather_dimension_numbers() const {
-    CHECK(gather_dimension_numbers_ != nullptr);
-    return *gather_dimension_numbers_;
-  }
-
-  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const {
-    CHECK_EQ(opcode(), HloOpcode::kGather);
-    return gather_window_bounds_;
-  }
-
-  // Returns the dump string of the gather dimension numbers.
-  string GatherDimensionNumbersToString() const;
-
   // Clones the HLO instruction. The clone will have the same opcode, shape, and
   // operands. After creation the clone has no uses. "this" (the instruction
   // cloned from) is not changed. Suffix is the string to append to the name of
@@ -1139,6 +1127,9 @@ class HloInstruction {
 
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
+
+  // Returns true if this is an cross module all-reduce instrucion.
+  bool IsCrossModuleAllReduce() const;
 
   // Returns true if this elementwise instruction implicitly broadcasts operand
   // `operand_idx`.
@@ -1452,6 +1443,12 @@ class HloInstruction {
 
   // Delegates to HloDynamicSliceInstruction::dynamic_slice_sizes.
   const std::vector<int64>& dynamic_slice_sizes() const;
+
+  // Delegates to HloGatherInstruction::gather_dimension_numbers.
+  const GatherDimensionNumbers& gather_dimension_numbers() const;
+  // Delegates to HloGatherInstruction::gather_window_bounds.
+  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const;
+
   // Old methods kept for smooth subclassing transition END.
 
  protected:
@@ -1594,9 +1591,6 @@ class HloInstruction {
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
-
-  std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
-  std::vector<int64> gather_window_bounds_;
 
   // Used to tag kCopy instructions that are eligible for copy elision.
   bool copy_elision_allowed_ = true;

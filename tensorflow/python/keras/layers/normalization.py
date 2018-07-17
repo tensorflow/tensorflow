@@ -181,12 +181,6 @@ class BatchNormalization(Layer):
       self.renorm_clipping = renorm_clipping
       self.renorm_momentum = renorm_momentum
 
-  def _add_tower_local_variable(self, *args, **kwargs):
-    tower_context = distribute_lib.get_tower_context()
-    with tower_context.tower_local_var_scope(
-        variable_scope.VariableAggregation.MEAN):
-      return self.add_weight(*args, **kwargs)
-
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -314,19 +308,23 @@ class BatchNormalization(Layer):
         self._scope.set_partitioner(None)
       else:
         partitioner = None
-      self.moving_mean = self._add_tower_local_variable(
+      self.moving_mean = self.add_weight(
           name='moving_mean',
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_mean_initializer,
-          trainable=False)
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          trainable=False,
+          aggregation=variable_scope.VariableAggregation.MEAN)
 
-      self.moving_variance = self._add_tower_local_variable(
+      self.moving_variance = self.add_weight(
           name='moving_variance',
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_variance_initializer,
-          trainable=False)
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          trainable=False,
+          aggregation=variable_scope.VariableAggregation.MEAN)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -337,12 +335,14 @@ class BatchNormalization(Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
-          var = self._add_tower_local_variable(
+          var = self.add_weight(
               name=name,
               shape=shape,
               dtype=param_dtype,
               initializer=init_ops.zeros_initializer(),
-              trainable=False)
+              synchronization=variable_scope.VariableSynchronization.ON_READ,
+              trainable=False,
+              aggregation=variable_scope.VariableAggregation.MEAN)
           return var
 
         with distribute_lib.get_distribution_strategy().colocate_vars_with(
@@ -370,7 +370,7 @@ class BatchNormalization(Layer):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
-        update_delta = (variable - value) * decay
+        update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
         return state_ops.assign_sub(variable, update_delta, name=scope)
 
   def _fused_batch_norm(self, inputs, training):
@@ -619,6 +619,10 @@ class BatchNormalization(Layer):
     else:
       mean, variance = self.moving_mean, self.moving_variance
 
+    mean = math_ops.cast(mean, inputs.dtype)
+    variance = math_ops.cast(variance, inputs.dtype)
+    if offset is not None:
+      offset = math_ops.cast(offset, inputs.dtype)
     outputs = nn.batch_normalization(inputs,
                                      _broadcast(mean),
                                      _broadcast(variance),

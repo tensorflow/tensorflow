@@ -35,8 +35,8 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_NCCL_VERSION = '1.3'
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
+_DEFAULT_NCCL_VERSION = '2.2'
+_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
@@ -1097,8 +1097,10 @@ def set_tf_nccl_install_path(environ_cp):
     raise ValueError('Currently NCCL is only supported on Linux platforms.')
 
   ask_nccl_version = (
-      'Please specify the NCCL version you want to use. '
-      '[Leave empty to default to NCCL %s]: ') % _DEFAULT_NCCL_VERSION
+      'Please specify the NCCL version you want to use. If NCCL %s is not '
+      'installed, then you can use version 1.3 that can be fetched '
+      'automatically but it may have worse performance with multiple GPUs. '
+      '[Default is %s]: ') % (_DEFAULT_NCCL_VERSION, _DEFAULT_NCCL_VERSION)
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_nccl_version = get_from_env_or_user_or_default(
@@ -1236,28 +1238,13 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
 def set_other_cuda_vars(environ_cp):
   """Set other CUDA related variables."""
-  if is_windows():
-    # The following three variables are needed for MSVC toolchain configuration
-    # in Bazel
-    environ_cp['CUDA_PATH'] = environ_cp.get('CUDA_TOOLKIT_PATH')
-    environ_cp['CUDA_COMPUTE_CAPABILITIES'] = environ_cp.get(
-        'TF_CUDA_COMPUTE_CAPABILITIES')
-    environ_cp['NO_WHOLE_ARCHIVE_OPTION'] = 1
-    write_action_env_to_bazelrc('CUDA_PATH', environ_cp.get('CUDA_PATH'))
-    write_action_env_to_bazelrc('CUDA_COMPUTE_CAPABILITIE',
-                                environ_cp.get('CUDA_COMPUTE_CAPABILITIE'))
-    write_action_env_to_bazelrc('NO_WHOLE_ARCHIVE_OPTION',
-                                environ_cp.get('NO_WHOLE_ARCHIVE_OPTION'))
-    write_to_bazelrc('build --config=win-cuda')
-    write_to_bazelrc('test --config=win-cuda')
+  # If CUDA is enabled, always use GPU during build and test.
+  if environ_cp.get('TF_CUDA_CLANG') == '1':
+    write_to_bazelrc('build --config=cuda_clang')
+    write_to_bazelrc('test --config=cuda_clang')
   else:
-    # If CUDA is enabled, always use GPU during build and test.
-    if environ_cp.get('TF_CUDA_CLANG') == '1':
-      write_to_bazelrc('build --config=cuda_clang')
-      write_to_bazelrc('test --config=cuda_clang')
-    else:
-      write_to_bazelrc('build --config=cuda')
-      write_to_bazelrc('test --config=cuda')
+    write_to_bazelrc('build --config=cuda')
+    write_to_bazelrc('test --config=cuda')
 
 
 def set_host_cxx_compiler(environ_cp):

@@ -165,20 +165,7 @@ public final class Interpreter implements AutoCloseable {
     if (wrapper == null) {
       throw new IllegalStateException("Internal error: The Interpreter has already been closed.");
     }
-    Tensor[] tensors = wrapper.run(inputs);
-    if (outputs == null || tensors == null || outputs.size() > tensors.length) {
-      throw new IllegalArgumentException("Output error: Outputs do not match with model outputs.");
-    }
-    final int size = tensors.length;
-    for (Integer idx : outputs.keySet()) {
-      if (idx == null || idx < 0 || idx >= size) {
-        throw new IllegalArgumentException(
-            String.format(
-                "Output error: Invalid index of output %d (should be in range [0, %d))",
-                idx, size));
-      }
-      tensors[idx].copyTo(outputs.get(idx));
-    }
+    wrapper.run(inputs, outputs);
   }
 
   /**
@@ -251,8 +238,10 @@ public final class Interpreter implements AutoCloseable {
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
-    wrapper.close();
-    wrapper = null;
+    if (wrapper != null) {
+      wrapper.close();
+      wrapper = null;
+    }
   }
 
   @Override

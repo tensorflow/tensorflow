@@ -43,6 +43,7 @@ from tensorflow.contrib.training.python.training import hparam
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -67,6 +68,7 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import evaluation
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
@@ -382,7 +384,14 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
-    self._init_ops = [tpu.initialize_system(job=self._master_job)]
+    self._init_ops = []
+    # For distributed sessions, we can't run initialize_system in a separate
+    # graph here because 'begin' is only invoked when the MonitoredSession is
+    # created. We need to reinitialize the system every time MonitoredSession
+    # creates an underlying tf.Session, so we initialize from Scaffold.finalize.
+    # See _get_and_wrap_scaffold for more details.
+    if self._master_job is None:
+      self._init_ops.append(tpu.initialize_system(job=self._master_job))
     self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
@@ -484,7 +493,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     return _OpQueueContext(name=name, target=target, args=args)
 
   def after_create_session(self, session, coord):
-    logging.info('Init TPU system')
+    logging.info('Running init_ops')
     session.run(self._init_ops,
                 options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
 
@@ -847,6 +856,65 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
 
+def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
+                                      num_hosts):
+  """Generates infeed enqueue ops for one input_fn on all the hosts."""
+  captured_infeed_queue = _CapturedObject()
+  hooks = []
+  device_0 = ctx.tpu_host_placement_function(host_id=0)
+  with ops.device(device_0):
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx, input_device=device_0, invocation_index=0)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
+
+    is_dataset = inputs.is_dataset
+    if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
+      raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
+
+    hooks.append(inputs.dataset_initializer_hook())
+    num_replicas_per_host = ctx.num_of_replicas_per_host
+
+  def tpu_ordinal_function_impl(replica_id):
+    if ctx.device_assignment:
+      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+    else:
+      return replica_id % num_replicas_per_host
+
+  def device_function_impl(replica_id):
+    return ctx.tpu_host_placement_function(replica_id=replica_id)
+
+  def enqueue_ops_fn():
+    """Generates enqueue ops for all the hosts."""
+    broadcasted_inputs = []
+    flattened_inputs = None  # Cache result from input_fn.
+    for host_id in xrange(num_hosts):
+      with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
+        for _ in xrange(ctx.num_of_replicas_per_host):
+          # Note: input_fn is only called once at host 0 for the first replica.
+          # The features and labels returned from that invocation are
+          # broadcasted to other replicas(including the replicas on other
+          # hosts).
+          if flattened_inputs is None:
+            features, labels = inputs.features_and_labels()  # Calls get_next()
+            inputs_structure_recorder.validate_and_record_structure(
+                features, labels)
+            flattened_inputs = (
+                inputs_structure_recorder.flatten_features_and_labels(
+                    features, labels))
+          broadcasted_inputs.append(flattened_inputs)
+
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(broadcasted_inputs[0]))
+    captured_infeed_queue.capture(infeed_queue)
+    enqueue_ops = infeed_queue.generate_enqueue_ops(
+        broadcasted_inputs,
+        tpu_ordinal_function=tpu_ordinal_function_impl,
+        placement_function=device_function_impl)
+    return enqueue_ops
+
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
+
+
 class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
@@ -1079,6 +1147,22 @@ class _InputPipeline(object):
             # Infeed_queue_getter must be called after enqueue_ops_fn is called.
             infeed_queues.append(captured_infeed_queue.get())
 
+    elif self._ctx.is_input_broadcast_with_iterators():
+      # Only calls input_fn in host 0.
+      host_device = tpu_host_placement_fn(host_id=0)
+      enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+          generate_broadcast_enqueue_ops_fn(self._ctx, self._input_fn,
+                                            self._inputs_structure_recorder,
+                                            num_hosts))
+      all_hooks.extend(hooks)
+      if is_dataset:
+        run_infeed_loop_on_coordinator = False
+        enqueue_ops.append(
+            _wrap_computation_in_while_loop(
+                device=host_device, op_fn=enqueue_ops_fn))
+      else:
+        enqueue_ops.append(enqueue_ops_fn())
+      infeed_queues.append(captured_infeed_queue.get())
     else:
       for host_id in range(num_hosts):
         host_device = tpu_host_placement_fn(host_id=host_id)
@@ -1422,6 +1506,11 @@ class _ModelFnWrapper(object):
     running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
     _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
 
+    if not running_on_cpu:
+      user_context = tpu_context.TPUContext(
+          internal_ctx=self._ctx, call_from_input_fn=False)
+      _add_item_to_params(params, _CTX_KEY, user_context)
+
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (running_on_cpu and
         isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
@@ -1601,7 +1690,7 @@ class _OutfeedHostCall(object):
     # place all ops on tpu host if possible.
     #
     # TODO(jhseu): Evaluate whether this is right for summaries.
-    with ops.device(self._ctx.tpu_host_placement_function(core_id=0)):
+    with ops.device(self._ctx.tpu_host_placement_function(replica_id=0)):
       for name in self._names:
         dequeue_ops = dequeue_ops_by_name[name]
         for i, item in enumerate(dequeue_ops):
@@ -1986,7 +2075,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
       if (config.tpu_config.per_host_input_for_training is
           tpu_config.InputPipelineConfig.PER_SHARD_V1 and
-          config.tpu_config.computation_shape):
+          config.tpu_config.num_cores_per_replica):
         raise ValueError(
             'Model parallelism only supports per host input for training. '
             'Please adjust TPURunconfig.per_host_input_for_training.')
@@ -2298,10 +2387,20 @@ class TPUEstimator(estimator_lib.Estimator):
         # Clear the bit.
         self._is_input_fn_invoked = None
 
+        # examples_hook is added to training_hooks for both CPU and TPU
+        # execution.
+        examples_hook = ExamplesPerSecondHook(
+            ctx.global_batch_size,
+            output_dir=self.model_dir,
+            every_n_steps=self._log_every_n_steps)
+
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):
           logging.info('Running %s on CPU', mode)
-          return model_fn_wrapper.call_without_tpu(
+          estimator_spec = model_fn_wrapper.call_without_tpu(
               features, labels, is_export_mode=is_export_mode)
+          estimator_spec = estimator_spec._replace(
+              training_hooks=estimator_spec.training_hooks + (examples_hook,))
+          return estimator_spec
 
         assert labels is None, '`labels` passed to `model_fn` must be `None`.'
         # TPUEstimator._call_input_fn passes `input_fn` as features to here.
@@ -2369,10 +2468,6 @@ class TPUEstimator(estimator_lib.Estimator):
                   },
                   every_n_iter=logging_hook_frequency)
           ])
-          examples_hook = ExamplesPerSecondHook(
-              ctx.global_batch_size,
-              output_dir=self.model_dir,
-              every_n_steps=self._log_every_n_steps)
           examples_hook._set_steps_per_run(   # pylint: disable=protected-access
               self._config.tpu_config.iterations_per_loop)
           hooks.append(examples_hook)
@@ -2614,7 +2709,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       outputs_from_all_shards=False,
       device_assignment=ctx.device_assignment)
 
-  scaffold = _get_scaffold(captured_scaffold_fn)
+  scaffold = _get_and_wrap_scaffold(captured_scaffold_fn, ctx)
   return loss, host_calls, scaffold
 
 
@@ -2637,7 +2732,7 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       outputs_from_all_shards=False,
       device_assignment=ctx.device_assignment)
 
-  scaffold = _get_scaffold(captured_scaffold_fn)
+  scaffold = _get_and_wrap_scaffold(captured_scaffold_fn, ctx)
   return loss, host_call, scaffold
 
 
@@ -2665,7 +2760,7 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       num_shards=num_cores,
       outputs_from_all_shards=False)
 
-  scaffold = _get_scaffold(captured_scaffold_fn)
+  scaffold = _get_and_wrap_scaffold(captured_scaffold_fn, ctx)
   return dummy_predict_op, host_calls, scaffold
 
 
@@ -2755,8 +2850,20 @@ class _CapturedObject(object):
     return self._object
 
 
-def _get_scaffold(captured_scaffold_fn):
-  """Retrieves the Scaffold from `captured_scaffold_fn`."""
+def _get_and_wrap_scaffold(captured_scaffold_fn, ctx):
+  """Retrieves the Scaffold from `captured_scaffold_fn`.
+
+  Also wraps the scaffold's finalize method to initialize the TPU after the
+  graph is finalized.
+
+  Args:
+    captured_scaffold_fn: a `_CapturedObject` containing a scaffold_fn.
+    ctx: A `_InternalTPUContext` instance used to initialize the TPU.
+
+  Returns:
+    The Scaffold produced by captured_scaffold_fn, wrapped to initialize the TPU
+    after the graph is finalized.
+  """
   with _CapturingContext(message='Inside scaffold_fn'):
     scaffold_fn = captured_scaffold_fn.get()
     if scaffold_fn:
@@ -2767,14 +2874,64 @@ def _get_scaffold(captured_scaffold_fn):
     else:
       scaffold = None
 
-  if scaffold:
-    wrapped_finalize = scaffold.finalize
+  if scaffold is None:
+    # When master_address is None, we are using DirectSession, so we can't
+    # invoke initialize_system from finalize. See comments below.
+    if ctx.master_address() is None:
+      return scaffold
+    scaffold = monitored_session.Scaffold()
 
-    def _finalize():
-      with _CapturingContext('Inside Scaffold.finalize'):
-        wrapped_finalize()
+  wrapped_finalize = scaffold.finalize
 
-    scaffold.finalize = _finalize
+  def _finalize():
+    """Invoke wrapped_finalize and initialize the TPU."""
+    with _CapturingContext('Inside Scaffold.finalize'):
+      wrapped_finalize()
+    # Run tpu.initialize_system in its own graph after finalizing the main graph
+    # for distributed sessions. This is necessary because the TPU must be
+    # initialized before the TPU graph rewrite pass runs. We can't put the
+    # initialization op in the main graph because the main graph also contains
+    # replicate ops created by tpu.shard. If we tried to run initialization from
+    # the main graph, the TPU graph rewrite pass would rewrite the replicate ops
+    # before actually evaluating the initialization ops.
+    #
+    # For distributed sessions, the master may independently restart. After a
+    # master restarts, the rewrite pass runs again when any op in the main graph
+    # runs, so we must reinitialize the system every time the main graph is
+    # finalized.
+    #
+    # Special case: When master_address is unset, we're using DirectSession.
+    # DirectSession resets device state between sessions, and uses
+    # place_pruned_graph. Initialization currently passes state to replication
+    # through the TPU_SYSTEM resource manager. Under DirectSession, this
+    # resource manager gets reset when init_session is closed, so DirectSession
+    # can't initialize here, and must instead initialize from the main graph's
+    # init_ops. This is possible with DirectSession because it uses
+    # place_pruned_graph, which removes unreferenced ops before invoking the
+    # rewrite pass. This makes it possible to run init_ops from the main graph,
+    # which contains both tpu.initialize_system and tpu.shard ops, without first
+    # triggering the TPU graph rewrite. We can't do this for distributed
+    # sessions because they don't support place_pruned_graph.
+    #
+    # TODO(b/110943344) Clean this up as part of the initialize_system dataflow
+    # cleanup. It should be possible to remove the special case for
+    # DirectSession and the other call to initialize_system from
+    # _obtain_topology, when topology info is always explicitly passed from
+    # tpu.initialize_system to tpu.shard, though this requires editing or
+    # rebuilding the main graph each time the master restarts.
+    if ctx.master_address() is None:
+      return
+    with ops.Graph().as_default():
+      logging.info('Init TPU system master_address %s', ctx.master_address())
+      with session_lib.Session(
+          ctx.master_address(),
+          config=ctx.config.session_config) as init_session:
+        run_options = config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000)
+        init_session.run(
+            tpu.initialize_system(job=ctx.master_job), options=run_options)
+      logging.info('TPU system initialized')
+
+  scaffold.finalize = _finalize
   return scaffold
 
 
@@ -3163,3 +3320,47 @@ def _add_item_to_params(params, key, value):
   else:
     # Now params is Python dict.
     params[key] = value
+
+
+def export_estimator_savedmodel(estimator,
+                                export_dir_base,
+                                serving_input_receiver_fn,
+                                assets_extra=None,
+                                as_text=False,
+                                checkpoint_path=None,
+                                strip_default_attrs=False):
+  """Export `Estimator` trained model for TPU inference.
+
+  Args:
+    estimator: `Estimator` with which model has been trained.
+    export_dir_base: A string containing a directory in which to create
+      timestamped subdirectories containing exported SavedModels.
+    serving_input_receiver_fn: A function that takes no argument and
+      returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel, or `None` if no extra assets are needed.
+    as_text: whether to write the SavedModel proto in text format.
+    checkpoint_path: The checkpoint path to export.  If `None` (the default),
+      the most recent checkpoint found within the model directory is chosen.
+    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+      removed from the NodeDefs.
+
+  Returns:
+    The string path to the exported directory.
+  """
+  # `TPUEstimator` requires `tpu_config.RunConfig`, so we cannot use
+  # `estimator.config`.
+  config = tpu_config.RunConfig(model_dir=estimator.model_dir)
+  est = TPUEstimator(
+      estimator._model_fn,  # pylint: disable=protected-access
+      config=config,
+      params=estimator.params,
+      use_tpu=True,
+      train_batch_size=2048,  # Does not matter.
+      eval_batch_size=2048,  # Does not matter.
+  )
+  return est.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                               assets_extra,
+                               as_text,
+                               checkpoint_path,
+                               strip_default_attrs)
