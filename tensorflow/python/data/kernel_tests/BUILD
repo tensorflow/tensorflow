@@ -15,6 +15,7 @@ tf_py_test(
     size = "small",
     srcs = ["batch_dataset_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -178,6 +179,7 @@ tf_py_test(
     size = "small",
     srcs = ["prefetch_dataset_op_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dataset_ops_gen",
@@ -347,6 +349,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
+        "//tensorflow/python/compat:compat",
     ],
     grpc_enabled = True,
 )

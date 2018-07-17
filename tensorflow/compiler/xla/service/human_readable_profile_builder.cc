@@ -169,6 +169,23 @@ string HumanReadableProfileBuilder::ToString() const {
       StrAppend(&s, table.MakeReport(CyclesToMicroseconds(total_cycles_)));
     }
   }
+
+  if (total_bytes > 0) {
+    MetricTableReport table;
+    table.SetMetricName("MiB read+written");
+    table.SetEntryName("ops");
+    table.SetShowCategoryTable();
+    for (const auto& op : op_infos_) {
+      MetricTableReport::Entry entry;
+      entry.text = op.name;
+      entry.short_text = op.short_name;
+      entry.category_text = op.category;
+      entry.metric = static_cast<double>(op.bytes_accessed) / (1 << 20);
+      table.AddEntry(std::move(entry));
+    }
+    StrAppend(&s,
+              table.MakeReport(static_cast<double>(total_bytes) / (1 << 20)));
+  }
   return s;
 }
 

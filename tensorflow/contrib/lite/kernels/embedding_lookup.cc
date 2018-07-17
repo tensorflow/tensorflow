@@ -24,7 +24,8 @@ limitations under the License.
 // Output:
 //   Output.dim[0] == Tensor[0].dim[0], num of lookups
 //   Output.dim[1] == Tensor[1].dim[1],  num of items per row
-//   Each item in output is a raw bytes copy of corresponding item in input.
+//   Each item in output is a raw bytes copy of the corresponding item in input,
+//   or a dequantized value in the case of a uint8 input.
 //   When indices are out of bound, the ops will not succeed.
 //
 
@@ -69,11 +70,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, outputSize);
 }
 
-TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* output = GetOutput(context, node, 0);
-  const TfLiteTensor* lookup = GetInput(context, node, 0);
-  const TfLiteTensor* value = GetInput(context, node, 1);
-
+TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
+                       const TfLiteTensor* lookup, const TfLiteTensor* value,
+                       TfLiteTensor* output) {
   const int row_size = SizeOfDimension(value, 0);
   const int row_bytes = value->bytes / row_size;
 
@@ -89,6 +88,53 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   return kTfLiteOk;
+}
+
+TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
+                        const TfLiteTensor* lookup, const TfLiteTensor* value,
+                        TfLiteTensor* output) {
+  const int row_size = SizeOfDimension(value, 0);
+  const double scaling_factor = value->params.scale;
+
+  // col_size after we flatten tensor into 2D.
+  int col_size = 1;
+  for (int i = 1; i < NumDimensions(value); i++) {
+    col_size *= SizeOfDimension(value, i);
+  }
+
+  for (int i = 0; i < SizeOfDimension(lookup, 0); i++) {
+    int idx = lookup->data.i32[i];
+    if (idx >= row_size || idx < 0) {
+      context->ReportError(context, "Embedding Lookup: index out of bounds.");
+      return kTfLiteError;
+    } else {
+      // Dequantize embedding values.
+      // TODO(alanchiao): refactor scalar multiply into separate function
+      // for ease of adding a neon equivalent if ever necessary.
+      for (int j = 0; j < col_size; j++) {
+        const int8_t* value_ptr = reinterpret_cast<int8_t*>(value->data.uint8);
+        output->data.f[j + i * col_size] =
+            value_ptr[j + idx * col_size] * scaling_factor;
+      }
+    }
+  }
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* lookup = GetInput(context, node, 0);
+  const TfLiteTensor* value = GetInput(context, node, 1);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  switch (value->type) {
+    case kTfLiteFloat32:
+      return EvalFloat(context, node, lookup, value, output);
+    case kTfLiteUInt8:
+      return EvalHybrid(context, node, lookup, value, output);
+    default:
+      context->ReportError(context, "Type not currently supported.");
+      return kTfLiteError;
+  }
 }
 
 }  // namespace embedding_lookup

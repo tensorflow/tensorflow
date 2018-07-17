@@ -873,6 +873,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1244,6 +1245,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1396,15 +1398,21 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         weights=weights,
         processed_labels=labels)
 
-  def _eval_metric_ops(self, weights, unreduced_loss, regularization_loss):
+  def _eval_metric_ops(self, predicted_value, labels, weights, unreduced_loss,
+                       regularization_loss):
     """Returns the Eval metric ops."""
     keys = metric_keys.MetricKeys
     # Estimator already adds a metric for loss.
     eval_metric_ops = {
         _summary_key(self._name, keys.LOSS_MEAN):
-            metrics_lib.mean(
-                values=unreduced_loss,
-                weights=weights)
+            metrics_lib.mean(values=unreduced_loss, weights=weights),
+        _summary_key(self._name, keys.PREDICTION_MEAN):
+            _predictions_mean(
+                predictions=predicted_value,
+                weights=weights,
+                name=keys.PREDICTION_MEAN),
+        _summary_key(self._name, keys.LABEL_MEAN):
+            metrics_lib.mean(values=labels, weights=weights)
     }
     if regularization_loss is not None:
       regularization_loss_key = _summary_key(
@@ -1487,13 +1495,13 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
             predictions=predictions,
             loss=regularized_training_loss,
             eval_metrics=_create_eval_metrics_tuple(
-                self._eval_metric_ops,
-                {
+                self._eval_metric_ops, {
+                    'predicted_value': predicted_value,
+                    'labels': labels,
                     'weights': weights,
                     'unreduced_loss': unreduced_loss,
                     'regularization_loss': regularization_loss,
-                }
-            ))
+                }))
 
       # Train.
       if optimizer is not None:
@@ -1506,6 +1514,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         train_op = train_op_fn(regularized_training_loss)
       else:
         raise ValueError('train_op_fn and optimizer cannot both be None.')
+      train_op = _append_update_ops(train_op)
       # Only summarize mean_loss for SUM reduction to preserve backwards
       # compatibility. Otherwise skip it to avoid unnecessary computation.
       if self._loss_reduction == losses.Reduction.SUM:
@@ -1531,6 +1540,14 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         predictions=predictions,
         loss=regularized_training_loss,
         train_op=train_op)
+
+
+def _append_update_ops(train_op):
+  """Returns `train_op` appending `UPDATE_OPS` collection if present."""
+  update_ops = ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+  if update_ops:
+    return control_flow_ops.group(train_op, *update_ops)
+  return train_op
 
 
 def _assert_range(labels, n_classes, message=None):

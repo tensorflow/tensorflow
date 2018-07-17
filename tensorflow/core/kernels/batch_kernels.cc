@@ -523,21 +523,28 @@ class BatchResource : public ResourceBase {
     const auto& captured_inputs =
         batch->task(batch->num_tasks() - 1).captured_inputs;
     args.insert(args.end(), captured_inputs.begin(), captured_inputs.end());
-    flib->Run(opts, fhandle_, args, &combined_outputs,
-              [&](const Status& run_status) {
-                if (!run_status.ok()) {
-                  return;
-                }
-                const auto split_status =
-                    SplitOutputTensors(combined_outputs, batch.get());
-                // We do the cleanup here as an optimization, so that it runs in
-                // the underlying TF inter-op threadpool. Running it in the
-                // threadpool, let's the ensuing ops be scheduled faster,
-                // because the executor will add them to the front of the
-                // threadpool's task queue rather than the end.
-                cleanup_fn(split_status);
-                done.Notify();
-              });
+
+    // Releases the cleanup method here, because the callback of the function
+    // library runtime will handle it now.
+    finally.release();
+    flib->Run(
+        opts, fhandle_, args, &combined_outputs, [&](const Status& run_status) {
+          Status final_status;
+          auto run_finally = gtl::MakeCleanup([&]() {
+            // We do the cleanup here as an optimization, so that it runs in
+            // the underlying TF inter-op threadpool. Running it in the
+            // threadpool, let's the ensuing ops be scheduled faster,
+            // because the executor will add them to the front of the
+            // threadpool's task queue rather than the end.
+            cleanup_fn(final_status);
+            done.Notify();
+          });
+          final_status = run_status;
+          if (!final_status.ok()) {
+            return;
+          }
+          final_status = SplitOutputTensors(combined_outputs, batch.get());
+        });
     // By waiting for the notification we are ensuring that this thread isn't
     // used for processing other batches, which gives the batches time to
     // coalesce upstream. So overall the number of batches going through the

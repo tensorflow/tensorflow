@@ -26,6 +26,7 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import activations
@@ -33,8 +34,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -906,34 +907,36 @@ class Dense(Layer):
                        'should be defined. Found `None`.')
     self.input_spec = InputSpec(min_ndim=2,
                                 axes={-1: input_shape[-1].value})
-    self.kernel = self.add_variable('kernel',
-                                    shape=[input_shape[-1].value, self.units],
-                                    initializer=self.kernel_initializer,
-                                    regularizer=self.kernel_regularizer,
-                                    constraint=self.kernel_constraint,
-                                    dtype=self.dtype,
-                                    trainable=True)
+    self.kernel = self.add_weight(
+        'kernel',
+        shape=[input_shape[-1].value, self.units],
+        initializer=self.kernel_initializer,
+        regularizer=self.kernel_regularizer,
+        constraint=self.kernel_constraint,
+        dtype=self.dtype,
+        trainable=True)
     if self.use_bias:
-      self.bias = self.add_variable('bias',
-                                    shape=[self.units,],
-                                    initializer=self.bias_initializer,
-                                    regularizer=self.bias_regularizer,
-                                    constraint=self.bias_constraint,
-                                    dtype=self.dtype,
-                                    trainable=True)
+      self.bias = self.add_weight(
+          'bias',
+          shape=[self.units,],
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          constraint=self.bias_constraint,
+          dtype=self.dtype,
+          trainable=True)
     else:
       self.bias = None
     self.built = True
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
-    shape = inputs.get_shape().as_list()
-    if len(shape) > 2:
+    rank = common_shapes.rank(inputs)
+    if rank > 2:
       # Broadcasting is required for the inputs.
-      outputs = standard_ops.tensordot(inputs, self.kernel, [[len(shape) - 1],
-                                                             [0]])
+      outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.
       if not context.executing_eagerly():
+        shape = inputs.get_shape().as_list()
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:

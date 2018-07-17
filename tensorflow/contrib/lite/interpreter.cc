@@ -22,17 +22,21 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/arena_planner.h"
 #include "tensorflow/contrib/lite/context.h"
+#include "tensorflow/contrib/lite/context_util.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/graph_info.h"
-#include "tensorflow/contrib/lite/kernels/eigen_support.h"
-#include "tensorflow/contrib/lite/kernels/gemm_support.h"
 #include "tensorflow/contrib/lite/memory_planner.h"
+#ifndef TFLITE_MCU
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#endif
 #include "tensorflow/contrib/lite/profiling/profiler.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/util.h"
 
 namespace tflite {
+#ifdef TFLITE_MCU
+class NNAPIDelegate {};
+#endif
 
 namespace {
 
@@ -51,6 +55,19 @@ TfLiteStatus ForbiddenContextFunction(TfLiteContext* context, ...) {
 template <typename FunctionType>
 void SetForbiddenContextFunction(FunctionType* func) {
   *func = reinterpret_cast<FunctionType>(ForbiddenContextFunction);
+}
+
+// Returns true if at least one tensor in the given list is kTfLiteDynamic.
+template <typename TensorIntArray>
+bool HasDynamicTensorImpl(const TfLiteContext& context,
+                          const TensorIntArray& int_array) {
+  for (int i : int_array) {
+    const TfLiteTensor& tensor = context.tensors[i];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
@@ -82,6 +99,9 @@ class InterpreterInfo : public GraphInfo {
   const std::vector<int>& outputs() const override {
     return interpreter_->outputs();
   }
+  const std::vector<int>& variables() const override {
+    return interpreter_->variables();
+  }
 
  public:
   Interpreter* interpreter_;
@@ -96,9 +116,9 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.AddTensors = AddTensors;
   context_.tensors = nullptr;
   context_.tensors_size = 0;
-  context_.eigen_context = nullptr;
-  context_.gemm_context = nullptr;
   context_.recommended_num_threads = -1;
+  context_.GetExternalContext = GetExternalContext;
+  context_.SetExternalContext = SetExternalContext;
 
   // Invalid to call these these except from TfLiteDelegate
   SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
@@ -109,6 +129,11 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   tensors_.reserve(kTensorsReservedCapacity);
   nodes_and_registration_.reserve(kTensorsReservedCapacity);
   next_execution_plan_index_to_prepare_ = 0;
+
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    external_contexts_[i] = nullptr;
+  }
+
   UseNNAPI(false);
 }
 
@@ -266,6 +291,33 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
   return kTfLiteOk;
 }
 
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    TfLiteExternalContextType type) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    return external_contexts_[type];
+  }
+  return nullptr;
+}
+
+TfLiteExternalContext* Interpreter::GetExternalContext(
+    struct TfLiteContext* context, TfLiteExternalContextType type) {
+  return static_cast<Interpreter*>(context->impl_)->GetExternalContext(type);
+}
+
+void Interpreter::SetExternalContext(TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  if (type >= 0 && type < kTfLiteMaxExternalContexts) {
+    external_contexts_[type] = ctx;
+  }
+}
+
+void Interpreter::SetExternalContext(struct TfLiteContext* context,
+                                     TfLiteExternalContextType type,
+                                     TfLiteExternalContext* ctx) {
+  return static_cast<Interpreter*>(context->impl_)
+      ->SetExternalContext(type, ctx);
+}
+
 // Gets an TfLiteIntArray* representing the execution plan. The interpreter owns
 // this memory and it is only guaranteed to exist during the invocation of the
 // delegate prepare.
@@ -302,6 +354,13 @@ TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
   return kTfLiteOk;
 }
 
+TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
+  TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
+                                                  variables.size()));
+  variables_ = std::move(variables);
+  return kTfLiteOk;
+}
+
 TfLiteStatus Interpreter::CheckTensorIndices(const char* label,
                                              const int* indices, int length) {
   // Making sure kOptionalTensor is not re-defined to something other than -1.
@@ -334,6 +393,9 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteFloat32:
       *bytes = sizeof(float) * count;
       break;
+    case kTfLiteInt16:
+      *bytes = sizeof(int16_t) * count;
+      break;
     case kTfLiteInt32:
       *bytes = sizeof(int32_t) * count;
       break;
@@ -346,32 +408,65 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
     case kTfLiteBool:
       *bytes = sizeof(bool) * count;
       break;
+    case kTfLiteComplex64:
+      *bytes = sizeof(std::complex<float>) * count;
+      break;
     default:
-      ReportError(
-          &context_,
-          "Only float32, int32, int64, uint8, bool supported currently.");
+      ReportError(&context_,
+                  "Only float32, int16, int32, int64, uint8, bool, complex64 "
+                  "supported currently.");
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
-  next_execution_plan_index_to_prepare_ = 0;
-  if (memory_planner_) {
-    TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
-  }
-
   if (!consistent_) {
     ReportError(&context_, "AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
   }
 
-  TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
-  if (state_ == kStateUninvokable) {
-    state_ = kStateInvokable;
+  // Explicit (re)allocation is necessary if nodes have been changed or tensors
+  // have been resized. For inputs marked as dynamic, we can't short-circuit the
+  // allocation as the client may have done the resize manually.
+  if (state_ != kStateUninvokable && !HasDynamicTensorImpl(context_, inputs_)) {
+    return kTfLiteOk;
   }
-  TF_LITE_ENSURE(&context_, state_ == kStateInvokable ||
-                                state_ == kStateInvokableAndImmutable);
+
+  next_execution_plan_index_to_prepare_ = 0;
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
+  }
+
+  TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
+
+  state_ = kStateInvokable;
+
+  // Reset the variable tensors to zero after (re)allocating the tensors.
+  // Developers shouldn't rely on the side effect of this function to reset
+  // variable tesnsors. They should call `ResetVariableTensorsToZero` directly
+  // instead.
+  ResetVariableTensorsToZero();
+
+  return kTfLiteOk;
+}
+
+// TODO(ycling): Consider to provide other functions to initialize variable
+// tensors to non-zero values.
+TfLiteStatus Interpreter::ResetVariableTensorsToZero() {
+  for (auto& tensor : tensors_) {
+    if (!tensor.is_variable) {
+      continue;
+    }
+
+    // Variable tensors have to be `kTfLiteArenaRwPersistent`, and must be
+    // allocated after the initial `PrepareOpsAndTensors()` is called.
+    TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
+                      kTfLiteArenaRwPersistent);
+    TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
+
+    memset(tensor.data.raw, 0, tensor.bytes);
+  }
   return kTfLiteOk;
 }
 
@@ -445,26 +540,26 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
                 "ResizeInputTensor is disallowed when graph is immutable.");
     return kTfLiteError;
   }
-  state_ = kStateUninvokable;
 
   // TODO(aselle): All bounds checks can be implemented as one-sided bounds
   // checks by casting to unsigned for efficiency. Profile before doing this.
   TF_LITE_ENSURE(&context_,
                  tensor_index < context_.tensors_size && tensor_index >= 0);
-  TfLiteIntArray* dims_lite = ConvertVectorToTfLiteIntArray(dims);
-  return ResizeTensorImpl(&context_.tensors[tensor_index], dims_lite);
+  TfLiteTensor* tensor = &context_.tensors[tensor_index];
+
+  // Short-circuit the state change if the dimensions don't change, avoiding
+  // unnecessary (re)allocations.
+  if (EqualArrayAndTfLiteIntArray(tensor->dims, dims.size(), dims.data())) {
+    return kTfLiteOk;
+  }
+
+  state_ = kStateUninvokable;
+  return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
 
-// Returns true if at least one tensor in the given list is kTfLiteDynamic.
 bool HasDynamicTensor(const TfLiteContext& context,
-                      const TfLiteIntArray* tensors) {
-  for (int i = 0; i < tensors->size; ++i) {
-    const TfLiteTensor& tensor = context.tensors[tensors->data[i]];
-    if (tensor.allocation_type == kTfLiteDynamic) {
-      return true;
-    }
-  }
-  return false;
+                      const TfLiteIntArray* int_array) {
+  return HasDynamicTensorImpl(context, TfLiteIntArrayView{int_array});
 }
 
 TfLiteStatus Interpreter::PrepareOpsStartingAt(
@@ -477,6 +572,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
     if (OpPrepare(registration, &node) == kTfLiteError) {
+      context_.ReportError(&context_, "Node %d failed to prepare.\n",
+                           node_index);
       return kTfLiteError;
     }
 
@@ -495,7 +592,8 @@ TfLiteStatus Interpreter::PrepareOpsStartingAt(
 TfLiteStatus Interpreter::PrepareOpsAndTensors() {
   if (!memory_planner_) {
     memory_planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this))));
+        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this)),
+        /*preserve_inputs=*/true, /*preserve_intermediates*/ false));
     memory_planner_->PlanAllocations();
   }
 
@@ -521,6 +619,7 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   TfLiteStatus status = kTfLiteOk;
+#ifndef TFLITE_MCU
   if (nnapi_delegate_) {
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
@@ -534,6 +633,7 @@ TfLiteStatus Interpreter::Invoke() {
       return kTfLiteError;
     }
   }
+#endif
 
   // Invocations are always done in node order.
   // Note that calling Invoke repeatedly will cause the original memory plan to
@@ -572,8 +672,18 @@ TfLiteStatus Interpreter::Invoke() {
     }
 
     EnsureTensorsVectorCapacity();
+    tensor_resized_since_op_invoke_ = false;
     if (OpInvoke(registration, &node) == kTfLiteError) {
+      context_.ReportError(&context_, "Node %d failed to invoke.\n",
+                           node_index);
       status = kTfLiteError;
+    }
+
+    // Force execution prep for downstream ops if the latest op triggered the
+    // resize of a dynamic tensor.
+    if (tensor_resized_since_op_invoke_ &&
+        HasDynamicTensor(context_, node.outputs)) {
+      next_execution_plan_index_to_prepare_ = execution_plan_index + 1;
     }
   }
 
@@ -687,7 +797,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
     state_ = kStateUninvokable;
     TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                       quantization, const_cast<char*>(buffer), bytes,
-                      kTfLiteMmapRo, allocation, &tensor);
+                      kTfLiteMmapRo, allocation, false, &tensor);
   }
   return kTfLiteOk;
 }
@@ -698,7 +808,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 // to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization) {
+    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         &context_,
@@ -716,11 +826,23 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     TF_LITE_ENSURE_OK(&context_,
                       BytesRequired(type, dims, rank, &required_bytes));
   }
+
+  TfLiteAllocationType allocation_type = kTfLiteArenaRw;
+  if (type == kTfLiteString) {
+    if (is_variable) {
+      // We don't have a real use case for string variable tensor.
+      ReportError(&context_, "String variable tensor isn't supported.");
+      return kTfLiteError;
+    }
+    allocation_type = kTfLiteDynamic;
+  } else if (is_variable) {
+    allocation_type = kTfLiteArenaRwPersistent;
+  }
+
   TfLiteTensorReset(type, name, ConvertArrayToTfLiteIntArray(rank, dims),
                     quantization,
-                    /*buffer=*/nullptr, required_bytes,
-                    type == kTfLiteString ? kTfLiteDynamic : kTfLiteArenaRw,
-                    nullptr, &context_.tensors[tensor_index]);
+                    /*buffer=*/nullptr, required_bytes, allocation_type,
+                    nullptr, is_variable, &context_.tensors[tensor_index]);
   return kTfLiteOk;
 }
 
@@ -736,7 +858,10 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
                                            TfLiteIntArray* new_size) {
   // Note that in theory we could resize kTfLiteArenaRwPersistent tensors too.
   if (tensor->allocation_type == kTfLiteArenaRw ||
-      tensor->allocation_type == kTfLiteDynamic) {
+      tensor->allocation_type == kTfLiteDynamic ||
+      tensor->allocation_type == kTfLiteArenaRwPersistent) {
+    tensor_resized_since_op_invoke_ |=
+        TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
       size_t bytesRequired;
       TfLiteStatus status = BytesRequired(tensor->type, new_size->data,
@@ -767,6 +892,7 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
 }
 
 void Interpreter::UseNNAPI(bool enable) {
+#ifndef TFLITE_MCU
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
@@ -776,15 +902,18 @@ void Interpreter::UseNNAPI(bool enable) {
   } else if (!nnapi_delegate_) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
+#endif
 }
 
 void Interpreter::SetNumThreads(int num_threads) {
   context_.recommended_num_threads = num_threads;
 
-  // TODO(ahentz): find a way to avoid this. It causes gemmlowp and eigen to
-  // be required in order to compile the framework.
-  gemm_support::SetNumThreads(&context_, num_threads);
-  eigen_support::SetNumThreads(&context_, num_threads);
+  for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
+    auto* c = external_contexts_[i];
+    if (c && c->Refresh) {
+      c->Refresh(&context_);
+    }
+  }
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
@@ -828,9 +957,10 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
   TF_LITE_ENSURE_OK(&context_, status);
 
   if (!allow_dynamic_tensors) {
+    // Reset the state to force tensor/op reallocation.
+    state_ = kStateUninvokable;
     TF_LITE_ENSURE_OK(&context_, AllocateTensors());
-    TF_LITE_ENSURE(&context_, state_ == kStateInvokable ||
-                                  state_ == kStateInvokableAndImmutable);
+    TF_LITE_ENSURE_EQ(&context_, state_, kStateInvokable);
     // After using a delegate which doesn't support dynamic tensors, make the
     // entire graph immutable.
     state_ = kStateInvokableAndImmutable;

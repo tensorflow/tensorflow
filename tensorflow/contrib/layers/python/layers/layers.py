@@ -57,10 +57,10 @@ from tensorflow.python.training import moving_averages
 __all__ = [
     'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
-    'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
-    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
-    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
-    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'convolution1d', 'convolution2d', 'convolution2d_in_plane',
+    'convolution2d_transpose', 'convolution3d', 'convolution3d_transpose',
+    'dense_to_sparse', 'dropout', 'elu', 'flatten', 'fully_connected', 'GDN',
+    'gdn', 'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
     'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
     'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
     'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
@@ -2664,6 +2664,7 @@ def separable_convolution2d(
     normalizer_fn=None,
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
+    pointwise_initializer=None,
     weights_regularizer=None,
     biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
@@ -2705,7 +2706,9 @@ def separable_convolution2d(
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
     normalizer_params: Normalization function parameters.
-    weights_initializer: An initializer for the weights.
+    weights_initializer: An initializer for the depthwise weights.
+    pointwise_initializer: An initializer for the pointwise weights.
+      default set to None, means use weights_initializer.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
@@ -2737,6 +2740,9 @@ def separable_convolution2d(
       custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
+    if pointwise_initializer is None:
+      pointwise_initializer = weights_initializer
+
     df = ('channels_first'
           if data_format and data_format.startswith('NC') else 'channels_last')
     if num_outputs is not None:
@@ -2752,7 +2758,7 @@ def separable_convolution2d(
           depth_multiplier=depth_multiplier,
           use_bias=not normalizer_fn and biases_initializer,
           depthwise_initializer=weights_initializer,
-          pointwise_initializer=weights_initializer,
+          pointwise_initializer=pointwise_initializer,
           bias_initializer=biases_initializer,
           depthwise_regularizer=weights_regularizer,
           pointwise_regularizer=weights_regularizer,

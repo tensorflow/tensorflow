@@ -78,18 +78,30 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   } else {
     op_name = tflite::EnumNamesBuiltinOperator()[code];
   }
+  const char* profiling_string =
+      interpreter.OpProfilingString(node_reg->second, &node_reg->first);
   OperatorDetails details;
   details.name = op_name;
+  if (profiling_string) {
+    details.name += ":" + std::string(profiling_string);
+  }
   details.inputs = GetTensorNames(interpreter, inputs);
   details.outputs = GetTensorNames(interpreter, outputs);
   return details;
 }
 
+tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
+  auto options = tensorflow::StatSummarizerOptions();
+  options.show_summary = true;
+  options.show_memory = false;
+  return options;
+}
+
 }  // namespace
 
 ProfileSummarizer::ProfileSummarizer()
-    : stats_calculator_(new ::tensorflow::StatsCalculator(
-          tensorflow::StatSummarizerOptions())) {}
+    : stats_calculator_(
+          new ::tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {}
 
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,

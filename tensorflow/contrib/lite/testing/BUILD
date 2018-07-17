@@ -20,11 +20,15 @@ load(
     size = "large",
     srcs = ["generated_examples_zip_test.cc"],
     args = [
-        "--zip_file_path=$(location :zip_%s)" % test_name,
-        # TODO(angerson) We may be able to add an external unzip binary instead
-        # of relying on an existing one for OSS builds.
-        "--unzip_binary_path=/usr/bin/unzip",
-    ],
+    ] + select({
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            "--zip_file_path=$(location :zip_%s)" % test_name,
+            # TODO(angerson) We may be able to add an external unzip binary instead
+            # of relying on an existing one for OSS builds.
+            "--unzip_binary_path=/usr/bin/unzip",
+        ],
+    }),
     data = [
         ":zip_%s" % test_name,
     ],
@@ -168,6 +172,7 @@ cc_test(
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":tflite_driver",

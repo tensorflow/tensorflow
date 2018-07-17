@@ -19,6 +19,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -30,9 +31,10 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":interpreter",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -57,8 +59,9 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
-        "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/python:graph_util",
+        "//tensorflow/python/saved_model:constants",
+        "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/tools:freeze_graph_lib",
     ],
 )

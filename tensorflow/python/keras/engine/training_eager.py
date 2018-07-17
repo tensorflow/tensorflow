@@ -34,7 +34,6 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -194,7 +193,8 @@ def iterator_fit_loop(model,
                       callbacks=None,
                       callback_metrics=None,
                       validation_steps=None,
-                      do_validation=False):
+                      do_validation=False,
+                      batch_size=None):
   """Fit function for eager execution when input is given as dataset iterator.
 
   Updates the given epoch logs.
@@ -224,16 +224,23 @@ def iterator_fit_loop(model,
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with default value of `None`.
       do_validation: Boolean value indicating whether we should do validation.
+      batch_size: int, val_inputs and val_targets will be evaled batch by
+        batch with size batch_size if they are array.
 
   Raises:
       ValueError: In case of mismatch between given number of inputs and
         expectations of the model.
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
+
+  # make sure either x,y or x,y,sample_weights is provided
+  if (not isinstance(inputs.output_shapes, (list, tuple)) or
+      len(inputs.output_shapes) not in (2, 3)):
+    raise ValueError('Please provide either inputs and targets'
+                     'or inputs, targets, and sample_weights')
+
   for step_index in range(steps_per_epoch):
-    batch_logs = {}
-    batch_logs['batch'] = step_index
-    batch_logs['size'] = 1
+    batch_logs = {'batch': step_index, 'size': 1}
     callbacks.on_batch_begin(step_index, batch_logs)
 
     # Get data from the iterator.
@@ -247,17 +254,21 @@ def iterator_fit_loop(model,
           'batches (in this case, %d batches).' % steps_per_epoch * epochs)
       break
 
-    if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-      raise ValueError('Please provide data as a list or tuple of 2 elements '
-                       ' - input and target pair. Received %s' % next_element)
-    x, y = next_element
+    if len(inputs.output_shapes) == 2:
+      x, y = next_element
+      sample_weights = None
+    else:
+      x, y, sample_weights = next_element
 
     # Validate and standardize data.
     x, y, sample_weights = model._standardize_user_data(
-        x, y, class_weight=class_weight)
+        x, y, sample_weight=sample_weights, class_weight=class_weight)
+    x = training_utils.cast_if_floating_dtype(x)
+    y = training_utils.cast_if_floating_dtype(y)
     if sample_weights:
       sample_weights = [
-          ops.convert_to_tensor(val, dtype=backend.floatx())
+          training_utils.cast_if_floating_dtype(
+              ops.convert_to_tensor(val, dtype=backend.floatx()))
           if val is not None else None for val in sample_weights
       ]
 
@@ -305,122 +316,8 @@ def iterator_fit_loop(model,
             val_targets,
             sample_weights=val_sample_weights,
             steps=validation_steps,
-            verbose=0)
-        if not isinstance(val_outs, list):
-          val_outs = [val_outs]
-        # Same labels assumed.
-        for l, o in zip(out_labels, val_outs):
-          epoch_logs['val_' + l] = o
-
-
-def batch_fit_loop(model,
-                   inputs,
-                   targets,
-                   epoch_logs,
-                   index_array,
-                   out_labels,
-                   callback_model,
-                   batch_size,
-                   sample_weights=None,
-                   val_inputs=None,
-                   val_targets=None,
-                   val_sample_weights=None,
-                   callbacks=None,
-                   shuffle=True,
-                   num_train_samples=None,
-                   do_validation=False):
-  """Fit function for eager execution when input is given as arrays or tensors.
-
-  Updates the given epoch logs.
-
-  Arguments:
-      model: Instance of the `Model`.
-      inputs: List of input arrays.
-      targets: List of target arrays.
-      epoch_logs: Dictionary of logs from every epoch.
-      index_array: Index array generated from number of training samples.
-      out_labels: Output labels generated from model metric names.
-      callback_model: Instance of `Model` to callback.
-      batch_size: Integer batch size or None if unknown.
-      sample_weights: Optional list of sample weight arrays.
-      val_inputs: Input data for validation.
-      val_targets: Target data for validation.
-      val_sample_weights: Sample weight data for validation.
-      callbacks: List of callbacks to be called during training.
-      shuffle: Whether to shuffle the data at the beginning of each epoch.
-      num_train_samples: Integer number of training samples.
-      do_validation: Boolean value indicating whether we should do validation.
-  """
-  # TODO(psv): Create a dataset iterator instead of manually creating batches
-  # here and in batch_test_loop, batch_predict_loop.
-  if shuffle == 'batch':
-    index_array = model._batch_shuffle(index_array, batch_size)
-  elif shuffle:
-    np.random.shuffle(index_array)
-
-  batches = generic_utils.make_batches(num_train_samples, batch_size)
-
-  for batch_index, (batch_start, batch_end) in enumerate(batches):
-    batch_ids = index_array[batch_start:batch_end]
-    inputs_batch = slice_arrays(inputs, batch_ids, contiguous=not shuffle)
-    targets_batch = slice_arrays(targets, batch_ids, contiguous=not shuffle)
-    if sample_weights:
-      sample_weights_batch = slice_arrays(
-          sample_weights, batch_ids, contiguous=not shuffle)
-    else:
-      sample_weights_batch = None
-    batch_logs = {}
-    batch_logs['batch'] = batch_index
-    batch_logs['size'] = len(batch_ids)
-
-    callbacks.on_batch_begin(batch_index, batch_logs)
-
-    inputs_batch = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
-        for val in inputs_batch
-    ]
-    targets_batch = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
-        for val in targets_batch
-    ]
-    if sample_weights:
-      sample_weights_batch = [
-          ops.convert_to_tensor(val, dtype=backend.floatx())
-          if val is not None else None for val in sample_weights_batch
-      ]
-
-    outs, loss, loss_metrics = _process_single_batch(
-        model,
-        inputs_batch,
-        targets_batch,
-        sample_weights=sample_weights_batch,
-        training=True)
-
-    if not isinstance(outs, list):
-      outs = [outs]
-
-    for l, o in zip(out_labels, outs):
-      batch_logs[l] = o
-    # Required for eager execution
-    metrics_results = _eager_metrics_fn(model, outs, targets_batch)
-    batch_logs['loss'] = tensor_util.constant_value(backend.mean(loss))
-
-    for k, v in zip(model.metrics_names,
-                    [backend.mean(loss)] + loss_metrics + metrics_results):
-      batch_logs[k] = tensor_util.constant_value(v)
-    callbacks.on_batch_end(batch_index, batch_logs)
-    if callback_model.stop_training:
-      break
-
-    if batch_index == len(batches) - 1:  # Last batch.
-      if do_validation:
-        val_outs = test_loop(
-            model,
-            val_inputs,
-            val_targets,
-            sample_weights=val_sample_weights,
-            batch_size=batch_size,
-            verbose=0)
+            verbose=0,
+            batch_size=batch_size)
         if not isinstance(val_outs, list):
           val_outs = [val_outs]
         # Same labels assumed.
@@ -449,6 +346,11 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
         expectations of the model.
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
+  # make sure either x,y or x,y,sample_weights is provided
+  if (not isinstance(inputs.output_shapes, (list, tuple)) or
+      len(inputs.output_shapes) < 2 or len(inputs.output_shapes) > 3):
+    raise ValueError('Please provide either inputs and targets'
+                     'or inputs, targets, and sample_weights')
   outs = []
   num_samples = 0
   if verbose == 1:
@@ -464,13 +366,16 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
           '(in this case, %d batches).', steps)
       break
 
-    if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-      raise ValueError('Please provide data as a list or tuple of 2 elements '
-                       ' - input and target pair. Received %s' % next_element)
-    x, y = next_element
+    if len(inputs.output_shapes) == 2:
+      x, y = next_element
+      sample_weights = None
+    else:
+      x, y, sample_weights = next_element
 
     # Validate and standardize data.
     x, y, sample_weights = model._standardize_user_data(x, y)
+    x = training_utils.cast_if_floating_dtype(x)
+    y = training_utils.cast_if_floating_dtype(y)
 
     # Calculate model output, loss values.
     loss_outs, loss, loss_metrics = _model_loss(
@@ -501,94 +406,6 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
     if verbose == 1:
       progbar.update(step_index + 1)
 
-    for i in range(len(outs)):
-      outs[i] /= num_samples
-    if len(outs) == 1:
-      return outs[0]
-    return outs
-
-
-def batch_test_loop(model,
-                    inputs,
-                    targets,
-                    batch_size,
-                    sample_weights=None,
-                    verbose=0):
-  """Test function for eager execution when input is given as arrays or tensors.
-
-  Arguments:
-      model: Model instance that is being evaluated in Eager mode.
-      inputs: List of input arrays.
-      targets: List of target arrays.
-      batch_size: Integer batch size.
-      sample_weights: Optional list of sample weight arrays.
-      verbose: Verbosity mode.
-
-  Returns:
-      Scalar loss (if the model has a single output and no metrics)
-      or list of scalars (if the model has multiple outputs
-      and/or metrics). The attribute `model.metrics_names` will give you
-      the display labels for the scalar outputs.
-  """
-  outs = []
-  feed_data = inputs + targets
-  if sample_weights:
-    feed_data += sample_weights
-  num_samples = training_utils.check_num_samples(
-      feed_data, batch_size=batch_size)
-  if verbose == 1:
-    progbar = generic_utils.Progbar(target=num_samples)
-  batches = generic_utils.make_batches(num_samples, batch_size)
-  index_array = np.arange(num_samples)
-  for batch_index, (batch_start, batch_end) in enumerate(batches):
-    batch_ids = index_array[batch_start:batch_end]
-    inputs_batch = slice_arrays(inputs, batch_ids)
-    targets_batch = slice_arrays(targets, batch_ids)
-    if sample_weights:
-      sample_weights_batch = slice_arrays(sample_weights, batch_ids)
-    else:
-      sample_weights_batch = None
-
-    inputs_batch = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
-        for val in inputs_batch
-    ]
-    targets_batch = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
-        for val in targets_batch
-    ]
-    if sample_weights:
-      sample_weights_batch = [
-          ops.convert_to_tensor(val, dtype=backend.floatx())
-          if val is not None else None for val in sample_weights_batch
-      ]
-
-    loss_outs, loss, loss_metrics = _model_loss(
-        model,
-        inputs_batch,
-        targets_batch,
-        sample_weights=sample_weights_batch,
-        training=False)
-    metrics_results = _eager_metrics_fn(model, loss_outs, targets_batch)
-    batch_outs = []
-    for _, v in zip(model.metrics_names,
-                    [backend.mean(loss)] + loss_metrics + metrics_results):
-      batch_outs.append(tensor_util.constant_value(v))
-
-    if isinstance(batch_outs, list):
-      if batch_index == 0:
-        for _ in enumerate(batch_outs):
-          outs.append(0.)
-      for i, batch_out in enumerate(batch_outs):
-        outs[i] += batch_out * len(batch_ids)
-    else:
-      if batch_index == 0:
-        outs.append(0.)
-      outs[0] += batch_outs * len(batch_ids)
-
-    if verbose == 1:
-      progbar.update(batch_end)
-
   for i in range(len(outs)):
     outs[i] /= num_samples
   if len(outs) == 1:
@@ -615,6 +432,12 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
         expectations of the model.
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
+  if not isinstance(inputs.output_shapes,
+                    (list, tuple)) or len(inputs.output_shapes) > 2:
+    raise ValueError(
+        'Please provide data as a list or tuple of 1 or 2 elements '
+        ' - input or input and target pair. Received %s. We do not use the '
+        '`target` value here.' % inputs.output_shapes)
   outs = []
   if verbose == 1:
     progbar = generic_utils.Progbar(target=steps)
@@ -630,15 +453,12 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
           'batches (in this case, %d batches).', steps)
       break
 
-    if not isinstance(next_element, (list, tuple)) or len(next_element) != 2:
-      raise ValueError(
-          'Please provide data as a list or tuple of 2 elements '
-          ' - input and target pair. Received %s. We do not use the '
-          '`target` value here.' % next_element)
-    x, _ = next_element
+    # expects a tuple, where first element of tuple represents inputs
+    x = next_element[0]
 
     # Validate and standardize data.
     x, _, _ = model._standardize_user_data(x)
+    x = training_utils.cast_if_floating_dtype(x)
 
     if model._expects_training_arg:
       batch_outs = model.call(x[0] if len(x) == 1 else x, training=False)
@@ -663,99 +483,6 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
   if len(outs) == 1:
     return outs[0]
   return outs
-
-
-def batch_predict_loop(model, inputs, batch_size, verbose=0):
-  """Predict function for eager execution when input is arrays or tensors.
-
-  Arguments:
-      model: Instance of `Model`.
-      inputs: List of input arrays.
-      batch_size: Integer batch size.
-      verbose: Verbosity mode.
-
-  Returns:
-      Array of predictions (if the model has a single output)
-      or list of arrays of predictions (if the model has multiple outputs).
-  """
-  outs = []
-  num_samples = training_utils.check_num_samples(inputs, batch_size)
-  if verbose == 1:
-    progbar = generic_utils.Progbar(target=num_samples)
-  batches = generic_utils.make_batches(num_samples, batch_size)
-  index_array = np.arange(num_samples)
-  for batch_index, (batch_start, batch_end) in enumerate(batches):
-    batch_ids = index_array[batch_start:batch_end]
-    inputs_batch = slice_arrays(inputs, batch_ids)
-
-    inputs_batch = [
-        ops.convert_to_tensor(val, dtype=backend.floatx())
-        for val in inputs_batch
-    ]
-
-    if len(inputs_batch) == 1:
-      if model._expects_training_arg:
-        batch_outs = model.call(inputs_batch[0], training=False)
-      else:
-        batch_outs = model.call(inputs_batch[0])
-    else:
-      if model._expects_training_arg:
-        batch_outs = model.call(inputs_batch, training=False)
-      else:
-        batch_outs = model.call(inputs_batch)
-
-    if not isinstance(batch_outs, list):
-      batch_outs = [batch_outs]
-    if batch_index == 0:
-      # Pre-allocate the results arrays.
-      for batch_out in batch_outs:
-        dims = batch_out.shape[1:].dims
-        dims_list = [d.value for d in dims]
-        shape = (num_samples,) + tuple(dims_list)
-        outs.append(np.zeros(shape, dtype=batch_out.dtype.as_numpy_dtype))
-    for i, batch_out in enumerate(batch_outs):
-      outs[i][batch_start:batch_end] = batch_out
-    if verbose == 1:
-      progbar.update(batch_end)
-
-  if len(outs) == 1:
-    return outs[0]
-  return outs
-
-
-def slice_arrays(arrays, indices, contiguous=True):
-  """Slices batches out of provided arrays (workaround for eager tensors).
-
-  Unfortunately eager tensors don't have the same slicing behavior as
-  Numpy arrays (they follow the same slicing behavior as symbolic TF tensors),
-  hence we cannot use `generic_utils.slice_arrays` directly
-  and we have to implement this workaround based on `concat`. This has a
-  performance cost.
-
-  Arguments:
-    arrays: Single array or list of arrays.
-    indices: List of indices in the array that should be included in the output
-      batch.
-    contiguous: Boolean flag indicating whether the indices are contiguous.
-
-  Returns:
-    Slice of data (either single array or list of arrays).
-  """
-  if any(tensor_util.is_tensor(x) for x in arrays):
-    converted_to_list = False
-    if not isinstance(arrays, list):
-      converted_to_list = True
-      arrays = [arrays]
-    if not contiguous:
-      entries = [[x[i:i + 1] for i in indices] for x in arrays]
-      slices = [array_ops.concat(x, axis=0) for x in entries]
-    else:
-      slices = [x[indices[0]:indices[-1] + 1] for x in arrays]
-    if converted_to_list:
-      slices = slices[0]
-    return slices
-  else:
-    return generic_utils.slice_arrays(arrays, indices)
 
 
 def _process_single_batch(model,
@@ -814,7 +541,10 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss and the loss associated with each output.
   """
-  if len(inputs) and not tensor_util.is_tensor(inputs[0]):
+  if len(inputs) and tensor_util.is_tensor(inputs[0]):
+    inputs = training_utils.cast_if_floating_dtype(inputs)
+    targets = training_utils.cast_if_floating_dtype(targets)
+  else:
     inputs = [
         ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
     ]
@@ -849,7 +579,10 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  if len(inputs) and not tensor_util.is_tensor(inputs[0]):
+  if len(inputs) and tensor_util.is_tensor(inputs[0]):
+    inputs = training_utils.cast_if_floating_dtype(inputs)
+    targets = training_utils.cast_if_floating_dtype(targets)
+  else:
     inputs = [
         ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
     ]
@@ -924,19 +657,24 @@ def fit_loop(model,
   Raises:
     ValueError: In case of invalid argument values.
   """
+  # Convert training inputs to an EagerIterator
+  inputs, steps_per_epoch = training_utils.convert_to_iterator(
+      x=inputs,
+      y=targets,
+      sample_weights=sample_weights,
+      batch_size=batch_size,
+      steps_per_epoch=steps_per_epoch,
+      epochs=epochs,
+      shuffle=shuffle)
   # Required for eager execution
   with backend.learning_phase_scope(1):
     do_validation = False
     if val_inputs:
       do_validation = True
-      if (steps_per_epoch is None and verbose and inputs and
-          hasattr(inputs[0], 'shape') and hasattr(val_inputs[0], 'shape')):
-        print('Train on %d samples, validate on %d samples' %
-              (inputs[0].shape[0], val_inputs[0].shape[0]))
 
     num_train_samples = None
     out_labels = None
-    if steps_per_epoch is None or model._is_compiled:
+    if model._is_compiled:
       out_labels = model.metrics_names
       if do_validation:
         callback_metrics = copy.copy(out_labels) + [
@@ -945,28 +683,10 @@ def fit_loop(model,
       else:
         callback_metrics = copy.copy(out_labels)
 
-    if steps_per_epoch is None:
-      if sample_weights:
-        feed_data = inputs + targets + sample_weights
-      else:
-        feed_data = inputs + targets
-      num_train_samples = training_utils.check_num_samples(
-          feed_data,
-          batch_size=batch_size,
-          steps=steps_per_epoch,
-          steps_name='steps_per_epoch')
-
-      if num_train_samples is not None:
-        index_array = np.arange(num_train_samples)
-
     model.history = cbks.History()
     callbacks = [cbks.BaseLogger()] + (callbacks or []) + [model.history]
     if verbose:
-      if steps_per_epoch is not None:
-        count_mode = 'steps'
-      else:
-        count_mode = 'samples'
-      callbacks += [cbks.ProgbarLogger(count_mode)]
+      callbacks += [cbks.ProgbarLogger('steps')]
     callbacks = cbks.CallbackList(callbacks)
 
     # it's possible to callback a different model than self
@@ -978,7 +698,7 @@ def fit_loop(model,
 
     callbacks.set_model(callback_model)
 
-    callbacks.set_params({
+    callback_params = {
         'batch_size': batch_size,
         'epochs': epochs,
         'steps': steps_per_epoch,
@@ -986,9 +706,11 @@ def fit_loop(model,
         'verbose': verbose,
         'do_validation': do_validation,
         'metrics': callback_metrics or [],
-    })
-    callbacks.on_train_begin()
-    callback_model.stop_training = False
+    }
+    if validation_steps:
+      callback_params.update({'validation_steps': validation_steps})
+    callbacks.set_params(callback_params)
+
     for cbk in callbacks:
       if not val_inputs:
         cbk.validation_data = []
@@ -998,47 +720,32 @@ def fit_loop(model,
         cbk.validation_data = val_inputs + val_targets + val_sample_weights
       else:
         cbk.validation_data = val_inputs + val_targets
+    # validation_data must be set before on_train_begin() is called
+    # so that TensorboardCallback can validate its input
+    callbacks.on_train_begin()
+    callback_model.stop_training = False
 
     for epoch in range(initial_epoch, epochs):
       callbacks.on_epoch_begin(epoch)
       epoch_logs = {}
-
-      if steps_per_epoch is not None:
-        iterator_fit_loop(
-            model,
-            inputs,
-            class_weight,
-            steps_per_epoch=steps_per_epoch,
-            callback_model=callback_model,
-            out_labels=out_labels,
-            epoch_logs=epoch_logs,
-            val_inputs=val_inputs,
-            val_targets=val_targets,
-            val_sample_weights=val_sample_weights,
-            epochs=epochs,
-            verbose=verbose,
-            callbacks=callbacks,
-            callback_metrics=callback_metrics,
-            validation_steps=validation_steps,
-            do_validation=do_validation)
-      else:
-        batch_fit_loop(
-            model,
-            inputs,
-            targets,
-            epoch_logs=epoch_logs,
-            index_array=index_array,
-            out_labels=out_labels,
-            callback_model=callback_model,
-            batch_size=batch_size,
-            sample_weights=sample_weights,
-            val_inputs=val_inputs,
-            val_targets=val_targets,
-            val_sample_weights=val_sample_weights,
-            callbacks=callbacks,
-            shuffle=shuffle,
-            num_train_samples=num_train_samples,
-            do_validation=do_validation)
+      iterator_fit_loop(
+          model,
+          inputs,
+          class_weight,
+          steps_per_epoch=steps_per_epoch,
+          callback_model=callback_model,
+          out_labels=out_labels,
+          epoch_logs=epoch_logs,
+          val_inputs=val_inputs,
+          val_targets=val_targets,
+          val_sample_weights=val_sample_weights,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          callback_metrics=callback_metrics,
+          validation_steps=validation_steps,
+          do_validation=do_validation,
+          batch_size=batch_size)
       callbacks.on_epoch_end(epoch, epoch_logs)
       if callback_model.stop_training:
         break
@@ -1070,17 +777,14 @@ def test_loop(model, inputs, targets,
       and/or metrics). The attribute `model.metrics_names` will give you
       the display labels for the scalar outputs.
   """
+  inputs, steps = training_utils.convert_to_iterator(
+      x=inputs,
+      y=targets,
+      sample_weights=sample_weights,
+      batch_size=batch_size,
+      steps_per_epoch=steps)
   with backend.learning_phase_scope(0):
-    if steps is not None:
-      return iterator_test_loop(model, inputs, steps, verbose=verbose)
-    else:
-      return batch_test_loop(
-          model,
-          inputs,
-          targets,
-          batch_size=batch_size,
-          sample_weights=sample_weights,
-          verbose=verbose)
+    return iterator_test_loop(model, inputs, steps, verbose=verbose)
 
 
 def predict_loop(model, inputs,
@@ -1104,8 +808,6 @@ def predict_loop(model, inputs,
       (if the model has multiple outputs).
   """
   with backend.learning_phase_scope(0):
-    if steps is not None:
-      return iterator_predict_loop(model, inputs, steps, verbose=verbose)
-    else:
-      return batch_predict_loop(
-          model, inputs, batch_size=batch_size, verbose=verbose)
+    inputs, steps = training_utils.convert_to_iterator(
+        x=inputs, batch_size=batch_size, steps_per_epoch=steps)
+    return iterator_predict_loop(model, inputs, steps, verbose=verbose)

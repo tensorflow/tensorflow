@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""High level conversion support."""
+"""Core conversion logic, serves as main point of access."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import imp
 
 import gast
@@ -29,84 +28,31 @@ from tensorflow.contrib.autograph.converters import asserts
 from tensorflow.contrib.autograph.converters import break_statements
 from tensorflow.contrib.autograph.converters import builtin_functions
 from tensorflow.contrib.autograph.converters import call_trees
+from tensorflow.contrib.autograph.converters import conditional_expressions
 from tensorflow.contrib.autograph.converters import continue_statements
 from tensorflow.contrib.autograph.converters import control_flow
 from tensorflow.contrib.autograph.converters import decorators
-from tensorflow.contrib.autograph.converters import ifexp
+from tensorflow.contrib.autograph.converters import directives
+from tensorflow.contrib.autograph.converters import error_handlers
 from tensorflow.contrib.autograph.converters import lists
 from tensorflow.contrib.autograph.converters import logical_expressions
 from tensorflow.contrib.autograph.converters import name_scopes
+from tensorflow.contrib.autograph.converters import return_statements
 from tensorflow.contrib.autograph.converters import side_effect_guards
-from tensorflow.contrib.autograph.converters import single_return
-from tensorflow.contrib.autograph.impl import config
-from tensorflow.contrib.autograph.impl import naming
+from tensorflow.contrib.autograph.converters import slices
+from tensorflow.contrib.autograph.core import config
+from tensorflow.contrib.autograph.core import converter
+from tensorflow.contrib.autograph.core import errors
 from tensorflow.contrib.autograph.pyct import ast_util
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import inspect_utils
+from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
-from tensorflow.contrib.autograph.pyct.static_analysis import activity
-from tensorflow.contrib.autograph.pyct.static_analysis import live_values
-from tensorflow.contrib.autograph.pyct.static_analysis import type_info
-from tensorflow.contrib.autograph.utils import type_hints
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
 # TODO(mdan): Might we not need any renaming at all?
-
-
-class ConversionMap(object):
-  """ConversionMap keeps track of converting function hierarchies.
-
-  This object is mutable, and is updated as functions are converted.
-
-  Attributes:
-    recursive: Whether to recursively convert any functions that the decorator
-        function may call.
-    nocompile_decorators: tuple of decorator functions that toggle compilation
-        off.
-    dependency_cache: dict[object]: ast; maps original entities to their
-        converted AST
-    additional_imports: set(object); additional entities which for any reason
-        cannot be attached after loading and need to be explicitly imported
-        in the generated code
-    name_map: dict[string]: string; maps original entities to the name of
-        their converted counterparts
-    api_module: A reference to the api module. The reference needs to be passed
-        to avoid circular dependencies.
-  """
-
-  # TODO(mdan): Rename to ConversionContext, and pull in additional flags.
-
-  def __init__(self, recursive, nocompile_decorators, partial_types,
-               api_module):
-    self.recursive = recursive
-    self.nocompile_decorators = nocompile_decorators
-    self.partial_types = partial_types if partial_types else ()
-    # Required to output dependencies in discovery order, which should match
-    # the reverse dependency order.
-    self.dependency_cache = collections.OrderedDict()
-    self.additional_imports = set()
-    self.name_map = {}
-    self.api_module = api_module
-
-  def new_namer(self, namespace):
-    return naming.Namer(namespace, self.recursive, self.name_map,
-                        self.partial_types)
-
-  def update_name_map(self, namer):
-    for o, name in namer.renamed_calls.items():
-      if o in self.name_map:
-        if self.name_map[o] != name:
-          raise ValueError(
-              'Calls to %s were converted using multiple names (%s). This is '
-              'possible when an entity with one of these names already '
-              'existed. To fix, avoid using any of these names.')
-      else:
-        self.name_map[o] = name
-
-  def add_to_cache(self, original_entity, converted_ast):
-    self.dependency_cache[original_entity] = converted_ast
 
 
 def is_whitelisted_for_graph(o):
@@ -127,7 +73,7 @@ def is_whitelisted_for_graph(o):
   return False
 
 
-def entity_to_graph(o, conversion_map, arg_values, arg_types):
+def entity_to_graph(o, program_ctx, arg_values, arg_types):
   """Compile a Python entity into equivalent TensorFlow.
 
   The function will also recursively compile all the entities that `o`
@@ -138,7 +84,7 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
 
   Args:
     o: A Python entity.
-    conversion_map: A ConversionMap object.
+    program_ctx: A ProgramContext object.
     arg_values: A dict containing value hints for symbols like function
         parameters.
     arg_types: A dict containing type hints for symbols like function
@@ -156,7 +102,7 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
     ValueError: if the entity type is not supported.
   """
   if tf_inspect.isclass(o):
-    node, name, ns = class_to_graph(o, conversion_map)
+    node, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
     # TODO(mdan): This is not a reliable mechanism.
     # The most reliable way is to check the source code, the AST will contain
@@ -166,36 +112,35 @@ def entity_to_graph(o, conversion_map, arg_values, arg_types):
           'lambda functions are not yet supported; declare the function'
           ' using def instead: %s' % o)
     else:
-      node, name, ns = function_to_graph(o, conversion_map, arg_values,
-                                         arg_types)
+      node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
-    node, name, ns = function_to_graph(o, conversion_map, arg_values, arg_types)
+    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 
-  conversion_map.add_to_cache(o, node)
-  if conversion_map.recursive:
+  program_ctx.add_to_cache(o, node)
+  if program_ctx.recursive:
     while True:
       candidate = None
-      for obj in conversion_map.name_map.keys():
-        if obj not in conversion_map.dependency_cache:
+      for obj in program_ctx.name_map.keys():
+        if obj not in program_ctx.dependency_cache:
           candidate = obj
           break
       if candidate is None:
         break
       if (hasattr(candidate, 'im_class') and
-          getattr(candidate, 'im_class') not in conversion_map.partial_types):
+          getattr(candidate, 'im_class') not in program_ctx.partial_types):
         # Class members are converted with their objects, unless they're
         # only converted partially.
         continue
-      entity_to_graph(candidate, conversion_map, {}, {})
+      entity_to_graph(candidate, program_ctx, {}, {})
 
   return node, name, ns
 
 
-def class_to_graph(c, conversion_map):
+def class_to_graph(c, program_ctx):
   """Specialization of `entity_to_graph` for classes."""
   converted_members = {}
   method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
@@ -210,23 +155,24 @@ def class_to_graph(c, conversion_map):
       continue
     node, _, namespace = function_to_graph(
         m,
-        conversion_map=conversion_map,
+        program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c)
+        owner_type=c,
+        rewrite_errors=False)
     if class_namespace is None:
       class_namespace = namespace
     else:
       class_namespace.update(namespace)
     converted_members[m] = node
-  namer = conversion_map.new_namer(class_namespace)
+  namer = program_ctx.new_namer(class_namespace)
   class_name = namer.compiled_class_name(c.__name__, c)
 
   # TODO(mdan): This needs to be explained more thoroughly.
   # Process any base classes: if the sueprclass if of a whitelisted type, an
   # absolute import line is generated. Otherwise, it is marked for conversion
   # (as a side effect of the call to namer.compiled_class_name() followed by
-  # conversion_map.update_name_map(namer)).
+  # program_ctx.update_name_map(namer)).
   output_nodes = []
   renames = {}
   bases = []
@@ -246,7 +192,7 @@ def class_to_graph(c, conversion_map):
       alias = namer.compiled_class_name(base.__name__, base)
     bases.append(alias)
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
-  conversion_map.update_name_map(namer)
+  program_ctx.update_name_map(namer)
 
   # Generate the definition of the converted class.
   output_nodes.append(
@@ -278,15 +224,17 @@ def _add_reserved_symbol(namespace, name, entity):
 ag_internal = None
 
 
-def _add_self_references(namespace, api_module):
+def _add_self_references(namespace, autograph_module):
   """Adds namespace references to the module that exposes the api itself."""
   global ag_internal
   if ag_internal is None:
     # Craft a module that exposes parts of the external API as well as certain
     # internal modules.
     ag_internal = imp.new_module('autograph')
-    ag_internal.converted_call = api_module.converted_call
+    ag_internal.converted_call = autograph_module.converted_call
     ag_internal.utils = utils
+    ag_internal.rewrite_graph_construction_error = (
+        errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
@@ -295,27 +243,30 @@ def _add_self_references(namespace, api_module):
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f, conversion_map, arg_values, arg_types,
-                      owner_type=None):
+def function_to_graph(f,
+                      program_ctx,
+                      arg_values,
+                      arg_types,
+                      owner_type=None,
+                      rewrite_errors=True):
   """Specialization of `entity_to_graph` for callable functions."""
+
   node, source = parser.parse_entity(f)
   node = node.body[0]
-
+  origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
-  _add_self_references(namespace, conversion_map.api_module)
-  namer = conversion_map.new_namer(namespace)
+  _add_self_references(namespace, program_ctx.autograph_module)
+  namer = program_ctx.new_namer(namespace)
 
-  ctx = context.EntityContext(
-      namer=namer,
+  entity_info = transformer.EntityInfo(
       source_code=source,
       source_file='<fragment>',
       namespace=namespace,
       arg_values=arg_values,
       arg_types=arg_types,
-      owner_type=owner_type,
-      recursive=conversion_map.recursive,
-      type_annotation_func=type_hints.set_element_type)
-  node, deps = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
+      owner_type=owner_type)
+  context = converter.EntityContext(namer, entity_info, program_ctx)
+  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -325,29 +276,19 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       raise NotImplementedError('Strange corner case. Send us offending code!')
 
   node.name = new_name
-  conversion_map.update_name_map(namer)
+  program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.
-  conversion_map.additional_imports.update(deps)
 
   return node, new_name, namespace
 
 
-def _static_analysis_pass(node, ctx):
-  node = qual_names.resolve(node)
-  node = activity.resolve(node, ctx, None)
-  node = live_values.resolve(node, ctx, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, ctx)
-  return node
-
-
-def node_to_graph(node, ctx, nocompile_decorators):
+def node_to_graph(node, context, rewrite_errors=True):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
-    node: A Python AST node representing the code to convert.
-    ctx: An EntityContext object.
-    nocompile_decorators: A tuple containing decorators to be stripped from
-        functions during conversion.
+    node: AST, the code to convert.
+    context: converter.EntityContext
+    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -355,55 +296,33 @@ def node_to_graph(node, ctx, nocompile_decorators):
         * deps: A set of strings, the fully qualified names of entity
             dependencies that this node has.
   """
-  # TODO(mdan): Verify arguments for correctness.
+  # TODO(mdan): Insert list_comprehensions somewhere.
 
-  # TODO(mdan): Factor out common elements.
-  # These include:
-  #   * code move between blocks
-  #   * visiting blocks in transformers
-
-  # Certain steps, especially canonicalization, insert new symbols into the
-  # tree, which must be accounted. Although less efficient, it is most robust
-  # to re-run the analysis.
-
-  node = _static_analysis_pass(node, ctx)
-
-  # TODO(mdan): Clean this up.
-  # Some intermediate analyses are not required, and some comments got orphaned.
-
+  node = converter.standard_analysis(node, context, is_initial=True)
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
-  ctx.source_code = None
-  node = ifexp.transform(node, ctx)
-  node, deps = decorators.transform(node, nocompile_decorators)
-  node = break_statements.transform(node, ctx)
-  node = _static_analysis_pass(node, ctx)
+  context.info.source_code = None
 
-  node = asserts.transform(node, ctx)
-
+  node = converter.apply_(node, context, decorators)
+  node = converter.apply_(node, context, directives)
+  node = converter.apply_(node, context, break_statements)
+  node = converter.apply_(node, context, asserts)
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = continue_statements.transform(node, ctx)
-  ctx.namespace['len'] = len
-
-  node = _static_analysis_pass(node, ctx)
-  node = single_return.transform(node, ctx)
-
-  node = _static_analysis_pass(node, ctx)
-  node = lists.transform(node, ctx)
-  node = builtin_functions.transform(node, ctx)
-
-  node = _static_analysis_pass(node, ctx)
-  node = call_trees.transform(node, ctx, config.DEFAULT_UNCOMPILED_MODULES,
-                              nocompile_decorators)
-  node = control_flow.transform(node, ctx)
-
-  # control_flow may create new symbols and change scopes.
-  node = _static_analysis_pass(node, ctx)
-  node = logical_expressions.transform(node, ctx)
-  node = side_effect_guards.transform(node, ctx)
-  node = name_scopes.transform(node, ctx)
-
-  return node, deps
+  node = converter.apply_(node, context, continue_statements)
+  context.info.namespace['len'] = len
+  node = converter.apply_(node, context, return_statements)
+  node = converter.apply_(node, context, lists)
+  node = converter.apply_(node, context, slices)
+  node = converter.apply_(node, context, builtin_functions)
+  node = converter.apply_(node, context, call_trees)
+  node = converter.apply_(node, context, control_flow)
+  node = converter.apply_(node, context, conditional_expressions)
+  node = converter.apply_(node, context, logical_expressions)
+  node = converter.apply_(node, context, side_effect_guards)
+  node = converter.apply_(node, context, name_scopes)
+  if rewrite_errors:
+    node = converter.apply_(node, context, error_handlers)
+  return node

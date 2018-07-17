@@ -35,50 +35,52 @@ class SelectTest : public ClientLibraryTestBase {
 
 TEST_F(SelectTest, SelectScalarF32True) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR0<bool>(true);
-  auto on_true = builder.ConstantR0<float>(123.0f);
-  auto on_false = builder.ConstantR0<float>(42.0f);
-  auto result = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR0<bool>(&builder, true);
+  auto on_true = ConstantR0<float>(&builder, 123.0f);
+  auto on_false = ConstantR0<float>(&builder, 42.0f);
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR0<float>(&builder, 123.0f, {}, error_spec_);
 }
 
 TEST_F(SelectTest, SelectScalarS32True) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR0<bool>(true);
-  auto on_true = builder.ConstantR0<int32>(-42);
-  auto on_false = builder.ConstantR0<int32>(42);
-  auto result = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR0<bool>(&builder, true);
+  auto on_true = ConstantR0<int32>(&builder, -42);
+  auto on_false = ConstantR0<int32>(&builder, 42);
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR0<int32>(&builder, -42, {});
 }
 
 TEST_F(SelectTest, SelectScalarF32False) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR0<bool>(false);
-  auto on_true = builder.ConstantR0<float>(123.0f);
-  auto on_false = builder.ConstantR0<float>(42.0f);
-  auto result = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR0<bool>(&builder, false);
+  auto on_true = ConstantR0<float>(&builder, 123.0f);
+  auto on_false = ConstantR0<float>(&builder, 42.0f);
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR0<float>(&builder, 42.0f, {}, error_spec_);
 }
 
 XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR1<bool>({});
-  auto on_true = builder.ConstantR1<float>({});
-  auto on_false = builder.ConstantR1<float>({});
-  auto select = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR1<bool>(&builder, {});
+  auto on_true = ConstantR1<float>(&builder, {});
+  auto on_false = ConstantR1<float>(&builder, {});
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
 
 TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR1<bool>({false, true, false, true, false});
-  auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
-  auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
-  auto select = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR1<bool>(&builder, {false, true, false, true, false});
+  auto on_true =
+      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
+  auto on_false =
+      ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 25.5f, 1.0f, -10.0f, -6.0f}, {},
                              error_spec_);
@@ -88,12 +90,12 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
   // Similar to SelectR1S0F32WithConstantR1S0PRED, except that the pred vector
   // is not a constant, but rather the result of comparing two other vectors.
   XlaBuilder builder(TestName());
-  auto v1 = builder.ConstantR1<int32>({});
-  auto v2 = builder.ConstantR1<int32>({});
-  auto cmp = builder.Eq(v1, v2);
-  auto on_true = builder.ConstantR1<float>({});
-  auto on_false = builder.ConstantR1<float>({});
-  auto select = builder.Select(cmp, on_true, on_false);
+  auto v1 = ConstantR1<int32>(&builder, {});
+  auto v2 = ConstantR1<int32>(&builder, {});
+  auto cmp = Eq(v1, v2);
+  auto on_true = ConstantR1<float>(&builder, {});
+  auto on_false = ConstantR1<float>(&builder, {});
+  Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
 }
@@ -102,12 +104,14 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
   // Similar to SelectR1F32WithConstantR1PRED, except that the pred vector is
   // not a constant, but rather the result of comparing two other vectors.
   XlaBuilder builder(TestName());
-  auto v1 = builder.ConstantR1<int32>({1, 2, 3, 4, 5});
-  auto v2 = builder.ConstantR1<int32>({9, 2, 9, 4, 9});
-  auto cmp = builder.Eq(v1, v2);
-  auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
-  auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+  auto v1 = ConstantR1<int32>(&builder, {1, 2, 3, 4, 5});
+  auto v2 = ConstantR1<int32>(&builder, {9, 2, 9, 4, 9});
+  auto cmp = Eq(v1, v2);
+  auto on_true =
+      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
+  auto on_false =
+      ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
+  Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 25.5f, 1.0f, -10.0f, -6.0f}, {},
                              error_spec_);
@@ -116,12 +120,14 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32s) {
 TEST_F(SelectTest, SelectR1F32WithCmpR1F32s) {
   // Similar to SelectR1F32WithCmpR1S32s, except "gt"-comparing two R1F32s.
   XlaBuilder builder(TestName());
-  auto v1 = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
-  auto v2 = builder.ConstantR1<float>({-1.0f, -2.0f, 13.0f, 14.0f, 4.4f});
-  auto cmp = builder.Gt(v1, v2);
-  auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
-  auto on_false = builder.ConstantR1<float>({10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+  auto v1 = ConstantR1<float>(&builder, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+  auto v2 = ConstantR1<float>(&builder, {-1.0f, -2.0f, 13.0f, 14.0f, 4.4f});
+  auto cmp = Gt(v1, v2);
+  auto on_true =
+      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
+  auto on_false =
+      ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, -6.0f});
+  Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f, 1.0f, 10.0f, 6.0f}, {},
                              error_spec_);
@@ -140,8 +146,8 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsSmall) {
       {21.0f, 22.0f, 23.0f, 24.0f}, /*parameter_number=*/1, /*name=*/"v2",
       /*builder=*/&builder, /*data_handle=*/&v2);
 
-  auto cmp = builder.Gt(v1, v2);
-  auto select = builder.Select(cmp, v1, v2);
+  auto cmp = Gt(v1, v2);
+  Select(cmp, v1, v2);
   ComputeAndCompareR1<float>(&builder, {41.0f, 22.0f, 23.0f, 84.0f},
                              {param0_data.get(), param1_data.get()},
                              error_spec_);
@@ -181,8 +187,8 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32sFromParamsLarge) {
       CreateR1Parameter<float>(v2vec, /*parameter_number=*/1, /*name=*/"v2",
                                /*builder=*/&builder, /*data_handle=*/&v2);
 
-  auto cmp = builder.Gt(v1, v2);
-  auto select = builder.Select(cmp, v1, v2);
+  auto cmp = Gt(v1, v2);
+  Select(cmp, v1, v2);
   ComputeAndCompareR1<float>(&builder, expected_vec,
                              {param0_data.get(), param1_data.get()},
                              error_spec_);
@@ -192,14 +198,14 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1S32ToScalar) {
   // "gt"-compares a R1S32 with a S32 scalar, and uses the resulting R1PRED to
   // select between two R1F32s.
   XlaBuilder builder(TestName());
-  auto v = builder.ConstantR1<int32>({1, -1, 2, -2});
-  auto s = builder.ConstantR0<int32>(0);
-  auto cmp = builder.Gt(v, s);
+  auto v = ConstantR1<int32>(&builder, {1, -1, 2, -2});
+  auto s = ConstantR0<int32>(&builder, 0);
+  auto cmp = Gt(v, s);
 
-  auto on_true = builder.ConstantR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
+  auto on_true = ConstantR1<float>(&builder, {11.0f, 22.0f, 33.0f, 44.0f});
   auto on_false =
-      builder.ConstantR1<float>({-111.0f, -222.0f, -333.0f, -444.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+      ConstantR1<float>(&builder, {-111.0f, -222.0f, -333.0f, -444.0f});
+  Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {11.0f, -222.0f, 33.0f, -444.0f}, {},
                              error_spec_);
@@ -209,14 +215,14 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
   // "gt"-compares a R1F32 with a F32 scalar, and uses the resulting R1PRED to
   // select between two R1F32s.
   XlaBuilder builder(TestName());
-  auto v = builder.ConstantR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
-  auto s = builder.ConstantR0<float>(2.5f);
-  auto cmp = builder.Gt(v, s);
+  auto v = ConstantR1<float>(&builder, {1.0f, 2.0f, 3.0f, 4.0f});
+  auto s = ConstantR0<float>(&builder, 2.5f);
+  auto cmp = Gt(v, s);
 
-  auto on_true = builder.ConstantR1<float>({11.0f, 22.0f, 33.0f, 44.0f});
+  auto on_true = ConstantR1<float>(&builder, {11.0f, 22.0f, 33.0f, 44.0f});
   auto on_false =
-      builder.ConstantR1<float>({-111.0f, -222.0f, -333.0f, -444.0f});
-  auto select = builder.Select(cmp, on_true, on_false);
+      ConstantR1<float>(&builder, {-111.0f, -222.0f, -333.0f, -444.0f});
+  Select(cmp, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-111.0f, -222.0f, 33.0f, 44.0f}, {},
                              error_spec_);
@@ -225,10 +231,10 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
 XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
   for (bool which : {false, true}) {
     XlaBuilder builder(TestName());
-    auto pred = builder.ConstantR0<bool>(which);
-    auto on_true = builder.ConstantR1<float>({});
-    auto on_false = builder.ConstantR1<float>({});
-    auto select = builder.Select(pred, on_true, on_false);
+    auto pred = ConstantR0<bool>(&builder, which);
+    auto on_true = ConstantR1<float>(&builder, {});
+    auto on_false = ConstantR1<float>(&builder, {});
+    Select(pred, on_true, on_false);
 
     ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
   }
@@ -236,20 +242,20 @@ XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
 
 TEST_F(SelectTest, SelectR1F32WithScalarPredicateTrue) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR0<bool>(true);
-  auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f});
-  auto on_false = builder.ConstantR1<float>({10.0f, 5.0f});
-  auto select = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR0<bool>(&builder, true);
+  auto on_true = ConstantR1<float>(&builder, {-2.5f, 25.5f});
+  auto on_false = ConstantR1<float>(&builder, {10.0f, 5.0f});
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {}, error_spec_);
 }
 
 TEST_F(SelectTest, SelectR1F32WithScalarPredicateFalse) {
   XlaBuilder builder(TestName());
-  auto pred = builder.ConstantR0<bool>(false);
-  auto on_true = builder.ConstantR1<float>({-2.5f, 25.5f});
-  auto on_false = builder.ConstantR1<float>({10.0f, 5.0f});
-  auto select = builder.Select(pred, on_true, on_false);
+  auto pred = ConstantR0<bool>(&builder, false);
+  auto on_true = ConstantR1<float>(&builder, {-2.5f, 25.5f});
+  auto on_false = ConstantR1<float>(&builder, {10.0f, 5.0f});
+  Select(pred, on_true, on_false);
 
   ComputeAndCompareR1<float>(&builder, {10.0f, 5.0f}, {}, error_spec_);
 }

@@ -259,9 +259,7 @@ class DatasetConstructorTest(test.TestCase):
       sess.run(init_op)
       self.assertAllEqual([1, 2, 3], sess.run(get_next))
       self.assertAllEqual([4, 5, 6], sess.run(get_next))
-      # NOTE(mrry): Type name in message differs between Python 2 (`long`) and
-      # 3 (`int`).
-      with self.assertRaisesOpError(r"invalid literal for"):
+      with self.assertRaisesOpError("The expected type was int64"):
         sess.run(get_next)
       self.assertAllEqual([7, 8, 9], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
@@ -287,6 +285,34 @@ class DatasetConstructorTest(test.TestCase):
       with self.assertRaisesOpError(r"element of shape \(3,\) was expected"):
         sess.run(get_next)
       self.assertAllEqual([11, 12, 13], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testFromGeneratorStructureError(self):
+    def generator():
+      yield 1, 2
+      yield 3, 4
+      yield 5
+      yield 6, 7, 8
+      yield 9, 10
+
+    iterator = (dataset_ops.Dataset.from_generator(
+        generator, output_types=(dtypes.int64, dtypes.int64))
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      self.assertEqual((1, 2), sess.run(get_next))
+      self.assertEqual((3, 4), sess.run(get_next))
+      with self.assertRaisesOpError(
+          r"The expected structure was \(tf\.int64, tf\.int64\)"):
+        sess.run(get_next)
+      with self.assertRaisesOpError(
+          r"The expected structure was \(tf\.int64, tf\.int64\)"):
+        sess.run(get_next)
+      self.assertEqual((9, 10), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

@@ -39,6 +39,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
@@ -968,6 +969,35 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       self.assertEqual(
           six.b('{0:s}{1:.2f}'.format(expected_train_result, expected_loss)),
           train_result)
+
+  def test_train_with_update_ops(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
+
+    with ops.Graph().as_default():
+      w = variables.Variable(1)
+      update_op = w.assign_add(1)
+      ops.add_to_collection(ops.GraphKeys.UPDATE_OPS, update_op)
+
+      t = variables.Variable('')
+      expected_train_result = b'my_train_op'
+      def _train_op_fn(loss):
+        del loss
+        return t.assign(expected_train_result)
+
+      spec = head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32),
+          labels=np.array(((1,), (1,)), dtype=np.int64),
+          train_op_fn=_train_op_fn)
+
+      with self.test_session() as sess:
+        _initialize_variables(self, spec.scaffold)
+        sess.run(spec.train_op)
+        w_value, t_value = sess.run([w, t])
+        self.assertEqual(2, w_value)
+        self.assertEqual(expected_train_result, t_value)
 
   def test_train_summaries_with_head_name(self):
     n_classes = 3
@@ -2102,6 +2132,34 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(expected_loss, loss)
       self.assertEqual(expected_train_result, train_result)
 
+  def test_train_with_update_ops(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    with ops.Graph().as_default():
+      w = variables.Variable(1)
+      update_op = w.assign_add(1)
+      ops.add_to_collection(ops.GraphKeys.UPDATE_OPS, update_op)
+
+      t = variables.Variable('')
+      expected_train_result = b'my_train_op'
+      def _train_op_fn(loss):
+        del loss
+        return t.assign(expected_train_result)
+
+      spec = head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array(((45,), (-41,),), dtype=np.float32),
+          labels=np.array(((1,), (1,),), dtype=np.float64),
+          train_op_fn=_train_op_fn)
+
+      with self.test_session() as sess:
+        _initialize_variables(self, spec.scaffold)
+        sess.run(spec.train_op)
+        w_value, t_value = sess.run([w, t])
+        self.assertEqual(2, w_value)
+        self.assertEqual(expected_train_result, t_value)
+
   def test_train_summaries_with_head_name(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
         name='some_binary_head')
@@ -3045,8 +3103,10 @@ class RegressionHead(test.TestCase):
     self.assertItemsEqual((prediction_key,), spec.predictions.keys())
     self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
     self.assertEqual(dtypes.float32, spec.loss.dtype)
-    self.assertItemsEqual(
-        (metric_keys.MetricKeys.LOSS_MEAN,), spec.eval_metric_ops.keys())
+    self.assertItemsEqual((metric_keys.MetricKeys.LOSS_MEAN,
+                           metric_keys.MetricKeys.PREDICTION_MEAN,
+                           metric_keys.MetricKeys.LABEL_MEAN),
+                          spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
@@ -3082,6 +3142,9 @@ class RegressionHead(test.TestCase):
 
     expected_metric_keys = [
         '{}/some_regression_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
+        '{}/some_regression_head'.format(
+            metric_keys.MetricKeys.PREDICTION_MEAN),
+        '{}/some_regression_head'.format(metric_keys.MetricKeys.LABEL_MEAN),
     ]
     self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
 
@@ -3112,6 +3175,8 @@ class RegressionHead(test.TestCase):
     expected_metrics = {
         keys.LOSS_MEAN: expected_unregularized_loss,
         keys.LOSS_REGULARIZATION: expected_regularization_loss,
+        keys.PREDICTION_MEAN: (45 + 41) / 2.0,
+        keys.LABEL_MEAN: (43 + 44) / 2.0,
     }
 
     # Assert predictions, loss, and metrics.
@@ -3278,6 +3343,34 @@ class RegressionHead(test.TestCase):
       self.assertAllClose(expected_loss, loss)
       self.assertEqual(expected_train_result, train_result)
 
+  def test_train_with_update_ops(self):
+    head = head_lib._regression_head()
+
+    with ops.Graph().as_default():
+      w = variables.Variable(1)
+      update_op = w.assign_add(1)
+      ops.add_to_collection(ops.GraphKeys.UPDATE_OPS, update_op)
+
+      t = variables.Variable('')
+      expected_train_result = b'my_train_op'
+      def _train_op_fn(loss):
+        del loss
+        return t.assign(expected_train_result)
+
+      spec = head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array(((45,), (41,),), dtype=np.float32),
+          labels=np.array(((43.,), (44.,),), dtype=np.float64),
+          train_op_fn=_train_op_fn)
+
+      with self.test_session() as sess:
+        _initialize_variables(self, spec.scaffold)
+        sess.run(spec.train_op)
+        w_value, t_value = sess.run([w, t])
+        self.assertEqual(2, w_value)
+        self.assertEqual(expected_train_result, t_value)
+
   def test_train_summaries_with_head_name(self):
     head = head_lib._regression_head(name='some_regression_head')
     self.assertEqual(1, head.logits_dimension)
@@ -3385,8 +3478,10 @@ class RegressionHead(test.TestCase):
     self.assertItemsEqual((prediction_key,), spec.predictions.keys())
     self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
     self.assertEqual(dtypes.float32, spec.loss.dtype)
-    self.assertItemsEqual(
-        (metric_keys.MetricKeys.LOSS_MEAN,), spec.eval_metric_ops.keys())
+    self.assertItemsEqual((metric_keys.MetricKeys.LOSS_MEAN,
+                           metric_keys.MetricKeys.PREDICTION_MEAN,
+                           metric_keys.MetricKeys.LABEL_MEAN),
+                          spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
@@ -3614,8 +3709,10 @@ class RegressionHead(test.TestCase):
     self.assertItemsEqual((prediction_key,), spec.predictions.keys())
     self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
     self.assertEqual(dtypes.float32, spec.loss.dtype)
-    self.assertItemsEqual(
-        (metric_keys.MetricKeys.LOSS_MEAN,), spec.eval_metric_ops.keys())
+    self.assertItemsEqual((metric_keys.MetricKeys.LOSS_MEAN,
+                           metric_keys.MetricKeys.PREDICTION_MEAN,
+                           metric_keys.MetricKeys.LABEL_MEAN),
+                          spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
@@ -3746,7 +3843,13 @@ class RegressionHead(test.TestCase):
     # losses = [1*(35-45)^2, .1*(42-41)^2, 1.5*(45-44)^2] = [100, .1, 1.5]
     # loss = sum(losses) = 100+.1+1.5 = 101.6
     # loss_mean = loss/(1+.1+1.5) = 101.6/2.6 = 39.076923
-    expected_metrics = {metric_keys.MetricKeys.LOSS_MEAN: 39.076923}
+    expected_metrics = {
+        metric_keys.MetricKeys.LOSS_MEAN:
+            39.076923,
+        metric_keys.MetricKeys.PREDICTION_MEAN:
+            (45 + 41 * 0.1 + 44 * 1.5) / 2.6,
+        metric_keys.MetricKeys.LABEL_MEAN: (35 + 42 * 0.1 + 45 * 1.5) / 2.6,
+    }
 
     # Assert spec contains expected tensors.
     self.assertEqual(dtypes.float32, spec.loss.dtype)

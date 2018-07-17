@@ -49,7 +49,6 @@ cd Python-3.6.1
 make altinstall
 ln -s /usr/local/bin/pip3.6 /usr/local/bin/pip3
 
-pip3 install --upgrade setuptools==39.1.0
 pip3 install --upgrade pip
 
 pip3 install --upgrade virtualenv
@@ -61,7 +60,7 @@ pip3 install --upgrade absl-py
 pip3 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3 install --upgrade protobuf==3.3.0
+pip3 install --upgrade protobuf==3.6.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -97,5 +96,12 @@ pip3 install grpcio
 pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
+
+# Install last working version of setuptools.
+pip3 install --upgrade setuptools==39.1.0
+
+# Keras
+pip3.5 install keras_applications==1.0.2
+pip3.5 install keras_preprocessing==1.0.1
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.5_pip_packages.sh)

@@ -21,7 +21,6 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.platform import test
@@ -29,16 +28,14 @@ from tensorflow.python.platform import test
 
 class TransformerTest(test.TestCase):
 
-  def _context_for_testing(self):
-    return context.EntityContext(
-        namer=None,
+  def _simple_source_info(self):
+    return transformer.EntityInfo(
         source_code=None,
         source_file=None,
         namespace=None,
         arg_values=None,
         arg_types=None,
-        owner_type=None,
-        recursive=False)
+        owner_type=None)
 
   def test_entity_scope_tracking(self):
 
@@ -55,7 +52,7 @@ class TransformerTest(test.TestCase):
         anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
         return self.generic_visit(node)
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     def test_function():
       a = 0
@@ -96,6 +93,83 @@ class TransformerTest(test.TestCase):
                       inner_function, lambda_node),
                      anno.getanno(lambda_expr, 'enclosing_entities'))
 
+  def assertSameAnno(self, first, second, key):
+    self.assertIs(anno.getanno(first, key), anno.getanno(second, key))
+
+  def assertDifferentAnno(self, first, second, key):
+    self.assertIsNot(anno.getanno(first, key), anno.getanno(second, key))
+
+  def test_state_tracking(self):
+
+    class LoopState(object):
+      pass
+
+    class CondState(object):
+      pass
+
+    class TestTransformer(transformer.Base):
+
+      def visit(self, node):
+        anno.setanno(node, 'loop_state', self.state[LoopState].value)
+        anno.setanno(node, 'cond_state', self.state[CondState].value)
+        return super(TestTransformer, self).visit(node)
+
+      def visit_While(self, node):
+        self.state[LoopState].enter()
+        node = self.generic_visit(node)
+        self.state[LoopState].exit()
+        return node
+
+      def visit_If(self, node):
+        self.state[CondState].enter()
+        node = self.generic_visit(node)
+        self.state[CondState].exit()
+        return node
+
+    tr = TestTransformer(self._simple_source_info())
+
+    def test_function(a):
+      a = 1
+      while a:
+        _ = 'a'
+        if a > 2:
+          _ = 'b'
+          while True:
+            raise '1'
+        if a > 3:
+          _ = 'c'
+          while True:
+            raise '1'
+
+    node, _ = parser.parse_entity(test_function)
+    node = tr.visit(node)
+
+    fn_body = node.body[0].body
+    outer_while_body = fn_body[1].body
+    self.assertSameAnno(fn_body[0], outer_while_body[0], 'cond_state')
+    self.assertDifferentAnno(fn_body[0], outer_while_body[0], 'loop_state')
+
+    first_if_body = outer_while_body[1].body
+    self.assertDifferentAnno(outer_while_body[0], first_if_body[0],
+                             'cond_state')
+    self.assertSameAnno(outer_while_body[0], first_if_body[0], 'loop_state')
+
+    first_inner_while_body = first_if_body[1].body
+    self.assertSameAnno(first_if_body[0], first_inner_while_body[0],
+                        'cond_state')
+    self.assertDifferentAnno(first_if_body[0], first_inner_while_body[0],
+                             'loop_state')
+
+    second_if_body = outer_while_body[2].body
+    self.assertDifferentAnno(first_if_body[0], second_if_body[0], 'cond_state')
+    self.assertSameAnno(first_if_body[0], second_if_body[0], 'loop_state')
+
+    second_inner_while_body = second_if_body[1].body
+    self.assertDifferentAnno(first_inner_while_body[0],
+                             second_inner_while_body[0], 'cond_state')
+    self.assertDifferentAnno(first_inner_while_body[0],
+                             second_inner_while_body[0], 'loop_state')
+
   def test_local_scope_info_stack(self):
 
     class TestTransformer(transformer.Base):
@@ -118,7 +192,7 @@ class TransformerTest(test.TestCase):
       def visit_For(self, node):
         return self._annotate_result(node)
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     def test_function(a):
       """Docstring."""
@@ -157,7 +231,7 @@ class TransformerTest(test.TestCase):
         self.exit_local_scope()
         return node
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     def no_exit(a):
       if a > 0:
@@ -196,7 +270,7 @@ class TransformerTest(test.TestCase):
       z = y
       return z
 
-    tr = TestTransformer(self._context_for_testing())
+    tr = TestTransformer(self._simple_source_info())
 
     node, _ = parser.parse_entity(test_function)
     node = tr.visit(node)

@@ -75,10 +75,23 @@ Status HloModuleGroupMetadata::Build() {
     if (tracked == nullptr) {
       return Status::OK();
     }
-    // Add the parent computation of this channel instruction and its peer
-    // computation (both must be while computations) as companions.
+
+    std::vector<HloComputation*> peers;
     if (IsChannelInstruction(hlo)) {
-      HloComputation* peer_computation = PeerComputation(hlo);
+      peers.push_back(PeerComputation(hlo));
+    } else if (hlo->IsCrossModuleAllReduce()) {
+      for (HloInstruction* instr : GetAllReduceGroup(*hlo->all_reduce_id())) {
+        if (instr == hlo) {
+          continue;
+        }
+        peers.push_back(instr->parent());
+      }
+    }
+
+    // Add the parent computation of this channel (or all-reduce) instruction
+    // and its peer computation(s) (both must be while computations) as
+    // companions.
+    for (HloComputation* peer_computation : peers) {
       const TrackedInstruction* peer_tracked =
           GetTrackedInstruction(peer_computation);
       TF_RET_CHECK(peer_tracked != nullptr)
@@ -113,6 +126,9 @@ Status HloModuleGroupMetadata::Build() {
     }
   }
   TF_RETURN_IF_ERROR(VerifyCompanionSets());
+  if (VLOG_IS_ON(4)) {
+    DumpCollectedStats();
+  }
   return Status::OK();
 }
 
@@ -124,9 +140,14 @@ Status HloModuleGroupMetadata::VerifyCompanionSets() const {
     for (HloInstruction* instruction : *companions) {
       // Go through all the communicating instructions (send, recv) of the given
       // companion, and record their device.
+      auto it = tracked_instructions_comms_.find(instruction);
+      if (it == tracked_instructions_comms_.end()) {
+        // Companions can be added even if they have no communicating
+        // instructions, if they are parent of companions.
+        continue;
+      }
       std::unordered_set<int64> comm_devices;
-      for (HloInstruction* comm_instruction :
-           tracked_instructions_comms_.at(instruction)) {
+      for (HloInstruction* comm_instruction : it->second) {
         auto device = GetInstructionDevice(*comm_instruction);
         TF_RET_CHECK(device) << "Instruction " << comm_instruction->ToString()
                              << " does not have a device";
@@ -167,7 +188,8 @@ bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
 
 bool HloModuleGroupMetadata::InstructionCommunicates(
     HloInstruction* hlo) const {
-  return IsChannelInstruction(hlo) || IsCompanionInstruction(hlo);
+  return IsChannelInstruction(hlo) || IsCompanionInstruction(hlo) ||
+         hlo->IsCrossModuleAllReduce();
 }
 
 const HloModuleGroupMetadata::Channel& HloModuleGroupMetadata::GetChannel(
@@ -190,6 +212,13 @@ HloComputation* HloModuleGroupMetadata::PeerComputation(
     default:
       LOG(FATAL) << "opcode not supported";
   }
+}
+
+const std::vector<HloInstruction*>& HloModuleGroupMetadata::GetAllReduceGroup(
+    int64 all_reduce_id) const {
+  auto it = all_reduce_map_.find(all_reduce_id);
+  CHECK(it != all_reduce_map_.end());
+  return it->second;
 }
 
 std::vector<HloModuleGroupMetadata::TrackedInstruction>
@@ -270,9 +299,26 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       tracked_instructions_[hlo->to_apply()] =
           TrackedInstruction(hlo, ComputationKind::kCallFunction);
     }
+
+    // Group cross module all-reduce instructions by the all_reduce id.
+    if (hlo->IsCrossModuleAllReduce()) {
+      TF_RET_CHECK(channel_id_map_.find(*hlo->all_reduce_id()) ==
+                   channel_id_map_.end())
+          << "all_reduce_id " << *hlo->all_reduce_id()
+          << " is already used by a send/recv instruction";
+      all_reduce_map_[*hlo->all_reduce_id()].push_back(hlo);
+      max_channel_id_ = std::max(max_channel_id_, *hlo->all_reduce_id());
+      return Status::OK();
+    }
+
     if (!IsChannelInstruction(hlo)) {
       return Status::OK();
     }
+
+    TF_RET_CHECK(all_reduce_map_.find(hlo->channel_id()) ==
+                 all_reduce_map_.end())
+        << "channel id " << hlo->channel_id()
+        << " is already used by an all-reduce instruction";
 
     // Add a new channel if needed.
     if (channel_id_map_.find(hlo->channel_id()) == channel_id_map_.end()) {
@@ -315,6 +361,8 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       TF_RETURN_IF_ERROR(computation->Accept(visitor));
     }
   }
+  VLOG(2) << "Created " << channels_.size() << " channels";
+  VLOG(2) << "Created " << all_reduce_map_.size() << " all-reduce groups";
   return Status::OK();
 }
 
@@ -373,7 +421,8 @@ Status HloModuleGroupMetadata::VerifyChannelInstructions() {
   // Check if the shapes match for each channel.
   for (const Channel& channel : channels_) {
     const Shape& send_shape = channel.send->operand(0)->shape();
-    const Shape& recv_shape = channel.recv_done->shape();
+    const Shape& recv_shape =
+        ShapeUtil::GetTupleElementShape(channel.recv_done->shape(), 0);
     if (!ShapeUtil::Compatible(send_shape, recv_shape)) {
       return FailedPrecondition("send/recv shapes do not match");
     }
@@ -443,6 +492,38 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
     return Status::OK();
   }
   return FailedPrecondition("channel is used in disallowed computation");
+}
+
+void HloModuleGroupMetadata::DumpCollectedStats() const {
+  std::map<std::pair<int64, int64>, int64> communication_histogram;
+  for (auto& channel : channels_) {
+    auto from_device = GetInstructionDevice(*channel.send);
+    auto to_device = GetInstructionDevice(*channel.recv);
+    LOG(INFO) << "Channel " << channel.id << ": from_device=" << *from_device
+              << " to_device=" << *to_device << " send=" << channel.send->name()
+              << " send_done=" << channel.send_done->name()
+              << " recv=" << channel.recv->name()
+              << " recv_done=" << channel.recv_done->name();
+    communication_histogram[std::pair<int64, int64>(*from_device,
+                                                    *to_device)] += 1;
+  }
+  for (auto& fromto_count : communication_histogram) {
+    LOG(INFO) << "From " << fromto_count.first.first << " to "
+              << fromto_count.first.second << ": " << fromto_count.second;
+  }
+  for (auto& companion_set : companion_sets_) {
+    LOG(INFO) << "Companion set:";
+    for (HloInstruction* instruction : *companion_set) {
+      LOG(INFO) << "  " << instruction->name();
+    }
+  }
+  for (auto& instruction_comm : tracked_instructions_comms_) {
+    LOG(INFO) << "Communicating instruction " << instruction_comm.first->name();
+    for (HloInstruction* instruction : instruction_comm.second) {
+      auto device = GetInstructionDevice(*instruction);
+      LOG(INFO) << "  " << instruction->name() << " on device " << *device;
+    }
+  }
 }
 
 }  // namespace xla

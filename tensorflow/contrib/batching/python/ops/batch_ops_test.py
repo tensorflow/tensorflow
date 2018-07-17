@@ -24,6 +24,7 @@ import time
 from tensorflow.contrib.batching.python.ops import batch_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_batch_ops
 from tensorflow.python.ops import gradients_impl
@@ -187,12 +188,62 @@ class BatchOpsTest(test.TestCase):
       self.assertEqual(thread_results[0], [2])
       self.assertEqual(main_results[0], [3])
 
+  def testBasicUnbatchV1Decorated(self):
+    """Tests that the batch_function_v1 decorator works."""
+    with self.test_session() as sess:
+      @batch_ops.batch_function_v1(1, 10, 100000)
+      def computation(in_t):
+        return in_t + 1
+
+      inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+      result = computation(inp)
+      thread_results = []
+
+      def worker():
+        thread_results.extend(sess.run([result], feed_dict={inp: [1]}))
+
+      worker_thread = threading.Thread(target=worker)
+      worker_thread.start()
+      main_results = sess.run([result], feed_dict={inp: [2]})
+      worker_thread.join()
+      self.assertEqual(thread_results[0], [2])
+      self.assertEqual(main_results[0], [3])
+
   def testBasicUnbatchDecorated(self):
     """Tests that the batch_function decorator works."""
     with self.test_session() as sess:
+      # TODO(apassos): Removing this line causes test flakiness! Ideally should
+      # be investigated.
+      default_inp = array_ops.placeholder_with_default(2, shape=[])  # pylint: disable=unused-variable
+
       @batch_ops.batch_function(1, 10, 100000)
       def computation(in_t):
         return in_t + 1
+
+      inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+      result = computation(inp)
+      thread_results = []
+
+      def worker():
+        thread_results.extend(sess.run([result], feed_dict={inp: [1]}))
+
+      worker_thread = threading.Thread(target=worker)
+      worker_thread.start()
+      main_results = sess.run([result], feed_dict={inp: [2]})
+      worker_thread.join()
+      self.assertEqual(thread_results[0], [2])
+      self.assertEqual(main_results[0], [3])
+
+  def testBatchDecoratedWithCapturedInput(self):
+    """Tests that the batch_function decorator works."""
+    with self.test_session() as sess:
+      captured_inp0 = array_ops.placeholder_with_default(2, shape=[])
+      captured_inp1 = array_ops.placeholder_with_default(1, shape=[])
+
+      @batch_ops.batch_function(1, 10, 100000)
+      def computation(in_t):
+        return in_t + captured_inp0 - captured_inp1
+
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       result = computation(inp)
       thread_results = []
@@ -208,7 +259,7 @@ class BatchOpsTest(test.TestCase):
       self.assertEqual(main_results[0], [3])
 
   def testBatchFunctionOp(self):
-    """Tests that the batch_func works."""
+    """Tests that the batch_function op works."""
     with self.test_session() as sess:
 
       @function.Defun(dtypes.int32)
@@ -237,7 +288,7 @@ class BatchOpsTest(test.TestCase):
       self.assertEqual(main_results[0], [3])
 
   def testBatchFunctionOpWithCapturedInput(self):
-    """Tests that batch_func with timeout."""
+    """Tests that batch_function op works with captured input."""
     with self.test_session() as sess:
       captured_inp0 = array_ops.placeholder_with_default(2, shape=[])
       captured_inp1 = array_ops.placeholder_with_default(1, shape=[])
@@ -269,6 +320,29 @@ class BatchOpsTest(test.TestCase):
       worker_thread.join()
       self.assertEqual(thread_results[0], [2])
       self.assertEqual(main_results[0], [3])
+
+  def testBatchFunctionOpWithInputError(self):
+    """Tests that batch_function op works with error in the inputs."""
+    with self.test_session() as sess:
+      inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+
+      @function.Defun(dtypes.int32, dtypes.int32)
+      def computation(in0, in1):
+        return in0 + in1
+
+      result = gen_batch_ops.batch_function(
+          [inp],  # computation actually expects 2 inputs.
+          num_batch_threads=1,
+          max_batch_size=10,
+          batch_timeout_micros=100000,  # 100ms
+          batching_queue="",
+          f=computation,
+          captured_tensors=computation.captured_inputs,
+          Tout=[o.type for o in computation.definition.signature.output_arg])
+
+      with self.assertRaisesRegexp(InvalidArgumentError,
+                                   ".*2 arguments.*but 1.*"):
+        sess.run([result], feed_dict={inp: [2]})
 
   def testBasicUnbatchDecoratedWithReshape(self):
     """Tests that the batch_function decorator works."""

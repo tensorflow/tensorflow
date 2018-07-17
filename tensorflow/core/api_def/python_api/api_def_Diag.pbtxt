@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Diag"
+  endpoint {
+    name: "linalg.tensor_diag"
+  }
+  endpoint {
+    name: "diag"
+    deprecated: true
+  }
+}

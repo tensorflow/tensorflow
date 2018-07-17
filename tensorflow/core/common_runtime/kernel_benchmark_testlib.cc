@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -43,7 +44,7 @@ namespace test {
 // TODO(hongm): Convert `g` and `init` to using std::unique_ptr.
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
-                     Rendezvous* rendez) {
+                     Rendezvous* rendez, const char* executor_type) {
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -86,23 +87,26 @@ Benchmark::Benchmark(const string& device, Graph* g,
   };
 
   if (init) {
-    Executor* init_exec;
-    TF_CHECK_OK(
-        NewLocalExecutor(params, std::unique_ptr<Graph>(init), &init_exec));
+    std::unique_ptr<Executor> init_exec;
+    TF_CHECK_OK(NewExecutor(executor_type, params, std::unique_ptr<Graph>(init),
+                            &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
     TF_CHECK_OK(init_exec->Run(args));
-    delete init_exec;
   }
 
-  TF_CHECK_OK(NewLocalExecutor(params, std::unique_ptr<Graph>(g), &exec_));
+  TF_CHECK_OK(
+      NewExecutor(executor_type, params, std::unique_ptr<Graph>(g), &exec_));
 }
 
 Benchmark::~Benchmark() {
   if (device_) {
     rendez_->Unref();
-    delete exec_;
+    // We delete `exec_` before `device_` because the `exec_` destructor may
+    // run kernel destructors that may attempt to access state borrowed from
+    // `device_`, such as the resource manager.
+    exec_.reset();
     delete device_;
     delete pool_;
   }

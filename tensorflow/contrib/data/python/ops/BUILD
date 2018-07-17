@@ -49,26 +49,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "iterator_ops_test",
-    size = "small",
-    srcs = ["iterator_ops_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
-        ":iterator_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/estimator",
-        "//tensorflow/python/estimator:model_fn",
-    ],
-)
-
 py_library(
     name = "random_ops",
     srcs = [
@@ -96,8 +76,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":batching",
+        ":gen_dataset_ops",
         ":interleave_ops",
         ":shuffle_ops",
+        ":stats_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
@@ -106,12 +88,12 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//third_party/py/numpy",
     ],
@@ -133,6 +115,8 @@ py_library(
     srcs = ["batching.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":get_single_element",
+        ":grouping",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -142,6 +126,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
     ],

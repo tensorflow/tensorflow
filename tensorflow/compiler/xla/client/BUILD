@@ -65,7 +65,7 @@ cc_library(
     deps = [
         ":global_data",
         "//tensorflow/compiler/xla:execution_options_util",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -110,6 +110,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:source_map_util",

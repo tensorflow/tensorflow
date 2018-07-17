@@ -620,10 +620,6 @@ static PyType_Slot EagerTensor_Type_slots[] = {
     {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
     {0, nullptr},
 };
-
-PyType_Spec EagerTensor_Type_spec = {"EagerTensor", sizeof(EagerTensor), 0,
-                                     Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
-                                     EagerTensor_Type_slots};
 #else
 // TODO(agarwal): support active_trace.
 static PyTypeObject _EagerTensorType = {
@@ -754,6 +750,34 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
 #if PY_MAJOR_VERSION >= 3
   PyObject* bases = PyTuple_New(1);
   PyTuple_SET_ITEM(bases, 0, base_class);
+
+  tensorflow::Safe_PyObjectPtr base_class_module(
+      PyObject_GetAttrString(base_class, "__module__"));
+  const char* module = nullptr;
+  if (PyErr_Occurred()) {
+    PyErr_Clear();
+    module = "__builtin__";
+  } else {
+    module = PyBytes_AsString(base_class_module.get());
+    if (module == nullptr) {
+      PyErr_Clear();
+      module = PyUnicode_AsUTF8(base_class_module.get());
+      if (module == nullptr) {
+        PyErr_Clear();
+        module = "__builtin__";
+      }
+    }
+  }
+
+  // NOTE: The c_str from this string needs to outlast the function, hence is
+  // static.
+  static tensorflow::string fully_qualified_name =
+      tensorflow::strings::StrCat(module, ".EagerTensor");
+
+  static PyType_Spec EagerTensor_Type_spec = {
+      fully_qualified_name.c_str(), sizeof(EagerTensor), 0,
+      Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE, EagerTensor_Type_slots};
+
   EagerTensorType = reinterpret_cast<PyTypeObject*>(
       PyType_FromSpecWithBases(&EagerTensor_Type_spec, bases));
   if (PyErr_Occurred()) {

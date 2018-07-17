@@ -127,9 +127,6 @@ class StatsCalculator {
 
   std::string GetShortSummary() const;
 
-  // Prints the string returned by GetOutputString().
-  void PrintStepStats() const;
-
   void ComputeStatsByType(
       std::map<std::string, int64_t>* node_type_map_count,
       std::map<std::string, int64_t>* node_type_map_time,

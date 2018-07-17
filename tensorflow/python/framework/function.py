@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import collections
 import hashlib
+import sys
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -33,11 +34,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# This is to avoid a circular dependency with cond_v2_impl.
+cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 class Defun(object):
@@ -650,6 +656,41 @@ class _FuncGraph(ops.Graph):
     # TODO(skyewm): is this needed?
     self.extra_vars = []
 
+  # pylint: disable=g-doc-return-or-yield
+
+  @tf_contextlib.contextmanager
+  def container(self, container_name):
+    """Returns a context manager that specifies the resource container to use.
+
+    Overridden from @{tf.Graph} to update both the init_scope container
+    and the present inner container. This is necessary to make sure setting
+    containers applies correctly both to created variables and to stateful
+    ops.
+
+    Args:
+      container_name: container name string.
+
+    Returns:
+      A context manager for defining resource containers for stateful ops,
+        yields the container name.
+    """
+    original_container = self._container
+    # pylint: disable=protected-access
+    with ops.init_scope():
+      original_init_container = ops.get_default_graph()._container
+    try:
+      self._container = container_name
+      with ops.init_scope():
+        ops.get_default_graph()._container = container_name
+      yield self._container
+    finally:
+      self._container = original_container
+      with ops.init_scope():
+        ops.get_default_graph()._container = original_init_container
+    # pylint: enable=protected-access
+
+  # pylint: enable=g-doc-return-or-yield
+
   def getvar(
       self,
       getter,
@@ -720,6 +761,8 @@ class _FuncGraph(ops.Graph):
     if ops._USE_C_SHAPES:
       if isinstance(tensor, ops.EagerTensor):
         handle_data = tensor._handle_data
+        if handle_data:
+          handle_data = handle_data.SerializeToString()
       else:
         handle_data = c_api.GetResourceHandleShapeAndType(
             tensor.graph._c_graph, tensor._as_tf_output())
@@ -771,7 +814,9 @@ class _FuncGraph(ops.Graph):
 
 
 def func_graph_from_py_func(func, arg_names, arg_types, name=None,
-                            capture_by_value=False, device=None):
+                            capture_by_value=False, device=None,
+                            colocation_stack=None, container=None,
+                            collections_ref=None):
   """Returns a _FuncGraph generated from `func`.
 
   Args:
@@ -784,6 +829,10 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
     capture_by_value: boolean. If True, captured values will be copied into the
       function body.
     device: device name or function.
+    colocation_stack: A colocation stack (list) the _FuncGraph should use.
+    container: A container name the _FuncGraph should start with.
+    collections_ref: A reference to a collections dict the _FuncGraph should
+      use internally.
 
   Returns:
     A _FuncGraph.
@@ -794,7 +843,17 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
   if not name:
     name = _get_func_name(func)
   func_graph = _FuncGraph(name, capture_by_value)
+
   with func_graph.as_default(), ops.device(device):
+    # pylint: disable=protected-access
+    if collections_ref is not None:
+      func_graph._collections = collections_ref
+    if container is not None:
+      func_graph._container = container
+    if colocation_stack is not None:
+      func_graph._colocation_stack = colocation_stack
+    # pylint: enable=protected-access
+
     # Create placeholders for the function arguments.
     for (argname, argtype) in zip(arg_names, arg_types):
       argholder = array_ops.placeholder(argtype, name=argname)
@@ -1170,3 +1229,13 @@ _DTYPE_TO_STR = {
     dtypes.qint32: "qi32",
     dtypes.bfloat16: "b16"
 }
+
+
+def function_def_from_tf_function(c_func):
+  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
+  with c_api_util.tf_buffer() as buf:
+    c_api.TF_FunctionToFunctionDef(c_func, buf)
+    data = c_api.TF_GetBuffer(buf)
+  fdef = function_pb2.FunctionDef()
+  fdef.ParseFromString(compat.as_bytes(data))
+  return fdef

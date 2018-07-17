@@ -33,7 +33,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* broadcast2 =
@@ -53,7 +53,7 @@ TEST_F(InstructionFusionTest,
        NonCostlyProducerAndOperandElementReusingConsumerFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
   HloInstruction* broadcast2 =
@@ -73,7 +73,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* reshape2 = builder.AddInstruction(
@@ -92,7 +92,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* transpose2 = builder.AddInstruction(
@@ -168,7 +168,7 @@ TEST_F(InstructionFusionTest, BroadcastIntoReduce) {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Fusion());
   EXPECT_THAT(root->fused_expression_root(),
-              op::Reduce(op::Broadcast(op::Parameter()), op::Parameter()));
+              op::Reduce(op::Broadcast(op::Constant()), op::Constant()));
 }
 
 TEST_F(InstructionFusionTest, BitcastIntoAdd) {
@@ -255,7 +255,7 @@ TEST_F(InstructionFusionTest, DotOutputFusion) {
   EXPECT_THAT(
       root->fused_expression_root(),
       op::Multiply(op::Dot(op::Parameter(), op::Transpose(op::Parameter())),
-                   op::Broadcast(op::Parameter())));
+                   op::Broadcast(op::Constant())));
 }
 
 // Compute sum(1/p0), where p0 has type f32, twice.  Check that the division is
@@ -339,7 +339,7 @@ TEST_F(InstructionFusionTest, DotOutputFusionImpossible) {
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
   EXPECT_THAT(root->fused_expression_root(),
               op::Multiply(op::Multiply(op::Parameter(), op::Parameter()),
-                           op::Broadcast(op::Parameter())));
+                           op::Broadcast(op::Constant())));
 }
 
 // Counts the HLO ops with a given op code in the specified module.
@@ -579,6 +579,31 @@ TEST_F(InstructionFusionTest, FuseIntoInputFusionInstruction) {
                    .Run(module.get())
                    .ValueOrDie())
       << module->ToString();
+}
+
+TEST_F(InstructionFusionTest, FuseScalarConstant) {
+  auto module = ParseHloString(R"(
+  HloModule test_module
+
+  ENTRY FuseScalarConstant {
+    p0 = f32[] parameter(0)
+    c0 = f32[] constant(1)
+    add1 = f32[] add(p0, c0)
+    b0 = f32[2]{0} broadcast(add1), dimensions={}
+    c1 = f32[2]{0} constant({1, 2})
+    ROOT add2 = f32[2]{0} add(b0, c1)
+  })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Add(op::Broadcast(op::Add(op::Parameter(), op::Constant())),
+                      op::Parameter()));
 }
 
 }  // namespace gpu

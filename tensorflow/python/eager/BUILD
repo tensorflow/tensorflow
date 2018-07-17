@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_seq_tensor",
         "//tensorflow/python:safe_ptr",
+        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -390,4 +391,21 @@ py_library(
     name = "imperative_grad",
     srcs = ["imperative_grad.py"],
     srcs_version = "PY2AND3",
+)
+
+cuda_py_test(
+    name = "memory_test",
+    size = "medium",
+    srcs = ["memory_test.py"],
+    additional_deps = [
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "optonly",  # The test is too slow in non-opt mode
+    ],
 )

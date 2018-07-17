@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -150,8 +151,7 @@ class DynamicStitchOp : public XlaOpKernel {
       if (new_shape == data_shapes[input_num]) {
         input[input_num] = handle;
       } else {
-        input[input_num] =
-            ctx->builder()->Reshape(handle, new_shape.dim_sizes());
+        input[input_num] = xla::Reshape(handle, new_shape.dim_sizes());
       }
     }
 
@@ -175,10 +175,10 @@ class DynamicStitchOp : public XlaOpKernel {
       // And place it in the concat list in the place indicated by
       // the index.
       to_concat[index_num] =
-          ctx->builder()->Slice(expression, slice_start, slice_limit, stride);
+          xla::Slice(expression, slice_start, slice_limit, stride);
     }
 
-    ctx->SetOutput(0, ctx->builder()->ConcatInDim(to_concat, 0));
+    ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), to_concat, 0));
   }
 
  private:

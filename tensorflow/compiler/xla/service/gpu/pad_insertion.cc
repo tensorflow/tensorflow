@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -68,7 +69,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     PrimitiveType element_type = input->shape().element_type();
     HloInstruction* padding =
         computation->AddInstruction(HloInstruction::CreateConstant(
-            MakeUnique<Literal>(Literal::Zero(element_type))));
+            MakeUnique<Literal>(LiteralUtil::Zero(element_type))));
     input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
@@ -125,7 +126,7 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   PrimitiveType element_type = kernel->shape().element_type();
   HloInstruction* padding =
       computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(Literal::Zero(element_type))));
+          MakeUnique<Literal>(LiteralUtil::Zero(element_type))));
   return MakePadHlo(kernel, padding, padding_config).ValueOrDie();
 }
 }  // namespace
@@ -234,9 +235,9 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   // Create a new backward convolution replacing the old one.
   HloComputation* computation = backward_conv->parent();
   HloInstruction* output = backward_conv->mutable_operand(1);
-  HloInstruction* padding =
-      computation->AddInstruction(HloInstruction::CreateConstant(
-          MakeUnique<Literal>(Literal::Zero(input->shape().element_type()))));
+  HloInstruction* padding = computation->AddInstruction(
+      HloInstruction::CreateConstant(MakeUnique<Literal>(
+          LiteralUtil::Zero(input->shape().element_type()))));
   HloInstruction* padded_input =
       MakePadHlo(input, padding, input_padding_config).ValueOrDie();
 

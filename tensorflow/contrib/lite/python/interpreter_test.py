@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import io
 import numpy as np
+import six
 
 from tensorflow.contrib.lite.python import interpreter as interpreter_wrapper
 from tensorflow.python.framework import test_util
@@ -90,6 +91,84 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
 
+
+class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
+
+  def testInvalidModelContent(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Model provided has model identifier \''):
+      interpreter_wrapper.Interpreter(model_content=six.b('garbage'))
+
+  def testInvalidModelFile(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Could not open \'totally_invalid_file_name\''):
+      interpreter_wrapper.Interpreter(
+          model_path='totally_invalid_file_name')
+
+  def testInvokeBeforeReady(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    with self.assertRaisesRegexp(RuntimeError,
+                                 'Invoke called on model that is not ready'):
+      interpreter.invoke()
+
+
+class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    self.interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    self.interpreter.allocate_tensors()
+    self.input0 = self.interpreter.get_input_details()[0]['index']
+    self.initial_data = np.array([[-1., -2., -3., -4.]], np.float32)
+
+  def testTensorAccessor(self):
+    """Check that tensor returns a reference."""
+    array_ref = self.interpreter.tensor(self.input0)
+    np.copyto(array_ref(), self.initial_data)
+    self.assertAllEqual(array_ref(), self.initial_data)
+    self.assertAllEqual(
+        self.interpreter.get_tensor(self.input0), self.initial_data)
+
+  def testGetTensorAccessor(self):
+    """Check that get_tensor returns a copy."""
+    self.interpreter.set_tensor(self.input0, self.initial_data)
+    array_initial_copy = self.interpreter.get_tensor(self.input0)
+    new_value = np.add(1., array_initial_copy)
+    self.interpreter.set_tensor(self.input0, new_value)
+    self.assertAllEqual(array_initial_copy, self.initial_data)
+    self.assertAllEqual(self.interpreter.get_tensor(self.input0), new_value)
+
+  def testBase(self):
+    self.assertTrue(self.interpreter._safe_to_run())
+    _ = self.interpreter.tensor(self.input0)
+    self.assertTrue(self.interpreter._safe_to_run())
+    in0 = self.interpreter.tensor(self.input0)()
+    self.assertFalse(self.interpreter._safe_to_run())
+    in0b = self.interpreter.tensor(self.input0)()
+    self.assertFalse(self.interpreter._safe_to_run())
+    # Now get rid of the buffers so that we can evaluate.
+    del in0
+    del in0b
+    self.assertTrue(self.interpreter._safe_to_run())
+
+  def testBaseProtectsFunctions(self):
+    in0 = self.interpreter.tensor(self.input0)()
+    # Make sure we get an exception if we try to run an unsafe operation
+    with self.assertRaisesRegexp(
+        RuntimeError, 'There is at least 1 reference'):
+      _ = self.interpreter.allocate_tensors()
+    # Make sure we get an exception if we try to run an unsafe operation
+    with self.assertRaisesRegexp(
+        RuntimeError, 'There is at least 1 reference'):
+      _ = self.interpreter.invoke()
+    # Now test that we can run
+    del in0  # this is our only buffer reference, so now it is safe to change
+    in0safe = self.interpreter.tensor(self.input0)
+    _ = self.interpreter.allocate_tensors()
+    del in0safe  # make sure in0Safe is held but lint doesn't complain
 
 if __name__ == '__main__':
   test.main()

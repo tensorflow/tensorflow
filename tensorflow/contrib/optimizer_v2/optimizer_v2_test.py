@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 
 class OptimizerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -113,7 +113,7 @@ class OptimizerTest(test.TestCase):
         self.assertAllClose([3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)],
                             var1.eval())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoVariables(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       # pylint: disable=cell-var-from-loop
@@ -128,7 +128,7 @@ class OptimizerTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'No.*variables'):
         sgd_op.minimize(loss)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -146,7 +146,7 @@ class OptimizerTest(test.TestCase):
         # var1 has no gradient
         sgd_op.minimize(loss, var_list=[var1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -162,7 +162,7 @@ class OptimizerTest(test.TestCase):
                                    'No gradients provided for any variable'):
         sgd_op.minimize(loss, var_list=[var0, var1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -176,7 +176,7 @@ class OptimizerTest(test.TestCase):
                                    'No gradients provided for any variable'):
         sgd_op.apply_gradients([(None, var0), (None, var1)])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -216,7 +216,7 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([-14., -13.], self.evaluate(var0))
       self.assertAllClose([-6., -5.], self.evaluate(var1))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testComputeGradientsWithTensors(self):
     x = ops.convert_to_tensor(1.0)
     def f():

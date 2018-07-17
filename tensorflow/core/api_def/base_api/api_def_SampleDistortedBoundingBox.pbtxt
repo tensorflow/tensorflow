@@ -68,7 +68,7 @@ END
     name: "area_range"
     description: <<END
 The cropped area of the image must contain a fraction of the
-supplied image within in this range.
+supplied image within this range.
 END
   }
   attr {

@@ -15,11 +15,15 @@ Table of contents:
     *   [Exporting a GraphDef from tf.Session](#basic-graphdef-sess)
     *   [Exporting a GraphDef from file](#basic-graphdef-file)
     *   [Exporting a SavedModel](#basic-savedmodel)
+    *   [Exporting a tf.keras File](#basic-keras-file)
 *   [Complex examples](#complex)
     *   [Exporting a quantized GraphDef](#complex-quant)
 *   [TensorFlow Lite Python interpreter](#interpreter)
     *   [Using the interpreter from a model file](#interpreter-file)
     *   [Using the interpreter from model data](#interpreter-data)
+*   [Additional instructions](#additional-instructions)
+    *   [Build from source code](#latest-package)
+    *   [Converting models prior to TensorFlow 1.9.](#pre-tensorflow-1.9)
 
 ## High-level overview
 
@@ -31,15 +35,17 @@ designing a model that can be targeted to devices with mobile.
 
 ## API
 
-The API for converting TensorFlow models to TensorFlow Lite is
-`tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
+The API for converting TensorFlow models to TensorFlow Lite as of TensorFlow 1.9
+is `tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
 `tf.contrib.lite.Interpreter`.
 
 `TocoConverter` provides class methods based on the original format of the
 model. `TocoConverter.from_session()` is available for GraphDefs.
-`TocoConverter.from_saved_model()` is available for SavedModels. Example usages
-for simple float-point models are shown in [Basic Examples](#basic). Examples
-usages for more complex models is shown in [Complex Examples](#complex).
+`TocoConverter.from_saved_model()` is available for SavedModels.
+`TocoConverter.from_keras_model_file()` is available for `tf.Keras` files.
+Example usages for simple float-point models are shown in [Basic
+Examples](#basic). Examples usages for more complex models is shown in [Complex
+Examples](#complex).
 
 **NOTE**: Currently, `TocoConverter` will cause a fatal error to the Python
 interpreter when the conversion fails. This will be remedied as soon as
@@ -111,6 +117,51 @@ For more complex SavedModels, the optional parameters that can be passed into
 `output_arrays`, `tag_set` and `signature_key`. Details of each parameter are
 available by running `help(tf.contrib.lite.TocoConverter)`.
 
+### Exporting a tf.keras File <a name="basic-keras-file"></a>
+
+The following example shows how to convert a `tf.keras` model into a TensorFlow
+Lite FlatBuffer.
+
+```python
+import tensorflow as tf
+
+converter = tf.contrib.lite.TocoConverter.from_keras_model_file("keras_model.h5")
+tflite_model = converter.convert()
+open("converted_model.tflite", "wb").write(tflite_model)
+```
+
+The `tf.keras` file must contain both the model and the weights. A comprehensive
+example including model construction can be seen below.
+
+```python
+import numpy as np
+import tensorflow as tf
+
+# Generate tf.keras model.
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Dense(2, input_shape=(3,)))
+model.add(tf.keras.layers.RepeatVector(3))
+model.add(tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(3)))
+model.compile(loss=tf.keras.losses.MSE,
+              optimizer=tf.keras.optimizers.RMSprop(lr=0.0001),
+              metrics=[tf.keras.metrics.categorical_accuracy],
+              sample_weight_mode='temporal')
+
+x = np.random.random((1, 3))
+y = np.random.random((1, 3, 3))
+model.train_on_batch(x, y)
+model.predict(x)
+
+# Save tf.keras model in HDF5 format.
+keras_file = "keras_model.h5"
+tf.keras.models.save_model(model, keras_file)
+
+# Convert to TensorFlow Lite model.
+converter = tf.contrib.lite.TocoConverter.from_keras_model_file(keras_file)
+tflite_model = converter.convert()
+open("converted_model.tflite", "wb").write(tflite_model)
+```
+
 ## Complex examples <a name="complex"></a>
 
 For models where the default value of the attributes is not sufficient, the
@@ -138,7 +189,8 @@ out = tf.fake_quant_with_min_max_args(val, min=0., max=1., name="output")
 with tf.Session() as sess:
   converter = tf.contrib.lite.TocoConverter.from_session(sess, [img], [out])
   converter.inference_type = tf.contrib.lite.constants.QUANTIZED_UINT8
-  converter.quantized_input_stats = {"img" : (0., 1.)}  # mean, std_dev
+  input_arrays = converter.get_input_arrays()
+  converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
   tflite_model = converter.convert()
   open("converted_model.tflite", "wb").write(tflite_model)
 ```
@@ -199,3 +251,18 @@ with tf.Session() as sess:
 interpreter = tf.contrib.lite.Interpreter(model_content=tflite_model)
 interpreter.allocate_tensors()
 ```
+
+## Additional instructions
+
+### Build from source code <a name="latest-package"></a>
+
+In order to run the latest version of the TOCO Python API, clone the TensorFlow
+repository, configure the installation, and build and install the pip package.
+Detailed instructions are available
+[here](https://www.tensorflow.org/install/install_sources).
+
+### Converting models prior to TensorFlow 1.9. <a name="pre-tensorflow-1.9"></a>
+
+To use TOCO in TensorFlow 1.7 and TensorFlow 1.8, use the `toco_convert`
+function. Run `help(tf.contrib.lite.toco_convert)` to get details about accepted
+parameters.

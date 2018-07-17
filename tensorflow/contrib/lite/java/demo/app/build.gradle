@@ -5,11 +5,12 @@ android {
     buildToolsVersion "26.0.1"
     defaultConfig {
         applicationId "android.example.com.tflitecamerademo"
-        minSdkVersion 15
+        // Required by Camera2 API.
+        minSdkVersion 21
         targetSdkVersion 26
         versionCode 1
         versionName "1.0"
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // Remove this block.
         jackOptions {
@@ -43,7 +44,7 @@ repositories {
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
+    androidTestCompile('androidx.test.espresso:espresso-core:3.1.0-alpha3', {
         exclude group: 'com.android.support', module: 'support-annotations'
     })
     compile 'com.android.support:appcompat-v7:25.2.0'
@@ -52,7 +53,43 @@ dependencies {
     compile 'com.android.support:support-annotations:25.3.1'
     compile 'com.android.support:support-v13:25.2.0'
 
-    compile 'org.tensorflow:tensorflow-lite:+'
+    compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
 
     testCompile 'junit:junit:4.12'
+}
+
+def modelDownloadUrl = "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip"
+def localCache = "build/intermediates/mobilenet_v1_224_android_quant_2017_11_08.zip"
+def targetFolder = "src/main/assets"
+
+task downloadModel(type: DownloadUrlTask) {
+    doFirst {
+        println "Downloading ${modelDownloadUrl}"
+    }
+    sourceUrl = "${modelDownloadUrl}"
+    target = file("${localCache}")
+}
+
+task unzipModel(type: Copy, dependsOn: 'downloadModel') {
+    doFirst {
+        println "Unzipping ${localCache}"
+    }
+    from zipTree("${localCache}")
+    into "${targetFolder}"
+}
+
+// Ensure the model file is downloaded and extracted before every build
+preBuild.dependsOn unzipModel
+
+class DownloadUrlTask extends DefaultTask {
+    @Input
+    String sourceUrl
+
+    @OutputFile
+    File target
+
+    @TaskAction
+    void download() {
+        ant.get(src: sourceUrl, dest: target)
+    }
 }

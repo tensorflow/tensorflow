@@ -31,32 +31,22 @@ struct PassThrough {
   HloInstruction* operand = nullptr;
 };
 
-void SetDeviceSharding(HloInstruction* instruction, int64 device) {
-  VLOG(4) << "  " << instruction->name() << " to device " << device;
-  instruction->set_device_sharding(device);
-}
-
-tensorflow::gtl::optional<int64> ShardingUniqueDevice(
-    const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
-    auto device = sharding.UniqueDevice();
-    if (device.ok()) {
-      return device.ValueOrDie();
-    }
-  }
-  return tensorflow::gtl::optional<int64>();
+void SetSingleSharding(HloInstruction* instruction,
+                       const HloSharding& sharding) {
+  VLOG(4) << "  " << instruction->name() << " to " << sharding;
+  instruction->set_single_sharding(sharding);
 }
 
 bool ShardingMatches(const HloSharding& sharding1,
                      const HloSharding& sharding2) {
-  auto device1 = ShardingUniqueDevice(sharding1);
-  if (device1) {
-    auto device2 = ShardingUniqueDevice(sharding2);
-    if (device2) {
-      return *device1 == *device2;
+  auto single_sharding1 = sharding1.ExtractSingleSharding();
+  if (single_sharding1) {
+    auto single_sharding2 = sharding2.ExtractSingleSharding();
+    if (single_sharding2) {
+      return *single_sharding1 == single_sharding2;
     }
   }
-  // Anything which is not tile maximal with unique device, gets a full sharding
+  // Anything which is not unique across all elements, gets a full sharding
   // compare.
   return sharding1 == sharding2;
 }
@@ -98,6 +88,12 @@ std::vector<PassThrough> LocatePassThroughDomainLinks(
         VLOG(2) << "  " << instruction->ToString();
       }
     }
+    if (instruction == instruction->parent()->root_instruction()) {
+      pass_through.emplace_back(nullptr, instruction);
+      VLOG(2) << "Found passthrough domain link:";
+      VLOG(2) << "  <root>";
+      VLOG(2) << "  " << instruction->ToString();
+    }
   }
   return pass_through;
 }
@@ -111,29 +107,33 @@ Status FixupPassThroughDomainLinks(const DomainMetadata::Domain& domain,
         HloInstruction::CreateGetTupleElement(pass_through.operand->shape(),
                                               tuple, 0));
     gte->set_sharding(sharding);
-    TF_RETURN_IF_ERROR(
-        pass_through.operand->ReplaceUseWith(pass_through.user, gte));
+    if (pass_through.user != nullptr) {
+      TF_RETURN_IF_ERROR(
+          pass_through.operand->ReplaceUseWith(pass_through.user, gte));
+    } else {
+      pass_through.operand->parent()->set_root_instruction(gte);
+    }
   }
   return Status::OK();
 }
 
 std::unique_ptr<HloSharding> CloneShardingForDomain(
     const HloSharding& sharding) {
-  auto device = ShardingUniqueDevice(sharding);
-  if (!device) {
+  auto single_sharding = sharding.ExtractSingleSharding();
+  if (!single_sharding) {
     return MakeUnique<HloSharding>(sharding);
   }
-  return MakeUnique<HloSharding>(HloSharding::AssignDevice(*device));
+  return MakeUnique<HloSharding>(*single_sharding);
 }
 
-Status ApplyDomainDeviceSharding(const DomainMetadata::Domain& domain,
-                                 int64 device) {
-  VLOG(4) << "Applying device " << device << " sharding";
+Status ApplyDomainSingleSharding(const DomainMetadata::Domain& domain,
+                                 const HloSharding& sharding) {
+  VLOG(4) << "Applying " << sharding << " sharding";
   for (HloInstruction* instruction : domain.instructions) {
     // We only change instructions without sharding, since otherwise we might
     // mess up with eventual HLO passes which has knowledge of it.
     if (!instruction->has_sharding()) {
-      SetDeviceSharding(instruction, device);
+      SetSingleSharding(instruction, sharding);
     } else {
       VLOG(4) << "  " << instruction->name() << " already has sharding "
               << instruction->sharding();
@@ -186,12 +186,15 @@ StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
       const HloSharding* tuple_sharding =
           GetOperandSharding(tuple, domain, sharding);
       if (tuple_sharding != nullptr) {
-        TF_RET_CHECK(tuple_sharding->IsTuple()) << tuple->ToString();
-        HloSharding sub_sharding = tuple_sharding->GetSubSharding(
-            tuple->shape(), {instruction->tuple_index()});
-        VLOG(4) << "  " << instruction->name() << " to sharding "
-                << sub_sharding;
-        instruction->set_sharding(sub_sharding);
+        if (tuple_sharding->IsTuple()) {
+          HloSharding sub_sharding = tuple_sharding->GetSubSharding(
+              tuple->shape(), {instruction->tuple_index()});
+          VLOG(4) << "  " << instruction->name() << " to sharding "
+                  << sub_sharding;
+          instruction->set_sharding(sub_sharding);
+        } else {
+          SetSingleSharding(instruction, *tuple_sharding);
+        }
         ++assigned;
       }
     } else if (instruction->opcode() == HloOpcode::kTuple) {
@@ -242,12 +245,14 @@ StatusOr<int64> ApplyDomainShardingPass(const DomainMetadata::Domain& domain,
 
 Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
                            const HloSharding& sharding) {
-  auto device = ShardingUniqueDevice(sharding);
-  if (device) {
-    // Shortcut the simple case. We have a unique device sharding, so we call
-    // the ApplyDomainDeviceSharding() API which will apply array or tuple
-    // shaped device sharding to the domain instructions.
-    return ApplyDomainDeviceSharding(domain, *device);
+  // None of the external normalizers handled the domain sharding, try to see
+  // whether this is a single sharding first.
+  auto single_sharding = sharding.ExtractSingleSharding();
+  if (single_sharding) {
+    // Shortcut the simple case. We have a unique sharding, so we call
+    // the ApplyDomainSingleSharding() API which will apply array or tuple
+    // shaped sharding to the domain instructions.
+    return ApplyDomainSingleSharding(domain, *single_sharding);
   }
   VLOG(1) << "Assigning non-trivial sharding " << sharding;
   for (;;) {
@@ -367,28 +372,39 @@ bool ShardingMetadata::Matches(const DomainMetadata& other) const {
 }
 
 string ShardingMetadata::ToString() const {
-  return sharding_ != nullptr ? sharding_->ToString() : "None";
+  return sharding_ != nullptr ? sharding_->ToString() : "{}";
 }
 
-Status ShardingMetadata::NormalizeInstructions(
-    const DomainMetadata::Domain& domain) const {
-  if (sharding_ != nullptr) {
-    VLOG(4) << "Normalizing sharding to " << sharding_->ToString() << ":";
-    TF_RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding_));
-    TF_RETURN_IF_ERROR(FixupPassThroughDomainLinks(domain, *sharding_));
+/*static*/ StatusOr<const ShardingMetadata*>
+ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
+  if (metadata->Kind() != ShardingMetadata::KindName()) {
+    return Status(
+        tensorflow::error::INVALID_ARGUMENT,
+        "ShardingMetadata normalizer called with incorrect domain metadata");
   }
-  return Status::OK();
+  return static_cast<const ShardingMetadata*>(metadata);
 }
 
-Status NormalizeShardingDomain(const DomainMetadata::Domain& domain) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloSharding> sharding,
-                      ExtractOriginalCommonSharding(domain.instructions));
-  if (sharding != nullptr) {
-    VLOG(4) << "Normalizing sharding-less domain to " << sharding->ToString()
-            << ":";
-    TF_RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
+Status ShardingMetadata::NormalizeShardingDomain(
+    const DomainMetadata::Domain& domain, const DomainMetadata* metadata) {
+  if (metadata != nullptr) {
+    TF_ASSIGN_OR_RETURN(const auto& sharding_metadata,
+                        ToShardingMetadata(metadata));
+    const HloSharding* sharding = sharding_metadata->sharding();
+    if (sharding != nullptr) {
+      VLOG(4) << "Normalizing sharding to " << sharding->ToString() << ":";
+      TF_RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
+      TF_RETURN_IF_ERROR(FixupPassThroughDomainLinks(domain, *sharding));
+    }
   } else {
-    VLOG(1) << "Unable to find common sharding";
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloSharding> sharding,
+                        ExtractOriginalCommonSharding(domain.instructions));
+    if (sharding != nullptr) {
+      VLOG(4) << "Normalizing sharding-less domain to " << sharding->ToString();
+      TF_RETURN_IF_ERROR(ApplyDomainSharding(domain, *sharding));
+    } else {
+      VLOG(1) << "Unable to find common sharding";
+    }
   }
   return Status::OK();
 }

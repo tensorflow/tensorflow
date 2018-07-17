@@ -65,6 +65,10 @@ OPENBLAS_SRC_PATH=/tmp/openblas_src/
 sudo rm -rf ${OPENBLAS_SRC_PATH}
 git clone https://github.com/xianyi/OpenBLAS ${OPENBLAS_SRC_PATH}
 cd ${OPENBLAS_SRC_PATH}
+# The commit after this introduced Fortran compile issues. In theory they should
+# be solvable using NOFORTRAN=1 on the make command, but my initial tries didn't
+# work, so pinning to the last know good version.
+git checkout 5a6a2bed9aff0ba8a18651d5514d029c8cae336a
 # If this path is changed, you'll also need to update
 # cxx_builtin_include_directory in third_party/toolchains/cpus/arm/CROSSTOOL.tpl
 OPENBLAS_INSTALL_PATH=/tmp/openblas_install/
@@ -102,6 +106,8 @@ bazel build -c opt ${PI_COPTS} \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
   --verbose_failures \
+  //tensorflow:libtensorflow.so \
+  //tensorflow:libtensorflow_framework.so \
   //tensorflow/tools/benchmark:benchmark_model \
   //tensorflow/tools/pip_package:build_pip_package
 

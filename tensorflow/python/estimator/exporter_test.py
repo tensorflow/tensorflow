@@ -148,6 +148,40 @@ class BestExporterTest(test.TestCase):
                                     "checkpoint_path", {"loss": 20}, False)
     self.assertEqual(None, export_result)
 
+  def test_best_exporter_with_empty_event(self):
+
+    def _serving_input_receiver_fn():
+      pass
+
+    export_dir_base = tempfile.mkdtemp()
+    gfile.MkDir(export_dir_base)
+    gfile.MkDir(export_dir_base + "/export")
+    gfile.MkDir(export_dir_base + "/eval")
+
+    eval_dir_base = os.path.join(export_dir_base, "eval_continuous")
+    estimator_lib._write_dict_to_summary(eval_dir_base, {}, 1)
+    estimator_lib._write_dict_to_summary(eval_dir_base, {"loss": 60}, 2)
+
+    exporter = exporter_lib.BestExporter(
+        name="best_exporter",
+        serving_input_receiver_fn=_serving_input_receiver_fn,
+        event_file_pattern="eval_continuous/*.tfevents.*",
+        assets_extra={"from/path": "to/path"},
+        as_text=False,
+        exports_to_keep=1)
+
+    estimator = test.mock.Mock(spec=estimator_lib.Estimator)
+    estimator.model_dir = export_dir_base
+    estimator.export_savedmodel.return_value = "export_result_path"
+
+    export_result = exporter.export(estimator, export_dir_base,
+                                    "checkpoint_path", {"loss": 100}, False)
+    self.assertEqual(None, export_result)
+
+    export_result = exporter.export(estimator, export_dir_base,
+                                    "checkpoint_path", {"loss": 10}, False)
+    self.assertEqual("export_result_path", export_result)
+
   def test_garbage_collect_exports(self):
     export_dir_base = tempfile.mkdtemp()
     gfile.MkDir(export_dir_base)

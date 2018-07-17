@@ -18,7 +18,16 @@ cmake_policy(SET CMP0022 NEW)
 
 # Options
 option(tensorflow_VERBOSE "Enable for verbose output" OFF)
+
+if(WIN32)
+# BoringSSL is disabled for windows as it currently doesn't build with
+# MSBuild. (Ninja is required.)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
+else()
+# BoringSSL is enabled for gRPC.
+option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" ON)
+endif()
+
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
 option(tensorflow_ENABLE_JEMALLOC_SUPPORT "Enable jemalloc support" OFF)
@@ -136,25 +145,40 @@ if(WIN32)
       # temporary fix for #18241
       add_definitions(-DEIGEN_DEFAULT_DENSE_INDEX_TYPE=std::int64_t)
   endif()
-  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11)
-  add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
+  add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00)
+  add_definitions(-DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
+  add_compile_options(/bigobj /GF /MP /Gm-)
   # Suppress warnings to reduce build log size.
-  add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
-  add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
-  add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
-  add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  add_compile_options(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
+  add_compile_options(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
+  add_compile_options(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
+  add_compile_options(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
   # Suppress linker warnings.
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
   set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob2")
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
+
+  set(compiler_flags
+    CMAKE_CXX_FLAGS
+    CMAKE_CXX_FLAGS_DEBUG
+    CMAKE_CXX_FLAGS_RELEASE
+    CMAKE_C_FLAGS
+    CMAKE_C_FLAGS_DEBUG
+    CMAKE_C_FLAGS_RELEASE
+  )
+  # No exception
+  foreach(flag ${compiler_flags})
+    string(REPLACE "/EHsc" "/EHs-c-" ${flag} "${${flag}}")
+  endforeach()
+  add_definitions(/D_HAS_EXCEPTIONS=0)
+  # Suppress 'noexcept used with no exception handling mode specified' warning
+  add_compile_options(/wd4577)
 
   # Try to avoid flaky failures due to failed generation of generate.stamp files.
   set(CMAKE_SUPPRESS_REGENERATION ON)
@@ -290,17 +314,20 @@ include_directories(
     ${double_conversion_INCLUDE_DIR}
 )
 
-if(tensorflow_ENABLE_SSL_SUPPORT)
-  include(boringssl)
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
-  include_directories(${boringssl_INCLUDE_DIR})
-endif()
 if(tensorflow_ENABLE_GRPC_SUPPORT)
+  if(tensorflow_ENABLE_SSL_SUPPORT)
+    include(boringssl)
+    include_directories(${boringssl_INCLUDE_DIR})
+  endif()
   include(grpc)
+  include_directories(${GRPC_INCLUDE_DIRS})
+  # Place boringssl after grpc as grpc depends on boringssl.
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
-  include_directories(${GRPC_INCLUDE_DIRS})
+  if(tensorflow_ENABLE_SSL_SUPPORT)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES boringssl)
+  endif()
 endif()
 if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
   include(jemalloc)

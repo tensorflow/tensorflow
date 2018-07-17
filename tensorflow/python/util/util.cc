@@ -33,6 +33,8 @@ namespace {
 PyObject* CollectionsSequenceType = nullptr;
 PyTypeObject* SparseTensorValueType = nullptr;
 
+const int kMaxItemsInCache = 1024;
+
 bool WarnedThatSetIsNotSequence = false;
 
 bool IsString(PyObject* o) {
@@ -196,11 +198,14 @@ int IsSequenceHelper(PyObject* o) {
   // NOTE: This is never decref'd, but we don't want the type to get deleted
   // as long as it is in the map. This should not be too much of a
   // leak, as there should only be a relatively small number of types in the
-  // map, and an even smaller number that are eligible for decref.
-  Py_INCREF(type);
+  // map, and an even smaller number that are eligible for decref. As a
+  // precaution, we limit the size of the map to 1024.
   {
     mutex_lock l(g_type_to_sequence_map);
-    type_to_sequence_map->insert({type, is_sequence});
+    if (type_to_sequence_map->size() < kMaxItemsInCache) {
+      Py_INCREF(type);
+      type_to_sequence_map->insert({type, is_sequence});
+    }
   }
 
   return is_sequence;
@@ -243,6 +248,9 @@ bool GetNextValuesForIterable(PyObject* nested,
                               std::vector<Safe_PyObjectPtr>* next_values) {
   PyObject* item;
   PyObject* iterator = PyObject_GetIter(nested);
+  if (iterator == nullptr || PyErr_Occurred()) {
+    return false;
+  }
   while ((item = PyIter_Next(iterator)) != nullptr) {
     next_values->emplace_back(item);
   }
@@ -386,7 +394,11 @@ bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
             type2->tp_name);
         return true;
       }
-    } else if (type1 != type2) {
+    } else if (type1 != type2
+               /* If both sequences are list types, don't complain. This allows
+               one to be a list subclass (e.g. _ListWrapper used for automatic
+               dependency tracking.) */
+               && !(PyList_Check(o1) && PyList_Check(o2))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "

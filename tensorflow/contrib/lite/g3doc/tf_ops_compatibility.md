@@ -42,6 +42,7 @@ counterparts:
     *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other) and the
     crops attribute is not used*
 *   [tf.exp](https://www.tensorflow.org/api_docs/python/tf/exp)
+*   [tf.fake_quant*](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
 *   [tf.matmul](https://www.tensorflow.org/api_docs/python/tf/matmul) - *as long
     as the second argument is constant and transposition is not used*
 *   [tf.nn.avg_pool](https://www.tensorflow.org/api_docs/python/tf/nn/avg_pool)
@@ -95,11 +96,7 @@ Here is a list of TensorFlow operations that are usually removed from the graph:
 *   [tf.divide](https://www.tensorflow.org/api_docs/python/tf/divide)
 *   [tf.fake_quant_with_min_max_args](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
 *   [tf.fake_quant_with_min_max_vars](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars)
-*   [tf.greater](https://www.tensorflow.org/api_docs/python/tf/greater)
-*   [tf.greater_equal](https://www.tensorflow.org/api_docs/python/tf/greater_equal)
 *   [tf.identity](https://www.tensorflow.org/api_docs/python/tf/identity)
-*   [tf.less](https://www.tensorflow.org/api_docs/python/tf/less)
-*   [tf.less_equal](https://www.tensorflow.org/api_docs/python/tf/less_equal)
 *   [tf.maximum](https://www.tensorflow.org/api_docs/python/tf/maximum)
 *   [tf.minimum](https://www.tensorflow.org/api_docs/python/tf/minimum)
 *   [tf.multiply](https://www.tensorflow.org/api_docs/python/tf/multiply)
@@ -254,6 +251,19 @@ Options {
   stride_w,stride_h: stride of the filter window
   depth_multiplier: relation between the last dimension of the input and output
     tensors
+}
+```
+
+**EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is
+  equal to the corresponding element of the second tensor.
 }
 ```
 
@@ -420,6 +430,17 @@ Outputs {
 }
 ```
 
+**LOG**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to log(input)
+}
+```
+
 **LOG_SOFTMAX**
 
 ```
@@ -503,6 +524,19 @@ Options {
 }
 ```
 
+**NOT_EQUAL**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: a tensor of type bool, true whenever an element of the first tensor is not
+  equal to the corresponding element of the second tensor.
+}
+```
+
 **RELU**
 
 ```
@@ -548,6 +582,31 @@ Outputs {
 }
 Options {
   new_shape
+}
+```
+
+**RSQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**SHAPE**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 1D tensor representing the shape of the input tensor
+}
+Options {
+  out_type: the output type of the op (int32 or int64). Defaults to int32.
 }
 ```
 
@@ -637,6 +696,17 @@ Options {
 }
 ```
 
+**SQRT**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: result of computing element-wise square root of the input tensor
+}
+```
+
 **SQUEEZE**
 
 ```
@@ -706,6 +776,42 @@ Inputs {
 Outputs {
   0: tensor that contains the elementwise values of 'tensor 1' if the
   corresponding value of 'tensor 0' is true or the value of 'tensor 2' if false.
+}
+```
+
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
+}
+```
+
+**ARG_MAX**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of maximum values.
+}
+```
+
+**ARG_MIN**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of minium values.
 }
 ```
 

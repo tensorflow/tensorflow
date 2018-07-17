@@ -19,26 +19,31 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/security/credentials.h"
-#include "grpc++/server_builder.h"
 #include "grpc/support/alloc.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/server_builder.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
+#include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/local_master.h"
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -78,6 +83,7 @@ GrpcServer::~GrpcServer() {
 
   delete master_service_;
   delete worker_service_;
+  delete eager_service_;
 
   // TODO(mrry): Refactor the *Env classes so that it is less fiddly
   // to destroy them.
@@ -106,6 +112,7 @@ GrpcServer::~GrpcServer() {
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const CollectiveMgrCreationFunction& collective_mgr_func,
     const WorkerCreationFunction& worker_func,
     const StatsPublisherFactory& stats_factory) {
   mutex_lock l(mu_);
@@ -145,16 +152,14 @@ Status GrpcServer::Init(
                                        " was not defined in job \"",
                                        server_def_.job_name(), "\"");
       }
-      const std::vector<string> hostname_port =
-          str_util::Split(iter->second, ':');
-      if (hostname_port.size() != 2 ||
-          !strings::safe_strto32(hostname_port[1], &requested_port)) {
+      auto colon_index = iter->second.find_last_of(':');
+      if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                 &requested_port)) {
         return errors::InvalidArgument(
             "Could not parse port for local server from \"", iter->second,
-            "\"");
-      } else {
-        break;
+            "\".");
       }
+      break;
     }
   }
   if (requested_port == -1) {
@@ -188,6 +193,8 @@ Status GrpcServer::Init(
       worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
+  eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
+
   // extra service:
   if (service_func != nullptr) {
     service_func(&worker_env_, &builder);
@@ -203,6 +210,26 @@ Status GrpcServer::Init(
   TF_RETURN_IF_ERROR(
       WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
   CHECK_NE(nullptr, worker_cache);
+
+  if (collective_mgr_func) {
+    worker_env_.collective_executor_mgr =
+        collective_mgr_func(config, &worker_env_, worker_cache);
+    if (!worker_env_.collective_executor_mgr) {
+      return errors::Internal(
+          "collective_mgr_func did not return CollectiveExecutorMgr");
+    }
+  } else {
+    std::unique_ptr<DeviceResolverDistributed> dev_resolver(
+        new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
+                                      default_worker_name));
+    std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
+        new CollectiveParamResolverDistributed(config, worker_env_.device_mgr,
+                                               dev_resolver.get(), worker_cache,
+                                               default_worker_name));
+    worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+        config, worker_env_.device_mgr, std::move(dev_resolver),
+        std::move(param_resolver), worker_cache, default_worker_name);
+  }
 
   // Set up worker environment.
   worker_env_.session_mgr = new SessionMgr(
@@ -246,18 +273,27 @@ Status GrpcServer::Init(
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const CollectiveMgrCreationFunction& collective_mgr_func,
     const WorkerCreationFunction& worker_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, worker_func,
-              CreateNoOpStatsPublisher);
+  return Init(std::move(service_func), rendezvous_mgr_func, collective_mgr_func,
+              worker_func, CreateNoOpStatsPublisher);
+}
+
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func,
+    const CollectiveMgrCreationFunction& collective_mgr_func) {
+  return Init(std::move(service_func), rendezvous_mgr_func, collective_mgr_func,
+              nullptr);
 }
 
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
-  return Init(service_func, rendezvous_mgr_func, nullptr);
+  return Init(std::move(service_func), rendezvous_mgr_func, nullptr, nullptr);
 }
 
-Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr); }
+Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
 
 Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                     GrpcChannelSpec* channel_spec) {
@@ -305,11 +341,13 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
-  if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
+  auto colon_index = host_port.find_last_of(':');
+  if (!strings::safe_strto32(host_port.substr(colon_index + 1),
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            channel_cache_->TranslateTask(name_prefix), "\".");
+                            host_port, "\".");
   }
+
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);
@@ -330,6 +368,9 @@ Status GrpcServer::Start() {
       worker_thread_.reset(
           env_->StartThread(ThreadOptions(), "TF_worker_service",
                             [this] { worker_service_->HandleRPCsLoop(); }));
+      eager_thread_.reset(
+          env_->StartThread(ThreadOptions(), "TF_eager_service",
+                            [this] { eager_service_->HandleRPCsLoop(); }));
       state_ = STARTED;
       LOG(INFO) << "Started server with target: " << target();
       return Status::OK();
@@ -372,6 +413,7 @@ Status GrpcServer::Join() {
     case STOPPED:
       master_thread_.reset();
       worker_thread_.reset();
+      eager_thread_.reset();
       return Status::OK();
     default:
       LOG(FATAL);
@@ -403,7 +445,18 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr));
+  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  *out_server = std::move(ret);
+  return Status::OK();
+}
+
+/* static */
+Status GrpcServer::Create(const ServerDef& server_def, Env* env,
+                          std::unique_ptr<GrpcServer>* out_server) {
+  std::unique_ptr<GrpcServer> ret(
+      new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
+  ServiceInitFunction service_func = nullptr;
+  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
   *out_server = std::move(ret);
   return Status::OK();
 }
