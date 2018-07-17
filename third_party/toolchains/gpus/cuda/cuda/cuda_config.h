@@ -17,7 +17,7 @@ limitations under the License.
 #ifndef CUDA_CUDA_CONFIG_H_
 #define CUDA_CUDA_CONFIG_H_
 
-#define TF_CUDA_CAPABILITIES CudaVersion("3.0")
+#define TF_CUDA_CAPABILITIES DeviceVersion(3, 0)
 
 #define TF_CUDA_VERSION "8.0"
 #define TF_CUDNN_VERSION "5"

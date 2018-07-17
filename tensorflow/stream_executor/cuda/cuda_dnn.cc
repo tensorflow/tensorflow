@@ -2984,7 +2984,7 @@ bool CudnnSupport::DoFusedConvolve(
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
   int cc_major, cc_minor;
-  stream->parent()->GetDeviceDescription().cuda_compute_capability(&cc_major,
+  stream->parent()->GetDeviceDescription().device_hardware_version(&cc_major,
                                                                    &cc_minor);
   if (cc_major < 6 || (cc_major == 6 && cc_minor < 1)) {
     LOG(WARNING) << "cudnnConvolutionBiasActivationForward() for int8 is only "

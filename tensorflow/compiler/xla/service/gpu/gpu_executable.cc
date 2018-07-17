@@ -46,8 +46,8 @@ using tensorflow::tracing::ScopedAnnotation;
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
-    const string& ptx, const std::vector<uint8>& cubin,
-    std::pair<int, int> compute_capability,
+    const string& asm_text, const std::vector<uint8>& binary,
+    se::DeviceVersion device_hardware_version,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
@@ -55,9 +55,9 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
-      ptx_(ptx),
-      cubin_(cubin),
-      compute_capability_(compute_capability),
+      asm_text_(asm_text),
+      binary_(binary),
+      device_hardware_version_(device_hardware_version),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {}
 
@@ -68,15 +68,11 @@ Status GpuExecutable::ExecuteThunks(
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
 
-  std::pair<int, int> stream_compute_compatibility;
-  executor->GetDeviceDescription().cuda_compute_capability(
-      &stream_compute_compatibility.first,
-      &stream_compute_compatibility.second);
-  TF_RET_CHECK(stream_compute_compatibility == compute_capability_)
-      << "Compute capability mismatch; expected {" << compute_capability_.first
-      << ", " << compute_capability_.second << "}, but was {"
-      << stream_compute_compatibility.first << ", "
-      << stream_compute_compatibility.second << "}";
+  se::DeviceVersion stream_device_version =
+      executor->GetDeviceDescription().device_hardware_version();
+  TF_RET_CHECK(stream_device_version == device_hardware_version_)
+      << "Compute capability mismatch; expected {" << device_hardware_version_
+      << "}, but was {" << stream_device_version << "}";
 
   bool do_profile = hlo_execution_profile != nullptr;
   if (do_profile) {

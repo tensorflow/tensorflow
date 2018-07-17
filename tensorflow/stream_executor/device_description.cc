@@ -53,8 +53,7 @@ DeviceDescription::DeviceDescription()
       shared_memory_per_core_(kUninitializedUint64),
       shared_memory_per_block_(kUninitializedUint64),
       clock_rate_ghz_(-1.0),
-      cuda_compute_capability_major_(-1),
-      cuda_compute_capability_minor_(-1),
+      device_hardware_version_(),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
@@ -95,8 +94,9 @@ std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
 
   result["Clock Rate GHz"] = port::StrCat(clock_rate_ghz());
 
-  result["CUDA Compute Capability"] = port::StrCat(
-      cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
+  result["CUDA Compute Capability"] =
+      port::StrCat(device_hardware_version_.major_part, ".",
+                   device_hardware_version_.minor_part);
 
   result["NUMA Node"] = port::StrCat(numa_node());
   result["Core Count"] = port::StrCat(core_count());
@@ -110,12 +110,6 @@ DeviceDescriptionBuilder::DeviceDescriptionBuilder()
     : device_description_(new DeviceDescription) {}
 
 }  // namespace internal
-
-bool DeviceDescription::cuda_compute_capability(int *major, int *minor) const {
-  *major = cuda_compute_capability_major_;
-  *minor = cuda_compute_capability_minor_;
-  return cuda_compute_capability_major_ != 0;
-}
 
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim) {
