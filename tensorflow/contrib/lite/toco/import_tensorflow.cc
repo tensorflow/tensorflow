@@ -1518,11 +1518,15 @@ tensorflow::Status ConvertRangeOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertStackOperator(
+// Note that it's easy to confuse/conflate "Stack" and "Pack" operators, but
+// they aren't the same thing.  tf.stack results in a "Pack" operator.  "Stack"
+// operators also exist, but involve manipulating the TF runtime stack, and are
+// not directly related to tf.stack() usage.
+tensorflow::Status ConvertPackOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  CHECK((node.op() == "Stack") || (node.op() == "Pack"));
-  auto* op = new StackOperator;
+  CHECK_EQ(node.op(), "Pack");
+  auto op = absl::make_unique<PackOperator>();
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   QCHECK_GE(num_inputs, 1)
       << node.op()
@@ -1532,10 +1536,10 @@ tensorflow::Status ConvertStackOperator(
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
-  // Both "Stack" and "Pack" have the "axis" attribute.
   op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
+  op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
   op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
+  model->operators.emplace_back(std::move(op));
   return tensorflow::Status::OK();
 }
 
@@ -1873,7 +1877,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"NextIteration", ConvertOperatorSpecialCasedAsRNNBackEdge},
       {"NoOp", ConvertNoOpOperator},
       {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>},
-      {"Pack", ConvertStackOperator},
+      {"Pack", ConvertPackOperator},
       {"Pad", ConvertSimpleOperator<PadOperator, 2>},
       {"PadV2", ConvertSimpleOperator<PadV2Operator, 3>},
       {"ParallelDynamicStitch", ConvertDynamicStitchOperator},
@@ -1903,7 +1907,6 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
       {"Squeeze", ConvertSqueezeOperator},
-      {"Stack", ConvertStackOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},
       {"Sub", ConvertSimpleOperator<SubOperator, 2>},

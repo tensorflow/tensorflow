@@ -81,7 +81,7 @@ enum class OperatorType : uint8 {
   kResizeBilinear,
   kSin,
   kSpaceToBatchND,
-  kStack,
+  kPack,
   kBatchToSpaceND,
   kPad,
   kPadV2,
@@ -1157,10 +1157,11 @@ struct TensorFlowRsqrtOperator : Operator {
 // Inputs: this operator accepts any number >= 1 of inputs.
 //   inputs[i]: the i-th array to merge.
 //
-// TensorFlow equivalent: Stack or Pack
-struct StackOperator : Operator {
-  StackOperator() : Operator(OperatorType::kStack) {}
+// TensorFlow equivalent: Pack
+struct PackOperator : Operator {
+  PackOperator() : Operator(OperatorType::kPack) {}
   int axis = 0;
+  ArrayDataType dtype = ArrayDataType::kNone;
 };
 
 // Shape operator. Extracts the shape of the tensor.
