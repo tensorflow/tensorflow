@@ -99,10 +99,10 @@ _UNARY_OPS = [
     'Cos',
     'Sin',
     'Tanh',
-    'SqrtF32',
-    'SquareF32',
+    'Sqrt',
+    'Square',
     'IsFinite',
-    'ReciprocalF32',
+    'Reciprocal',
     'Neg',
     'Sort',
 ]
@@ -123,6 +123,7 @@ _BINARY_OPS = [
     'Min',
     'And',
     'Or',
+    'Xor',
     'Pow',
 ]
 
@@ -460,14 +461,16 @@ class LocalComputation(object):
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
 
+    result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
-      result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
       result_shape = result_shape.map_leaves(layout_fn)
-      compile_options = compile_options or CompileOptions()
-      compile_options.result_shape = result_shape
+
+    compile_options = compile_options or CompileOptions()
+    compile_options.result_shape = result_shape
     return LocalComputation(
         self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
@@ -908,20 +911,19 @@ class ComputationBuilder(object):
     """
     return self._client.Call(computation_to_apply.c_local_computation, operands)
 
-  def Map(self, operands, computation_to_apply, dimensions, static_operands=()):
+  def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
 
     Args:
       operands: an iterable of LocalOp.
       computation_to_apply: a Computation object.
       dimensions: dimensions over which to apply map the function.
-      static_operands: auxiliary arguments passed to the applied computation.
 
     Returns:
       A LocalOp representing the added Map op.
     """
     return self._client.Map(operands, computation_to_apply.c_local_computation,
-                            dimensions, static_operands)
+                            dimensions)
 
   def Reduce(self, operand, init_value, computation_to_apply, dimensions):
     """Enqueues a reduction operation onto the computation.

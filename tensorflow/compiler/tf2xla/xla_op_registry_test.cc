@@ -82,5 +82,38 @@ TEST(XlaOpRegistryTest, XlaOpRegistrationWithOverride) {
   }
 }
 
+// A dummy generic OpKernel for all backends.
+class DummyInfeasibleTypeConstraintOp : public XlaOpKernel {
+ public:
+  explicit DummyInfeasibleTypeConstraintOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    LOG(FATAL) << "unreachable";
+  }
+};
+
+REGISTER_OP("DummyInfeasibleTypeConstraintOp")
+    .Attr("T: {float, string}")
+    .Input("input: T")
+    .Output("output: T")
+    .Doc(R"doc(
+A dummy Op.
+
+input: dummy input.
+output: dummy output.
+)doc");
+REGISTER_XLA_OP(
+    Name("DummyInfeasibleTypeConstraintOp").TypeConstraint("T", DT_STRING),
+    DummyInfeasibleTypeConstraintOp);
+
+TEST(XlaOpRegistryTest, OpWithInfeasibleTypeConstraintIsNotRegistered) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  auto registered_kernels = GetAllRegisteredKernels().kernel();
+  for (const auto& kernels : registered_kernels) {
+    // The operator should not be registered.
+    EXPECT_NE(kernels.op(), "DummyInfeasibleTypeConstraintOp");
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

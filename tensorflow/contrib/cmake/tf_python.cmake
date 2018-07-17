@@ -456,6 +456,18 @@ add_custom_command(
       COMMENT "Running SWIG to generate Python wrappers"
       VERBATIM )
 
+add_library(tf_c_python_api OBJECT
+  "${tensorflow_source_dir}/tensorflow/c/python_api.cc"
+  "${tensorflow_source_dir}/tensorflow/c/python_api.h"
+)
+add_dependencies(
+  tf_c_python_api
+  tf_c
+  tf_core_lib
+  tf_core_framework
+  tf_protos_cc
+  tf_python_protos_cc)
+
 set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.h"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.cc"
@@ -724,8 +736,8 @@ endif()
 # Generate API __init__.py files.
 ########################################################
 
-# Parse tensorflow/tools/api/generator/BUILD to get list of generated files.
-FILE(READ ${tensorflow_source_dir}/tensorflow/tools/api/generator/api_gen.bzl api_generator_BUILD_text)
+# Parse tensorflow/python/tools/api/generator/BUILD to get list of generated files.
+FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_gen.bzl api_generator_BUILD_text)
 STRING(REGEX MATCH "# BEGIN GENERATED FILES.*# END GENERATED FILES" api_init_files_text ${api_generator_BUILD_text})
 string(REPLACE "# BEGIN GENERATED FILES" "" api_init_files_text ${api_init_files_text})
 string(REPLACE "# END GENERATED FILES" "" api_init_files_text ${api_init_files_text})
@@ -769,7 +781,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
 
           # Run create_python_api.py to generate API init files.
           COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python PATH=${PY_RUNTIME_ENV} ${PYTHON_EXECUTABLE}
-                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tools/api/generator/create_python_api.py"
+                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
                   "--root_init_template=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/api_template.__init__.py"
                   "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow"
                   "--package=tensorflow.python"
@@ -791,7 +803,7 @@ else (tensorflow_ENABLE_MKL_SUPPORT)
 
           # Run create_python_api.py to generate API init files.
           COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
-                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tools/api/generator/create_python_api.py"
+                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
                   "--root_init_template=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/api_template.__init__.py"
                   "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow"
                   "--package=tensorflow.python"
@@ -812,8 +824,8 @@ add_dependencies(tf_python_api tf_python_ops)
 # Generate API __init__.py files for tf.estimator.
 ########################################################
 
-# Parse tensorflow/tools/api/generator/BUILD to get list of generated files.
-FILE(READ ${tensorflow_source_dir}/tensorflow/tools/api/generator/api_gen.bzl api_generator_BUILD_text)
+# Parse tensorflow/python/tools/api/generator/BUILD to get list of generated files.
+FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_gen.bzl api_generator_BUILD_text)
 STRING(REGEX MATCH "# BEGIN GENERATED ESTIMATOR FILES.*# END GENERATED ESTIMATOR FILES" api_init_files_text ${api_generator_BUILD_text})
 string(REPLACE "# BEGIN GENERATED ESTIMATOR FILES" "" api_init_files_text ${api_init_files_text})
 string(REPLACE "# END GENERATED ESTIMATOR FILES" "" api_init_files_text ${api_init_files_text})
@@ -837,10 +849,11 @@ add_custom_command(
 
       # Run create_python_api.py to generate API init files.
       COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
-              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tools/api/generator/create_python_api.py"
+              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
               "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
               "--package=tensorflow.python.estimator"
               "--apiname=estimator"
+	      "--output_package=tensorflow.python.estimator.api"
               "${estimator_api_init_list_file}"
 
       COMMENT "Generating __init__.py files for Python API."

@@ -161,7 +161,8 @@ class HloSendRecvInstruction : public HloInstruction {
 
 class HloSendInstruction : public HloSendRecvInstruction {
  public:
-  explicit HloSendInstruction(HloInstruction* operand, int64 channel_id);
+  explicit HloSendInstruction(HloInstruction* operand, HloInstruction* token,
+                              int64 channel_id);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -185,7 +186,8 @@ class HloSendDoneInstruction : public HloSendRecvInstruction {
 
 class HloRecvInstruction : public HloSendRecvInstruction {
  public:
-  explicit HloRecvInstruction(const Shape& shape, int64 channel_id);
+  explicit HloRecvInstruction(const Shape& shape, HloInstruction* token,
+                              int64 channel_id);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -347,6 +349,35 @@ class HloReduceInstruction : public HloInstruction {
   std::vector<int64> dimensions_;
 };
 
+class HloSortInstruction : public HloInstruction {
+ public:
+  explicit HloSortInstruction(const Shape& shape, int64 dimension,
+                              HloInstruction* keys,
+                              HloInstruction* values = nullptr);
+  // Returns the dimension sizes or numbers associated with this instruction.
+  const std::vector<int64>& dimensions() const override { return dimensions_; }
+  int64 dimensions(int64 index) const override { return dimensions()[index]; }
+  // Returns the sort dimension for this instruction
+  int64 sort_dimension() { return dimensions(0); }
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::vector<int64> dimensions_;
+};
+
 class HloTransposeInstruction : public HloInstruction {
  public:
   explicit HloTransposeInstruction(
@@ -407,8 +438,7 @@ class HloMapInstruction : public HloInstruction {
  public:
   explicit HloMapInstruction(
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* map_computation,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands = {});
+      HloComputation* map_computation);
   // Returns the dimension sizes or numbers associated with this instruction.
   const std::vector<int64>& dimensions() const override { return dimensions_; }
   int64 dimensions(int64 index) const override { return dimensions()[index]; }
@@ -636,6 +666,9 @@ class HloFusionInstruction : public HloInstruction {
 
   void set_fusion_kind(FusionKind kind) { fusion_kind_ = kind; }
 
+  // If multiple operands are the same instruction, keeps only one of them.
+  Status DeduplicateFusionOperands();
+
  private:
   // Fuses the given instruction into this fusion instruction. When add_output
   // is false (which is the default), instruction_to_fuse is cloned and the
@@ -785,12 +818,25 @@ class HloReducePrecisionInstruction : public HloInstruction {
 
 class HloInfeedInstruction : public HloInstruction {
  public:
-  explicit HloInfeedInstruction(const Shape& shape, const string& config);
+  explicit HloInfeedInstruction(const Shape& infeed_shape,
+                                HloInstruction* token_operand,
+                                const string& config);
+  // TODO(b/80000000): Remove this constructor when all uses of infeed are
+  // converted to take tokens.
+  explicit HloInfeedInstruction(const Shape& infeed_shape,
+                                const string& config);
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
   // and is target-dependent.
   string infeed_config() const { return infeed_config_; }
   void set_infeed_config(const string& config) { infeed_config_ = config; }
+  // Returns the shape of the data received by the infeed. This is not the same
+  // as the shape of the infeed instruction which produces a tuple containing
+  // the infeed data shape and a TOKEN.
+  const Shape& infeed_shape() const {
+    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    return ShapeUtil::GetSubshape(shape(), {0});
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -813,11 +859,19 @@ class HloInfeedInstruction : public HloInstruction {
 
 class HloOutfeedInstruction : public HloInstruction {
  public:
-  explicit HloOutfeedInstruction(const Shape& shape, HloInstruction* operand,
+  explicit HloOutfeedInstruction(const Shape& outfeed_shape,
+                                 HloInstruction* operand,
+                                 HloInstruction* token_operand,
                                  tensorflow::StringPiece outfeed_config);
+  // TODO(b/80000000): Remove this constructor when all uses of outfeed are
+  // converted to take tokens.
+  explicit HloOutfeedInstruction(const Shape& outfeed_shape,
+                                 HloInstruction* operand,
+                                 tensorflow::StringPiece outfeed_config);
+
   // Returns the shape for the Outfeed instruction.
   const Shape& outfeed_shape() const {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape()));
+    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape_));
     return outfeed_shape_;
   }
   // Returns the config for the Outfeed instruction.
@@ -1094,6 +1148,49 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // ('start' is specified dynamically in the second operand of the operation).
   std::vector<int64> dynamic_slice_sizes_;
 };
+
+class HloGatherInstruction : public HloInstruction {
+ public:
+  explicit HloGatherInstruction(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* gather_indices,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+  const GatherDimensionNumbers& gather_dimension_numbers() const {
+    CHECK(gather_dimension_numbers_ != nullptr);
+    return *gather_dimension_numbers_;
+  }
+  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const {
+    return gather_window_bounds_;
+  }
+  // Returns the dump string of the gather dimension numbers.
+  string GatherDimensionNumbersToString() const;
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  // Creates an instance of GatherDimensionNumbers.
+  static GatherDimensionNumbers MakeGatherDimNumbers(
+      tensorflow::gtl::ArraySlice<int64> output_window_dims,
+      tensorflow::gtl::ArraySlice<int64> elided_window_dims,
+      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
+      int64 index_vector_dim);
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape,
+      tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+      HloCloneContext* context) const override;
+
+  std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
+  std::vector<int64> gather_window_bounds_;
+};
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_INSTRUCTIONS_H_

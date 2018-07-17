@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/java/src/gen/cc/java_defs.h"
 
 namespace tensorflow {
@@ -38,9 +38,8 @@ class EndpointSpec {
   // javadoc: the endpoint class documentation
   // TODO(annarev): hardcode depcreated to false until deprecated is possible
   EndpointSpec(const string& package, const string& name,
-      const Javadoc& javadoc)
-    : package_(package), name_(name), javadoc_(javadoc),
-      deprecated_(false) {}
+               const Javadoc& javadoc)
+      : package_(package), name_(name), javadoc_(javadoc), deprecated_(false) {}
 
   const string& package() const { return package_; }
   const string& name() const { return name_; }
@@ -63,10 +62,13 @@ class ArgumentSpec {
   // type: the tensor type of this argument
   // description: a description of this argument, in javadoc
   // iterable: true if this argument is a list
-  ArgumentSpec(const string& op_def_name, const Variable& var,
-      const Type& type, const string& description, bool iterable)
-    : op_def_name_(op_def_name), var_(var), type_(type),
-      description_(description), iterable_(iterable) {}
+  ArgumentSpec(const string& op_def_name, const Variable& var, const Type& type,
+               const string& description, bool iterable)
+      : op_def_name_(op_def_name),
+        var_(var),
+        type_(type),
+        description_(description),
+        iterable_(iterable) {}
 
   const string& op_def_name() const { return op_def_name_; }
   const Variable& var() const { return var_; }
@@ -94,11 +96,16 @@ class AttributeSpec {
   // iterable: true if this attribute is a list
   // has_default_value: true if this attribute has a default value if not set
   AttributeSpec(const string& op_def_name, const Variable& var,
-      const Type& type, const Type& jni_type, const string& description,
-      bool iterable, bool has_default_value)
-    : op_def_name_(op_def_name), var_(var), type_(type),
-      description_(description), iterable_(iterable),
-      jni_type_(jni_type), has_default_value_(has_default_value) {}
+                const Type& type, const Type& jni_type,
+                const string& description, bool iterable,
+                bool has_default_value)
+      : op_def_name_(op_def_name),
+        var_(var),
+        type_(type),
+        description_(description),
+        iterable_(iterable),
+        jni_type_(jni_type),
+        has_default_value_(has_default_value) {}
 
   const string& op_def_name() const { return op_def_name_; }
   const Variable& var() const { return var_; }
@@ -147,9 +154,10 @@ class OpSpec {
   // hidden: true if this op should not be visible through the Graph Ops API
   // deprecation_explanation: message to show if all endpoints are deprecated
   explicit OpSpec(const string& graph_op_name, bool hidden,
-      const string& deprecation_explanation)
-    : graph_op_name_(graph_op_name), hidden_(hidden),
-      deprecation_explanation_(deprecation_explanation) {}
+                  const string& deprecation_explanation)
+      : graph_op_name_(graph_op_name),
+        hidden_(hidden),
+        deprecation_explanation_(deprecation_explanation) {}
 
   const string graph_op_name_;
   const bool hidden_;

@@ -156,12 +156,14 @@ tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
   // server object (which currently CHECK-fails) and we miss the error, instead,
   // we log the error, and then return to allow the user to see the error
   // message.
-#define LOG_AND_RETURN_IF_ERROR(...)                     \
-  do {                                                   \
-    const ::tensorflow::Status _status = (__VA_ARGS__);  \
-    LOG(ERROR) << _status.error_message();               \
-    if (TF_PREDICT_FALSE(!_status.ok())) return _status; \
-  } while (0)
+#define LOG_AND_RETURN_IF_ERROR(...)                    \
+  do {                                                  \
+    const ::tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {              \
+      LOG(ERROR) << _status.error_message();            \
+      return _status;                                   \
+    }                                                   \
+  } while (0);
 
   string worker_name = tensorflow::strings::StrCat(
       "/job:", opts->server_def.job_name(),
@@ -346,16 +348,16 @@ TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h) {
 }
 
 int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->Tensor(&t);
-  return t == nullptr ? 0 : t->dims();
+  int result;
+  status->status = h->handle->NumDims(&result);
+  return result;
 }
 
 int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
                             TF_Status* status) {
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->Tensor(&t);
-  return t == nullptr ? 0 : t->dim_size(dim_index);
+  tensorflow::int64 result;
+  status->status = h->handle->Dim(dim_index, &result);
+  return result;
 }
 
 const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
@@ -662,17 +664,17 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     TFE_TensorHandle* h, TF_Status* status) {
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
-  if (!status->status.ok()) return nullptr;
-  if (d != nullptr) {
+  if (!h->handle->OnHostCPU()) {
     status->status = tensorflow::errors::FailedPrecondition(
         "TFE_TensorHandle is placed in device (not host) memory. Cannot return "
         "a tensorflow::Tensor");
     return nullptr;
   }
+  tensorflow::Device* d = nullptr;
+  tensorflow::Device* op_device = nullptr;
+  const tensorflow::Tensor* t = nullptr;
+  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+  if (!status->status.ok()) return nullptr;
   return t;
 }
 

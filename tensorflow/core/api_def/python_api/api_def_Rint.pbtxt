@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "rint"
-    deprecation_message: "tf.rint is deprecated, please use tf.math.rint instead."
+    deprecated: true
   }
 }

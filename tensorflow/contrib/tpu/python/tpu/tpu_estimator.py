@@ -81,12 +81,17 @@ _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CTX_KEY = 'context'
+_USE_TPU_KEY = 'use_tpu'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 _REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
 
+# Ideally _USE_TPU_KEY should be reserved as well. However there are already
+# models that make use of this key, thus it can not be reserved now to prevent
+# breakage. In the long run, we would like to mitigate this by migrating models
+# off of using _USE_TPU_KEY.
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY, _CTX_KEY]
 
 
@@ -211,8 +216,8 @@ class _SIGNAL(object):
 class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=protected-access
   """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
 
-  See `EstimatorSpec` for `mode`, 'predictions, 'loss', 'train_op', and
-  'export_outputs`.
+  See `EstimatorSpec` for `mode`, `predictions`, `loss`, `train_op`, and
+  `export_outputs`.
 
   For evaluation, `eval_metrics `is a tuple of `metric_fn` and `tensors`, where
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
@@ -226,7 +231,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
   size is the first dimension. Once all tensors are available at CPU host from
   all shards, they are concatenated (on CPU) and passed as positional arguments
   to the `metric_fn` if `tensors` is list or keyword arguments if `tensors` is
-  dict. `metric_fn` takes the `tensors` and returns a dict from metric string
+  a dict. `metric_fn` takes the `tensors` and returns a dict from metric string
   name to the result of calling a metric function, namely a `(metric_tensor,
   update_op)` tuple. See `TPUEstimator` for MNIST example how to specify the
   `eval_metrics`.
@@ -842,6 +847,65 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
 
+def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
+                                      num_hosts):
+  """Generates infeed enqueue ops for one input_fn on all the hosts."""
+  captured_infeed_queue = _CapturedObject()
+  hooks = []
+  device_0 = ctx.tpu_host_placement_function(host_id=0)
+  with ops.device(device_0):
+    user_context = tpu_context.TPUContext(
+        internal_ctx=ctx, input_device=device_0, invocation_index=0)
+    inputs = _Inputs.from_input_fn(input_fn(user_context))
+
+    is_dataset = inputs.is_dataset
+    if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
+      raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
+
+    hooks.append(inputs.dataset_initializer_hook())
+    num_replicas_per_host = ctx.num_of_replicas_per_host
+
+  def tpu_ordinal_function_impl(replica_id):
+    if ctx.device_assignment:
+      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+    else:
+      return replica_id % num_replicas_per_host
+
+  def device_function_impl(replica_id):
+    return ctx.tpu_host_placement_function(replica_id=replica_id)
+
+  def enqueue_ops_fn():
+    """Generates enqueue ops for all the hosts."""
+    broadcasted_inputs = []
+    flattened_inputs = None  # Cache result from input_fn.
+    for host_id in xrange(num_hosts):
+      with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
+        for _ in xrange(ctx.num_of_replicas_per_host):
+          # Note: input_fn is only called once at host 0 for the first replica.
+          # The features and labels returned from that invocation are
+          # broadcasted to other replicas(including the replicas on other
+          # hosts).
+          if flattened_inputs is None:
+            features, labels = inputs.features_and_labels()  # Calls get_next()
+            inputs_structure_recorder.validate_and_record_structure(
+                features, labels)
+            flattened_inputs = (
+                inputs_structure_recorder.flatten_features_and_labels(
+                    features, labels))
+          broadcasted_inputs.append(flattened_inputs)
+
+    infeed_queue = tpu_feed.InfeedQueue(
+        number_of_tuple_elements=len(broadcasted_inputs[0]))
+    captured_infeed_queue.capture(infeed_queue)
+    enqueue_ops = infeed_queue.generate_enqueue_ops(
+        broadcasted_inputs,
+        tpu_ordinal_function=tpu_ordinal_function_impl,
+        placement_function=device_function_impl)
+    return enqueue_ops
+
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
+
+
 class _InputPipeline(object):
   """`_InputPipeline` handles invoking `input_fn` and piping to infeed queue.
 
@@ -1074,6 +1138,22 @@ class _InputPipeline(object):
             # Infeed_queue_getter must be called after enqueue_ops_fn is called.
             infeed_queues.append(captured_infeed_queue.get())
 
+    elif self._ctx.is_input_broadcast_with_iterators():
+      # Only calls input_fn in host 0.
+      host_device = tpu_host_placement_fn(host_id=0)
+      enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
+          generate_broadcast_enqueue_ops_fn(self._ctx, self._input_fn,
+                                            self._inputs_structure_recorder,
+                                            num_hosts))
+      all_hooks.extend(hooks)
+      if is_dataset:
+        run_infeed_loop_on_coordinator = False
+        enqueue_ops.append(
+            _wrap_computation_in_while_loop(
+                device=host_device, op_fn=enqueue_ops_fn))
+      else:
+        enqueue_ops.append(enqueue_ops_fn())
+      infeed_queues.append(captured_infeed_queue.get())
     else:
       for host_id in range(num_hosts):
         host_device = tpu_host_placement_fn(host_id=host_id)
@@ -1414,8 +1494,16 @@ class _ModelFnWrapper(object):
     if batch_size_for_model_fn is not None:
       _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
+    running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
+    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
+
+    if not running_on_cpu:
+      user_context = tpu_context.TPUContext(
+          internal_ctx=self._ctx, call_from_input_fn=False)
+      _add_item_to_params(params, _CTX_KEY, user_context)
+
     estimator_spec = self._model_fn(features=features, **kwargs)
-    if (self._ctx.is_running_on_cpu(is_export_mode) and
+    if (running_on_cpu and
         isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)):  # pylint: disable=protected-access
       # The estimator_spec will be passed to `Estimator` directly, which expects
       # type `EstimatorSpec`.
@@ -1593,7 +1681,7 @@ class _OutfeedHostCall(object):
     # place all ops on tpu host if possible.
     #
     # TODO(jhseu): Evaluate whether this is right for summaries.
-    with ops.device(self._ctx.tpu_host_placement_function(core_id=0)):
+    with ops.device(self._ctx.tpu_host_placement_function(replica_id=0)):
       for name in self._names:
         dequeue_ops = dequeue_ops_by_name[name]
         for i, item in enumerate(dequeue_ops):
@@ -1978,7 +2066,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
       if (config.tpu_config.per_host_input_for_training is
           tpu_config.InputPipelineConfig.PER_SHARD_V1 and
-          config.tpu_config.computation_shape):
+          config.tpu_config.num_cores_per_replica):
         raise ValueError(
             'Model parallelism only supports per host input for training. '
             'Please adjust TPURunconfig.per_host_input_for_training.')
@@ -2033,24 +2121,29 @@ class TPUEstimator(estimator_lib.Estimator):
                                strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
-                               export_tags=None):
+                               export_tags=None,
+                               check_variables=True):
     if mode != model_fn_lib.ModeKeys.PREDICT:
       raise NotImplementedError(
           'TPUEstimator only handles mode PREDICT for export_savedmodel(); '
           'got {}.'.format(mode))
 
-    super(TPUEstimator, self)._add_meta_graph_for_mode(builder,
-                                                       input_receiver_fn_map,
-                                                       checkpoint_path,
-                                                       strip_default_attrs,
-                                                       save_variables,
-                                                       mode=mode)
+    (super(TPUEstimator, self).
+     _add_meta_graph_for_mode(builder,
+                              input_receiver_fn_map,
+                              checkpoint_path,
+                              strip_default_attrs,
+                              save_variables,
+                              mode=mode,
+                              export_tags=export_tags,
+                              check_variables=check_variables))
 
     if self._export_to_tpu:
       input_receiver_fn_map = {_REWRITE_FOR_INFERENCE_MODE:
                                input_receiver_fn_map[mode]}
       export_tags = [tag_constants.SERVING, tag_constants.TPU]
       mode = _REWRITE_FOR_INFERENCE_MODE
+      # See b/110052256 for why `check_variables` is `False`.
       (super(TPUEstimator, self).
        _add_meta_graph_for_mode(builder,
                                 input_receiver_fn_map,
@@ -2058,7 +2151,8 @@ class TPUEstimator(estimator_lib.Estimator):
                                 strip_default_attrs,
                                 save_variables=False,
                                 mode=mode,
-                                export_tags=export_tags))
+                                export_tags=export_tags,
+                                check_variables=False))
 
   def _call_model_fn(self, features, labels, mode, config):
     if mode == _REWRITE_FOR_INFERENCE_MODE:
@@ -2284,10 +2378,20 @@ class TPUEstimator(estimator_lib.Estimator):
         # Clear the bit.
         self._is_input_fn_invoked = None
 
+        # examples_hook is added to training_hooks for both CPU and TPU
+        # execution.
+        examples_hook = ExamplesPerSecondHook(
+            ctx.global_batch_size,
+            output_dir=self.model_dir,
+            every_n_steps=self._log_every_n_steps)
+
         if ctx.is_running_on_cpu(is_export_mode=is_export_mode):
           logging.info('Running %s on CPU', mode)
-          return model_fn_wrapper.call_without_tpu(
+          estimator_spec = model_fn_wrapper.call_without_tpu(
               features, labels, is_export_mode=is_export_mode)
+          estimator_spec = estimator_spec._replace(
+              training_hooks=estimator_spec.training_hooks + (examples_hook,))
+          return estimator_spec
 
         assert labels is None, '`labels` passed to `model_fn` must be `None`.'
         # TPUEstimator._call_input_fn passes `input_fn` as features to here.
@@ -2355,10 +2459,6 @@ class TPUEstimator(estimator_lib.Estimator):
                   },
                   every_n_iter=logging_hook_frequency)
           ])
-          examples_hook = ExamplesPerSecondHook(
-              ctx.global_batch_size,
-              output_dir=self.model_dir,
-              every_n_steps=self._log_every_n_steps)
           examples_hook._set_steps_per_run(   # pylint: disable=protected-access
               self._config.tpu_config.iterations_per_loop)
           hooks.append(examples_hook)
@@ -3143,9 +3243,53 @@ def _add_item_to_params(params, key, value):
   if isinstance(params, hparam.HParams):
     # For HParams, we need to use special API.
     if key in params:
-      params.key = value
+      params.set_hparam(key, value)
     else:
       params.add_hparam(key, value)
   else:
     # Now params is Python dict.
     params[key] = value
+
+
+def export_estimator_savedmodel(estimator,
+                                export_dir_base,
+                                serving_input_receiver_fn,
+                                assets_extra=None,
+                                as_text=False,
+                                checkpoint_path=None,
+                                strip_default_attrs=False):
+  """Export `Estimator` trained model for TPU inference.
+
+  Args:
+    estimator: `Estimator` with which model has been trained.
+    export_dir_base: A string containing a directory in which to create
+      timestamped subdirectories containing exported SavedModels.
+    serving_input_receiver_fn: A function that takes no argument and
+      returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel, or `None` if no extra assets are needed.
+    as_text: whether to write the SavedModel proto in text format.
+    checkpoint_path: The checkpoint path to export.  If `None` (the default),
+      the most recent checkpoint found within the model directory is chosen.
+    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+      removed from the NodeDefs.
+
+  Returns:
+    The string path to the exported directory.
+  """
+  # `TPUEstimator` requires `tpu_config.RunConfig`, so we cannot use
+  # `estimator.config`.
+  config = tpu_config.RunConfig(model_dir=estimator.model_dir)
+  est = TPUEstimator(
+      estimator._model_fn,  # pylint: disable=protected-access
+      config=config,
+      params=estimator.params,
+      use_tpu=True,
+      train_batch_size=2048,  # Does not matter.
+      eval_batch_size=2048,  # Does not matter.
+  )
+  return est.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                               assets_extra,
+                               as_text,
+                               checkpoint_path,
+                               strip_default_attrs)

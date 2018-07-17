@@ -110,31 +110,33 @@ class ShapeIndex {
 class ShapeIndexView {
  public:
   ShapeIndexView(const ShapeIndex& shape_index, int64 offset = 0)
-      : ShapeIndexView(shape_index.data() + offset,
-                       shape_index.data() + shape_index.size()) {
+      : indices_(shape_index.data() + offset, shape_index.size() - offset) {
     CHECK_LE(offset, shape_index.size());
   }
-  ShapeIndexView(std::initializer_list<int64> indices)
-      : ShapeIndexView(indices.begin(), indices.end()) {}
+  ShapeIndexView(std::initializer_list<int64> indices) : indices_(indices) {}
   ShapeIndexView(const ShapeIndexView& other) = default;
 
   using iterator = const int64*;
 
-  iterator begin() const { return begin_; }
-  iterator end() const { return end_; }
-  int64 size() const { return std::distance(begin_, end_); }
-  bool empty() const { return begin_ == end_; }
+  iterator begin() const { return indices_.begin(); }
+  iterator end() const { return indices_.end(); }
+  int64 size() const { return indices_.size(); }
+  bool empty() const { return indices_.empty(); }
   int64 front() const {
     CHECK(!empty());
-    return *begin_;
+    return indices_.front();
   }
   ShapeIndexView ConsumeFront() const {
-    CHECK(!empty());
-    auto new_begin = begin_;
-    ++new_begin;
-    return ShapeIndexView(new_begin, end_);
+    ShapeIndexView result = *this;
+    result.indices_.pop_front();
+    return result;
   }
-  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin_, end_); }
+  ShapeIndexView ConsumeBack() const {
+    ShapeIndexView result = *this;
+    result.indices_.pop_back();
+    return result;
+  }
+  ShapeIndex ToShapeIndex() const { return ShapeIndex(begin(), end()); }
 
   bool operator==(const ShapeIndexView& other) const;
   bool operator!=(const ShapeIndexView& other) const;
@@ -142,10 +144,7 @@ class ShapeIndexView {
   string ToString() const;
 
  private:
-  ShapeIndexView(iterator begin, iterator end) : begin_(begin), end_(end) {}
-
-  iterator begin_;
-  iterator end_;
+  tensorflow::gtl::ArraySlice<int64> indices_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
@@ -279,6 +278,9 @@ class ShapeUtil {
 
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
+
+  // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
+  static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
   // Returns the rank (number of dimensions) of the given shape.
   // Precondition: !IsTuple(shape)
@@ -527,7 +529,13 @@ class ShapeUtil {
   static bool HasDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
-  // return_value.dimensions[permutation[i]] = argument.dimensions[i]
+  // return_value.dimensions[permutation[i]] = argument.dimensions[i].
+  //
+  // Postcondition: For any valid permutation,
+  //
+  //   !HasLayout(shape) ||
+  //   TransposeIsBitcast(shape, PermuteDimensions(permutation, shape),
+  //                      InversePermutation(permutation)).
   static Shape PermuteDimensions(tensorflow::gtl::ArraySlice<int64> permutation,
                                  const Shape& shape);
 
@@ -699,6 +707,10 @@ class ShapeUtil {
   static size_t Hash(const Shape& shape);
 
  private:
+  // Validates the shape size is sane. This makes sure it's safe to do
+  // calculations in int64 without overflowing.
+  static Status ValidateShapeSize(const Shape& shape);
+
   // Validates all of the non-layout properties of the shape -- this is a helper
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);

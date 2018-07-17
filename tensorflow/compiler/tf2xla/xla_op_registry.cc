@@ -240,6 +240,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
         // a) the types supported by the backend, and
         // b) the types allowed by the OpDef, and
         // c) the type constraints.
+        bool unsatisfiable_type_constraint = false;
         for (const string& type_attr : type_attrs) {
           KernelDef::AttrConstraint* attr_constraint = kdef->add_constraint();
           attr_constraint->set_name(type_attr);
@@ -276,7 +277,14 @@ void XlaOpRegistry::RegisterCompilationKernels() {
           if (op_registration->allow_resource_types) {
             allowed_values->add_type(DT_RESOURCE);
           }
+          // Don't build KernelDefs that have unsatisfiable type constraints.
+          if (allowed_values->type().empty()) {
+            unsatisfiable_type_constraint = true;
+            break;
+          }
         }
+        if (unsatisfiable_type_constraint) continue;
+
         if (backend.second.op_filter != nullptr &&
             !backend.second.op_filter(kdef.get())) {
           continue;

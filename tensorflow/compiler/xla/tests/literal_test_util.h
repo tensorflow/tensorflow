@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/error_spec.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -154,20 +155,20 @@ class LiteralTestUtil {
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR0Equal(NativeT expected,
                                                  const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR0<NativeT>(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR0<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Equal(
     tensorflow::gtl::ArraySlice<NativeT> expected, const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR1<NativeT>(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR1<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2Equal(
     std::initializer_list<std::initializer_list<NativeT>> expected,
     const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR2<NativeT>(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR2<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
@@ -175,46 +176,46 @@ template <typename NativeT>
     std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
         expected,
     const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR3<NativeT>(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR3<NativeT>(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2EqualArray2D(
     const Array2D<NativeT>& expected, const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR2FromArray2D(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR2FromArray2D(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR3EqualArray3D(
     const Array3D<NativeT>& expected, const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR3FromArray3D(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR3FromArray3D(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR4EqualArray4D(
     const Array4D<NativeT>& expected, const LiteralSlice& actual) {
-  EXPECT_TRUE(Equal(*Literal::CreateR4FromArray4D(expected), actual));
+  EXPECT_TRUE(Equal(*LiteralUtil::CreateR4FromArray4D(expected), actual));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR0Near(NativeT expected,
                                                 const LiteralSlice& actual,
                                                 const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR0<NativeT>(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR0<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR1Near(
     tensorflow::gtl::ArraySlice<NativeT> expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR1<NativeT>(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR1<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2Near(
     std::initializer_list<std::initializer_list<NativeT>> expected,
     const LiteralSlice& actual, const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR2<NativeT>(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR2<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
@@ -222,7 +223,7 @@ template <typename NativeT>
     std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
         expected,
     const LiteralSlice& actual, const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR3<NativeT>(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR3<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
@@ -231,28 +232,28 @@ template <typename NativeT>
         std::initializer_list<std::initializer_list<NativeT>>>>
         expected,
     const LiteralSlice& actual, const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR4<NativeT>(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR4<NativeT>(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR2NearArray2D(
     const Array2D<NativeT>& expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR2FromArray2D(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR2FromArray2D(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR3NearArray3D(
     const Array3D<NativeT>& expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR3FromArray3D(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR3FromArray3D(expected), actual, error));
 }
 
 template <typename NativeT>
 /* static */ void LiteralTestUtil::ExpectR4NearArray4D(
     const Array4D<NativeT>& expected, const LiteralSlice& actual,
     const ErrorSpec& error) {
-  EXPECT_TRUE(Near(*Literal::CreateR4FromArray4D(expected), actual, error));
+  EXPECT_TRUE(Near(*LiteralUtil::CreateR4FromArray4D(expected), actual, error));
 }
 
 }  // namespace xla

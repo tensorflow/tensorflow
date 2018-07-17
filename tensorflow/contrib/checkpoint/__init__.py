@@ -44,8 +44,8 @@ from tensorflow.core.protobuf.checkpointable_object_graph_pb2 import Checkpointa
 from tensorflow.python.training.checkpointable.base import CheckpointableBase
 from tensorflow.python.training.checkpointable.data_structures import List
 from tensorflow.python.training.checkpointable.data_structures import Mapping
+from tensorflow.python.training.checkpointable.data_structures import NoDependency
 from tensorflow.python.training.checkpointable.tracking import Checkpointable
-from tensorflow.python.training.checkpointable.tracking import NoDependency
 from tensorflow.python.training.checkpointable.util import capture_dependencies
 from tensorflow.python.training.checkpointable.util import list_objects
 from tensorflow.python.training.checkpointable.util import object_metadata

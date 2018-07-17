@@ -316,10 +316,15 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
             "INT8 inputs are not supported!"));
         return;
+#if NV_TENSORRT_MAJOR > 3
+      case nvinfer1::DataType::kINT32:
+        buffers[binding_index] = (void*)(input_tensor.flat<int32>().data());
+        break;
+#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
-            "Unknown ouput TRT data type! ", static_cast<int>(dtype)));
+            "Unknown output TRT data type! ", static_cast<int>(dtype)));
         return;
     }
   }
@@ -327,8 +332,8 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
     const string output_name = StrCat(kOutputPHName, i);
-    const size_t binding_index = trt_engine_ptr->getBindingIndex(
-        output_name.c_str());
+    const size_t binding_index =
+        trt_engine_ptr->getBindingIndex(output_name.c_str());
     Tensor* output_tensor = nullptr;
 
     TensorShape output_shape;
@@ -368,10 +373,16 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
             "INT8 outputs are not supported!"));
         return;
+#if NV_TENSORRT_MAJOR > 3
+      case nvinfer1::DataType::kINT32:
+        buffers[binding_index] =
+            reinterpret_cast<void*>(output_tensor->flat<int32>().data());
+        break;
+#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << static_cast<int>(dtype);
         ctx->SetStatus(tensorflow::errors::InvalidArgument(
-            "Unsupported output data type! ", int(dtype)));
+            "Unsupported output data type! ", static_cast<int>(dtype)));
         return;
     }
   }
@@ -420,10 +431,10 @@ nvinfer1::IGpuAllocator* TRTEngineOp::GetAllocator(OpKernelContext* ctx) {
 }
 
 TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
-                                                  OpKernelContext* ctx) {
+                                                   OpKernelContext* ctx) {
   static EngineCtxPair null_pair = {
-    TrtUniquePtrType<nvinfer1::ICudaEngine>(nullptr),
-    TrtUniquePtrType<nvinfer1::IExecutionContext>(nullptr)};
+      TrtUniquePtrType<nvinfer1::ICudaEngine>(nullptr),
+      TrtUniquePtrType<nvinfer1::IExecutionContext>(nullptr)};
   // TODO(sami): This method needs to be re-written to use resource manager and
   // with LRU mechanism option.
   tensorflow::mutex_lock lock(engine_mutex_);
@@ -450,9 +461,9 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     engine_map_[max_batch_size] = {
-      std::move(static_engine),
-      TrtUniquePtrType<nvinfer1::IExecutionContext>(
-          raw_static_engine->createExecutionContext())};
+        std::move(static_engine),
+        TrtUniquePtrType<nvinfer1::IExecutionContext>(
+            raw_static_engine->createExecutionContext())};
     // Runtime is safe to delete after engine creation
     serialized_segment_.clear();
     if (max_batch_size < batch_size) return null_pair;

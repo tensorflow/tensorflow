@@ -407,11 +407,11 @@ def import_graph_def(graph_def,
   _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                    return_elements)
 
-  # _ProcessNewOps mutates the new operations. _lock ensures a Session.run
-  # call cannot occur between creating the TF_Operations in the
+  # _ProcessNewOps mutates the new operations. _mutation_lock ensures a
+  # Session.run call cannot occur between creating the TF_Operations in the
   # TF_GraphImportGraphDefWithResults call and mutating the them in
   # _ProcessNewOps.
-  with graph._lock:  # pylint: disable=protected-access
+  with graph._mutation_lock():  # pylint: disable=protected-access
     with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
       try:
         results = c_api.TF_GraphImportGraphDefWithResults(

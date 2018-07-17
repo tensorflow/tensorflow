@@ -94,10 +94,7 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
           << std::endl
           << "  its type: "
           << llvm_ir::DumpToString(*global_for_const->getType());
-  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-      global_for_const,
-      llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
-  bindings_.BindHloToIrValue(*constant, shape_constant);
+  bindings_.BindHloToIrValue(*constant, global_for_const);
   return Status::OK();
 }
 
@@ -194,6 +191,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
   HloOpcode root_opcode = computation.root_instruction()->opcode();
   PrimitiveType element_type =
       computation.root_instruction()->shape().element_type();
+  bool is_atomic_integral = element_type == S32 || element_type == U32 ||
+                            element_type == S64 || element_type == U64;
   llvm::Value* source = ir_builder_.CreateLoad(source_address, "source");
   if (root_opcode == HloOpcode::kAdd) {
     // NVPTX supports atomicAdd on F32 and integer types.
@@ -204,7 +203,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
                                    {output_address->getType()}, &ir_builder_);
       return true;
     }
-    if (primitive_util::IsIntegralType(element_type)) {
+    if (is_atomic_integral) {
       // integral + integral
       ir_builder_.CreateAtomicRMW(llvm::AtomicRMWInst::Add, output_address,
                                   source,
@@ -213,9 +212,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     }
   }
 
-  // NVPTX supports atomicMax and atomicMin on only integer types.
-  if (root_opcode == HloOpcode::kMaximum &&
-      primitive_util::IsIntegralType(element_type)) {
+  // NVPTX supports atomicMax and atomicMin only on integer types.
+  if (root_opcode == HloOpcode::kMaximum && is_atomic_integral) {
     // max(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Max
@@ -225,8 +223,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     return true;
   }
 
-  if (root_opcode == HloOpcode::kMinimum &&
-      primitive_util::IsIntegralType(element_type)) {
+  if (root_opcode == HloOpcode::kMinimum && is_atomic_integral) {
     // min(integral, integral)
     auto opcode = primitive_util::IsSignedIntegralType(element_type)
                       ? llvm::AtomicRMWInst::Min
@@ -424,22 +421,25 @@ Status IrEmitter::EmitAtomicOperationForNestedComputation(
 
 Status IrEmitter::HandleSelect(HloInstruction* select) {
   auto pred = select->operand(0);
-  auto on_true = select->operand(1);
-  auto on_false = select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
-
-  if (ShapeUtil::IsTuple(select->shape())) {
-    llvm_ir::EmitTupleSelect(GetIrArray(*select, *select),
-                             GetIrArray(*pred, *select),
-                             GetBasePointer(*on_true),
-                             GetBasePointer(*on_false), &ir_builder_, module_);
-    return Status::OK();
-  }
-
   // We must not call the subclass `DefaultAction` method, lest its
   // `HandleSelect` call `IrEmitter::HandleSelect` and its `DefaultAction`
   // assume no handler has already been called.
   return IrEmitter::DefaultAction(select);
+}
+
+Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
+  auto pred = tuple_select->operand(0);
+  auto on_true = tuple_select->operand(1);
+  auto on_false = tuple_select->operand(2);
+  TF_RET_CHECK(pred->shape().element_type() == PRED);
+  TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
+  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  llvm_ir::EmitTupleSelect(GetIrArray(*tuple_select, *tuple_select),
+                           GetIrArray(*pred, *tuple_select),
+                           GetBasePointer(*on_true), GetBasePointer(*on_false),
+                           &ir_builder_, module_);
+  return Status::OK();
 }
 
 namespace {

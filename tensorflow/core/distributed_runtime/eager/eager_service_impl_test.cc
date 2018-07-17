@@ -198,6 +198,11 @@ TEST_F(EagerServiceImplTest, BasicTest) {
   TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
                                           &remote_enqueue_response));
 
+  auto& matmul_result_shape =
+      remote_enqueue_response.queue_response(1).shape(0);
+  EXPECT_EQ(matmul_result_shape.dim(0).size(), 2);
+  EXPECT_EQ(matmul_result_shape.dim(1).size(), 2);
+
   tensorflow::TensorHandle* tensor_handle;
   TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
       response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));

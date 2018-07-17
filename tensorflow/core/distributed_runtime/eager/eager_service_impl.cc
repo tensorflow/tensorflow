@@ -63,10 +63,10 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
       }
       *num_retvals += iter->second.i();
     } else if (!output_arg.type_list_attr().empty()) {
-      auto iter = attrs.find(output_arg.number_attr());
+      auto iter = attrs.find(output_arg.type_list_attr());
       if (iter == attrs.end()) {
-        return errors::InvalidArgument("Unable to find number_attr ",
-                                       output_arg.number_attr(),
+        return errors::InvalidArgument("Unable to find type_list_attr ",
+                                       output_arg.type_list_attr(),
                                        " for Op: ", op_name);
       }
       *num_retvals += iter->second.list().type_size();
@@ -81,6 +81,10 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
 
 Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                                        CreateContextResponse* response) {
+  //make sure env_ , env_->rendezvous_mgr available
+  if (env_ == nullptr || env_->rendezvous_mgr == nullptr) {
+    return tensorflow::errors::Internal("invalid eager env_ or env_->rendezvous_mgr.");
+  } 
   std::vector<tensorflow::Device*> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
@@ -128,8 +132,20 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   return Status::OK();
 }
 
+Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
+  const tensorflow::Tensor* t = nullptr;
+
+  // TODO(nareshmodi): This call makes async calls sync calls. Fix this.
+  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+
+  t->shape().AsProto(proto);
+
+  return Status::OK();
+}
+
 Status EagerServiceImpl::ExecuteOp(const Operation& operation,
-                                   ServerContext* server_context) {
+                                   ServerContext* server_context,
+                                   QueueResponse* queue_response) {
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
   const tensorflow::AttrTypeMap* types;
@@ -172,6 +188,10 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   server_context->AddOperationOutputs(retvals, operation.id());
 
+  for (auto* handle : retvals) {
+    TF_RETURN_IF_ERROR(TensorHandleShape(handle, queue_response->add_shape()));
+  }
+
   return Status::OK();
 }
 
@@ -182,8 +202,9 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   core::ScopedUnref context_unref(context);
 
   for (const auto& item : request->queue()) {
+    auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      TF_RETURN_IF_ERROR(ExecuteOp(item.operation(), context));
+      TF_RETURN_IF_ERROR(ExecuteOp(item.operation(), context, queue_response));
     } else {
       TF_RETURN_IF_ERROR(context->DeleteTensorHandle(
           RemoteTensorHandleInternal(item.handle_to_decref())));

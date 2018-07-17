@@ -143,7 +143,6 @@ cc_library(
         ":toco_graphviz_dump_options",
         ":toco_port",
         ":types_proto_cc",
-        "//tensorflow/cc/saved_model:tag_constants",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -166,41 +165,6 @@ cc_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "toco_saved_model",
-    srcs = [
-        "toco_saved_model.cc",
-    ],
-    hdrs = [
-        "toco_saved_model.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":model_cmdline_flags",
-        ":model_flags_proto_cc",
-        ":toco_flags_proto_cc",
-        ":types_proto_cc",
-        "//tensorflow/cc/tools:freeze_saved_model",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "toco_saved_model_test",
-    srcs = ["toco_saved_model_test.cc"],
-    deps = [
-        ":model_cmdline_flags",
-        ":toco_cmdline_flags",
-        ":toco_saved_model",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -238,6 +202,7 @@ cc_library(
         "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
         "graph_transformations/merge_reshape_into_preceding_transpose.cc",
+        "graph_transformations/move_binary_operator_before_reshape.cc",
         "graph_transformations/propagate_activation_function_into_constants.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_default_min_max.cc",
@@ -247,7 +212,7 @@ cc_library(
         "graph_transformations/quantization_util.h",
         "graph_transformations/quantize.cc",
         "graph_transformations/quantize_weights.cc",
-        "graph_transformations/read_fake_quant_min_max.cc",
+        "graph_transformations/read_array_minmax_and_narrow_range_from_fake_quant.cc",
         "graph_transformations/remove_final_dequantize_op.cc",
         "graph_transformations/remove_tensorflow_assert.cc",
         "graph_transformations/remove_tensorflow_identity.cc",
@@ -280,10 +245,11 @@ cc_library(
         "graph_transformations/resolve_constant_strided_slice.cc",
         "graph_transformations/resolve_constant_transpose.cc",
         "graph_transformations/resolve_constant_unary.cc",
-        "graph_transformations/resolve_mean_attributes.cc",
+        "graph_transformations/resolve_fake_quant_args_from_vars.cc",
         "graph_transformations/resolve_multiply_by_zero.cc",
         "graph_transformations/resolve_pad_attributes.cc",
         "graph_transformations/resolve_padv2_attributes.cc",
+        "graph_transformations/resolve_reduce_attributes.cc",
         "graph_transformations/resolve_reorder_axes.cc",
         "graph_transformations/resolve_reshape_attributes.cc",
         "graph_transformations/resolve_slice_attributes.cc",
@@ -431,7 +397,6 @@ tf_cc_binary(
         ":toco_cmdline_flags",
         ":toco_flags_proto_cc",
         ":toco_port",
-        ":toco_saved_model",
         ":toco_tooling",
         ":types_proto_cc",
         "//tensorflow/core:lib",

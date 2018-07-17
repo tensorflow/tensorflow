@@ -19,17 +19,18 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
 tf_custom_op_library(
     name = "python/ops/_nccl_ops.so",
     srcs = [
         "ops/nccl_ops.cc",
     ],
-    gpu_srcs = [
+    gpu_srcs = if_not_windows_cuda([
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
         "kernels/nccl_ops.cc",
-    ],
+    ]),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
         "//tensorflow/core:gpu_headers_lib",

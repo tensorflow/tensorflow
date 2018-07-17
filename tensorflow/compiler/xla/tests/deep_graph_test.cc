@@ -30,7 +30,7 @@ TEST_F(ClientLibraryTestBase, DeepGraph) {
   auto y_data = CreateR0Parameter<int32>(1, 1, "y", &b, &y);
   XlaOp z = x;
   for (int i = 0; i < kDepth; ++i) {
-    z = b.Add(z, y);
+    z = Add(z, y);
   }
   ComputeAndCompareR0<int32>(&b, /*expected=*/kDepth + 3,
                              {x_data.get(), y_data.get()});

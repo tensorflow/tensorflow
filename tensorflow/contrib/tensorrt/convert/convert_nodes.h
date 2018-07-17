@@ -46,8 +46,8 @@ const int INT8MODE = 2;
 
 struct EngineConnection {
   EngineConnection(const string& outside, int out_id, int out_port,
-                    const string& inside, int in_id, int in_port,
-                    bool input_edge, int port)
+                   const string& inside, int in_id, int in_port,
+                   bool input_edge, int port)
       : outside_node_name(outside),
         outside_id(out_id),
         outside_port(out_port),

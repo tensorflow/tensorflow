@@ -216,6 +216,13 @@ TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
   return MinWithDevice(l, r, graph, /*op_device=*/"", s, name);
 }
 
+TF_Operation* Mul(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name) {
+  TF_Operation* op;
+  BinaryOpHelper("Mul", l, r, graph, s, name, &op, "", true);
+  return op;
+}
+
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", name);

@@ -151,11 +151,12 @@ void ReportError(TfLiteContext* context, const char* format, ...) {
 
 class ArenaPlannerTest : public ::testing::Test {
  protected:
-  void SetGraph(TestGraph* graph) {
+  void SetGraph(TestGraph* graph, bool preserve_inputs = false) {
     graph_ = graph;
     context_.ReportError = ReportError;
     planner_.reset(new ArenaPlanner(
-        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph))));
+        &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
+        preserve_inputs, /*preserve intermediates*/ false));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
@@ -241,6 +242,30 @@ TEST_F(ArenaPlannerTest, SimpleGraph) {
   EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
   EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
   EXPECT_EQ(GetOffset(3), 0);
+}
+
+TEST_F(ArenaPlannerTest, SimpleGraphInputsPreserved) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {3});
+  SetGraph(&graph, /*preserve_inputs=*/true);
+  Execute(0, 10);
+
+  // Alloc(+) and dealloc(-) order: +0 +1 +2 +4 +5 -2 +3 -4 -5
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(1));
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(5), GetOffsetAfter(4));
+  // Because we are keeping the inputs alive until the end (due to
+  // preserve_inputs=true), the output tensor will not be able to use that
+  // space. It will end up using the same are as tensor #2.
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithTemporary) {
