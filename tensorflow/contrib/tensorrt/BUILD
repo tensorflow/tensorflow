@@ -178,6 +178,8 @@ py_library(
     ],
 )
 
+# TODO(aaroey): this wrapper has been causing troubles of double linking, so
+# either get rid of it, or split to make it contain minimum dependencies.
 tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
@@ -341,4 +343,7 @@ cc_library(
     srcs = ["convert/utils.cc"],
     hdrs = ["convert/utils.h"],
     copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )

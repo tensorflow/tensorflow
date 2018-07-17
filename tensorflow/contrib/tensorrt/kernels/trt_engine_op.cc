@@ -120,15 +120,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("calibration_data", &calibration_data));
   OP_REQUIRES_OK(context,
                  context->GetAttr("segment_funcdef_name", &funcdef_name_));
-  if (precision_string == "FP32") {
-    precision_mode_ = convert::FP32MODE;
-  } else if (precision_string == "FP16") {
-    precision_mode_ = convert::FP16MODE;
-  } else if (precision_string == "INT8") {
-    precision_mode_ = convert::INT8MODE;
-  }
+  OP_REQUIRES_OK(context, GetPrecisionMode(precision_string, &precision_mode_));
   calibration_mode_ =
-      (precision_mode_ == convert::INT8MODE && calibration_data.size() == 0);
+      (precision_mode_ == INT8MODE && calibration_data.size() == 0);
   if (calibration_data.size()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
@@ -580,7 +574,7 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        *segment_graph, convert::INT8MODE, cres->calibrator_->getBatchSize(),
+        *segment_graph, INT8MODE, cres->calibrator_->getBatchSize(),
         workspace_size_bytes, shapes, &cres->logger_, cres->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,
         /*convert_successfully=*/nullptr);

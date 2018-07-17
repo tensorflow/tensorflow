@@ -44,7 +44,7 @@ def create_inference_graph(input_graph_def,
                            minimum_segment_size=3,
                            is_dynamic_op=False,
                            maximum_cached_engines=1,
-                           cached_engine_batches=[]):
+                           cached_engine_batches=None):
   """Python wrapper for the TRT transformation.
 
   Args:
@@ -145,7 +145,8 @@ def create_inference_graph(input_graph_def,
   optimizer.parameter_map["precision_mode"].s = to_bytes(precision_mode)
   optimizer.parameter_map["maximum_cached_engines"].i = maximum_cached_engines
   if cached_engine_batches:
-    optimizer.parameter_map["cached_engine_batches"].list.extend(
+    assert isinstance(cached_engine_batches, list)
+    optimizer.parameter_map["cached_engine_batches"].list.i.extend(
         cached_engine_batches)
 
   return tf_optimizer.OptimizeGraph(
