@@ -67,8 +67,10 @@ class Node(object):
     if isinstance(self.ast_node, gast.FunctionDef):
       return 'def %s' % self.ast_node.name
     elif isinstance(self.ast_node, gast.withitem):
-      return compiler.ast_to_source(self.ast_node.context_expr).strip()
-    return compiler.ast_to_source(self.ast_node).strip()
+      source, _ = compiler.ast_to_source(self.ast_node.context_expr)
+      return source.strip()
+    source, _ = compiler.ast_to_source(self.ast_node)
+    return source.strip()
 
 
 class Graph(
@@ -122,6 +124,8 @@ class _WalkMode(Enum):
   REVERSE = 2
 
 
+# TODO(mdan): Rename to DataFlowAnalyzer.
+# TODO(mdan): Consider specializations that use gen/kill/transfer abstractions.
 class GraphVisitor(object):
   """Base class for a CFG visitors.
 
@@ -159,6 +163,7 @@ class GraphVisitor(object):
     """
     raise NotImplementedError('Subclasses must implement this.')
 
+  # TODO(mdan): Rename to flow?
   def visit_node(self, node):
     """Visitor function.
 
@@ -694,7 +699,7 @@ class AstToCfg(gast.NodeVisitor):
     )
     if try_node is None:
       raise ValueError('%s that is not enclosed by any FunctionDef' % node)
-    self.builder.add_error_node(node, try_node, guards)
+    self.builder.add_error_node(node, guards)
 
   def visit_Assert(self, node):
     # Ignoring the effect of exceptions.

@@ -151,6 +151,41 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._name = name
     self._unsupported_ops = []
     self._pivot = pivot
+    self._replicated_vars = {}
+
+  def get_replicated_var_handle(self, var):
+    """Returns a variable handle for replicated TPU variable 'var'.
+
+    This is an method used by an experimental replicated variable
+    implementation and is not intended as a public API.
+
+    Args:
+      var: The replicated TPU variable.
+
+    Returns:
+      The handle of the TPU replicated input node.
+    """
+    handle = self._replicated_vars.get(var)
+    if handle is not None:
+      return handle
+
+    # Builds a TPUReplicatedInput node for the variable, if one does not already
+    # exist. The TPUReplicatedInput node must belong to the enclosing
+    # control-flow scope of the TPUReplicateContext.
+    # TODO(phawkins): consider changing the contract of the TPU encapsulation
+    # so the TPUReplicatedInput nodes go inside the TPUReplicateContext scope
+    # instead.
+
+    # pylint: disable=protected-access
+    graph = ops.get_default_graph()
+    saved_context = graph._get_control_flow_context()
+    graph._set_control_flow_context(self.outer_context)
+    handle = tpu_ops.tpu_replicated_input(
+        [v.handle for v in var._vars], name=var.name + "/handle")
+    graph._set_control_flow_context(saved_context)
+    # pylint: enable=protected-access
+    self._replicated_vars[var] = handle
+    return handle
 
   def report_unsupported_operations(self):
     if self._unsupported_ops:

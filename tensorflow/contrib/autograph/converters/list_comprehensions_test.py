@@ -12,18 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for list_comprehension module."""
+"""Tests for list_comprehensions module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.converters import list_comprehension
+from tensorflow.contrib.autograph.converters import list_comprehensions
 from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.platform import test
 
 
 class ListCompTest(converter_testing.TestCase):
+
+  def assertTransformedEquivalent(self, test_fn, *inputs):
+    with self.converted(test_fn, list_comprehensions, {}) as result:
+      self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_basic(self):
 
@@ -31,14 +35,8 @@ class ListCompTest(converter_testing.TestCase):
       s = [e * e for e in l]
       return s
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = list_comprehension.transform(node, self.ctx)
-
-    with self.compiled(node) as result:
-      l = [1, 2, 3]
-      self.assertEqual(test_fn(l), result.test_fn(l))
-      l = []
-      self.assertEqual(test_fn(l), result.test_fn(l))
+    self.assertTransformedEquivalent(test_fn, [])
+    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
 
   def test_multiple_generators(self):
 
@@ -46,29 +44,17 @@ class ListCompTest(converter_testing.TestCase):
       s = [e * e for sublist in l for e in sublist]
       return s
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = list_comprehension.transform(node, self.ctx)
+    self.assertTransformedEquivalent(test_fn, [])
+    self.assertTransformedEquivalent(test_fn, [[1], [2], [3]])
 
-    with self.compiled(node) as result:
-      l = [[1], [2], [3]]
-      self.assertEqual(test_fn(l), result.test_fn(l))
-      l = []
-      self.assertEqual(test_fn(l), result.test_fn(l))
-
-  def test_conds(self):
+  def test_cond(self):
 
     def test_fn(l):
       s = [e * e for e in l if e > 1]
       return s
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = list_comprehension.transform(node, self.ctx)
-
-    with self.compiled(node) as result:
-      l = [1, 2, 3]
-      self.assertEqual(test_fn(l), result.test_fn(l))
-      l = []
-      self.assertEqual(test_fn(l), result.test_fn(l))
+    self.assertTransformedEquivalent(test_fn, [])
+    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
 
 
 if __name__ == '__main__':

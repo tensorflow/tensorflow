@@ -1173,14 +1173,14 @@ static tensorflow::eager::TapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
     TFE_TensorHandle* t = EagerTensor_Handle(tensor);
     tensorflow::int64 id = EagerTensor_id(tensor);
-    const tensorflow::Tensor* tensor = nullptr;
-    const tensorflow::Status status = t->handle->Tensor(&tensor);
+    tensorflow::TensorShape tensor_shape;
+    const tensorflow::Status status = t->handle->Shape(&tensor_shape);
+
     if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
       return tensorflow::eager::TapeTensor{id, t->handle->dtype,
                                            tensorflow::TensorShape({})};
     } else {
-      return tensorflow::eager::TapeTensor{id, t->handle->dtype,
-                                           tensor->shape()};
+      return tensorflow::eager::TapeTensor{id, t->handle->dtype, tensor_shape};
     }
   }
   tensorflow::int64 id = FastTensorId(tensor);

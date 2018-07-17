@@ -28,9 +28,7 @@ llvm_host_triple = "x86_64-unknown-linux_gnu"
 
 llvm_targets = [
     "AArch64",
-    # Uncomment to enable the AMDGPU backend.
-    # TODO(phawkins): use a configure-time test.
-    # "AMDGPU",
+    "AMDGPU",
     "ARM",
     "NVPTX",
     "PowerPC",
@@ -256,13 +254,31 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AMDGPU/AMDGPUGenDAGISel.inc"),
             ("-gen-callingconv", "lib/Target/AMDGPU/AMDGPUGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AMDGPU/AMDGPUGenSubtargetInfo.inc"),
-            ("-gen-tgt-intrinsic", "lib/Target/AMDGPU/AMDGPUGenIntrinsics.inc"),
+            ("-gen-tgt-intrinsic-impl", "lib/Target/AMDGPU/AMDGPUGenIntrinsicImpl.inc"),
+            ("-gen-tgt-intrinsic-enums", "lib/Target/AMDGPU/AMDGPUGenIntrinsicEnums.inc"),
             ("-gen-emitter", "lib/Target/AMDGPU/AMDGPUGenMCCodeEmitter.inc"),
             ("-gen-dfa-packetizer", "lib/Target/AMDGPU/AMDGPUGenDFAPacketizer.inc"),
             ("-gen-asm-writer", "lib/Target/AMDGPU/AMDGPUGenAsmWriter.inc"),
             ("-gen-asm-matcher", "lib/Target/AMDGPU/AMDGPUGenAsmMatcher.inc"),
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
             ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
+            ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
+            ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ],
+    },
+    {
+        "name": "AMDGPU",
+        "lower_name": "amdgpu_r600",
+        "short_name": "R600",
+        "tbl_outs": [
+            ("-gen-asm-writer", "lib/Target/AMDGPU/R600GenAsmWriter.inc"),
+            ("-gen-callingconv", "lib/Target/AMDGPU/R600GenCallingConv.inc"),
+            ("-gen-dag-isel", "lib/Target/AMDGPU/R600GenDAGISel.inc"),
+            ("-gen-dfa-packetizer", "lib/Target/AMDGPU/R600GenDFAPacketizer.inc"),
+            ("-gen-instr-info", "lib/Target/AMDGPU/R600GenInstrInfo.inc"),
+            ("-gen-emitter", "lib/Target/AMDGPU/R600GenMCCodeEmitter.inc"),
+            ("-gen-register-info", "lib/Target/AMDGPU/R600GenRegisterInfo.inc"),
+            ("-gen-subtarget", "lib/Target/AMDGPU/R600GenSubtargetInfo.inc"),
         ],
     },
     {
@@ -670,6 +686,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
+        ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
         ":config",
         ":core",
@@ -692,6 +709,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AMDGPU"],
     deps = [
+        ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
         ":config",
         ":core",

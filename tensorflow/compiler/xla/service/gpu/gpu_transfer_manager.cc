@@ -41,11 +41,9 @@ namespace gpu {
 // TODO(b/30467474) Once GPU infeed implementation settles, consider
 // folding back the cpu and gpu infeed implementations into a generic
 // one if possible.
-GpuTransferManager::GpuTransferManager()
-    : GenericTransferManager(
-          se::cuda::kCudaPlatformId,
-          /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
-              .getPointerSize(0 /* default address space */)) {}
+GpuTransferManager::GpuTransferManager(se::Platform::Id id,
+                                       unsigned pointer_size)
+    : GenericTransferManager(id, pointer_size) {}
 
 Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
@@ -179,13 +177,16 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace gpu
 }  // namespace xla
 
-static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
-  return xla::MakeUnique<xla::gpu::GpuTransferManager>();
+static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
+  return xla::MakeUnique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::cuda::kCudaPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::GpuCompiler::kDataLayout)
+          .getPointerSize(0 /* default address space */));
 }
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
-      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
+      stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();
