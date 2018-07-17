@@ -294,6 +294,17 @@ def _validate_properties(run_config):
             message='protocol should be grpc or grpc+verbs')
 
 
+def get_default_session_config():
+  """Returns tf.ConfigProto instance."""
+
+  rewrite_opts = rewriter_config_pb2.RewriterConfig(
+      meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE)
+  graph_opts = config_pb2.GraphOptions(rewrite_options=rewrite_opts)
+
+  return config_pb2.ConfigProto(allow_soft_placement=True,
+                                graph_options=graph_opts)
+
+
 class TaskType(object):
   MASTER = 'master'
   PS = 'ps'
@@ -508,9 +519,9 @@ class RunConfig(object):
       RunConfig._replace(
           self,
           allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
-          session_config=self._get_default_session_config())
+          session_config=self._get_default_session_config_distributed())
 
-  def _get_default_session_config(self):
+  def _get_default_session_config_distributed(self):
     """Returns None or tf.ConfigProto instance with default device_filters set.
 
     Device filters are set such that chief/master and worker communicates with
