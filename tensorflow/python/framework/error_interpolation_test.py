@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.platform import test
@@ -35,7 +37,7 @@ def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,
                                     num_inner_tf_frames):
   """Replace op._traceback with a new traceback using special filenames."""
   tf_filename = "%d" + error_interpolation._BAD_FILE_SUBSTRINGS[0]
-  user_filename = "%d/my_favorite_file.py"
+  user_filename = os.path.join("%d", "my_favorite_file.py")
 
   num_requested_frames = num_user_frames + num_inner_tf_frames
   num_actual_frames = len(op._traceback)
@@ -65,7 +67,10 @@ class InterpolateTest(test.TestCase):
     # Change the list of bad file substrings so that constant_op.py is chosen
     # as the defining stack frame for constant_op.constant ops.
     self.old_bad_strings = error_interpolation._BAD_FILE_SUBSTRINGS
-    error_interpolation._BAD_FILE_SUBSTRINGS = ["/ops.py", "/util"]
+    error_interpolation._BAD_FILE_SUBSTRINGS = [
+        "%sops.py" % os.sep,
+        "%sutil" % os.sep,
+    ]
 
   def tearDown(self):
     error_interpolation._BAD_FILE_SUBSTRINGS = self.old_bad_strings
@@ -105,8 +110,8 @@ class InterpolateTest(test.TestCase):
     one_tag_string = "^^node:Two:${file}^^"
     interpolated_string = error_interpolation.interpolate(one_tag_string,
                                                           self.graph)
-    self.assertTrue(interpolated_string.endswith("op.py"),
-                    "interpolated_string '%s' did not end with op.py"
+    self.assertTrue(interpolated_string.endswith("constant_op.py"),
+                    "interpolated_string '%s' did not end with constant_op.py"
                     % interpolated_string)
 
   def testOneTagWithAFakeNameResultsInPlaceholders(self):
@@ -119,13 +124,13 @@ class InterpolateTest(test.TestCase):
     two_tags_no_seps = "^^node:One:${file}^^^^node:Three:${line}^^"
     interpolated_string = error_interpolation.interpolate(two_tags_no_seps,
                                                           self.graph)
-    self.assertRegexpMatches(interpolated_string, "op.py[0-9]+")
+    self.assertRegexpMatches(interpolated_string, "constant_op.py[0-9]+")
 
   def testTwoTagsWithSeps(self):
     two_tags_with_seps = ";;;^^node:Two:${file}^^,,,^^node:Three:${line}^^;;;"
     interpolated_string = error_interpolation.interpolate(two_tags_with_seps,
                                                           self.graph)
-    expected_regex = "^;;;.*op.py,,,[0-9]*;;;$"
+    expected_regex = "^;;;.*constant_op.py,,,[0-9]*;;;$"
     self.assertRegexpMatches(interpolated_string, expected_regex)
 
 
