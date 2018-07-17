@@ -105,5 +105,36 @@ XLA_TEST_F(MathTest, Lgamma) {
   error_spec_ = ErrorSpec{0.001};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
+
+XLA_TEST_F(MathTest, Digamma) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
+                                        2.0, 3.0, 4.0, 6.0, 8.0, 9.0});
+  Digamma(x);
+
+  constexpr double euler_mascheroni =
+      0.57721566490153286060651209008240243104215933593992;
+  std::vector<float> expected = {
+      static_cast<float>(-euler_mascheroni),
+      static_cast<float>(-2 * std::log(2) - euler_mascheroni),
+      static_cast<float>(-M_PI / 2 / std::sqrt(3) - 3 * std::log(3) / 2 -
+                         euler_mascheroni),
+      static_cast<float>(-M_PI / 2 - 3 * std::log(2) - euler_mascheroni),
+      static_cast<float>(-M_PI * std::sqrt(3) / 2 - 2 * std::log(2) -
+                         3 * std::log(3) / 2 - euler_mascheroni),
+      static_cast<float>(
+          -M_PI / 2 - 4 * std::log(2) -
+          (M_PI + std::log(2 + std::sqrt(2)) - std::log(2 - std::sqrt(2))) /
+              std::sqrt(2) -
+          euler_mascheroni),
+      static_cast<float>(1 - euler_mascheroni),
+      static_cast<float>(1.5 - euler_mascheroni),
+      static_cast<float>(11 / 6.0 - euler_mascheroni),
+      static_cast<float>(137 / 60.0 - euler_mascheroni),
+      static_cast<float>(363 / 140.0 - euler_mascheroni),
+      static_cast<float>(761 / 280.0 - euler_mascheroni)};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla
