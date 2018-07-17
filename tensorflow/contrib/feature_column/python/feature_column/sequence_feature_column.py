@@ -25,6 +25,7 @@ import collections
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_util
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -414,6 +415,13 @@ def _assert_all_equal_and_return(tensors, name=None):
       return array_ops.identity(tensors[0])
 
 
+def _sequence_length_from_dense_tensor(dense_tensor):
+  """Returns a [batch_size] Tensor with a dense per-example sequence length."""
+  with ops.name_scope(None, 'sequence_length') as name_scope:
+    batch_size = array_ops.shape(dense_tensor)[:1]
+    sequence_length = array_ops.shape(dense_tensor)[1:2]
+    return array_ops.tile(sequence_length, batch_size, name=name_scope)
+
 class _SequenceNumericColumn(
     fc._SequenceDenseColumn,
     collections.namedtuple(
@@ -439,13 +447,7 @@ class _SequenceNumericColumn(
   def _variable_shape(self):
     return tensor_shape.TensorShape(self.shape)
 
-  def _get_sequence_dense_tensor(
-      self, inputs, weight_collections=None, trainable=None):
-    # Do nothing with weight_collections and trainable since no variables are
-    # created in this function.
-    del weight_collections
-    del trainable
-    sp_tensor = inputs.get(self)
+  def _sparse_to_dense_tensor(self, sp_tensor):
     dense_tensor = sparse_ops.sparse_tensor_to_dense(
         sp_tensor, default_value=self.default_value)
     # Reshape into [batch_size, T, variable_shape].
@@ -455,6 +457,23 @@ class _SequenceNumericColumn(
     dense_tensor = array_ops.reshape(dense_tensor, shape=dense_shape)
     sequence_length = fc._sequence_length_from_sparse_tensor(
         sp_tensor, num_elements=self._variable_shape.num_elements())
+
+    return dense_tensor, sequence_length
+
+  def _get_sequence_dense_tensor(
+      self, inputs, weight_collections=None, trainable=None):
+    # Do nothing with weight_collections and trainable since no variables are
+    # created in this function.
+    del weight_collections
+    del trainable
+    input_tensor = inputs.get(self)
+
+    if sparse_tensor_util.is_sparse(input_tensor):
+      dense_tensor, sequence_length = self._sparse_to_dense_tensor(input_tensor)
+    else:
+      dense_tensor = input_tensor
+      sequence_length = _sequence_length_from_dense_tensor(dense_tensor)
+
     return fc._SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
 
