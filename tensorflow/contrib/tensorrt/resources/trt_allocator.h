@@ -68,8 +68,8 @@ class TRTDeviceAllocator : public TRTBaseAllocator {
   tensorflow::Allocator* allocator_;
 
   // supporting alignment from allocation request requires a map to free;
-  std::unordered_map<void*, void*> mem_map;
-  std::unordered_set<void*> mem_pool;
+  std::unordered_map<void*, void*> mem_map_;
+  std::unordered_set<void*> mem_pool_;
 };
 
 }  // namespace tensorrt
