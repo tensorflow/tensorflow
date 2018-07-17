@@ -17,7 +17,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -145,7 +145,7 @@ TEST_F(CpuCompilerTest, HooksTest) {
 }
 
 TEST_F(GpuCompilerTest, HooksTest) {
-  gpu::GpuCompiler compiler;
+  gpu::NVPTXCompiler compiler;
   TestCompilerHooks(&compiler);
 }
 
@@ -155,7 +155,7 @@ TEST_F(CpuCompilerTest, MultiModuleCompilation) {
 }
 
 TEST_F(GpuCompilerTest, MultModuleCompilation) {
-  gpu::GpuCompiler compiler;
+  gpu::NVPTXCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }
 }  // namespace
