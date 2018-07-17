@@ -630,6 +630,7 @@ class Converter {
     const string& op = node_def.op();
     std::vector<TRT_TensorOrWeights> outputs;
     if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) {
+      // TODO(aaroey): plugin_converter_ is not set, fix it.
       TF_RETURN_IF_ERROR(plugin_converter_(*this, node_def, inputs, &outputs));
     } else {
       if (!op_registry_.count(op)) {
@@ -1756,7 +1757,7 @@ tensorflow::Status ConvertBinary(Converter& ctx,
   } else {
 #else
   }
-  if (inputs.at(0).is_tensor() && inputs.at(1).is_tensor() || !status.ok()) {
+  if ((inputs.at(0).is_tensor() && inputs.at(1).is_tensor()) || !status.ok()) {
 #endif
     status = BinaryTensorOpTensor(ctx, node_def, inputs.at(0), inputs.at(1),
                                   outputs);
@@ -2371,10 +2372,7 @@ tensorflow::Status ConvertMatMul(Converter& ctx,
                                                node_def.name());
   }
 
-  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-
   TFAttrs attrs(node_def);
-
   // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != tensorflow::DataType::DT_FLOAT &&
@@ -2383,11 +2381,8 @@ tensorflow::Status ConvertMatMul(Converter& ctx,
         "data type is not supported, for node " + node_def.name() + " got " +
         tensorflow::DataTypeString(tf_dtype));
   }
-
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
-
-  nvinfer1::ITensor* output_tensor;
 
   // FullyConnected:
   if (transpose_a) {
