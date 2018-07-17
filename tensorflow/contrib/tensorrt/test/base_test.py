@@ -30,96 +30,93 @@ from tensorflow.python.platform import test
 from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 
 
-# TODO(aaroey): test graph with different dtypes.
-def _GetSingleEngineGraphDef(dtype=dtypes.float32):
-  """Create a graph containing single segment."""
-  input_dims = [100, 24, 24, 2]
-  g = ops.Graph()
-  with g.as_default():
-    inp = array_ops.placeholder(
-        dtype=dtype, shape=[None] + input_dims[1:], name=trt_test.INPUT_NAME)
-    with g.device("/GPU:0"):
-      conv_filter = constant_op.constant(
-          [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
-          name="weights",
-          dtype=dtype)
-      conv = nn.conv2d(
-          input=inp,
-          filter=conv_filter,
-          strides=[1, 2, 2, 1],
-          padding="SAME",
-          name="conv")
-      bias = constant_op.constant(
-          [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtype)
-      added = nn.bias_add(conv, bias, name="bias_add")
-      relu = nn.relu(added, "relu")
-      identity = array_ops.identity(relu, "identity")
-      pool = nn_ops.max_pool(
-          identity, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
-    array_ops.squeeze(pool, name=trt_test.OUTPUT_NAME)
-  return trt_test.TfTrtIntegrationTestParams(
-      graph_name="SimpleSingleEngine",
-      gdef=g.as_graph_def(),
-      input_dims=input_dims,
-      num_expected_engines=1,
-      expected_output_dims=(100, 6, 6, 6),
-      allclose_atol=1.e-03,
-      allclose_rtol=1.e-03)
+class SimpleSingleEngineGraphDefTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    # TODO(aaroey): test graph with different dtypes.
+    dtype = dtypes.float32
+    input_dims = [100, 24, 24, 2]
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=self.input_name)
+      with g.device("/GPU:0"):
+        conv_filter = constant_op.constant(
+            [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
+            name="weights",
+            dtype=dtype)
+        conv = nn.conv2d(
+            input=inp,
+            filter=conv_filter,
+            strides=[1, 2, 2, 1],
+            padding="SAME",
+            name="conv")
+        bias = constant_op.constant(
+            [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtype)
+        added = nn.bias_add(conv, bias, name="bias_add")
+        relu = nn.relu(added, "relu")
+        identity = array_ops.identity(relu, "identity")
+        pool = nn_ops.max_pool(
+            identity, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
+      array_ops.squeeze(pool, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_dims=input_dims,
+        num_expected_engines=1,
+        expected_output_dims=(100, 6, 6, 6),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
 
 
-# TODO(aaroey): test graph with different dtypes.
-def _GetMultiEngineGraphDef(dtype=dtypes.float32):
-  """Create a graph containing multiple segment."""
-  input_dims = [100, 24, 24, 2]
-  g = ops.Graph()
-  with g.as_default():
-    inp = array_ops.placeholder(
-        dtype=dtype, shape=[None] + input_dims[1:], name=trt_test.INPUT_NAME)
-    with g.device("/GPU:0"):
-      conv_filter = constant_op.constant(
-          [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
-          name="weights",
-          dtype=dtype)
-      conv = nn.conv2d(
-          input=inp,
-          filter=conv_filter,
-          strides=[1, 2, 2, 1],
-          padding="SAME",
-          name="conv")
-      c1 = constant_op.constant(
-          np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype)
-      p = conv * c1
-      c2 = constant_op.constant(
-          np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype)
-      q = conv / c2
+class SimpleMultiEngineGraphDefTest(trt_test.TfTrtIntegrationTestBase):
 
-      edge = trt_test.TRT_INCOMPATIBLE_OP(q)
-      edge /= edge
-      r = edge + edge
+  def GetParams(self):
+    """Create a graph containing multiple segment."""
+    # TODO(aaroey): test graph with different dtypes.
+    dtype = dtypes.float32
+    input_dims = [100, 24, 24, 2]
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=self.input_name)
+      with g.device("/GPU:0"):
+        conv_filter = constant_op.constant(
+            [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
+            name="weights",
+            dtype=dtype)
+        conv = nn.conv2d(
+            input=inp,
+            filter=conv_filter,
+            strides=[1, 2, 2, 1],
+            padding="SAME",
+            name="conv")
+        c1 = constant_op.constant(
+            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype)
+        p = conv * c1
+        c2 = constant_op.constant(
+            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype)
+        q = conv / c2
 
-      p -= edge
-      q *= edge
-      s = p + q
-      s -= r
-    array_ops.squeeze(s, name=trt_test.OUTPUT_NAME)
-  return trt_test.TfTrtIntegrationTestParams(
-      graph_name="SimpleMultipleEngines",
-      gdef=g.as_graph_def(),
-      input_dims=input_dims,
-      num_expected_engines=2,
-      expected_output_dims=(100, 12, 12, 6),
-      allclose_atol=1.e-03,
-      allclose_rtol=1.e-03)
+        edge = self.trt_incompatible_op(q)
+        edge /= edge
+        r = edge + edge
+
+        p -= edge
+        q *= edge
+        s = p + q
+        s -= r
+      array_ops.squeeze(s, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_dims=input_dims,
+        num_expected_engines=2,
+        expected_output_dims=(100, 12, 12, 6),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
 
 
-class BaseTest(trt_test.TfTrtIntegrationTestBase):
-  """Class to test Tensorflow-TensorRT integration."""
-  pass
-
+# TODO(aaroey): add a large complex graph to test.
 
 if __name__ == "__main__":
-  # TODO(aaroey): add a large complex graph to test.
-  trt_test.AddTests(BaseTest,
-                    [_GetSingleEngineGraphDef(),
-                     _GetMultiEngineGraphDef()])
   test.main()

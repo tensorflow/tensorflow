@@ -22,7 +22,6 @@ from collections import namedtuple
 import itertools
 import warnings
 import numpy as np
-import re
 import six
 
 from tensorflow.contrib import tensorrt as trt
@@ -36,22 +35,35 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 TfTrtIntegrationTestParams = namedtuple("TfTrtIntegrationTestParams", [
-    "graph_name", "gdef", "input_dims", "num_expected_engines",
-    "expected_output_dims", "allclose_atol", "allclose_rtol"
+    "gdef", "input_dims", "num_expected_engines", "expected_output_dims",
+    "allclose_atol", "allclose_rtol"
 ])
 
-INPUT_NAME = "input"
-OUTPUT_NAME = "output"
-TRT_INCOMPATIBLE_OP = math_ops.sin
 PRECISION_MODES = ["FP32", "FP16", "INT8"]
 
 
-def IsQuantizationMode(mode):
+def _IsQuantizationMode(mode):
   return mode == "INT8"
 
 
 class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration."""
+
+  @property
+  def input_name(self):
+    return "input"
+
+  @property
+  def output_name(self):
+    return "output"
+
+  @property
+  def trt_incompatible_op(self):
+    return math_ops.sin
+
+  @property
+  def precision_modes(self):
+    return ["FP32", "FP16", "INT8"]
 
   def _ToBytes(self, s):
     if six.PY2:
@@ -69,6 +81,10 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Setup method."""
     super(TfTrtIntegrationTestBase, self).setUp()
     warnings.simplefilter("always")
+
+  def GetParams(self):
+    """Return a TfTrtIntegrationTestParams for test, implemented by subclass."""
+    raise NotImplementedError()
 
   def _GetConfigProto(self,
                       params,
@@ -104,7 +120,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     g = ops.Graph()
     with g.as_default():
       inp, out = importer.import_graph_def(
-          graph_def=gdef, return_elements=[INPUT_NAME, OUTPUT_NAME], name="")
+          graph_def=gdef,
+          return_elements=[self.input_name, self.output_name],
+          name="")
       inp = inp.outputs[0]
       out = out.outputs[0]
     with self.test_session(
@@ -129,7 +147,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Return trt converted graphdef."""
     return trt.create_inference_graph(
         input_graph_def=gdef,
-        outputs=[OUTPUT_NAME],
+        outputs=[self.output_name],
         max_batch_size=params.input_dims[0],
         max_workspace_size_bytes=1 << 25,
         precision_mode=precision_mode,
@@ -150,7 +168,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         self.assertNotEqual("", n.attr["segment_funcdef_name"].s)
         self.assertEquals(n.attr["precision_mode"].s, precision_mode)
         self.assertEquals(n.attr["static_engine"].b, not dynamic_engine)
-        if IsQuantizationMode(precision_mode) and is_calibrated:
+        if _IsQuantizationMode(precision_mode) and is_calibrated:
           self.assertNotEqual("", n.attr["calibration_data"].s)
         else:
           self.assertEquals("", n.attr["calibration_data"].s)
@@ -173,7 +191,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     ref_result = self._RunGraph(params, input_gdef, inp, config_no_trt)
 
     # Run calibration if necessary.
-    if IsQuantizationMode(precision_mode):
+    if _IsQuantizationMode(precision_mode):
 
       calib_config = self._GetConfigProto(params, use_optimizer, precision_mode,
                                           dynamic_calib_engine)
@@ -228,18 +246,17 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     pass
 
 
-def AddTests(test_class, params_list):
+def _AddTests(test_class):
 
-  def _GetTest(params, use_optimizer, precision_mode, dynamic_infer_engine,
+  def _GetTest(use_optimizer, precision_mode, dynamic_infer_engine,
                dynamic_calib_engine):
 
     def _Test(self):
+      params = self.GetParams()
       logging.info(
-          "Running test with parameters: graph_name=%s, "
-          "use_optimizer=%s, precision_mode=%s, "
-          "dynamic_infer_engine=%s, dynamic_calib_engine=%s", params.graph_name,
-          use_optimizer, precision_mode, dynamic_infer_engine,
-          dynamic_calib_engine)
+          "Running test with parameters: use_optimizer=%s, precision_mode=%s, "
+          "dynamic_infer_engine=%s, dynamic_calib_engine=%s", use_optimizer,
+          precision_mode, dynamic_infer_engine, dynamic_calib_engine)
       self._RunTest(params, use_optimizer, precision_mode, dynamic_infer_engine,
                     dynamic_calib_engine)
 
@@ -248,11 +265,11 @@ def AddTests(test_class, params_list):
   use_optimizer_options = [False, True]
   dynamic_infer_engine_options = [False, True]
   dynamic_calib_engine_options = [False, True]
-  for (params, use_optimizer, precision_mode,
+  for (use_optimizer, precision_mode,
        dynamic_infer_engine, dynamic_calib_engine) in itertools.product(
-           params_list, use_optimizer_options, PRECISION_MODES,
-           dynamic_infer_engine_options, dynamic_calib_engine_options):
-    if IsQuantizationMode(precision_mode):
+           use_optimizer_options, PRECISION_MODES, dynamic_infer_engine_options,
+           dynamic_calib_engine_options):
+    if _IsQuantizationMode(precision_mode):
       if not dynamic_calib_engine and dynamic_infer_engine:
         # TODO(aaroey): test this case, the conversion from static calibration
         # engine to dynamic inference engine should be a noop.
@@ -283,11 +300,13 @@ def AddTests(test_class, params_list):
     if precision_mode == "INT8":
       calib_engine_type = ("DynamicCalibEngine"
                            if dynamic_calib_engine else "StaticCalibEngine")
-    test_name = "%s_%s_%s_%s%s" % (re.sub(
-        "[^a-zA-Z0-9]+", "", params.graph_name), conversion, precision_mode,
-                                   infer_engine_type, ("_" + calib_engine_type)
-                                   if len(calib_engine_type) else "")
+    test_name = "%s_%s_%s%s" % (conversion, precision_mode, infer_engine_type,
+                                ("_" + calib_engine_type)
+                                if len(calib_engine_type) else "")
     setattr(
         test_class, "testTfTRT_" + test_name,
-        _GetTest(params, use_optimizer, precision_mode, dynamic_infer_engine,
+        _GetTest(use_optimizer, precision_mode, dynamic_infer_engine,
                  dynamic_calib_engine))
+
+
+_AddTests(TfTrtIntegrationTestBase)
