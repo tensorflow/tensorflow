@@ -41,17 +41,15 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   alignment = 512;
   assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.
   void* mem = allocator_->AllocateRaw(alignment, size + alignment);
-
-  CHECK(mem_pool.count(mem) == 0);
-  mem_pool.insert(mem);
   CHECK(mem);
+
+  CHECK(mem_pool.insert(mem).second);
   void* alloc_mem = mem;
   uint64_t total_size = size + alignment;
   std::align(alignment, size, mem, total_size);
   CHECK(mem);
   if (mem != alloc_mem) {
-    CHECK(mem_map.count(mem) == 0);
-    mem_map[mem] = alloc_mem;
+    CHECK(mem_map.insert({mem, alloc_mem}).second);
   }
   VLOG(2) << "Allocated " << size << " bytes with alignment " << alignment
           << " @ " << mem;
@@ -66,13 +64,13 @@ TRTDeviceAllocator::TRTDeviceAllocator(tensorflow::Allocator* allocator)
 void TRTDeviceAllocator::free(void* memory) {
   VLOG(2) << "Deallocating @ " << memory;
   // allocated memory adjusted for alignment, restore the original pointer
-  if (mem_map.count(memory) != 0) {
-    auto alloc_mem = mem_map[memory];
-    mem_map.erase(memory);
-    memory = alloc_mem;
+  
+  auto alloc_mem = mem_map.find(memory);
+  if (alloc_mem != mem_map.end()) {
+    memory = alloc_mem->second;
+    mem_map.erase(alloc_mem->first);
   }
-  CHECK(mem_pool.count(memory) != 0);
-  mem_pool.erase(memory);
+  CHECK(mem_pool.erase(memory) != 0);
   allocator_->DeallocateRaw(memory);
 }
 
