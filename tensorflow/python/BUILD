@@ -3337,6 +3337,9 @@ py_library(
         ],
     ),
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",
