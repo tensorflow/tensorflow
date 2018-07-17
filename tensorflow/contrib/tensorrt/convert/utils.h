@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 namespace tensorrt {
 
@@ -32,6 +34,15 @@ template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
 bool IsGoogleTensorRTEnabled();
+
+// TODO(aaroey): use an enum instead.
+const int FP32MODE = 0;
+const int FP16MODE = 1;
+const int INT8MODE = 2;
+
+Status GetPrecisionModeName(const int precision_mode, string* name);
+
+Status GetPrecisionMode(const string& name, int* precision_mode);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

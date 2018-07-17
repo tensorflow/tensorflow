@@ -39,11 +39,6 @@ static const char* kInputPHName = "InputPH_";
 static const char* kOutputPHName = "OutputPH_";
 namespace convert {
 
-// TODO(aaroey): use an enum instead.
-const int FP32MODE = 0;
-const int FP16MODE = 1;
-const int INT8MODE = 2;
-
 struct EngineConnection {
   EngineConnection(const string& outside, int out_id, int out_port,
                    const string& inside, int in_id, int in_port,

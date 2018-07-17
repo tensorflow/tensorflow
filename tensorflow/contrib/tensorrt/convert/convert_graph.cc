@@ -192,6 +192,91 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertGraphDefToTensorRT(
+    const tensorflow::GraphDef& graph_def,
+    const std::vector<string>& output_names, size_t max_batch_size,
+    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
+    int precision_mode, int minimum_segment_size, bool is_dyn_op,
+    int max_cached_engines, std::vector<int> cached_engine_batches) {
+  // Create GrapplerItem.
+  tensorflow::grappler::GrapplerItem item;
+  item.fetch = output_names;
+  item.graph = graph_def;
+
+  // TODO(aaroey): we should have used single machine cluster like the
+  // following, but the problem is then wrap_conversion will depend on
+  // direct_session and cause double linking problems. To fix this we need to
+  // fix or get rid of the swig dependency. Here we use VirtualCluster
+  // as a work around, and we need to create a session to initialize the
+  // underlying device before calling this method.
+#if 0
+  // Create single machine cluster. Note that this will create a session and
+  // initialize the gpu devices.
+  const int num_cpu_cores =
+      tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  const int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
+  VLOG(2) << "cpu_cores: " << num_cpu_cores;
+  VLOG(2) << "gpus: " << num_gpus;
+  const int timeout_s = 60 * 10;
+  std::unique_ptr<tensorflow::grappler::Cluster> cluster(
+      new tensorflow::grappler::SingleMachine(
+          timeout_s, num_cpu_cores, num_gpus));
+  // These settings are the defaults in tensorflow/python/grappler/cluster.py.
+  cluster->DisableDetailedStats(true);
+  cluster->AllowSoftPlacement(true);
+  cluster->SetNumWarmupSteps(10);
+  TF_RETURN_IF_ERROR(cluster->Provision());
+#else
+  // Create virtual cluster. Grappler requires a virtual cluster with a proper
+  // GPU device in order to calculate flops>0 or fails with FATAL in dbg mode.
+  // We add numbers from a Pascal card here to have flops>0.
+  tensorflow::DeviceProperties device_properties;
+  device_properties.set_type("GPU");
+  device_properties.mutable_environment()->insert({"architecture", "6"});
+  device_properties.set_num_cores(3584);
+  device_properties.set_frequency(1531);
+  std::unique_ptr<tensorflow::grappler::Cluster> cluster(
+      new tensorflow::grappler::VirtualCluster(
+          {{"/GPU:0", device_properties}}));
+#endif
+
+  // Create RewriterConfig.
+  tensorflow::RewriterConfig rw_cfg;
+  // TODO(aaroey): use only const folding and layout for the time being since
+  // new optimizers break the graph for trt.
+  rw_cfg.add_optimizers("constfold");
+  rw_cfg.add_optimizers("layout");
+  auto optimizer = rw_cfg.add_custom_optimizers();
+  optimizer->set_name("TensorRTOptimizer");
+  auto& parameters = *(optimizer->mutable_parameter_map());
+  parameters["minimum_segment_size"].set_i(minimum_segment_size);
+  parameters["max_batch_size"].set_i(max_batch_size);
+  parameters["is_dynamic_op"].set_b(is_dyn_op);
+  parameters["max_workspace_size_bytes"].set_i(max_workspace_size_bytes);
+  TF_RETURN_IF_ERROR(GetPrecisionModeName(
+      precision_mode, parameters["precision_mode"].mutable_s()));
+  parameters["maximum_cached_engines"].set_i(max_cached_engines);
+  if (!cached_engine_batches.empty()) {
+    auto list = parameters["cached_engine_batches"].mutable_list();
+    for (const int batch : cached_engine_batches) {
+      list->add_i(batch);
+    }
+  }
+
+  // Run optimizer.
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
+
+  if (VLOG_IS_ON(5)) {
+    std::fstream f;
+    f.open("TRTConversionInput.pb",
+           std::fstream::out | std::fstream::binary | std::fstream::trunc);
+    f << new_graph_def->SerializeAsString();
+    f.close();
+  }
+  return Status::OK();
+}
+
 // Function to get subsegment information structure.
 tensorflow::Status GetEngineInfo(
     const tensorflow::Graph* g,
@@ -414,21 +499,10 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   // TODO(aaroey): use enum instead, and add a helper method to do the
   // conversion.
   string prec_string;
-  switch (info.precision_mode) {
-    case FP32MODE:
-      prec_string = "FP32";
-      break;
-    case FP16MODE:
-      prec_string = "FP16";
-      break;
-    case INT8MODE:
-      prec_string = "INT8";
-      if (!TRTResourceManager::instance()->getManager("TRTCalibration")) {
-        LOG(ERROR) << "Failed to construct calibration storage";
-      }
-      break;
-    default:
-      return tensorflow::errors::OutOfRange("Unknown precision mode");
+  TF_RETURN_IF_ERROR(GetPrecisionModeName(info.precision_mode, &prec_string));
+  if (info.precision_mode == INT8MODE &&
+      !TRTResourceManager::instance()->getManager("TRTCalibration")) {
+    LOG(ERROR) << "Failed to construct calibration storage";
   }
   tensorflow::NodeDefBuilder node_builder(info.engine_name, "TRTEngineOp");
   if (!info.device.empty()) node_builder.Device(info.device);
