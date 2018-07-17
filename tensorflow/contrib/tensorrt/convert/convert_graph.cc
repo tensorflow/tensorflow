@@ -49,9 +49,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA

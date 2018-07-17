@@ -125,8 +125,8 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
 
 void GetOutputProperties(const grappler::GraphProperties& graph_properties,
                          const Node* outside_node, const int in_port,
-                        PartialTensorShape* shape,
-                        tensorflow::DataType* dtype) {
+                         PartialTensorShape* shape,
+                         tensorflow::DataType* dtype) {
   if (graph_properties.HasInputProperties(outside_node->name())) {
     auto input_params =
         graph_properties.GetInputProperties(outside_node->name());
@@ -141,10 +141,11 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
 tensorflow::Status ValidateInputProperties(const PartialTensorShape& shape,
                                            const tensorflow::DataType dtype,
                                            nvinfer1::DataType* trt_dtype) {
+  // TODO(aaroey): some of these checks also apply to IsTensorRTCandidate(), so
+  // put them there instead.
   TF_RETURN_IF_ERROR(ConvertDType(dtype, trt_dtype));
   if (shape.dims() < 0) {
-    return tensorflow::errors::InvalidArgument(
-        "Input tensor rank is unknown.");
+    return tensorflow::errors::InvalidArgument("Input tensor rank is unknown.");
   }
   if (shape.dims() > 8) {
     return tensorflow::errors::OutOfRange(
@@ -153,7 +154,7 @@ tensorflow::Status ValidateInputProperties(const PartialTensorShape& shape,
   for (int d = 1; d < shape.dims(); ++d) {
     if (shape.dim_size(d) < 0) {
       return tensorflow::errors::InvalidArgument(
-          "Input tensor has a unknow non-batch dimemension at dim ", d);
+          "Input tensor has a unknown non-batch dimemension at dim ", d);
     }
   }
   return Status::OK();
@@ -2703,9 +2704,9 @@ tensorflow::Status ConvertGraphDefToEngine(
       auto status = ValidateInputProperties(
           shape, node_def.attr().at("dtype").type(), &dtype);
       if (!status.ok()) {
-        const string error_message = StrCat(
-            "Validation failed for ", node_name, " and input slot ",
-            slot_number, ": ", status.error_message());
+        const string error_message =
+            StrCat("Validation failed for ", node_name, " and input slot ",
+                   slot_number, ": ", status.error_message());
         LOG(WARNING) << error_message;
         return Status(status.code(), error_message);
       }
