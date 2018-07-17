@@ -327,9 +327,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
 
-      # Discard the first 2 - they are the fetching of the weights from the
-      # initialization graph
-      io_evts = io_evts[2:]
+      # The initialization is constant, so there are no events generated on the
+      # IPU.
 
       host_to_device = filter(
         lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts)

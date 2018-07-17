@@ -553,6 +553,43 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::RemapArgs(
   }
 }
 
+std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
+    xla::DeviceMemoryAllocator* allocator,
+    const xla::Shape& shape, const int64 n,
+    const std::vector<std::unique_ptr<Literal>>& constant) {
+  if (shape.element_type() != xla::TUPLE) {
+    int64 size(xla::ShapeUtil::ByteSizeOf(shape));
+    se::DeviceMemoryBase allocated =
+        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
+    TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
+    tc->size = size;
+    tc->on_device = false;
+    tc->output_handle = std::string();
+    tc->output_convertor = nullptr;
+
+    void* buf(static_cast<void*>(tc->data));
+    memcpy(buf, constant[n]->untyped_data(), constant[n]->size_bytes());
+
+    return std::make_tuple(allocated, n + 1);
+  } else {
+    uint64 size(ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
+    se::DeviceMemoryBase allocated =
+        allocator->Allocate(0, size, false).ConsumeValueOrDie().Forget();
+    TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
+
+    void** buf = reinterpret_cast<void**>(tc->data);
+    int64 new_n = n;
+    for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); i++) {
+      se::DeviceMemoryBase out;
+      std::tie(out, new_n) = ConstantOutput(
+          allocator, shape.tuple_shapes(i), new_n, constant);
+      *buf++ = out.opaque();
+    }
+
+    return std::make_tuple(se::DeviceMemoryBase(tc, size), new_n);
+  }
+}
+
 Status PoplarExecutor::MoveDeviceToHost(TensorControl* tc) {
   void* buf(static_cast<void*>(tc->data));
   try {
@@ -619,10 +656,16 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     std::lock_guard<std::recursive_mutex> g(mutex_);
 
     if (engine == NULL) {
-      // An empty engine is a graph that just passes its inputs through
-      // to its outputs.  A variable reading graph is such a thing.
-      std::tie(retbuf, tensor_count) =
-          RemapArgs(output_shape, 0, output_map, args);
+      // An empty engine is either a graph that just passes its inputs through
+      // to its outputs, or a graph which returns a constant.
+      if (executable.LiteralValue().size() > 0) {
+        std::tie(retbuf, tensor_count) =
+            ConstantOutput(allocator, output_shape, 0,
+                           executable.LiteralValue());
+      } else {
+        std::tie(retbuf, tensor_count) =
+            RemapArgs(output_shape, 0, output_map, args);
+      }
     } else {
       if (!executable.has_module()) {
         return tensorflow::errors::InvalidArgument(

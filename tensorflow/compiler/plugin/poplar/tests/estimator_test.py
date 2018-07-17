@@ -114,8 +114,8 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
             if evt.type == IpuTraceEvent.COMPILE_END and len(evt.data_str) > 0:
               compile_for_ipu_count += 1
 
-    # Initialization graph and main graph (and 8x IsVariableInitialized)
-    self.assertEqual(compile_for_ipu_count, 10)
+    # Initialization graph and main graph
+    self.assertEqual(compile_for_ipu_count, 2)
 
 
 if __name__ == "__main__":

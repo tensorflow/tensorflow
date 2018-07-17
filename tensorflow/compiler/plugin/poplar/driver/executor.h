@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_timer.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
+
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -314,6 +316,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
                                                     const int64,
                                                     const OutputMap &,
                                                     const Args &);
+
+  std::tuple<se::DeviceMemoryBase, int64> ConstantOutput(
+      xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
+      const int64 n, const std::vector<std::unique_ptr<Literal>>& constant);
 
   Status MoveDeviceToHost(TensorControl *tc);
 

@@ -120,6 +120,26 @@ static bool OkToStream(const Shape& shape) {
   return true;
 }
 
+static bool GetConstantOutput(const HloInstruction* root,
+                              const Shape& layout,
+                              std::vector<std::unique_ptr<Literal>>& result) {
+  if (root->opcode() == HloOpcode::kConstant) {
+    auto literal = root->literal().Relayout(layout);
+    result.emplace_back(std::move(literal));
+    return true;
+  }
+  if (root->opcode() == HloOpcode::kTuple) {
+    for (unsigned int i = 0; i < root->operand_count(); i++) {
+      auto& sub_shape = layout.tuple_shapes(i);
+      if (!GetConstantOutput(root->operand(i), sub_shape, result)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 class EntryVisitor : public FullVisitor {
  public:
   EntryVisitor(poplar::Graph& graph, CompilerResources& resources,
@@ -414,28 +434,36 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   uint64 num_inputs = entry->num_parameters();
   uint64 num_outputs = CountShapes(entry->root_instruction()->shape());
 
-  EntryVisitor visitor(graph, resources, num_inputs, num_outputs);
-  try {
-    TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
-  } catch (std::logic_error e) {
-    return tensorflow::errors::Unknown(StrCat("[Poplar Compile] ", e.what()));
-  }
-
   std::shared_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
-  progs.push_back(visitor.sequence);
+  std::vector<std::unique_ptr<Literal>> constant_output;
 
-  if (visitor.all_outputs_are_parameters) {
-    VLOG(1) << "Skip engine compilation - all outputs are inputs";
-  } else {
+  EntryVisitor visitor(graph, resources, num_inputs, num_outputs);
+
+  if (!GetConstantOutput(entry->root_instruction(), comp_layout->shape(),
+                         constant_output)) {
     try {
-      VLOG(1) << "Compile engine " << module->name();
-
-      auto opts = poplarExecutor->GetOptionsFlags();
-      engine.reset(new poplar::Engine(graph, progs, opts));
+      TF_RETURN_IF_ERROR(entry->AcceptOrdered(&visitor, instruction_order));
     } catch (std::logic_error e) {
-      return tensorflow::errors::Unknown(StrCat("[Poplar Engine] ", e.what()));
+      return tensorflow::errors::Unknown(StrCat("[Poplar Compile] ", e.what()));
     }
+
+    progs.push_back(visitor.sequence);
+
+    if (visitor.all_outputs_are_parameters) {
+      VLOG(1) << "Skip engine compilation - all outputs are inputs";
+    } else {
+      try {
+        VLOG(1) << "Compile engine " << module->name();
+
+        auto opts = poplarExecutor->GetOptionsFlags();
+        engine.reset(new poplar::Engine(graph, progs, opts));
+      } catch (std::logic_error e) {
+        return tensorflow::errors::Unknown(StrCat("[Poplar Engine] ", e.what()));
+      }
+    }
+  } else {
+    VLOG(1) << "Skip engine compilation - output is constant";
   }
 
   if (poplarExecutor->CompilerReportingEnabled()) {
@@ -464,7 +492,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   poplar_executable = new PoplarExecutable(
       std::move(module), std::move(profile_printer),
       std::move(profile_index_map), std::move(engine),
-      std::move(visitor.output_map), std::move(visitor.parameter_streamed),
+      std::move(visitor.output_map), std::move(constant_output),
+      std::move(visitor.parameter_streamed),
       std::move(visitor.output_streamed));
   executable.reset(poplar_executable);
 

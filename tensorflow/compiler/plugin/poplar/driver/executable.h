@@ -46,6 +46,7 @@ class PoplarExecutable : public Executable {
                    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                    std::shared_ptr<poplar::Engine> engine,
                    const OutputMap& output_map,
+                   std::vector<std::unique_ptr<Literal>> literal_output,
                    const std::vector<bool>& parameter_streamed,
                    const std::vector<bool>& output_streamed);
 
@@ -76,6 +77,10 @@ class PoplarExecutable : public Executable {
 
   const std::vector<bool>& OutputStreamed() const { return output_streamed_; }
 
+  const std::vector<std::unique_ptr<Literal>>& LiteralValue() const {
+    return literal_output_;
+  }
+
   static StatusOr<PoplarExecutable*> Deserialize(
       std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
@@ -90,6 +95,7 @@ class PoplarExecutable : public Executable {
 
   std::shared_ptr<poplar::Engine> poplar_engine_;
   OutputMap output_map_;
+  std::vector<std::unique_ptr<Literal>> literal_output_;
   std::vector<bool> parameter_streamed_;
   std::vector<bool> output_streamed_;
   bool first_execution_;

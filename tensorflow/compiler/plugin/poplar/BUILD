@@ -462,6 +462,18 @@ py_test(
 )
 
 py_test(
+    name = "constant_test",
+    size = "large",
+    srcs = ["tests/constant_test.py"],
+    deps = [
+        ":ipu_ops",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:constant_op",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "variable_test",
     size = "small",
     srcs = ["tests/variable_test.py"],
@@ -698,6 +710,7 @@ test_suite(
         "conv3d_test",
         "ipu_engine_cache_test",
         "inplace_test",
+        "constant_test",
     ],
 )
 
@@ -729,6 +742,7 @@ test_suite(
         "conv3d_test",
         "ipu_engine_cache_test",
         "inplace_test",
+        "constant_test",
     ],
 )
 
