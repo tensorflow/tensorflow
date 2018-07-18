@@ -31,7 +31,8 @@ class ControlFlowTest(converter_testing.TestCase):
   def assertTransformedResult(self, test_fn, inputs, expected):
     if not isinstance(inputs, tuple):
       inputs = (inputs,)
-    with self.converted(test_fn, control_flow, {}) as result:
+    with self.converted(test_fn, control_flow, {},
+                        constant_op.constant) as result:
       with self.test_session() as sess:
         self.assertEqual(sess.run(result.test_fn(*inputs)), expected)
 

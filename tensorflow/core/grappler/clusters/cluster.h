@@ -65,6 +65,9 @@ class Cluster {
   // with reftype input(s) which are from CPU.
   void AllowSoftPlacement(bool soft_placement_state);
 
+  // Update the number of inter-op threads for each per-session threadpool
+  void SetNumInterOpThreads(int num_threads);
+
   // Set the number of steps required to warmup TensorFlow. Must be called
   // before Provision().
   void SetNumWarmupSteps(int num_steps);

@@ -93,6 +93,7 @@ cc_library(
         ":runtime",
         ":toco_port",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -246,6 +247,7 @@ cc_library(
         "graph_transformations/resolve_constant_transpose.cc",
         "graph_transformations/resolve_constant_unary.cc",
         "graph_transformations/resolve_fake_quant_args_from_vars.cc",
+        "graph_transformations/resolve_gather_attributes.cc",
         "graph_transformations/resolve_multiply_by_zero.cc",
         "graph_transformations/resolve_pad_attributes.cc",
         "graph_transformations/resolve_padv2_attributes.cc",

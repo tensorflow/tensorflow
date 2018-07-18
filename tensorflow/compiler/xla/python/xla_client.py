@@ -125,6 +125,9 @@ _BINARY_OPS = [
     'Or',
     'Xor',
     'Pow',
+    'ShiftLeft',
+    'ShiftRightArithmetic',
+    'ShiftRightLogical',
 ]
 
 

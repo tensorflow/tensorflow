@@ -419,7 +419,7 @@ class SNLIClassifierTrainer(tfe.Checkpointable):
     # Create a custom learning rate Variable for the RMSProp optimizer, because
     # the learning rate needs to be manually decayed later (see
     # decay_learning_rate()).
-    self._learning_rate = tfe.Variable(lr, name="learning_rate")
+    self._learning_rate = tf.Variable(lr, name="learning_rate")
     self._optimizer = tf.train.RMSPropOptimizer(self._learning_rate,
                                                 epsilon=1e-6)
 
