@@ -437,6 +437,7 @@ void ProcessTensorFlowReshapeOperator(Model* model,
       product_non_wildcard_dims *= shape_data[i];
     }
   }
+
   const int input_flat_size = RequiredBufferSizeForShape(input_shape);
   if (has_wildcard) {
     CHECK_GE(input_flat_size, product_non_wildcard_dims)
@@ -445,6 +446,12 @@ void ProcessTensorFlowReshapeOperator(Model* model,
         << op->outputs[0] << "\". Are your input shapes correct?";
     shape_data[wildcard_index] = input_flat_size / product_non_wildcard_dims;
   }
+
+  if (shape_data.size() == 1 && shape_data[0] == 0) {
+    // We have reshaped a scalar, so preserve as a scalar.
+    shape_data.clear();
+  }
+
   auto& output_shape = *output_array.mutable_shape();
   *output_shape.mutable_dims() = shape_data;
   CHECK_EQ(input_flat_size, RequiredBufferSizeForShape(output_shape))
