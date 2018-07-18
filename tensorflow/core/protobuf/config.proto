@@ -145,7 +145,8 @@ message GPUOptions {
     bool use_unified_memory = 2;
 
     // If > 1, the number of device-to-device copy streams to create
-    // for each GPUDevice.
+    // for each GPUDevice.  Default value is 0, which is automatically
+    // converted to 1.
     int32 num_dev_to_dev_copy_streams = 3;
   }
 
