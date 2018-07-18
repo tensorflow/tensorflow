@@ -177,4 +177,17 @@ display_name: A human-readable name for the threads that may be visible in
   some visualizations.
 )doc");
 
+REGISTER_OP("AssertNextDataset")
+    .Input("input_dataset: variant")
+    .Input("transformations: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // transformations should be a vector.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 }  // namespace tensorflow
