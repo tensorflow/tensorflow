@@ -110,7 +110,7 @@ enum class OperatorType : uint8 {
   kLessEqual,
   kReduceMax,  //  Reduction Max
   kMaximum,    //  Element-wise Maximum
-  kMin,        //  Reduction Min
+  kReduceMin,  //  Reduction Min
   kMinimum,    //  Element-wise Minimum
   kMatMul,
   kMerge,
@@ -143,6 +143,9 @@ enum class OperatorType : uint8 {
   kNotEqual,
   kPow,
   kArgMin,
+  kAny,
+  kLogicalAnd,
+  kLogicalNot,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1416,16 +1419,15 @@ struct TensorFlowMaxOperator : Operator {
   bool keep_dims = false;
 };
 
-// Global min reduction: computes the min of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Min reduction: computes the min of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Min --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Min
 struct TensorFlowMinOperator : Operator {
-  TensorFlowMinOperator() : Operator(OperatorType::kMin) {}
+  TensorFlowMinOperator() : Operator(OperatorType::kReduceMin) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1688,6 +1690,39 @@ struct SparseToDenseOperator : Operator {
 // TensorFlow equivalent: Pow.
 struct PowOperator : Operator {
   PowOperator() : Operator(OperatorType::kPow) {}
+};
+
+// Any operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.reduce_any.
+struct AnyOperator : Operator {
+  AnyOperator() : Operator(OperatorType::kAny) {}
+  bool keep_dims = false;
+};
+
+// LogicalAnd operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+// Inputs[1]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_and.
+struct LogicalAndOperator : Operator {
+  LogicalAndOperator() : Operator(OperatorType::kLogicalAnd) {}
+};
+
+// LogicalNot operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_not.
+struct LogicalNotOperator : Operator {
+  LogicalNotOperator() : Operator(OperatorType::kLogicalNot) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
