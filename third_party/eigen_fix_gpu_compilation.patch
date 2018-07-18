@@ -1,0 +1,18 @@
+diff -Naur eigen-eigen-8475e3c056d3/Eigen/src/Core/arch/GPU/PacketMathHalf.h eigen_archive/Eigen/src/Core/arch/GPU/PacketMathHalf.h
+--- eigen-eigen-8475e3c056d3/Eigen/src/Core/arch/GPU/PacketMathHalf.h	2018-07-12 04:07:16.000000000 -0400
++++ eigen_archive/Eigen/src/Core/arch/GPU/PacketMathHalf.h	2018-07-18 15:14:40.001758133 -0400
+@@ -945,10 +945,10 @@
+     AlignedOnScalar = 1,
+     size = 8,
+     HasHalfPacket = 0,
+-    HasAdd    = 1,
+-    HasSub    = 1,
+-    HasMul    = 1,
+-    HasNegate = 1,
++    HasAdd    = 0,
++    HasSub    = 0,
++    HasMul    = 0,
++    HasNegate = 0,
+     HasAbs    = 0,
+     HasAbs2   = 0,
+     HasMin    = 0,

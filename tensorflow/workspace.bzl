@@ -110,13 +110,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   tf_http_archive(
       name = "eigen_archive",
-      urls = [
-      	"https://mirror.bazel.build/github.com/ROCmSoftwarePlatform/eigen-upstream/archive/ff6a01b4b8173c0d62b3e050212ecbcaac7e7003.zip",
-	"https://github.com/ROCmSoftwarePlatform/eigen-upstream/archive/ff6a01b4b8173c0d62b3e050212ecbcaac7e7003.zip",	
+            urls = [
+	      "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/8475e3c056d3.tar.gz",
+	      "https://bitbucket.org/eigen/eigen/get/8475e3c056d3.tar.gz",
       ],
-      sha256 = "eeab922428ce95b554d29fd8c776513967884511fb1b0b3853b52a51e9b6b7c7",
-      strip_prefix = "eigen-upstream-ff6a01b4b8173c0d62b3e050212ecbcaac7e7003",
+      sha256 = "32b2e2f8751ac6ef223e2cd6ba70718fbc3c810463763083497f1ba203e13573",
+      strip_prefix = "eigen-eigen-8475e3c056d3",
       build_file = clean_dep("//third_party:eigen.BUILD"),
+      patch_file = clean_dep("//third_party:eigen_fix_gpu_compilation.patch"),
   )
 
   tf_http_archive(
