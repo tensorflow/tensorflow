@@ -598,6 +598,11 @@ Attribute *Parser::parseAttribute() {
     return builder.getArrayAttr(elements);
   }
   default:
+    // Try to parse affine map reference.
+    auto* affineMap = parseAffineMapReference();
+    if (affineMap != nullptr)
+      return builder.getAffineMapAttr(affineMap);
+
     // TODO: Handle floating point.
     return (emitError("expected constant attribute value"), nullptr);
   }

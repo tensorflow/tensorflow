@@ -37,6 +37,7 @@ class IntegerAttr;
 class FloatAttr;
 class StringAttr;
 class ArrayAttr;
+class AffineMapAttr;
 class AffineMap;
 class AffineExpr;
 class AffineConstantExpr;
@@ -74,6 +75,7 @@ public:
   FloatAttr *getFloatAttr(double value);
   StringAttr *getStringAttr(StringRef bytes);
   ArrayAttr *getArrayAttr(ArrayRef<Attribute *> value);
+  AffineMapAttr *getAffineMapAttr(AffineMap *value);
 
   // Affine Expressions and Affine Map.
   AffineMap *getAffineMap(unsigned dimCount, unsigned symbolCount,

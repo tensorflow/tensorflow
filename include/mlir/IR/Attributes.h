@@ -22,7 +22,8 @@
 #include "llvm/ADT/ArrayRef.h"
 
 namespace mlir {
-  class MLIRContext;
+class MLIRContext;
+class AffineMap;
 
 /// Instances of the Attribute class are immutable, uniqued, immortal, and owned
 /// by MLIRContext.  As such, they are passed around by raw non-const pointer.
@@ -34,6 +35,7 @@ public:
     Float,
     String,
     Array,
+    AffineMap,
     // TODO: Function references.
   };
 
@@ -147,7 +149,23 @@ private:
   ArrayRef<Attribute*> value;
 };
 
+class AffineMapAttr : public Attribute {
+public:
+  static AffineMapAttr *get(AffineMap *value, MLIRContext *context);
+
+  AffineMap *getValue() const {
+    return value;
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Attribute *attr) {
+    return attr->getKind() == Kind::AffineMap;
+  }
+private:
+  AffineMapAttr(AffineMap *value) : Attribute(Kind::AffineMap), value(value) {}
+  AffineMap *value;
+};
+
 } // end namespace mlir.
 
 #endif
-

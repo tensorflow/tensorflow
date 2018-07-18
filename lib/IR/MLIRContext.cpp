@@ -230,6 +230,7 @@ public:
   StringMap<StringAttr*> stringAttrs;
   using ArrayAttrSet = DenseSet<ArrayAttr*, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
+  DenseMap<AffineMap*, AffineMapAttr*> affineMapAttrs;
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
@@ -539,6 +540,16 @@ ArrayAttr *ArrayAttr::get(ArrayRef<Attribute*> value, MLIRContext *context) {
 
   // Cache and return it.
   return *existing.first = result;
+}
+
+AffineMapAttr *AffineMapAttr::get(AffineMap* value, MLIRContext *context) {
+  auto *&result = context->getImpl().affineMapAttrs[value];
+  if (result)
+    return result;
+
+  result = context->getImpl().allocator.Allocate<AffineMapAttr>();
+  new (result) AffineMapAttr(value);
+  return result;
 }
 
 /// Perform a three-way comparison between the names of the specified

@@ -136,6 +136,15 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"(){a: 1, b: -423, c: [true, false]}  : () -> ()
   "foo"(){a: 1, b: -423, c: [true, false] } : () -> ()
 
+  // CHECK: "foo"(){map1: #map{{[0-9]+}}}
+  "foo"(){map1: #map1} : () -> ()
+
+  // CHECK: "foo"(){map2: #map{{[0-9]+}}}
+  "foo"(){map2: (d0, d1, d2) -> (d0, d1, d2)} : () -> ()
+
+  // CHECK: "foo"(){map12: [#map{{[0-9]+}}, #map{{[0-9]+}}]}
+  "foo"(){map12: [#map1, #map2]} : () -> ()
+
   // CHECK: "foo"(){cfgfunc: [], i123: 7, if: "foo"} : () -> ()
   "foo"(){if: "foo", cfgfunc: [], i123: 7} : () -> ()
 

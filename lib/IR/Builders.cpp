@@ -94,6 +94,10 @@ ArrayAttr *Builder::getArrayAttr(ArrayRef<Attribute *> value) {
   return ArrayAttr::get(value, context);
 }
 
+AffineMapAttr *Builder::getAffineMapAttr(AffineMap *value) {
+  return AffineMapAttr::get(value, context);
+}
+
 //===----------------------------------------------------------------------===//
 // Affine Expressions and Affine Map.
 //===----------------------------------------------------------------------===//
