@@ -164,9 +164,9 @@ cc_library(
 )
 
 cc_library(
-    name = "ops",
-    srcs = ["ops.cc"],
-    hdrs = ["ops.h"],
+    name = "dynamic_update_slice_util",
+    srcs = ["dynamic_update_slice_util.cc"],
+    hdrs = ["dynamic_update_slice_util.h"],
     deps = [
         ":fused_ir_emitter",
         ":ir_array",
