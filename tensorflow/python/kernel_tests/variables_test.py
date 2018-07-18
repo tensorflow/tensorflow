@@ -642,6 +642,8 @@ class PartitionedVariableTest(test.TestCase):
       iterated_partitions = list(partitioned_variable)
       self.assertEqual(2, num_partitions)
       self.assertEqual([v0, v1], iterated_partitions)
+      self.assertEqual([2], partitioned_variable.get_shape())
+      self.assertEqual([2], partitioned_variable.shape)
       self.assertEqual([2], concatenated.get_shape())
       self.assertEqual([2], concatenated.shape)
 

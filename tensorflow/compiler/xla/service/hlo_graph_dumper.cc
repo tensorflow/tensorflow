@@ -27,7 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -832,13 +832,13 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
     // is just noise.
-    if (!ShapeUtil::IsTuple(shape) && ShapeUtil::HasZeroElements(shape)) {
+    if (ShapeUtil::IsZeroElementArray(shape)) {
       return Printf("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
-    if (!ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)) {
+    if (ShapeUtil::IsArray(shape)) {
       elem_count = 1;
       for (int64 dim : shape.dimensions()) {
         *elem_count *= dim;
@@ -960,11 +960,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -983,7 +985,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
-    case HloOpcode::kGenerateToken:
+    case HloOpcode::kAfterAll:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
@@ -1000,7 +1002,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
-    case HloOpcode::kSelect:
+    case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
       // De-emphasize scalar-shaped data movement ops and all data movement ops
       // inside fusion nodes, both of which are essentially free.

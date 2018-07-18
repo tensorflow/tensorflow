@@ -44,7 +44,7 @@ It is possible to model a new
 implementation on the existing [`xla::CPUCompiler`]
 (https://www.tensorflow.org/code/tensorflow/compiler/xla/service/cpu/cpu_compiler.cc)
 and [`xla::GPUCompiler`]
-(https://www.tensorflow.org/code/tensorflow/compiler/xla/service/gpu/gpu_compiler.cc)
+(https://www.tensorflow.org/code/tensorflow/compiler/xla/service/gpu/nvptx_compiler.cc)
 classes, since these already emit LLVM IR. Depending on the nature of the
 hardware, it is possible that many of the LLVM IR generation aspects will have
 to be changed, but a lot of code can be shared with the existing backends.

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib import layers
 from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python import train
@@ -30,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -84,19 +86,47 @@ class InfoGANDiscriminator(object):
 
 
 def acgan_discriminator_model(inputs, _, num_classes=10):
-  return (discriminator_model(inputs, _), array_ops.one_hot(
-      # TODO(haeusser): infer batch size from input
-      random_ops.random_uniform([3], maxval=num_classes, dtype=dtypes.int32),
-      num_classes))
+  return (
+      discriminator_model(inputs, _),
+      array_ops.one_hot(
+          # TODO(haeusser): infer batch size from input
+          random_ops.random_uniform(
+              [3], maxval=num_classes, dtype=dtypes.int32),
+          num_classes))
 
 
 class ACGANDiscriminator(object):
 
   def __call__(self, inputs, _, num_classes=10):
-    return (discriminator_model(inputs, _), array_ops.one_hot(
-        # TODO(haeusser): infer batch size from input
-        random_ops.random_uniform([3], maxval=num_classes, dtype=dtypes.int32),
-        num_classes))
+    return (
+        discriminator_model(inputs, _),
+        array_ops.one_hot(
+            # TODO(haeusser): infer batch size from input
+            random_ops.random_uniform(
+                [3], maxval=num_classes, dtype=dtypes.int32),
+            num_classes))
+
+
+def stargan_generator_model(inputs, _):
+  """Dummy generator for StarGAN."""
+
+  return variable_scope.get_variable('dummy_g', initializer=0.5) * inputs
+
+
+def stargan_discriminator_model(inputs, num_domains):
+  """Differentiable dummy discriminator for StarGAN."""
+
+  hidden = layers.flatten(inputs)
+
+  output_src = math_ops.reduce_mean(hidden, axis=1)
+
+  output_cls = layers.fully_connected(
+      inputs=hidden,
+      num_outputs=num_domains,
+      activation_fn=None,
+      normalizer_fn=None,
+      biases_initializer=None)
+  return output_src, output_cls
 
 
 def get_gan_model():
@@ -122,8 +152,7 @@ def get_gan_model():
 def get_callable_gan_model():
   ganmodel = get_gan_model()
   return ganmodel._replace(
-      generator_fn=Generator(),
-      discriminator_fn=Discriminator())
+      generator_fn=Generator(), discriminator_fn=Discriminator())
 
 
 def create_gan_model():
@@ -283,15 +312,15 @@ class GANModelTest(test.TestCase):
     self._test_output_type_helper(get_infogan_model, namedtuples.InfoGANModel)
 
   def test_output_type_callable_infogan(self):
-    self._test_output_type_helper(
-        get_callable_infogan_model, namedtuples.InfoGANModel)
+    self._test_output_type_helper(get_callable_infogan_model,
+                                  namedtuples.InfoGANModel)
 
   def test_output_type_acgan(self):
     self._test_output_type_helper(get_acgan_model, namedtuples.ACGANModel)
 
   def test_output_type_callable_acgan(self):
-    self._test_output_type_helper(
-        get_callable_acgan_model, namedtuples.ACGANModel)
+    self._test_output_type_helper(get_callable_acgan_model,
+                                  namedtuples.ACGANModel)
 
   def test_output_type_cyclegan(self):
     self._test_output_type_helper(get_cyclegan_model, namedtuples.CycleGANModel)
@@ -301,10 +330,13 @@ class GANModelTest(test.TestCase):
                                   namedtuples.CycleGANModel)
 
   def test_no_shape_check(self):
+
     def dummy_generator_model(_):
       return (None, None)
+
     def dummy_discriminator_model(data, conditioning):  # pylint: disable=unused-argument
       return 1
+
     with self.assertRaisesRegexp(AttributeError, 'object has no attribute'):
       train.gan_model(
           dummy_generator_model,
@@ -318,6 +350,138 @@ class GANModelTest(test.TestCase):
         real_data=array_ops.zeros([1, 2]),
         generator_inputs=array_ops.zeros([1]),
         check_shapes=False)
+
+
+class StarGANModelTest(test.TestCase):
+  """Tests for `stargan_model`."""
+
+  @staticmethod
+  def create_input_and_label_tensor(batch_size, img_size, c_size, num_domains):
+
+    input_tensor_list = []
+    label_tensor_list = []
+    for _ in range(num_domains):
+      input_tensor_list.append(
+          random_ops.random_uniform((batch_size, img_size, img_size, c_size)))
+      domain_idx = random_ops.random_uniform(
+          [batch_size], minval=0, maxval=num_domains, dtype=dtypes.int32)
+      label_tensor_list.append(array_ops.one_hot(domain_idx, num_domains))
+    return input_tensor_list, label_tensor_list
+
+  def test_generate_stargan_random_domain_target(self):
+
+    batch_size = 8
+    domain_numbers = 3
+
+    target_tensor = train._generate_stargan_random_domain_target(
+        batch_size, domain_numbers)
+
+    with self.test_session() as sess:
+      targets = sess.run(target_tensor)
+      self.assertTupleEqual((batch_size, domain_numbers), targets.shape)
+      for target in targets:
+        self.assertEqual(1, np.sum(target))
+        self.assertEqual(1, np.max(target))
+
+  def test_stargan_model_output_type(self):
+
+    batch_size = 2
+    img_size = 16
+    c_size = 3
+    num_domains = 5
+
+    input_tensor, label_tensor = StarGANModelTest.create_input_and_label_tensor(
+        batch_size, img_size, c_size, num_domains)
+    model = train.stargan_model(
+        generator_fn=stargan_generator_model,
+        discriminator_fn=stargan_discriminator_model,
+        input_data=input_tensor,
+        input_data_domain_label=label_tensor)
+
+    self.assertIsInstance(model, namedtuples.StarGANModel)
+    self.assertTrue(isinstance(model.discriminator_variables, list))
+    self.assertTrue(isinstance(model.generator_variables, list))
+    self.assertIsInstance(model.discriminator_scope,
+                          variable_scope.VariableScope)
+    self.assertTrue(model.generator_scope, variable_scope.VariableScope)
+    self.assertTrue(callable(model.discriminator_fn))
+    self.assertTrue(callable(model.generator_fn))
+
+  def test_stargan_model_generator_output(self):
+
+    batch_size = 2
+    img_size = 16
+    c_size = 3
+    num_domains = 5
+
+    input_tensor, label_tensor = StarGANModelTest.create_input_and_label_tensor(
+        batch_size, img_size, c_size, num_domains)
+    model = train.stargan_model(
+        generator_fn=stargan_generator_model,
+        discriminator_fn=stargan_discriminator_model,
+        input_data=input_tensor,
+        input_data_domain_label=label_tensor)
+
+    with self.test_session(use_gpu=True) as sess:
+
+      sess.run(variables.global_variables_initializer())
+
+      input_data, generated_data, reconstructed_data = sess.run(
+          [model.input_data, model.generated_data, model.reconstructed_data])
+      self.assertTupleEqual(
+          (batch_size * num_domains, img_size, img_size, c_size),
+          input_data.shape)
+      self.assertTupleEqual(
+          (batch_size * num_domains, img_size, img_size, c_size),
+          generated_data.shape)
+      self.assertTupleEqual(
+          (batch_size * num_domains, img_size, img_size, c_size),
+          reconstructed_data.shape)
+
+  def test_stargan_model_discriminator_output(self):
+
+    batch_size = 2
+    img_size = 16
+    c_size = 3
+    num_domains = 5
+
+    input_tensor, label_tensor = StarGANModelTest.create_input_and_label_tensor(
+        batch_size, img_size, c_size, num_domains)
+    model = train.stargan_model(
+        generator_fn=stargan_generator_model,
+        discriminator_fn=stargan_discriminator_model,
+        input_data=input_tensor,
+        input_data_domain_label=label_tensor)
+
+    with self.test_session(use_gpu=True) as sess:
+
+      sess.run(variables.global_variables_initializer())
+
+      disc_input_data_source_pred, disc_gen_data_source_pred = sess.run([
+          model.discriminator_input_data_source_predication,
+          model.discriminator_generated_data_source_predication
+      ])
+      self.assertEqual(1, len(disc_input_data_source_pred.shape))
+      self.assertEqual(batch_size * num_domains,
+                       disc_input_data_source_pred.shape[0])
+      self.assertEqual(1, len(disc_gen_data_source_pred.shape))
+      self.assertEqual(batch_size * num_domains,
+                       disc_gen_data_source_pred.shape[0])
+
+      input_label, disc_input_label, gen_label, disc_gen_label = sess.run([
+          model.input_data_domain_label,
+          model.discriminator_input_data_domain_predication,
+          model.generated_data_domain_target,
+          model.discriminator_generated_data_domain_predication
+      ])
+      self.assertTupleEqual((batch_size * num_domains, num_domains),
+                            input_label.shape)
+      self.assertTupleEqual((batch_size * num_domains, num_domains),
+                            disc_input_label.shape)
+      self.assertTupleEqual((batch_size * num_domains, num_domains),
+                            gen_label.shape)
+      self.assertTupleEqual((batch_size * num_domains, num_domains),
+                            disc_gen_label.shape)
 
 
 class GANLossTest(test.TestCase):
@@ -362,9 +526,10 @@ class GANLossTest(test.TestCase):
   def _test_grad_penalty_helper(self, create_gan_model_fn, one_sided=False):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
-    loss_gp = train.gan_loss(model,
-                             gradient_penalty_weight=1.0,
-                             gradient_penalty_one_sided=one_sided)
+    loss_gp = train.gan_loss(
+        model,
+        gradient_penalty_weight=1.0,
+        gradient_penalty_one_sided=one_sided)
     self.assertTrue(isinstance(loss_gp, namedtuples.GANLoss))
 
     # Check values.
@@ -417,8 +582,9 @@ class GANLossTest(test.TestCase):
 
   # Test mutual information penalty option.
   def _test_mutual_info_penalty_helper(self, create_gan_model_fn):
-    train.gan_loss(create_gan_model_fn(),
-                   mutual_information_penalty_weight=constant_op.constant(1.0))
+    train.gan_loss(
+        create_gan_model_fn(),
+        mutual_information_penalty_weight=constant_op.constant(1.0))
 
   def test_mutual_info_penalty_infogan(self):
     self._test_mutual_info_penalty_helper(get_infogan_model)
@@ -435,11 +601,11 @@ class GANLossTest(test.TestCase):
       no_reg_loss_dis_np = no_reg_loss.discriminator_loss.eval()
 
     with ops.name_scope(get_gan_model_fn().generator_scope.name):
-      ops.add_to_collection(
-          ops.GraphKeys.REGULARIZATION_LOSSES, constant_op.constant(3.0))
+      ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES,
+                            constant_op.constant(3.0))
     with ops.name_scope(get_gan_model_fn().discriminator_scope.name):
-      ops.add_to_collection(
-          ops.GraphKeys.REGULARIZATION_LOSSES, constant_op.constant(2.0))
+      ops.add_to_collection(ops.GraphKeys.REGULARIZATION_LOSSES,
+                            constant_op.constant(2.0))
 
     # Check that losses now include the correct regularization values.
     reg_loss = train.gan_loss(get_gan_model_fn())
@@ -481,14 +647,14 @@ class GANLossTest(test.TestCase):
     # Check values.
     with self.test_session(use_gpu=True) as sess:
       variables.global_variables_initializer().run()
-      loss_gen_np, loss_ac_gen_gen_np, loss_ac_dis_gen_np = sess.run(
-          [loss.generator_loss,
-           loss_ac_gen.generator_loss,
-           loss_ac_dis.generator_loss])
-      loss_dis_np, loss_ac_gen_dis_np, loss_ac_dis_dis_np = sess.run(
-          [loss.discriminator_loss,
-           loss_ac_gen.discriminator_loss,
-           loss_ac_dis.discriminator_loss])
+      loss_gen_np, loss_ac_gen_gen_np, loss_ac_dis_gen_np = sess.run([
+          loss.generator_loss, loss_ac_gen.generator_loss,
+          loss_ac_dis.generator_loss
+      ])
+      loss_dis_np, loss_ac_gen_dis_np, loss_ac_dis_dis_np = sess.run([
+          loss.discriminator_loss, loss_ac_gen.discriminator_loss,
+          loss_ac_dis.discriminator_loss
+      ])
 
     self.assertTrue(loss_gen_np < loss_dis_np)
     self.assertTrue(np.isscalar(loss_ac_gen_gen_np))
@@ -707,8 +873,11 @@ class GANTrainOpsTest(test.TestCase):
 
     # Add an update op outside the generator and discriminator scopes.
     if provide_update_ops:
-      kwargs = {'update_ops':
-                [constant_op.constant(1.0), gen_update_op, dis_update_op]}
+      kwargs = {
+          'update_ops': [
+              constant_op.constant(1.0), gen_update_op, dis_update_op
+          ]
+      }
     else:
       ops.add_to_collection(ops.GraphKeys.UPDATE_OPS, constant_op.constant(1.0))
       kwargs = {}
@@ -717,8 +886,8 @@ class GANTrainOpsTest(test.TestCase):
     d_opt = gradient_descent.GradientDescentOptimizer(1.0)
 
     with self.assertRaisesRegexp(ValueError, 'There are unused update ops:'):
-      train.gan_train_ops(model, loss, g_opt, d_opt,
-                          check_for_unused_update_ops=True, **kwargs)
+      train.gan_train_ops(
+          model, loss, g_opt, d_opt, check_for_unused_update_ops=True, **kwargs)
     train_ops = train.gan_train_ops(
         model, loss, g_opt, d_opt, check_for_unused_update_ops=False, **kwargs)
 
@@ -771,8 +940,9 @@ class GANTrainOpsTest(test.TestCase):
   def test_unused_update_ops_callable_acgan_provideupdates(self):
     self._test_unused_update_ops(create_callable_acgan_model, True)
 
-  def _test_sync_replicas_helper(
-      self, create_gan_model_fn, create_global_step=False):
+  def _test_sync_replicas_helper(self,
+                                 create_gan_model_fn,
+                                 create_global_step=False):
     model = create_gan_model_fn()
     loss = train.gan_loss(model)
     num_trainable_vars = len(variables_lib.get_trainable_variables())
@@ -785,10 +955,7 @@ class GANTrainOpsTest(test.TestCase):
     g_opt = get_sync_optimizer()
     d_opt = get_sync_optimizer()
     train_ops = train.gan_train_ops(
-        model,
-        loss,
-        generator_optimizer=g_opt,
-        discriminator_optimizer=d_opt)
+        model, loss, generator_optimizer=g_opt, discriminator_optimizer=d_opt)
     self.assertTrue(isinstance(train_ops, namedtuples.GANTrainOps))
     # No new trainable variables should have been added.
     self.assertEqual(num_trainable_vars,
@@ -860,8 +1027,8 @@ class GANTrainTest(test.TestCase):
     # joint training.
     train_ops = namedtuples.GANTrainOps(
         generator_train_op=step.assign_add(generator_add, use_locking=True),
-        discriminator_train_op=step.assign_add(discriminator_add,
-                                               use_locking=True),
+        discriminator_train_op=step.assign_add(
+            discriminator_add, use_locking=True),
         global_step_inc_op=step.assign_add(1))
     return train_ops
 
@@ -903,8 +1070,7 @@ class GANTrainTest(test.TestCase):
   def _test_multiple_steps_helper(self, get_hooks_fn_fn):
     train_ops = self._gan_train_ops(generator_add=10, discriminator_add=100)
     train_steps = namedtuples.GANTrainSteps(
-        generator_train_steps=3,
-        discriminator_train_steps=4)
+        generator_train_steps=3, discriminator_train_steps=4)
     final_step = train.gan_train(
         train_ops,
         get_hooks_fn=get_hooks_fn_fn(train_steps),
@@ -927,8 +1093,7 @@ class GANTrainTest(test.TestCase):
         discriminator_train_op=constant_op.constant(2.0),
         global_step_inc_op=step.assign_add(1))
     train_steps = namedtuples.GANTrainSteps(
-        generator_train_steps=3,
-        discriminator_train_steps=4)
+        generator_train_steps=3, discriminator_train_steps=4)
 
     final_loss = slim_learning.train(
         train_op=train_ops,

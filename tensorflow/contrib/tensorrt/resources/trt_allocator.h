@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_ALLOCATOR_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_ALLOCATOR_H_
 
-
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/framework/allocator.h"
 
@@ -52,7 +51,12 @@ class TRTDeviceAllocator : public nvinfer1::IGpuAllocator {
   // Allocator implementation wrapping TF device allocators.
  public:
   TRTDeviceAllocator(tensorflow::Allocator* allocator);
-  virtual ~TRTDeviceAllocator() {}
+
+  // TODO(aaroey): base class doesn't have a virtual destructor, work with
+  // Nvidia to fix it.
+  virtual ~TRTDeviceAllocator() {
+    VLOG(1) << "Destroying allocator attached to " << allocator_->Name();
+  }
   void* allocate(uint64_t size, uint64_t alignment, uint32_t flags) override;
   void free(void* memory) override;
 

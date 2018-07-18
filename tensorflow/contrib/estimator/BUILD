@@ -18,6 +18,7 @@ py_library(
         ":boosted_trees",
         ":dnn",
         ":dnn_linear_combined",
+        ":early_stopping",
         ":export",
         ":extenders",
         ":head",
@@ -117,7 +118,7 @@ py_library(
 
 py_test(
     name = "dnn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/dnn_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -588,5 +589,33 @@ py_test(
         "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "early_stopping",
+    srcs = ["python/estimator/early_stopping.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator",
+    ],
+)
+
+py_test(
+    name = "early_stopping_test",
+    srcs = ["python/estimator/early_stopping_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":early_stopping",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/estimator",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

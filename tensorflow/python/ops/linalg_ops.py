@@ -401,7 +401,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   import tensorflow as tf
   import numpy as np
   s, u, v = tf.linalg.svd(a)
-  tf_a_approx = tf.matmul(u, tf.matmul(tf.linalg.diag(s), v, adjoint_v=True))
+  tf_a_approx = tf.matmul(u, tf.matmul(tf.linalg.diag(s), v, adjoint_b=True))
   u, s, v_adj = np.linalg.svd(a, full_matrices=False)
   np_a_approx = np.dot(u, np.dot(np.diag(s), v_adj))
   # tf_a_approx and np_a_approx should be numerically close.

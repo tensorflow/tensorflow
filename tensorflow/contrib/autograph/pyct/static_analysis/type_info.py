@@ -44,7 +44,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import parser
+from tensorflow.contrib.autograph.pyct import ast_util
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
@@ -52,6 +52,7 @@ from tensorflow.python.util import tf_inspect
 # TODO(mdan): Remove the duplication between this and activity.py.
 # In particular, the symbol definitions we track here could as well be tracked
 # there because they follow the same rules for visibility.
+# TODO(mdan): Use a CFG based Defined analysis instead.
 class Scope(object):
   """Tracks symbol value references.
 
@@ -135,35 +136,39 @@ class TypeInfoResolver(transformer.Base):
     node.orelse = self._visit_block(node.orelse)
     return node
 
-  def _process_function_arg(self, arg_name):
-    str_name = str(arg_name)
-    type_holder = arg_name.ast()
-    self.scope.setval(arg_name, type_holder)
-    if len(self.enclosing_entities) == 1 and str_name in self.context.arg_types:
+  def _process_function_arg(self, arg_node):
+    qn = anno.getanno(arg_node, anno.Basic.QN)
+    arg_name = str(qn)
+    self.scope.setval(qn, arg_node)
+    if (len(self.enclosing_entities) == 1 and
+        arg_name in self.entity_info.arg_types):
       # Forge a node to hold the type information, so that method calls on
       # it can resolve the type.
-      type_string, type_obj = self.context.arg_types[str_name]
-      anno.setanno(type_holder, 'type', type_obj)
-      anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
+      type_string, type_obj = self.entity_info.arg_types[arg_name]
+      anno.setanno(arg_node, 'type', type_obj)
+      anno.setanno(arg_node, 'type_fqn', tuple(type_string.split('.')))
 
   def visit_arg(self, node):
-    self._process_function_arg(anno.getanno(node.arg, anno.Basic.QN))
+    self._process_function_arg(node.arg)
     return node
 
   def visit_Name(self, node):
     self.generic_visit(node)
-    qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Param):
-      self._process_function_arg(qn)
-    elif isinstance(node.ctx, gast.Load) and self.scope.hasval(qn):
-      # E.g. if we had
-      # a = b
-      # then for future references to `a` we should have definition = `b`
-      definition = self.scope.getval(qn)
-      anno.copyanno(definition, node, 'type')
-      anno.copyanno(definition, node, 'type_fqn')
-      anno.copyanno(definition, node, 'element_type')
-      anno.copyanno(definition, node, 'element_shape')
+      self._process_function_arg(node)
+    elif isinstance(node.ctx, gast.Load):
+      qn = anno.getanno(node, anno.Basic.QN)
+      if self.scope.hasval(qn):
+        # E.g. if we had
+        # a = b
+        # then for future references to `a` we should have definition = `b`
+        definition = self.scope.getval(qn)
+        anno.copyanno(definition, node, 'type')
+        anno.copyanno(definition, node, 'type_fqn')
+
+        # TODO(mdan): Remove this when the directives module is in.
+        anno.copyanno(definition, node, 'element_type')
+        anno.copyanno(definition, node, 'element_shape')
     return node
 
   def _process_variable_assignment(self, target, value):
@@ -191,51 +196,17 @@ class TypeInfoResolver(transformer.Base):
   def visit_With(self, node):
     for item in node.items:
       if item.optional_vars is not None:
-        self.apply_to_single_assignments((item.optional_vars,),
-                                         item.context_expr,
-                                         self._process_variable_assignment)
+        ast_util.apply_to_single_assignments((item.optional_vars,),
+                                             item.context_expr,
+                                             self._process_variable_assignment)
     self.generic_visit(node)
     return node
 
   def visit_Assign(self, node):
     self.generic_visit(node)
-    self.apply_to_single_assignments(
-        node.targets, node.value, self._process_variable_assignment)
+    ast_util.apply_to_single_assignments(node.targets, node.value,
+                                         self._process_variable_assignment)
     return node
-
-  def visit_Call(self, node):
-    if anno.hasanno(node.func, 'live_val'):
-      # Symbols targeted by the "set_type" marker function are assigned the data
-      # type that it specified.
-      if (anno.getanno(node.func, 'live_val') is
-          self.context.type_annotation_func):
-
-        if len(node.args) < 2 or len(node.args) > 3:
-          raise ValueError('"%s" must have either two or three parameters'
-                           % self.context.type_annotation_func)
-        if len(node.args) == 2:
-          target_arg, type_arg = node.args
-          shape_arg = parser.parse_expression('None')
-        else:
-          target_arg, type_arg, shape_arg = node.args
-        if not anno.hasanno(target_arg, anno.Basic.QN):
-          raise ValueError('the first argument of "%s" must by a symbol'
-                           % self.context.type_annotation_func)
-        # TODO(mdan): This is vulnerable to symbol renaming.
-        element_type = type_arg
-        element_shape = shape_arg
-
-        target_symbol = anno.getanno(target_arg, anno.Basic.QN)
-        # Find the definition of this symbol and annotate it with the given
-        # data type. That in turn will cause future uses of the symbol
-        # to receive the same type annotation.
-        definition = self.scope.getval(target_symbol)
-        anno.setanno(node, 'element_type', element_type)
-        anno.setanno(node, 'element_shape', element_shape)
-        anno.setanno(definition, 'element_type', element_type)
-        anno.setanno(definition, 'element_shape', element_shape)
-        # TODO(mdan): Should we update references between definition and here?
-    return self.generic_visit(node)
 
 
 def resolve(node, context):

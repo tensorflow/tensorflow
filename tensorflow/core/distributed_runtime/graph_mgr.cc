@@ -261,7 +261,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
                        /*shape_map=*/nullptr);
 
-    // EXPERIMENTAL: tfdbg inserts debug nodes (i.e., probes) to the graph.
+    // TensorFlow Debugger (tfdbg) inserts debug nodes in the graph.
     if (!debug_options.debug_tensor_watch_opts().empty()) {
       TF_RETURN_IF_ERROR(DecorateAndPublishGraphForDebug(
           debug_options, subgraph.get(), params.device));

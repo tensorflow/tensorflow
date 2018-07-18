@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite LSTM op.
+//
+// TODO(alanchiao): add unit test with invalid input dimensions for this and its
+// variants.
 
 #include <memory>
 #include <vector>
@@ -96,6 +99,12 @@ class LSTMOpModel : public SingleOpModel {
       projection_weights_ = AddNullInput();
       projection_bias_ = AddNullInput();
     }
+
+    // Adding the 2 input state tensors.
+    input_activation_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_output_ * n_batch_}}, true);
+    input_cell_state_ =
+        AddInput(TensorData{TensorType_FLOAT32, {n_cell_ * n_batch_}}, true);
 
     output_state_ = AddOutput(TensorType_FLOAT32);
     cell_state_ = AddOutput(TensorType_FLOAT32);
@@ -227,6 +236,8 @@ class LSTMOpModel : public SingleOpModel {
 
   int projection_weights_;
   int projection_bias_;
+  int input_activation_state_;
+  int input_cell_state_;
 
   int output_;
   int output_state_;
@@ -352,14 +363,6 @@ class BaseLstmTest : public ::testing::Test {
       }
       EXPECT_THAT(lstm->GetOutput(),
                   ElementsAreArray(ArrayFloatNear(expected, tolerance)));
-      for (int i = 0; i < num_outputs; ++i) {
-        std::cout << lstm->GetOutput()[i] << ", ";
-      }
-      std::cout << std::endl;
-      for (int i = 0; i < num_outputs; ++i) {
-        std::cout << expected[i] << ", ";
-      }
-      std::cout << std::endl;
     }
   }
 };

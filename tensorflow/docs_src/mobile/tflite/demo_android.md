@@ -1,7 +1,7 @@
 # Android Demo App
 
 An example Android application using TensorFLow Lite is available
-[on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app).
+[on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo).
 The demo is a sample camera app that classifies images continuously
 using either a quantized Mobilenet model or a floating point Inception-v3 model.
 To run the demo, a device running Android 5.0 ( API 21) or higher is required.
@@ -44,19 +44,21 @@ app:
   Android Studio project.
 * Install all the Gradle extensions it requests.
 
-To get a model, either:
+Now you can build and run the demo app. 
 
-* Download the quantized [Mobilenet TensorFlow Lite model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip)
-  and unzip and copy `mobilenet_quant_v1_224.tflite` to the assets directory:
-  `tensorflow/contrib/lite/java/demo/app/src/main/assets/`.
-* Or, download the floating point [Inception-v3 model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip)
-  and unzip and copy `inceptionv3_non_slim_2015.tflite` to the assets
-  directory. Change the chosen classifier in
-  [Camera2BasicFragment.java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/java/demo/app/src/main/java/com/example/android/tflitecamerademo/Camera2BasicFragment.java)<br>
+The build process downloads the quantized [Mobilenet TensorFlow Lite model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip), and unzips it into the assets directory: `tensorflow/contrib/lite/java/demo/app/src/main/assets/`.
+
+Some additional details are available on the
+[TF Lite Android App page](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/README.md).
+
+### Using other models
+
+To use a different model:
+* Download the floating point [Inception-v3 model](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip).
+* Unzip and copy `inceptionv3_non_slim_2015.tflite` to the assets directory. 
+* Change the chosen classifier in [Camera2BasicFragment.java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/java/demo/app/src/main/java/com/example/android/tflitecamerademo/Camera2BasicFragment.java)<br>
   from: `classifier = new ImageClassifierQuantizedMobileNet(getActivity());`<br>
   to: `classifier = new ImageClassifierFloatInception(getActivity());`.
-
-Now you can build and run the demo app.
 
 
 ## Build TensorFlow Lite and the demo app from source
