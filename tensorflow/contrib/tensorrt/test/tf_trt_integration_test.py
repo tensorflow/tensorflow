@@ -186,8 +186,8 @@ class TfTrtIntegrationTest(test_util.TensorFlowTestCase):
       # Defaults to 2 runs to verify result across multiple runs is same.
       for _ in range(num_runs):
         new_val = sess.run(out, {inp: input_data})
-        self.assertEquals(TEST_GRAPHS[graph_key].expected_output_dims,
-                          new_val.shape)
+        self.assertEqual(TEST_GRAPHS[graph_key].expected_output_dims,
+                         new_val.shape)
         if val is not None:
           self.assertAllEqual(new_val, val)
         val = new_val
@@ -220,19 +220,19 @@ class TfTrtIntegrationTest(test_util.TensorFlowTestCase):
     for n in gdef.node:
       if n.op == "TRTEngineOp":
         num_engines += 1
-        self.assertNotEqual("", n.attr["serialized_segment"].s)
-        self.assertNotEqual("", n.attr["segment_funcdef_name"].s)
-        self.assertEquals(n.attr["precision_mode"].s, precision_mode)
-        self.assertEquals(n.attr["static_engine"].b, not dynamic_engine)
+        self.assertNotEqual(to_bytes(""), n.attr["serialized_segment"].s)
+        self.assertNotEqual(to_bytes(""), n.attr["segment_funcdef_name"].s)
+        self.assertEqual(n.attr["precision_mode"].s, to_bytes(precision_mode))
+        self.assertEqual(n.attr["static_engine"].b, not dynamic_engine)
         if precision_mode == MODE_INT8 and is_calibrated:
-          self.assertNotEqual("", n.attr["calibration_data"].s)
+          self.assertNotEqual(to_bytes(""), n.attr["calibration_data"].s)
         else:
-          self.assertEquals("", n.attr["calibration_data"].s)
+          self.assertEqual(to_bytes(""), n.attr["calibration_data"].s)
     if precision_mode is None:
-      self.assertEquals(num_engines, 0)
+      self.assertEqual(num_engines, 0)
     else:
-      self.assertEquals(num_engines,
-                        TEST_GRAPHS[graph_key].num_expected_engines)
+      self.assertEqual(num_engines,
+                       TEST_GRAPHS[graph_key].num_expected_engines)
 
   def _RunTest(self, graph_key, use_optimizer, precision_mode,
                dynamic_infer_engine, dynamic_calib_engine):
