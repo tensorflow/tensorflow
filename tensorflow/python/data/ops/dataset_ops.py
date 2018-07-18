@@ -159,7 +159,8 @@ class Dataset(object):
     try:
       _make_dataset.add_to_graph(ops.get_default_graph())
     except ValueError as err:
-      if "Cannot capture a stateful node" in str(err):
+      capture_err = "Cannot capture a stateful node"
+      if capture_err in str(err):
         raise ValueError(
             "Failed to create a one-shot iterator for a dataset. "
             "`Dataset.make_one_shot_iterator()` does not support datasets that "
