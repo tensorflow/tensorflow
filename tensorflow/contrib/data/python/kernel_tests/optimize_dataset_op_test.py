@@ -35,8 +35,6 @@ class OptimizeDatasetTest(test.TestCase):
     with self.test_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
-      self.assertTrue(
-          all([node.op != "MapAndBatchDatasetV2" for node in graph.node]))
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -50,8 +48,6 @@ class OptimizeDatasetTest(test.TestCase):
     with self.test_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
-      self.assertTrue(
-          all([node.op != "MapAndBatchDatasetV2" for node in graph.node]))
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -65,8 +61,6 @@ class OptimizeDatasetTest(test.TestCase):
     with self.test_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
-      self.assertTrue(
-          any([node.op == "MapAndBatchDatasetV2" for node in graph.node]))
       self.assertAllEqual([x * x for x in range(10)], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)

@@ -73,7 +73,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools:__pkg__",
-        "//tensorflow/tools/api/generator:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -705,7 +705,9 @@ py_library(
         "framework/error_interpolation.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        ":util",
+    ],
 )
 
 py_library(
@@ -1040,7 +1042,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":error_interpolation",
+        ":traceable_stack",
     ],
 )
 
@@ -2133,8 +2137,8 @@ py_library(
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
-        ":nn_ops",
         ":random_ops",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -3043,6 +3047,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "init_ops_test",
+    size = "small",
+    srcs = ["ops/init_ops_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":init_ops",
+        ":framework_ops",
+        ":resource_variable_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
     name = "math_grad_test",
     size = "small",
     srcs = ["ops/math_grad_test.py"],
@@ -3334,6 +3352,9 @@ py_library(
         ],
     ),
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",

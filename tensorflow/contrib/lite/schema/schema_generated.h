@@ -351,11 +351,13 @@ enum BuiltinOperator {
   BuiltinOperator_POW = 78,
   BuiltinOperator_ARG_MIN = 79,
   BuiltinOperator_FAKE_QUANT = 80,
+  BuiltinOperator_REDUCE_PROD = 81,
+  BuiltinOperator_REDUCE_MAX = 82,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_FAKE_QUANT
+  BuiltinOperator_MAX = BuiltinOperator_REDUCE_MAX
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[80] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[82] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -436,7 +438,9 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[80] {
     BuiltinOperator_SHAPE,
     BuiltinOperator_POW,
     BuiltinOperator_ARG_MIN,
-    BuiltinOperator_FAKE_QUANT
+    BuiltinOperator_FAKE_QUANT,
+    BuiltinOperator_REDUCE_PROD,
+    BuiltinOperator_REDUCE_MAX
   };
   return values;
 }
@@ -524,6 +528,8 @@ inline const char **EnumNamesBuiltinOperator() {
     "POW",
     "ARG_MIN",
     "FAKE_QUANT",
+    "REDUCE_PROD",
+    "REDUCE_MAX",
     nullptr
   };
   return names;
@@ -5213,10 +5219,12 @@ struct FakeQuantOptionsT : public flatbuffers::NativeTable {
   float min;
   float max;
   int32_t num_bits;
+  bool narrow_range;
   FakeQuantOptionsT()
       : min(0.0f),
         max(0.0f),
-        num_bits(0) {
+        num_bits(0),
+        narrow_range(false) {
   }
 };
 
@@ -5225,7 +5233,8 @@ struct FakeQuantOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum {
     VT_MIN = 4,
     VT_MAX = 6,
-    VT_NUM_BITS = 8
+    VT_NUM_BITS = 8,
+    VT_NARROW_RANGE = 10
   };
   float min() const {
     return GetField<float>(VT_MIN, 0.0f);
@@ -5236,11 +5245,15 @@ struct FakeQuantOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   int32_t num_bits() const {
     return GetField<int32_t>(VT_NUM_BITS, 0);
   }
+  bool narrow_range() const {
+    return GetField<uint8_t>(VT_NARROW_RANGE, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<float>(verifier, VT_MIN) &&
            VerifyField<float>(verifier, VT_MAX) &&
            VerifyField<int32_t>(verifier, VT_NUM_BITS) &&
+           VerifyField<uint8_t>(verifier, VT_NARROW_RANGE) &&
            verifier.EndTable();
   }
   FakeQuantOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5260,6 +5273,9 @@ struct FakeQuantOptionsBuilder {
   void add_num_bits(int32_t num_bits) {
     fbb_.AddElement<int32_t>(FakeQuantOptions::VT_NUM_BITS, num_bits, 0);
   }
+  void add_narrow_range(bool narrow_range) {
+    fbb_.AddElement<uint8_t>(FakeQuantOptions::VT_NARROW_RANGE, static_cast<uint8_t>(narrow_range), 0);
+  }
   explicit FakeQuantOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -5276,11 +5292,13 @@ inline flatbuffers::Offset<FakeQuantOptions> CreateFakeQuantOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
     float min = 0.0f,
     float max = 0.0f,
-    int32_t num_bits = 0) {
+    int32_t num_bits = 0,
+    bool narrow_range = false) {
   FakeQuantOptionsBuilder builder_(_fbb);
   builder_.add_num_bits(num_bits);
   builder_.add_max(max);
   builder_.add_min(min);
+  builder_.add_narrow_range(narrow_range);
   return builder_.Finish();
 }
 
@@ -7896,6 +7914,7 @@ inline void FakeQuantOptions::UnPackTo(FakeQuantOptionsT *_o, const flatbuffers:
   { auto _e = min(); _o->min = _e; };
   { auto _e = max(); _o->max = _e; };
   { auto _e = num_bits(); _o->num_bits = _e; };
+  { auto _e = narrow_range(); _o->narrow_range = _e; };
 }
 
 inline flatbuffers::Offset<FakeQuantOptions> FakeQuantOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FakeQuantOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -7909,11 +7928,13 @@ inline flatbuffers::Offset<FakeQuantOptions> CreateFakeQuantOptions(flatbuffers:
   auto _min = _o->min;
   auto _max = _o->max;
   auto _num_bits = _o->num_bits;
+  auto _narrow_range = _o->narrow_range;
   return tflite::CreateFakeQuantOptions(
       _fbb,
       _min,
       _max,
-      _num_bits);
+      _num_bits,
+      _narrow_range);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

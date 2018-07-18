@@ -35,13 +35,11 @@ namespace gpu {
 // handles GPU-specific infeed.
 class GpuTransferManager : public GenericTransferManager {
  public:
-  GpuTransferManager();
+  GpuTransferManager(se::Platform::Id id, unsigned pointer_size);
   ~GpuTransferManager() override {}
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
                                     Literal* literal) override;

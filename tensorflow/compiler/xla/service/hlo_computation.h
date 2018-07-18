@@ -365,6 +365,10 @@ class HloComputation {
     unique_id_ = id;
   }
 
+  // Returns the instruction in this computation that has name `name`.  Returns
+  // null if there is no such computation.
+  HloInstruction* GetInstructionWithName(tensorflow::StringPiece name);
+
   int64 unique_id() const { return unique_id_; }
 
  private:

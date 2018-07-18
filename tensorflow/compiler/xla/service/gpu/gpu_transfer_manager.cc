@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/IR/DataLayout.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -41,11 +41,9 @@ namespace gpu {
 // TODO(b/30467474) Once GPU infeed implementation settles, consider
 // folding back the cpu and gpu infeed implementations into a generic
 // one if possible.
-GpuTransferManager::GpuTransferManager()
-    : GenericTransferManager(
-          se::cuda::kCudaPlatformId,
-          /*pointer_size=*/llvm::DataLayout(gpu::GpuCompiler::kDataLayout)
-              .getPointerSize(0 /* default address space */)) {}
+GpuTransferManager::GpuTransferManager(se::Platform::Id id,
+                                       unsigned pointer_size)
+    : GenericTransferManager(id, pointer_size) {}
 
 Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
@@ -71,15 +69,6 @@ Status GpuTransferManager::TransferLiteralToInfeed(
       }));
 
   return EnqueueBuffersToInfeed(executor, std::move(buffer_tree));
-}
-
-Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
-                                                  int64 size,
-                                                  const void* source) {
-  return InternalError(
-      "Attempted to transfer data to infeed on a GPU device using "
-      "TransferBufferToInfeed. This should be done using "
-      "TransferLiteralToInfeed instead.");
 }
 
 Status GpuTransferManager::EnqueueBuffersToInfeed(
@@ -188,13 +177,16 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
 }  // namespace gpu
 }  // namespace xla
 
-static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
-  return xla::MakeUnique<xla::gpu::GpuTransferManager>();
+static std::unique_ptr<xla::TransferManager> CreateNVPTXTransferManager() {
+  return xla::MakeUnique<xla::gpu::GpuTransferManager>(
+      /*id=*/stream_executor::cuda::kCudaPlatformId,
+      /*pointer_size=*/llvm::DataLayout(xla::gpu::NVPTXCompiler::kDataLayout)
+          .getPointerSize(0 /* default address space */));
 }
 
 static bool InitModule() {
   xla::TransferManager::RegisterTransferManager(
-      stream_executor::cuda::kCudaPlatformId, &CreateGpuTransferManager);
+      stream_executor::cuda::kCudaPlatformId, &CreateNVPTXTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();

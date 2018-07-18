@@ -2490,8 +2490,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -2674,8 +2672,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -3989,8 +3985,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4040,8 +4034,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5730,8 +5722,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5809,8 +5799,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5888,8 +5876,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8592,8 +8578,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8664,8 +8648,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8736,8 +8718,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15509,8 +15489,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15588,8 +15566,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15660,8 +15636,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15803,8 +15777,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -27606,7 +27578,11 @@ op {
     type: DT_INT64
   }
   input_arg {
-    name: "stride"
+    name: "window_shift"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "window_stride"
     type: DT_INT64
   }
   output_arg {

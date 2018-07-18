@@ -54,7 +54,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
     {R"(^\/div.*int32)", "68808744"},
-    {R"(^\/sub.*int32)", "68808744"},
 
     // Pad and PadV2 only supports 4D tensors.
     {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",

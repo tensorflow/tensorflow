@@ -105,14 +105,19 @@ create_python_test_dir "${PY_TEST_DIR}"
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
+TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
 bazel test --announce_rc --config=opt -k --test_output=errors \
+  --test_env=TF_GPU_COUNT \
+  --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss \
   --build_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss --build_tests_only \
-  --local_test_jobs=1 --test_timeout="300,450,1200,3600" \
+  --test_size_filters=small,medium \
+  --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
   //${PY_TEST_DIR}/tensorflow/python/... \
   //${PY_TEST_DIR}/tensorflow/contrib/...

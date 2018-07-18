@@ -52,18 +52,18 @@ class ScopeTest(test.TestCase):
     other = activity.Scope(None)
     other.copy_from(scope)
 
-    self.assertTrue(QN('foo') in other.created)
+    self.assertTrue(QN('foo') in other.modified)
 
     scope.mark_write(QN('bar'))
     scope.copy_from(other)
 
-    self.assertFalse(QN('bar') in scope.created)
+    self.assertFalse(QN('bar') in scope.modified)
 
     scope.mark_write(QN('bar'))
     scope.merge_from(other)
 
-    self.assertTrue(QN('bar') in scope.created)
-    self.assertFalse(QN('bar') in other.created)
+    self.assertTrue(QN('bar') in scope.modified)
+    self.assertFalse(QN('bar') in other.modified)
 
   def test_copy_of(self):
     scope = activity.Scope(None)
@@ -157,7 +157,8 @@ class ActivityAnalyzerTest(test.TestCase):
     """Assert the scope contains specific used, modified & created variables."""
     self.assertSymbolSetsAre(used, scope.used, 'read')
     self.assertSymbolSetsAre(modified, scope.modified, 'modified')
-    self.assertSymbolSetsAre(created, scope.created, 'created')
+    # Created is deprecated, we're no longer verifying it.
+    # self.assertSymbolSetsAre(created, scope.created, 'created')
 
   def test_print_statement(self):
 
@@ -215,12 +216,6 @@ class ActivityAnalyzerTest(test.TestCase):
         (),
         (),
     )
-    self.assertScopeIsRmc(
-        anno.getanno(call_node, NodeAnno.ARGS_SCOPE).parent,
-        ('a', 'a.b', 'a.c', 'a.d', 'foo'),
-        ('a.c',),
-        ('a',),
-    )
 
   def test_call_args_subscripts(self):
 
@@ -240,12 +235,6 @@ class ActivityAnalyzerTest(test.TestCase):
         ('a', 'a[0]', 'a[b]', 'b'),
         (),
         (),
-    )
-    self.assertScopeIsRmc(
-        anno.getanno(call_node, NodeAnno.ARGS_SCOPE).parent,
-        ('a', 'a[0]', 'a[b]', 'a[c]', 'b', 'c', 'foo'),
-        ('b', 'c'),
-        ('a', 'b', 'c'),
     )
 
   def test_while(self):
@@ -362,20 +351,20 @@ class ActivityAnalyzerTest(test.TestCase):
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE),
         ('a', 'b', 'c', 'a[c]'),
-        ('a', 'a[b]', 'd'),
+        ('a[b]', 'd'),
         ('d',),
     )
     # TODO(mdan): Should subscript writes (a[0] = 1) be considered to read "a"?
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE),
         ('a', 'e'),
-        ('a', 'a[0]', 'd'),
+        ('a[0]', 'd'),
         ('d',),
     )
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE).parent,
         ('a', 'b', 'c', 'd', 'e', 'a[c]'),
-        ('a', 'd', 'a[b]', 'a[0]'),
+        ('d', 'a[b]', 'a[0]'),
         ('a', 'b', 'c', 'd', 'e'),
     )
 
@@ -416,10 +405,6 @@ class ActivityAnalyzerTest(test.TestCase):
     fn_def_node = node.body[0].body[0]
 
     self.assertScopeIsRmc(
-        anno.getanno(fn_def_node,
-                     NodeAnno.BODY_SCOPE).parent, ('b', 'i', 'f', 'c', 'a'),
-        ('f', 'b', 'c', 'i'), ('f', 'a', 'b', 'c', 'i'))
-    self.assertScopeIsRmc(
         anno.getanno(fn_def_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',), (
             'x',
             'y',
@@ -452,7 +437,7 @@ class ActivityAnalyzerTest(test.TestCase):
     self.assertScopeIsRmc(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
         ('a', 'a[0]'),
-        ('a', 'a[0]'),
+        ('a[0]',),
         ('a',),
     )
 
@@ -517,47 +502,6 @@ class ActivityAnalyzerTest(test.TestCase):
     self.assertScopeIsRmc(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('b',), (('')),
         (('a', 'b')))
-
-  def test_get_read(self):
-
-    def test_fn(x, y):
-      z = test_fn(x, y)
-      return z
-
-    node, ctx = self._parse_and_analyze(test_fn)
-    node = node.body[0].body[0]
-    read_vars = activity.get_read(node, ctx)
-    self.assertEqual(read_vars, set(map(qual_names.QN, ('test_fn', 'x', 'y'))))
-
-    def test_fn2(x, y, z):
-      z += test_fn2(x, y, z)
-      return z
-
-    node, ctx = self._parse_and_analyze(test_fn2)
-    node = node.body[0].body[0]
-    read_vars = activity.get_read(node, ctx)
-    self.assertEqual(read_vars,
-                     set(map(qual_names.QN, ('test_fn2', 'x', 'y', 'z'))))
-
-  def test_get_updated(self):
-
-    def test_fn(x, y):
-      z = test_fn(x, y)
-      return z
-
-    node, ctx = self._parse_and_analyze(test_fn)
-    node = node.body[0].body[0]
-    updated_vars = activity.get_updated(node, ctx)
-    self.assertEqual(updated_vars, set(map(qual_names.QN, ('z'))))
-
-    def test_fn2(x, y, z):
-      z += test_fn2(x, y, z)
-      return z
-
-    node, ctx = self._parse_and_analyze(test_fn2)
-    node = node.body[0].body[0]
-    updated_vars = activity.get_updated(node, ctx)
-    self.assertEqual(updated_vars, set(map(qual_names.QN, ('z'))))
 
 
 if __name__ == '__main__':

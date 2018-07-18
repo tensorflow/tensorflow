@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -1369,7 +1370,7 @@ TEST_F(HloInstructionTest, StringifyGather_0) {
   HloInstruction* gather_instruction =
       builder.AddInstruction(HloInstruction::CreateGather(
           gather_result_shape, input, gather_indices,
-          HloInstruction::MakeGatherDimNumbers(
+          HloGatherInstruction::MakeGatherDimNumbers(
               /*output_window_dims=*/{4, 5, 6, 7, 8},
               /*elided_window_dims=*/{},
               /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},
@@ -1405,7 +1406,7 @@ TEST_F(HloInstructionTest, StringifyGather_1) {
   HloInstruction* gather_instruction =
       builder.AddInstruction(HloInstruction::CreateGather(
           gather_result_shape, input, gather_indices,
-          HloInstruction::MakeGatherDimNumbers(
+          HloGatherInstruction::MakeGatherDimNumbers(
               /*output_window_dims=*/{4, 5, 6, 7, 8},
               /*elided_window_dims=*/{},
               /*gather_dims_to_operand_dims=*/{0, 1, 2, 3, 4},

@@ -404,19 +404,20 @@ REGISTER_OP("BatchDatasetV2")
       return shape_inference::ScalarShape(c);
     });
 
-// TODO(mrry): move SlideDataset to contrib in the future.
 REGISTER_OP("SlideDataset")
     .Input("input_dataset: variant")
     .Input("window_size: int64")
-    .Input("stride: int64")
+    .Input("window_shift: int64")
+    .Input("window_stride: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // window_size and stride should be scalars.
+      // window_size, window_shift, and window_stride should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 

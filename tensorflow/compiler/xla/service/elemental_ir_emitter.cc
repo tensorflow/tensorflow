@@ -468,6 +468,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     }
     case HloOpcode::kNegate:
       return ir_builder_->CreateFNeg(operand_value);
+    case HloOpcode::kReal:
+      return operand_value;
+    case HloOpcode::kImag:
+      return llvm::ConstantFP::get(operand_value->getType(), 0.0);
     default:
       return Unimplemented("unary floating-point op '%s'",
                            HloOpcodeString(op->opcode()).c_str());
