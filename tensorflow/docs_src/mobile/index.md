@@ -13,9 +13,6 @@ Here are a few of the differences between the two:
   developed with TensorFlow Lite will have a smaller binary size, fewer
   dependencies, and better performance.
 
-- TensorFlow Lite is in developer preview, so not all use cases are covered yet.
-  We expect you to use TensorFlow Mobile to cover production cases.
-
 - TensorFlow Lite supports only a limited set of operators, so not all models
   will work on it by default. TensorFlow for Mobile has a fuller set of
   supported functionality.
