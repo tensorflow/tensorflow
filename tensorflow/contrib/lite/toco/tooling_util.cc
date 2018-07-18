@@ -940,8 +940,12 @@ void CheckEachArray(const Model& model) {
       // shape.
       CHECK(array->has_shape());
       // Constant buffer should has a valid shape.
-      for (int d : array->shape().dims()) {
-        CHECK_GE(d, 1);
+      bool is_scalar =
+          array->shape().dimensions_count() == 1 && array->shape().dims(0) == 0;
+      if (!is_scalar) {
+        for (int d : array->shape().dims()) {
+          CHECK_GE(d, 1);
+        }
       }
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
