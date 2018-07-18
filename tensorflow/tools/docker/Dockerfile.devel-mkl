@@ -3,7 +3,7 @@ FROM ubuntu:16.04
 LABEL maintainer="Clayne Robison <clayne.b.robison@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.9
+ARG TF_BUILD_VERSION=r1.10
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
