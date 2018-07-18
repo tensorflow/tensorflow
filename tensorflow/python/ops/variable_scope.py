@@ -191,36 +191,9 @@ class _ReuseMode(enum.Enum):
   # REUSE_TRUE = 3
 
 
-@tf_export("VariableSynchronization")
-class VariableSynchronization(enum.Enum):
-  """Indicates when a distributed variable will be synced."""
-
-  # Indicates that the synchronization will be determined by the current
-  # `DistributionStrategy` (eg. With `MirroredStrategy` this would be
-  # `ON_WRITE`).
-  AUTO = 0
-
-  # Indicates that there will only be one copy of the variable, so there is no
-  # need to sync.
-  NONE = 1
-
-  # Indicates that the variable will be aggregated across devices
-  # every time it is updated.
-  ON_WRITE = 2
-
-  # Indicates that the variable will be aggregated across devices
-  # when it is read (eg. when checkpointing or when evaluating an op that uses
-  # the variable).
-  ON_READ = 3
-
-
-@tf_export("VariableAggregation")
-class VariableAggregation(enum.Enum):
-  """Indicates how a distributed variable will be aggregated."""
-  NONE = 0
-  SUM = 1
-  MEAN = 2
-
+# TODO(apassos) remove these forwarding symbols.
+VariableSynchronization = variables.VariableSynchronization  # pylint: disable=invalid-name
+VariableAggregation = variables.VariableAggregation  # pylint: disable=invalid-name
 
 AUTO_REUSE = _ReuseMode.AUTO_REUSE
 tf_export("AUTO_REUSE").export_constant(__name__, "AUTO_REUSE")
