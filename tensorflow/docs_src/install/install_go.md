@@ -1,4 +1,4 @@
-# Installing TensorFlow for Go
+# Install TensorFlow for Go
 
 TensorFlow provides APIs for use in Go programs. These APIs are particularly
 well-suited to loading models created in Python and executing them within
