@@ -2588,6 +2588,8 @@ void Converter::register_op_converters() {
   op_registry_["BatchMatMul"] = ConvertBatchMatMul;
   op_registry_["TopKV2"] = ConvertTopK;
 #endif
+
+  plugin_converter_ = ConvertPlugin;
 }
 
 }  // namespace
