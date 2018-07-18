@@ -37,7 +37,14 @@ class IGpuAllocator {
 namespace tensorflow {
 namespace tensorrt {
 
-class TRTCudaAllocator : public nvinfer1::IGpuAllocator {
+class TRTBaseAllocator : public nvinfer1::IGpuAllocator {
+  // Base allocator class so we can have a virtual destructor;
+ public:
+  // python wrapper seems to be not happy with an pure virtual destructor;
+  virtual ~TRTBaseAllocator() = default;
+};
+
+class TRTCudaAllocator : public TRTBaseAllocator {
   // Allocator implementation that is using cuda allocator instead of device
   // allocator in case we can't get device allocator from TF.
  public:
@@ -47,7 +54,7 @@ class TRTCudaAllocator : public nvinfer1::IGpuAllocator {
   void free(void* memory) override;
 };
 
-class TRTDeviceAllocator : public nvinfer1::IGpuAllocator {
+class TRTDeviceAllocator : public TRTBaseAllocator {
   // Allocator implementation wrapping TF device allocators.
  public:
   TRTDeviceAllocator(tensorflow::Allocator* allocator);
@@ -62,6 +69,9 @@ class TRTDeviceAllocator : public nvinfer1::IGpuAllocator {
 
  private:
   tensorflow::Allocator* allocator_;
+
+  // supporting alignment from allocation request requires a map to free;
+  std::unordered_map<void*, void*> mem_map_;
 };
 
 }  // namespace tensorrt
