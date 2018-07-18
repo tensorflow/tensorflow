@@ -364,11 +364,15 @@ tf_kernel_library(
     srcs = [
         "kernels/blas_gemm.cc",
         "kernels/blas_gemm.h",
+        "kernels/lstm_ops.cc",
+        "kernels/lstm_ops.h",
+        "ops/lstm_ops.cc",
     ],
     gpu_srcs = [
         "kernels/blas_gemm.h",
+        "kernels/lstm_ops_gpu.cu.cc",
+        "kernels/lstm_ops.h",
     ],
-    prefix = "kernels/lstm_ops",
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
