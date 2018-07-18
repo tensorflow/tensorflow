@@ -50,7 +50,7 @@ tf_module {
   }
   member_method {
     name: "conv1d"
-    argspec: "args=[\'value\', \'filters\', \'stride\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'stride\', \'padding\', \'use_cudnn_on_gpu\', \'data_format\', \'name\', \'value\', \'filters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "conv2d"
