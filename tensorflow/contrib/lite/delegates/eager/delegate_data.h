@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 
 namespace tflite {
+namespace eager {
 
 // Data kept by the Eager delegate for the lifetime of an Interpreter.
 class DelegateData {
@@ -41,6 +42,7 @@ class DelegateData {
   BufferMap buffer_map_;
 };
 
+}  // namespace eager
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_DELEGATE_DATA_H_

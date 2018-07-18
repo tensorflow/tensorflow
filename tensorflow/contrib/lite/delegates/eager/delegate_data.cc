@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
+namespace eager {
 tensorflow::Status DelegateData::Create(std::unique_ptr<DelegateData>* data) {
   std::vector<tensorflow::Device*> devices;
 
@@ -41,4 +42,5 @@ DelegateData::DelegateData(tensorflow::EagerContext* eager_context)
 
 DelegateData::~DelegateData() {}
 
+}  // namespace eager
 }  // namespace tflite
