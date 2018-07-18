@@ -836,6 +836,27 @@ class TensorBoard(Callback):
       self._make_histogram_ops(model)
       self.merged = tf_summary.merge_all()
 
+    try:
+      from tensorboard import summary as summary_lib
+      from tensorboard.plugins.custom_scalar import layout_pb2
+
+      layout_summary = summary_lib.custom_scalar_pb(
+          layout_pb2.Layout(category=[
+              layout_pb2.Category(
+                  title='metrics',
+                  chart=[
+                      layout_pb2.Chart(
+                          title=metric,
+                          multiline=layout_pb2.MultilineChartContent(
+                              tag=[r'(val_{0}|{0})'.format(metric)])
+                      ) for metric in self.model.metrics_names])
+              ]))
+
+      self.writer.add_summary(layout_summary)
+    except ImportError:
+      logging.warning('Failed to import TensorBoard. '
+                      'Skipping custom scalar plugin.')
+
     # If both embedding_freq and embeddings_data are available, we will
     # visualize embeddings.
     if self.embeddings_freq and self.embeddings_data is not None:
