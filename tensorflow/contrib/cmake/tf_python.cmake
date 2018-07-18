@@ -731,6 +731,11 @@ else()
                                      ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.so)
 endif()
 
+# copy mkl shared libraries into python built distribution
+if(tensorflow_ENABLE_MKL_SUPPORT)
+  add_custom_command(TARGET pywrap_tensorflow_internal POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${mkl_BIN_DIRS} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+endif(tensorflow_ENABLE_MKL_SUPPORT)
 
 ########################################################
 # Generate API __init__.py files.
@@ -787,7 +792,7 @@ if (tensorflow_ENABLE_MKL_SUPPORT)
                   "--apiname=tensorflow"
                   "${api_init_list_file}"
 
-          COMMENT "Generating __init__.py files for Python API."
+          COMMENT "Generating __init__.py files for Python API. (MKL included)"
           WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
           VERBATIM
     )
@@ -842,22 +847,46 @@ set(estimator_api_init_list_file "${tensorflow_source_dir}/estimator_api_init_fi
 file(WRITE "${estimator_api_init_list_file}" "${api_init_files}")
 
 # Run create_python_api.py to generate __init__.py files.
-add_custom_command(
-      OUTPUT ${api_init_files}
-      DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
+if (tensorflow_ENABLE_MKL_SUPPORT)
+    # add mkl dist dlls to system path for python
+    # TODO: In current cmake version, PY_RUNTIME_ENV behaves strange with multiple paths,
+    # so we have to specify only one path in it to work around the issue. We need this if/else
+    # to protect overwriting CUDA environments
+    set(PY_RUNTIME_ENV ${mkl_BIN_DIRS})
+    add_custom_command(
+          OUTPUT ${api_init_files}
+          DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
 
-      # Run create_python_api.py to generate API init files.
-      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
-              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
-              "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
-              "--package=tensorflow.python.estimator"
-              "--apiname=estimator"
-	      "--output_package=tensorflow.python.estimator.api"
-              "${estimator_api_init_list_file}"
+          # Run create_python_api.py to generate API init files.
+          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python PATH=${PY_RUNTIME_ENV} ${PYTHON_EXECUTABLE}
+                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
+                  "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
+                  "--package=tensorflow.python.estimator"
+                  "--apiname=estimator"
+                  "--output_package=tensorflow.python.estimator.api"
+                  "${estimator_api_init_list_file}"
 
-      COMMENT "Generating __init__.py files for Python API."
-      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
-)
+          COMMENT "Generating __init__.py files for Python API. (MKL included)"
+          WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
+    )
+else (tensorflow_ENABLE_MKL_SUPPORT)
+    add_custom_command(
+          OUTPUT ${api_init_files}
+          DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
+
+          # Run create_python_api.py to generate API init files.
+          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
+                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
+                  "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
+                  "--package=tensorflow.python.estimator"
+                  "--apiname=estimator"
+                  "--output_package=tensorflow.python.estimator.api"
+                  "${estimator_api_init_list_file}"
+
+          COMMENT "Generating __init__.py files for Python API."
+          WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
+    )
+endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 add_custom_target(estimator_python_api SOURCES ${api_init_files})
 add_dependencies(estimator_python_api tf_python_ops)

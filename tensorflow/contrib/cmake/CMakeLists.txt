@@ -281,7 +281,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     farmhash_copy_headers_to_destination
     highwayhash_copy_headers_to_destination
     nsync_copy_headers_to_destination
-    protobuf
+    protobuf_generate_pb_files
     eigen
     gemmlowp
     cub

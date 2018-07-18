@@ -16,7 +16,7 @@ include (ExternalProject)
 
 set(PROTOBUF_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src)
 set(PROTOBUF_URL https://github.com/google/protobuf.git)
-set(PROTOBUF_TAG v3.6.0)
+set(PROTOBUF_TAG ce044817c7ba0aea27c3fd8e496635d94d20a755)
 
 if(WIN32)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
@@ -79,3 +79,19 @@ ExternalProject_Add(protobuf
         -Dprotobuf_MSVC_STATIC_RUNTIME:BOOL=OFF
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )
+
+# After building protobuf, one needs to run `setup.py build_py` in its output directory to
+# generate from proto files. Currently this command uses the external patched script to do
+# this "dirty" job
+add_custom_target(protobuf_generate_pb_files
+  COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROTOBUF_INCLUDE_DIRS}/../python ${PYTHON_EXECUTABLE}
+      "${CMAKE_SOURCE_DIR}/patches/protobuf/build_pb.py"
+      "${PROTOBUF_INCLUDE_DIRS}/../python"
+      "${PROTOBUF_PROTOC_EXECUTABLE}"
+  DEPENDS protobuf)
+
+# # For later generating python APIs, this command makes protobuf in the search path of python, to
+# # succesfully import google.protobuf in the targets `tf_python_api` and `estimator_python_api`
+# add_custom_target(protobuf_copy_pip_package_to_dest
+#   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROTOBUF_INCLUDE_DIRS}/../python ${CMAKE_BINARY_DIR}/tf_python
+#   DEPENDS protobuf protobuf_generate_pb_files)
