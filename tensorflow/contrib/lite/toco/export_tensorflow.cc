@@ -1207,17 +1207,19 @@ void ConvertRangeOperator(const Model& model, const RangeOperator& src_op,
       GetTensorFlowDataType(src_op.dtype));
 }
 
-void ConvertStackOperator(const Model& model, const StackOperator& src_op,
-                          GraphDef* tensorflow_graph) {
-  tensorflow::NodeDef* stack_op = tensorflow_graph->add_node();
-  stack_op->set_op("Stack");
-  stack_op->set_name(src_op.outputs[0]);
+void ConvertPackOperator(const Model& model, const PackOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* pack_op = tensorflow_graph->add_node();
+  pack_op->set_op("Pack");
+  pack_op->set_name(src_op.outputs[0]);
   for (const auto& input : src_op.inputs) {
-    *stack_op->add_input() = input;
+    *pack_op->add_input() = input;
   }
-  (*stack_op->mutable_attr())["elem_type"].set_type(
+  (*pack_op->mutable_attr())["elem_type"].set_type(
       GetTensorFlowDataType(model, src_op.outputs[0]));
-  (*stack_op->mutable_attr())["axis"].set_i(src_op.axis);
+  (*pack_op->mutable_attr())["axis"].set_i(src_op.axis);
+  (*pack_op->mutable_attr())["N"].set_i(src_op.inputs.size());
+  (*pack_op->mutable_attr())["T"].set_type(GetTensorFlowDataType(src_op.dtype));
 }
 
 void ConvertFillOperator(const Model& model, const FillOperator& src_op,
@@ -1623,10 +1625,11 @@ void ConvertSliceOperator(const Model& model, const SliceOperator& src_op,
   CreateSliceInput(src_op.inputs[2], src_op.size, tensorflow_graph);
 }
 
-void ConvertMeanOperator(const Model& model, const MeanOperator& src_op,
-                         GraphDef* tensorflow_graph) {
+template <typename T>
+void ConvertReduceOperator(const Model& model, const T& src_op,
+                           GraphDef* tensorflow_graph, const string& op_name) {
   tensorflow::NodeDef* new_op = tensorflow_graph->add_node();
-  new_op->set_op("Mean");
+  new_op->set_op(op_name);
   new_op->set_name(src_op.outputs[0]);
   CHECK_EQ(src_op.inputs.size(), 2);
   *new_op->add_input() = src_op.inputs[0];
@@ -1961,8 +1964,20 @@ void ConvertOperator(const Model& model, const Operator& src_op,
         model, static_cast<const StridedSliceOperator&>(src_op),
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kMean) {
-    ConvertMeanOperator(model, static_cast<const MeanOperator&>(src_op),
-                        tensorflow_graph);
+    ConvertReduceOperator(model, static_cast<const MeanOperator&>(src_op),
+                          tensorflow_graph, "Mean");
+  } else if (src_op.type == OperatorType::kSum) {
+    ConvertReduceOperator(model,
+                          static_cast<const TensorFlowSumOperator&>(src_op),
+                          tensorflow_graph, "Sum");
+  } else if (src_op.type == OperatorType::kReduceProd) {
+    ConvertReduceOperator(model,
+                          static_cast<const TensorFlowProdOperator&>(src_op),
+                          tensorflow_graph, "Prod");
+  } else if (src_op.type == OperatorType::kReduceMax) {
+    ConvertReduceOperator(model,
+                          static_cast<const TensorFlowMaxOperator&>(src_op),
+                          tensorflow_graph, "Max");
   } else if (src_op.type == OperatorType::kSub) {
     ConvertSubOperator(model, static_cast<const SubOperator&>(src_op),
                        tensorflow_graph);
@@ -2002,9 +2017,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kRange) {
     ConvertRangeOperator(model, static_cast<const RangeOperator&>(src_op),
                          tensorflow_graph);
-  } else if (src_op.type == OperatorType::kStack) {
-    ConvertStackOperator(model, static_cast<const StackOperator&>(src_op),
-                         tensorflow_graph);
+  } else if (src_op.type == OperatorType::kPack) {
+    ConvertPackOperator(model, static_cast<const PackOperator&>(src_op),
+                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kFill) {
     ConvertFillOperator(model, static_cast<const FillOperator&>(src_op),
                         tensorflow_graph);

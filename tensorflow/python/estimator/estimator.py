@@ -29,8 +29,6 @@ import six
 
 from google.protobuf import message
 from tensorflow.core.framework import summary_pb2
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -216,11 +214,7 @@ class Estimator(object):
     logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:
-      rewrite_opts = rewriter_config_pb2.RewriterConfig(
-          meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE)
-      graph_opts = config_pb2.GraphOptions(rewrite_options=rewrite_opts)
-      self._session_config = config_pb2.ConfigProto(
-          allow_soft_placement=True, graph_options=graph_opts)
+      self._session_config = run_config.get_default_session_config()
     else:
       self._session_config = self._config.session_config
 

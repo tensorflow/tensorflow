@@ -34,7 +34,6 @@ cc_library(
     srcs = ["csv_dataset_op.cc"],
     deps = [
         "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
