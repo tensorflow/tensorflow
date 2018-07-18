@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TensorFlow is an open source machine learning framework for everyone.
-
-TensorFlow is an open source software library for high performance numerical
+"""TensorFlow is an open source software library for high performance numerical
 computation. Its flexible architecture allows easy deployment of computation
 across a variety of platforms (CPUs, GPUs, TPUs), and from desktops to clusters
 of servers to mobile and edge devices.
@@ -45,7 +43,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.9.0'
+_VERSION = '1.9.0.1'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -65,7 +63,7 @@ if sys.byteorder == 'little':
   # See https://github.com/tensorflow/tensorflow/issues/17882.
   REQUIRED_PACKAGES.append('grpcio >= 1.8.6')
 
-project_name = 'tensorflow'
+project_name = 'eic-tensorflow'
 if '--project_name' in sys.argv:
   project_name_idx = sys.argv.index('--project_name')
   project_name = sys.argv[project_name_idx + 1]
