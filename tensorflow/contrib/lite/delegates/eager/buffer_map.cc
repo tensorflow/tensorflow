@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/log_memory.h"
 
 namespace tflite {
+namespace eager {
 namespace {
 // A tensor buffer that is allocated, deallocated and populated by TF Lite.
 class TfLiteTensorBuffer : public tensorflow::TensorBuffer {
@@ -102,4 +103,5 @@ void BufferMap::SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor) {
   id_to_tensor_[tensor_index] = std::move(tensor);
 }
 
+}  // namespace eager
 }  // namespace tflite

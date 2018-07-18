@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
+namespace eager {
 namespace {
 
 TEST(DelegateDataTest, Basic) {
@@ -33,6 +34,7 @@ TEST(DelegateDataTest, Basic) {
 }
 
 }  // namespace
+}  // namespace eager
 }  // namespace tflite
 
 int main(int argc, char** argv) {
