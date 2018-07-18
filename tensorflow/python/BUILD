@@ -1044,6 +1044,7 @@ py_test(
         ":client_testlib",
         ":constant_op",
         ":error_interpolation",
+        ":traceable_stack",
     ],
 )
 
