@@ -36,11 +36,12 @@ class SimpleSingleEngineGraphDefTest(trt_test.TfTrtIntegrationTestBase):
     """Create a graph containing single segment."""
     # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
+    input_name = "input"
     input_dims = [100, 24, 24, 2]
     g = ops.Graph()
     with g.as_default():
       inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=self.input_name)
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
       with g.device("/GPU:0"):
         conv_filter = constant_op.constant(
             [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
@@ -62,7 +63,8 @@ class SimpleSingleEngineGraphDefTest(trt_test.TfTrtIntegrationTestBase):
       array_ops.squeeze(pool, name=self.output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_dims=input_dims,
+        input_names=[input_name],
+        input_dims=[input_dims],
         num_expected_engines=1,
         expected_output_dims=(100, 6, 6, 6),
         allclose_atol=1.e-03,
@@ -75,11 +77,12 @@ class SimpleMultiEngineGraphDefTest(trt_test.TfTrtIntegrationTestBase):
     """Create a graph containing multiple segment."""
     # TODO(aaroey): test graph with different dtypes.
     dtype = dtypes.float32
+    input_name = "input"
     input_dims = [100, 24, 24, 2]
     g = ops.Graph()
     with g.as_default():
       inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=self.input_name)
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
       with g.device("/GPU:0"):
         conv_filter = constant_op.constant(
             [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
@@ -109,7 +112,8 @@ class SimpleMultiEngineGraphDefTest(trt_test.TfTrtIntegrationTestBase):
       array_ops.squeeze(s, name=self.output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_dims=input_dims,
+        input_names=[input_name],
+        input_dims=[input_dims],
         num_expected_engines=2,
         expected_output_dims=(100, 12, 12, 6),
         allclose_atol=1.e-03,

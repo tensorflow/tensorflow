@@ -35,8 +35,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 TfTrtIntegrationTestParams = namedtuple("TfTrtIntegrationTestParams", [
-    "gdef", "input_dims", "num_expected_engines", "expected_output_dims",
-    "allclose_atol", "allclose_rtol"
+    "gdef", "input_names", "input_dims", "num_expected_engines",
+    "expected_output_dims", "allclose_atol", "allclose_rtol"
 ])
 
 PRECISION_MODES = ["FP32", "FP16", "INT8"]
@@ -48,10 +48,6 @@ def _IsQuantizationMode(mode):
 
 class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration."""
-
-  @property
-  def input_name(self):
-    return "input"
 
   @property
   def output_name(self):
@@ -98,7 +94,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       custom_op = rewriter_cfg.custom_optimizers.add()
       custom_op.name = "TensorRTOptimizer"
       custom_op.parameter_map["minimum_segment_size"].i = 3
-      custom_op.parameter_map["max_batch_size"].i = params.input_dims[0]
+      custom_op.parameter_map["max_batch_size"].i = max(
+          [dims[0] for dims in params.input_dims])
       custom_op.parameter_map["is_dynamic_op"].b = is_dynamic_op
       custom_op.parameter_map["max_workspace_size_bytes"].i = 1 << 25
       custom_op.parameter_map["precision_mode"].s = self._ToBytes(
@@ -117,20 +114,23 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _RunGraph(self, params, gdef, input_data, config, num_runs=2):
     """Run given graphdef multiple times."""
+    assert len(params.input_names) == len(input_data)
     g = ops.Graph()
     with g.as_default():
-      inp, out = importer.import_graph_def(
+      io_ops = importer.import_graph_def(
           graph_def=gdef,
-          return_elements=[self.input_name, self.output_name],
+          return_elements=params.input_names + [self.output_name],
           name="")
-      inp = inp.outputs[0]
-      out = out.outputs[0]
+      inp = [i.outputs[0] for i in io_ops[:-1]]
+      assert len(inp) == len(input_data)
+      out = io_ops[-1].outputs[0]
     with self.test_session(
         graph=g, config=config, use_gpu=True, force_gpu=True) as sess:
       val = None
       # Defaults to 2 runs to verify result across multiple runs is same.
       for _ in range(num_runs):
-        new_val = sess.run(out, {inp: input_data})
+        new_val = sess.run(out,
+                           {inp[i]: input_data[i] for i in range(len(inp))})
         self.assertEquals(params.expected_output_dims, new_val.shape)
         if val is not None:
           self.assertAllEqual(new_val, val)
@@ -148,7 +148,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return trt.create_inference_graph(
         input_graph_def=gdef,
         outputs=[self.output_name],
-        max_batch_size=params.input_dims[0],
+        max_batch_size=max([dims[0] for dims in params.input_dims]),
         max_workspace_size_bytes=1 << 25,
         precision_mode=precision_mode,
         minimum_segment_size=2,
@@ -180,7 +180,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def _RunTest(self, params, use_optimizer, precision_mode,
                dynamic_infer_engine, dynamic_calib_engine):
     assert precision_mode in PRECISION_MODES
-    inp = np.random.random_sample(params.input_dims)
+    input_data = [np.random.random_sample(dims) for dims in params.input_dims]
     input_gdef = params.gdef
     self._VerifyGraphDef(params, input_gdef)
 
@@ -188,7 +188,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     config_no_trt = self._GetConfigProto(params, False)
     logging.info("Running original graph w/o trt, config:\n%s",
                  str(config_no_trt))
-    ref_result = self._RunGraph(params, input_gdef, inp, config_no_trt)
+    ref_result = self._RunGraph(params, input_gdef, input_data, config_no_trt)
 
     # Run calibration if necessary.
     if _IsQuantizationMode(precision_mode):
@@ -200,13 +200,15 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         self.assertTrue(False)
         # TODO(aaroey): uncomment this and get infer_gdef when this mode is
         # supported.
-        # result = self._RunCalibration(params, input_gdef, inp, calib_config)
+        # result = self._RunCalibration(params, input_gdef, input_data,
+        #                               calib_config)
       else:
         calib_gdef = self._GetTrtGraphDef(params, input_gdef, precision_mode,
                                           dynamic_calib_engine)
         self._VerifyGraphDef(params, calib_gdef, precision_mode, False,
                              dynamic_calib_engine)
-        result = self._RunCalibration(params, calib_gdef, inp, calib_config)
+        result = self._RunCalibration(params, calib_gdef, input_data,
+                                      calib_config)
         infer_gdef = trt.calib_graph_to_infer_graph(calib_gdef)
         self._VerifyGraphDef(params, infer_gdef, precision_mode, True,
                              dynamic_calib_engine)
@@ -225,13 +227,13 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     logging.info("Running final inference graph, config:\n%s",
                  str(infer_config))
     if use_optimizer:
-      result = self._RunGraph(params, infer_gdef, inp, infer_config)
+      result = self._RunGraph(params, infer_gdef, input_data, infer_config)
     else:
       trt_infer_gdef = self._GetTrtGraphDef(params, infer_gdef, precision_mode,
                                             dynamic_infer_engine)
       self._VerifyGraphDef(params, trt_infer_gdef, precision_mode, True,
                            dynamic_infer_engine)
-      result = self._RunGraph(params, trt_infer_gdef, inp, infer_config)
+      result = self._RunGraph(params, trt_infer_gdef, input_data, infer_config)
 
     self.assertAllClose(
         ref_result,
