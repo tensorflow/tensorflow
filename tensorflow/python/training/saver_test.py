@@ -779,7 +779,8 @@ class SaveRestoreShardedTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
       test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir
@@ -1065,7 +1066,8 @@ class MaxToKeepTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
       test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir
@@ -1413,7 +1415,8 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
       test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir
@@ -1657,7 +1660,8 @@ class CheckpointStateTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
       test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir
@@ -1722,9 +1726,10 @@ class CheckpointStateTest(test.TestCase):
     abs_path = os.path.join(save_dir, "model-0")
     rel_path = os.path.join("train", "model-2")
     saver_module.update_checkpoint_state(
-      train_dir, rel_path, all_model_checkpoint_paths=[abs_path, rel_path])
+        train_dir, rel_path, all_model_checkpoint_paths=[abs_path, rel_path])
 
-    file_content = file_io.read_file_to_string(os.path.join(train_dir, "checkpoint"))
+    file_content = file_io.read_file_to_string(
+        os.path.join(train_dir, "checkpoint"))
     ckpt = CheckpointState()
     text_format.Merge(file_content, ckpt)
     self.assertEqual(ckpt.model_checkpoint_path, rel_path)
@@ -1733,9 +1738,12 @@ class CheckpointStateTest(test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
 
     ckpt = saver_module.get_checkpoint_state(train_dir)
-    self.assertEqual(ckpt.model_checkpoint_path, os.path.join(train_dir,rel_path))
+    self.assertEqual(
+        ckpt.model_checkpoint_path, os.path.join(train_dir, rel_path))
     self.assertEqual(len(ckpt.all_model_checkpoint_paths), 2)
-    self.assertEqual(ckpt.all_model_checkpoint_paths[-1], os.path.join(train_dir,rel_path))
+    self.assertEqual(
+        ckpt.all_model_checkpoint_paths[-1],
+        os.path.join(train_dir, rel_path))
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path)
 
 
@@ -1780,14 +1788,14 @@ class CheckpointStateTest(test.TestCase):
     abs_path0 = os.path.join(save_dir, "model-0")
     rel_path0 = "model-0"
     saver_module._update_checkpoint_state(  # pylint: disable=protected-access
-      save_dir=save_dir,
-      model_checkpoint_path=abs_path2,
-      all_model_checkpoint_paths=[rel_path0, abs_path2],
-      save_relative_paths=True)
+        save_dir=save_dir,
+        model_checkpoint_path=abs_path2,
+        all_model_checkpoint_paths=[rel_path0, abs_path2],
+        save_relative_paths=True)
 
     # File should contain relative paths.
     file_content = file_io.read_file_to_string(
-      os.path.join(save_dir, "checkpoint"))
+        os.path.join(save_dir, "checkpoint"))
     ckpt = CheckpointState()
     text_format.Merge(file_content, ckpt)
     self.assertEqual(ckpt.model_checkpoint_path, rel_path2)
@@ -1803,7 +1811,8 @@ class CheckpointStateTest(test.TestCase):
     self.assertEqual(ckpt.all_model_checkpoint_paths[0], abs_path0)
 
   def testCheckPointStateFailsWhenIncomplete(self):
-    save_dir = self._get_local_test_dir("checkpoint_state_fails_when_incomplete")
+    save_dir = self._get_local_test_dir(
+        "checkpoint_state_fails_when_incomplete")
     os.chdir(save_dir)
     ckpt_path = os.path.join(save_dir, "checkpoint")
     ckpt_file = open(ckpt_path, "w")
@@ -1813,7 +1822,8 @@ class CheckpointStateTest(test.TestCase):
       saver_module.get_checkpoint_state(save_dir)
 
   def testCheckPointCompletesRelativePaths(self):
-    save_dir = self._get_local_test_dir("checkpoint_completes_relative_paths")
+    save_dir = self._get_local_test_dir(
+        "checkpoint_completes_relative_paths")
     os.chdir(save_dir)
     ckpt_path = os.path.join(save_dir, "checkpoint")
     ckpt_file = open(ckpt_path, "w")
@@ -1841,8 +1851,10 @@ class MetaGraphTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
-      test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
+      test_dir = os.path.join(
+          os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir
     else:
@@ -2664,7 +2676,8 @@ class WriteGraphTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
       test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir
@@ -2755,7 +2768,8 @@ class ScopedGraphTest(test.TestCase):
     return test_dir
 
   def _get_test_dir(self, dirname):
-    if os.environ.has_key("HADOOP_HDFS_HOME") and os.environ.has_key("HADOOP_TEST_TMPDIR"):
+    if os.environ.has_key("HADOOP_HDFS_HOME") and \
+        os.environ.has_key("HADOOP_TEST_TMPDIR"):
       test_dir = os.path.join(os.environ['HADOOP_TEST_TMPDIR'], dirname)
       gfile.MakeDirs(test_dir)
       return test_dir

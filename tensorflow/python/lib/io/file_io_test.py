@@ -590,22 +590,25 @@ class FileIoTest(test.TestCase):
     self.assertEqual(path, p)
 
   def testParseUri(self):
-    self._testParseUri("hdfs://www.123.com/a/b", "hdfs", "www.123.com", "/a/b");
-    self._testParseUri("http://foo", "http", "foo", "");
-    self._testParseUri("/encrypted/://foo", "", "", "/encrypted/://foo");
-    self._testParseUri("/usr/local/foo", "", "", "/usr/local/foo");
-    self._testParseUri("file:///usr/local/foo", "file", "", "/usr/local/foo");
-    self._testParseUri("local.file:///usr/local/foo", "local.file", "","/usr/local/foo");
-    self._testParseUri("a-b:///foo", "", "", "a-b:///foo");
-    self._testParseUri(":///foo", "", "", ":///foo");
-    self._testParseUri("9dfd:///foo", "", "", "9dfd:///foo");
-    self._testParseUri("file:", "", "", "file:");
-    self._testParseUri("file:/", "", "", "file:/");
-    self._testParseUri("hdfs://localhost:8020/path/to/file", "hdfs","localhost:8020", "/path/to/file");
-    self._testParseUri("hdfs://localhost:8020", "hdfs", "localhost:8020", "");
-    self._testParseUri("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/");
-    self._testParseUri("A/b", "", "", "A/b");
-    self._testParseUri("C:/a/b", "", "", "C:/a/b");
+    self._testParseUri("hdfs://www.123.com/a/b", "hdfs", "www.123.com", "/a/b")
+    self._testParseUri("http://foo", "http", "foo", "")
+    self._testParseUri("/encrypted/://foo", "", "", "/encrypted/://foo")
+    self._testParseUri("/usr/local/foo", "", "", "/usr/local/foo")
+    self._testParseUri("file:///usr/local/foo", "file", "", "/usr/local/foo")
+    self._testParseUri(
+        "local.file:///usr/local/foo", "local.file", "", "/usr/local/foo")
+    self._testParseUri("a-b:///foo", "", "", "a-b:///foo")
+    self._testParseUri(":///foo", "", "", ":///foo")
+    self._testParseUri("9dfd:///foo", "", "", "9dfd:///foo")
+    self._testParseUri("file:", "", "", "file:")
+    self._testParseUri("file:/", "", "", "file:/")
+    self._testParseUri(
+        "hdfs://localhost:8020/path/to/file",
+        "hdfs", "localhost:8020", "/path/to/file")
+    self._testParseUri("hdfs://localhost:8020", "hdfs", "localhost:8020", "")
+    self._testParseUri("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/")
+    self._testParseUri("A/b", "", "", "A/b")
+    self._testParseUri("C:/a/b", "", "", "C:/a/b")
 
   def testIsLocal(self):
     self.assertTrue(file_io.islocal("a/b"))
