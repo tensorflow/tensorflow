@@ -40,6 +40,19 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, [3.0])
       self.assertTrue(len(s) > 100)
 
+  def testCreateConfig(self):
+    cfg = ipu.utils.create_ipu_config(type='IPU')
+    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+
+    cfg = ipu.utils.create_ipu_config(type='IPU_MODEL')
+    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+
+    cfg = ipu.utils.create_ipu_config(type='CPU')
+    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+
+    with self.assertRaises(Exception):
+      cfg = ipu.utils.create_ipu_config(type='Other')
+
   def testEventFetchAndStringDecode(self):
     with ops.device("/device:IPU:0"):
       a = array_ops.placeholder(np.float32, [1], name="a")

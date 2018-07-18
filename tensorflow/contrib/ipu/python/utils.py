@@ -20,9 +20,8 @@ from tensorflow.core.protobuf import config_pb2
 
 import time
 
-
 def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
-                      use_poplar_text_report=False):
+                      use_poplar_text_report=False, type='IPU_MODEL'):
   """Create the IPU options for an IPU model device.
 
   Args:
@@ -30,6 +29,7 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
     num_ipus: Number of IPUs in the model
     tiles_per_ipu: Number of tiles per IPU in the model
     use_poplar_text_report: Enable the poplar textual report summary
+    type: The type of hardware to target ('IPU', 'CPU', 'IPU_MODEL')
 
   Returns:
     An IPUOptions configuration protobuf, suitable for using in the creation
@@ -45,7 +45,15 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
 
   opts = config_pb2.IPUOptions()
   dev = opts.device_config.add()
-  dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+  if type == 'IPU':
+    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU
+  elif type == 'CPU':
+    dev.type = config_pb2.IPUOptions.DeviceConfig.CPU
+  elif type == 'IPU_MODEL':
+    dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_MODEL
+  else:
+    raise Exception("type parameter must be 'IPU', 'CPU', or 'IPU_MODEL'")
+
   dev.profiling.enable_compilation_trace = profiling
   dev.profiling.enable_io_trace = profiling
   dev.profiling.enable_execution_trace = profiling
