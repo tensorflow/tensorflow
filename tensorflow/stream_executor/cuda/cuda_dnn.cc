@@ -791,6 +791,11 @@ class CudnnActivationDescriptor {
     double relu_ceiling = 0.0;
     cudnnActivationMode_t mode;
     switch (activation_mode) {
+#if CUDNN_VERSION >= 7100
+      case dnn::ActivationMode::kNone:
+        mode = CUDNN_ACTIVATION_IDENTITY;
+        break;
+#endif
       case dnn::ActivationMode::kRelu6:
         relu_ceiling = 6.0;
         mode = CUDNN_ACTIVATION_CLIPPED_RELU;
@@ -2493,10 +2498,11 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
     DeviceMemory<Type>* output_data, ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  if (activation_mode != dnn::ActivationMode::kRelu) {
+  if (activation_mode != dnn::ActivationMode::kRelu &&
+      activation_mode != dnn::ActivationMode::kNone) {
     return port::Status(port::error::INVALID_ARGUMENT,
                         "cudnnConvolutionBiasActivationForward() only supports "
-                        "Relu activation.");
+                        "Relu or None activation.");
   }
 
   CudnnTensorDescriptor conv_input_nd(
