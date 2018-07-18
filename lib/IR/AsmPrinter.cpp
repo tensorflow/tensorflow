@@ -342,6 +342,8 @@ void FunctionState::printOperation(const Operation *op) {
         [&]() { os << ", "; });
     os << '}';
   }
+
+  // TODO: Print signature type once that is plumbed through to Operation.
 }
 
 //===----------------------------------------------------------------------===//
@@ -421,8 +423,30 @@ void CFGFunctionState::print(const Instruction *inst) {
 
 void CFGFunctionState::print(const OperationInst *inst) {
   printOperation(inst);
-}
 
+  // FIXME: Move this into printOperation when Operation has operands and
+  // results
+
+  // Print the type signature of the operation.
+  os << " : (";
+  interleave(
+      inst->getOperands(),
+      [&](const InstOperand &op) { moduleState->print(op.get()->getType()); },
+      [&]() { os << ", "; });
+  os << ") -> ";
+
+  auto resultList = inst->getResults();
+  if (resultList.size() == 1) {
+    moduleState->print(resultList[0].getType());
+  } else {
+    os << '(';
+    interleave(
+        resultList,
+        [&](const InstResult &result) { moduleState->print(result.getType()); },
+        [&]() { os << ", "; });
+    os << ')';
+  }
+}
 void CFGFunctionState::print(const BranchInst *inst) {
   os << "  br bb" << getBBID(inst->getDest());
 }

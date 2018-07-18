@@ -22,12 +22,13 @@
 #ifndef MLIR_IR_INSTRUCTIONS_H
 #define MLIR_IR_INSTRUCTIONS_H
 
-#include "mlir/Support/LLVM.h"
+#include "mlir/IR/CFGValue.h"
 #include "mlir/IR/Identifier.h"
-
 #include "mlir/IR/Operation.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
   class OperationInst;
@@ -54,7 +55,7 @@ public:
   /// Return the CFGFunction containing this instruction.
   CFGFunction *getFunction() const;
 
-  /// Destroy this instruction or one of its subclasses
+  /// Destroy this instruction and its subclass data.
   static void destroy(Instruction *inst);
 
   void print(raw_ostream &os) const;
@@ -83,14 +84,32 @@ inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
 
 /// Operations are the main instruction kind in MLIR, which represent all of the
 /// arithmetic and other basic computation.
-class OperationInst
-  : public Operation, public Instruction,
-    public llvm::ilist_node_with_parent<OperationInst, BasicBlock> {
+class OperationInst final
+    : public Operation,
+      public Instruction,
+      public llvm::ilist_node_with_parent<OperationInst, BasicBlock>,
+      private llvm::TrailingObjects<OperationInst, InstOperand, InstResult> {
 public:
-  explicit OperationInst(Identifier name, ArrayRef<NamedAttribute> attrs,
-                         MLIRContext *context)
-      : Operation(name, attrs, context), Instruction(Kind::Operation) {}
-  ~OperationInst() {}
+  /// Create a new OperationInst with the specific fields.
+  static OperationInst *create(Identifier name, ArrayRef<CFGValue *> operands,
+                               ArrayRef<Type *> resultTypes,
+                               ArrayRef<NamedAttribute> attributes,
+                               MLIRContext *context);
+  ~OperationInst();
+
+  ArrayRef<InstOperand> getOperands() const {
+    return {getTrailingObjects<InstOperand>(), numOperands};
+  }
+  MutableArrayRef<InstOperand> getOperands() {
+    return {getTrailingObjects<InstOperand>(), numOperands};
+  }
+
+  ArrayRef<InstResult> getResults() const {
+    return {getTrailingObjects<InstResult>(), numResults};
+  }
+  MutableArrayRef<InstResult> getResults() {
+    return {getTrailingObjects<InstResult>(), numResults};
+  }
 
   /// Unlink this instruction from its BasicBlock and delete it.
   void eraseFromBlock();
@@ -99,8 +118,22 @@ public:
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Operation;
   }
-};
 
+private:
+  const unsigned numOperands, numResults;
+
+  OperationInst(Identifier name, unsigned numOperands, unsigned numResults,
+                ArrayRef<NamedAttribute> attributes, MLIRContext *context);
+
+  // This stuff is used by the TrailingObjects template.
+  friend llvm::TrailingObjects<OperationInst, InstOperand, InstResult>;
+  size_t numTrailingObjects(OverloadToken<InstOperand>) const {
+    return numOperands;
+  }
+  size_t numTrailingObjects(OverloadToken<InstResult>) const {
+    return numResults;
+  }
+};
 
 /// Terminator instructions are the last part of a basic block, used to
 /// represent control flow and returns.
@@ -134,7 +167,7 @@ public:
     return dest;
   }
 
-  // TODO: need to take BB arguments.
+  // TODO: need to take operands to specify BB arguments
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {

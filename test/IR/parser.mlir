@@ -68,11 +68,16 @@ extfunc @functions((memref<1x?x4x?x?xaffineint, #map0, 0>, memref<i8, #map1, 0>)
 
 // CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) {
 cfgfunc @simpleCFG(i32, f32) {
-bb42(%0: i32, %f: f32):     // CHECK: bb0:
-  %1 = "foo"(%0)            // CHECK: "foo"()
-  "bar"(%1, %f)             // CHECK: "bar"()
-  return                    // CHECK: return
-}                           // CHECK: }
+// CHECK: bb0:
+bb42(%0: i32, %f: f32):
+  // CHECK: "foo"() : () -> i64
+  %1 = "foo"(%0) : (i32)->i64
+  // CHECK: "bar"() : () -> (i1, i1, i1)
+  "bar"(%1, %f) : (i64, f32) -> (i1,i1,i1)
+  // CHECK: return
+  return
+// CHECK: }
+}
 
 // CHECK-LABEL: cfgfunc @multiblock() -> i32 {
 cfgfunc @multiblock() -> i32 {
@@ -94,10 +99,10 @@ mlfunc @emptyMLF() {
 // CHECK-LABEL: mlfunc @mlfunc_with_ops() {
 mlfunc @mlfunc_with_ops() {
   // CHECK: dim xxx, 2 : sometype
-  %a = "dim"(%42){index: 2}
+  %a = "dim"(%42){index: 2}  : () -> affineint
 
   // CHECK: addf xx, yy : sometype
-  "addf"()
+  "addf"() : () -> ()
   return
 }
 
@@ -126,13 +131,13 @@ cfgfunc @attributes() {
 bb42:       // CHECK: bb0:
 
   // CHECK: "foo"()
-  "foo"(){}
+  "foo"(){} : ()->()
 
-  // CHECK: "foo"(){a: 1, b: -423, c: [true, false]}
-  "foo"(){a: 1, b: -423, c: [true, false] }
+  // CHECK: "foo"(){a: 1, b: -423, c: [true, false]}  : () -> ()
+  "foo"(){a: 1, b: -423, c: [true, false] } : () -> ()
 
-  // CHECK: "foo"(){cfgfunc: [], i123: 7, if: "foo"}
-  "foo"(){if: "foo", cfgfunc: [], i123: 7}
+  // CHECK: "foo"(){cfgfunc: [], i123: 7, if: "foo"} : () -> ()
+  "foo"(){if: "foo", cfgfunc: [], i123: 7} : () -> ()
 
   return
 }
@@ -141,9 +146,9 @@ bb42:       // CHECK: bb0:
 cfgfunc @standard_instrs() {
 bb42:       // CHECK: bb0:
   // CHECK: dim xxx, 2 : sometype
-  %a = "dim"(%42){index: 2}
+  %a = "dim"(%42){index: 2} : () -> affineint
 
   // CHECK: addf xx, yy : sometype
-  "addf"()
+  "addf"() : (f32,f32) -> f32
   return
 }

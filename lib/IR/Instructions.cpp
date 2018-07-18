@@ -52,6 +52,47 @@ CFGFunction *Instruction::getFunction() const {
 // OperationInst
 //===----------------------------------------------------------------------===//
 
+/// Create a new OperationInst with the specific fields.
+OperationInst *OperationInst::create(Identifier name,
+                                     ArrayRef<CFGValue *> operands,
+                                     ArrayRef<Type *> resultTypes,
+                                     ArrayRef<NamedAttribute> attributes,
+                                     MLIRContext *context) {
+  auto byteSize = totalSizeToAlloc<InstOperand, InstResult>(operands.size(),
+                                                            resultTypes.size());
+  void *rawMem = ::operator new(byteSize);
+
+  // Initialize the OperationInst part of the instruction.
+  auto inst = ::new (rawMem) OperationInst(
+      name, operands.size(), resultTypes.size(), attributes, context);
+
+  // Initialize the operands and results.
+  auto instOperands = inst->getOperands();
+  for (unsigned i = 0, e = operands.size(); i != e; ++i)
+    new (&instOperands[i]) InstOperand(inst, operands[i]);
+
+  auto instResults = inst->getResults();
+  for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
+    new (&instResults[i]) InstResult(resultTypes[i], inst);
+  return inst;
+}
+
+OperationInst::OperationInst(Identifier name, unsigned numOperands,
+                             unsigned numResults,
+                             ArrayRef<NamedAttribute> attributes,
+                             MLIRContext *context)
+    : Operation(name, attributes, context), Instruction(Kind::Operation),
+      numOperands(numOperands), numResults(numResults) {}
+
+OperationInst::~OperationInst() {
+  // Explicitly run the destructors for the operands and results.
+  for (auto &operand : getOperands())
+    operand.~InstOperand();
+
+  for (auto &result : getResults())
+    result.~InstResult();
+}
+
 mlir::BasicBlock *
 llvm::ilist_traits<::mlir::OperationInst>::getContainingBlock() {
   size_t Offset(
@@ -98,8 +139,6 @@ void OperationInst::eraseFromBlock() {
   assert(getBlock() && "Instruction has no parent");
   getBlock()->getOperations().erase(this);
 }
-
-
 
 //===----------------------------------------------------------------------===//
 // Terminators

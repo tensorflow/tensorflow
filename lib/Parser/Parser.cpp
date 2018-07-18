@@ -84,7 +84,8 @@ private:
 
 namespace {
 
-typedef std::function<Operation *(Identifier, ArrayRef<NamedAttribute>)>
+typedef std::function<Operation *(Identifier, ArrayRef<Type *>,
+                                  ArrayRef<NamedAttribute>)>
     CreateOperationFunction;
 
 /// This class implement support for parsing global entities like types and
@@ -1269,10 +1270,21 @@ Parser::parseOperation(const CreateOperationFunction &createOpFunc) {
       return ParseFailure;
   }
 
+  if (!consumeIf(Token::colon))
+    return emitError("expected ':' followed by instruction type");
+
+  auto typeLoc = getToken().getLoc();
+  auto type = parseType();
+  if (!type)
+    return ParseFailure;
+  auto fnType = dyn_cast<FunctionType>(type);
+  if (!fnType)
+    return emitError(typeLoc, "expected function type");
+
   // TODO: Don't drop result name and operand names on the floor.
   auto nameId = builder.getIdentifier(name);
 
-  auto oper = createOpFunc(nameId, attributes);
+  auto oper = createOpFunc(nameId, fnType->getResults(), attributes);
 
   if (!oper)
     return ParseFailure;
@@ -1392,9 +1404,9 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   // Set the insertion point to the block we want to insert new operations into.
   builder.setInsertionPoint(block);
 
-  auto createOpFunc = [this](Identifier name,
+  auto createOpFunc = [this](Identifier name, ArrayRef<Type *> resultTypes,
                              ArrayRef<NamedAttribute> attrs) -> Operation * {
-    return builder.createOperation(name, attrs);
+    return builder.createOperation(name, {}, resultTypes, attrs);
   };
 
   // Parse the list of operations that make up the body of the block.
@@ -1551,7 +1563,7 @@ ParseResult MLFunctionParser::parseElseClause(IfClause *elseClause) {
 /// Parse a list of statements ending with `return` or `}`
 ///
 ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
-  auto createOpFunc = [this](Identifier name,
+  auto createOpFunc = [this](Identifier name, ArrayRef<Type *> resultTypes,
                              ArrayRef<NamedAttribute> attrs) -> Operation * {
     return builder.createOperation(name, attrs);
   };

@@ -121,9 +121,11 @@ public:
     insertPoint = block->end();
   }
 
-  OperationInst *createOperation(Identifier name,
+  OperationInst *createOperation(Identifier name, ArrayRef<CFGValue *> operands,
+                                 ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {
-    auto op = new OperationInst(name, attributes, context);
+    auto op =
+        OperationInst::create(name, operands, resultTypes, attributes, context);
     block->getOperations().push_back(op);
     return op;
   }

@@ -110,10 +110,17 @@ mlfunc @no_return() {
 
 // -----
 
+cfgfunc @bad_op_type() {
+bb40:
+  "foo"() : i32  // expected-error {{expected function type}}
+  return
+}
+// -----
+
 cfgfunc @no_terminator() {
 bb40:
-  "foo"()
-  ""()   // expected-error {{empty operation name is invalid}}
+  "foo"() : ()->()
+  ""() : ()->()  // expected-error {{empty operation name is invalid}}
   return
 }
 
@@ -137,7 +144,7 @@ mlfunc @non_statement() {
 
 cfgfunc @malformed_dim() {
 bb42:
-  "dim"(){index: "xyz"}  // expected-error {{'dim' op requires an integer attribute named 'index'}}
+  "dim"(){index: "xyz"} : ()->i32 // expected-error {{'dim' op requires an integer attribute named 'index'}}
   return
 }
 
