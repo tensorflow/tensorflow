@@ -276,6 +276,52 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         graph, scope, 'DepthwiseConv2dNative', activation_op_name, with_bypass,
         delay, use_resource)
 
+  def testQuantize_AtrousConvWithoutBatchNorm(self):
+    self._RunWithoutBatchNormTestOverParameters(
+        self._TestQuantize_AtrousConvWithoutBatchNorm)
+
+  def _TestQuantize_AtrousConvWithoutBatchNorm(
+      self, activation, activation_op_name, with_bypass, delay, use_resource):
+    """Tests quantization: inputs -> atrous conv no batch norm -> Activation.
+
+    Args:
+      activation: Callable that returns an Operation, a factory method for the
+        Activation.
+      activation_op_name: String, name of the Activation operation.
+      with_bypass: Bool, when true there is an extra connection added from
+        inputs to just before Activation.
+      delay: Int (optional), delay in number of steps until quantization starts.
+      use_resource: Bool, when true uses resource variables.
+    """
+    graph = ops.Graph()
+    with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
+      batch_size, height, width, depth = 5, 128, 128, 3
+      inputs = array_ops.zeros((batch_size, height, width, depth))
+      dilation_rate = 2
+      activation_fn = None if with_bypass else activation
+      scope = 'test/test2' if with_bypass else 'test'
+      node = separable_conv2d(
+          inputs,
+          None, [3, 3],
+          rate=dilation_rate,
+          depth_multiplier=1.0,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          scope=scope)
+      if with_bypass:
+        node = math_ops.add(inputs, node, name='test/Add')
+        node = activation(node, name='test/' + activation_op_name)
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+      quantize.Quantize(graph, True, quant_delay=delay)
+
+    self._AssertCorrectQuantizedGraphWithoutBatchNorm(
+        graph, scope, 'DepthwiseConv2dNative', activation_op_name, with_bypass,
+        delay, use_resource)
+
   def _RunBatchNormTestOverParameters(self, test_fn):
     # TODO(suharshs): Use parameterized test once OSS TF supports it.
     parameters_list = [
@@ -543,6 +589,61 @@ class QuantizeTest(test_util.TensorFlowTestCase):
           graph, scope, 'DepthwiseConv2dNative', activation_op_name,
           with_bypass, delay, use_resource)
 
+  def testQuantize_AtrousConvWithBatchNorm(self):
+    self._RunBatchNormTestOverParameters(
+        self._TestQuantize_AtrousConvWithBatchNorm)
+
+  def _TestQuantize_AtrousConvWithBatchNorm(
+      self, activation, activation_op_name, with_bypass, delay,
+      fused_batch_norm, use_resource):
+    """Tests quantization: inputs -> atrous conv with batch norm -> Activation.
+
+    Args:
+      activation: Callable that returns an Operation, a factory method for the
+        Activation.
+      activation_op_name: String, name of the Activation operation.
+      with_bypass: Bool, when true there is an extra connection added from
+        inputs to just before Activation.
+      delay: Int (optional), delay in number of steps until quantization starts.
+      fused_batch_norm: Bool, when true use FusedBatchNorm.
+      use_resource: Bool, when true uses resource variables.
+    """
+    graph = ops.Graph()
+    with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
+      batch_size, height, width, depth = 5, 128, 128, 3
+      inputs = array_ops.zeros((batch_size, height, width, depth))
+      dilation_rate = 2
+      scope = 'test/test2' if with_bypass else 'test'
+      node = separable_conv2d(
+          inputs,
+          None, [3, 3],
+          rate=dilation_rate,
+          depth_multiplier=1.0,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          normalizer_fn=batch_norm,
+          normalizer_params=self._BatchNormParams(fused_batch_norm),
+          scope=scope)
+
+      # Manually add a bypass (optional) and an activation.
+      if with_bypass:
+        node = math_ops.add(inputs, node, name='test/Add')
+
+      node = activation(node, name='test/' + activation_op_name)
+
+      update_barrier = control_flow_ops.no_op(name='update_barrier')
+      with ops.control_dependencies([update_barrier]):
+        array_ops.identity(node, name='control_dependency')
+
+      fold_batch_norms.FoldBatchNorms(graph, is_training=True)
+      quantize.Quantize(graph, True, quant_delay=delay)
+
+      self._AssertCorrectQuantizedGraphWithBatchNorm(
+          graph, scope, 'DepthwiseConv2dNative', activation_op_name,
+          with_bypass, delay, use_resource)
+
   def _AssertIdempotent(self, graph):
     # Ensure that calling the rewrite again doesn't change the graph.
     graph_def_before = str(graph.as_graph_def())
@@ -553,8 +654,80 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     graph_def_after = str(graph.as_graph_def())
     self.assertEqual(graph_def_before, graph_def_after)
 
-  def _BatchNormParams(self, fused=False):
-    return {'center': True, 'scale': True, 'decay': 1.0 - 0.003, 'fused': fused}
+  def testBatchNormForcedUpdates(self):
+    parameter_list = [
+        # (activation, activation_op_name, fused_batch_norm)
+        (nn_ops.relu6, 'Relu6', False),
+        (nn_ops.relu, 'Relu', False),
+        (array_ops.identity, 'Identity', False),
+        (nn_ops.relu6, 'Relu6', True),
+        (nn_ops.relu, 'Relu', True),
+        (array_ops.identity, 'Identity', True),
+    ]
+    for params in parameter_list:
+      self._TestBatchNormForcedUpdates(params[0], params[1], params[2], False)
+      self._TestBatchNormForcedUpdates(params[0], params[1], params[2], True)
+
+  def _TestBatchNormForcedUpdates(self, activation, activation_op_name,
+                                  fused_batch_norm, use_resource):
+    """post_activation bypass quantization should happen with forced updates."""
+    graph = ops.Graph()
+    with graph.as_default():
+      variable_scope.get_variable_scope().set_use_resource(use_resource)
+      batch_size, height, width, depth = 5, 128, 128, 3
+      input1 = array_ops.zeros((batch_size, height, width, depth))
+      input2 = array_ops.zeros((batch_size, height / 2, width / 2, 32))
+      # Setting updates_collections to None forces updates adding an extra
+      # identity operation following batch norms.
+      bn_params = self._BatchNormParams(
+          fused=fused_batch_norm, force_updates=True)
+      conv = conv2d(
+          input1,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation,
+          normalizer_fn=batch_norm,
+          normalizer_params=bn_params,
+          scope='test/test')
+      bypass_tensor = math_ops.add(conv, input2, name='test/add')
+      # The output of the post_activation bypass will be another layer.
+      _ = conv2d(
+          bypass_tensor,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          normalizer_fn=batch_norm,
+          normalizer_params=bn_params,
+          activation_fn=activation,
+          scope='test/unused')
+
+      fold_batch_norms.FoldBatchNorms(graph, is_training=True)
+      quantize.Quantize(graph, is_training=True)
+
+      # Ensure that the bypass node is preceded by and followed by a
+      # FakeQuantWithMinMaxVar operation, since the output of the Add isn't an
+      # activation.
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [c.type for c in bypass_tensor.consumers()])
+      self.assertTrue('FakeQuantWithMinMaxVars' in
+                      [i.op.type for i in bypass_tensor.op.inputs])
+
+    with open('/tmp/bn_quant_test.pbtxt', 'w') as f:
+      f.write(str(graph.as_graph_def()))
+
+  def _BatchNormParams(self, fused=False, force_updates=False):
+    params = {
+        'center': True,
+        'scale': True,
+        'decay': 1.0 - 0.003,
+        'fused': fused
+    }
+    if force_updates:
+      params['updates_collections'] = None
+    return params
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.

@@ -362,6 +362,19 @@ REGISTER_OP("FilterDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("WindowDataset")
+    .Input("input_dataset: variant")
+    .Input("window_size: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // batch_size should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("BatchDataset")
     .Input("input_dataset: variant")
     .Input("batch_size: int64")
@@ -391,19 +404,20 @@ REGISTER_OP("BatchDatasetV2")
       return shape_inference::ScalarShape(c);
     });
 
-// TODO(mrry): move SlideDataset to contrib in the future.
 REGISTER_OP("SlideDataset")
     .Input("input_dataset: variant")
     .Input("window_size: int64")
-    .Input("stride: int64")
+    .Input("window_shift: int64")
+    .Input("window_stride: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // window_size and stride should be scalars.
+      // window_size, window_shift, and window_stride should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
@@ -631,6 +645,14 @@ REGISTER_OP("Iterator")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("IteratorV2")
+    .Output("handle: resource")
+    .Attr("shared_name: string")
+    .Attr("container: string")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("AnonymousIterator")
     .Output("handle: resource")
     .Attr("output_types: list(type) >= 1")
@@ -708,6 +730,13 @@ REGISTER_OP("IteratorFromStringHandle")
     .Attr("output_shapes: list(shape) >= 0 = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("IteratorFromStringHandleV2")
+    .Input("string_handle: string")
+    .Output("resource_handle: resource")
+    .Attr("output_types: list(type) >= 0 = []")
+    .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("SerializeIterator")
     .Input("resource_handle: resource")
     .Output("serialized: variant")
@@ -770,11 +799,9 @@ REGISTER_OP("DatasetToGraph")
     .Output("graph: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("IdentityDataset")
+REGISTER_OP("SinkDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptimizeDataset")

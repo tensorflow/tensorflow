@@ -63,6 +63,8 @@ class GrpcServer : public ServerInterface {
  public:
   static Status Create(const ServerDef& server_def, Env* env,
                        std::unique_ptr<ServerInterface>* out_server);
+  static Status Create(const ServerDef& server_def, Env* env,
+                       std::unique_ptr<GrpcServer>* out_server);
 
   // Destruction is only supported in the factory method. Clean
   // shutdown is not currently implemented for this server type.
@@ -73,6 +75,11 @@ class GrpcServer : public ServerInterface {
   Status Stop() override;
   Status Join() override;
   const string target() const override;
+
+  WorkerEnv* worker_env() { return &worker_env_; }
+  MasterEnv* master_env() { return &master_env_; }
+
+  std::shared_ptr<GrpcChannelCache> channel_cache() { return channel_cache_; }
 
  protected:
   Status Init(ServiceInitFunction service_func,
@@ -89,6 +96,9 @@ class GrpcServer : public ServerInterface {
   Status Init(ServiceInitFunction service_func,
               const RendezvousMgrCreationFunction& rendezvous_mgr_func,
               const CollectiveMgrCreationFunction& collective_mgr_func);
+
+  Status Init(ServiceInitFunction service_func,
+              const RendezvousMgrCreationFunction& rendezvous_mgr_func);
 
   Status Init();
 
@@ -111,11 +121,6 @@ class GrpcServer : public ServerInterface {
   // Returns the port to which this server is bound.
   // This method may only be called after `this->Init()` returns successfully.
   int bound_port() const { return bound_port_; }
-
-  WorkerEnv* worker_env() { return &worker_env_; }
-  MasterEnv* master_env() { return &master_env_; }
-
-  std::shared_ptr<GrpcChannelCache> channel_cache() { return channel_cache_; }
 
   const ServerDef& server_def() const { return server_def_; }
 
@@ -154,6 +159,11 @@ class GrpcServer : public ServerInterface {
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
   std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
+
+  // TensorFlow Eager implementation, and RPC polling thread.
+  AsyncServiceInterface* eager_service_ = nullptr;
+  std::unique_ptr<Thread> eager_thread_ GUARDED_BY(mu_);
+  std::shared_ptr<WorkerSession> worker_session_;
 
   std::unique_ptr<::grpc::Server> server_ GUARDED_BY(mu_);
 };

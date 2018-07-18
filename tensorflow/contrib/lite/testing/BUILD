@@ -20,11 +20,15 @@ load(
     size = "large",
     srcs = ["generated_examples_zip_test.cc"],
     args = [
-        "--zip_file_path=$(location :zip_%s)" % test_name,
-        # TODO(angerson) We may be able to add an external unzip binary instead
-        # of relying on an existing one for OSS builds.
-        "--unzip_binary_path=/usr/bin/unzip",
-    ],
+    ] + select({
+        "//tensorflow:android": [],
+        "//conditions:default": [
+            "--zip_file_path=$(location :zip_%s)" % test_name,
+            # TODO(angerson) We may be able to add an external unzip binary instead
+            # of relying on an existing one for OSS builds.
+            "--unzip_binary_path=/usr/bin/unzip",
+        ],
+    }),
     data = [
         ":zip_%s" % test_name,
     ],
@@ -108,6 +112,7 @@ cc_library(
 cc_test(
     name = "message_test",
     srcs = ["message_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":message",
         "@com_google_googletest//:gtest_main",
@@ -127,6 +132,7 @@ cc_test(
     name = "split_test",
     size = "small",
     srcs = ["split_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":split",
         "@com_google_googletest//:gtest_main",
@@ -142,6 +148,7 @@ cc_test(
     name = "join_test",
     size = "small",
     srcs = ["join_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":join",
         "@com_google_googletest//:gtest_main",
@@ -167,7 +174,9 @@ cc_test(
     srcs = ["tflite_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
+        "no_oss",
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":tflite_driver",
@@ -187,6 +196,7 @@ cc_library(
 cc_test(
     name = "tokenize_test",
     srcs = ["tokenize_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":tokenize",
         "@com_google_googletest//:gtest_main",
@@ -209,6 +219,7 @@ cc_library(
 cc_test(
     name = "test_runner_test",
     srcs = ["test_runner_test.cc"],
+    tags = ["no_oss"],
     deps = [
         ":test_runner",
         "@com_google_googletest//:gtest_main",
@@ -247,6 +258,7 @@ cc_test(
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -272,6 +284,7 @@ cc_test(
     size = "small",
     srcs = ["generate_testspec_test.cc"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [

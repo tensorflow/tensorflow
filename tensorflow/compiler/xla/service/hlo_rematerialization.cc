@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/copy_insertion.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -1201,7 +1202,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
 
 StatusOr<bool> HloRematerialization::Run(
     HloModule* module, SequentialHloOrdering::HloModuleSequence* sequence,
-    int64 memory_limit_bytes, RematerializationSizes* sizes) {
+    int64 memory_limit_bytes, RematerializationSizes* sizes,
+    bool run_copy_elision) {
   // The sequence is constructed entirely by this method.
   TF_RET_CHECK(sequence->empty());
 
@@ -1230,12 +1232,21 @@ StatusOr<bool> HloRematerialization::Run(
 
   XLA_VLOG_LINES(3, "Before HloRematerialization:\n" + module->ToString());
   // Create initial sequence of HLO instructions.
-  TF_ASSIGN_OR_RETURN(*sequence, CreateMemoryMinimizingSequence(
+  TF_ASSIGN_OR_RETURN(*sequence, ScheduleComputationsInModule(
                                      *module,
                                      [this](const BufferValue& buffer) {
                                        return size_function_(buffer.shape());
                                      },
                                      scheduler_algorithm_));
+  if (run_copy_elision) {
+    // We run a separate pass of copy elision here because the sequential
+    // ordering from the HLO schedule allows for more copies to be eliminated.
+    // TODO(b/80249101): Instead of a separate copy elision pass, use the
+    // ordering from the HLO schedule directly for copy insertion.
+    SequentialHloOrdering ordering(module, *sequence);
+    TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(ordering, module));
+  }
+
   // Compute peak memory usage of all computations in the module called in a
   // sequential context.
   call_graph_ = CallGraph::Build(module);
@@ -1338,9 +1349,10 @@ StatusOr<bool> HloRematerialization::Run(
     int64 memory_limit_bytes, HloModule* hlo_module,
     MemorySchedulerAlgorithm scheduler_algorithm,
     SequentialHloOrdering::HloModuleSequence* sequence,
-    RematerializationSizes* sizes) {
+    RematerializationSizes* sizes, bool run_copy_elision) {
   HloRematerialization remat(scheduler_algorithm, size_function);
-  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes);
+  return remat.Run(hlo_module, sequence, memory_limit_bytes, sizes,
+                   run_copy_elision);
 }
 
 }  // namespace xla

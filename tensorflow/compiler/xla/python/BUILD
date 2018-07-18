@@ -33,6 +33,7 @@ cc_library(
     srcs = ["numpy_bridge.cc"],
     hdrs = ["numpy_bridge.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -52,9 +53,9 @@ cc_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
-        "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
@@ -70,7 +71,7 @@ tf_py_wrap_cc(
     deps = [
         ":local_computation_builder",
         ":numpy_bridge",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",

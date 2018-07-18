@@ -33,7 +33,7 @@ class TestSequential(test.TestCase):
   """Most Sequential model API tests are covered in `training_test.py`.
   """
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_basic_methods(self):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(1, input_dim=2))
@@ -44,7 +44,7 @@ class TestSequential(test.TestCase):
     self.assertEqual(len(model.weights), 2 * 2)
     self.assertEqual(model.get_layer(name='dp').name, 'dp')
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_pop(self):
     num_hidden = 5
     input_dim = 3
@@ -77,7 +77,7 @@ class TestSequential(test.TestCase):
     with self.assertRaises(TypeError):
       model.pop()
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_deferred_build_with_np_arrays(self):
     num_hidden = 5
     input_dim = 3
@@ -102,7 +102,7 @@ class TestSequential(test.TestCase):
                      [None, num_classes])
     self.assertEqual(len(model.weights), 2 * 2)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_deferred_build_with_dataset_iterators(self):
     if not context.executing_eagerly():
       # TODO(psv/fchollet): Add support for this use case in graph mode.
@@ -136,7 +136,7 @@ class TestSequential(test.TestCase):
                      [None, num_classes])
     self.assertEqual(len(model.weights), 2 * 2)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_invalid_use_cases(self):
     # Added objects must be layer instances
     with self.assertRaises(TypeError):
@@ -160,7 +160,7 @@ class TestSequential(test.TestCase):
       model.add(keras.layers.Dense(1, input_dim=1))
       model.add(MyLayer())
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_nested_sequential_trainability(self):
     input_dim = 20
     num_units = 10

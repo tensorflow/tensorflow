@@ -191,6 +191,7 @@ def experimental_create_training_graph(input_graph=None,
 def experimental_create_eval_graph(input_graph=None,
                                    weight_bits=8,
                                    activation_bits=8,
+                                   quant_delay=None,
                                    scope=None):
   """Rewrites an eval input_graph in place for simulated quantization.
 
@@ -209,6 +210,8 @@ def experimental_create_eval_graph(input_graph=None,
       default graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
+    quant_delay: Number of steps after which weights and activations are
+      quantized during eval.
     scope: The scope to be transformed. If it's not None, only the ops which
       are in this scope will be transformed.
 
@@ -221,4 +224,5 @@ def experimental_create_eval_graph(input_graph=None,
       is_training=False,
       weight_bits=weight_bits,
       activation_bits=activation_bits,
+      quant_delay=quant_delay,
       scope=scope)

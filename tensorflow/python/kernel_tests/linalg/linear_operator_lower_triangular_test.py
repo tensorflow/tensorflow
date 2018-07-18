@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -32,34 +31,23 @@ class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test complex types once supported by
-    # matrix_triangular_solve.
-    return [dtypes.float32, dtypes.float64]
-
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     # Upper triangle will be nonzero, but ignored.
     # Use a diagonal that ensures this matrix is well conditioned.
     tril = linear_operator_test_util.random_tril_matrix(
         shape, dtype=dtype, force_well_conditioned=True, remove_upper=False)
 
+    lin_op_tril = tril
+
     if use_placeholder:
-      tril_ph = array_ops.placeholder(dtype=dtype)
-      # Evaluate the tril here because (i) you cannot feed a tensor, and (ii)
-      # tril is random and we want the same value used for both mat and
-      # feed_dict.
-      tril = tril.eval()
-      operator = linalg.LinearOperatorLowerTriangular(tril_ph)
-      feed_dict = {tril_ph: tril}
-    else:
-      operator = linalg.LinearOperatorLowerTriangular(tril)
-      feed_dict = None
+      lin_op_tril = array_ops.placeholder_with_default(lin_op_tril, shape=None)
 
-    mat = array_ops.matrix_band_part(tril, -1, 0)
+    operator = linalg.LinearOperatorLowerTriangular(lin_op_tril)
 
-    return operator, mat, feed_dict
+    matrix = array_ops.matrix_band_part(tril, -1, 0)
+
+    return operator, matrix
 
   def test_assert_non_singular(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.

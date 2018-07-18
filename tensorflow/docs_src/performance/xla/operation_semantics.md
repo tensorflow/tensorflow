@@ -581,11 +581,20 @@ Computes a sum across replicas.
 Arguments | Type    | Semantics
 --------- | ------- | -----------------------------
 `operand` | `XlaOp` | Array to sum across replicas.
+| `replica_group_ids`    | `int64` vector | Group ID for each replica.      |
 
 The output shape is the same as the input shape. For example, if there are two
 replicas and the operand has the value `(1.0, 2.5)` and `(3.0, 5.25)`
 respectively on the two replicas, then the output value from this op will be
 `(4.0, 7.75)` on both replicas.
+
+`replica_group_ids` identifies the group ID of each replica. The group ID must
+either be empty (all replicas belong to a single group), or contain the same
+number of elements as the number of replicas. For example, if
+`replica_group_ids` = {0, 1, 2, 3, 0, 1, 2, 3} has eight replicas, there are
+four subgroups of replica IDs: {0, 4}, {1, 5}, {2, 6}, and {3, 7}. The size of
+each subgroup *must* be identical, so, for example, using:
+`replica_group_ids` = {0, 1, 2, 0} for four replicas is invalid.
 
 Computing the result of CrossReplicaSum requires having one input from each
 replica, so if one replica executes a CrossReplicaSum node more times than
@@ -1299,12 +1308,10 @@ See also
 :                   :                        : parameters of type T and M of  :
 :                   :                        : arbitrary type                 :
 | `dimensions`      | `int64` array          | array of map dimensions        |
-| `static_operands` | sequence of M `XlaOp`s | M arrays of arbitrary type     |
 
 Applies a scalar function over the given `operands` arrays, producing an array
 of the same dimensions where each element is the result of the mapped function
-applied to the corresponding elements in the input arrays with `static_operands`
-given as additional input to `computation`.
+applied to the corresponding elements in the input arrays.
 
 The mapped function is an arbitrary computation with the restriction that it has
 N inputs of scalar type `T` and a single output with type `S`. The output has
@@ -2003,13 +2010,42 @@ Slice(b, {2, 1}, {4, 3}) produces:
 See also
 [`XlaBuilder::Sort`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_client/xla_builder.h).
 
-Sorts the elements in the operand.
+There are two versions of the Sort instruction: a single-operand and a
+two-operand version.
 
 <b>`Sort(operand)`</b>
 
-Arguments | Type    | Semantics
---------- | ------- | -------------------
-`operand` | `XlaOp` | The operand to sort
+Arguments   | Type    | Semantics
+----------- | ------- | --------------------
+`operand`   | `XlaOp` | The operand to sort.
+`dimension` | `int64` | The dimension along which to sort.
+
+Sorts the elements in the operand in ascending order along the provided
+dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
+will sort each column independently, and a `dimension` value of 1 will sort each
+row independently. If the operand's elements have floating point type, and the
+operand contains NaN elements, the order of elements in the output is
+implementation-defined.
+
+<b>`Sort(key, value)`</b>
+
+Sorts both the key and the value operands. The keys are sorted as in the
+single-operand version. The values are sorted according to the order of their
+corresponding keys. For example, if the inputs are `keys = [3, 1]` and
+`values = [42, 50]`, then the output of the sort is the tuple 
+`{[1, 3], [50, 42]}`.
+
+The sort is not guaranteed to be stable, that is, if the keys array contains
+duplicates, the order of their corresponding values may not be preserved.
+
+Arguments   | Type    | Semantics
+----------- | ------- | -------------------
+`keys`      | `XlaOp` | The sort keys.
+`values`    | `XlaOp` | The values to sort.
+`dimension` | `int64` | The dimension along which to sort.
+
+The `keys` and `values` must have the same dimensions, but may have different
+element types.
 
 ## Transpose
 

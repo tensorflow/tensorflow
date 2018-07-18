@@ -712,7 +712,8 @@ class VariableDeviceChooser(object):
                num_tasks=0,
                job_name='ps',
                device_type='CPU',
-               device_index=0):
+               device_index=0,
+               replica=None):
     """Initialize VariableDeviceChooser.
 
     Usage:
@@ -733,12 +734,15 @@ class VariableDeviceChooser(object):
     self._job_name = job_name
     self._device_type = device_type
     self._device_index = device_index
+    self._replica = replica
     self._num_tasks = num_tasks
     self._next_task_id = 0
 
   def __call__(self, op):
-    device_spec = tf_device.DeviceSpec(device_type=self._device_type,
-                                       device_index=self._device_index)
+    device_spec = tf_device.DeviceSpec(
+        replica=self._replica,
+        device_type=self._device_type,
+        device_index=self._device_index)
     if self._num_tasks > 0:
       task_id = self._next_task_id
       self._next_task_id = (self._next_task_id + 1) % self._num_tasks

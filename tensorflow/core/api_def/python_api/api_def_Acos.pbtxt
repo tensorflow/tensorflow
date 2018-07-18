@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Acos"
+  endpoint {
+    name: "math.acos"
+  }
+  endpoint {
+    name: "acos"
+    deprecated: true
+  }
+}

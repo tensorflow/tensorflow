@@ -120,9 +120,10 @@ Status IrEmitterNested::EmitTargetElementLoop(
   // For MOF we give the loop emitter an array for every output it should
   // generate.
   if (hlo.IsMultiOutputFusion()) {
+    const int64 num_elems = ShapeUtil::TupleElementCount(hlo.shape());
     std::vector<llvm_ir::IrArray> target_arrays;
-    for (int64 i = 0, e = ShapeUtil::TupleElementCount(hlo.shape()); i != e;
-         ++i) {
+    target_arrays.reserve(num_elems);
+    for (int64 i = 0; i != num_elems; ++i) {
       target_arrays.push_back(GetIrArray(hlo, hlo, {i}));
     }
     TF_RETURN_IF_ERROR(
@@ -130,6 +131,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
             .EmitLoop());
 
     std::vector<llvm::Value*> tuple_operand_ptrs;
+    tuple_operand_ptrs.reserve(num_elems);
     for (const llvm_ir::IrArray& array : target_arrays) {
       tuple_operand_ptrs.push_back(array.GetBasePointer());
     }

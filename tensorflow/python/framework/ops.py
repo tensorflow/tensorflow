@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import linecache
 import os
 import re
 import sys
@@ -48,13 +47,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
+from tensorflow.python.util import tf_stack
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import lock_util
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
@@ -63,7 +65,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
-_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "0") is not "0"
+_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "1") != "0"
 
 
 def tensor_id(tensor):
@@ -705,7 +707,7 @@ class _EagerTensorBase(Tensor):
     """
     if self.dtype == dtypes.resource:
       raise ValueError("Resource handles are not convertible to numpy.")
-    return self.cpu()._numpy()  # pylint: disable=protected-access
+    return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
 
   # __int__ and  __float__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
@@ -779,8 +781,8 @@ class _EagerTensorBase(Tensor):
   def _override_operator(name, func):
     setattr(_EagerTensorBase, name, func)
 
-  def _copy(self, ctx=None, device_name=None):
-    """Copies tensor to dest device."""
+  def _copy_nograd(self, ctx=None, device_name=None):
+    """Copies tensor to dest device, but doesn't record the operation."""
     # pylint: disable=protected-access
     # Creates a new tensor on the dest device.
     if ctx is None:
@@ -792,7 +794,11 @@ class _EagerTensorBase(Tensor):
       new_tensor = self._copy_to_device(context=ctx._handle, device=device_name)
     except core._NotOkStatusException as e:
       six.raise_from(core._status_to_exception(e.code, e.message), None)
+    return new_tensor
 
+  def _copy(self, ctx=None, device_name=None):
+    """Copies tensor to dest device."""
+    new_tensor = self._copy_nograd(ctx, device_name)
     # Record the copy on tape and define backprop copy as well.
     if context.executing_eagerly():
       self_device = self.device
@@ -822,6 +828,16 @@ class _EagerTensorBase(Tensor):
   def ndim(self):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
+
+  def _cpu_nograd(self):
+    """A copy of this Tensor with contents backed by host memory.
+
+    The copy cannot be differentiated through.
+
+    Returns:
+      A CPU-memory backed Tensor object with the same contents as this Tensor.
+    """
+    return self._copy_nograd(context.context(), "CPU:0")
 
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
@@ -1698,7 +1714,7 @@ class Operation(object):
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
-    self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
+    self._traceback = tf_stack.extract_stack()
     self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
 
     # Initialize self._c_op.
@@ -2139,7 +2155,7 @@ class Operation(object):
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return self._graph._convert_stack(self._traceback)  # pylint: disable=protected-access
+    return tf_stack.convert_stack(self._traceback)
 
   @property
   def traceback_with_start_lines(self):
@@ -2148,9 +2164,8 @@ class Operation(object):
     Returns:
       A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
     """
-    return self._graph._convert_stack(  # pylint: disable=protected-access
-        self._traceback,
-        include_func_start_lineno=True)
+    return tf_stack.convert_stack(self._traceback,
+                                  include_func_start_lineno=True)
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
@@ -2599,6 +2614,9 @@ def _name_from_scope_name(name):
   return name[:-1] if (name and name[-1] == "/") else name
 
 
+_MUTATION_LOCK_GROUP = 0
+_SESSION_RUN_LOCK_GROUP = 1
+
 @tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
@@ -2648,20 +2666,21 @@ class Graph(object):
 
   def __init__(self):
     """Creates a new, empty Graph."""
-    # Protects core state that can be returned via public accessors, as well as
-    # synchronizes Session.run calls with methods that create and mutate ops
-    # (e.g. Graph.create_op()). This synchronization is necessary because it's
-    # illegal to modify an operation after it's been run. Thread-safety is
-    # provided on a best-effort basis to support buggy programs, and is not
-    # guaranteed by the public `tf.Graph` API.
-    #
-    # The lock must be reentrant because create_op can be called recursively due
-    # to control flow. Without a reentrant lock, many methods would also need a
-    # "locked" version or parameter (including generated code).
+    # Protects core state that can be returned via public accessors.
+    # Thread-safety is provided on a best-effort basis to support buggy
+    # programs, and is not guaranteed by the public `tf.Graph` API.
     #
     # NOTE(mrry): This does not protect the various stacks. A warning will
     # be reported if these are used from multiple threads
     self._lock = threading.RLock()
+    # The group lock synchronizes Session.run calls with methods that create
+    # and mutate ops (e.g. Graph.create_op()). This synchronization is
+    # necessary because it's illegal to modify an operation after it's been run.
+    # The group lock allows any number of threads to mutate ops at the same time
+    # but if any modification is going on, all Session.run calls have to wait.
+    # Similarly, if one or more Session.run calls are going on, all mutate ops
+    # have to wait until all Session.run calls have finished.
+    self._group_lock = lock_util.GroupLock(num_groups=2)
     self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
     self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
@@ -2706,7 +2725,7 @@ class Graph(object):
     self._building_function = False
     # Stack of colocate_with ops. After switch_to_thread_local(),
     # self._thread_local._colocation_stack is used instead.
-    self._graph_colocation_stack = []
+    self._graph_colocation_stack = traceable_stack.TraceableStack()
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
     # Set of operations that are dangerous to fetch!
@@ -2746,36 +2765,6 @@ class Graph(object):
     """Temporary hack; can be overridden to force C API usage."""
     return _USE_C_API
 
-  def _convert_stack(self, stack, include_func_start_lineno=False):
-    """Converts a stack extracted using _extract_stack() to a traceback stack.
-
-    Args:
-      stack: A list of n 5-tuples,
-        (filename, lineno, name, frame_globals, func_start_lineno).
-      include_func_start_lineno: True if function start line number should be
-        included as the 5th entry in return tuples.
-
-    Returns:
-      A list of n 4-tuples or 5-tuples
-      (filename, lineno, name, code, [optional: func_start_lineno]), where the
-      code tuple element is calculated from the corresponding elements of the
-      input tuple.
-    """
-    ret = []
-    for (filename, lineno, name, frame_globals, func_start_lineno,
-         unused_frame_info) in stack:
-      linecache.checkcache(filename)
-      line = linecache.getline(filename, lineno, frame_globals)
-      if line:
-        line = line.strip()
-      else:
-        line = None
-      if include_func_start_lineno:
-        ret.append((filename, lineno, name, line, func_start_lineno))
-      else:
-        ret.append((filename, lineno, name, line))
-    return ret
-
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @tf_contextlib.contextmanager
@@ -2783,63 +2772,23 @@ class Graph(object):
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)
+    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
     try:
       yield
     finally:
-      self._thread_local._variable_creator_stack = old
+      self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @property
   def _variable_creator_stack(self):
     if not hasattr(self._thread_local, "_variable_creator_stack"):
-      self._thread_local._variable_creator_stack = []
-    return list(self._thread_local._variable_creator_stack)
+      self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
+    return list(self._thread_local._variable_creator_stack)  # pylint: disable=protected-access
 
   @_variable_creator_stack.setter
   def _variable_creator_stack(self, variable_creator_stack):
-    self._thread_local._variable_creator_stack = variable_creator_stack
-
-  def _extract_stack(self):
-    """A lightweight, extensible re-implementation of traceback.extract_stack.
-
-    NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-      each stack frame using linecache, which results in an abundance of stat()
-      calls. This implementation does not retrieve the code, and any consumer
-      should apply _convert_stack to the result to obtain a traceback that can
-      be formatted etc. using traceback methods.
-
-    Derived classes can implement _extract_frame_info() to add extra information
-    to the traceback.
-
-    Returns:
-      A list of 6-tuples
-      (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
-      corresponding to the call stack of the current thread.
-    """
-    try:
-      raise ZeroDivisionError
-    except ZeroDivisionError:
-      f = sys.exc_info()[2].tb_frame.f_back
-    ret = []
-    while f is not None:
-      lineno = f.f_lineno
-      co = f.f_code
-      filename = co.co_filename
-      name = co.co_name
-      frame_globals = f.f_globals
-      func_start_lineno = co.co_firstlineno
-      frame_info = self._extract_frame_info(f)
-      ret.append((filename, lineno, name, frame_globals, func_start_lineno,
-                  frame_info))
-      f = f.f_back
-    ret.reverse()
-    return ret
-
-  def _extract_frame_info(self, frame):  # pylint: disable=unused-argument
-    """Extracts custom information from a frame in an op traceback."""
-    return None
+    self._thread_local._variable_creator_stack = variable_creator_stack  # pylint: disable=protected-access
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -3192,9 +3141,9 @@ class Graph(object):
 
     input_ops = set([t.op for t in inputs])
     control_inputs = self._control_dependencies_for_inputs(input_ops)
-    # _create_op_helper mutates the new Operation. _lock ensures a Session.run
-    # call cannot occur between creating and mutating the op.
-    with self._lock:
+    # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
+    # Session.run call cannot occur between creating and mutating the op.
+    with self._mutation_lock():
       ret = Operation(
           node_def,
           self,
@@ -3281,7 +3230,7 @@ class Graph(object):
 
     if self._colocation_stack:
       all_colocation_groups = []
-      for colocation_op in self._colocation_stack:
+      for colocation_op in self._colocation_stack.peek_objs():
         all_colocation_groups.extend(colocation_op.colocation_groups())
         if colocation_op.device:
           # Make this device match the device of the colocated op, to provide
@@ -3609,9 +3558,13 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method with the `with` keyword
-    to specify that ops created within the scope of a block should be
-    added to this graph.
+    create a new graph explicitly.
+
+    Use this method with the `with` keyword to specify that ops created within
+    the scope of a block should be added to this graph. In this case, once
+    the scope of the `with` is exited, the previous default graph is set again
+    as default. There is a stack, so it's ok to have multiple nested levels
+    of `as_default` calls.
 
     The default graph is a property of the current thread. If you
     create a new thread, and wish to use the default graph in that
@@ -4054,10 +4007,10 @@ class Graph(object):
 
     if ignore_existing:
       current_stack = self._colocation_stack
-      self._colocation_stack = []
+      self._colocation_stack = traceable_stack.TraceableStack()
 
     if op is not None:
-      self._colocation_stack.append(op)
+      self._colocation_stack.push_obj(op, name=op.name, offset=1)
 
     try:
       yield
@@ -4065,7 +4018,7 @@ class Graph(object):
       # Restore device function stack
       self._device_function_stack = device_fn_tmp
       if op is not None:
-        self._colocation_stack.pop()
+        self._colocation_stack.pop_obj()
 
       # Reset the colocation stack if requested.
       if ignore_existing:
@@ -4692,11 +4645,15 @@ class Graph(object):
 
   @property
   def _colocation_stack(self):
+    """Return thread-local copy of colocation stack."""
     if self._stack_state_is_thread_local:
       # This may be called from a thread where colocation_stack doesn't yet
       # exist.
       if not hasattr(self._thread_local, "_colocation_stack"):
-        self._thread_local._colocation_stack = self._graph_colocation_stack[:]
+        stack_copy_for_this_thread = self._graph_colocation_stack.copy()
+        # pylint: disable=protected-access
+        self._thread_local._colocation_stack = stack_copy_for_this_thread
+        # pylint: enable=protected-access
       return self._thread_local._colocation_stack
     else:
       return self._graph_colocation_stack
@@ -4726,6 +4683,20 @@ class Graph(object):
       self._thread_local._control_dependencies_stack = control_dependencies
     else:
       self._graph_control_dependencies_stack = control_dependencies
+
+  def _mutation_lock(self):
+    """Returns a lock to guard code that creates & mutates ops.
+
+    See the comment for self._group_lock for more info.
+    """
+    return self._group_lock.group(_MUTATION_LOCK_GROUP)
+
+  def _session_run_lock(self):
+    """Returns a lock to guard code for Session.run.
+
+    See the comment for self._group_lock for more info.
+    """
+    return self._group_lock.group(_SESSION_RUN_LOCK_GROUP)
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
@@ -5155,7 +5126,8 @@ def init_scope():
 
 
 @tf_export("enable_eager_execution")
-def enable_eager_execution(config=None, device_policy=None,
+def enable_eager_execution(config=None,
+                           device_policy=None,
                            execution_mode=None):
   """Enables eager execution for the lifetime of this program.
 
@@ -5215,6 +5187,31 @@ def enable_eager_execution(config=None, device_policy=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
+  return enable_eager_execution_internal(
+      config, device_policy, execution_mode, None)
+
+
+def enable_eager_execution_internal(config=None,
+                                    device_policy=None,
+                                    execution_mode=None,
+                                    server_def=None):
+  """Enables eager execution for the lifetime of this program.
+
+  Most of the doc string for enable_eager_execution is relevant here as well.
+  Args:
+    config: See enable_eager_execution doc string
+    device_policy: See enable_eager_execution doc string
+    execution_mode: See enable_eager_execution doc string
+    server_def: (Optional.) A tensorflow::ServerDef proto.
+      Enables execution on remote devices. GrpcServers need to be started by
+      creating an identical server_def to this, and setting the appropriate
+      task_indexes, so that the servers can communicate. It will then be
+      possible to execute operations on remote devices.
+
+  Raises:
+    ValueError
+
+  """
   if config is not None and not isinstance(config, config_pb2.ConfigProto):
     raise TypeError(
         "config must be a tf.ConfigProto, but got %s" % type(config))
@@ -5242,7 +5239,8 @@ def enable_eager_execution(config=None, device_policy=None,
     context._context = context.Context(
         config=config,
         device_policy=device_policy,
-        execution_mode=execution_mode)
+        execution_mode=execution_mode,
+        server_def=server_def)
   elif ((config is not None and config is not context._context._config) or
         (device_policy is not None and
          device_policy is not context._context._device_policy) or

@@ -72,11 +72,24 @@ class MultiOutputFusion : public HloPassInterface {
   // multi-output fusion instruction.
   virtual int64 GetProfit(HloInstruction* instr1, HloInstruction* instr2) = 0;
 
-  // Whether fusing the instruction can reduce cost.
-  virtual bool IsProfitableOperand(HloInstruction* instr) = 0;
+  // Whether fusing the instruction can reduce memory reads.
+  virtual bool IsProfitableOperand(HloInstruction* instr);
 
   // Test if it's legal to fuse instr1 and instr2 into one fusion instruction.
   virtual bool LegalToFuse(HloInstruction* instr1, HloInstruction* instr2);
+
+  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
+  // The other instruction is removed from its parent computation.
+  virtual HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
+
+  // Recompute reachability for the current computation.
+  void RecomputeReachability();
+
+  // Returns the reachability map for the current computation.
+  HloReachabilityMap* reachability() const { return reachability_.get(); }
+
+  // Returns the computation for the pass.
+  HloComputation* computation() const { return computation_; }
 
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
@@ -89,13 +102,9 @@ class MultiOutputFusion : public HloPassInterface {
   //
   // TODO(b/80420762): Perform producer-consumer multi-output fusion in
   // InstructionFusion instead.
-  virtual bool DoProducerConsumerMultiOutputFusion(HloComputation* computation);
+  virtual bool DoProducerConsumerMultiOutputFusion();
 
  private:
-  // Fuse HloInstrctuion instr1 and instr2 and return the fused instruction.
-  // The other instruction is removed from its parent computation.
-  HloInstruction* Fuse(HloInstruction* instr1, HloInstruction* instr2);
-
   // Update the internal data structures after instr1 and instr2 are fused into
   // one fusion instruction.
   void Update(HloInstruction* instr1, HloInstruction* instr2);

@@ -21,12 +21,13 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.autograph import utils
+from tensorflow.contrib.autograph.core import config
 from tensorflow.contrib.autograph.impl import api
-from tensorflow.contrib.autograph.impl import config
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 tf = utils.fake_tf()
@@ -154,6 +155,22 @@ class ApiTest(test.TestCase):
           constant_op.constant(-2))
       self.assertListEqual([0, 1], sess.run(x).tolist())
 
+  def test_decorator_preserves_argspec(self):
+
+    class TestClass(object):
+
+      def called_member(self, a):
+        if a < 0:
+          a = -a
+        return a
+
+      called_member_converted = api.convert()(called_member)
+
+    tc = TestClass()
+    self.assertListEqual(
+        list(tf_inspect.getfullargspec(tc.called_member)),
+        list(tf_inspect.getfullargspec(tc.called_member_converted)))
+
   def test_convert_call_site_decorator(self):
 
     class TestClass(object):
@@ -189,8 +206,8 @@ class ApiTest(test.TestCase):
       return x
 
     with self.test_session() as sess:
-      x = api.converted_call(
-          test_fn, False, False, {}, constant_op.constant(-1))
+      x = api.converted_call(test_fn, False, False, {},
+                             constant_op.constant(-1))
       self.assertEqual(1, sess.run(x))
 
   def test_converted_call_method(self):
@@ -257,8 +274,8 @@ class ApiTest(test.TestCase):
         return self.x
 
     with self.test_session() as sess:
-      tc = api.converted_call(
-          TestClass, False, False, {}, constant_op.constant(-1))
+      tc = api.converted_call(TestClass, False, False, {},
+                              constant_op.constant(-1))
       # tc is now a converted object.
       x = tc.test_method()
       self.assertEqual(1, sess.run(x))
@@ -287,6 +304,13 @@ class ApiTest(test.TestCase):
 
     # Just check that it is parseable Python code.
     self.assertIsNotNone(parser.parse_str(compiled_code))
+
+  def test_source_map_attribute_present(self):
+
+    def test_fn(y):
+      return y**2
+
+    self.assertTrue(hasattr(api.to_graph(test_fn), 'ag_source_map'))
 
 
 if __name__ == '__main__':

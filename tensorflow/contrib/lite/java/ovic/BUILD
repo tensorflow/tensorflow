@@ -1,6 +1,8 @@
 # Description:
 # OVIC Benchmarker Java API.
 
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
@@ -16,6 +18,7 @@ java_test(
         "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.ovic.OvicClassifierTest",
     visibility = ["//visibility:public"],
     deps = [

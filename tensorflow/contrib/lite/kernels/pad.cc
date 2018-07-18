@@ -128,7 +128,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // TODO(nupurgarg): Change kernel implementation to use padding arrays in
   // forward order (depth, width, height, batch).
   // Build paddings in order of int[] = {batch, height, width, depth} to match
-  // kernel implementation of Pad in referenced_ops.h and optimized_ops.h.
+  // kernel implementation of Pad in reference_ops.h and optimized_ops.h.
   for (int idx = op_context.dims - 1; idx >= 0; --idx) {
     before_padding.push_back(paddings_data[idx * 2]);
     after_padding.push_back(paddings_data[idx * 2 + 1]);

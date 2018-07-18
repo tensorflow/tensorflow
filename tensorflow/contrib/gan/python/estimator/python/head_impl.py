@@ -24,18 +24,24 @@ from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
 from tensorflow.contrib.gan.python import train as tfgan_train
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.canned import head
+from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import metrics as metrics_lib
+from tensorflow.python.util import deprecation
 
 __all__ = [
     'GANHead',
     'gan_head',
 ]
 
+
 def _summary_key(head_name, val):
   return '%s/%s' % (val, head_name) if head_name else val
 
 
+@deprecation.deprecated(
+    None, 'Please use tf.contrib.gan.GANEstimator without explicitly making a '
+    'GANHead.')
 def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
              discriminator_optimizer, use_loss_summaries=True,
              get_hooks_fn=tfgan_train.get_sequential_train_hooks(),
@@ -76,6 +82,9 @@ def gan_head(generator_loss_fn, discriminator_loss_fn, generator_optimizer,
 class GANHead(head._Head):  # pylint: disable=protected-access
   """`Head` for a GAN."""
 
+  @deprecation.deprecated(
+      None, 'Please use tf.contrib.gan.GANEstimator without explicitly making '
+      'a GANHead.')
   def __init__(self, generator_loss_fn, discriminator_loss_fn,
                generator_optimizer, discriminator_optimizer,
                use_loss_summaries=True,
@@ -102,9 +111,20 @@ class GANHead(head._Head):  # pylint: disable=protected-access
       name: name of the head. If provided, summary and metrics keys will be
         suffixed by `"/" + name`.
     """
+
+    if not callable(generator_loss_fn):
+      raise TypeError('generator_loss_fn must be callable.')
+    if not callable(discriminator_loss_fn):
+      raise TypeError('discriminator_loss_fn must be callable.')
+    if use_loss_summaries not in [True, False, None]:
+      raise ValueError('use_loss_summaries must be True, False or None.')
+    if get_hooks_fn is not None and not callable(get_hooks_fn):
+      raise TypeError('get_hooks_fn must be callable.')
+    if name is not None and not isinstance(name, str):
+      raise TypeError('name must be string.')
+
     if get_hooks_fn is None:
       get_hooks_fn = tfgan_train.get_sequential_train_hooks()
-    # TODO(joelshor): Validate inputs.
 
     if use_loss_summaries in [True, False]:
       generator_loss_fn = functools.partial(
@@ -182,7 +202,10 @@ class GANHead(head._Head):  # pylint: disable=protected-access
       if mode == model_fn_lib.ModeKeys.PREDICT:
         return model_fn_lib.EstimatorSpec(
             mode=model_fn_lib.ModeKeys.PREDICT,
-            predictions=gan_model.generated_data)
+            predictions=gan_model.generated_data,
+            export_outputs={
+                'predict': export_output.PredictOutput(gan_model.generated_data)
+            })
       elif mode == model_fn_lib.ModeKeys.EVAL:
         gan_loss = self.create_loss(
             features=None, mode=mode, logits=gan_model, labels=None)

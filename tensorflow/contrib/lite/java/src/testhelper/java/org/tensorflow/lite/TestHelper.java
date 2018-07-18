@@ -58,7 +58,7 @@ public class TestHelper {
    */
   public static int[] getInputDims(Interpreter interpreter, int index) {
     if (interpreter != null && interpreter.wrapper != null) {
-      return interpreter.wrapper.getInputDims(index);
+      return interpreter.wrapper.getInputTensor(index).shape();
     } else {
       throw new IllegalArgumentException(
           "Interpreter has not initialized;" + " Failed to get input dimensions.");
@@ -77,7 +77,7 @@ public class TestHelper {
    */
   public static String getOutputDataType(Interpreter interpreter, int index) {
     if (interpreter != null && interpreter.wrapper != null) {
-      return interpreter.wrapper.getOutputDataType(index);
+      return interpreter.wrapper.getOutputTensor(index).dataType().toStringName();
     } else {
       throw new IllegalArgumentException(
           "Interpreter has not initialized;" + " Failed to get output data type.");

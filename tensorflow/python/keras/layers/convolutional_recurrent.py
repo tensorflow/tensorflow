@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.layers.recurrent import _generate_dropout_mask
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.layers.recurrent import RNN
@@ -788,7 +788,7 @@ class ConvLSTM2D(ConvRNN2D):
 
   Arguments:
     filters: Integer, the dimensionality of the output space
-        (i.e. the number output of filters in the convolution).
+        (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of n integers, specifying the
         dimensions of the convolution window.
     strides: An integer or tuple/list of n integers,

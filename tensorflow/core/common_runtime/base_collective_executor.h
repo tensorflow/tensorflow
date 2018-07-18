@@ -108,11 +108,11 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                     bool peer_is_local, const string& key, Device* to_device,
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality,
+                    const DeviceLocality& client_locality, int stream_index,
                     const StatusCallback& done) override {
-    remote_access_->RecvFromPeer(peer_device, peer_task, peer_is_local, key,
-                                 to_device, to_device_ctx, to_alloc_attr,
-                                 to_tensor, client_locality, done);
+    remote_access_->RecvFromPeer(
+        peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
+        to_alloc_attr, to_tensor, client_locality, stream_index, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,

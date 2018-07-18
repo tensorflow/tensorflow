@@ -124,6 +124,10 @@ def fit_loop(model,
     callback_metrics = copy.copy(out_labels) + [
         'val_' + n for n in out_labels
     ]
+    # need to create the test_function before start of the first epoch
+    # because TensorBoard callback on_epoch_begin adds summary to the
+    # list of fetches of the test_function
+    model._make_test_function()
   else:
     callback_metrics = copy.copy(out_labels)
 
@@ -156,7 +160,7 @@ def fit_loop(model,
 
   callbacks.set_model(callback_model)
 
-  callbacks.set_params({
+  callback_params = {
       'batch_size': batch_size,
       'epochs': epochs,
       'steps': steps_per_epoch,
@@ -164,11 +168,17 @@ def fit_loop(model,
       'verbose': verbose,
       'do_validation': do_validation,
       'metrics': callback_metrics or [],
-  })
-  callbacks.on_train_begin()
-  callback_model.stop_training = False
+  }
+  if validation_steps:
+    callback_params.update({'validation_steps': validation_steps})
+  callbacks.set_params(callback_params)
+
   for cbk in callbacks:
     cbk.validation_data = val_ins
+  # validation_data must be set before on_train_begin() is called
+  # so that TensorboardCallback can validate its input
+  callbacks.on_train_begin()
+  callback_model.stop_training = False
 
   # To prevent a slowdown, we find beforehand the arrays that need conversion.
   feed = model._feed_inputs + model._feed_targets + model._feed_sample_weights
@@ -185,6 +195,7 @@ def fit_loop(model,
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     if steps_per_epoch is not None:
+      # Step-wise fit loop.
       for step_index in range(steps_per_epoch):
         batch_logs = {}
         batch_logs['batch'] = step_index
@@ -215,7 +226,6 @@ def fit_loop(model,
             val_inputs,
             val_targets,
             sample_weights=val_sample_weights,
-            batch_size=batch_size,
             steps=validation_steps,
             verbose=0)
         if not isinstance(val_outs, list):
@@ -224,6 +234,7 @@ def fit_loop(model,
         for l, o in zip(out_labels, val_outs):
           epoch_logs['val_' + l] = o
     else:
+      # Sample-wise fit loop.
       if shuffle == 'batch':
         index_array = training_utils.batch_shuffle(index_array, batch_size)
       elif shuffle:

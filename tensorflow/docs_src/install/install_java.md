@@ -1,4 +1,4 @@
-# Installing TensorFlow for Java
+# Install TensorFlow for Java
 
 TensorFlow provides APIs for use in Java programs. These APIs are particularly
 well-suited to loading models created in Python and executing them within a
@@ -7,7 +7,7 @@ Java application. This guide explains how to install
 and use it in a Java application.
 
 Warning: The TensorFlow Java API is *not* covered by the TensorFlow
-[API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
+[API stability guarantees](../guide/version_semantics.md).
 
 
 ## Supported Platforms

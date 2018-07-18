@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -90,8 +91,10 @@ class ListDiffOp : public XlaOpKernel {
       idx_output.push_back(i);
     }
 
-    context->SetOutput(0, context->builder()->ConstantR1<Tval>(val_output));
-    context->SetOutput(1, context->builder()->ConstantR1<Tidx>(idx_output));
+    context->SetOutput(0,
+                       xla::ConstantR1<Tval>(context->builder(), val_output));
+    context->SetOutput(1,
+                       xla::ConstantR1<Tidx>(context->builder(), idx_output));
     return Status::OK();
   }
 

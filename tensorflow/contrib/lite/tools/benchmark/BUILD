@@ -34,13 +34,13 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = common_copts,
-    visibility = ["//visibility:private"],
 )
 
 cc_test(
     name = "command_line_flags_test",
     srcs = ["command_line_flags_test.cc"],
     copts = common_copts,
+    tags = ["no_oss"],
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
@@ -57,7 +57,6 @@ cc_library(
     ],
     hdrs = ["benchmark_tflite_model.h"],
     copts = common_copts,
-    linkopts = tflite_linkopts(),
     deps = [
         ":benchmark_model_lib",
         "//tensorflow/contrib/lite:framework",
@@ -69,6 +68,16 @@ cc_library(
 )
 
 cc_library(
+    name = "benchmark_params",
+    srcs = [
+        "benchmark_params.cc",
+        "logging.h",
+    ],
+    hdrs = ["benchmark_params.h"],
+    copts = common_copts,
+)
+
+cc_library(
     name = "benchmark_model_lib",
     srcs = [
         "benchmark_model.cc",
@@ -77,6 +86,7 @@ cc_library(
     hdrs = ["benchmark_model.h"],
     copts = common_copts,
     deps = [
+        ":benchmark_params",
         ":command_line_flags",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",

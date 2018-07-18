@@ -40,6 +40,7 @@ from tensorflow.python.ops.linalg import linear_operator_diag as linop_diag_lib
 from tensorflow.python.ops.linalg import linear_operator_full_matrix as linop_full_lib
 from tensorflow.python.ops.linalg import linear_operator_identity as linop_identity_lib
 from tensorflow.python.ops.linalg import linear_operator_lower_triangular as linop_tril_lib
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -49,6 +50,14 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def quadrature_scheme_softmaxnormal_gauss_hermite(
     normal_loc, normal_scale, quadrature_size,
     validate_args=False, name=None):
@@ -111,6 +120,14 @@ def quadrature_scheme_softmaxnormal_gauss_hermite(
     return grid, probs
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def quadrature_scheme_softmaxnormal_quantiles(
     normal_loc, normal_scale, quadrature_size,
     validate_args=False, name=None):
@@ -318,6 +335,14 @@ class VectorDiffeomixture(distribution_lib.Distribution):
        https://arxiv.org/abs/1801.03080
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                mix_loc,
                temperature,
@@ -779,6 +804,14 @@ class VectorDiffeomixture(distribution_lib.Distribution):
     return array_ops.reshape(p, shape=expand_shape)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def maybe_check_quadrature_param(param, name, validate_args):
   """Helper which checks validity of `loc` and `scale` init args."""
   with ops.name_scope(name="check_" + name, values=[param]):
@@ -812,6 +845,14 @@ def maybe_check_quadrature_param(param, name, validate_args):
     return param
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def determine_batch_event_shapes(grid, endpoint_affine):
   """Helper to infer batch_shape and event_shape."""
   with ops.name_scope(name="determine_batch_event_shapes"):
@@ -850,6 +891,14 @@ def determine_batch_event_shapes(grid, endpoint_affine):
     return batch_shape, batch_shape_tensor, event_shape, event_shape_tensor
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def interpolate_loc(grid, loc):
   """Helper which interpolates between two locs."""
   if len(loc) != 2:
@@ -876,6 +925,14 @@ def interpolate_loc(grid, loc):
     return [x[..., k] for k in range(deg)]             # list(shape:[B, e])
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def interpolate_scale(grid, scale):
   """Helper which interpolates between two scales."""
   if len(scale) != 2:
@@ -892,6 +949,14 @@ def interpolate_scale(grid, scale):
     ])[0] for q in range(deg)]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def linop_scale(w, op):
   # We assume w > 0. (This assumption only relates to the is_* attributes.)
   with ops.name_scope("linop_scale", values=[w]):
@@ -927,6 +992,14 @@ def linop_scale(w, op):
         "Unsupported Linop type ({})".format(type(op).__name__))
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def concat_vectors(*args):
   """Concatenates input vectors, statically if possible."""
   args_ = [distribution_util.static_value(x) for x in args]
@@ -935,6 +1008,14 @@ def concat_vectors(*args):
   return [val for vec in args_ for val in vec]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def add(x, y):
   """Adds inputs; interprets `None` as zero."""
   if x is None:
@@ -944,11 +1025,27 @@ def add(x, y):
   return x + y
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def vec_osquare(x):
   """Computes the outer-product of a (batch of) vector, i.e., x.T x."""
   return x[..., :, array_ops.newaxis] * x[..., array_ops.newaxis, :]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def softmax(x, axis, name=None):
   """Equivalent to tf.nn.softmax but works around b/70297725."""
   with ops.name_scope(name, "softmax", [x, axis]):
