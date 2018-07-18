@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -74,12 +73,10 @@ class ShapeIndex {
   // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
-  using container_type = gtl::InlinedVector<int64, 2>;
-
-  container_type::const_iterator begin() const { return indices_.begin(); }
-  container_type::const_iterator end() const { return indices_.end(); }
-  container_type::iterator begin() { return indices_.begin(); }
-  container_type::iterator end() { return indices_.end(); }
+  std::vector<int64>::const_iterator begin() const { return indices_.begin(); }
+  std::vector<int64>::const_iterator end() const { return indices_.end(); }
+  std::vector<int64>::iterator begin() { return indices_.begin(); }
+  std::vector<int64>::iterator end() { return indices_.end(); }
 
   const int64* data() const { return indices_.data(); }
 
@@ -100,7 +97,7 @@ class ShapeIndex {
   string ToString() const;
 
  private:
-  container_type indices_;
+  std::vector<int64> indices_;
 };
 
 // A view into a ShapeIndex as above, with the cheap/easy ability to consume the
