@@ -22,6 +22,8 @@ import os
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import error_interpolation
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import traceable_stack
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_stack
 
@@ -53,6 +55,47 @@ def _modify_op_stack_with_filenames(op, num_user_frames, user_filename,
   for idx in range(len(stack), len(stack)+num_inner_tf_frames):
     stack.append(_make_frame_with_filename(op, idx, tf_filename % idx))
   op._traceback = stack
+
+
+def assert_node_in_colocation_summary(test_obj, colocation_summary_string,
+                                      name, filename="", lineno=""):
+  lineno = str(lineno)
+  name_phrase = "colocate_with(%s)" % name
+  for term in [name_phrase, filename, lineno]:
+    test_obj.assertIn(term, colocation_summary_string)
+  test_obj.assertNotIn("loc:@", colocation_summary_string)
+
+
+class ComputeColocationSummaryFromOpTest(test.TestCase):
+
+  def testCorrectFormatWithActiveColocations(self):
+    t_obj_1 = traceable_stack.TraceableObject(None,
+                                              filename="test_1.py",
+                                              lineno=27)
+    t_obj_2 = traceable_stack.TraceableObject(None,
+                                              filename="test_2.py",
+                                              lineno=38)
+    colocation_dict = {
+        "test_node_1": t_obj_1,
+        "test_node_2": t_obj_2,
+    }
+    summary = error_interpolation._compute_colocation_summary_from_dict(
+        colocation_dict, prefix="  ")
+    assert_node_in_colocation_summary(self,
+                                      summary,
+                                      name="test_node_1",
+                                      filename="test_1.py",
+                                      lineno=27)
+    assert_node_in_colocation_summary(self, summary,
+                                      name="test_node_2",
+                                      filename="test_2.py",
+                                      lineno=38)
+
+  def testCorrectFormatWhenNoColocationsWereActive(self):
+    colocation_dict = {}
+    summary = error_interpolation._compute_colocation_summary_from_dict(
+        colocation_dict, prefix="  ")
+    self.assertIn("No node-device colocations", summary)
 
 
 class InterpolateTest(test.TestCase):
@@ -132,6 +175,57 @@ class InterpolateTest(test.TestCase):
                                                           self.graph)
     expected_regex = "^;;;.*constant_op.py,,,[0-9]*;;;$"
     self.assertRegexpMatches(interpolated_string, expected_regex)
+
+
+class InterpolateColocationSummaryTest(test.TestCase):
+
+  def setUp(self):
+    # Add nodes to the graph for retrieval by name later.
+    node_one = constant_op.constant(1, name="One")
+    node_two = constant_op.constant(2, name="Two")
+
+    # node_three has one colocation group, obviously.
+    with ops.colocate_with(node_one):
+      node_three = constant_op.constant(3, name="Three_with_one")
+
+    # node_four has one colocation group even though three is (transitively)
+    # colocated with one.
+    with ops.colocate_with(node_three):
+      constant_op.constant(4, name="Four_with_three")
+
+    # node_five has two colocation groups because one and two are not colocated.
+    with ops.colocate_with(node_two):
+      with ops.colocate_with(node_one):
+        constant_op.constant(5, name="Five_with_one_with_two")
+
+    self.graph = node_three.graph
+
+  def testNodeThreeHasColocationInterpolation(self):
+    message = "^^node:Three_with_one:${colocations}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    assert_node_in_colocation_summary(self, result, name="One")
+
+  def testNodeFourHasColocationInterpolationForNodeThreeOnly(self):
+    message = "^^node:Four_with_three:${colocations}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    assert_node_in_colocation_summary(self, result, name="Three_with_one")
+    self.assertNotIn(
+        "One", result,
+        "Node One should not appear in Four_with_three's summary:\n%s"
+        % result)
+
+  def testNodeFiveHasColocationInterpolationForNodeOneAndTwo(self):
+    message = "^^node:Five_with_one_with_two:${colocations}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    assert_node_in_colocation_summary(self, result, name="One")
+    assert_node_in_colocation_summary(self, result, name="Two")
+
+  def testColocationInterpolationForNodeLackingColocation(self):
+    message = "^^node:One:${colocations}^^"
+    result = error_interpolation.interpolate(message, self.graph)
+    self.assertIn("No node-device colocations", result)
+    self.assertNotIn("One", result)
+    self.assertNotIn("Two", result)
 
 
 if __name__ == "__main__":
