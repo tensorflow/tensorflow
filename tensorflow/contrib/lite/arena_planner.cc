@@ -17,6 +17,14 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+
+// Memory allocation tuning
+constexpr const int kDefaultArenaAlignment = 64;
+constexpr const int kDefaultTensorAlignment = 4;
+
+}  // namespace
+
 struct AllocationInfo {
   // The node index requesting this allocation.
   int node;
@@ -28,16 +36,13 @@ struct AllocationInfo {
 
 ArenaPlanner::ArenaPlanner(TfLiteContext* context,
                            std::unique_ptr<GraphInfo> graph_info,
-                           bool preserve_inputs, bool preserve_intermediates,
-                           int tensor_alignment)
+                           bool preserve_inputs, bool preserve_intermediates)
     : context_(context),
       graph_info_(std::move(graph_info)),
       arena_(kDefaultArenaAlignment),
       persistent_arena_(kDefaultArenaAlignment),
       preserve_inputs_(preserve_inputs),
-      preserve_intermediates_(preserve_intermediates),
-      tensor_alignment_(tensor_alignment) {}
-
+      preserve_intermediates_(preserve_intermediates) {}
 ArenaPlanner::~ArenaPlanner() {}
 
 int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
@@ -259,12 +264,14 @@ TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int tensor_index) {
 TfLiteStatus ArenaPlanner::CalculateTensorAllocation(int tensor_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
   if (tensor.allocation_type == kTfLiteArenaRw) {
-    TF_LITE_ENSURE_STATUS(arena_.Allocate(
-        context_, tensor_alignment_, tensor.bytes, &allocs_[tensor_index]));
+    TF_LITE_ENSURE_STATUS(arena_.Allocate(context_, kDefaultTensorAlignment,
+                                          tensor.bytes,
+                                          &allocs_[tensor_index]));
   }
   if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
-    TF_LITE_ENSURE_STATUS(persistent_arena_.Allocate(
-        context_, tensor_alignment_, tensor.bytes, &allocs_[tensor_index]));
+    TF_LITE_ENSURE_STATUS(
+        persistent_arena_.Allocate(context_, kDefaultTensorAlignment,
+                                   tensor.bytes, &allocs_[tensor_index]));
   }
   return kTfLiteOk;
 }

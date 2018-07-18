@@ -16,23 +16,12 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/contrib/lite/arena_planner.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 #include "tensorflow/contrib/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace eigen_support {
 namespace {
-
-#ifndef EIGEN_DONT_ALIGN
-// Eigen may require buffers to be algiend to 16, 32 or 64 bytes depending on
-// hardware architecture and build configurations.
-// If the static assertion fails, try to increase `kDefaultTensorAlignment` to
-// in `arena_planner.h` to 32 or 64.
-static_assert(
-    kDefaultTensorAlignment % EIGEN_MAX_ALIGN_BYTES == 0,
-    "kDefaultArenaAlignment doesn't comply with Eigen alignment requirement.");
-#endif  // EIGEN_DONT_ALIGN
 
 // We have a single global threadpool for all convolution operations. This means
 // that inferences started from different threads may block each other, but
