@@ -27,7 +27,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace gpu {
 
-using InstructionFusionTest = HloTestBase;
+using MultiOutputFusionTest = HloTestBase;
 
 const char kModulePrefix[] = R"(
     HloModule test_module
@@ -43,7 +43,7 @@ const char kModulePrefix[] = R"(
       ROOT mul.1 = f32[] add(scalar_lhs.1, scalar_rhs.1)
     })";
 
-TEST_F(InstructionFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
+TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
   // Fusion with reduce instruction root and a sibling reduce instruction
   // sharing the same input param.
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
@@ -72,7 +72,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
               op::Tuple(op::Reduce(), op::Reduce()));
 }
 
-TEST_F(InstructionFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
+TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[6400]{0} parameter(1)
@@ -99,7 +99,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusionDifferentReduceInputShapes) {
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
+TEST_F(MultiOutputFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p1.1 = f32[10,10]{1,0} parameter(1)
@@ -126,7 +126,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusionDifferentReduceOutputShapes) {
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, MultiOutputFusionSiblingReduceFusions) {
+TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceFusions) {
   // Two sibling fusions with reduce instruction roots sharing the same input
   // param.
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
@@ -160,7 +160,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusionSiblingReduceFusions) {
               op::Tuple(op::Reduce(), op::Reduce()));
 }
 
-TEST_F(InstructionFusionTest,
+TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingReduceAndReduceMultiOutputFusion) {
   // Multi-output fusion with two reduce instructions root and a sibling reduce
   // instruction sharing the same input param.
@@ -193,7 +193,7 @@ TEST_F(InstructionFusionTest,
               op::Tuple(op::Reduce(), op::Reduce(), op::Reduce()));
 }
 
-TEST_F(InstructionFusionTest,
+TEST_F(MultiOutputFusionTest,
        MultiOutputFusionSiblingFusionCheckAgainstReduceOperand) {
   // Verify that if we already have a multi-output fusion that we prefer to pick
   // a reduce op from its operands for checking shape compatibility.
@@ -226,7 +226,7 @@ TEST_F(InstructionFusionTest,
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, MultiOutputFusionTwoLoops) {
+TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_computation_1 {
       p0.1 = f32[6400]{0} parameter(0)
@@ -255,7 +255,7 @@ TEST_F(InstructionFusionTest, MultiOutputFusionTwoLoops) {
               op::Tuple(op::Multiply(), op::Divide()));
 }
 
-TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
+TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_add {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
@@ -282,7 +282,7 @@ TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
               op::Tuple(op::Reduce(), op::Add()));
 }
 
-TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
+TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_select {
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
@@ -323,7 +323,7 @@ TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
               op::Tuple(op::Reduce(), op::Reduce(), op::Select()));
 }
 
-TEST_F(InstructionFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
+TEST_F(MultiOutputFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
   auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
     fused_element_wise {
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)

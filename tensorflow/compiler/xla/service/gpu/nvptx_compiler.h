@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_COMPILER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_COMPILER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_
 
 #include <memory>
 #include <string>
@@ -37,10 +37,10 @@ namespace xla {
 namespace gpu {
 
 // The GPU compiler generates efficient GPU executables.
-class GpuCompiler : public LLVMCompiler {
+class NVPTXCompiler : public LLVMCompiler {
  public:
-  GpuCompiler();
-  ~GpuCompiler() override {}
+  NVPTXCompiler();
+  ~NVPTXCompiler() override {}
 
   // Bring in
   // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -64,7 +64,7 @@ class GpuCompiler : public LLVMCompiler {
   se::Platform::Id PlatformId() const override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    // Capture just the pointer size, not the entire GpuCompiler object.
+    // Capture just the pointer size, not the entire NVPTXCompiler object.
     int64 pointer_size = pointer_size_;
     return [pointer_size](const Shape& shape) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
@@ -146,10 +146,10 @@ class GpuCompiler : public LLVMCompiler {
                      CompilationCacheHash, CompilationCacheEq>
       compilation_cache_ GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
+  TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_COMPILER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NVPTX_COMPILER_H_

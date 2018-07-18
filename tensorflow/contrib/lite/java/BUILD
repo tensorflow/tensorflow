@@ -69,6 +69,7 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     deps = [
         ":libtensorflowlite_jni.so",
@@ -83,6 +84,7 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.DataTypeTest",
     deps = [
         ":libtensorflowlite_jni.so",
@@ -105,6 +107,7 @@ java_test(
         "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     deps = [
         ":libtensorflowlite_jni.so",
@@ -124,6 +127,7 @@ java_test(
         "src/testdata/mobilenet.tflite.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.InterpreterTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -142,6 +146,7 @@ java_test(
         "src/testdata/add.bin",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.TensorTest",
     deps = [
         ":tensorflowlitelib",

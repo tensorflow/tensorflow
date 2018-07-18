@@ -84,6 +84,23 @@ class HistogramFixedWidthTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
+  def test_with_invalid_value_range(self):
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 1 but is rank 0"):
+      histogram_ops.histogram_fixed_width(values, 1.0)
+    with self.assertRaisesRegexp(ValueError, "Dimension must be 2 but is 3"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 2.0, 3.0])
+
+  def test_with_invalid_nbins(self):
+    values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=[1, 2])
+    with self.assertRaisesRegexp(
+        ValueError, "Requires nbins > 0"):
+      histogram_ops.histogram_fixed_width(values, [1.0, 5.0], nbins=-5)
+
   def test_empty_input_gives_all_zero_counts(self):
     # Bins will be:
     #   (-inf, 1), [1, 2), [2, 3), [3, 4), [4, inf)

@@ -198,6 +198,13 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                                      llvm::Value* output_address,
                                      llvm::Value* source_address);
 
+  // A helper method for HandleSort(). It adds the inner comparison loop where
+  // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.
+  void EmitCompareLoop(int64 dimension_to_sort,
+                       const llvm_ir::IrArray::Index& keys_index,
+                       const llvm_ir::IrArray::Index& compare_keys_index,
+                       const llvm_ir::IrArray& keys_array);
+
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,
       tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements);

@@ -34,8 +34,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
           local_device_manager_.get(), opts.env, TF_GRAPH_DEF_VERSION,
           &func_lib_def_, {}, thread_pool_.get())),
       log_device_placement_(opts.config.log_device_placement()),
-      async_default_(async),
-      env_(opts.env) {
+      async_default_(async) {
   InitDeviceMapAndAsync();
   if (opts.config.inter_op_parallelism_threads() > 0) {
     runner_ = [this](std::function<void()> closure) {
@@ -65,7 +64,6 @@ EagerContext::EagerContext(
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async),
       remote_device_manager_(std::move(remote_device_manager)),
-      env_(opts.env),
       server_(std::move(server)),
       remote_eager_workers_(std::move(remote_eager_workers)),
       remote_contexts_(remote_contexts) {
@@ -118,9 +116,6 @@ Status EagerContext::SetAsyncForThread(bool async) {
 void EagerContext::ClearCaches() {
   mutex_lock ml(cache_mu_);
   gtl::STLDeleteValues(&kernel_cache_);
-  pflr_.reset(new ProcessFunctionLibraryRuntime(
-      local_device_manager_.get(), env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
-      {}, thread_pool_.get()));
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
