@@ -26,7 +26,8 @@
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
 
 # Use a temporary directory with a short name.
-export TMPDIR="C:/tmp"
+export TMPDIR=${TMPDIR:-"C:/tmp"}
+export TMPDIR=$(cygpath -m "$TMPDIR")
 mkdir -p "$TMPDIR"
 
 # Set bash path
