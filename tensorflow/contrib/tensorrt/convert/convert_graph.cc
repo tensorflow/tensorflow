@@ -624,7 +624,9 @@ tensorflow::Status RegisterSegmentFunctionToFunctionLibrary(
         edge->src()->output_type(edge->src_output()));
     VLOG(1) << " input " << nout.node << ":" << nout.index
             << " dtype=" << tensorflow::DataTypeString(nout.data_type);
-    node_builder.Input({nout});
+    // nvcc complains that Input(<brace-enclosed initializer list>) is
+    // ambiguous, so do not use Input({nout}).
+    node_builder.Input(nout);
     TF_RETURN_IF_ERROR(node_builder.Attr("T", node->output_type(0))
                            .Attr("index", i)
                            .Finalize(&nd));

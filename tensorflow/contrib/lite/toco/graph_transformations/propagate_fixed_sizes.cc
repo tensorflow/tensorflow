@@ -524,10 +524,12 @@ bool KeepDims(const Operator& op) {
   switch (op.type) {
     case OperatorType::kMin:  //  Reduction Min
       return static_cast<const TensorFlowMinOperator&>(op).keep_dims;
-    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kReduceMax:  //  Reduction Max
       return static_cast<const TensorFlowMaxOperator&>(op).keep_dims;
     case OperatorType::kSum:
       return static_cast<const TensorFlowSumOperator&>(op).keep_dims;
+    case OperatorType::kReduceProd:
+      return static_cast<const TensorFlowProdOperator&>(op).keep_dims;
     case OperatorType::kMean:
       return static_cast<const MeanOperator&>(op).keep_dims;
     default:
@@ -1190,7 +1192,7 @@ void ProcessShapeOperator(Model* model, TensorFlowShapeOperator* op) {
   output_shape->ReplaceDims({input_array.shape().dimensions_count()});
 }
 
-void ProcessStackOperator(Model* model, StackOperator* op) {
+void ProcessPackOperator(Model* model, PackOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
@@ -1199,7 +1201,7 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
     return;
   }
 
-  std::unique_ptr<Shape> stacked_shape;
+  std::unique_ptr<Shape> packed_shape;
   for (const auto& input : op->inputs) {
     const auto& input_array = model->GetArray(input);
     if (!input_array.has_shape()) {
@@ -1208,23 +1210,23 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
     }
 
     Shape shape = input_array.shape();
-    if (!stacked_shape) {
-      stacked_shape.reset(new Shape(shape));
+    if (!packed_shape) {
+      packed_shape.reset(new Shape(shape));
     } else {
-      CHECK(*stacked_shape == shape) << "All input arrays to Stack operators "
-                                        "must have the same shape. Input \""
-                                     << input << "\" is different.";
+      CHECK(*packed_shape == shape) << "All input arrays to Pack operators "
+                                       "must have the same shape. Input \""
+                                    << input << "\" is different.";
     }
   }
 
   int axis = op->axis;
   if (axis < 0) {
     // Handle negative axis
-    axis += stacked_shape->dims().size() + 1;
+    axis += packed_shape->dims().size() + 1;
   }
-  stacked_shape->mutable_dims()->insert(
-      stacked_shape->mutable_dims()->begin() + axis, op->inputs.size());
-  output_array.copy_shape(*stacked_shape);
+  packed_shape->mutable_dims()->insert(
+      packed_shape->mutable_dims()->begin() + axis, op->inputs.size());
+  output_array.copy_shape(*packed_shape);
 }
 
 void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
@@ -1606,8 +1608,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessL2PoolOperator(model, static_cast<L2PoolOperator*>(op));
       break;
     case OperatorType::kMin:  //  Reduction Min
-    case OperatorType::kMax:  //  Reduction Max
+    case OperatorType::kReduceMax:  //  Reduction Max
     case OperatorType::kSum:
+    case OperatorType::kReduceProd:
     case OperatorType::kMean:
       ProcessTensorFlowReductionOperator(model, op);
       break;
@@ -1656,8 +1659,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kShape:
       ProcessShapeOperator(model, static_cast<TensorFlowShapeOperator*>(op));
       break;
-    case OperatorType::kStack:
-      ProcessStackOperator(model, static_cast<StackOperator*>(op));
+    case OperatorType::kPack:
+      ProcessPackOperator(model, static_cast<PackOperator*>(op));
       break;
     case OperatorType::kReorderAxes:
       ProcessReorderAxesOperator(model, static_cast<ReorderAxesOperator*>(op));

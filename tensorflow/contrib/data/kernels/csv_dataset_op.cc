@@ -101,8 +101,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       zlib_compression_options = io::ZlibCompressionOptions::GZIP();
     } else {
       OP_REQUIRES(ctx, compression_type.empty(),
-                  errors::InvalidArgument("Unsupported compression_type: ",
-                                          compression_type, "."));
+                  errors::InvalidArgument(
+                      "Unsupported compression_type: ", compression_type, "."));
     }
     zlib_compression_options.input_buffer_size = buffer_size;
 
@@ -123,11 +123,11 @@ class CSVDatasetOp : public DatasetOpKernel {
         ctx, select_cols.empty() || select_cols.front() >= 0,
         errors::InvalidArgument("select_cols should be non-negative indices"));
 
-    *output = new Dataset(
-        ctx, std::move(filenames), header, std::move(compression_type),
-        zlib_compression_options, output_types_, output_shapes_,
-        std::move(record_defaults), std::move(select_cols), use_quote_delim,
-        delim[0], std::move(na_value));
+    *output = new Dataset(ctx, std::move(filenames), header,
+                          std::move(compression_type), zlib_compression_options,
+                          output_types_, output_shapes_,
+                          std::move(record_defaults), std::move(select_cols),
+                          use_quote_delim, delim[0], std::move(na_value));
   }
 
  private:

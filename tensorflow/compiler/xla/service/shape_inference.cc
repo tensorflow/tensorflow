@@ -970,6 +970,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       if (operand_shapes.size() == 1) {
         return *operand_shapes[0];
       } else if (operand_shapes.size() == 2) {
+        if (!ShapeUtil::SameDimensions(*operand_shapes[0],
+                                       *operand_shapes[1])) {
+          return InvalidArgument(
+              "Sort keys and values dimensions must match. "
+              "Keys shape is: %s\n, Values shape is: %s",
+              ShapeUtil::HumanString(*operand_shapes[0]).c_str(),
+              ShapeUtil::HumanString(*operand_shapes[1]).c_str());
+        }
         return ShapeUtil::MakeTupleShape(
             {*operand_shapes[0], *operand_shapes[1]});
       }

@@ -158,7 +158,8 @@ def class_to_graph(c, program_ctx):
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c)
+        owner_type=c,
+        rewrite_errors=False)
     if class_namespace is None:
       class_namespace = namespace
     else:
@@ -242,7 +243,12 @@ def _add_self_references(namespace, autograph_module):
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
+def function_to_graph(f,
+                      program_ctx,
+                      arg_values,
+                      arg_types,
+                      owner_type=None,
+                      rewrite_errors=True):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
@@ -260,7 +266,7 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context)
+  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -276,12 +282,13 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
   return node, new_name, namespace
 
 
-def node_to_graph(node, context):
+def node_to_graph(node, context, rewrite_errors=True):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
+    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -316,5 +323,6 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, logical_expressions)
   node = converter.apply_(node, context, side_effect_guards)
   node = converter.apply_(node, context, name_scopes)
-  node = converter.apply_(node, context, error_handlers)
+  if rewrite_errors:
+    node = converter.apply_(node, context, error_handlers)
   return node

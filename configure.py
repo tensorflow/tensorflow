@@ -680,7 +680,7 @@ def create_android_sdk_rule(environ_cp):
   if is_windows() or is_cygwin():
     default_sdk_path = cygpath('%s/Android/Sdk' % environ_cp['APPDATA'])
   elif is_macos():
-    default_sdk_path = '%s/library/Android/Sdk/ndk-bundle' % environ_cp['HOME']
+    default_sdk_path = '%s/library/Android/Sdk' % environ_cp['HOME']
   else:
     default_sdk_path = '%s/Android/Sdk' % environ_cp['HOME']
 
@@ -1138,9 +1138,7 @@ def set_tf_nccl_install_path(environ_cp):
 
     nccl_lib_path = os.path.join(nccl_install_path, nccl_lib_path)
     nccl_hdr_path = os.path.join(nccl_install_path, 'include/nccl.h')
-    nccl_license_path = os.path.join(nccl_install_path, 'NCCL-SLA.txt')
-    if os.path.exists(nccl_lib_path) and os.path.exists(
-        nccl_hdr_path) and os.path.exists(nccl_license_path):
+    if os.path.exists(nccl_lib_path) and os.path.exists(nccl_hdr_path):
       # Set NCCL_INSTALL_PATH
       environ_cp['NCCL_INSTALL_PATH'] = nccl_install_path
       write_action_env_to_bazelrc('NCCL_INSTALL_PATH', nccl_install_path)
@@ -1460,6 +1458,13 @@ def main():
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+
+  # The numpy package on ppc64le uses OpenBLAS which has multi-threading
+  # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
+  # runtime to allow the Tensorflow testcases which compare numpy
+  # results to Tensorflow results to succeed.
+  if is_ppc64le():
+    write_action_env_to_bazelrc("OMP_NUM_THREADS", 1)
 
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)

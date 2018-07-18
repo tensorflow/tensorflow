@@ -347,6 +347,7 @@ def GetTests():
 
 
 if __name__ == "__main__":
-  for index, t in enumerate(GetTests()):
-    setattr(TfTrtIntegrationTest, "testTfTRT_" + str(index), t)
+  if trt.is_tensorrt_enabled():
+    for index, t in enumerate(GetTests()):
+      setattr(TfTrtIntegrationTest, "testTfTRT_" + str(index), t)
   test.main()

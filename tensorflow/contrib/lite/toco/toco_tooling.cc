@@ -55,7 +55,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ConvertExpandDimsToReshape);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
-  transformations->Add(new ConvertTrivialStackToReshape);
+  transformations->Add(new ConvertTrivialPackToReshape);
   transformations->Add(new ConvertTrivialTileToConcat);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
@@ -86,11 +86,11 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
   transformations->Add(new ResolveConstantGather);
+  transformations->Add(new ResolveConstantPack);
   transformations->Add(new ResolveConstantRandomUniform);
   transformations->Add(new ResolveConstantRange);
   transformations->Add(new ResolveConstantReshape);
   transformations->Add(new ResolveConstantSlice);
-  transformations->Add(new ResolveConstantStack);
   transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantTranspose);
   transformations->Add(new ResolveConstantUnaryOperator);
@@ -113,7 +113,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolvePadV2Attributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
-  transformations->Add(new ResolveMeanAttributes);
+  transformations->Add(new ResolveReduceAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new UnpartitionEmbeddingLookup);
