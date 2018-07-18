@@ -26,12 +26,10 @@ from tensorflow.python.saved_model import loader
 
 @tf_export('saved_model.simple_load')
 def simple_load(session, export_dir):
-  """Convenience function to load a SavedModel suitable for serving back into
-  a python TensorFlow Session.
+  """Load a SavedModel artifact into a python TensorFlow Session.
 
   This function assumes that the export directory contains a model that has been
-  serialized using the [simple_save](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_save.py).
-  function.
+  serialized using the @{tf.saved_model.simple_save} function.
 
   More information about SavedModel and signatures can be found here in the
   [saved_model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md)
@@ -44,7 +42,7 @@ def simple_load(session, export_dir):
 
   export_dir = 'example_model_directory'
 
-  # Define a graph
+  # Define a graph.
   graph1 = tf.Graph()
   with graph1.as_default():
     x = tf.placeholder(dtype=tf.int32)
@@ -52,7 +50,7 @@ def simple_load(session, export_dir):
     z = (x + y) * tf.Variable(5)
     init = tf.global_variables_initializer()
 
-  # Save the graph out as a SavedModel
+  # Save the graph out as a SavedModel.
   with tf.Session(graph=graph1) as sess1:
     sess1.run(init)
     tf.saved_model.simple_save(sess1,
@@ -60,10 +58,10 @@ def simple_load(session, export_dir):
             inputs={"x": x, "y": y},
             outputs={"z": z})
 
-  # Create an empty graph
+  # Create an empty graph.
   graph2 = tf.Graph()
 
-  # Load the SavedModel state into the empty graph
+  # Load the SavedModel state into the empty graph.
   with tf.Session(graph=graph2) as sess2:
     inputs, outputs = simple_load(sess2, export_dir)
     result = sess2.run(outputs["z"], feed_dict={inputs["x"]: 2, inputs["y"]: 3})

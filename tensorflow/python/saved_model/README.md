@@ -86,18 +86,18 @@ module is implemented in python which enables SavedModels to be reloaded
 within a python TensorFlow session.
 
 #### Simple Save Usage
-~~~python
+```python
 import tensorflow as tf
 
-# Define model graph
+# Define model graph.
 x = tf.placeholder(dtype=tf.int32)
 y = x + 1
 
-# Export the model to the given directory
+# Export the model to the given directory.
 export_dir = "example_model_directory"
 with tf.Session() as sess:
-    tf.saved_model.simple_save(sess, export_dir, {"x": x}, {"y": y})
-~~~
+  tf.saved_model.simple_save(sess, export_dir, {"x": x}, {"y": y})
+```
 
 After calling the `simple_save` function, the model components will be
 exported to the given `export_dir`. These artifacts can be used with
@@ -109,17 +109,17 @@ For example, to load and execute the model exported in the example
 above, the `simple_load` function would be used in the following way:
 
 #### Simple Load Usage
-~~~python
+```python
 import tensorflow as tf
 
-# Load exported model from the given directory
+# Load exported model from the given directory.
 export_dir = "example_model_directory"
 with tf.Session() as sess:
-    inputs, outputs = tf.saved_model.simple_load(sess, export_dir)
-    result = sess.run(outputs["y"], feed_dict={inputs["x"]: 1})
+  inputs, outputs = tf.saved_model.simple_load(sess, export_dir)
+  result = sess.run(outputs["y"], feed_dict={inputs["x"]: 1})
 
 assert result == 2
-~~~
+```
 
 ### Builder
 
@@ -148,7 +148,7 @@ training), and possibly hardware specific aspects such as GPU.
 #### Usage
 The typical usage of `builder` is as follows:
 
-~~~python
+```python
 export_dir = ...
 ...
 builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
@@ -164,7 +164,7 @@ with tf.Session(graph=tf.Graph()) as sess:
   builder.add_meta_graph(["bar-tag", "baz-tag"])
 ...
 builder.save()
-~~~
+```
 
 #### Stripping Default valued attributes
 The SavedModelBuilder class allows users to control whether default-valued
@@ -206,13 +206,13 @@ tags used to identify the meta graph def to load and the location of the
 SavedModel. Upon a load, the subset of variables and assets supplied as part of
 the specific meta graph def, will be restored into the supplied session.
 
-~~~python
+```python
 export_dir = ...
 ...
 with tf.Session(graph=tf.Graph()) as sess:
   tf.saved_model.loader.load(sess, [tag_constants.TRAINING], export_dir)
   ...
-~~~
+```
 
 #### C++
 The C++ version of the SavedModel [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/loader.h)
@@ -222,13 +222,13 @@ version requires the tags associated with the graph to be loaded, to be
 specified. The loaded version of SavedModel is referred to as `SavedModelBundle`
 and contains the meta graph def and the session within which it is loaded.
 
-~~~c++
+```c++
 const string export_dir = ...
 SavedModelBundle bundle;
 ...
 LoadSavedModel(session_options, run_options, export_dir, {kSavedModelTagTrain},
                &bundle);
-~~~
+```
 
 ### Constants
 SavedModel offers the flexibility to build and load TensorFlow graphs for a
