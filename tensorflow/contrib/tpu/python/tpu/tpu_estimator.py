@@ -701,8 +701,6 @@ def generate_per_core_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -837,8 +835,6 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -867,7 +863,7 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
 
   def tpu_ordinal_function_impl(replica_id):
     if ctx.device_assignment:
-      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+      return ctx.device_assignment.tpu_ordinal(replica=replica_id)
     else:
       return replica_id % num_replicas_per_host
 
