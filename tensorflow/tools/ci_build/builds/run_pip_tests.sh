@@ -98,7 +98,7 @@ fi
 BAZEL_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --build_tests_only -k --test_tag_filters=${PIP_TEST_FILTER_TAG} \
   --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS} \
-   --test_output=errors"
+  --test_output=errors"
 
 BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
   //${PIP_TEST_PREFIX}/tensorflow/python/... \
