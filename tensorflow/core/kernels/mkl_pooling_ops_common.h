@@ -477,6 +477,43 @@ class MklPoolingOpBase : public OpKernel {
     }
   }
 
+  void PoolParamsToDims(MklPoolParameters* pool_params,
+                        memory::dims* filter_dims,
+                        memory::dims* strides,
+                        memory::dims* padding_left,
+                        memory::dims* padding_right) {
+    *filter_dims = {pool_params->window_rows, pool_params->window_cols};
+    *strides = {pool_params->row_stride, pool_params->col_stride};
+    *padding_left = {static_cast<int>(pool_params->pad_top),
+                     static_cast<int>(pool_params->pad_left)};
+    *padding_right = {static_cast<int>(pool_params->pad_bottom),
+                      static_cast<int>(pool_params->pad_right)};
+  }
+
+  void AllocateEmptyOutputTensor(
+      OpKernelContext* context,
+      const int kOutputIndex,
+      MklPoolParameters* pool_params,
+      const memory::dims output_dims_mkl_order,
+      Tensor** output_tensor) {
+    MklDnnShape output_mkl_shape;
+    output_mkl_shape.SetMklTensor(false);
+    TensorShape output_tf_shape;
+    if (pool_params->data_format == TensorFormat::FORMAT_NCHW) {
+      output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
+    } else {
+      memory::dims output_dims_NHWC_order;
+      output_dims_NHWC_order = {pool_params->tensor_in_batch,
+                                static_cast<int>(pool_params->out_height),
+                                static_cast<int>(pool_params->out_width),
+                                pool_params->out_depth};
+      output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
+    }
+    AllocateOutputSetMklShape(context, kOutputIndex, output_tensor,
+                              output_tf_shape, output_mkl_shape);
+    CHECK_NOTNULL(output_tensor);
+  }
+
   // Checks to make sure that the memory we need to allocate
   // is a multiple of sizeof(T)
   // returns the number of elements

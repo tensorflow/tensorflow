@@ -466,25 +466,15 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // If input is an empty tensor, allocate an empty output tensor and return
       if (input_tensor.NumElements() == 0) {
-        MklDnnShape output_mkl_shape;
-        output_mkl_shape.SetMklTensor(false);
-        TensorShape output_tf_shape;
-        if (pool_params.data_format == TensorFormat::FORMAT_NCHW) {
-          output_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
-        } else {
-          memory::dims output_dims_NHWC_order;
-          output_dims_NHWC_order = {pool_params.tensor_in_batch,
-                                    static_cast<int>(pool_params.out_height),
-                                    static_cast<int>(pool_params.out_width),
-                                    pool_params.out_depth};
-          output_tf_shape = MklDnnDimsToTFShape(output_dims_NHWC_order);
-        }
         const int kOutputIndex = 0;
-        AllocateOutputSetMklShape(context, kOutputIndex, &output_tensor,
-                                  output_tf_shape, output_mkl_shape);
-        CHECK_NOTNULL(output_tensor);
+        this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
+                                        output_dims_mkl_order, &output_tensor);
         return;
       }
+
+      memory::dims filter_dims, strides, padding_left, padding_right;
+      this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
+          &padding_left, &padding_right);
 
       // Get the input memory descriptor
       memory::desc input_md = dnn_shape_input.IsMklTensor()
@@ -498,17 +488,6 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
                             ? dnn_shape_input.GetSizesAsMklDnnDims()
                             : TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
                                    this->data_format_tf_);
-
-      memory::dims filter_dims = memory::dims({pool_params.window_rows,
-                                              pool_params.window_cols});
-      memory::dims strides = memory::dims(
-         {pool_params.row_stride, pool_params.col_stride});
-      memory::dims padding_left = memory::dims(
-         {static_cast<int>(pool_params.pad_top),
-         static_cast<int>(pool_params.pad_left)});
-      memory::dims padding_right = memory::dims(
-          {static_cast<int>(pool_params.pad_bottom),
-          static_cast<int>(pool_params.pad_right)});
 
       // Get an average pooling primitive from the op pool
       MklPoolingFwdPrimitive<T> *pooling_fwd = nullptr;
@@ -587,20 +566,16 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       }
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);
-      memory::dims filter_dims = memory::dims(
-          {pool_params.window_rows, pool_params.window_cols});
-      memory::dims strides = memory::dims(
-          {pool_params.row_stride, pool_params.col_stride});
-      memory::dims padding_left = memory::dims(
-          {static_cast<int>(pool_params.pad_top),
-          static_cast<int>(pool_params.pad_left)});
-      memory::dims padding_right = memory::dims(
-          {static_cast<int>(pool_params.pad_bottom),
-          static_cast<int>(pool_params.pad_right)});
+
+      memory::dims filter_dims, strides, padding_left, padding_right;
+      this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
+          &padding_left, &padding_right);
+
       memory::dims orig_input_dims_mkl_order =
           orig_input_mkl_shape.IsMklTensor()
           ? orig_input_mkl_shape.GetSizesAsMklDnnDims()
           : TFShapeToMklDnnDimsInNCHW(orig_input_shape, this->data_format_tf_);
+
       memory::dims diff_dst_dims = grad_mkl_shape.IsMklTensor()
           ? grad_mkl_shape.GetSizesAsMklDnnDims()
           : TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
