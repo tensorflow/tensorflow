@@ -15,6 +15,16 @@ tf_proto_library(
         "tpu_embedding_config.proto",
     ],
     cc_api_version = 2,
+    protodeps = [":optimization_parameters_proto"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "optimization_parameters_proto",
+    srcs = [
+        "optimization_parameters.proto",
+    ],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
