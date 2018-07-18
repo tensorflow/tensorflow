@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tflite {
+namespace eager {
 
 // Maps a TF Lite tensor index into a TensorFlow tensor.
 //
@@ -54,6 +55,7 @@ class BufferMap {
   std::map<int, tensorflow::Tensor> id_to_tensor_;
 };
 
+}  // namespace eager
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_BUFFER_MAP_H_

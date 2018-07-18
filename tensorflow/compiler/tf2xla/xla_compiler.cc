@@ -422,16 +422,18 @@ Status BuildComputation(
       // assignment will be placed on this value, which will cause the resource
       // update to be returned from the same device that provided the resource.
       handle = xla::GetTupleElement(xla::Tuple(builder, {handle}), 0);
-
       elems.push_back(handle);
     }
   }
 
   *num_computation_outputs = elems.size();
 
-  // Builds the XLA computation.
-  if (always_return_tuple || elems.size() != 1) {
-    xla::Tuple(builder, elems);
+  // Builds the XLA computation. We *always* form a tuple here to ensure that
+  // the output value is the last thing added into the XLA computation, even
+  // if there is only one output value.
+  auto tuple = xla::Tuple(builder, elems);
+  if (!always_return_tuple && elems.size() == 1) {
+    xla::GetTupleElement(tuple, 0);
   }
   builder->ClearOpMetadata();
 

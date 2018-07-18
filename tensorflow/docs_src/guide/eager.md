@@ -225,7 +225,7 @@ the tape backwards and then discard. A particular `tf.GradientTape` can only
 compute one gradient; subsequent calls throw a runtime error.
 
 ```py
-w = tfe.Variable([[1.0]])
+w = tf.Variable([[1.0]])
 with tf.GradientTape() as tape:
   loss = w * w
 
@@ -260,8 +260,8 @@ def grad(weights, biases):
 train_steps = 200
 learning_rate = 0.01
 # Start with arbitrary values for W and B on the same batch of data
-W = tfe.Variable(5.)
-B = tfe.Variable(10.)
+W = tf.Variable(5.)
+B = tf.Variable(10.)
 
 print("Initial loss: {:.3f}".format(loss(W, B)))
 
@@ -407,11 +407,11 @@ with tf.device("/gpu:0"):
 
 ### Variables and optimizers
 
-`tfe.Variable` objects store mutable `tf.Tensor` values accessed during
+`tf.Variable` objects store mutable `tf.Tensor` values accessed during
 training to make automatic differentiation easier. The parameters of a model can
 be encapsulated in classes as variables.
 
-Better encapsulate model parameters by using `tfe.Variable` with
+Better encapsulate model parameters by using `tf.Variable` with
 `tf.GradientTape`. For example, the automatic differentiation example above
 can be rewritten:
 
@@ -419,8 +419,8 @@ can be rewritten:
 class Model(tf.keras.Model):
   def __init__(self):
     super(Model, self).__init__()
-    self.W = tfe.Variable(5., name='weight')
-    self.B = tfe.Variable(10., name='bias')
+    self.W = tf.Variable(5., name='weight')
+    self.B = tf.Variable(10., name='bias')
   def call(self, inputs):
     return inputs * self.W + self.B
 
@@ -498,17 +498,17 @@ is removed, and is then deleted.
 
 ```py
 with tf.device("gpu:0"):
-  v = tfe.Variable(tf.random_normal([1000, 1000]))
+  v = tf.Variable(tf.random_normal([1000, 1000]))
   v = None  # v no longer takes up GPU memory
 ```
 
 ### Object-based saving
 
-`tfe.Checkpoint` can save and restore `tfe.Variable`s to and from
+`tfe.Checkpoint` can save and restore `tf.Variable`s to and from
 checkpoints:
 
 ```py
-x = tfe.Variable(10.)
+x = tf.Variable(10.)
 
 checkpoint = tfe.Checkpoint(x=x)  # save as "x"
 
@@ -612,7 +612,7 @@ def line_search_step(fn, init_x, rate=1.0):
 `tf.GradientTape` is a powerful interface for computing gradients, but there
 is another [Autograd](https://github.com/HIPS/autograd)-style API available for
 automatic differentiation. These functions are useful if writing math code with
-only tensors and gradient functions, and without `tfe.Variables`:
+only tensors and gradient functions, and without `tf.Variables`:
 
 * `tfe.gradients_function` —Returns a function that computes the derivatives
   of its input function parameter with respect to its arguments. The input

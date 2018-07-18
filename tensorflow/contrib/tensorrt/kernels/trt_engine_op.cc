@@ -230,7 +230,7 @@ void TRTEngineOp::ExecuteCalibration(tensorflow::OpKernelContext* ctx,
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
                                                 ->implementation()
-                                                ->CudaStreamMemberHack()));
+                                                ->GpuStreamMemberHack()));
   calib_res->calibrator_->setBatch(input_data, *stream);
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
@@ -391,7 +391,7 @@ void TRTEngineOp::ComputeAsync(tensorflow::OpKernelContext* ctx,
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
                                                 ->stream()
                                                 ->implementation()
-                                                ->CudaStreamMemberHack()));
+                                                ->GpuStreamMemberHack()));
 
   // TODO(jie): trt enqueue does not return error
   auto& trt_execution_context_ptr = engine_ctx_pair.second;

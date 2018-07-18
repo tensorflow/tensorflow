@@ -246,6 +246,15 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[2]])
 
+  def testUseResource(self):
+    v = variables.Variable(1.0, use_resource=True)
+    self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
+
+  def testEagerNoUseResource(self):
+    with context.eager_mode():
+      v = variables.Variable(1.0)
+      self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
+
   @test_util.run_in_graph_and_eager_modes
   def testScatterMin(self):
     with ops.device("cpu:0"):

@@ -217,10 +217,9 @@ class Model(Network):
       for name in self.output_names:
         if name not in loss:
           logging.warning(
-              'Output "' + name + '" missing from loss dictionary. '
-              'We assume this was done on purpose, '
-              'and we will not be expecting '
-              'any data to be passed to "' + name + '" during training.')
+              'Output "' + name + '" missing from loss dictionary. We assume '
+              'this was done on purpose. The fit and evaluate APIs will not be '
+              'expecting any data to be passed to "' + name + '".')
         loss_functions.append(losses.get(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):

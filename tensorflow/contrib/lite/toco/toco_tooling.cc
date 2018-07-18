@@ -117,6 +117,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new UnpartitionEmbeddingLookup);
+  transformations->Add(new ResolveGatherAttributes);
 }
 
 bool SupportsQuantization(FileFormat format) {

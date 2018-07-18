@@ -370,12 +370,13 @@ class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateGatherOptions(*builder, op.axis);
+    int axis = op.axis ? op.axis.value() : 0;
+    return ::tflite::CreateGatherOptions(*builder, axis);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->axis = options.axis();
+    op->axis = {options.axis()};
   }
 
   int GetVersion(const Operator& op) const override { return 1; }
