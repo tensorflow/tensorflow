@@ -1197,8 +1197,17 @@ tensorflow::Status ConvertGatherOperator(
   auto* op = new GatherOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
-  // TODO(ahentz): we currently ignore the third tensor in GatherV2 but we
-  // should read it an pass it on to the TF Lite Interpreter.
+  if (node.input_size() >= 3) {
+    // GatherV2 form where we are provided an axis. It may be either a constant
+    // or runtime defined value, so we just wire up the array and let
+    // ResolveGatherAttributes take care of it later on.
+    const auto axis_data_type = GetDataTypeAttr(node, "Taxis");
+    CHECK(axis_data_type == DT_INT32 || axis_data_type == DT_INT64);
+    op->inputs.push_back(node.input(2));
+  } else {
+    // Gather form that assumes axis=0.
+    op->axis = {0};
+  }
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();

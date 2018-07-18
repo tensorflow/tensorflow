@@ -1043,17 +1043,28 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
     return;
   }
 
+  // Yield until the axis has been resolved.
+  if (!op->axis) {
+    return;
+  }
+  int axis = op->axis.value();
+
   const auto& input_shape = input_array.shape();
   const auto& indices_shape = indices_array.shape();
   QCHECK_GE(input_shape.dimensions_count(), 1);
   op->input_rank = input_shape.dimensions_count();
+  QCHECK_LT(axis, op->input_rank);
 
-  // Copy the input dimensions to the output except for dimension 0,
+  // Copy the input dimensions to the output except for the axis dimensions
   // where the dimension of indices_shape is used.
-  // TODO(mgubin): if axis != 0 this is not true, change when it's supported.
   auto output_dims = output_array.mutable_shape()->mutable_dims();
-  output_dims->push_back(indices_shape.dims(0));
-  for (int dim = 1; dim < input_shape.dimensions_count(); dim++) {
+  for (int dim = 0; dim < axis; ++dim) {
+    output_dims->push_back(input_shape.dims(dim));
+  }
+  for (int dim = 0; dim < indices_shape.dimensions_count(); ++dim) {
+    output_dims->push_back(indices_shape.dims(dim));
+  }
+  for (int dim = axis + 1; dim < input_shape.dimensions_count(); ++dim) {
     output_dims->push_back(input_shape.dims(dim));
   }
 }
