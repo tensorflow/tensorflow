@@ -1862,7 +1862,6 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
       {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
       {"Log", ConvertSimpleOperator<LogOperator, 1>},
-      {"Log", ConvertSimpleOperator<LogOperator, 1>},
       {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
       {"MatMul", ConvertMatMulOperator},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
