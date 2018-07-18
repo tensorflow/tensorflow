@@ -1,0 +1,177 @@
+# ======
+# HEADER
+# ======
+# This is commented-out and prepended to each generated Dockerfile.
+header: |
+    THIS IS A GENERATED DOCKERFILE.
+
+    This file was assembled from multiple pieces, whose use is documented
+    below. Please refer to the the TensorFlow dockerfiles documentation for
+    more information. Build args are documented as their default value.
+
+# ========
+# PARTIALS
+# ========
+# Represent and document pieces of a Dockerfile.
+# Spec:
+# 
+# name: the name of the partial, referenced from other sections
+#   desc: A description, inserted later into the Dockerfile
+#   file: Alternative file prefix, e.g. file.partial.Dockerfile (default = name)
+#   args: A dict of ARGs in the Dockerfile; each entry has the format
+#      ARG_NAME: VALUE where VALUE is
+#         - a concrete value: becomes the default
+#         - a dict:
+#           desc: Arg description
+#           default: Default value for the arg; is written to the Dockerfile
+#           options: List of strings, part of documentation
+
+partials:
+    ubuntu:
+        desc: Start from Ubuntu (no GPU support)
+        args:
+            UBUNTU_VERSION: 16.04
+
+    ubuntu-devel:
+        desc: Start from Ubuntu, with TF development packages (no GPU support)
+        args:
+            UBUNTU_VERSION: 16.04
+
+    bazel:
+        desc: Install the latest version of Bazel and Python development tools.
+
+    nvidia:
+        desc: NVIDIA with CUDA and CuDNN, no dev stuff
+        args:
+            UBUNTU_VERSION: 16.04
+
+    nvidia-devel:
+        desc: >
+            Start from Nvidia's Ubuntu base image with CUDA and CuDNN, with TF
+            development packages.
+        args:
+            UBUNTU_VERSION: 16.04
+
+    python:
+        desc: Python is required for TensorFlow and other libraries.
+        args:
+            USE_PYTHON_3_NOT_2:
+                default: true
+                desc: Install python 3 over Python 2
+                
+    tensorflow:
+        desc: Install the TensorFlow Python package.
+        args:
+            TF_PACKAGE:
+                default: tensorflow
+                options:
+                    - tensorflow
+                    - tensorflow-gpu
+                    - tf-nightly
+                    - tf-nightly-gpu
+                desc: The specific TensorFlow Python package to install
+    shell:
+        desc: Configure TensorFlow's shell prompt and login tools.
+    jupyter:
+        desc: Launch Jupyter on execution instead of a bash prompt.
+
+# ===========
+# DOCKERFILES
+# ===========
+# Represent dockerfiles.
+# Spec:
+# 
+# name: the name of the image, referenced from other sections
+#   desc: A description, inserted later into the Dockerfile
+#   create-dockerfile: Create a dockerfile based on this. Useful for creating
+#      base images. Default is true
+#   partials: List of VALUEs, where a VALUE is either:
+#      - the name of a partial, which inserts that partial into this file
+#      - image: [name of another image], which inserts the partials from that
+#        image into this file
+#   arg-defaults: List of VALUEs, where a VALUE is either:
+#      - the name of another image, which loads the default args from that image
+#      - ARG_NAME: VALUE, which is exactly what you'd expect
+images:
+
+    nodev:
+        create-dockerfile: false
+        partials:
+            - python
+            - tensorflow
+            - shell
+
+    dev:
+        create-dockerfile: false
+        partials:
+            - python
+            - bazel
+            - shell
+
+    cpu:
+      desc: Ubuntu-based, CPU-only environment for using TensorFlow
+      partials:
+        - ubuntu
+        - image: nodev
+
+    cpu-devel:
+      desc: >
+          Ubuntu-based, CPU-only environment for developing changes for
+          TensorFlow.
+      partials:
+        - ubuntu-devel
+        - image: dev
+
+    nvidia:
+      desc: Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow.
+      arg-defaults: 
+        - TF_PACKAGE: tensorflow-gpu
+      partials:
+        - nvidia
+        - image: nodev
+
+    nvidia-devel:
+      desc: >
+          Ubuntu-based, Nvidia-GPU-enabled environment for developing changes
+          for TensorFlow.
+      arg-defaults: 
+        - TF_PACKAGE: tensorflow-gpu
+      partials:
+        - nvidia-devel
+        - image: dev
+
+    cpu-jupyter:
+      desc: >
+          Ubuntu-based, CPU-only environment for using TensorFlow, with Jupyter
+          included.
+      partials:
+        - image: cpu
+        - jupyter
+
+    cpu-devel-jupyter:
+      desc: >
+         Ubuntu-based, CPU-only environment for developing changes for
+         TensorFlow, with Jupyter included.
+      partials:
+        - image: cpu-devel
+        - jupyter
+
+    nvidia-jupyter:
+      desc: >
+        Ubuntu-based, Nvidia-GPU-enabled environment for using TensorFlow, with
+        Jupyter included.
+      arg-defaults: 
+        - nvidia
+      partials:
+        - image: nvidia
+        - jupyter
+
+    nvidia-devel-jupyter:
+      desc: >
+        Ubuntu-based, Nvidia-GPU-enabled environment for developing changes for
+        TensorFlow, with Jupyter included.
+      arg-defaults: 
+        - nvidia-devel
+      partials:
+        - image: nvidia-devel
+        - jupyter
