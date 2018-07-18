@@ -102,6 +102,10 @@ pip3 install portpicker
 pip2 install grpcio
 pip3 install grpcio
 
+# Keras save_model requires the following:
+pip2 install h5py
+pip3 install h5py
+
 # Eager-to-graph execution needs astor, gast and termcolor:
 pip2 install --upgrade astor
 pip3 install --upgrade astor
