@@ -42,6 +42,10 @@ cc_library(
     name = "delegate_data",
     srcs = ["delegate_data.cc"],
     hdrs = ["delegate_data.h"],
+    tags = [
+        "no_oss",
+        "tflite_not_portable",
+    ],
     deps = [
         ":buffer_map",
         "//tensorflow/core:core_cpu",
