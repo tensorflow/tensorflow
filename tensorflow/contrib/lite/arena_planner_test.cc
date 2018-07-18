@@ -24,8 +24,6 @@ limitations under the License.
 namespace tflite {
 namespace {
 
-constexpr const int kTensorAlignment = 4;
-
 // A simple op to be used in tests, as syntactic sugar.
 class TestOp {
  public:
@@ -158,7 +156,7 @@ class ArenaPlannerTest : public ::testing::Test {
     context_.ReportError = ReportError;
     planner_.reset(new ArenaPlanner(
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
-        preserve_inputs, /*preserve intermediates*/ false, kTensorAlignment));
+        preserve_inputs, /*preserve intermediates*/ false));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
@@ -180,8 +178,8 @@ class ArenaPlannerTest : public ::testing::Test {
     const TfLiteTensor& tensor = (*graph_->tensors())[tensor_index];
     int64_t offset = GetOffset(tensor_index) + tensor.bytes;
     // We must make sure the offset is aligned to kDefaultArenaAlignment.
-    if (offset % kTensorAlignment != 0) {
-      offset += kTensorAlignment - offset % kTensorAlignment;
+    if (offset % 4 != 0) {
+      offset += 4 - offset % 4;
     }
     return offset;
   };
