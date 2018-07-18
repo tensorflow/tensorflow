@@ -2046,6 +2046,35 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
   return IrEmitter::HandleSelect(select);
 }
 
+Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  if (values != nullptr) {
+    // TODO(b/26783907): Also sort the values by their corresponding key.
+    return Unimplemented("Key/Value Sort is not implemented on GPU");
+  }
+
+  // First copy the operand to the output, so that we can sort in-place.
+  // TODO(b/26783907): Share buffer of output and operand when it is possible.
+  if (sort->operand(0)->IsConstant()) {
+    thunks.push_back(MakeUnique<HostToDeviceCopyThunk>(
+        /*source_address=*/sort->operand(0)->literal().untyped_data(),
+        /*destination_buffer=*/GetAllocationSlice(*sort),
+        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
+  } else {
+    thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+        /*source_address=*/GetAllocationSlice(*sort->operand(0)),
+        /*destination_buffer=*/GetAllocationSlice(*sort),
+        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
+  }
+
+  thunks.push_back(
+      BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
+  thunk_sequence_->emplace_back(
+      MakeUnique<SequentialThunk>(std::move(thunks), sort));
+  return IrEmitter::HandleSort(sort);
+}
+
 Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   thunk_sequence_->push_back(
       BuildKernelThunk(tuple_select, /*implements_whole_instruction=*/true));
