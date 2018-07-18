@@ -58,6 +58,7 @@ cc_library(
     }),
     deps = [
         ":op_macros",
+        "//tensorflow/contrib/lite:arena_planner",
         "//tensorflow/contrib/lite:context",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
