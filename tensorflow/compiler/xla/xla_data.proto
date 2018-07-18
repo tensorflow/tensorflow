@@ -308,6 +308,22 @@ message DeviceHandle {
 // Send instructions will be blocked until the data is transferred.
 message ChannelHandle {
   int64 handle = 1;
+  enum ChannelType {
+    // Invalid primitive type to serve as default.
+    CHANNEL_TYPE_INVALID = 0;
+
+    // A channel for sending data between devices.
+    DEVICE_TO_DEVICE = 1;
+
+    // A channel for sending data from the device to the host. Can only be used
+    // with a Send operation.
+    DEVICE_TO_HOST = 2;
+
+    // A channel for sending data from the host to the device. Can only be used
+    // with a Recv operation.
+    HOST_TO_DEVICE = 3;
+  }
+  ChannelType type = 2;
 }
 
 // DeviceAssignmentProto is a serialized form of DeviceAssignment class, which

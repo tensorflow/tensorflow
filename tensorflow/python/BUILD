@@ -1044,6 +1044,7 @@ py_test(
         ":client_testlib",
         ":constant_op",
         ":error_interpolation",
+        ":traceable_stack",
     ],
 )
 
@@ -2136,8 +2137,8 @@ py_library(
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
-        ":nn_ops",
         ":random_ops",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -3043,6 +3044,20 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
+)
+
+cuda_py_test(
+    name = "init_ops_test",
+    size = "small",
+    srcs = ["ops/init_ops_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":init_ops",
+        ":framework_ops",
+        ":resource_variable_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+    ],
 )
 
 cuda_py_test(

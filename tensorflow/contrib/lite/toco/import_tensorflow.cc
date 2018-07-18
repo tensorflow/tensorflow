@@ -1197,8 +1197,17 @@ tensorflow::Status ConvertGatherOperator(
   auto* op = new GatherOperator;
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
-  // TODO(ahentz): we currently ignore the third tensor in GatherV2 but we
-  // should read it an pass it on to the TF Lite Interpreter.
+  if (node.input_size() >= 3) {
+    // GatherV2 form where we are provided an axis. It may be either a constant
+    // or runtime defined value, so we just wire up the array and let
+    // ResolveGatherAttributes take care of it later on.
+    const auto axis_data_type = GetDataTypeAttr(node, "Taxis");
+    CHECK(axis_data_type == DT_INT32 || axis_data_type == DT_INT64);
+    op->inputs.push_back(node.input(2));
+  } else {
+    // Gather form that assumes axis=0.
+    op->axis = {0};
+  }
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
@@ -1518,11 +1527,15 @@ tensorflow::Status ConvertRangeOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertStackOperator(
+// Note that it's easy to confuse/conflate "Stack" and "Pack" operators, but
+// they aren't the same thing.  tf.stack results in a "Pack" operator.  "Stack"
+// operators also exist, but involve manipulating the TF runtime stack, and are
+// not directly related to tf.stack() usage.
+tensorflow::Status ConvertPackOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  CHECK((node.op() == "Stack") || (node.op() == "Pack"));
-  auto* op = new StackOperator;
+  CHECK_EQ(node.op(), "Pack");
+  auto op = absl::make_unique<PackOperator>();
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   QCHECK_GE(num_inputs, 1)
       << node.op()
@@ -1532,10 +1545,10 @@ tensorflow::Status ConvertStackOperator(
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
-  // Both "Stack" and "Pack" have the "axis" attribute.
   op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
+  op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
   op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
+  model->operators.emplace_back(std::move(op));
   return tensorflow::Status::OK();
 }
 
@@ -1858,7 +1871,6 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
       {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
       {"Log", ConvertSimpleOperator<LogOperator, 1>},
-      {"Log", ConvertSimpleOperator<LogOperator, 1>},
       {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1>},
       {"MatMul", ConvertMatMulOperator},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
@@ -1873,7 +1885,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"NextIteration", ConvertOperatorSpecialCasedAsRNNBackEdge},
       {"NoOp", ConvertNoOpOperator},
       {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>},
-      {"Pack", ConvertStackOperator},
+      {"Pack", ConvertPackOperator},
       {"Pad", ConvertSimpleOperator<PadOperator, 2>},
       {"PadV2", ConvertSimpleOperator<PadV2Operator, 3>},
       {"ParallelDynamicStitch", ConvertDynamicStitchOperator},
@@ -1903,7 +1915,6 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
       {"Squeeze", ConvertSqueezeOperator},
-      {"Stack", ConvertStackOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},
       {"Sub", ConvertSimpleOperator<SubOperator, 2>},

@@ -311,6 +311,7 @@ tf_cuda_cc_test(
     name = "trt_plugin_factory_test",
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":trt_plugins",
         "//tensorflow/core:lib",

@@ -24,7 +24,7 @@ namespace toco {
 namespace {
 
 template <ArrayDataType Type>
-void Stack(Model* model, StackOperator const& op) {
+void Pack(Model* model, PackOperator const& op) {
   auto& output_array = model->GetArray(op.outputs[0]);
   CHECK(output_array.data_type == Type);
 
@@ -33,8 +33,8 @@ void Stack(Model* model, StackOperator const& op) {
       output_array.GetMutableBuffer<Type>().data;
   output_data.resize(RequiredBufferSizeForShape(output_array.shape()));
 
-  // Stack inputs into buffer
-  CHECK_EQ(op.axis, 0) << "Stacking only supported along first axis";
+  // Pack inputs into buffer
+  CHECK_EQ(op.axis, 0) << "Packing only supported along first axis";
   int dst_offset = 0;
   for (int i = 0; i < op.inputs.size(); i++) {
     // Append array data to output for each input array
@@ -49,13 +49,13 @@ void Stack(Model* model, StackOperator const& op) {
 
 }  // namespace
 
-bool ResolveConstantStack::Run(Model* model, std::size_t op_index) {
+bool ResolveConstantPack::Run(Model* model, std::size_t op_index) {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
-  if (base_op->type != OperatorType::kStack) {
+  if (base_op->type != OperatorType::kPack) {
     return false;
   }
-  const auto* op = static_cast<const StackOperator*>(base_op);
+  const auto* op = static_cast<const PackOperator*>(base_op);
 
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
@@ -82,24 +82,24 @@ bool ResolveConstantStack::Run(Model* model, std::size_t op_index) {
     // Handle negative axis
     axis += model->GetArray(op->inputs[0]).shape().dims().size();
   }
-  CHECK_EQ(axis, 0) << "Stacking only supported along 0th axis";
+  CHECK_EQ(axis, 0) << "Packing only supported along 0th axis";
 
   CHECK(!output_array.buffer);
   switch (output_array.data_type) {
     case ArrayDataType::kFloat:
-      Stack<ArrayDataType::kFloat>(model, *op);
+      Pack<ArrayDataType::kFloat>(model, *op);
       break;
     case ArrayDataType::kUint8:
-      Stack<ArrayDataType::kUint8>(model, *op);
+      Pack<ArrayDataType::kUint8>(model, *op);
       break;
     case ArrayDataType::kInt32:
-      Stack<ArrayDataType::kInt32>(model, *op);
+      Pack<ArrayDataType::kInt32>(model, *op);
       break;
     case ArrayDataType::kInt64:
-      Stack<ArrayDataType::kInt64>(model, *op);
+      Pack<ArrayDataType::kInt64>(model, *op);
       break;
     default:
-      LOG(FATAL) << "Unsupported data type given to Stack op with output \""
+      LOG(FATAL) << "Unsupported data type given to Pack op with output \""
                  << op->outputs[0] << "\"";
       break;
   }

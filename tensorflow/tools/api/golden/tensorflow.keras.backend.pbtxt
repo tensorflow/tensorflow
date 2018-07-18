@@ -70,7 +70,7 @@ tf_module {
   }
   member_method {
     name: "categorical_crossentropy"
-    argspec: "args=[\'target\', \'output\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'target\', \'output\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
   }
   member_method {
     name: "clear_session"
@@ -462,7 +462,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'target\', \'output\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'target\', \'output\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
   }
   member_method {
     name: "spatial_2d_padding"

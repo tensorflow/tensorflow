@@ -1524,6 +1524,18 @@ TEST_F(ShapeInferenceTest, BadSlice) {
       << statusor.status();
 }
 
+TEST_F(ShapeInferenceTest, BadSort) {
+  auto keys = ShapeUtil::MakeShape(F32, {4});
+  auto values = ShapeUtil::MakeShape(F32, {5});
+  StatusOr<Shape> statusor =
+      ShapeInference::InferVariadicOpShape(HloOpcode::kSort, {&keys, &values});
+  ASSERT_FALSE(statusor.ok());
+
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("dimensions must match"))
+      << statusor.status();
+}
+
 class GatherShapeInferenceTest : public ShapeInferenceTest {
  protected:
   const Shape s64_scalar_ = ShapeUtil::MakeShape(S64, {});

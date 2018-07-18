@@ -1294,3 +1294,16 @@ def is_resource_variable(var):
   """"Returns True if `var` is to be considered a ResourceVariable."""
   return isinstance(var, ResourceVariable) or hasattr(
       var, "_should_act_as_resource_variable")
+
+
+_DEFAULT_USE_RESOURCE = False
+
+
+def _default_variable_creator(_, *args, **kwds):
+  use_resource = kwds.pop("use_resource", _DEFAULT_USE_RESOURCE)
+  use_resource = use_resource or context.executing_eagerly()
+  if use_resource:
+    return ResourceVariable(*args, **kwds)
+  return variables.RefVariable(*args, **kwds)
+
+variables.default_variable_creator = _default_variable_creator

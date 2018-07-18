@@ -1057,6 +1057,7 @@ cc_library(
     hdrs = ["hlo_module_group_metadata.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -2010,6 +2011,7 @@ cc_library(
     deps = [
         ":computation_layout",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dce",
         ":hlo_graph_dumper",
         ":hlo_pass",

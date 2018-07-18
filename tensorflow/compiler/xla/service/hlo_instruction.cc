@@ -115,26 +115,27 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.operand_ids_size() == 2)
           << "Send instruction should have 2 operand but sees "
           << proto.operand_ids_size();
-      instruction = CreateSend(operands(0), operands(1), proto.channel_id());
+      instruction = CreateSend(operands(0), operands(1), proto.channel_id(),
+                               proto.is_host_transfer());
       break;
     case HloOpcode::kSendDone:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "SendDone instruction should have 1 operand but sees "
           << proto.operand_ids_size();
-      instruction = CreateSendDone(operands(0));
+      instruction = CreateSendDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kRecv:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "Recv instruction should have 1 operand but sees "
           << proto.operand_ids_size();
       instruction = CreateRecv(proto.shape().tuple_shapes(0), operands(0),
-                               proto.channel_id());
+                               proto.channel_id(), proto.is_host_transfer());
       break;
     case HloOpcode::kRecvDone:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
           << "RecvDone instruction should have 1 operand but sees "
           << proto.operand_ids_size();
-      instruction = CreateRecvDone(operands(0));
+      instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
@@ -675,29 +676,33 @@ HloInstruction::CreateCrossReplicaSum(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSend(
-    HloInstruction* operand, HloInstruction* token, int64 channel_id) {
-  return MakeUnique<HloSendInstruction>(operand, token, channel_id);
+    HloInstruction* operand, HloInstruction* token, int64 channel_id,
+    bool is_host_transfer) {
+  return MakeUnique<HloSendInstruction>(operand, token, channel_id,
+                                        is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSendDone(
-    HloInstruction* operand) {
+    HloInstruction* operand, bool is_host_transfer) {
   auto send_operand = DynCast<HloSendInstruction>(operand);
   CHECK(send_operand != nullptr)
       << "SendDone must take the context operand from Send";
-  return MakeUnique<HloSendDoneInstruction>(send_operand);
+  return MakeUnique<HloSendDoneInstruction>(send_operand, is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecv(
-    const Shape& shape, HloInstruction* token, int64 channel_id) {
-  return MakeUnique<HloRecvInstruction>(shape, token, channel_id);
+    const Shape& shape, HloInstruction* token, int64 channel_id,
+    bool is_host_transfer) {
+  return MakeUnique<HloRecvInstruction>(shape, token, channel_id,
+                                        is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRecvDone(
-    HloInstruction* operand) {
+    HloInstruction* operand, bool is_host_transfer) {
   auto recv_operand = DynCast<HloRecvInstruction>(operand);
   CHECK(recv_operand != nullptr)
       << "RecvDone must take the context operand from Recv";
-  return MakeUnique<HloRecvDoneInstruction>(recv_operand);
+  return MakeUnique<HloRecvDoneInstruction>(recv_operand, is_host_transfer);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReverse(

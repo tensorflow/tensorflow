@@ -437,6 +437,7 @@ void ProcessTensorFlowReshapeOperator(Model* model,
       product_non_wildcard_dims *= shape_data[i];
     }
   }
+
   const int input_flat_size = RequiredBufferSizeForShape(input_shape);
   if (has_wildcard) {
     CHECK_GE(input_flat_size, product_non_wildcard_dims)
@@ -445,6 +446,12 @@ void ProcessTensorFlowReshapeOperator(Model* model,
         << op->outputs[0] << "\". Are your input shapes correct?";
     shape_data[wildcard_index] = input_flat_size / product_non_wildcard_dims;
   }
+
+  if (shape_data.size() == 1 && shape_data[0] == 0) {
+    // We have reshaped a scalar, so preserve as a scalar.
+    shape_data.clear();
+  }
+
   auto& output_shape = *output_array.mutable_shape();
   *output_shape.mutable_dims() = shape_data;
   CHECK_EQ(input_flat_size, RequiredBufferSizeForShape(output_shape))
@@ -1036,17 +1043,28 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
     return;
   }
 
+  // Yield until the axis has been resolved.
+  if (!op->axis) {
+    return;
+  }
+  int axis = op->axis.value();
+
   const auto& input_shape = input_array.shape();
   const auto& indices_shape = indices_array.shape();
   QCHECK_GE(input_shape.dimensions_count(), 1);
   op->input_rank = input_shape.dimensions_count();
+  QCHECK_LT(axis, op->input_rank);
 
-  // Copy the input dimensions to the output except for dimension 0,
+  // Copy the input dimensions to the output except for the axis dimensions
   // where the dimension of indices_shape is used.
-  // TODO(mgubin): if axis != 0 this is not true, change when it's supported.
   auto output_dims = output_array.mutable_shape()->mutable_dims();
-  output_dims->push_back(indices_shape.dims(0));
-  for (int dim = 1; dim < input_shape.dimensions_count(); dim++) {
+  for (int dim = 0; dim < axis; ++dim) {
+    output_dims->push_back(input_shape.dims(dim));
+  }
+  for (int dim = 0; dim < indices_shape.dimensions_count(); ++dim) {
+    output_dims->push_back(indices_shape.dims(dim));
+  }
+  for (int dim = axis + 1; dim < input_shape.dimensions_count(); ++dim) {
     output_dims->push_back(input_shape.dims(dim));
   }
 }
@@ -1192,7 +1210,7 @@ void ProcessShapeOperator(Model* model, TensorFlowShapeOperator* op) {
   output_shape->ReplaceDims({input_array.shape().dimensions_count()});
 }
 
-void ProcessStackOperator(Model* model, StackOperator* op) {
+void ProcessPackOperator(Model* model, PackOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
@@ -1201,7 +1219,7 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
     return;
   }
 
-  std::unique_ptr<Shape> stacked_shape;
+  std::unique_ptr<Shape> packed_shape;
   for (const auto& input : op->inputs) {
     const auto& input_array = model->GetArray(input);
     if (!input_array.has_shape()) {
@@ -1210,23 +1228,23 @@ void ProcessStackOperator(Model* model, StackOperator* op) {
     }
 
     Shape shape = input_array.shape();
-    if (!stacked_shape) {
-      stacked_shape.reset(new Shape(shape));
+    if (!packed_shape) {
+      packed_shape.reset(new Shape(shape));
     } else {
-      CHECK(*stacked_shape == shape) << "All input arrays to Stack operators "
-                                        "must have the same shape. Input \""
-                                     << input << "\" is different.";
+      CHECK(*packed_shape == shape) << "All input arrays to Pack operators "
+                                       "must have the same shape. Input \""
+                                    << input << "\" is different.";
     }
   }
 
   int axis = op->axis;
   if (axis < 0) {
     // Handle negative axis
-    axis += stacked_shape->dims().size() + 1;
+    axis += packed_shape->dims().size() + 1;
   }
-  stacked_shape->mutable_dims()->insert(
-      stacked_shape->mutable_dims()->begin() + axis, op->inputs.size());
-  output_array.copy_shape(*stacked_shape);
+  packed_shape->mutable_dims()->insert(
+      packed_shape->mutable_dims()->begin() + axis, op->inputs.size());
+  output_array.copy_shape(*packed_shape);
 }
 
 void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
@@ -1659,8 +1677,8 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kShape:
       ProcessShapeOperator(model, static_cast<TensorFlowShapeOperator*>(op));
       break;
-    case OperatorType::kStack:
-      ProcessStackOperator(model, static_cast<StackOperator*>(op));
+    case OperatorType::kPack:
+      ProcessPackOperator(model, static_cast<PackOperator*>(op));
       break;
     case OperatorType::kReorderAxes:
       ProcessReorderAxesOperator(model, static_cast<ReorderAxesOperator*>(op));

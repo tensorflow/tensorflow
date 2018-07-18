@@ -18,6 +18,7 @@ java_test(
         "//tensorflow/contrib/lite/java/ovic/src/testdata:ovic_testdata",
     ],
     javacopts = JAVACOPTS,
+    tags = ["no_oss"],
     test_class = "org.tensorflow.ovic.OvicClassifierTest",
     visibility = ["//visibility:public"],
     deps = [

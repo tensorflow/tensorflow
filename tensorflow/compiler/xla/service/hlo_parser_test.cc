@@ -288,6 +288,21 @@ ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
 
 )"
 },
+{
+"SendRecvWithHostTransfer",
+R"(HloModule HostTransferSendRecv_module
+
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, is_host_transfer=true
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, is_host_transfer=true
+  %constant = f32[] constant(2.1), sharding={maximal device=0}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, is_host_transfer=true
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, is_host_transfer=true
+}
+
+)"
+},
 // get-tuple-element
 {
 "GetTupleElement",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
@@ -38,8 +38,8 @@ bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
 // Emits a sequential loop if launch_dimensions is null.
 static Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const ElementGenerator& start_indices_generator,
-    ElementGenerator update_array_generator, const IrArray& output_array,
-    const gpu::LaunchDimensions* launch_dimensions,
+    bool is_signed, ElementGenerator update_array_generator,
+    const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
     tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder) {
   const Shape& output_shape = output_array.GetShape();
 
@@ -59,17 +59,20 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
-    // to oficially document different behavior.
+    // to officially document different behavior.
     llvm::Value* max_bound =
         ir_builder->CreateSub(output_dim_size, update_dim_size);
     llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
     start_index[i] = ir_builder->CreateSelect(
-        ir_builder->CreateICmp(llvm::ICmpInst::ICMP_SGE, zero, start_index[i]),
+        ir_builder->CreateICmp(
+            is_signed ? llvm::ICmpInst::ICMP_SGE : llvm::ICmpInst::ICMP_UGE,
+            zero, start_index[i]),
         zero, start_index[i]);
 
     start_index[i] = ir_builder->CreateSelect(
-        ir_builder->CreateICmp(llvm::ICmpInst::ICMP_SLE, max_bound,
-                               start_index[i]),
+        ir_builder->CreateICmp(
+            is_signed ? llvm::ICmpInst::ICMP_SLE : llvm::ICmpInst::ICMP_ULE,
+            max_bound, start_index[i]),
         max_bound, start_index[i]);
   }
 
@@ -122,8 +125,9 @@ Status EmitDynamicUpdateSliceInPlace(
     return update_array.EmitReadArrayElement(index, ir_builder);
   };
 
+  bool is_signed = ShapeUtil::ElementIsSigned(start_indices_array.GetShape());
   return EmitDynamicUpdateSliceInPlaceImpl(
-      update_shape, start_indices_generator, update_array_generator,
+      update_shape, start_indices_generator, is_signed, update_array_generator,
       output_array, /*launch_dimensions=*/nullptr, name, ir_builder);
 }
 
@@ -170,8 +174,9 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
   ElementGenerator start_indices_generator =
       fused_emitter.GetGenerator(start_indices);
 
+  bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
   return EmitDynamicUpdateSliceInPlaceImpl(
-      update_shape, start_indices_generator, update_array_generator,
+      update_shape, start_indices_generator, is_signed, update_array_generator,
       fusion_output_array, launch_dimensions, IrName(fusion), ir_builder);
 }
 
