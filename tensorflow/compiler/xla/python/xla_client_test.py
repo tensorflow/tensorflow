@@ -171,6 +171,24 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
     self._ExecuteAndCompareClose(c, expected=[[2, 1, 4], [3, 6, 5]])
 
+  def testShiftLeft(self):
+    c = self._NewComputation()
+    c.ShiftLeft(c.Constant(NumpyArrayS32([3])),
+                c.Constant(NumpyArrayS32([2])))
+    self._ExecuteAndCompareClose(c, expected=[12])
+
+  def testShiftRightArithmetic(self):
+    c = self._NewComputation()
+    c.ShiftRightArithmetic(c.Constant(NumpyArrayS32([-2])),
+                           c.Constant(NumpyArrayS32([1])))
+    self._ExecuteAndCompareClose(c, expected=[-1])
+
+  def testShiftRightLogical(self):
+    c = self._NewComputation()
+    c.ShiftRightLogical(c.Constant(NumpyArrayS32([-1])),
+                        c.Constant(NumpyArrayS32([1])))
+    self._ExecuteAndCompareClose(c, expected=[2**31 - 1])
+
   def testGetProto(self):
     c = self._NewComputation()
     c.Add(
