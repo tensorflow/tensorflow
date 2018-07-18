@@ -35,7 +35,8 @@ echo "TF_DOCKER_BUILD_IMAGE_NAME=${TF_DOCKER_BUILD_IMAGE_NAME}"
 echo "TF_DOCKER_BUILD_VERSION=${TF_DOCKER_BUILD_VERSION}"
 
 # Build containers for AVX
-#"TF_BAZEL_BUILD_OPTIONS": "'{}'" (default build option= avx)
+# Include the instructions for sandybridge and later, but tune for ivybridge
+TF_BAZEL_BUILD_OPTIONS="--config=mkl --copt=-march=sandybridge --copt=-mtune=ivybridge --copt=-O3 --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
 
 # build the python 2 container and whl
 TF_DOCKER_BUILD_TYPE="MKL" \
@@ -55,7 +56,8 @@ TF_DOCKER_BUILD_TYPE="MKL" \
   ${WORKSPACE}/tensorflow/tools/docker/parameterized_docker_build.sh
 
 # Build containers for AVX2
-TF_BAZEL_BUILD_OPTIONS="--config=mkl --copt=-mavx2 --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
+# Include the instructions for haswell and later, but tune for broadwell
+TF_BAZEL_BUILD_OPTIONS="--config=mkl --copt=-march=haswell --copt=-mtune=broadwell --copt=-O3 --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
 
 # build the python 2 container and whl
 TF_DOCKER_BUILD_TYPE="MKL" \
