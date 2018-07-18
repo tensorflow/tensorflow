@@ -351,10 +351,10 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(LessEqual)
     HANDLE_OPERATORTYPENAME_CASE(MatMul)
     HANDLE_OPERATORTYPENAME_CASE(ReduceMax)  //  Reduction Max
-    HANDLE_OPERATORTYPENAME_CASE(Maximum)  //  Element-wise Maximum
+    HANDLE_OPERATORTYPENAME_CASE(Maximum)    //  Element-wise Maximum
     HANDLE_OPERATORTYPENAME_CASE(Merge)
-    HANDLE_OPERATORTYPENAME_CASE(Min)      //  Reduction Min
-    HANDLE_OPERATORTYPENAME_CASE(Minimum)  //  Element-wise Minimum
+    HANDLE_OPERATORTYPENAME_CASE(ReduceMin)  //  Reduction Min
+    HANDLE_OPERATORTYPENAME_CASE(Minimum)    //  Element-wise Minimum
     HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pack)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
@@ -399,6 +399,9 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Equal)
     HANDLE_OPERATORTYPENAME_CASE(NotEqual)
     HANDLE_OPERATORTYPENAME_CASE(Pow)
+    HANDLE_OPERATORTYPENAME_CASE(Any)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
