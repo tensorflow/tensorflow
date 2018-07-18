@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -1525,11 +1526,15 @@ struct FloorOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the params array
 //   inputs[1]: required: the indices to gather
+//   inputs[2]: optional: axis
 //
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int axis = 0;
+  // Axis is populated explicitly or implicitly from the axis input by
+  // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
+  // be resolved.
+  absl::optional<int> axis;
   int input_rank = 0;
 };
 

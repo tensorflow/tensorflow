@@ -1138,13 +1138,27 @@ void ConvertFloorOperator(const Model& model, const FloorOperator& src_op,
 void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
                            GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* gather_op = tensorflow_graph->add_node();
-  gather_op->set_op("Gather");
+  gather_op->set_op("GatherV2");
   gather_op->set_name(src_op.outputs[0]);
-  CHECK_EQ(src_op.inputs.size(), 2);
   *gather_op->add_input() = src_op.inputs[0];
   *gather_op->add_input() = src_op.inputs[1];
 
+  if (!src_op.axis) {
+    // Dynamic axis.
+    CHECK_EQ(src_op.inputs.size(), 3);
+    *gather_op->add_input() = src_op.inputs[2];
+  } else {
+    // Constant axis.
+    CHECK_EQ(src_op.inputs.size(), 2);
+    const string gather_axis =
+        AvailableArrayName(model, gather_op->name() + "/axis");
+    CreateIntTensorConst(gather_axis, {src_op.axis.value()}, {},
+                         tensorflow_graph);
+    *gather_op->add_input() = gather_axis;
+  }
+
   (*gather_op->mutable_attr())["Tindices"].set_type(DT_INT32);
+  (*gather_op->mutable_attr())["Taxis"].set_type(DT_INT32);
   const tensorflow::DataType params_type =
       GetTensorFlowDataType(model, src_op.inputs[0]);
   (*gather_op->mutable_attr())["Tparams"].set_type(params_type);
