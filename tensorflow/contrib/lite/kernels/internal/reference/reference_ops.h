@@ -1654,10 +1654,11 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   }
 }
 
-inline void Div(const float* input1_data, const Dims<4>& input1_dims,
-                const float* input2_data, const Dims<4>& input2_dims,
-                float output_activation_min, float output_activation_max,
-                float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+inline void Div(const T* input1_data, const Dims<4>& input1_dims,
+                const T* input2_data, const Dims<4>& input2_dims,
+                T output_activation_min, T output_activation_max,
+                T* output_data, const Dims<4>& output_dims) {
   const int flat_size = MatchingFlatSize(input1_dims, input2_dims, output_dims);
   for (int i = 0; i < flat_size; ++i) {
     output_data[i] = ActivationFunctionWithMinMax(
