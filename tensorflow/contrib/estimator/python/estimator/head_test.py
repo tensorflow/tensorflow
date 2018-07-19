@@ -694,12 +694,14 @@ class MultiLabelHead(test.TestCase):
         # this assert tests that the algorithm remains consistent.
         keys.AUC: 0.3333,
         keys.AUC_PR: 0.7639,
-        keys.PROBABILITY_MEAN_AT_CLASS % 0: np.sum(_sigmoid(logits[:, 0])) / 2.,
-        keys.AUC_AT_CLASS % 0: 0.,
-        keys.AUC_PR_AT_CLASS % 0: 1.,
-        keys.PROBABILITY_MEAN_AT_CLASS % 1: np.sum(_sigmoid(logits[:, 1])) / 2.,
-        keys.AUC_AT_CLASS % 1: 1.,
-        keys.AUC_PR_AT_CLASS % 1: 1.,
+        keys.PROBABILITY_MEAN_AT_NAME % 'a':
+            np.sum(_sigmoid(logits[:, 0])) / 2.,
+        keys.AUC_AT_NAME % 'a': 0.,
+        keys.AUC_PR_AT_NAME % 'a': 1.,
+        keys.PROBABILITY_MEAN_AT_NAME % 'b':
+            np.sum(_sigmoid(logits[:, 1])) / 2.,
+        keys.AUC_AT_NAME % 'b': 1.,
+        keys.AUC_PR_AT_NAME % 'b': 1.,
     }
 
     self._test_eval(
