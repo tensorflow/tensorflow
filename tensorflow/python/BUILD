@@ -103,6 +103,7 @@ py_library(
         ":nn",
         ":ops",
         ":platform",
+        ":proio_ops_gen",
         ":pywrap_tensorflow",
         ":saver_test_utils",
         ":script_ops",
@@ -5201,4 +5202,8 @@ pyx_library(
     srcs = ["framework/fast_tensor_util.pyx"],
     py_deps = ["//tensorflow/python:util"],
     deps = ["//third_party/py/numpy:headers"],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "proio_ops_gen",
 )

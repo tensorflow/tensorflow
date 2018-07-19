@@ -70,6 +70,7 @@ from tensorflow.python.client.client_lib import *
 
 # Ops
 from tensorflow.python.ops.standard_ops import *
+from tensorflow.python.ops.gen_proio_ops import *
 
 # Namespaces
 from tensorflow.python.ops import initializers_ns as initializers

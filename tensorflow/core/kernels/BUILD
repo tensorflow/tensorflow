@@ -6243,6 +6243,18 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "proio_ops",
+    srcs = ["proio_ops.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:proio_ops_op_lib",
+        "@proio_archive//:proio",
+    ],
+)
+
 # -----------------------------------------------------------------------------
 # Google-internal targets.  These must be at the end for syncrepo.
 
