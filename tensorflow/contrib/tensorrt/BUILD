@@ -153,6 +153,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":tf_trt_integration_test_base",
         ":trt_convert_py",
         ":trt_ops_py",
         "//tensorflow/python:errors",
@@ -327,7 +328,8 @@ py_library(
     name = "tf_trt_integration_test_base",
     srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
-        ":init_py",
+        ":trt_convert_py",
+        ":trt_ops_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

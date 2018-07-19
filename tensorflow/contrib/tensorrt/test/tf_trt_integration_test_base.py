@@ -24,14 +24,14 @@ import warnings
 import numpy as np
 import six
 
-from tensorflow.contrib import tensorrt as trt
+from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
+from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
 TfTrtIntegrationTestParams = namedtuple("TfTrtIntegrationTestParams", [
@@ -105,7 +105,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       graph_options = config_pb2.GraphOptions()
 
     gpu_options = config_pb2.GPUOptions()
-    if trt.trt_convert.get_linked_tensorrt_version()[0] == 3:
+    if trt_convert.get_linked_tensorrt_version()[0] == 3:
       gpu_options.per_process_gpu_memory_fraction = 0.50
 
     config = config_pb2.ConfigProto(
@@ -145,7 +145,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   def _GetTrtGraphDef(self, params, gdef, precision_mode, is_dynamic_op):
     """Return trt converted graphdef."""
-    return trt.create_inference_graph(
+    return trt_convert.create_inference_graph(
         input_graph_def=gdef,
         outputs=[self.output_name],
         max_batch_size=max([dims[0] for dims in params.input_dims]),
@@ -213,7 +213,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                              dynamic_calib_engine)
         result = self._RunCalibration(params, calib_gdef, input_data,
                                       calib_config)
-        infer_gdef = trt.calib_graph_to_infer_graph(calib_gdef)
+        infer_gdef = trt_convert.calib_graph_to_infer_graph(calib_gdef)
         self._VerifyGraphDef(params, infer_gdef, precision_mode, True,
                              dynamic_calib_engine)
 
@@ -320,5 +320,5 @@ def _AddTests(test_class):
                  dynamic_calib_engine))
 
 
-if trt.is_tensorrt_enabled():
+if trt_convert.is_tensorrt_enabled():
   _AddTests(TfTrtIntegrationTestBase)
