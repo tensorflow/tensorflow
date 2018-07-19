@@ -713,15 +713,20 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true) {}
+  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true), scratch_size_(0) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(0) {}
+  AlgorithmDesc(Index a, bool use_tensor_ops, size_t scratch_size)
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(scratch_size) {}
   bool is_default() const { return algo_ == kDefaultAlgorithm; }
   bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
   Index algo_id() const { return algo_; }
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmDesc& other) const {
     return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_ &&
+           this->scratch_size_ == other.scratch_size_;
   }
   uint64 hash() const;
 
@@ -729,6 +734,7 @@ class AlgorithmDesc {
   enum { kDefaultAlgorithm = -1 };
   Index algo_;
   bool tensor_ops_enabled_;
+  size_t scratch_size_;
 };
 
 // Describes the result from a perf experiment.
@@ -743,15 +749,12 @@ class ProfileResult {
             elapsed_time_in_ms_ != std::numeric_limits<float>::max());
   }
   AlgorithmDesc algorithm() const { return algorithm_; }
-  size_t scratch_size() const { return scratch_size_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
  private:
   AlgorithmDesc algorithm_;
-  size_t scratch_size_ = 0;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
@@ -764,18 +767,9 @@ class ProfileResult {
 class AlgorithmConfig {
  public:
   AlgorithmConfig()
-      : algorithm_(),
-        algorithm_no_scratch_(),
-        algorithm_scratch_size_(0) {}
+      : algorithm_(), algorithm_no_scratch_() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm)
-      : algorithm_(algorithm),
-        algorithm_no_scratch_(),
-        algorithm_scratch_size_(0) {}
-  AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch,
-                  size_t algorithm_scratch_size = 0)
-      : algorithm_(algorithm),
-        algorithm_no_scratch_(algorithm_no_scratch),
-        algorithm_scratch_size_(0) {}
+      : algorithm_(algorithm), algorithm_no_scratch_() {}
   AlgorithmDesc algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   AlgorithmDesc algorithm_no_scratch() const { return algorithm_no_scratch_; }
@@ -790,17 +784,10 @@ class AlgorithmConfig {
     return !(*this == other);
   }
   string ToString() const;
-  size_t algorithm_scratch_size() const {
-    return algorithm_scratch_size_;
-  }
-  void set_algorithm_scratch_size(size_t val) {
-    algorithm_scratch_size_ = val;
-  }
 
  private:
   AlgorithmDesc algorithm_;
   AlgorithmDesc algorithm_no_scratch_;
-  size_t        algorithm_scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in

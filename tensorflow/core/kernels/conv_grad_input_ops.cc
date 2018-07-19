@@ -1037,7 +1037,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
 
     algorithm_config.set_algorithm(profile_result.algorithm());
-    algorithm_config.set_algorithm_scratch_size(profile_result.scratch_size());
     // TODO - Add support for no-scratch algorithm
     algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
 #endif
