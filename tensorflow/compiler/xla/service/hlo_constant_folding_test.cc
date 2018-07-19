@@ -202,5 +202,32 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   EXPECT_TRUE(matched);
 }
 
+TEST_F(HloConstantFoldingTest, DontFailOnCall) {
+  const auto shape = ShapeUtil::MakeShape(F32, {});
+
+  HloComputation::Builder call_builder(TestName() + "_call");
+  {
+    auto constant1 = call_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+    auto constant2 = call_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+    call_builder.AddInstruction(HloInstruction::CreateRng(
+        shape, RandomDistribution::RNG_UNIFORM, {constant1, constant2}));
+  }
+  auto call_body = call_builder.Build();
+
+  HloComputation::Builder builder(TestName());
+  builder.AddInstruction(
+      HloInstruction::CreateCall(shape, {}, call_body.get()));
+
+  auto module = CreateNewModule();
+  module->AddEmbeddedComputation(std::move(call_body));
+  auto computation = module->AddEntryComputation(std::move(builder.Build()));
+
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla
