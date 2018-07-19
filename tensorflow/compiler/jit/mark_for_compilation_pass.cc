@@ -21,7 +21,6 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
-#include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
@@ -464,12 +463,6 @@ Status MarkForCompilationPass::Run(
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
-  std::unique_ptr<DeadnessAnalysis> deadness;
-  {
-    XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 0);
-    TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(**options.graph, &deadness));
-  }
-
   auto is_compilable = [&](const Node* node, const DeviceType& device_type) {
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
@@ -496,14 +489,6 @@ Status MarkForCompilationPass::Run(
 
     status = fld->GetAttr(*node, kXlaCompileAttr, &compile);
     if (status.ok()) return compile;
-
-    // If inputs to `node` can have conflicting deadness (i.e. some are alive
-    // and some are dead) then don't compile it.  XLA cannot represent the
-    // deadness semantics of these nodes correctly and auto-clustering these
-    // nodes can cause deadness propagate to nodes that should be live.
-    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
-      return false;
-    }
 
     // Check for fusable ops only if requested.
     if (global_jit_level > 0 && fusion_only && !IsXlaFusable(node->def())) {
