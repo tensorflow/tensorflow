@@ -32,8 +32,7 @@ def simple_load(session, export_dir):
   serialized using the @{tf.saved_model.simple_save} function.
 
   More information about SavedModel and signatures can be found here in the
-  [saved_model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md)
-  documentation.
+  @{$guide/saved_model} documentation.
 
   Complete Example:
 

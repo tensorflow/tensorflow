@@ -79,9 +79,9 @@ The APIs for building and loading a SavedModel are described in this section.
 ### Simple
 
 The highest level API for exporting the model components described above
-is using the [simple_save](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_save.py)
-module. For most use-cases this functionality is sufficient to export
-a model which is compatible with TensorFlow serving. A corresponding [simple_load](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_load.py)
+is using the @{tf.saved_model.simple_save} module. For most use-cases
+this functionality is sufficient to export a model which is compatible
+with TensorFlow serving. A corresponding @{tf.saved_model.simple_load}
 module is implemented in python which enables SavedModels to be reloaded
 within a python TensorFlow session.
 
@@ -123,8 +123,8 @@ assert result == 2
 
 ### Builder
 
-In specific use-cases the [simple_save](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/simple_save.py)
-API may not provide the level of control to export a more complex model.
+In specific use-cases the @{tf.saved_model.simple_save} API may not
+provide the level of control to export a more complex model.
 
 The SavedModel [builder](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py)
 is implemented in Python.
