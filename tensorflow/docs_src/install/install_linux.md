@@ -221,7 +221,7 @@ And use `pip` to install the package for Python 2 or 3:
 
 <pre class="prettyprint lang-bsh">
   <code class="devsite-terminal">pip install --upgrade --user tensorflow   # Python 2.7</code>
-  <code class="devsite-terminal">pip3 install -upgrade --user tensorflow  # Python 3.n</code>
+  <code class="devsite-terminal">pip3 install --upgrade --user tensorflow  # Python 3.n</code>
 </pre>
 
 Use `pip list` to show the packages installed on the system.
