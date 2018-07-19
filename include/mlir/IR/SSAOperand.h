@@ -22,24 +22,23 @@
 #ifndef MLIR_IR_SSAOPERAND_H
 #define MLIR_IR_SSAOPERAND_H
 
+#include "mlir/IR/SSAValue.h"
+
 namespace mlir {
+class SSAValue;
 
 /// A reference to a value, suitable for use as an operand of an instruction,
-/// statement, etc.  SSAValueTy is the root type to use for values this tracks,
-/// and SSAUserTy is the type that will contain operands.
-template <typename SSAValueTy, typename SSAUserTy>
+/// statement, etc.
 class SSAOperand {
 public:
-  SSAOperand(SSAUserTy *user) : user(user) {}
-  SSAOperand(SSAUserTy *user, SSAValueTy *value) : value(value), user(user) {
-    insertIntoCurrent();
-  }
+  SSAOperand() {}
+  SSAOperand(SSAValue *value) : value(value) { insertIntoCurrent(); }
 
   /// Return the current value being used by this operand.
-  SSAValueTy *get() const { return value; }
+  SSAValue *get() const { return value; }
 
   /// Set the current value being used by this operand.
-  void set(SSAValueTy *newValue) {
+  void set(SSAValue *newValue) {
     // It isn't worth optimizing for the case of switching operands on a single
     // value.
     removeFromCurrent();
@@ -57,26 +56,16 @@ public:
 
   ~SSAOperand() { removeFromCurrent(); }
 
-  /// Return the user that owns this use.
-  SSAUserTy *getUser() { return user; }
-  const SSAUserTy *getUser() const { return user; }
-
-  /// Return which operand this is in the operand list of the User.
-  // TODO:  unsigned getOperandNumber() const;
-
 private:
-  /// The value used as this operand.  This can be transiently null when in a
+  /// The value used as this operand.  This can be null when in a
   /// "dropAllUses" state.
-  SSAValueTy *value = nullptr;
+  SSAValue *value = nullptr;
 
   /// The next operand in the use-chain.
   SSAOperand *nextUse = nullptr;
 
   /// This points to the previous link in the use-chain.
   SSAOperand **back = nullptr;
-
-  /// The user of this operand.
-  SSAUserTy *const user;
 
   /// Operands are not copyable or assignable.
   SSAOperand(const SSAOperand &use) = delete;
@@ -99,6 +88,33 @@ private:
   }
 };
 
+/// A reference to a value, suitable for use as an operand of an instruction,
+/// statement, etc.  SSAValueTy is the root type to use for values this tracks,
+/// and SSAUserTy is the type that will contain operands.
+template <typename SSAValueTy, typename SSAOwnerTy>
+class SSAOperandImpl : public SSAOperand {
+public:
+  SSAOperandImpl(SSAOwnerTy *owner) : owner(owner) {}
+  SSAOperandImpl(SSAOwnerTy *owner, SSAValueTy *value)
+      : SSAOperand(value), owner(owner) {}
+
+  /// Return the current value being used by this operand.
+  SSAValueTy *get() const { return (SSAValueTy *)SSAOperand::get(); }
+
+  /// Set the current value being used by this operand.
+  void set(SSAValueTy *newValue) { SSAOperand::set(newValue); }
+
+  /// Return the user that owns this use.
+  SSAOwnerTy *getOwner() { return owner; }
+  const SSAOwnerTy *getOwner() const { return owner; }
+
+  /// Return which operand this is in the operand list of the User.
+  // TODO:  unsigned getOperandNumber() const;
+
+private:
+  /// The owner of this operand.
+  SSAOwnerTy *const owner;
+};
 } // namespace mlir
 
 #endif

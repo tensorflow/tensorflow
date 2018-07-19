@@ -34,12 +34,16 @@ class OperationStmt : public Operation, public Statement {
 public:
   explicit OperationStmt(Identifier name, ArrayRef<NamedAttribute> attrs,
                          MLIRContext *context)
-      : Operation(name, attrs, context), Statement(Kind::Operation) {}
+      : Operation(name, /*isInstruction=*/ false, attrs, context),
+        Statement(Kind::Operation) {}
   ~OperationStmt() {}
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
     return stmt->getKind() == Kind::Operation;
+  }
+  static bool classof(const Operation *op) {
+    return op->getOperationKind() == OperationKind::Statement;
   }
 };
 

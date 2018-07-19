@@ -19,9 +19,9 @@
 #include "AttributeListStorage.h"
 using namespace mlir;
 
-Operation::Operation(Identifier name, ArrayRef<NamedAttribute> attrs,
-                     MLIRContext *context)
-    : name(name) {
+Operation::Operation(Identifier name, bool isInstruction,
+                     ArrayRef<NamedAttribute> attrs, MLIRContext *context)
+    : nameAndIsInstruction(name, isInstruction) {
   this->attrs = AttributeListStorage::get(attrs, context);
 
 #ifndef NDEBUG

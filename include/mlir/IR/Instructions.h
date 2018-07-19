@@ -118,6 +118,9 @@ public:
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Operation;
   }
+  static bool classof(const Operation *op) {
+    return op->getOperationKind() == OperationKind::Instruction;
+  }
 
 private:
   const unsigned numOperands, numResults;

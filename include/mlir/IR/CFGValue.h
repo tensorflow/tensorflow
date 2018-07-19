@@ -29,19 +29,28 @@ namespace mlir {
 class CFGValue;
 class Instruction;
 
+/// This enum contains all of the SSA value kinds that are valid in a CFG
+/// function.  This should be kept as a proper subtype of SSAValueKind,
+/// including having all of the values of the enumerators align.
 enum class CFGValueKind {
-  // TODO: Constants (uses attrs as representation)
   // TODO: BBArg,
-  InstResult,
+  InstResult = (int)SSAValueKind::InstResult,
 };
 
 /// The operand of a CFG Instruction contains a CFGValue.
-using InstOperand = SSAOperand<CFGValue, Instruction>;
+using InstOperand = SSAOperandImpl<CFGValue, Instruction>;
 
 /// CFGValue is the base class for CFG value types.
-class CFGValue : public SSAValue<InstOperand, CFGValueKind> {
+class CFGValue : public SSAValueImpl<InstOperand, CFGValueKind> {
 protected:
-  CFGValue(CFGValueKind kind, Type *type) : SSAValue(kind, type) {}
+  CFGValue(CFGValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
+
+  static bool classof(const SSAValue *value) {
+    switch (value->getKind()) {
+    case SSAValueKind::InstResult:
+      return true;
+    }
+  }
 };
 
 /// Instruction results are CFG Values.
@@ -49,6 +58,10 @@ class InstResult : public CFGValue {
 public:
   InstResult(Type *type, Instruction *owner)
       : CFGValue(CFGValueKind::InstResult, type), owner(owner) {}
+
+  static bool classof(const SSAValue *value) {
+    return value->getKind() == SSAValueKind::InstResult;
+  }
 
 private:
   /// The owner of this operand.

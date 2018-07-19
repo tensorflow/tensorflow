@@ -81,8 +81,9 @@ OperationInst::OperationInst(Identifier name, unsigned numOperands,
                              unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Operation(name, attributes, context), Instruction(Kind::Operation),
-      numOperands(numOperands), numResults(numResults) {}
+    : Operation(name, /*isInstruction=*/ true, attributes, context),
+      Instruction(Kind::Operation), numOperands(numOperands),
+      numResults(numResults) {}
 
 OperationInst::~OperationInst() {
   // Explicitly run the destructors for the operands and results.

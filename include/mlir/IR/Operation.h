@@ -21,6 +21,7 @@
 #include "mlir/IR/Identifier.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
 class Attribute;
@@ -41,7 +42,7 @@ typedef std::pair<Identifier, Attribute*> NamedAttribute;
 class Operation {
 public:
   /// The name of an operation is the key identifier for it.
-  Identifier getName() const { return name; }
+  Identifier getName() const { return nameAndIsInstruction.getPointer(); }
 
   // TODO: Need to have results and operands.
 
@@ -117,15 +118,26 @@ public:
     return ConstOpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
   }
 
+  enum class OperationKind { Instruction, Statement };
+  // This is used to implement the dynamic casting logic, but you shouldn't
+  // call it directly.  Use something like isa<OperationInst>(someOp) instead.
+  OperationKind getOperationKind() const {
+    return nameAndIsInstruction.getInt() ? OperationKind::Instruction
+                                         : OperationKind::Statement;
+  }
+
 protected:
-  Operation(Identifier name, ArrayRef<NamedAttribute> attrs,
+  Operation(Identifier name, bool isInstruction, ArrayRef<NamedAttribute> attrs,
             MLIRContext *context);
   ~Operation();
+
 private:
   Operation(const Operation&) = delete;
   void operator=(const Operation&) = delete;
 
-  Identifier name;
+  /// This holds the name of the operation, and a bool.  The bool is true if
+  /// this operation is an OperationInst, false if it is a OperationStmt.
+  llvm::PointerIntPair<Identifier, 1, bool> nameAndIsInstruction;
   AttributeListStorage *attrs;
 };
 

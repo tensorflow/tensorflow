@@ -63,13 +63,11 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
-  static Identifier getEmptyKey() {
-    return Identifier(
-        (const char *)llvm::DenseMapInfo<const void *>::getEmptyKey());
+  const void *getAsOpaquePointer() const {
+    return static_cast<const void *>(pointer);
   }
-  static Identifier getTombstoneKey() {
-    return Identifier(
-        (const char *)llvm::DenseMapInfo<const void *>::getTombstoneKey());
+  static Identifier getFromOpaquePointer(const void *pointer) {
+    return Identifier((const char *)pointer);
   }
 
 private:
@@ -105,12 +103,15 @@ inline llvm::hash_code hash_value(Identifier arg) {
 
 namespace llvm {
 // Identifiers hash just like pointers, there is no need to hash the bytes.
-template <> struct DenseMapInfo<mlir::Identifier> {
+template <>
+struct DenseMapInfo<mlir::Identifier> {
   static mlir::Identifier getEmptyKey() {
-    return mlir::Identifier::getEmptyKey();
+    auto pointer = llvm::DenseMapInfo<const void *>::getEmptyKey();
+    return mlir::Identifier::getFromOpaquePointer(pointer);
   }
   static mlir::Identifier getTombstoneKey() {
-    return mlir::Identifier::getTombstoneKey();
+    auto pointer = llvm::DenseMapInfo<const void *>::getTombstoneKey();
+    return mlir::Identifier::getFromOpaquePointer(pointer);
   }
   static unsigned getHashValue(mlir::Identifier Val) {
     return DenseMapInfo<const void *>::getHashValue(Val.data());
@@ -119,5 +120,21 @@ template <> struct DenseMapInfo<mlir::Identifier> {
     return LHS == RHS;
   }
 };
+
+/// The pointer inside of an identifier comes from a StringMap, so its alignment
+/// is always at least 4 and probably 8 (on 64-bit machines).  Allow LLVM to
+/// steal the low bits.
+template <>
+struct PointerLikeTypeTraits<mlir::Identifier> {
+public:
+  static inline void *getAsVoidPointer(mlir::Identifier I) {
+    return const_cast<void *>(I.getAsOpaquePointer());
+  }
+  static inline mlir::Identifier getFromVoidPointer(void *P) {
+    return mlir::Identifier::getFromOpaquePointer(P);
+  }
+  enum { NumLowBitsAvailable = 2 };
+};
+
 } // end namespace llvm
 #endif
