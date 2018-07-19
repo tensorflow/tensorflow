@@ -504,13 +504,13 @@ with tf.device("gpu:0"):
 
 ### Object-based saving
 
-`tfe.Checkpoint` can save and restore `tf.Variable`s to and from
+`tf.train.Checkpoint` can save and restore `tf.Variable`s to and from
 checkpoints:
 
 ```py
 x = tf.Variable(10.)
 
-checkpoint = tfe.Checkpoint(x=x)  # save as "x"
+checkpoint = tf.train.Checkpoint(x=x)  # save as "x"
 
 x.assign(2.)   # Assign a new value to the variables and save.
 save_path = checkpoint.save('./ckpt/')
@@ -523,18 +523,18 @@ checkpoint.restore(save_path)
 print(x)  # => 2.0
 ```
 
-To save and load models, `tfe.Checkpoint` stores the internal state of objects,
+To save and load models, `tf.train.Checkpoint` stores the internal state of objects,
 without requiring hidden variables. To record the state of a `model`,
-an `optimizer`, and a global step, pass them to a `tfe.Checkpoint`:
+an `optimizer`, and a global step, pass them to a `tf.train.Checkpoint`:
 
 ```py
 model = MyModel()
 optimizer = tf.train.AdamOptimizer(learning_rate=0.001)
 checkpoint_dir = ‘/path/to/model_dir’
 checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-root = tfe.Checkpoint(optimizer=optimizer,
-                      model=model,
-                      optimizer_step=tf.train.get_or_create_global_step())
+root = tf.train.Checkpoint(optimizer=optimizer,
+                           model=model,
+                           optimizer_step=tf.train.get_or_create_global_step())
 
 root.save(file_prefix=checkpoint_prefix)
 # or
@@ -824,7 +824,7 @@ gives you eager's interactive experimentation and debuggability with the
 distributed performance benefits of graph execution.
 
 Write, debug, and iterate in eager execution, then import the model graph for
-production deployment. Use `tfe.Checkpoint` to save and restore model
+production deployment. Use `tf.train.Checkpoint` to save and restore model
 variables, this allows movement between eager and graph execution environments.
 See the examples in:
 [tensorflow/contrib/eager/python/examples](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/examples).
