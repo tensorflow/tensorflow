@@ -24,7 +24,9 @@ import warnings
 import numpy as np
 import six
 
+# pylint: disable=unused-import
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
+# pylint: enable=unused-import
 from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
