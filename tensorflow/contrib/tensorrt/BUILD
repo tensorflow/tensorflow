@@ -80,6 +80,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":trt_allocator",
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
@@ -195,17 +196,16 @@ tf_py_wrap_cc(
 tf_cuda_library(
     name = "trt_resources",
     srcs = [
-        "resources/trt_allocator.cc",
         "resources/trt_int8_calibrator.cc",
         "resources/trt_resource_manager.cc",
     ],
     hdrs = [
-        "resources/trt_allocator.h",
         "resources/trt_int8_calibrator.h",
         "resources/trt_resource_manager.h",
         "resources/trt_resources.h",
     ],
     deps = [
+        ":trt_allocator",
         ":trt_logging",
         ":utils",
         "//tensorflow/core:framework_headers_lib",
@@ -214,6 +214,31 @@ tf_cuda_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
     ]),
+)
+
+tf_cuda_library(
+    name = "trt_allocator",
+    srcs = ["resources/trt_allocator.cc"],
+    hdrs = ["resources/trt_allocator.h"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
+tf_cc_test(
+    name = "trt_allocator_test",
+    size = "small",
+    srcs = ["resources/trt_allocator_test.cc"],
+    tags = ["no_windows"],
+    deps = [
+        ":trt_allocator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 # Library for the node-level conversion portion of TensorRT operation creation
@@ -231,6 +256,7 @@ tf_cuda_library(
     ],
     deps = [
         ":segment",
+        ":trt_allocator",
         ":trt_plugins",
         ":trt_logging",
         ":trt_resources",
