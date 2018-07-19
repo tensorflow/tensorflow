@@ -764,7 +764,7 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
   const int max_block_count = kKnownFilterWidth < 0 || kKnownFilterHeight < 0 ||
                                       kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
-                                  : device.getNumCudaMultiProcessors();
+                                  : device.getNumGpuMultiProcessors();
   kernel<<<std::min(max_block_count, config.block_count),
            config.thread_per_block, 0, device.stream()>>>(args, input, filter,
                                                           output, num_outputs);
