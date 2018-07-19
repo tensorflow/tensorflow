@@ -2,8 +2,8 @@
 
 ## Major Features And Improvements
 
-* The `tf.lite` runtime now supports `complex64`
-* Initial Bigtable integration for `tf.data`
+* The `tf.lite` runtime now supports `complex64`.
+* Initial Bigtable integration for `tf.data`.
 * Improved local run behavior in `tf.estimator.train_and_evaluate` which does not reload checkpoints for evaluation.
 * `RunConfig` now sets device_filters to restrict how workers and PS can communicate. This can speed up training and ensure clean shutdowns in some situations. But if you have jobs that require communication between workers, you will have to set custom session_options in your `RunConfig`.
 * Moved Distributions and Bijectors from `tf.contrib.distributions` to Tensorflow Probability (TFP). `tf.contrib.distributions` is now deprecated and will be removed by the end of 2018.
@@ -20,11 +20,10 @@
 
 ## Breaking Changes
 
-* Prebuilt binaries are now (as of TF 1.10) built against NCCL 2.2 and no longer include NCCL in the binary install.
+* Prebuilt binaries are now (as of TensorFlow 1.10) built against NCCL 2.2 and no longer include NCCL in the binary install.
   TensorFlow usage with multiple GPUs and NCCL requires upgrade to [NCCL 2.2](https://developer.nvidia.com/nccl).
   See updated install guides: [Installing TensorFlow on Ubuntu](https://www.tensorflow.org/install/install_linux#tensorflow_gpu_support)
   and [Install TensorFlow from Sources](https://www.tensorflow.org/install/install_sources#optional_install_tensorflow_for_gpu_prerequisites).
-* Prebuilt binaries are now built against NCCL 2.2. TensorFlow usage with multiple GPUs and NCCL requires upgrade to NCCL 2.2
 * Starting from TensorFlow 1.11, Windows builds will use Bazel. Therefore, we will drop official support for cmake.
 
 ## Bug Fixes and Other Changes
