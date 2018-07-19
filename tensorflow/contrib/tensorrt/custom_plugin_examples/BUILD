@@ -111,7 +111,10 @@ cuda_py_test(
         "//tensorflow/python:tf_optimizer",
     ],
     tags = [
+        "manual",
         "no_windows",
+        "noguitar",
         "nomac",
+        "notap",
     ],
 )
