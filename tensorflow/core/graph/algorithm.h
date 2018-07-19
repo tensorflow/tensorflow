@@ -52,8 +52,12 @@ struct NodeComparatorName {
 // If edge_filter is set then ignores edges for which edge_filter returns false.
 extern void DFS(const Graph& g, const std::function<void(Node*)>& enter,
                 const std::function<void(Node*)>& leave,
-                const NodeComparator& stable_comparator = {},
-                const EdgeFilter& edge_filter = {});
+                const NodeComparator& stable_comparator = {});
+
+extern void DFS(const Graph& g, const std::function<void(Node*)>& enter,
+                const std::function<void(Node*)>& leave,
+                const NodeComparator& stable_comparator,
+                const EdgeFilter& edge_filter);
 
 // Perform a reverse depth-first-search on g starting at the sink node.
 // If enter is not empty, calls enter(n) before visiting any parents of n.
@@ -91,8 +95,11 @@ extern void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
 //
 // REQUIRES: order is not NULL.
 void GetPostOrder(const Graph& g, std::vector<Node*>* order,
-                  const NodeComparator& stable_comparator = {},
-                  const EdgeFilter& edge_filter = {});
+                  const NodeComparator& stable_comparator = {});
+
+void GetPostOrder(const Graph& g, std::vector<Node*>* order,
+                  const NodeComparator& stable_comparator,
+                  const EdgeFilter& edge_filter);
 
 // Stores in *order the reverse post-order numbering of all nodes
 // If stable_comparator is set, a stable ordering of visit is achieved by
@@ -100,8 +107,11 @@ void GetPostOrder(const Graph& g, std::vector<Node*>* order,
 //
 // If edge_filter is set then ignores edges for which edge_filter returns false.
 void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
-                         const NodeComparator& stable_comparator = {},
-                         const EdgeFilter& edge_filter = {});
+                         const NodeComparator& stable_comparator);
+
+void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
+                         const NodeComparator& stable_comparator,
+                         const EdgeFilter& edge_filter);
 
 // Prune nodes in "g" that are not in some path from the source node
 // to any node in 'nodes'. Returns true if changes were made to the graph.
