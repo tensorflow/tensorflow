@@ -225,6 +225,7 @@ class BaseGPUDevice::StreamGroupFactory {
 
       int num_d2d_streams =
           options.experimental().num_dev_to_dev_copy_streams();
+      if (num_d2d_streams == 0) num_d2d_streams = 1;
       if (num_d2d_streams < 1 || num_d2d_streams > 4) {
         LOG(ERROR)
             << "Illegal GPUOptions.experimental.num_dev_to_dev_copy_streams="
