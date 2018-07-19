@@ -1031,9 +1031,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
-          .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(auto result, embedded_evaluator.Evaluate<const Literal*>(
+                                       *computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
