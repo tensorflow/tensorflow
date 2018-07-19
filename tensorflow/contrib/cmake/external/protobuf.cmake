@@ -89,9 +89,3 @@ add_custom_target(protobuf_generate_pb_files
       "${PROTOBUF_INCLUDE_DIRS}/../python"
       "${PROTOBUF_PROTOC_EXECUTABLE}"
   DEPENDS protobuf)
-
-# # For later generating python APIs, this command makes protobuf in the search path of python, to
-# # succesfully import google.protobuf in the targets `tf_python_api` and `estimator_python_api`
-# add_custom_target(protobuf_copy_pip_package_to_dest
-#   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROTOBUF_INCLUDE_DIRS}/../python ${CMAKE_BINARY_DIR}/tf_python
-#   DEPENDS protobuf protobuf_generate_pb_files)
