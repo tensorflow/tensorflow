@@ -25,13 +25,13 @@ limitations under the License.
 #include "rocm/include/migraph/program.hpp"
 #include "rocm/include/migraph/operators.hpp"
 #include "rocm/include/migraph/generate.hpp"
+#include "rocm/include/migraph/iterator_for.hpp"
 #include "rocm/include/migraph/cpu/cpu_target.hpp"
-#include "rocm/include/migraph/miopen/miopen_target.hpp"
+#include "rocm/include/migraph/miopen/target.hpp"
 #include "rocm/include/migraph/miopen/miopen.hpp"
 #include "rocm/include/migraph/miopen/hip.hpp"
 #include "rocm/include/miopen/miopen.h"
 
-#define GET_INSTS_FROM_PROGRAM(prog) (prog)->get_instructions()
 #define ALIGN_BYTES(addr, size) (((addr % size) != 0) ? (addr += (size - addr % size)) : addr)
 
 namespace tensorflow {
@@ -160,12 +160,13 @@ Status ConvertSubGraphToRTG(std::unique_ptr<Graph>*, Cluster&, T_INPUT_MAP*, std
 Status BuildLaunchNode(std::unique_ptr<Graph>*, Cluster&,Converter&, string&);
 void SetInputAttr(migraph::instruction&, NameAttrList&, Converter&);
 void SetNameAttr(migraph::instruction&, NameAttrList&, Converter&); 
-void EncodeActivationAttr(migraph::instruction&, NameAttrList&, Converter&); 
+void EncodeActivationAttr(migraph::instruction&, NameAttrList&, Converter&);
 void EncodeConstAttr(migraph::instruction&, NameAttrList&, Converter&); 
 void EncodeConvolutionAttr(migraph::instruction&, NameAttrList&, Converter&);
 void EncodeParamAttr(migraph::instruction&, NameAttrList&, Converter&);
 void EncodeTransposeAttr(migraph::instruction&, NameAttrList&, Converter&);
-void EncodeContiguousAttr(migraph::instruction&, NameAttrList&, Converter&); 
+void EncodeContiguousAttr(migraph::instruction&, NameAttrList&, Converter&);
+void EncodePoolingAttr(migraph::instruction&, NameAttrList&, Converter&);
 void DecodeActivationAttr(const NameAttrList&, Converter*, string&);
 void DecodeConstAttr(const NameAttrList&, Converter*, string&);
 void DecodeConvolutionAttr(const NameAttrList&, Converter*, string&);
@@ -173,7 +174,7 @@ void DecodeTransposeAttr(const NameAttrList&, Converter*, string&);
 void DecodeContiguousAttr(const NameAttrList&, Converter*, string&); 
 void DecodeInputAttr(T_RTG_INST_REFS& inputs, const NameAttrList& func, Converter* convert);
 void DecodeParamAttr(const NameAttrList&, Converter*, string&); 
- 
+void DecodePoolingAttr(const NameAttrList&, Converter*, string&);
 } // namspace convert
 } // namespace rtglib
 } // namespace tensorflow

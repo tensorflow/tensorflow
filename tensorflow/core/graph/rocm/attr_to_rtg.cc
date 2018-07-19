@@ -49,10 +49,10 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
     std::unordered_map<string, migraph::argument> params;
     char* base_ptr = reinterpret_cast<char*> (scratch_mem_ptr);
 
-    for (auto& ins : GET_INSTS_FROM_PROGRAM(program)) {
-        string name = ins.op.name();
+    for (auto ins : migraph::iterator_for(*program)) {
+        string name = ins->op.name();
         if (convert.starts_with(name, Converter::param_prefix)) {
-            name = migraph::any_cast<migraph::builtin::param>(ins.op).parameter;
+            name = migraph::any_cast<migraph::builtin::param>(ins->op).parameter;
             const Tensor* ptr = input_ptrs[param_cnt++];
             migraph::shape shape = convert.getShape(ptr);
             char* data = const_cast<char*> (ptr->tensor_data().data());
@@ -62,14 +62,14 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
             break;
         } else if (convert.starts_with(name, Converter::literal_prefix)) {
             // place literal in GPU memory
-            std::string str = ins.op.name();
+            std::string str = ins->op.name();
 #if 1
-            migraph::shape shape = ins.lit.get_shape();
+            migraph::shape shape = ins->lit.get_shape();
             char * lit_ptr = base_ptr + convert.get_offset(shape);
-            hipMemcpy(lit_ptr, ins.lit.data(), shape.bytes(), hipMemcpyHostToDevice);
+            hipMemcpy(lit_ptr, ins->lit.data(), shape.bytes(), hipMemcpyHostToDevice);
             params[str] = {shape, lit_ptr};
 #else            
-            migraph::argument arg = migraph::miopen::to_gpu(ins.lit.get_argument());
+            migraph::argument arg = migraph::miopen::to_gpu(ins->lit.get_argument());
             params[str] = arg;
 #endif            
         }
@@ -83,7 +83,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
 
         params["output"] = {output_shape, output_ptr};
         // params["handle"] = {migraph::shape::any_type, handle.get()};
-        program->compile(migraph::miopen::miopen_target{});
+        program->compile(migraph::miopen::target{});
         std::cout << *program << std::endl;
         arg = program->eval(params);
     }

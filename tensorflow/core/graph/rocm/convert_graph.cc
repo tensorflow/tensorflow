@@ -139,7 +139,11 @@ Status AddConv2D(Converter& ctx, const NodeDef& nodeDef, const T_RTG_INST_REFS& 
 }
 
 Status AddMaxPool(Converter& ctx, const NodeDef& nodeDef, const T_RTG_INST_REFS& inputs) {
-    CHECK(false);
+    bool nchw = ctx.getNCHWFormat(inputs);
+    T_RTG_INST_REF ins = ctx.program->add_instruction(migraph::pooling{"max"}, inputs);
+    ctx.instructions[nodeDef.name()] = ins;
+    if (nchw)
+        ctx.rtgInsOutputFormat[&(*ins)] = "NCHW";
     return Status::OK();
 }
 
@@ -184,6 +188,7 @@ void Converter::register_op_converters()  {
     op_registry_["Const"] = AddConst;
     op_registry_["Conv2D"] = AddConv2D;
     op_registry_["Relu"] = AddActivation;
+    op_registry_["MaxPool"] = AddMaxPool;
 #if 0
     op_registry_["BiasAdd"] = AddScale;
     op_registry_["MaxPool"] = AddMaxPool;
@@ -198,6 +203,7 @@ void Converter::register_attr_encoders() {
     attr_encoder_registry_["activation"] = EncodeActivationAttr;
     attr_encoder_registry_["transpose"] = EncodeTransposeAttr;
     attr_encoder_registry_["contiguous"] = EncodeContiguousAttr;
+    attr_encoder_registry_["pooling"] = EncodePoolingAttr;
 }
 
 void Converter::register_attr_decoders() {
@@ -207,6 +213,7 @@ void Converter::register_attr_decoders() {
     attr_decoder_registry_["activation"] = DecodeActivationAttr;
     attr_decoder_registry_["transpose"] = DecodeTransposeAttr;
     attr_decoder_registry_["contiguous"] = DecodeContiguousAttr;
+    attr_decoder_registry_["pooling"] = DecodePoolingAttr;
 }
     
 bool Converter::starts_with(const string& value, const string& prefix)
@@ -549,6 +556,11 @@ void EncodeActivationAttr(migraph::instruction& ins, NameAttrList& attrs, Conver
     SetNameAttr(ins, attrs, convert);
     SetInputAttr(ins, attrs, convert);
 }
+
+void EncodePoolingAttr(migraph::instruction& ins, NameAttrList& attrs, Converter& convert) {
+    SetNameAttr(ins, attrs, convert);
+    SetInputAttr(ins, attrs, convert);
+}    
     
 void EncodeParamAttr(migraph::instruction& ins, NameAttrList& attrs, Converter& convert) {
     migraph::shape shape = ins.result;
@@ -632,6 +644,13 @@ void DecodeActivationAttr(const NameAttrList& func, Converter* convert, string&p
     DecodeInputAttr(inputs, func, convert);
     convert->instructions[name] = convert->program->add_instruction(migraph::activation{"relu"}, inputs);    
 }
+
+void DecodePoolingAttr(const NameAttrList& func, Converter* convert, string&prefix) {
+    string name = func.name();
+    T_RTG_INST_REFS inputs;
+    DecodeInputAttr(inputs, func, convert);
+    convert->instructions[name] = convert->program->add_instruction(migraph::pooling{"max"}, inputs);    
+}    
 
 void DecodeConstAttr(const NameAttrList& func, Converter* convert, string& prefix) {
     string name = func.name();
@@ -749,15 +768,16 @@ Status BuildLaunchNode(std::unique_ptr<Graph>* g, Cluster& cluster, Converter& c
     unsigned num_values = 0;
     AttrValue value;
     value.mutable_list()->Clear();
-    for (auto& ins : GET_INSTS_FROM_PROGRAM(program)) {
+    for (auto ins : migraph::iterator_for(*program)) {
         num_values++;
         NameAttrList& attrs = *(value.mutable_list()->add_func());
         attrs.Clear();
-        string name = ins.op.name();
+        string name = ins->op.name();
         string rtg_name = convert.lookupEncoder(name);
         if (rtg_name != "") {
             AttrEncoder attr_encoder = convert.attr_encoder_registry_.at(rtg_name);
-            attr_encoder(ins, attrs, convert);
+            migraph::instruction instr = *ins;
+            attr_encoder(instr, attrs, convert);
         } else {
             CHECK(false) << "Unknown RTG instruction";
         }
@@ -937,6 +957,8 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
                 iterStack.push(nextNode);
             } else if (bothAreCandidates && !isCtrlEdge) {
                 // TODO: merge cluster by hashing segment ID to cluster Id.
+                string name1 = node->def().name();
+                string name2 = nextNode->def().name();
                 CHECK(false) << "TODO: merge segments";
             }
 
