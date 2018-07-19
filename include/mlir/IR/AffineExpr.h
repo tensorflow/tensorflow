@@ -35,10 +35,13 @@ class AffineExpr {
 public:
   enum class Kind {
     Add,
-    Sub,
+    // RHS of mul is always a constant or a symbolic expression.
     Mul,
+    // RHS of mod is always a constant or a symbolic expression.
     Mod,
+    // RHS of floordiv is always a constant or a symbolic expression.
     FloorDiv,
+    // RHS of ceildiv is always a constant or a symbolic expression.
     CeilDiv,
 
     /// This is a marker for the last affine binary op. The range of binary
@@ -83,9 +86,17 @@ inline raw_ostream &operator<<(raw_ostream &os, const AffineExpr &expr) {
   return os;
 }
 
-/// Binary affine expression.
+/// Affine binary operation expression. An affine binary operation could be an
+/// add, mul, floordiv, ceildiv, or a modulo operation. (Subtraction is
+/// represented through a multiply by -1 and add.) These expressions are always
+/// constructed in a simplified form. For eg., the LHS and RHS operands can't
+/// both be constants. There are additional canonicalizing rules depending on
+/// the op type: see checks in the constructor.
 class AffineBinaryOpExpr : public AffineExpr {
 public:
+  static AffineExpr *get(Kind kind, AffineExpr *lhs, AffineExpr *rhs,
+                         MLIRContext *context);
+
   AffineExpr *getLHS() const { return lhs; }
   AffineExpr *getRHS() const { return rhs; }
 
@@ -94,10 +105,9 @@ public:
     return expr->getKind() <= Kind::LAST_AFFINE_BINARY_OP;
   }
 
-protected:
-  static AffineExpr *get(Kind kind, AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
+  void print(raw_ostream &os) const;
 
+protected:
   explicit AffineBinaryOpExpr(Kind kind, AffineExpr *lhs, AffineExpr *rhs);
 
   AffineExpr *const lhs;
@@ -106,8 +116,6 @@ protected:
 private:
   // Simplification prior to construction of binary affine op expressions.
   static AffineExpr *simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
-                                 MLIRContext *context);
-  static AffineExpr *simplifySub(AffineExpr *lhs, AffineExpr *rhs,
                                  MLIRContext *context);
   static AffineExpr *simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
                                  MLIRContext *context);
@@ -119,102 +127,6 @@ private:
                                  MLIRContext *context);
 };
 
-/// Binary affine add expression.
-class AffineAddExpr : public AffineBinaryOpExpr {
-public:
-  static AffineExpr *get(AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::Add;
-  }
-  void print(raw_ostream &os) const;
-
-private:
-  // No constructor; use AffineBinaryOpExpr::get
-  AffineAddExpr(AffineExpr *lhs, AffineExpr *rhs) = delete;
-};
-
-/// Binary affine subtract expression.
-class AffineSubExpr : public AffineBinaryOpExpr {
-public:
-  static AffineExpr *get(AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::Sub;
-  }
-  void print(raw_ostream &os) const;
-
-private:
-  AffineSubExpr(AffineExpr *lhs, AffineExpr *rhs) = delete;
-};
-
-/// Binary affine multiplication expression.
-class AffineMulExpr : public AffineBinaryOpExpr {
-public:
-  static AffineExpr *get(AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::Mul;
-  }
-  void print(raw_ostream &os) const;
-
-private:
-  AffineMulExpr(AffineExpr *lhs, AffineExpr *rhs) = delete;
-};
-
-/// Binary affine modulo operation expression.
-class AffineModExpr : public AffineBinaryOpExpr {
-public:
-  static AffineExpr *get(AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::Mod;
-  }
-  void print(raw_ostream &os) const;
-
-private:
-  AffineModExpr(AffineExpr *lhs, AffineExpr *rhs) = delete;
-};
-
-/// Binary affine floordiv expression.
-class AffineFloorDivExpr : public AffineBinaryOpExpr {
-public:
-  static AffineExpr *get(AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::FloorDiv;
-  }
-  void print(raw_ostream &os) const;
-
-private:
-  AffineFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs) = delete;
-};
-
-/// Binary affine ceildiv expression.
-class AffineCeilDivExpr : public AffineBinaryOpExpr {
-public:
-  static AffineExpr *get(AffineExpr *lhs, AffineExpr *rhs,
-                         MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const AffineExpr *expr) {
-    return expr->getKind() == Kind::CeilDiv;
-  }
-  void print(raw_ostream &os) const;
-
-private:
-  AffineCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) = delete;
-};
 
 /// A dimensional identifier appearing in an affine expression.
 ///

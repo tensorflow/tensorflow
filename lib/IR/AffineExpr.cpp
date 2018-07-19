@@ -28,27 +28,19 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
   switch (kind) {
   case Kind::Add:
     assert(!isa<AffineConstantExpr>(lhs));
-    // TODO (more verification)
-    break;
-  case Kind::Sub:
-    // TODO (verification)
     break;
   case Kind::Mul:
     assert(!isa<AffineConstantExpr>(lhs));
     assert(rhs->isSymbolicOrConstant());
-    // TODO (more verification)
     break;
   case Kind::FloorDiv:
     assert(rhs->isSymbolicOrConstant());
-    // TODO (more verification)
     break;
   case Kind::CeilDiv:
     assert(rhs->isSymbolicOrConstant());
-    // TODO (more verification)
     break;
   case Kind::Mod:
     assert(rhs->isSymbolicOrConstant());
-    // TODO (more verification)
     break;
   default:
     llvm_unreachable("unexpected binary affine expr");
@@ -67,7 +59,6 @@ bool AffineExpr::isSymbolicOrConstant() const {
     return true;
 
   case Kind::Add:
-  case Kind::Sub:
   case Kind::Mul:
   case Kind::FloorDiv:
   case Kind::CeilDiv:
@@ -87,16 +78,15 @@ bool AffineExpr::isPureAffine() const {
   case Kind::DimId:
   case Kind::Constant:
     return true;
-  case Kind::Add:
-  case Kind::Sub: {
-    auto op = cast<AffineBinaryOpExpr>(this);
+  case Kind::Add: {
+    auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine();
   }
 
   case Kind::Mul: {
     // TODO: Canonicalize the constants in binary operators to the RHS when
     // possible, allowing this to merge into the next case.
-    auto op = cast<AffineBinaryOpExpr>(this);
+    auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() && op->getRHS()->isPureAffine() &&
            (isa<AffineConstantExpr>(op->getLHS()) ||
             isa<AffineConstantExpr>(op->getRHS()));
@@ -104,7 +94,7 @@ bool AffineExpr::isPureAffine() const {
   case Kind::FloorDiv:
   case Kind::CeilDiv:
   case Kind::Mod: {
-    auto op = cast<AffineBinaryOpExpr>(this);
+    auto *op = cast<AffineBinaryOpExpr>(this);
     return op->getLHS()->isPureAffine() &&
            isa<AffineConstantExpr>(op->getRHS());
   }

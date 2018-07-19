@@ -38,22 +38,12 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
 
   if (isa<AffineConstantExpr>(lhs) ||
       (lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant()))
-    return AffineAddExpr::get(rhs, lhs, context);
+    return AffineBinaryOpExpr::get(Kind::Add, rhs, lhs, context);
 
   return nullptr;
   // TODO(someone): implement more simplification like x + 0 -> x; (x + 2) + 4
   // -> (x + 6). Do this in a systematic way in conjunction with other
   // simplifications as opposed to incremental hacks.
-}
-
-AffineExpr *AffineBinaryOpExpr::simplifySub(AffineExpr *lhs, AffineExpr *rhs,
-                                            MLIRContext *context) {
-  if (auto *l = dyn_cast<AffineConstantExpr>(lhs))
-    if (auto *r = dyn_cast<AffineConstantExpr>(rhs))
-      return AffineConstantExpr::get(l->getValue() - r->getValue(), context);
-
-  return nullptr;
-  // TODO(someone): implement more simplification like mentioned for add.
 }
 
 /// Simplify a multiply expression. Fold it to a constant when possible, and
@@ -71,7 +61,7 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
   // constant. (Note that a constant is trivially symbolic).
   if (!rhs->isSymbolicOrConstant() || isa<AffineConstantExpr>(lhs)) {
     // At least one of them has to be symbolic.
-    return AffineMulExpr::get(rhs, lhs, context);
+    return AffineBinaryOpExpr::get(Kind::Mul, rhs, lhs, context);
   }
 
   return nullptr;

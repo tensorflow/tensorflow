@@ -121,27 +121,23 @@ AffineConstantExpr *Builder::getConstantExpr(int64_t constant) {
 }
 
 AffineExpr *Builder::getAddExpr(AffineExpr *lhs, AffineExpr *rhs) {
-  return AffineAddExpr::get(lhs, rhs, context);
-}
-
-AffineExpr *Builder::getSubExpr(AffineExpr *lhs, AffineExpr *rhs) {
-  return AffineSubExpr::get(lhs, rhs, context);
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::Add, lhs, rhs, context);
 }
 
 AffineExpr *Builder::getMulExpr(AffineExpr *lhs, AffineExpr *rhs) {
-  return AffineMulExpr::get(lhs, rhs, context);
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mul, lhs, rhs, context);
 }
 
 AffineExpr *Builder::getModExpr(AffineExpr *lhs, AffineExpr *rhs) {
-  return AffineModExpr::get(lhs, rhs, context);
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::Mod, lhs, rhs, context);
 }
 
 AffineExpr *Builder::getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
-  return AffineFloorDivExpr::get(lhs, rhs, context);
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::FloorDiv, lhs, rhs, context);
 }
 
 AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
-  return AffineCeilDivExpr::get(lhs, rhs, context);
+  return AffineBinaryOpExpr::get(AffineExpr::Kind::CeilDiv, lhs, rhs, context);
 }
 
 //===----------------------------------------------------------------------===//

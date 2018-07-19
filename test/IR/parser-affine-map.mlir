@@ -81,10 +81,10 @@
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, (d1 ceildiv 5))
 #map26 = (i, j) [s0, s1] -> (i, j ceildiv 5)
 
-// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, ((d0 - d1) - 5))
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, ((d0 - (d1 * 1)) - 5))
 #map29 = (i, j) [s0, s1] -> (i, i - j - 5)
 
-// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, ((d0 - (d1 * s1)) + 2))
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1) [s0, s1] -> (d0, ((d0 -  ((d1 * s1) * 1)) + 2))
 #map30 = (i, j) [M, N] -> (i, i - N*j + 2)
 
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) [s0, s1] -> ((d0 * -5), (d1 * -3), -2, ((d0 + d1) * -1), (s0 * -1))

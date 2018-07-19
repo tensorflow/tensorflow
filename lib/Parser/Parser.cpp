@@ -758,7 +758,8 @@ AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
   case AffineLowPrecOp::Add:
     return builder.getAddExpr(lhs, rhs);
   case AffineLowPrecOp::Sub:
-    return builder.getSubExpr(lhs, rhs);
+    return builder.getAddExpr(
+        lhs, builder.getMulExpr(rhs, builder.getConstantExpr(-1)));
   case AffineLowPrecOp::LNoOp:
     llvm_unreachable("can't create affine expression for null low prec op");
     return nullptr;

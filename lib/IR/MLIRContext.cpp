@@ -684,9 +684,6 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
   case Kind::Add:
     simplified = AffineBinaryOpExpr::simplifyAdd(lhs, rhs, context);
     break;
-  case Kind::Sub:
-    simplified = AffineBinaryOpExpr::simplifySub(lhs, rhs, context);
-    break;
   case Kind::Mul:
     simplified = AffineBinaryOpExpr::simplifyMul(lhs, rhs, context);
     break;
@@ -718,36 +715,6 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
   // Initialize the memory using placement new.
   new (result) AffineBinaryOpExpr(kind, lhs, rhs);
   return result;
-}
-
-AffineExpr *AffineAddExpr::get(AffineExpr *lhs, AffineExpr *rhs,
-                               MLIRContext *context) {
-  return AffineBinaryOpExpr::get(Kind::Add, lhs, rhs, context);
-}
-
-AffineExpr *AffineSubExpr::get(AffineExpr *lhs, AffineExpr *rhs,
-                               MLIRContext *context) {
-  return AffineBinaryOpExpr::get(Kind::Sub, lhs, rhs, context);
-}
-
-AffineExpr *AffineMulExpr::get(AffineExpr *lhs, AffineExpr *rhs,
-                               MLIRContext *context) {
-  return AffineBinaryOpExpr::get(Kind::Mul, lhs, rhs, context);
-}
-
-AffineExpr *AffineFloorDivExpr::get(AffineExpr *lhs, AffineExpr *rhs,
-                                    MLIRContext *context) {
-  return AffineBinaryOpExpr::get(Kind::FloorDiv, lhs, rhs, context);
-}
-
-AffineExpr *AffineCeilDivExpr::get(AffineExpr *lhs, AffineExpr *rhs,
-                                   MLIRContext *context) {
-  return AffineBinaryOpExpr::get(Kind::CeilDiv, lhs, rhs, context);
-}
-
-AffineExpr *AffineModExpr::get(AffineExpr *lhs, AffineExpr *rhs,
-                               MLIRContext *context) {
-  return AffineBinaryOpExpr::get(Kind::Mod, lhs, rhs, context);
 }
 
 AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
