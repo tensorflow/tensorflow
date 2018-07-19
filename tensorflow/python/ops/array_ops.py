@@ -1238,15 +1238,15 @@ def sparse_mask(a, mask_indices, name=None):
 
 
 @tf_export("unique")
-def unique(x, out_idx=dtypes.int32, name=None):
-  # TODO(yongtang): switch to v2 once API deprecation
-  # period (3 weeks) pass.
-  # TODO(yongtang): The documentation should also
-  # be updated when switch  to v2.
-  return gen_array_ops.unique(x, out_idx, name)
+def unique(x, out_idx=dtypes.int32, name=None, axis=None):
+  if axis is None:
+    axis = []
+  else:
+    axis = [axis]
+  return gen_array_ops.unique_v2(x, axis, out_idx, name)
 
 
-unique.__doc__ = gen_array_ops.unique.__doc__
+unique.__doc__ = gen_array_ops.unique_v2.__doc__
 
 
 @tf_export("unique_with_counts")

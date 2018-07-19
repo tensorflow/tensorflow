@@ -2134,7 +2134,7 @@ tf_module {
   }
   member_method {
     name: "unique"
-    argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+    argspec: "args=[\'x\', \'out_idx\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "unique_with_counts"
