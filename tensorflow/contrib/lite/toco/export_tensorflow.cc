@@ -1257,8 +1257,6 @@ void ConvertPackOperator(const Model& model, const PackOperator& src_op,
   for (const auto& input : src_op.inputs) {
     *pack_op->add_input() = input;
   }
-  (*pack_op->mutable_attr())["elem_type"].set_type(
-      GetTensorFlowDataType(model, src_op.outputs[0]));
   (*pack_op->mutable_attr())["axis"].set_i(src_op.axis);
   (*pack_op->mutable_attr())["N"].set_i(src_op.inputs.size());
   (*pack_op->mutable_attr())["T"].set_type(GetTensorFlowDataType(src_op.dtype));
