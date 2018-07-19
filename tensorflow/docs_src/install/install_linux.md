@@ -65,7 +65,7 @@ We *recommend* using `pip` version 8.1 or higher. If using a release before
 version 8.1, upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">pip install -U pip</code>
+  <code class="devsite-terminal">pip install --upgrade pip</code>
 </pre>
 
 If not using Ubuntu and [setuptools](https://pypi.org/project/setuptools/) is
@@ -102,7 +102,7 @@ When the Virtualenv is activated, the shell prompt displays as `(venv) $`.
 Within the active virtual environment, upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
-(venv)$ pip install -U pip
+(venv)$ pip install --upgrade pip
 </pre>
 
 You can install other Python packages within the virtual environment without
@@ -120,7 +120,7 @@ Choose one of the available TensorFlow packages for installation:
 Within an active Virtualenv environment, use `pip` to install the package:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">pip install -U tensorflow</code>
+  <code class="devsite-terminal">pip install --upgrade tensorflow</code>
 </pre>
 
 Use `pip list` to show the packages installed in the virtual environment.
@@ -198,7 +198,7 @@ We *recommend* using `pip` version 8.1 or higher. If using a release before
 version 8.1, upgrade `pip`:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">pip install -U pip</code>
+  <code class="devsite-terminal">pip install --upgrade pip</code>
 </pre>
 
 If not using Ubuntu and [setuptools](https://pypi.org/project/setuptools/) is
@@ -220,8 +220,8 @@ Choose one of the available TensorFlow packages for installation:
 And use `pip` to install the package for Python 2 or 3:
 
 <pre class="prettyprint lang-bsh">
-  <code class="devsite-terminal">pip install -U --user tensorflow   # Python 2.7</code>
-  <code class="devsite-terminal">pip3 install -U --user tensorflow  # Python 3.n</code>
+  <code class="devsite-terminal">pip install --upgrade --user tensorflow   # Python 2.7</code>
+  <code class="devsite-terminal">pip3 install -upgrade --user tensorflow  # Python 3.n</code>
 </pre>
 
 Use `pip list` to show the packages installed on the system.
