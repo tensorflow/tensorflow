@@ -1336,7 +1336,8 @@ class _ModelFnWrapper(object):
       loss = tpu_estimator_spec.loss
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
       to_record = {}
-      to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
+      if tpu_estimator_spec.eval_metrics:
+        to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
       if tpu_estimator_spec.host_call is not None:
         # We assume that evaluate won't update global step, so we don't wrap
         # this host_call.
@@ -1639,7 +1640,7 @@ class _OutfeedHostCall(object):
       RuntimeError: If outfeed tensor is scalar.
     """
     if not self._names:
-      return []
+      return {}
 
     ret = {}
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -2514,7 +2515,8 @@ class TPUEstimator(estimator_lib.Estimator):
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
-          for k, v in host_call_ret['eval_metrics'].items():
+
+          for k, v in host_call_ret.get('eval_metrics', {}).items():
             eval_metric_ops[k] = (v[0], dummy_update_op)
             eval_update_ops.append(v[1])
 
