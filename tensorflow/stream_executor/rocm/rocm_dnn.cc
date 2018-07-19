@@ -1746,8 +1746,9 @@ bool MIOpenSupport::DoConvolveImpl(
 
   } else {
     // An algorithm has been specified.
-    algo_sz.first = ToConvForwardAlgo(algorithm_config.algorithm());
-    algo_sz.second = algorithm_config.algorithm_scratch_size();
+    dnn::AlgorithmDesc algo = algorithm_config.algorithm();
+    algo_sz.first = ToConvForwardAlgo(algo);
+    algo_sz.second = algo.scratch_size();
 
     size_t size_in_bytes = algo_sz.second;
     if (size_in_bytes != 0) {
@@ -1801,9 +1802,8 @@ bool MIOpenSupport::DoConvolveImpl(
       return false;
     }
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      dnn::AlgorithmDesc algotype(algo_sz.first, false, algo_sz.second);
       output_profile_result->set_algorithm(algotype);
-      output_profile_result->set_scratch_size(algo_sz.second);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
@@ -2307,8 +2307,9 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
 
   } else {
     // An algorithm has been specified.
-    algo_sz.first = ToConvBackwardDataAlgo(algorithm_config.algorithm());
-    algo_sz.second = algorithm_config.algorithm_scratch_size();
+    dnn::AlgorithmDesc algo = algorithm_config.algorithm();
+    algo_sz.first = ToConvBackwardDataAlgo(algo);
+    algo_sz.second = algo.scratch_size();
 
     size_t size_in_bytes = algo_sz.second;
     if (size_in_bytes != 0) {
@@ -2362,9 +2363,8 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
   if (is_profiling) {
     timer->Stop(AsROCMStream(stream));
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      dnn::AlgorithmDesc algotype(algo_sz.first, false, algo_sz.second);
       output_profile_result->set_algorithm(algotype);
-      output_profile_result->set_scratch_size(algo_sz.second);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
@@ -2530,8 +2530,9 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
 
   } else {
     // An algorithm has been specified.
+    dnn::AlgorithmDesc algo = algorithm_config.algorithm();
     algo_sz.first = ToConvBackwardFilterAlgo(algorithm_config.algorithm());
-    algo_sz.second = algorithm_config.algorithm_scratch_size();
+    algo_sz.second = algo.scratch_size();
 
     size_t size_in_bytes = algo_sz.second;
 
@@ -2585,9 +2586,8 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
   if (is_profiling) {
     timer->Stop(AsROCMStream(stream));
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algo_sz.first, false);
+      dnn::AlgorithmDesc algotype(algo_sz.first, false, algo_sz.second);
       output_profile_result->set_algorithm(algotype);
-      output_profile_result->set_scratch_size(algo_sz.second);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
