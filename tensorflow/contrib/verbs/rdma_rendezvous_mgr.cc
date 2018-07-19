@@ -94,7 +94,7 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
         int64 end_usec = Env::Default()->NowMicros();
         int64 bytes = recv_tensor.TotalBytes();
         logger->RecordRecvTensor(step_id_, start_usec, end_usec,
-                                 parsed.edge_name.ToString(), parsed.src_device.ToString(), parsed.dst_device.ToString(),
+                                 parsed.edge_name.data(), parsed.src_device.data(), parsed.dst_device.data(),
                                  bytes);
       }
       done(s, send_args, recv_args, recv_tensor, is_dead);      
