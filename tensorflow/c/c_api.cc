@@ -963,6 +963,7 @@ TF_DEVICELIST_METHOD(const char*, TF_DeviceListName, name().c_str(), nullptr);
 TF_DEVICELIST_METHOD(const char*, TF_DeviceListType, device_type().c_str(),
                      nullptr);
 TF_DEVICELIST_METHOD(int64_t, TF_DeviceListMemoryBytes, memory_limit(), -1);
+TF_DEVICELIST_METHOD(uint64_t, TF_DeviceListIncarnation, incarnation(), 0);
 
 #undef TF_DEVICELIST_METHOD
 
