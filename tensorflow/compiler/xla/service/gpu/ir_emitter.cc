@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -125,135 +125,14 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 }
 
 Status IrEmitter::HandleSort(HloInstruction* sort) {
-  auto keys = sort->operand(0);
   auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
   if (values != nullptr) {
     // TODO(b/26783907): Also sort the values by their corresponding key.
     return Unimplemented("Key/Value Sort is not implemented on GPU");
   }
   int dimension_to_sort = sort->dimensions(0);
-  const llvm_ir::IrArray& keys_array = GetIrArray(*keys, *sort);
-  const llvm_ir::IrArray& target_array = GetIrArray(*sort, *sort);
-
-  const Shape& keys_shape = keys->shape();
-
-  // TODO(b/26783907): This case can probably be avoided with the Algebraic
-  // Simplifier.
-  if (ShapeUtil::IsScalar(keys_shape)) {
-    return Status::OK();
-  }
-
-  // Create loop nests which loop through the operand dimensions. The sort
-  // dimension is handled in three separate innermost loops which perform the
-  // sorting.
-  llvm_ir::ForLoopNest loop_nest(IrName(sort), &ir_builder_);
-  llvm_ir::IrArray::Index keys_index = EmitOperandArrayLoopNest(
-      keys_array, dimension_to_sort, "keys", &loop_nest);
-
-  // 'compare_keys_index' is the index of the element that 'keys_index' should
-  // be compared to.
-  llvm_ir::IrArray::Index compare_keys_index(keys_index.GetType());
-  for (size_t dimension = 0; dimension < keys_index.size(); ++dimension) {
-    if (dimension != dimension_to_sort) {
-      compare_keys_index.push_back(keys_index[dimension]);
-    } else {
-      compare_keys_index.push_back(nullptr);
-    }
-  }
-
-  // Create the sorting loops which do the sorting.
-  int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  std::unique_ptr<llvm_ir::ForLoop> stages_loop = loop_nest.AddLoop(
-      /*start_index=*/0,
-      /*end_index=*/
-      tensorflow::Log2Ceiling64(dimension_to_sort_bound),
-      /*suffix=*/"sort_stages");
-  std::unique_ptr<llvm_ir::ForLoop> mask_loop = loop_nest.AddLoop(
-      /*suffix=*/"mask",
-      /*start_index=*/keys_index.GetConstantWithIndexType(0),
-      /*end_index=*/stages_loop->GetIndVarValue());
-  std::unique_ptr<llvm_ir::ForLoop> compare_loop = loop_nest.AddLoop(
-      /*start_index=*/0,
-      /*end_index=*/dimension_to_sort_bound,
-      /*suffix=*/"compare");
-
-  // Naive C++ code for the inner loops (without parallelization):
-  //
-  // for (int64 stage = 0; stage < Log2Ceiling(dimension_to_sort_bound);
-  //     ++stage) {
-  //   int64 first_xor_mask = (1LL << (stage + 1)) - 1;
-  //   for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
-  //     int64 j = i ^ first_xor_mask;
-  //     if (i < j && j < dimension_to_sort_bound) {
-  //       int64 min_key = std::min(keys[i], keys[j]);
-  //       keys[j] = std::max(keys[i], keys[j]);
-  //       keys[i] = min_key;
-  //     }
-  //   }
-  //   for (int64 mask = 0; mask < stage; ++mask) {
-  //     int64 later_xor_mask = (1LL << (stage - (mask + 1));
-  //     for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
-  //       int64 j = i ^ later_xor_mask;
-  //       if (i < j && j < dimension_to_sort_bound) {
-  //         int64 min_key = std::min(keys[i], keys[j]);
-  //         keys[j] = std::max(keys[i], keys[j]);
-  //         keys[i] = min_key;
-  //       }
-  //     }
-  //   }
-  // }
-  //
-  // This follows the algorithm described on Wikipedia:
-  // https://en.wikipedia.org/wiki/Bitonic_sorter
-
-  SetToFirstInsertPoint(stages_loop->GetBodyBasicBlock(), &ir_builder_);
-  // The first xor mask of a stage is 2^(stage + 1) - 1.
-  auto first_xor_mask = ir_builder_.CreateSub(
-      ir_builder_.CreateShl(
-          keys_index.GetConstantWithIndexType(1),
-          ir_builder_.CreateAdd(stages_loop->GetIndVarValue(),
-                                keys_index.GetConstantWithIndexType(1))),
-      keys_index.GetConstantWithIndexType(1));
-  std::unique_ptr<llvm_ir::ForLoop> first_compare_loop =
-      llvm_ir::ForLoop::EmitForLoop(
-          /*prefix=*/"first_compare",
-          /*start_index=*/keys_index.GetConstantWithIndexType(0),
-          /*end_index=*/
-          keys_index.GetConstantWithIndexType(
-              keys_shape.dimensions(dimension_to_sort)),
-          /*step=*/keys_index.GetConstantWithIndexType(1),
-          /*ir_builder=*/&ir_builder_);
-
-  SetToFirstInsertPoint(first_compare_loop->GetBodyBasicBlock(), &ir_builder_);
-  // 'first_compare_loop' iterates through the 'dimension_to_sort'.
-  keys_index[dimension_to_sort] = first_compare_loop->GetIndVarValue();
-  compare_keys_index[dimension_to_sort] = ir_builder_.CreateXor(
-      first_compare_loop->GetIndVarValue(), first_xor_mask);
-  EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index,
-                  target_array);
-
-  SetToFirstInsertPoint(compare_loop->GetPreheaderBasicBlock(), &ir_builder_);
-  // The later masks of a stage are 2^(stage - (mask_loop_ind_var + 1)).
-  auto later_xor_mask = ir_builder_.CreateShl(
-      keys_index.GetConstantWithIndexType(1),
-      ir_builder_.CreateSub(
-          stages_loop->GetIndVarValue(),
-          ir_builder_.CreateAdd(mask_loop->GetIndVarValue(),
-                                keys_index.GetConstantWithIndexType(1))));
-
-  SetToFirstInsertPoint(compare_loop->GetBodyBasicBlock(), &ir_builder_);
-  // 'compare_loop' iterates through the 'dimension_to_sort'.
-  keys_index[dimension_to_sort] = compare_loop->GetIndVarValue();
-  compare_keys_index[dimension_to_sort] =
-      ir_builder_.CreateXor(compare_loop->GetIndVarValue(), later_xor_mask);
-  EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index,
-                  target_array);
-
-  // Set the IR builder insert point to the exit basic block of the outer most
-  // loop. This ensures later instructions are inserted after this loop nest.
-  ir_builder_.SetInsertPoint(loop_nest.GetOuterLoopExitBasicBlock());
-
-  return Status::OK();
+  return llvm_ir::EmitSortInPlace(dimension_to_sort, GetIrArray(*sort, *sort),
+                                  IrName(sort), &ir_builder_);
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
@@ -527,44 +406,6 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
   return Status::OK();
 }
 
-void IrEmitter::EmitCompareLoop(
-    int64 dimension_to_sort, const llvm_ir::IrArray::Index& keys_index,
-    const llvm_ir::IrArray::Index& compare_keys_index,
-    const llvm_ir::IrArray& keys_array) {
-  // TODO(b/26783907): parallelize this loop.
-
-  // if (is_smaller_index &&
-  //     compare_keys[dimension_to_sort] < dimension_to_sort_bound)
-  llvm::Value* is_smaller_index = ir_builder_.CreateICmpSLT(
-      keys_index[dimension_to_sort], compare_keys_index[dimension_to_sort]);
-  int64 dimension_to_sort_bound =
-      keys_array.GetShape().dimensions(dimension_to_sort);
-  auto if_data = llvm_ir::EmitIfThenElse(
-      ir_builder_.CreateAnd(
-          is_smaller_index,
-          ir_builder_.CreateICmpSLT(
-              compare_keys_index[dimension_to_sort],
-              keys_index.GetConstantWithIndexType(dimension_to_sort_bound))),
-      "smaller_comparison_index", &ir_builder_, /*emit_else=*/false);
-  SetToFirstInsertPoint(if_data.true_block, &ir_builder_);
-  auto key1 = keys_array.EmitReadArrayElement(keys_index, &ir_builder_);
-  auto key2 = keys_array.EmitReadArrayElement(compare_keys_index, &ir_builder_);
-  auto key_type = keys_array.GetShape().element_type();
-  auto comparison =
-      primitive_util::IsFloatingPointType(key_type)
-          // TODO(b/26783907): Figure out how to handle NaNs.
-          ? ir_builder_.CreateFCmp(llvm::FCmpInst::FCMP_ULT, key1, key2)
-          : ir_builder_.CreateICmp(
-                primitive_util::IsSignedIntegralType(key_type)
-                    ? llvm::ICmpInst::ICMP_SLT
-                    : llvm::ICmpInst::ICMP_ULT,
-                key1, key2);
-  auto min_key = ir_builder_.CreateSelect(comparison, key1, key2);
-  auto max_key = ir_builder_.CreateSelect(comparison, key2, key1);
-  keys_array.EmitWriteArrayElement(keys_index, min_key, &ir_builder_);
-  keys_array.EmitWriteArrayElement(compare_keys_index, max_key, &ir_builder_);
-}
-
 Status IrEmitter::EmitAtomicOperationForNestedComputation(
     const HloComputation& computation, llvm::Value* output_address,
     llvm::Value* source_address) {
@@ -691,10 +532,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
   llvm_ir::ForLoopNest loop_nest(IrName(dot), &ir_builder_);
-  llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
-      lhs_array, lhs_reduction_dimension, "lhs", &loop_nest);
-  llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
-      rhs_array, rhs_reduction_dimension, "rhs", &loop_nest);
+  llvm_ir::IrArray::Index lhs_index = loop_nest.EmitOperandArrayLoopNest(
+      lhs_array, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
+  llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
+      rhs_array, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
 
   // Create the reduction loop which does the sum of products reduction.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
@@ -941,36 +782,6 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
       "The GPU backend does not implement BatchNormGrad directly.  It should "
       "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
       "to a cudnn CustomCall using CudnnBatchNormRewriter.");
-}
-
-llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
-    const llvm_ir::IrArray& operand_array, int64 reduction_dimension,
-    tensorflow::StringPiece name_suffix, llvm_ir::ForLoopNest* loop_nest) {
-  // Prepares the dimension list we will use to emit the loop nest. Outermost
-  // loops are added first. Add loops in major-to-minor order, and skip the
-  // reduction dimension.
-  std::vector<int64> dimensions;
-  const Shape& shape = operand_array.GetShape();
-  for (int i = 0; i < LayoutUtil::MinorToMajor(shape).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape.layout(), i);
-    if (dimension != reduction_dimension) {
-      dimensions.push_back(dimension);
-    }
-  }
-
-  // Create loop nest with one for-loop for each dimension of the
-  // output.
-  llvm_ir::IrArray::Index index =
-      loop_nest->AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
-  // Verify every dimension except the reduction dimension was set in the index.
-  for (size_t dimension = 0; dimension < index.size(); ++dimension) {
-    if (dimension == reduction_dimension) {
-      DCHECK_EQ(nullptr, index[dimension]);
-    } else {
-      DCHECK_NE(nullptr, index[dimension]);
-    }
-  }
-  return index;
 }
 
 StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(

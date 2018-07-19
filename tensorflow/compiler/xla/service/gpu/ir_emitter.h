@@ -171,17 +171,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   const HloModuleConfig& hlo_module_config_;
 
  private:
-  // Emits a series of nested loops for iterating over an operand array in the
-  // dot operation. Loops are constructed in major to minor dimension layout
-  // order. No loop is emitted for the given reduction_dimension. The function
-  // returns an IrArray index for the given operand_array containing the indvars
-  // of the loops. All dimensions of the index are filled except for the
-  // reduction dimension. name_suffix is the string to append to the names of
-  // LLVM constructs (eg, basic blocks) constructed by this method.
-  llvm_ir::IrArray::Index EmitOperandArrayLoopNest(
-      const llvm_ir::IrArray& operand_array, int64 reduction_dimension,
-      tensorflow::StringPiece name_suffix, llvm_ir::ForLoopNest* loop_nest);
-
   // A helper method for EmitAtomicOperationForNestedComputation. Certain
   // computations, such as floating-point addition and integer maximization, can
   // be simply implemented using an LLVM atomic instruction. If "computation" is
