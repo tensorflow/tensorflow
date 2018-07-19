@@ -35,19 +35,19 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
     break;
   case Kind::Mul:
     assert(!isa<AffineConstantExpr>(lhs));
-    assert(rhs->isSymbolic());
+    assert(rhs->isSymbolicOrConstant());
     // TODO (more verification)
     break;
   case Kind::FloorDiv:
-    assert(rhs->isSymbolic());
+    assert(rhs->isSymbolicOrConstant());
     // TODO (more verification)
     break;
   case Kind::CeilDiv:
-    assert(rhs->isSymbolic());
+    assert(rhs->isSymbolicOrConstant());
     // TODO (more verification)
     break;
   case Kind::Mod:
-    assert(rhs->isSymbolic());
+    assert(rhs->isSymbolicOrConstant());
     // TODO (more verification)
     break;
   default:
@@ -57,7 +57,7 @@ AffineBinaryOpExpr::AffineBinaryOpExpr(Kind kind, AffineExpr *lhs,
 
 /// Returns true if this expression is made out of only symbols and
 /// constants (no dimensional identifiers).
-bool AffineExpr::isSymbolic() const {
+bool AffineExpr::isSymbolicOrConstant() const {
   switch (getKind()) {
   case Kind::Constant:
     return true;
@@ -73,7 +73,8 @@ bool AffineExpr::isSymbolic() const {
   case Kind::CeilDiv:
   case Kind::Mod: {
     auto expr = cast<AffineBinaryOpExpr>(this);
-    return expr->getLHS()->isSymbolic() && expr->getRHS()->isSymbolic();
+    return expr->getLHS()->isSymbolicOrConstant() &&
+           expr->getRHS()->isSymbolicOrConstant();
   }
   }
 }

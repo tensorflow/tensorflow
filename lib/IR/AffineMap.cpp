@@ -36,7 +36,8 @@ AffineExpr *AffineBinaryOpExpr::simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
     if (auto *r = dyn_cast<AffineConstantExpr>(rhs))
       return AffineConstantExpr::get(l->getValue() + r->getValue(), context);
 
-  if (isa<AffineConstantExpr>(lhs) || (lhs->isSymbolic() && !rhs->isSymbolic()))
+  if (isa<AffineConstantExpr>(lhs) ||
+      (lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant()))
     return AffineAddExpr::get(rhs, lhs, context);
 
   return nullptr;
@@ -63,12 +64,12 @@ AffineExpr *AffineBinaryOpExpr::simplifyMul(AffineExpr *lhs, AffineExpr *rhs,
     if (auto *r = dyn_cast<AffineConstantExpr>(rhs))
       return AffineConstantExpr::get(l->getValue() * r->getValue(), context);
 
-  assert(lhs->isSymbolic() || rhs->isSymbolic());
+  assert(lhs->isSymbolicOrConstant() || rhs->isSymbolicOrConstant());
 
   // Canonicalize the mul expression so that the constant/symbolic term is the
   // RHS. If both the lhs and rhs are symbolic, swap them if the lhs is a
   // constant. (Note that a constant is trivially symbolic).
-  if (!rhs->isSymbolic() || isa<AffineConstantExpr>(lhs)) {
+  if (!rhs->isSymbolicOrConstant() || isa<AffineConstantExpr>(lhs)) {
     // At least one of them has to be symbolic.
     return AffineMulExpr::get(rhs, lhs, context);
   }

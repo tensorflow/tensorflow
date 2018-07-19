@@ -717,28 +717,28 @@ AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
   // TODO: make the error location info accurate.
   switch (op) {
   case Mul:
-    if (!lhs->isSymbolic() && !rhs->isSymbolic()) {
+    if (!lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant()) {
       emitError("non-affine expression: at least one of the multiply "
                 "operands has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getMulExpr(lhs, rhs);
   case FloorDiv:
-    if (!rhs->isSymbolic()) {
+    if (!rhs->isSymbolicOrConstant()) {
       emitError("non-affine expression: right operand of floordiv "
                 "has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getFloorDivExpr(lhs, rhs);
   case CeilDiv:
-    if (!rhs->isSymbolic()) {
+    if (!rhs->isSymbolicOrConstant()) {
       emitError("non-affine expression: right operand of ceildiv "
                 "has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getCeilDivExpr(lhs, rhs);
   case Mod:
-    if (!rhs->isSymbolic()) {
+    if (!rhs->isSymbolicOrConstant()) {
       emitError("non-affine expression: right operand of mod "
                 "has to be either a constant or symbolic");
       return nullptr;

@@ -61,7 +61,7 @@ public:
 
   /// Returns true if this expression is made out of only symbols and
   /// constants, i.e., it does not involve dimensional identifiers.
-  bool isSymbolic() const;
+  bool isSymbolicOrConstant() const;
 
   /// Returns true if this is a pure affine expression, i.e., multiplication,
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
