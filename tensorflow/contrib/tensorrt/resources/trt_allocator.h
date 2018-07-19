@@ -51,6 +51,9 @@ class TRTDeviceAllocator : public nvinfer1::IGpuAllocator {
   // Allocator implementation wrapping TF device allocators.
  public:
   TRTDeviceAllocator(tensorflow::Allocator* allocator);
+
+  // TODO(aaroey): base class doesn't have a virtual destructor, work with
+  // Nvidia to fix it.
   virtual ~TRTDeviceAllocator() {
     VLOG(1) << "Destroying allocator attached to " << allocator_->Name();
   }
