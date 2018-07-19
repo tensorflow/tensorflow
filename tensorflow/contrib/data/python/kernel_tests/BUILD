@@ -60,7 +60,7 @@ py_test(
 
 py_test(
     name = "csv_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["csv_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
