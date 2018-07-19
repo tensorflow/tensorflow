@@ -464,7 +464,7 @@ equal to the number of physical cores rather than logical cores.
   config = tf.ConfigProto()
   config.intra_op_parallelism_threads = 44
   config.inter_op_parallelism_threads = 44
-  tf.session(config=config)
+  tf.Session(config=config)
 
 ```
 
