@@ -25,6 +25,12 @@ namespace tensorflow {
 
 void DFS(const Graph& g, const std::function<void(Node*)>& enter,
          const std::function<void(Node*)>& leave,
+         const NodeComparator& stable_comparator) {
+  DFS(g, enter, leave, stable_comparator, {});
+}
+
+void DFS(const Graph& g, const std::function<void(Node*)>& enter,
+         const std::function<void(Node*)>& leave,
          const NodeComparator& stable_comparator,
          const EdgeFilter& edge_filter) {
   // Stack of work to do.
@@ -163,11 +169,21 @@ void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
 }
 
 void GetPostOrder(const Graph& g, std::vector<Node*>* order,
+                  const NodeComparator& stable_comparator) {
+  GetPostOrder(g, order, stable_comparator, {});
+}
+
+void GetPostOrder(const Graph& g, std::vector<Node*>* order,
                   const NodeComparator& stable_comparator,
                   const EdgeFilter& edge_filter) {
   order->clear();
   DFS(g, nullptr, [order](Node* n) { order->push_back(n); }, stable_comparator,
       edge_filter);
+}
+
+void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
+                         const NodeComparator& stable_comparator) {
+  GetReversePostOrder(g, order, stable_comparator, {});
 }
 
 void GetReversePostOrder(const Graph& g, std::vector<Node*>* order,
