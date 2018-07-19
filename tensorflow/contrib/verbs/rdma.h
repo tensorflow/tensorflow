@@ -395,7 +395,7 @@ class RdmaAdapter {
   // Completion queue, to poll on work completions
   ibv_cq* cq_;
   // Pre-allocated work completions array used for polling
-  ibv_wc wc_[MAX_CONCURRENT_WRITES * 2];
+  ibv_wc* wc_;
   // worker env for thread
   const WorkerEnv* worker_env_;
   // thread for cq.

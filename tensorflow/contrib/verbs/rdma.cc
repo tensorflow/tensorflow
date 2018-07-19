@@ -406,15 +406,17 @@ RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
       params_(params_init(context_)),
       pd_(alloc_protection_domain(context_)),
       worker_env_(worker_env) {
+  wc_ = new ibv_wc[params_.queue_depth * 2];
   event_channel_ = ibv_create_comp_channel(context_);
   CHECK(event_channel_) << "Failed to create completion channel";
-  cq_ = ibv_create_cq(context_, MAX_CONCURRENT_WRITES * 2, NULL, event_channel_,
+  cq_ = ibv_create_cq(context_, params_.queue_depth * 2, NULL, event_channel_,
                       0);
   CHECK(cq_) << "Failed to create completion queue";
   CHECK(!ibv_req_notify_cq(cq_, 0)) << "Failed to request CQ notification";
 }
 
 RdmaAdapter::~RdmaAdapter() {
+  delete[] wc_;
   polling_thread_.reset();
   CHECK(!ibv_destroy_cq(cq_)) << "Failed to destroy CQ";
   CHECK(!ibv_destroy_comp_channel(event_channel_))
@@ -445,7 +447,7 @@ void RdmaAdapter::Process_CQ() {
     CHECK(!ibv_req_notify_cq(cq_, 0));
 
     int ne =
-        ibv_poll_cq(cq_, MAX_CONCURRENT_WRITES * 2, static_cast<ibv_wc*>(wc_));
+        ibv_poll_cq(cq_, params_.queue_depth * 2, wc_);
     CHECK_GE(ne, 0);
     for (int i = 0; i < ne; ++i) {
       CHECK(wc_[i].status == IBV_WC_SUCCESS)
