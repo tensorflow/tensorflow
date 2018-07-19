@@ -39,8 +39,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [10, 24, 24, 20]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       # scale
       a = constant_op.constant(np.random.randn(1), dtype=dtype)
       f = x + a
@@ -58,13 +57,11 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
       f = a + x
       x = math_ops.sigmoid(f)
       # scale
-      a = constant_op.constant(
-          np.random.randn(24, 24, 20), dtype=dtype)
+      a = constant_op.constant(np.random.randn(24, 24, 20), dtype=dtype)
       f = a + x
       x = math_ops.sigmoid(f)
       # scale
-      a = constant_op.constant(
-          np.random.randn(24, 24, 20), dtype=dtype)
+      a = constant_op.constant(np.random.randn(24, 24, 20), dtype=dtype)
       f = x + a
       x = math_ops.sigmoid(f)
       # elementwise
@@ -76,33 +73,27 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
       f = a + x
       x = math_ops.sigmoid(f)
       # elementwise
-      a = constant_op.constant(
-          np.random.randn(1, 24, 1, 1), dtype=dtype)
+      a = constant_op.constant(np.random.randn(1, 24, 1, 1), dtype=dtype)
       f = a + x
       x = math_ops.sigmoid(f)
       # elementwise
-      a = constant_op.constant(
-          np.random.randn(1, 24, 1, 1), dtype=dtype)
+      a = constant_op.constant(np.random.randn(1, 24, 1, 1), dtype=dtype)
       f = x + a
       x = math_ops.sigmoid(f)
       # elementwise
-      a = constant_op.constant(
-          np.random.randn(1, 24, 24, 1), dtype=dtype)
+      a = constant_op.constant(np.random.randn(1, 24, 24, 1), dtype=dtype)
       f = a + x
       x = math_ops.sigmoid(f)
       # elementwise
-      a = constant_op.constant(
-          np.random.randn(1, 24, 24, 1), dtype=dtype)
+      a = constant_op.constant(np.random.randn(1, 24, 24, 1), dtype=dtype)
       f = x + a
       x = math_ops.sigmoid(f)
       # elementwise
-      a = constant_op.constant(
-          np.random.randn(1, 24, 24, 20), dtype=dtype)
+      a = constant_op.constant(np.random.randn(1, 24, 24, 20), dtype=dtype)
       f = a + x
       x = math_ops.sigmoid(f)
       # elementwise
-      a = constant_op.constant(
-          np.random.randn(1, 24, 24, 20), dtype=dtype)
+      a = constant_op.constant(np.random.randn(1, 24, 24, 20), dtype=dtype)
       f = x + a
       x = math_ops.sigmoid(f)
       # elementwise
@@ -122,6 +113,7 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(5, 23040),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

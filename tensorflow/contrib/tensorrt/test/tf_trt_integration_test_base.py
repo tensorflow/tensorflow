@@ -169,7 +169,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         num_engines += 1
         self.assertNotEqual(self._ToBytes(""), n.attr["serialized_segment"].s)
         self.assertNotEqual(self._ToBytes(""), n.attr["segment_funcdef_name"].s)
-        self.assertEqual(self._ToBytes(precision_mode), n.attr["precision_mode"].s)
+        self.assertEqual(
+            self._ToBytes(precision_mode), n.attr["precision_mode"].s)
         self.assertEqual(not dynamic_engine, n.attr["static_engine"].b)
         if _IsQuantizationMode(precision_mode) and is_calibrated:
           self.assertNotEqual(self._ToBytes(""), n.attr["calibration_data"].s)

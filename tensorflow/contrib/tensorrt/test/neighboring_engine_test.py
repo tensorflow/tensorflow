@@ -39,12 +39,9 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [2, 3, 7, 5]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       e = constant_op.constant(
-          np.random.normal(.3, 0.05, [3, 2, 3, 4]),
-          name="weights",
-          dtype=dtype)
+          np.random.normal(.3, 0.05, [3, 2, 3, 4]), name="weights", dtype=dtype)
       conv = nn.conv2d(
           input=x,
           filter=e,
@@ -53,9 +50,7 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
           padding="VALID",
           name="conv")
       b = constant_op.constant(
-          np.random.normal(1.0, 1.0, [1, 4, 1, 1]),
-          name="bias",
-          dtype=dtype)
+          np.random.normal(1.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       t = conv * b
       e = gen_math_ops.tan(conv)
       t = t - e
@@ -68,6 +63,7 @@ class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(2, 4, 5, 4),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

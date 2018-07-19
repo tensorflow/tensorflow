@@ -45,13 +45,10 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
     with g.as_default():
       inp = array_ops.placeholder(
           dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-      w1 = array_ops.placeholder(
-         dtype=dtype, shape=w1_dims, name=w1_name)
-      w2 = array_ops.placeholder(
-         dtype=dtype, shape=w2_dims, name=w2_name)
+      w1 = array_ops.placeholder(dtype=dtype, shape=w1_dims, name=w1_name)
+      w2 = array_ops.placeholder(dtype=dtype, shape=w2_dims, name=w2_name)
       with g.device("/GPU:0"):
-        b = constant_op.constant(
-            np.random.randn(12, 5, 12, 7), dtype=dtype)
+        b = constant_op.constant(np.random.randn(12, 5, 12, 7), dtype=dtype)
         c = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
         d = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
         x1 = math_ops.matmul(inp, b)
@@ -73,6 +70,7 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(12, 5, 8, 7),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

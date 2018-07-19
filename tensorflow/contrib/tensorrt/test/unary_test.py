@@ -32,7 +32,6 @@ from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt
 
 
 class UnaryTest(trt_test.TfTrtIntegrationTestBase):
-    
 
   def GetParams(self):
     """unit test for unary operations in TF-TRT"""
@@ -43,8 +42,7 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
     input2_dims = [12, 5, 8, 1, 12, 1, 1]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       q = math_ops.abs(x)
       q = q + 1.0
       q = gen_math_ops.exp(q)
@@ -106,6 +104,7 @@ class UnaryTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(12, 5, 8, 12),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

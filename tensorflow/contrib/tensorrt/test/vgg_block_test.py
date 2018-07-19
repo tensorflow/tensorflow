@@ -40,8 +40,7 @@ class VGGBlockTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [5, 8, 8, 2]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       x, mean_x, var_x = nn_impl.fused_batch_norm(
           x,
           np.random.randn(2).astype(np.float32),
@@ -53,8 +52,7 @@ class VGGBlockTest(trt_test.TfTrtIntegrationTestBase):
           np.random.randn(1, 1, 2, 6), name="weights", dtype=dtype)
       conv = nn.conv2d(
           input=x, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
-      b = constant_op.constant(
-          np.random.randn(6), name="bias", dtype=dtype)
+      b = constant_op.constant(np.random.randn(6), name="bias", dtype=dtype)
       t = nn.bias_add(conv, b, name="biasAdd")
       relu = nn.relu(t, "relu")
       idty = array_ops.identity(relu, "ID")
@@ -69,6 +67,7 @@ class VGGBlockTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(5, 2, 2, 6),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

@@ -34,21 +34,17 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """unit test for Constant broadcasting in TF-TRT"""
     dtype = dtypes.float32
-    input_name = "input"
+    input_name = 'input'
     input_dims = [5, 12, 12, 2]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       filt1 = constant_op.constant(
           0.3, shape=(3, 3, 2, 1), dtype=dtype, name='filt1')
       y1 = nn.conv2d(x, filt1, strides=[1, 1, 1, 1], padding='SAME', name='y1')
       z1 = nn.relu(y1, name='z1')
       filt2 = constant_op.constant(
-          np.random.randn(9),
-          shape=(3, 3, 1, 1),
-          dtype=dtype,
-          name='filt2')
+          np.random.randn(9), shape=(3, 3, 1, 1), dtype=dtype, name='filt2')
       y2 = nn.conv2d(z1, filt2, strides=[1, 1, 1, 1], padding='SAME', name='y2')
       z2 = nn.relu(y2, name='z')
       filt3 = constant_op.constant(
@@ -67,5 +63,6 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
         allclose_atol=1.e-02,
         allclose_rtol=1.e-02)
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
   test.main()
