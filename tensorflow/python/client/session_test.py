@@ -104,18 +104,15 @@ class SessionTest(test_util.TensorFlowTestCase):
           copy_val)
 
   def testManyCPUs(self):
-    # TODO(keveman): Implement ListDevices and test for the number of
-    # devices returned by ListDevices.
+    device_count = len(session.Session().list_devices())
     with session.Session(
         config=config_pb2.ConfigProto(device_count={
-            'CPU': 2
-        })):
+            'CPU': device_count
+        })) as sess:
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
   def testPerSessionThreads(self):
-    # TODO(keveman): Implement ListDevices and test for the number of
-    # devices returned by ListDevices.
     with session.Session(
         config=config_pb2.ConfigProto(use_per_session_threads=True)):
       inp = constant_op.constant(10.0, name='W1')
