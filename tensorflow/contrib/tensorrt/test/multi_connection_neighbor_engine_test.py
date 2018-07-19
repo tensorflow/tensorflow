@@ -40,8 +40,7 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [2, 3, 7, 5]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       e = constant_op.constant(
           np.random.normal(.05, .005, [3, 2, 3, 4]),
           name="weights",
@@ -54,29 +53,21 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
           padding="VALID",
           name="conv")
       b = constant_op.constant(
-          np.random.normal(2.0, 1.0, [1, 4, 1, 1]),
-          name="bias",
-          dtype=dtype)
+          np.random.normal(2.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       t = conv + b
 
       b = constant_op.constant(
-          np.random.normal(5.0, 1.0, [1, 4, 1, 1]),
-          name="bias",
-          dtype=dtype)
+          np.random.normal(5.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       q = conv - b
       edge = math_ops.sigmoid(q)
 
       b = constant_op.constant(
-          np.random.normal(5.0, 1.0, [1, 4, 1, 1]),
-          name="bias",
-          dtype=dtype)
+          np.random.normal(5.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       d = b + conv
       edge3 = math_ops.sigmoid(d)
 
       c = constant_op.constant(
-          np.random.normal(1.0, 1.0, [1, 4, 1, 1]),
-          name="bias",
-          dtype=dtype)
+          np.random.normal(1.0, 1.0, [1, 4, 1, 1]), name="bias", dtype=dtype)
       edge1 = gen_math_ops.tan(conv)
       t = t - edge1
       q = q + edge
@@ -92,6 +83,7 @@ class MultiConnectionNeighborEngineTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(2, 4, 5, 4),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

@@ -40,8 +40,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [48, 12]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
 
       b = constant_op.constant(np.random.randn(12, 4), dtype=dtype)
       x1 = math_ops.matmul(x, b)
@@ -107,6 +106,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(48, 89),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

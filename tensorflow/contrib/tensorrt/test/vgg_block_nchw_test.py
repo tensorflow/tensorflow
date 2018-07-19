@@ -40,8 +40,7 @@ class VGGBlockNCHWTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [5, 2, 8, 8]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       x, mean_x, var_x = nn_impl.fused_batch_norm(
           x,
           np.random.randn(2).astype(np.float32),
@@ -59,8 +58,7 @@ class VGGBlockNCHWTest(trt_test.TfTrtIntegrationTestBase):
           strides=[1, 1, 2, 2],
           padding="SAME",
           name="conv")
-      b = constant_op.constant(
-          np.random.randn(6), name="bias", dtype=dtype)
+      b = constant_op.constant(np.random.randn(6), name="bias", dtype=dtype)
       t = nn.bias_add(conv, b, data_format="NCHW", name="biasAdd")
       relu = nn.relu(t, "relu")
       idty = array_ops.identity(relu, "ID")
@@ -78,6 +76,7 @@ class VGGBlockNCHWTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(5, 6, 2, 2),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()

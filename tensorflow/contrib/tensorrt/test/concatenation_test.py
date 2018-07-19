@@ -39,8 +39,7 @@ class ConcatenationTest(trt_test.TfTrtIntegrationTestBase):
     input_dims = [2, 3, 3, 1]
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtype, shape=input_dims, name=input_name)
+      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
       # scale
       a = constant_op.constant(np.random.randn(3, 1, 1), dtype=dtype)
       r1 = x / a
@@ -78,6 +77,7 @@ class ConcatenationTest(trt_test.TfTrtIntegrationTestBase):
         expected_output_dims=(2, 126),
         allclose_atol=1.e-03,
         allclose_rtol=1.e-03)
+
 
 if __name__ == "__main__":
   test.main()
