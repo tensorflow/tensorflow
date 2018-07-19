@@ -40,15 +40,15 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator(_, *args, **kwds):
-  del args, kwds
-  raise NotImplementedError("resource_variable_ops needs to be imported")
+def default_variable_creator(_, **kwds):
+  del kwds
+  raise NotImplementedError("variable_scope needs to be imported")
 
 
 def _make_getter(captured_getter, captured_previous):
   """To avoid capturing loop variables."""
-  def getter(*args, **kwargs):
-    return captured_getter(captured_previous, *args, **kwargs)
+  def getter(**kwargs):
+    return captured_getter(captured_previous, **kwargs)
   return getter
 
 
@@ -86,11 +86,48 @@ class VariableAggregation(enum.Enum):
 class VariableMetaclass(type):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
+  def _variable_call(cls,
+                     initial_value=None,
+                     trainable=None,
+                     collections=None,
+                     validate_shape=True,
+                     caching_device=None,
+                     name=None,
+                     variable_def=None,
+                     dtype=None,
+                     expected_shape=None,
+                     import_scope=None,
+                     constraint=None,
+                     use_resource=None,
+                     synchronization=VariableSynchronization.AUTO,
+                     aggregation=VariableAggregation.NONE):
+    """Call on Variable class. Useful to force the signature."""
+    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+    for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        collections=collections,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        expected_shape=expected_shape,
+        import_scope=import_scope,
+        constraint=constraint,
+        use_resource=use_resource,
+        synchronization=synchronization,
+        aggregation=aggregation)
+
   def __call__(cls, *args, **kwargs):
     if cls is Variable:
-      previous_getter = lambda *a, **k: default_variable_creator(None, *a, **k)
-      # TODO(apassos) use a stack of getters here
-      return previous_getter(*args, **kwargs)
+      return cls._variable_call(*args, **kwargs)
     else:
       return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
@@ -650,8 +687,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
   @staticmethod
   def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return Variable(variable_def=variable_def,
-                    import_scope=import_scope)
+    return RefVariable(variable_def=variable_def,
+                       import_scope=import_scope)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
