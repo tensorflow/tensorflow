@@ -84,8 +84,8 @@ private:
 
 namespace {
 
-typedef std::function<Operation *(Identifier, ArrayRef<Type *>,
-                                  ArrayRef<NamedAttribute>)>
+typedef std::function<Operation *(Identifier, ArrayRef<SSAValue *>,
+                                  ArrayRef<Type *>, ArrayRef<NamedAttribute>)>
     CreateOperationFunction;
 
 /// This class implement support for parsing global entities like types and
@@ -164,15 +164,6 @@ public:
   // Polyhedral structures.
   AffineMap *parseAffineMapInline();
   AffineMap *parseAffineMapReference();
-
-  // SSA
-  ParseResult parseSSAUse();
-  ParseResult parseOptionalSSAUseList(Token::Kind endToken);
-  ParseResult parseSSAUseAndType();
-  ParseResult parseOptionalSSAUseAndTypeList(Token::Kind endToken);
-
-  // Operations
-  ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
 
 private:
   // The Parser is subclassed and reinstantiated.  Do not add additional
@@ -1171,25 +1162,96 @@ AffineMap *Parser::parseAffineMapReference() {
 }
 
 //===----------------------------------------------------------------------===//
-// SSA
+// FunctionParser
 //===----------------------------------------------------------------------===//
+
+namespace {
+/// This class contains parser state that is common across CFG and ML functions,
+/// notably for dealing with operations and SSA values.
+class FunctionParser : public Parser {
+public:
+  FunctionParser(ParserState &state) : Parser(state) {}
+
+  /// This represents a use of an SSA value in the program.  This tracks
+  /// location information in case this ends up being a use of an undefined
+  /// value.
+  typedef std::pair<StringRef, SMLoc> SSAUseInfo;
+
+  /// Given a reference to an SSA value and its type, return a reference.  This
+  /// returns null on failure.
+  SSAValue *resolveSSAUse(SSAUseInfo useInfo, Type *type);
+
+  /// Register a definition of a value with the symbol table.
+  ParseResult addDefinition(SSAUseInfo useInfo, SSAValue *value);
+
+  // SSA parsing productions.
+  ParseResult parseSSAUse(SSAUseInfo &result);
+  ParseResult parseOptionalSSAUseList(Token::Kind endToken,
+                                      SmallVectorImpl<SSAUseInfo> &results);
+  SSAValue *parseSSAUseAndType();
+  ParseResult
+  parseOptionalSSAUseAndTypeList(Token::Kind endToken,
+                                 SmallVectorImpl<SSAValue *> &results);
+
+  // Operations
+  ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
+
+private:
+  /// This keeps track of all of the SSA values we are tracking, indexed by
+  /// their name (either an identifier or a number).
+  llvm::StringMap<std::pair<SSAValue *, SMLoc>> values;
+};
+} // end anonymous namespace
+
+/// Given an unbound reference to an SSA value and its type, return a the value
+/// it specifies.  This returns null on failure.
+SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type *type) {
+  // If we have already seen a value of this name, return it.
+  auto it = values.find(useInfo.first);
+  if (it != values.end()) {
+    // Check that the type matches the other uses.
+    auto result = it->second.first;
+    if (result->getType() == type)
+      return result;
+
+    emitError(useInfo.second, "use of value '" + useInfo.first.str() +
+                                  "' expects different type than prior uses");
+    emitError(it->second.second, "prior use here");
+    return nullptr;
+  }
+
+  // Otherwise we have a forward reference.
+  // TODO: Handle forward references.
+  emitError(useInfo.second, "undeclared or forward reference");
+  return nullptr;
+}
+
+/// Register a definition of a value with the symbol table.
+ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, SSAValue *value) {
+
+  // If this is the first definition of this thing, then we are trivially done.
+  auto insertInfo = values.insert({useInfo.first, {value, useInfo.second}});
+  if (insertInfo.second)
+    return ParseSuccess;
+
+  // If we already had a value, replace it with the new one and remove the
+  // placeholder, only if it was a forward ref.
+  // TODO: Handle forward references.
+  emitError(useInfo.second, "redefinition of SSA value " + useInfo.first.str());
+  return ParseFailure;
+}
 
 /// Parse a SSA operand for an instruction or statement.
 ///
 ///   ssa-use ::= ssa-id | ssa-constant
+/// TODO: SSA Constants.
 ///
-ParseResult Parser::parseSSAUse() {
-  if (getToken().is(Token::percent_identifier)) {
-    StringRef name = getTokenSpelling().drop_front();
-    consumeToken(Token::percent_identifier);
-    // TODO: Return this use.
-    (void)name;
-    return ParseSuccess;
-  }
-
-  // TODO: Parse SSA constants.
-
-  return emitError("expected SSA operand");
+ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
+  result.first = getTokenSpelling();
+  result.second = getToken().getLoc();
+  if (!consumeIf(Token::percent_identifier))
+    return emitError("expected SSA operand");
+  return ParseSuccess;
 }
 
 /// Parse a (possibly empty) list of SSA operands.
@@ -1197,41 +1259,50 @@ ParseResult Parser::parseSSAUse() {
 ///   ssa-use-list ::= ssa-use (`,` ssa-use)*
 ///   ssa-use-list-opt ::= ssa-use-list?
 ///
-ParseResult Parser::parseOptionalSSAUseList(Token::Kind endToken) {
-  // TODO: Build and return this.
-  return parseCommaSeparatedList(
-      endToken, [&]() -> ParseResult { return parseSSAUse(); });
+ParseResult
+FunctionParser::parseOptionalSSAUseList(Token::Kind endToken,
+                                        SmallVectorImpl<SSAUseInfo> &results) {
+  return parseCommaSeparatedList(endToken, [&]() -> ParseResult {
+    SSAUseInfo result;
+    if (parseSSAUse(result))
+      return ParseFailure;
+    results.push_back(result);
+    return ParseSuccess;
+  });
 }
 
 /// Parse an SSA use with an associated type.
 ///
 ///   ssa-use-and-type ::= ssa-use `:` type
-ParseResult Parser::parseSSAUseAndType() {
-  if (parseSSAUse())
-    return ParseFailure;
+SSAValue *FunctionParser::parseSSAUseAndType() {
+  SSAUseInfo useInfo;
+  if (parseSSAUse(useInfo))
+    return nullptr;
 
   if (!consumeIf(Token::colon))
-    return emitError("expected ':' and type for SSA operand");
+    return (emitError("expected ':' and type for SSA operand"), nullptr);
 
-  if (!parseType())
-    return ParseFailure;
+  auto *type = parseType();
+  if (!type)
+    return nullptr;
 
-  return ParseSuccess;
+  return resolveSSAUse(useInfo, type);
 }
 
 /// Parse a (possibly empty) list of SSA operands with types.
 ///
 ///   ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
 ///
-ParseResult Parser::parseOptionalSSAUseAndTypeList(Token::Kind endToken) {
-  // TODO: Build and return this.
-  return parseCommaSeparatedList(
-      endToken, [&]() -> ParseResult { return parseSSAUseAndType(); });
+ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
+    Token::Kind endToken, SmallVectorImpl<SSAValue *> &results) {
+  return parseCommaSeparatedList(endToken, [&]() -> ParseResult {
+    if (auto *value = parseSSAUseAndType()) {
+      results.push_back(value);
+      return ParseSuccess;
+    }
+    return ParseFailure;
+  });
 }
-
-//===----------------------------------------------------------------------===//
-// Operations
-//===----------------------------------------------------------------------===//
 
 /// Parse the CFG or MLFunc operation.
 ///
@@ -1243,12 +1314,12 @@ ParseResult Parser::parseOptionalSSAUseAndTypeList(Token::Kind endToken) {
 ///    `:` function-type
 ///
 ParseResult
-Parser::parseOperation(const CreateOperationFunction &createOpFunc) {
+FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   auto loc = getToken().getLoc();
 
   StringRef resultID;
   if (getToken().is(Token::percent_identifier)) {
-    resultID = getTokenSpelling().drop_front();
+    resultID = getTokenSpelling();
     consumeToken(Token::percent_identifier);
     if (!consumeIf(Token::equal))
       return emitError("expected '=' after SSA name");
@@ -1267,7 +1338,8 @@ Parser::parseOperation(const CreateOperationFunction &createOpFunc) {
     return emitError("expected '(' to start operand list");
 
   // Parse the operand list.
-  parseOptionalSSAUseList(Token::r_paren);
+  SmallVector<SSAUseInfo, 8> operandInfos;
+  parseOptionalSSAUseList(Token::r_paren, operandInfos);
 
   SmallVector<NamedAttribute, 4> attributes;
   if (getToken().is(Token::l_brace)) {
@@ -1286,20 +1358,48 @@ Parser::parseOperation(const CreateOperationFunction &createOpFunc) {
   if (!fnType)
     return emitError(typeLoc, "expected function type");
 
-  // TODO: Don't drop result name and operand names on the floor.
+  // Check that we have the right number of types for the operands.
+  auto operandTypes = fnType->getInputs();
+  if (operandTypes.size() != operandInfos.size()) {
+    auto plural = "s"[operandInfos.size() == 1];
+    return emitError(typeLoc, "expected " + llvm::utostr(operandInfos.size()) +
+                                  " type" + plural +
+                                  " in operand list but had " +
+                                  llvm::utostr(operandTypes.size()));
+  }
+
+  // Resolve all of the operands.
+  SmallVector<SSAValue *, 8> operands;
+  for (unsigned i = 0, e = operandInfos.size(); i != e; ++i) {
+    operands.push_back(resolveSSAUse(operandInfos[i], operandTypes[i]));
+    if (!operands.back())
+      return ParseFailure;
+  }
+
   auto nameId = builder.getIdentifier(name);
-
-  auto oper = createOpFunc(nameId, fnType->getResults(), attributes);
-
-  if (!oper)
+  auto op = createOpFunc(nameId, operands, fnType->getResults(), attributes);
+  if (!op)
     return ParseFailure;
 
   // We just parsed an operation.  If it is a recognized one, verify that it
   // is structurally as we expect.  If not, produce an error with a reasonable
   // source location.
-  if (auto *opInfo = oper->getAbstractOperation(builder.getContext())) {
-    if (auto error = opInfo->verifyInvariants(oper))
+  if (auto *opInfo = op->getAbstractOperation(builder.getContext())) {
+    if (auto error = opInfo->verifyInvariants(op))
       return emitError(loc, error);
+  }
+
+  // If the instruction had a name, register it.
+  if (!resultID.empty()) {
+    // FIXME: Add result infra to handle Stmt results as well to make this
+    // generic.
+    if (auto *inst = dyn_cast<OperationInst>(op)) {
+      if (inst->getResults().empty())
+        return emitError(loc, "cannot name an operation with no results");
+
+      // TODO: This should be getResult(0)
+      addDefinition({resultID, loc}, &inst->getResults()[0]);
+    }
   }
 
   return ParseSuccess;
@@ -1312,10 +1412,10 @@ Parser::parseOperation(const CreateOperationFunction &createOpFunc) {
 namespace {
 /// This is a specialized parser for CFGFunction's, maintaining the state
 /// transient to their bodies.
-class CFGFunctionParser : public Parser {
+class CFGFunctionParser : public FunctionParser {
 public:
   CFGFunctionParser(ParserState &state, CFGFunction *function)
-      : Parser(state), function(function), builder(function) {}
+      : FunctionParser(state), function(function), builder(function) {}
 
   ParseResult parseFunctionBody();
 
@@ -1397,7 +1497,8 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
 
   // If an argument list is present, parse it.
   if (consumeIf(Token::l_paren)) {
-    if (parseOptionalSSAUseAndTypeList(Token::r_paren))
+    SmallVector<SSAValue *, 8> bbArgs;
+    if (parseOptionalSSAUseAndTypeList(Token::r_paren, bbArgs))
       return ParseFailure;
 
     // TODO: attach it.
@@ -1409,9 +1510,14 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   // Set the insertion point to the block we want to insert new operations into.
   builder.setInsertionPoint(block);
 
-  auto createOpFunc = [this](Identifier name, ArrayRef<Type *> resultTypes,
-                             ArrayRef<NamedAttribute> attrs) -> Operation * {
-    return builder.createOperation(name, {}, resultTypes, attrs);
+  auto createOpFunc = [&](Identifier name, ArrayRef<SSAValue *> operands,
+                          ArrayRef<Type *> resultTypes,
+                          ArrayRef<NamedAttribute> attrs) -> Operation * {
+    SmallVector<CFGValue *, 8> cfgOperands;
+    cfgOperands.reserve(operands.size());
+    for (auto *op : operands)
+      cfgOperands.push_back(cast<CFGValue>(op));
+    return builder.createOperation(name, cfgOperands, resultTypes, attrs);
   };
 
   // Parse the list of operations that make up the body of the block.
@@ -1460,10 +1566,10 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
 
 namespace {
 /// Refined parser for MLFunction bodies.
-class MLFunctionParser : public Parser {
+class MLFunctionParser : public FunctionParser {
 public:
   MLFunctionParser(ParserState &state, MLFunction *function)
-      : Parser(state), function(function), builder(function) {}
+      : FunctionParser(state), function(function), builder(function) {}
 
   ParseResult parseFunctionBody();
 
@@ -1568,8 +1674,9 @@ ParseResult MLFunctionParser::parseElseClause(IfClause *elseClause) {
 /// Parse a list of statements ending with `return` or `}`
 ///
 ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
-  auto createOpFunc = [this](Identifier name, ArrayRef<Type *> resultTypes,
-                             ArrayRef<NamedAttribute> attrs) -> Operation * {
+  auto createOpFunc = [&](Identifier name, ArrayRef<SSAValue *> operands,
+                          ArrayRef<Type *> resultTypes,
+                          ArrayRef<NamedAttribute> attrs) -> Operation * {
     return builder.createOperation(name, attrs);
   };
 

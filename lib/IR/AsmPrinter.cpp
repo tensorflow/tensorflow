@@ -395,6 +395,8 @@ void FunctionState::printOperation(const Operation *op) {
   // TODO: escape name if necessary.
   os << "  \"" << op->getName().str() << "\"()";
 
+  // FIXME: Print operand references.
+
   auto attrs = op->getAttrs();
   if (!attrs.empty()) {
     os << '{';

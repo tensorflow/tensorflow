@@ -69,11 +69,11 @@ extfunc @functions((memref<1x?x4x?x?xaffineint, #map0, 0>, memref<i8, #map1, 0>)
 // CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) {
 cfgfunc @simpleCFG(i32, f32) {
 // CHECK: bb0:
-bb42(%0: i32, %f: f32):
+bb42: // (%0: i32, %f: f32):    TODO(clattner): implement bbargs.
   // CHECK: "foo"() : () -> i64
-  %1 = "foo"(%0) : (i32)->i64
-  // CHECK: "bar"() : () -> (i1, i1, i1)
-  "bar"(%1, %f) : (i64, f32) -> (i1,i1,i1)
+  %1 = "foo"() : ()->i64
+  // CHECK: "bar"() : (i64) -> (i1, i1, i1)
+  "bar"(%1) : (i64) -> (i1,i1,i1)
   // CHECK: return
   return
 // CHECK: }
@@ -96,10 +96,12 @@ mlfunc @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_ops() {
-mlfunc @mlfunc_with_ops() {
+// CHECK-LABEL: cfgfunc @cfgfunc_with_ops() {
+cfgfunc @cfgfunc_with_ops() {
+bb0:
+  %t = "getTensor"() : () -> tensor<4x4x?xf32>
   // CHECK: dim xxx, 2 : sometype
-  %a = "dim"(%42){index: 2}  : () -> affineint
+  %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
   // CHECK: addf xx, yy : sometype
   "addf"() : () -> ()
@@ -154,10 +156,13 @@ bb42:       // CHECK: bb0:
 // CHECK-LABEL: cfgfunc @standard_instrs() {
 cfgfunc @standard_instrs() {
 bb42:       // CHECK: bb0:
-  // CHECK: dim xxx, 2 : sometype
-  %a = "dim"(%42){index: 2} : () -> affineint
+  %42 = "getTensor"() : () -> tensor<4x4x?xf32>
 
+  // CHECK: dim xxx, 2 : sometype
+  %a = "dim"(%42){index: 2} : (tensor<4x4x?xf32>) -> affineint
+
+  %f = "Const"(){value: 1} : () -> f32
   // CHECK: addf xx, yy : sometype
-  "addf"() : (f32,f32) -> f32
+  "addf"(%f, %f) : (f32,f32) -> f32
   return
 }

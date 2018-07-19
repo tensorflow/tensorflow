@@ -42,15 +42,16 @@ using InstOperand = SSAOperandImpl<CFGValue, Instruction>;
 
 /// CFGValue is the base class for CFG value types.
 class CFGValue : public SSAValueImpl<InstOperand, CFGValueKind> {
-protected:
-  CFGValue(CFGValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
-
+public:
   static bool classof(const SSAValue *value) {
     switch (value->getKind()) {
     case SSAValueKind::InstResult:
       return true;
     }
   }
+
+protected:
+  CFGValue(CFGValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
 };
 
 /// Instruction results are CFG Values.

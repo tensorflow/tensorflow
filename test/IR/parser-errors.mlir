@@ -153,3 +153,19 @@ bb42:
 #map = (d0) -> (%  // expected-error {{invalid SSA name}}
 
 // -----
+
+cfgfunc @test() {
+bb40:
+  %1 = "foo"() : (i32)->i64 // expected-error {{expected 0 types in operand list but had 1}}
+  return
+}
+
+
+// -----
+
+cfgfunc @redef() {
+bb42:
+  %x = "dim"(){index: 0} : ()->i32
+  %x = "dim"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value %x}}
+  return
+}
