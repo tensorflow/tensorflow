@@ -71,7 +71,16 @@ def _build_source_map(node, code):
 
 
 def ast_to_source(node, indentation='  '):
-  """Return the source code of given AST."""
+  """Return the source code of given AST.
+
+  Args:
+    node: The code to compile, as an AST object.
+    indentation: The string to use for indentation.
+
+  Returns:
+    code: The source code generated from the AST object
+    source_mapping: A mapping between the user and AutoGraph generated code.
+  """
   original_node = node
   if isinstance(node, gast.AST):
     node = gast.gast_to_ast(node)
@@ -105,7 +114,8 @@ def ast_to_object(node,
       exit.
 
   Returns:
-    A module object containing the compiled source code.
+    compiled_node: A module object containing the compiled source code.
+    source: The source code of the compiled object
   Raises:
     ValueError: If ag_source_map__ is already in the namespace of the compiled
     node.
