@@ -20,56 +20,52 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
-from tensorflow.contrib.tensorrt.test.base_unit_test import BaseUnitTest
+from tensorflow.python.platform import test
+from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 
 
-class ConstBroadcastTest(BaseUnitTest):
-  """Testing Constant broadcasting in TF-TRT"""
+class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
-  def __init__(self, log_file='log.txt'):
-    super(ConstBroadcastTest, self).__init__()
-    self.static_mode_list = {"FP32", "FP16"}
-    self.debug = True
-    self.dynamic_mode_list = {}
-    self.inp_dims = (5, 12, 12, 2)
-    self.dummy_input = np.random.random_sample(self.inp_dims)
-    self.get_network = self.conv_broadcast
-    self.expect_nb_nodes = 7
-    self.log_file = log_file
-    self.test_name = self.__class__.__name__
-    self.allclose_rtol = 0.05
-    self.allclose_atol = 0.05
-
-  def conv_broadcast(self):
+  def GetParams(self):
+    """unit test for Constant broadcasting in TF-TRT"""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [5, 12, 12, 2]
     g = ops.Graph()
-    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     with g.as_default():
       x = array_ops.placeholder(
-          dtype=dtypes.float32, shape=self.inp_dims, name="input")
+          dtype=dtype, shape=input_dims, name=input_name)
       filt1 = constant_op.constant(
-          1, shape=(3, 3, 2, 1), dtype=dtypes.float32, name='filt1')
+          0.3, shape=(3, 3, 2, 1), dtype=dtype, name='filt1')
       y1 = nn.conv2d(x, filt1, strides=[1, 1, 1, 1], padding='SAME', name='y1')
       z1 = nn.relu(y1, name='z1')
       filt2 = constant_op.constant(
           np.random.randn(9),
           shape=(3, 3, 1, 1),
-          dtype=dtypes.float32,
+          dtype=dtype,
           name='filt2')
       y2 = nn.conv2d(z1, filt2, strides=[1, 1, 1, 1], padding='SAME', name='y2')
       z2 = nn.relu(y2, name='z')
       filt3 = constant_op.constant(
           np.random.randn(3, 3, 1, 1),
           shape=(3, 3, 1, 1),
-          dtype=dtypes.float32,
+          dtype=dtype,
           name='filt3')
       y3 = nn.conv2d(z2, filt3, strides=[1, 1, 1, 1], padding='SAME', name='y3')
       z = nn.relu(y3, name='output')
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        num_expected_engines=1,
+        expected_output_dims=(5, 12, 12, 1),
+        allclose_atol=1.e-02,
+        allclose_rtol=1.e-02)
 
-    return g.as_graph_def()
+if __name__ == "__main__":
+  test.main()

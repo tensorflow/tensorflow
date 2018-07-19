@@ -20,46 +20,31 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training
-from tensorflow.contrib.tensorrt.test.base_unit_test import BaseUnitTest
-from tensorflow.contrib.tensorrt.test.utilities import get_all_variables
+from tensorflow.python.platform import test
+from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 
 
-class UnaryTest(BaseUnitTest):
-  """Unit tests for unary operations in TF-TRT"""
+class UnaryTest(trt_test.TfTrtIntegrationTestBase):
+    
 
-  def __init__(self, log_file='log.txt'):
-    super(UnaryTest, self).__init__()
-    self.static_mode_list = {"FP32", "FP16"}
-    self.debug = True
-    self.dynamic_mode_list = {}
-    self.inp_dims = (12, 5, 8, 1, 1, 12)
-    self.dummy_input = np.random.random_sample(self.inp_dims)
-    self.get_network = self.unary_test
-    self.expect_nb_nodes = 17
-    self.log_file = log_file
-    self.test_name = self.__class__.__name__
-    self.ckpt = "./tmp.ckpt"
-
-  def unary_test(self):
+  def GetParams(self):
+    """unit test for unary operations in TF-TRT"""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [12, 5, 8, 1, 1, 12]
+    input2_name = "input_2"
+    input2_dims = [12, 5, 8, 1, 12, 1, 1]
     g = ops.Graph()
-    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     with g.as_default():
       x = array_ops.placeholder(
-          dtype=dtypes.float32, shape=self.inp_dims, name="input")
+          dtype=dtype, shape=input_dims, name=input_name)
       q = math_ops.abs(x)
       q = q + 1.0
       q = gen_math_ops.exp(q)
@@ -75,7 +60,7 @@ class UnaryTest(BaseUnitTest):
       q = q + 3.0
       a = gen_math_ops.reciprocal(q)
 
-      x = constant_op.constant(np.random.randn(5, 8, 12), dtype=dtypes.float32)
+      x = constant_op.constant(np.random.randn(5, 8, 12), dtype=dtype)
       q = math_ops.abs(x)
       q = q + 2.0
       q = gen_math_ops.exp(q)
@@ -90,11 +75,8 @@ class UnaryTest(BaseUnitTest):
       b = gen_math_ops.reciprocal(q)
 
       # TODO(jie): this one will break, broadcasting on batch.
-      x = variable_scope.get_variable(
-          "test", [12, 40, 12],
-          dtype=dtypes.float32,
-          initializer=init_ops.truncated_normal_initializer)
-      x = gen_array_ops.reshape(x, [12, 5, 8, 1, 12, 1, 1])
+      x = array_ops.placeholder(
+          dtype=dtype, shape=input2_dims, name=input2_name)
       q = math_ops.abs(x)
       q = q + 5.0
       q = gen_math_ops.exp(q)
@@ -115,11 +97,15 @@ class UnaryTest(BaseUnitTest):
 
       q = a * b
       q = q / c
-      array_ops.squeeze(q, name="output")
+      array_ops.squeeze(q, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name, input2_name],
+        input_dims=[input_dims, input2_dims],
+        num_expected_engines=5,
+        expected_output_dims=(12, 5, 8, 12),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
 
-      with session.Session(config=sessconfig, graph=g) as sess:
-        names_var_list = get_all_variables(sess)
-        saver = training.Saver(names_var_list)
-        sess.run(variables.global_variables_initializer())
-        saver.save(sess, self.ckpt)
-    return g.as_graph_def()
+if __name__ == "__main__":
+  test.main()

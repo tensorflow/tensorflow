@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -28,31 +27,21 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import nn_impl
-from tensorflow.contrib.tensorrt.test.base_unit_test import BaseUnitTest
+from tensorflow.python.platform import test
+from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 
 
-class VGGBlockTest(BaseUnitTest):
-  """single vgg layer test in TF-TRT conversion"""
+class VGGBlockTest(trt_test.TfTrtIntegrationTestBase):
 
-  def __init__(self, log_file='log.txt'):
-    super(VGGBlockTest, self).__init__()
-    self.static_mode_list = {"FP32", "FP16"}
-    self.debug = True
-    self.dynamic_mode_list = {}
-    self.inp_dims = (5, 8, 8, 2)
-    self.dummy_input = np.random.random_sample(self.inp_dims)
-    self.get_network = self.get_simple_graph_def
-    self.expect_nb_nodes = 7
-    self.log_file = log_file
-    self.test_name = self.__class__.__name__
-
-  def get_simple_graph_def(self):
+  def GetParams(self):
+    """single vgg layer test in TF-TRT conversion"""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [5, 8, 8, 2]
     g = ops.Graph()
-    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     with g.as_default():
       x = array_ops.placeholder(
-          dtype=dtypes.float32, shape=self.inp_dims, name="input")
+          dtype=dtype, shape=input_dims, name=input_name)
       x, mean_x, var_x = nn_impl.fused_batch_norm(
           x,
           np.random.randn(2).astype(np.float32),
@@ -61,16 +50,25 @@ class VGGBlockTest(BaseUnitTest):
           variance=np.random.randn(2).astype(np.float32),
           is_training=False)
       e = constant_op.constant(
-          np.random.randn(1, 1, 2, 6), name="weights", dtype=dtypes.float32)
+          np.random.randn(1, 1, 2, 6), name="weights", dtype=dtype)
       conv = nn.conv2d(
           input=x, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
       b = constant_op.constant(
-          np.random.randn(6), name="bias", dtype=dtypes.float32)
+          np.random.randn(6), name="bias", dtype=dtype)
       t = nn.bias_add(conv, b, name="biasAdd")
       relu = nn.relu(t, "relu")
       idty = array_ops.identity(relu, "ID")
       v = nn_ops.max_pool(
           idty, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
       array_ops.squeeze(v, name="output")
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        num_expected_engines=1,
+        expected_output_dims=(5, 2, 2, 6),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
 
-    return g.as_graph_def()
+if __name__ == "__main__":
+  test.main()
