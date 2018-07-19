@@ -40,7 +40,7 @@ const char kModulePrefix[] = R"(
     scalar_mul_computation {
       scalar_lhs.1 = f32[] parameter(0)
       scalar_rhs.1 = f32[] parameter(1)
-      ROOT mul.1 = f32[] add(scalar_lhs.1, scalar_rhs.1)
+      ROOT mul.1 = f32[] multiply(scalar_lhs.1, scalar_rhs.1)
     })";
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionSiblingReduceAndReduceFusion) {
