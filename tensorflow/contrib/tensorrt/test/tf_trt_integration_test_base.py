@@ -162,6 +162,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
                       dynamic_engine=None):
     num_engines = 0
     for n in gdef.node:
+      # TODO(jie): we should have coverage for failed conversion (TF fallback).
+      # where the conversion will fail and we shouldn't count this engine as the
+      # converted engines.
       if n.op == "TRTEngineOp":
         num_engines += 1
         self.assertNotEqual(self._ToBytes(""), n.attr["serialized_segment"].s)

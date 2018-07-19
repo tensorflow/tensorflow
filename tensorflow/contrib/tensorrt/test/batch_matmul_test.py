@@ -20,78 +20,59 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training
-from tensorflow.contrib.tensorrt.test.base_unit_test import BaseUnitTest
-from tensorflow.contrib.tensorrt.test.utilities import get_all_variables
+from tensorflow.python.platform import test
+from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 
 
-class BatchMatMulTest(BaseUnitTest):
-  """Testing BatchMatMul in TF-TRT conversion"""
+class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
-  def __init__(self, log_file='log.txt'):
-    super(BatchMatMulTest, self).__init__()
-    self.static_mode_list = {"FP32", "FP16"}
-    self.debug = True
-    self.dynamic_mode_list = {}
-    self.inp_dims = (12, 5, 8, 12)
-    self.dummy_input = np.random.random_sample(self.inp_dims)
-    self.get_network = self.matmul_test
-    self.expect_nb_nodes = 16
-    self.log_file = log_file
-    self.test_name = self.__class__.__name__
-    self.ckpt = "./tmp.ckpt"
-    sess = session.Session()
-
-  def matmul_test(self):
+  def GetParams(self):
+    """Testing conversion of BatchMatMul in TF-TRT conversion"""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [12, 5, 8, 12]
+    w1_name = "matmul_w1"
+    w1_dims = [12, 5, 12, 7]
+    w2_name = "matmul_w2"
+    w2_dims = [12, 12, 7]
     g = ops.Graph()
-    gpu_options = config_pb2.GPUOptions()
-    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtypes.float32, shape=self.inp_dims, name="input")
+      inp = array_ops.placeholder(
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+      w1 = array_ops.placeholder(
+         dtype=dtype, shape=w1_dims, name=w1_name)
+      w2 = array_ops.placeholder(
+         dtype=dtype, shape=w2_dims, name=w2_name)
+      with g.device("/GPU:0"):
+        b = constant_op.constant(
+            np.random.randn(12, 5, 12, 7), dtype=dtype)
+        c = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
+        d = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
+        x1 = math_ops.matmul(inp, b)
+        x1 = x1 + c
+        x2 = math_ops.matmul(inp, w1)
+        x2 = x2 * d
+        e = gen_array_ops.reshape(inp, [12, 40, 12])
+        x3 = math_ops.matmul(e, w2)
+        f = constant_op.constant(np.random.randn(40, 1), dtype=dtype)
+        x3 = x3 + f
+        x3 = gen_array_ops.reshape(x3, [12, 5, 8, 7])
+        out = x1 + x2 + x3
+      array_ops.squeeze(out, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name, w1_name, w2_name],
+        input_dims=[input_dims, w1_dims, w2_dims],
+        num_expected_engines=1,
+        expected_output_dims=(12, 5, 8, 7),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
 
-      b = constant_op.constant(
-          np.random.randn(12, 5, 12, 7), dtype=dtypes.float32)
-      x1 = math_ops.matmul(x, b)
-      b = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtypes.float32)
-      x1 = x1 + b
-
-      var = variable_scope.get_variable(
-          "test", [12, 5, 12, 7],
-          dtype=dtypes.float32,
-          initializer=init_ops.truncated_normal_initializer)
-      x2 = math_ops.matmul(x, var)
-      b = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtypes.float32)
-      x2 = x2 * b
-
-      var = variable_scope.get_variable(
-          "test2", [12, 84],
-          dtype=dtypes.float32,
-          initializer=init_ops.truncated_normal_initializer)
-      c = gen_array_ops.reshape(x, [12, 40, 12])
-      b = gen_array_ops.reshape(var, [12, 12, 7])
-      x3 = math_ops.matmul(c, b)
-      b = constant_op.constant(np.random.randn(40, 1), dtype=dtypes.float32)
-      x3 = x3 + b
-      x3 = gen_array_ops.reshape(x3, [12, 5, 8, 7])
-
-      out = x3 + x1
-      array_ops.squeeze(out, name="output")
-
-      with session.Session(config=sessconfig, graph=g) as sess:
-        names_var_list = get_all_variables(sess)
-        saver = training.Saver(names_var_list)
-        sess.run(variables.global_variables_initializer())
-        saver.save(sess, self.ckpt)
-    return g.as_graph_def()
+if __name__ == "__main__":
+  test.main()

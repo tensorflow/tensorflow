@@ -20,44 +20,31 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.contrib.tensorrt.test.base_unit_test import BaseUnitTest
+from tensorflow.python.platform import test
+from tensorflow.contrib.tensorrt.test import tf_trt_integration_test_base as trt_test
 
 
-class NeighboringEngineTest(BaseUnitTest):
-  """Neighboring node wiring tests in TF-TRT conversion"""
+class NeighboringEngineTest(trt_test.TfTrtIntegrationTestBase):
 
-  def __init__(self, log_file='log.txt'):
-    super(NeighboringEngineTest, self).__init__()
-    self.static_mode_list = {"FP32", "FP16"}
-    self.debug = True
-    self.dynamic_mode_list = {}
-    self.inp_dims = (2, 3, 7, 5)
-    self.dummy_input = np.random.random_sample(self.inp_dims)
-    self.get_network = self.neighboring_tensor_test
-    self.expect_nb_nodes = 5
-    self.log_file = log_file
-    self.test_name = self.__class__.__name__
-    self.allclose_rtol = 0.05
-    self.allclose_atol = 0.05
-
-  def neighboring_tensor_test(self):
+  def GetParams(self):
+    """Neighboring node wiring tests in TF-TRT conversion"""
+    dtype = dtypes.float32
+    input_name = "input"
+    input_dims = [2, 3, 7, 5]
     g = ops.Graph()
-    gpu_options = config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
-    sessconfig = config_pb2.ConfigProto(gpu_options=gpu_options)
     with g.as_default():
       x = array_ops.placeholder(
-          dtype=dtypes.float32, shape=self.inp_dims, name="input")
+          dtype=dtype, shape=input_dims, name=input_name)
       e = constant_op.constant(
           np.random.normal(.3, 0.05, [3, 2, 3, 4]),
           name="weights",
-          dtype=dtypes.float32)
+          dtype=dtype)
       conv = nn.conv2d(
           input=x,
           filter=e,
@@ -68,11 +55,19 @@ class NeighboringEngineTest(BaseUnitTest):
       b = constant_op.constant(
           np.random.normal(1.0, 1.0, [1, 4, 1, 1]),
           name="bias",
-          dtype=dtypes.float32)
+          dtype=dtype)
       t = conv * b
-
       e = gen_math_ops.tan(conv)
       t = t - e
-      array_ops.squeeze(t, name="output")
+      array_ops.squeeze(t, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        num_expected_engines=2,
+        expected_output_dims=(2, 4, 5, 4),
+        allclose_atol=1.e-03,
+        allclose_rtol=1.e-03)
 
-    return g.as_graph_def()
+if __name__ == "__main__":
+  test.main()
