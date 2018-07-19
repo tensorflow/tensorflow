@@ -595,7 +595,8 @@ class _InternalTPUContext(object):
         raise ValueError(message)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
-      if self._train_batch_size % num_replicas != 0:
+      if (self._train_batch_size % num_replicas != 0 and
+          not self.is_input_broadcast_with_iterators()):
         raise ValueError(
             'train batch size {} must be divisible by number of replicas {}'
             .format(self._train_batch_size, num_replicas))
@@ -605,7 +606,8 @@ class _InternalTPUContext(object):
         raise ValueError(
             'eval_batch_size in TPUEstimator constructor cannot be `None`'
             'if .evaluate is running on TPU.')
-      if self._eval_batch_size % num_replicas != 0:
+      if (self._eval_batch_size % num_replicas != 0 and
+          not self.is_input_broadcast_with_iterators()):
         raise ValueError(
             'eval batch size {} must be divisible by number of replicas {}'
             .format(self._eval_batch_size, num_replicas))
@@ -619,7 +621,8 @@ class _InternalTPUContext(object):
         raise ValueError(
             'predict_batch_size in TPUEstimator constructor should not be '
             '`None` if .predict is running on TPU.')
-      if self._predict_batch_size % num_replicas != 0:
+      if (self._predict_batch_size % num_replicas != 0 and
+          not self.is_input_broadcast_with_iterators()):
         raise ValueError(
             'predict batch size {} must be divisible by number of replicas {}'
             .format(self._predict_batch_size, num_replicas))
