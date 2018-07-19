@@ -626,7 +626,7 @@ def train_or_infer_spinn(embed,
     model = SNLIClassifier(config, embed)
     global_step = tf.train.get_or_create_global_step()
     trainer = SNLIClassifierTrainer(model, config.lr)
-    checkpoint = tfe.Checkpoint(trainer=trainer, global_step=global_step)
+    checkpoint = tf.train.Checkpoint(trainer=trainer, global_step=global_step)
     checkpoint.restore(tf.train.latest_checkpoint(config.logdir))
 
     if inference_sentence_pair:
