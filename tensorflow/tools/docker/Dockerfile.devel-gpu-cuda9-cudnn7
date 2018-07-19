@@ -4,7 +4,7 @@ LABEL maintainer="Gunhan Gulsoy <gunan@google.com>"
 
 # It is possible to override these for releases.
 ARG TF_BRANCH=master
-ARG BAZEL_VERSION=0.15.0
+ARG BAZEL_VERSION=0.5.4
 ARG TF_AVAILABLE_CPUS=32
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
