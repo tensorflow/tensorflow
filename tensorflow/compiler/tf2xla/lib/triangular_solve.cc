@@ -325,7 +325,7 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
     }
 
     // Rescale the input to be unit triangular
-    auto diag = Diagonal(a);
+    auto diag = xla::GetMatrixDiagonal(a);
     xla::XlaOp scaled_a;
     std::vector<int64> broadcast_dimensions(ndims - 1);
     std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(), 0);
@@ -490,7 +490,7 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
     }
 
     // Rescale the input to be unit triangular
-    auto diag = Diagonal(a);
+    auto diag = xla::GetMatrixDiagonal(a);
     xla::XlaOp scaled_a;
     std::vector<int64> broadcast_dimensions(ndims - 1);
     std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(), 0);

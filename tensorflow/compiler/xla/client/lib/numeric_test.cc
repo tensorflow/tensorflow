@@ -24,7 +24,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using NumericTest = ClientLibraryTestBase;
+class NumericTest : public ClientLibraryTestBase {
+ protected:
+  template <typename T>
+  void TestMatrixDiagonal();
+};
 
 XLA_TEST_F(NumericTest, Iota) {
   XlaBuilder builder(TestName());
@@ -32,6 +36,26 @@ XLA_TEST_F(NumericTest, Iota) {
 
   ComputeAndCompareR1<int32>(&builder, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {});
 }
+
+template <typename T>
+void NumericTest::TestMatrixDiagonal() {
+  XlaBuilder builder("GetMatrixDiagonal");
+  Array3D<T> input(2, 3, 4);
+  input.FillIota(0);
+
+  XlaOp a;
+  auto a_data = CreateR3Parameter<T>(input, 0, "a", &builder, &a);
+  GetMatrixDiagonal(a);
+  Array2D<T> expected({{0, 5, 10}, {12, 17, 22}});
+
+  ComputeAndCompareR2<T>(&builder, expected, {a_data.get()});
+}
+
+XLA_TEST_F(NumericTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32>(); }
+
+XLA_TEST_F(NumericTest, GetMatrixDiagonal_S64) { TestMatrixDiagonal<int64>(); }
+
+XLA_TEST_F(NumericTest, GetMatrixDiagonal_F32) { TestMatrixDiagonal<float>(); }
 
 }  // namespace
 }  // namespace xla
