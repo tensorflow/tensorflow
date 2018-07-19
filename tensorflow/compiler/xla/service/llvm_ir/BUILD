@@ -181,6 +181,20 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_util",
+    srcs = ["sort_util.cc"],
+    hdrs = ["sort_util.h"],
+    deps = [
+        ":ir_array",
+        ":llvm_loop",
+        ":llvm_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
     name = "tuple_ops",
     srcs = ["tuple_ops.cc"],
     hdrs = ["tuple_ops.h"],
