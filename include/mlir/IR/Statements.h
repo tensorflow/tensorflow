@@ -22,10 +22,11 @@
 #ifndef MLIR_IR_STATEMENTS_H
 #define MLIR_IR_STATEMENTS_H
 
-#include "mlir/Support/LLVM.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Statement.h"
 #include "mlir/IR/StmtBlock.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
 
@@ -50,11 +51,20 @@ public:
 /// For statement represents an affine loop nest.
 class ForStmt : public Statement, public StmtBlock {
 public:
-  explicit ForStmt() : Statement(Kind::For), StmtBlock(StmtBlockKind::For) {}
+  // TODO: lower and upper bounds should be affine maps with
+  // dimension and symbol use lists.
+  explicit ForStmt(AffineConstantExpr *lowerBound,
+                   AffineConstantExpr *upperBound, AffineConstantExpr *step)
+      : Statement(Kind::For), StmtBlock(StmtBlockKind::For),
+        lowerBound(lowerBound), upperBound(upperBound), step(step) {}
+
   //TODO: delete nested statements or assert that they are gone.
   ~ForStmt() {}
 
-  // TODO: represent loop variable, bounds and step
+  // TODO: represent induction variable
+  AffineConstantExpr *getLowerBound() const { return lowerBound; }
+  AffineConstantExpr *getUpperBound() const { return upperBound; }
+  AffineConstantExpr *getStep() const { return step; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt) {
@@ -64,9 +74,14 @@ public:
   static bool classof(const StmtBlock *block) {
     return block->getStmtBlockKind() == StmtBlockKind::For;
   }
+
+private:
+  AffineConstantExpr *lowerBound;
+  AffineConstantExpr *upperBound;
+  AffineConstantExpr *step;
 };
 
-/// If clause represents statements contained within then or else clause
+/// An if clause represents statements contained within a then or an else clause
 /// of an if statement.
 class IfClause : public StmtBlock {
 public:

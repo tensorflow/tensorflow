@@ -130,9 +130,21 @@ extfunc @illegaltype(i0) // expected-error {{invalid integer width}}
 
 // -----
 
+mlfunc @malformed_for() {
+  for %i = 1 too 10 { // expected-error {{expected 'to' between bounds}}
+  }
+}
+
+// -----
+
 mlfunc @incomplete_for() {
-  for
+  for %i = 1 to 10 step 2
 }        // expected-error {{expected '{' before statement list}}
+
+// -----
+
+mlfunc @nonconstant_step(%1 : i32) {
+  for %2 = 1 to 5 step %1 { // expected-error {{expected non-negative integer for now}}
 
 // -----
 
@@ -160,7 +172,6 @@ bb40:
   return
 }
 
-
 // -----
 
 cfgfunc @redef() {
@@ -169,3 +180,15 @@ bb42:
   %x = "dim"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value %x}}
   return
 }
+
+mlfunc @missing_rbrace() {
+  return %a
+mlfunc @d {return} // expected-error {{expected ',' or '}'}}
+
+// -----
+
+mlfunc @malformed_type(%a : intt) { // expected-error {{expected type}}
+}
+
+// -----
+

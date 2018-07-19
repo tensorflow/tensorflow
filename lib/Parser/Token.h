@@ -76,7 +76,7 @@ public:
   /// return None.
   Optional<unsigned> getUnsignedIntegerValue() const;
 
-  /// For an integer token, return its value as an int64_t.  If it doesn't fit,
+  /// For an integer token, return its value as an uint64_t.  If it doesn't fit,
   /// return None.
   Optional<uint64_t> getUInt64IntegerValue() const;
 

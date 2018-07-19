@@ -143,3 +143,17 @@ AffineExpr *Builder::getFloorDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
 AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
   return AffineCeilDivExpr::get(lhs, rhs, context);
 }
+
+//===----------------------------------------------------------------------===//
+// Statements
+//===----------------------------------------------------------------------===//
+
+ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
+                                  AffineConstantExpr *upperBound,
+                                  AffineConstantExpr *step) {
+  if (!step)
+    step = getConstantExpr(1);
+  auto stmt = new ForStmt(lowerBound, upperBound, step);
+  block->getStatements().push_back(stmt);
+  return stmt;
+}

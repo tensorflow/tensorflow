@@ -96,22 +96,32 @@ mlfunc @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
 
+// CHECK-LABEL: mlfunc @mlfunc_with_args(f16) {
+mlfunc @mlfunc_with_args(%a : f16) {
+  return  %a  // CHECK: return
+}
+
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops() {
 cfgfunc @cfgfunc_with_ops() {
 bb0:
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
+
   // CHECK: dim xxx, 2 : sometype
   %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
   // CHECK: addf xx, yy : sometype
   "addf"() : () -> ()
+
+  // CHECK:   return
   return
 }
 
 // CHECK-LABEL: mlfunc @loops() {
 mlfunc @loops() {
-  for {      // CHECK:   for {
-    for {    // CHECK:     for {
+  // CHECK: for x = 1 to 100 step 2 {
+  for %i = 1 to 100 step 2 {
+    // CHECK: for x = 1 to 200 {
+    for %j = 1 to 200 {
     }        // CHECK:     }
   }          // CHECK:   }
   return     // CHECK:   return
@@ -119,14 +129,14 @@ mlfunc @loops() {
 
 // CHECK-LABEL: mlfunc @ifstmt() {
 mlfunc @ifstmt() {
-  for {             // CHECK   for {
-    if () {         // CHECK     if () {
-    } else if () {  // CHECK     } else if () {
-    } else {        // CHECK     } else {
-    }               // CHECK     }
-  }                 // CHECK   }
-  return            // CHECK   return
-}                   // CHECK }
+  for %i = 1 to 10 {    // CHECK   for x = 1 to 10 {
+    if () {             // CHECK     if () {
+    } else if () {      // CHECK     } else if () {
+    } else {            // CHECK     } else {
+    }                   // CHECK     }
+  }                     // CHECK   }
+  return                // CHECK   return
+}                       // CHECK }
 
 // CHECK-LABEL: cfgfunc @attributes() {
 cfgfunc @attributes() {

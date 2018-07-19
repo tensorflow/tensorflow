@@ -594,7 +594,12 @@ void MLFunctionState::print(const Statement *stmt) {
 void MLFunctionState::print(const OperationStmt *stmt) { printOperation(stmt); }
 
 void MLFunctionState::print(const ForStmt *stmt) {
-  os.indent(numSpaces) << "for {\n";
+  os.indent(numSpaces) << "for x = " << *stmt->getLowerBound();
+  os << " to " << *stmt->getUpperBound();
+  if (stmt->getStep()->getValue() != 1)
+    os << " step " << *stmt->getStep();
+
+  os << " {\n";
   print(static_cast<const StmtBlock *>(stmt));
   os.indent(numSpaces) << "}";
 }

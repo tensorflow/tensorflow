@@ -184,11 +184,10 @@ public:
     return op;
   }
 
-  ForStmt *createFor() {
-    auto stmt = new ForStmt();
-    block->getStatements().push_back(stmt);
-    return stmt;
-  }
+  // Creates for statement. When step is not specified, it is set to 1. 
+  ForStmt *createFor(AffineConstantExpr *lowerBound,
+                     AffineConstantExpr *upperBound,
+                     AffineConstantExpr *step = nullptr);
 
   IfStmt *createIf() {
     auto stmt = new IfStmt();
