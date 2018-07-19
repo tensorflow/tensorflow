@@ -41,9 +41,11 @@ namespace tensorflow {
 
 extern const char* const DEVICE_CPU_XLA_JIT;  // "CPU_XLA_JIT"
 extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
+extern const char* const DEVICE_AMDGPU_XLA_JIT;  // "AMDGPU_XLA_JIT"
 
 extern const char* const DEVICE_XLA_CPU;
 extern const char* const DEVICE_XLA_GPU;
+extern const char* const DEVICE_XLA_AMDGPU;
 
 constexpr std::array<DataType, 4> kFloatTypes = {
     {DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BFLOAT16}};
@@ -58,6 +60,10 @@ constexpr std::array<DataType, 9> kCpuAllTypes = {
 constexpr std::array<DataType, 10> kGpuAllTypes = {
     {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
      DT_COMPLEX64, DT_BOOL, DT_BFLOAT16}};
+
+constexpr std::array<DataType, 8> kAMDGpuAllTypes = {
+    {DT_UINT32, DT_UINT64, DT_INT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE,
+     DT_BOOL}};
 
 // Class that manages registrations of operators and devices for the XLA JIT.
 // Not thread-safe.

@@ -163,6 +163,8 @@ REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
                 DummyDuplicateOp);
 REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
                 DummyDuplicateOp);
+REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_AMDGPU_XLA_JIT),
+                DummyDuplicateOp);
 
 // Tests compilation and execution of an empty graph.
 TEST_F(XlaCompilerTest, EmptyReturnValues) {

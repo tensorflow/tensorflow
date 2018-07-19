@@ -34,8 +34,10 @@ namespace tensorflow {
 
 const char* const DEVICE_CPU_XLA_JIT = "XLA_CPU_JIT";
 const char* const DEVICE_GPU_XLA_JIT = "XLA_GPU_JIT";
+const char* const DEVICE_AMDGPU_XLA_JIT = "XLA_AMDGPU_JIT";
 const char* const DEVICE_XLA_CPU = "XLA_CPU";
 const char* const DEVICE_XLA_GPU = "XLA_GPU";
+const char* const DEVICE_XLA_AMDGPU = "XLA_AMDGPU";
 
 static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
   const OpDef* op_def;
@@ -122,7 +124,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 
   // Lazily register the CPU and GPU JIT devices the first time
   // GetCompilationDevice is called.
-  static void* registration_init = [&registry]() {
+  static void* registration_init = [&registry, &device_name]() {
     mutex_lock lock(registry.mutex_);
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_CPU)).ok()) {
       DeviceRegistration& registration =
@@ -135,7 +137,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_GPU)).ok()) {
       DeviceRegistration& registration =
           registry.compilation_devices_[DEVICE_GPU];
-      registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+      if (device_name == DEVICE_XLA_GPU) {
+        registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
+      } else if (device_name == DEVICE_XLA_AMDGPU) {
+        registration.compilation_device_name = DEVICE_AMDGPU_XLA_JIT;
+      }
       registration.requires_compilation = false;
       registration.enable_jit_by_default = true;
       registration.compile_resource_ops = false;

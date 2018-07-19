@@ -80,6 +80,10 @@ REGISTER_XLA_OP(Name("ArgMax")
                     .Device(DEVICE_GPU_XLA_JIT)
                     .CompileTimeConstInput("dimension"),
                 XlaArgMaxOp);
+REGISTER_XLA_OP(Name("ArgMax")
+                    .Device(DEVICE_AMDGPU_XLA_JIT)
+                    .CompileTimeConstInput("dimension"),
+                XlaArgMaxOp);
 
 namespace {
 

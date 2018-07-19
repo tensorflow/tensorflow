@@ -105,6 +105,23 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_amdgpu_device",
+    srcs = ["xla_amdgpu_device.cc"],
+    visibility = [":friends"],
+    deps = [
+        ":jit_compilation_passes",
+        ":xla_device",
+        "//tensorflow/compiler/jit/kernels:xla_launch_op",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/service:amdgpu_plugin",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_interpreter_device",
     srcs = ["xla_interpreter_device.cc"],
     visibility = [":friends"],

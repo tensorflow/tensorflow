@@ -49,7 +49,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
 
   def testSort(self):
     # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
+    if self.device in ["XLA_CPU", "XLA_GPU", "XLA_AMDGPU"]:
       return
 
     supported_types = set([dtypes.bfloat16.as_numpy_dtype, np.float32])
@@ -61,7 +61,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
 
   def testTopK(self):
     # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
+    if self.device in ["XLA_CPU", "XLA_GPU", "XLA_AMDGPU"]:
       return
 
     supported_types = set(
@@ -123,7 +123,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
     # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
+    if self.device in ["XLA_CPU", "XLA_GPU", "XLA_AMDGPU"]:
       return
 
     # Only bfloat16 is implemented.
@@ -145,7 +145,7 @@ class XlaSortOpTest(xla_test.XLATestCase):
   def testTopKInfinities(self):
     """Tests that positive and negative infinity sort correctly."""
     # TODO(b/26783907): The Sort HLO is not implemented on CPU or GPU.
-    if self.device in ["XLA_CPU", "XLA_GPU"]:
+    if self.device in ["XLA_CPU", "XLA_GPU", "XLA_AMDGPU"]:
       return
 
     # Only bfloat16 is implemented.

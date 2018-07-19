@@ -719,6 +719,19 @@ cc_library(
 )
 
 cc_library(
+    name = "amdgpu_plugin",
+    deps = [
+        ":service",
+        # TODO(whchung): enable this line after AMDGPU compiler PR
+        #"//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
+        "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
+        "//tensorflow/core:stream_executor_no_cuda",
+        # TODO(whchung): enable this line after ROCm-related StreamExecutor PR
+        #"//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+    ],
+)
+
+cc_library(
     name = "interpreter_plugin",
     deps = [
         ":service",
