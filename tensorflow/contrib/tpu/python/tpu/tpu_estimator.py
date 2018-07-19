@@ -858,7 +858,8 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
       raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
 
-    hooks.append(inputs.dataset_initializer_hook())
+    if is_dataset:
+      hooks.append(inputs.dataset_initializer_hook())
     num_replicas_per_host = ctx.num_of_replicas_per_host
 
   def tpu_ordinal_function_impl(replica_id):
