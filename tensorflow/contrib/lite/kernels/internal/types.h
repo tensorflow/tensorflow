@@ -119,6 +119,8 @@ class RuntimeShape {
   // larger shapes are separately allocated.
   static constexpr int kMaxSmallSize = 4;
 
+  RuntimeShape& operator=(RuntimeShape const&) = delete;
+
   RuntimeShape() : size_(0) {}
 
   explicit RuntimeShape(int dimensions_count) : size_(dimensions_count) {
@@ -133,6 +135,20 @@ class RuntimeShape {
 
   RuntimeShape(const std::initializer_list<int> init_list) : size_(0) {
     BuildFrom(init_list);
+  }
+
+  // Avoid using this constructor.  We should be able to delete it when C++17
+  // rolls out.
+  RuntimeShape(RuntimeShape const& other) : size_(other.DimensionsCount()) {
+    if (size_ > kMaxSmallSize) {
+      dims_pointer_ = new int32[size_];
+    }
+    std::memcpy(DimsData(), other.DimsData(), sizeof(int32) * size_);
+  }
+
+  bool operator==(const RuntimeShape& comp) const {
+    return this->size_ == comp.size_ &&
+           std::memcmp(DimsData(), comp.DimsData(), size_ * sizeof(int32)) == 0;
   }
 
   ~RuntimeShape() {
@@ -191,6 +207,16 @@ class RuntimeShape {
     }
   }
 
+  // This will probably be factored out. Old code made substantial use of 4-D
+  // shapes, and so this function is used to extend smaller shapes. Note that
+  // (a) as Dims<4>-dependent code is eliminated, the reliance on this should be
+  // reduced, and (b) some kernels are stricly 4-D, but then the shapes of their
+  // inputs should already be 4-D, so this function should not be needed.
+  inline static RuntimeShape ExtendedShape(int new_shape_size,
+                                           const RuntimeShape& shape) {
+    return RuntimeShape(new_shape_size, shape, 1);
+  }
+
   inline void BuildFrom(const std::initializer_list<int> init_list) {
     BuildFrom<const std::initializer_list<int>>(init_list);
   }
@@ -208,7 +234,25 @@ class RuntimeShape {
     return buffer_size;
   }
 
+  bool operator!=(const RuntimeShape& comp) const { return !((*this) == comp); }
+
  private:
+  // For use only by ExtendFrom(), written to guarantee (return-value) copy
+  // elision in C++17.
+  // This creates a shape padded to the desired size with the specified value.
+  RuntimeShape(int new_shape_size, const RuntimeShape& shape, int pad_value)
+      : size_(0) {
+    TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
+    TFLITE_CHECK_LE(new_shape_size, kMaxSmallSize);
+    Resize(new_shape_size);
+    const int size_increase = new_shape_size - shape.DimensionsCount();
+    for (int i = 0; i < size_increase; ++i) {
+      SetDim(i, pad_value);
+    }
+    std::memcpy(DimsData() + size_increase, shape.DimsData(),
+                sizeof(int32) * shape.DimensionsCount());
+  }
+
   int32 size_;
   union {
     int32 dims_[kMaxSmallSize];
@@ -364,6 +408,7 @@ inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
 // arrays.
 inline int MatchingFlatSize(const RuntimeShape& shape,
                             const RuntimeShape& check_shape_0) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
@@ -374,6 +419,7 @@ inline int MatchingFlatSize(const RuntimeShape& shape,
 inline int MatchingFlatSize(const RuntimeShape& shape,
                             const RuntimeShape& check_shape_0,
                             const RuntimeShape& check_shape_1) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
@@ -385,6 +431,7 @@ inline int MatchingFlatSize(const RuntimeShape& shape,
                             const RuntimeShape& check_shape_0,
                             const RuntimeShape& check_shape_1,
                             const RuntimeShape& check_shape_2) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
@@ -397,6 +444,7 @@ inline int MatchingFlatSize(const RuntimeShape& shape,
                             const RuntimeShape& check_shape_1,
                             const RuntimeShape& check_shape_2,
                             const RuntimeShape& check_shape_3) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), check_shape_0.DimensionsCount());
   const int dims_count = shape.DimensionsCount();
   for (int i = 0; i < dims_count; ++i) {
     TFLITE_DCHECK_EQ(shape.Dims(i), check_shape_0.Dims(i));
@@ -601,13 +649,73 @@ struct PoolParams {
   int stride_width;
   int filter_height;
   int filter_width;
-  // uint8, etc, inference params.
+  // uint8, etc, activation params.
   int32 quantized_activation_min;
   int32 quantized_activation_max;
-  // float inference params.
+  // float activation params.
   float float_activation_min;
   float float_activation_max;
 };
+
+enum class BroadcastableOpCategory : uint8 {
+  kNone,
+  kNonBroadcast,               // Matching input shapes.
+  kFirstInputBroadcastsFast,   // Fivefold nested loops.
+  kSecondInputBroadcastsFast,  // Fivefold nested loops.
+  kGenericBroadcast,           // Fall-back.
+};
+
+// For Add, Sub, Mul ops.
+struct ArithmeticParams {
+  // Shape dependent / common to data / op types.
+  BroadcastableOpCategory broadcast_category;
+  // uint8 inference params.
+  int32 input1_offset;
+  int32 input2_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
+  // Add / Sub, not Mul, uint8 inference params.
+  int left_shift;
+  int32 input1_multiplier;
+  int input1_shift;
+  int32 input2_multiplier;
+  int input2_shift;
+  // uint8, etc, activation params.
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
+
+  // Processed output dimensions.
+  // Let input "a" be the one that broadcasts in the faster-changing dimension.
+  // Then, after coalescing, for shapes {a0, a1, a2, a3, a4} and
+  // {b0, b1, b2, b3, b4},
+  // broadcast_shape[4] = b0 = a0.
+  // broadcast_shape[3] = b1; a1 = 1.
+  // broadcast_shape[2] = b2 = a2.
+  // broadcast_shape[1] = a3; b3 = 1.
+  // broadcast_shape[0] = b4 = a4.
+  int broadcast_shape[5];
+};
+
+template <typename T>
+inline void SetActivationParams(T min, T max, ArithmeticParams* params);
+
+template <>
+inline void SetActivationParams(float min, float max,
+                                ArithmeticParams* params) {
+  params->float_activation_min = min;
+  params->float_activation_max = max;
+}
+
+template <>
+inline void SetActivationParams(int32 min, int32 max,
+                                ArithmeticParams* params) {
+  params->quantized_activation_min = min;
+  params->quantized_activation_max = max;
+}
 
 }  // namespace tflite
 
