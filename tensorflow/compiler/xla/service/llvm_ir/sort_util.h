@@ -26,8 +26,7 @@ namespace llvm_ir {
 // Emits llvm IR to sort the 'dimension_to_sort' dimension of 'keys_array' into
 // ascending order.
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
-                       tensorflow::StringPiece name,
-                       llvm::IRBuilder<>* ir_builder);
+                       tensorflow::StringPiece name, llvm::IRBuilder<>* b);
 }  // namespace llvm_ir
 }  // namespace xla
 
