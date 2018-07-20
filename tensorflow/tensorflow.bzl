@@ -1359,7 +1359,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       name=name,
       srcs=srcs,
       deps=deps + if_cuda(cuda_deps),
-      data=[name + "_check_deps"],
+      data=if_static([name + "_check_deps"]),
       copts=tf_copts(is_external=True),
       features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({
