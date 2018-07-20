@@ -155,10 +155,6 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
 
   region_manager_.set_handle(c->ptr, h);
 
-  // TODO(vrv): Try to merge this new region with an existing region,
-  // if the address space is contiguous, to avoid fragmentation
-  // across regions.
-
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
