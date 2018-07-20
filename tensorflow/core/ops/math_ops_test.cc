@@ -543,4 +543,19 @@ TEST(MathOpsTest, HistogramFixedWidth_ShapeFn) {
   INFER_OK(op, "[?];[2];[]", "[?]");
   INFER_OK(op, "[?];[2];?", "[?]");
 }
+
+TEST(MathOpsTest, QuantizedAdd_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizedAdd");
+
+  INFER_OK(op, "?;?;?;?;?;?", "?;[];[]");
+  INFER_OK(op, "?;?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[1,2];?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[];[2];[];[];[];[]", "[d1_0];[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;?;[4]");
+}
 }  // end namespace tensorflow
