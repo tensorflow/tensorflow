@@ -23,7 +23,7 @@ For details on installation and usage, see these links:
 
 ## Known Issues / Workarounds
 
-### tensorflow/benchmarks workaround for TF v1.3
+### tensorflow/benchmarks workaround for TF v1.8
 Since our current port of TF supports v1.3, we can't use some of the newest commits in `tensorflow/benchmarks`. The RCCL, a ROCm version of NCCL, is under implementation. Therefore we have to drop back to an earlier point in the commit history, and disable NCCL.
 
 ```
