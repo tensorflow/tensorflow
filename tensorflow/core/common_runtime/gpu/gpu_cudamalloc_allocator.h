@@ -32,7 +32,7 @@ namespace tensorflow {
 class GPUcudaMallocAllocator : public VisitableAllocator {
  public:
   explicit GPUcudaMallocAllocator(VisitableAllocator* allocator,
-                                  PhysicalGpuId physical_gpu_id);
+                                  PlatformGpuId platform_gpu_id);
   ~GPUcudaMallocAllocator() override;
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

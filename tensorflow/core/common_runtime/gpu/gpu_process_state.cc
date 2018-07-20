@@ -107,22 +107,23 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    PhysicalGpuId physical_gpu_id;
-    TF_CHECK_OK(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
+    PlatformGpuId platform_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     gpu_allocator =
-        new GPUBFCAllocator(physical_gpu_id, total_bytes, options,
+        new GPUBFCAllocator(platform_gpu_id, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
     if (useCudaMemoryGuardAllocator()) {
-      gpu_allocator = new GPUDebugAllocator(gpu_allocator, physical_gpu_id);
-      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, physical_gpu_id);
+      gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
+      gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
     } else if (useCudaMallocAllocator()) {
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario
-      gpu_allocator = new GPUcudaMallocAllocator(gpu_allocator, physical_gpu_id);
+      gpu_allocator =
+          new GPUcudaMallocAllocator(gpu_allocator, platform_gpu_id);
     }
     gpu_allocators_[tf_gpu_id.value()] = gpu_allocator;
 
@@ -139,7 +140,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
       md.loc = ProcessState::MemDesc::GPU;
-      md.dev_index = physical_gpu_id.value();
+      md.dev_index = platform_gpu_id.value();
       md.gpu_registered = false;
       md.nic_registered = true;
       if (static_cast<int64>(gpu_al_.size()) <= tf_gpu_id.value()) {

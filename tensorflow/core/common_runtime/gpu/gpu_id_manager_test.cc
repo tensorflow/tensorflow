@@ -30,30 +30,30 @@ PhysicalGpuId TfToPhysicalGpuId(TfGpuId tf) {
 
 TEST(GpuIdManagerTest, Basics) {
   TfGpuId key_0(0);
-  PhysicalGpuId value_0(0);
-  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0));
-  EXPECT_EQ(value_0, TfToPhysicalGpuId(key_0));
+  PlatformGpuId value_0(0);
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_0, value_0));
+  EXPECT_EQ(value_0, TfToPlatformGpuId(key_0));
 
   // Multiple calls to map the same value is ok.
-  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_0, value_0));
-  EXPECT_EQ(value_0, TfToPhysicalGpuId(key_0));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_0, value_0));
+  EXPECT_EQ(value_0, TfToPlatformGpuId(key_0));
 
   // Map a different TfGpuId to a different value.
   TfGpuId key_1(3);
-  PhysicalGpuId value_1(2);
-  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_1, value_1));
-  EXPECT_EQ(value_1, TfToPhysicalGpuId(key_1));
+  PlatformGpuId value_1(2);
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_1, value_1));
+  EXPECT_EQ(value_1, TfToPlatformGpuId(key_1));
 
   // Mapping a different TfGpuId to the same value is ok.
   TfGpuId key_2(10);
-  TF_ASSERT_OK(GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_1));
-  EXPECT_EQ(value_1, TfToPhysicalGpuId(key_2));
+  TF_ASSERT_OK(GpuIdManager::InsertTfPlatformGpuIdPair(key_2, value_1));
+  EXPECT_EQ(value_1, TfToPlatformGpuId(key_2));
 
   // Mapping the same TfGpuId to a different value.
-  ASSERT_FALSE(GpuIdManager::InsertTfPhysicalGpuIdPair(key_2, value_0).ok());
+  ASSERT_FALSE(GpuIdManager::InsertTfPlatformGpuIdPair(key_2, value_0).ok());
 
   // Getting a nonexistent mapping.
-  ASSERT_FALSE(GpuIdManager::TfToPhysicalGpuId(TfGpuId(100), &value_0).ok());
+  ASSERT_FALSE(GpuIdManager::TfToPlatformGpuId(TfGpuId(100), &value_0).ok());
 }
 
 }  // namespace

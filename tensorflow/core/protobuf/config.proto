@@ -68,7 +68,7 @@ message GPUOptions {
   //    after the process starts.  Users are required to use vendor
   //    specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
   //    physical to visible device mapping prior to invoking TensorFlow.
-  // 2. In the code, the ids in this list are also called "physical GPU id"s,
+  // 2. In the code, the ids in this list are also called "platform GPU id"s,
   //    and the 'virtual' ids of GPU devices (i.e. the ids in the device
   //    name "/device:GPU:<id>") are also called "TF GPU id"s. Please
   //    refer to third_party/tensorflow/core/common_runtime/gpu/gpu_id.h
