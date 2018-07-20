@@ -146,24 +146,7 @@ class TPUContext(object):
     # Note that: For the non-model parallelism, the mapping could be
     # a random permutation. The order should not matter in most cases
     # as far as model is replicated to all cores in the system.
-
-    # If the precise replica_id to device mapping is required, please
-    # set the num_cores_per_replica to 1 in TPUConfig to enable the
-    # model parallelism.
-    if self._internal_ctx.model_parallelism_enabled:
-      return RuntimeError(
-          'device_for_replica is not yet implemented for model parallelism. '
-          'b/79689078.')
-
-    master = self._internal_ctx.master_job
-    job_device = '' if master is None else ('/job:%s' % master)
-
-    num_of_replicas_per_host = self._internal_ctx.num_of_replicas_per_host
-    host_id = replica_id / num_of_replicas_per_host
-    ordinal_id = replica_id % num_of_replicas_per_host
-
-    host_device = '%s/task:%d/device:CPU:0' % (job_device, host_id)
-    return (host_device, ordinal_id)
+    return self._internal_ctx.device_for_replica(replica_id)
 
 
 class _InternalTPUContext(object):
@@ -633,6 +616,33 @@ class _InternalTPUContext(object):
 
     # Record the state "validated" into lazy dictionary.
     self._lazy_validation_dict[mode] = True
+
+  def device_for_replica(self, replica_id):
+    """Returns the tuple of (CPU device and device ordinal) for replica.
+
+    This should be used for full replicate for non-model-parallelism.
+
+    Args:
+       replica_id: Int, the replica index.
+
+    Returns:
+       A tuple of device spec for CPU device and int device ordinal.
+    """
+    master = self.master_job
+
+    if self.model_parallelism_enabled:
+      return (self.device_assignment.host_device(
+          replica=replica_id, job=master),
+              self.device_assignment.tpu_ordinal(replica=replica_id))
+
+    job_device = '' if master is None else ('/job:%s' % master)
+
+    num_of_replicas_per_host = self.num_of_replicas_per_host
+    host_id = replica_id / num_of_replicas_per_host
+    ordinal_id = replica_id % num_of_replicas_per_host
+
+    host_device = '%s/task:%d/device:CPU:0' % (job_device, host_id)
+    return (host_device, ordinal_id)
 
 
 class _OneCoreTPUContext(_InternalTPUContext):

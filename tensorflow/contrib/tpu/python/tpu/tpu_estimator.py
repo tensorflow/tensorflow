@@ -1660,11 +1660,13 @@ class _OutfeedHostCall(object):
     # Outfeed ops execute on each replica's first logical core. Note: we must
     # constraint it such that we have at most one outfeed dequeue and enqueue
     # per replica.
-    tpu_device_placement_fn = self._ctx.tpu_device_placement_function
     for i in xrange(self._ctx.num_replicas):
-      with ops.device(tpu_device_placement_fn(i)):
+      host_device, ordinal_id = self._ctx.device_for_replica(i)
+      with ops.device(host_device):
         outfeed_tensors = tpu_ops.outfeed_dequeue_tuple(
-            dtypes=tensor_dtypes, shapes=tensor_shapes)
+            dtypes=tensor_dtypes,
+            shapes=tensor_shapes,
+            device_ordinal=ordinal_id)
         for j, item in enumerate(outfeed_tensors):
           dequeue_ops[j].append(item)
 
