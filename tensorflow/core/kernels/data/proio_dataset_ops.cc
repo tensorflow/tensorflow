@@ -19,20 +19,19 @@ class ProIODatasetOp : public DatasetOpKernel {
     void MakeDataset(OpKernelContext *ctx, DatasetBase **output) override {
         std::string filename;
         OP_REQUIRES_OK(ctx, ParseScalarArgument<std::string>(ctx, "filename", &filename));
-        auto reader = new proio::Reader(filename);
 
-        *output = new Dataset(ctx, filename, reader);
+        *output = new Dataset(ctx, filename);
     }
 
    private:
     class Dataset : public GraphDatasetBase {
        public:
-        Dataset(OpKernelContext *ctx, std::string filename, proio::Reader *reader)
-            : GraphDatasetBase(ctx), filename_(filename), reader_(reader) {}
+        Dataset(OpKernelContext *ctx, std::string filename)
+            : GraphDatasetBase(ctx), filename_(filename) {}
 
         std::unique_ptr<IteratorBase> MakeIteratorInternal(const string &prefix) const override {
             return std::unique_ptr<IteratorBase>(
-                new Iterator({this, strings::StrCat(prefix, "::ProIO")}, reader_));
+                new Iterator({this, strings::StrCat(prefix, "::ProIO")}, filename_));
         }
 
         const DataTypeVector &output_dtypes() const override {
@@ -57,8 +56,8 @@ class ProIODatasetOp : public DatasetOpKernel {
        private:
         class Iterator : public DatasetIterator<Dataset> {
            public:
-            explicit Iterator(const Params &params, std::shared_ptr<proio::Reader> reader)
-                : DatasetIterator<Dataset>(params), reader_(reader) {}
+            explicit Iterator(const Params &params, std::string filename)
+                : DatasetIterator<Dataset>(params), reader_(new proio::Reader(filename)) {}
 
             Status GetNextInternal(IteratorContext *ctx, std::vector<Tensor> *out_tensors,
                                    bool *end_of_sequence) override {
@@ -82,7 +81,6 @@ class ProIODatasetOp : public DatasetOpKernel {
 
        private:
         std::string filename_;
-        std::shared_ptr<proio::Reader> reader_;
     };
 };
 
