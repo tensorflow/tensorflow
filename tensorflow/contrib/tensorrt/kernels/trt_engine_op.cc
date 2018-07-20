@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #include <algorithm>
+
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -457,7 +459,8 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
 #endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
-                                     serialized_segment_.size(), nullptr));
+                                     serialized_segment_.size(),
+                                     PluginFactoryTensorRT::GetInstance()));
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
     engine_map_[max_batch_size] = {
