@@ -1422,7 +1422,7 @@ def set_windows_build_flags(environ_cp):
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
       True,
       ('Would you like to override eigen strong inline for some C++ '
-       'compilation to reduce the compiling time?'),
+       'compilation to reduce the compilation time?'),
       'Eigen strong inline overridden.',
       'Not overriding eigen strong inline, '
       'some compilations could take more than 20 mins.'):
