@@ -88,11 +88,20 @@ class BFCAllocator : public VisitableAllocator {
   static const int kInvalidBinNum = -1;
   static const int kNumBins = 21;
 
-  // Chunks point to memory.  Their prev/next pointers form a
-  // doubly-linked list of addresses sorted by base address that
-  // must be contiguous.  Chunks contain information about whether
-  // they are in use or whether they are free, and contain a pointer
-  // to the bin they are in.
+  // A Chunk points to a piece of memory that's either entirely free or entirely
+  // in use by one user memory allocation.
+  //
+  // An AllocationRegion's memory is split up into one or more disjoint Chunks,
+  // which together cover the whole region without gaps.  Chunks participate in
+  // a doubly-linked list, and the prev/next pointers point to the physically
+  // adjacent chunks.
+  //
+  // Since a chunk cannot be partially in use, we may need to split a free chunk
+  // in order to service a user allocation.  We always merge adjacent free
+  // chunks.
+  //
+  // Chunks contain information about whether they are in use or whether they
+  // are free, and contain a pointer to the bin they are in.
   struct Chunk {
     size_t size = 0;  // Full size of buffer.
 
@@ -177,8 +186,12 @@ class BFCAllocator : public VisitableAllocator {
   static const size_t kMinAllocationBits = 8;
   static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
-  // AllocationRegion maps pointers to ChunkHandles for a single
-  // contiguous memory region.
+  // BFCAllocator allocates memory into a collection of disjoint
+  // AllocationRegions.  Each AllocationRegion corresponds to one call to
+  // SubAllocator::Alloc().
+  //
+  // An AllocationRegion contains one or more Chunks, covering all of its
+  // memory.  Its primary job is to map a pointers to ChunkHandles.
   //
   // This class is thread-compatible.
   class AllocationRegion {
