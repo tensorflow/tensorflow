@@ -27,16 +27,17 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+tfe = tf.contrib.eager
 
 
 def get_hparams_cifar_38():
   """RevNet-38 configurations for CIFAR-10/CIFAR-100."""
 
   config = tf.contrib.training.HParams()
-  # Hyperparameters from the RevNet paper
   config.add_hparam("init_filters", 32)
   config.add_hparam("init_kernel", 3)
   config.add_hparam("init_stride", 1)
+  config.add_hparam("n_classes", 10)
   config.add_hparam("n_rev_blocks", 3)
   config.add_hparam("n_res", [3, 3, 3])
   config.add_hparam("filters", [32, 64, 112])
@@ -45,7 +46,7 @@ def get_hparams_cifar_38():
   config.add_hparam("bottleneck", False)
   config.add_hparam("fused", True)
   config.add_hparam("init_max_pool", False)
-  if tf.test.is_gpu_available() > 0:
+  if tfe.num_gpus() > 0:
     config.add_hparam("input_shape", (3, 32, 32))
     config.add_hparam("data_format", "channels_first")
   else:
@@ -69,16 +70,6 @@ def get_hparams_cifar_38():
   # we only have 40k images in training data
   config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
   config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
-
-  # Customized TPU hyperparameters due to differing batch size caused by
-  # TPU architecture specifics
-  # Suggested batch sizes to reduce overhead from excessive tensor padding
-  # https://cloud.google.com/tpu/docs/troubleshooting
-  config.add_hparam("tpu_batch_size", 128)
-  config.add_hparam("tpu_eval_batch_size", 1024)
-  config.add_hparam("tpu_iters_per_epoch", 50000 // config.tpu_batch_size)
-  config.add_hparam("tpu_epochs",
-                    config.max_train_iter // config.tpu_iters_per_epoch)
 
   return config
 
@@ -110,6 +101,7 @@ def get_hparams_imagenet_56():
   config.add_hparam("init_filters", 128)
   config.add_hparam("init_kernel", 7)
   config.add_hparam("init_stride", 2)
+  config.add_hparam("n_classes", 1000)
   config.add_hparam("n_rev_blocks", 4)
   config.add_hparam("n_res", [2, 2, 2, 2])
   config.add_hparam("filters", [128, 256, 512, 832])
