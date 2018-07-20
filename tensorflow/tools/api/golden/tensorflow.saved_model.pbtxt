@@ -33,6 +33,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member_method {
+    name: "simple_load"
+    argspec: "args=[\'session\', \'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "simple_save"
     argspec: "args=[\'session\', \'export_dir\', \'inputs\', \'outputs\', \'legacy_init_op\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
