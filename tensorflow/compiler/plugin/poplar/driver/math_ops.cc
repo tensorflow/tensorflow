@@ -469,7 +469,8 @@ StatusOr<poplar::program::Program> CreateReluGradOp(
 
   poplar::program::Sequence seq;
   poplar::Tensor t = popnn::nonLinearityInputGradient(
-      graph, popnn::NON_LINEARITY_RELU, out, outgrad, seq, GetDebugName(inst));
+      graph, popnn::NonLinearityType::RELU, out, outgrad, seq,
+      GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
 
@@ -508,7 +509,8 @@ StatusOr<poplar::program::Program> CreateSigmoidGradOp(
 
   poplar::program::Sequence seq;
   poplar::Tensor t =
-      popnn::nonLinearityInputGradient(graph, popnn::NON_LINEARITY_SIGMOID, out,
+      popnn::nonLinearityInputGradient(graph,
+                                       popnn::NonLinearityType::SIGMOID, out,
                                        outgrad, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
