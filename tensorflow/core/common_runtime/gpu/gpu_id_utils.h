@@ -24,34 +24,37 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Utility methods for translation between Tensorflow GPU ids and physical GPU ids.
+// Utility methods for translation between Tensorflow GPU ids and platform GPU
+// ids.
 class GpuIdUtil {
  public:
   // Convenient methods for getting the associated executor given a TfGpuId or
-  // PhysicalGpuId.
-  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPhysicalGpuId(
-      se::Platform* gpu_manager, PhysicalGpuId physical_gpu_id) {
-    return gpu_manager->ExecutorForDevice(physical_gpu_id.value());
+  // PlatformGpuId.
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPlatformGpuId(
+      se::Platform* gpu_manager, PlatformGpuId platform_gpu_id) {
+    return gpu_manager->ExecutorForDevice(platform_gpu_id.value());
   }
-  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPhysicalGpuId(
-      PhysicalGpuId physical_gpu_id) {
-    return ExecutorForPhysicalGpuId(GPUMachineManager(), physical_gpu_id);
+  static se::port::StatusOr<se::StreamExecutor*> ExecutorForPlatformGpuId(
+      PlatformGpuId platform_gpu_id) {
+    return ExecutorForPlatformGpuId(GPUMachineManager(), platform_gpu_id);
   }
   static se::port::StatusOr<se::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
-    PhysicalGpuId physical_gpu_id;
-    TF_RETURN_IF_ERROR(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
-    return ExecutorForPhysicalGpuId(physical_gpu_id);
+    PlatformGpuId platform_gpu_id;
+    TF_RETURN_IF_ERROR(
+        GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
+    return ExecutorForPlatformGpuId(platform_gpu_id);
   }
 
-  // Verify that the physical_gpu_id associated with a TfGpuId is legitimate.
+  // Verify that the platform_gpu_id associated with a TfGpuId is legitimate.
   static void CheckValidTfGpuId(TfGpuId tf_gpu_id) {
-    PhysicalGpuId physical_gpu_id;
-    TF_CHECK_OK(GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id));
+    PlatformGpuId platform_gpu_id;
+    TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     const int visible_device_count = GPUMachineManager()->VisibleDeviceCount();
-    CHECK_LT(physical_gpu_id.value(), visible_device_count)
-        << "physical_gpu_id is outside discovered device range."
-        << " TF GPU id: " << tf_gpu_id << " physical GPU id: " << physical_gpu_id
+    CHECK_LT(platform_gpu_id.value(), visible_device_count)
+        << "platform_gpu_id is outside discovered device range."
+        << " TF GPU id: " << tf_gpu_id
+        << " platform GPU id: " << platform_gpu_id
         << " visible device count: " << visible_device_count;
   }
 };

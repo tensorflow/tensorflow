@@ -34,10 +34,11 @@ namespace tensorflow {
 namespace {
 
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
-  const PhysicalGpuId physical_gpu_id(0);
-  GPUDebugAllocator a(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                      physical_gpu_id);
-  auto stream_exec = GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
+  const PlatformGpuId platform_gpu_id(0);
+  GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                      platform_gpu_id);
+  auto stream_exec =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
   for (int s : {8}) {
     std::vector<int64> cpu_array(s);
@@ -58,11 +59,11 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Header) {
   for (int s : {8, 211}) {
     EXPECT_DEATH(
         {
-          const PhysicalGpuId physical_gpu_id(0);
-          GPUDebugAllocator a(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                              physical_gpu_id);
+          const PlatformGpuId platform_gpu_id(0);
+          GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                              platform_gpu_id);
           auto stream_exec =
-              GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
           std::vector<int64> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
@@ -91,11 +92,11 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
   for (int s : {8, 22}) {
     EXPECT_DEATH(
         {
-          const PhysicalGpuId physical_gpu_id(0);
-          GPUDebugAllocator a(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                              physical_gpu_id);
+          const PlatformGpuId platform_gpu_id(0);
+          GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                              platform_gpu_id);
           auto stream_exec =
-              GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
+              GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
           std::vector<int64> cpu_array(s);
           memset(&cpu_array[0], 0, cpu_array.size() * sizeof(int64));
@@ -121,10 +122,11 @@ TEST(GPUDebugAllocatorTest, OverwriteDetection_Footer) {
 }
 
 TEST(GPUDebugAllocatorTest, ResetToNan) {
-  const PhysicalGpuId physical_gpu_id(0);
-  GPUNanResetAllocator a(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                         physical_gpu_id);
-  auto stream_exec = GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
+  const PlatformGpuId platform_gpu_id(0);
+  GPUNanResetAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                         platform_gpu_id);
+  auto stream_exec =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
   std::vector<float> cpu_array(1024);
   std::vector<float> cpu_array_result(1024);
@@ -161,13 +163,14 @@ TEST(GPUDebugAllocatorTest, ResetToNan) {
 }
 
 TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
-  const PhysicalGpuId physical_gpu_id(0);
+  const PlatformGpuId platform_gpu_id(0);
   // NaN reset must be the outer-most allocator.
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                            physical_gpu_id),
-      physical_gpu_id);
-  auto stream_exec = GpuIdUtil::ExecutorForPhysicalGpuId(physical_gpu_id).ValueOrDie();
+      new GPUDebugAllocator(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                            platform_gpu_id),
+      platform_gpu_id);
+  auto stream_exec =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 
   std::vector<float> cpu_array(1024);
   std::vector<float> cpu_array_result(1024);
@@ -204,18 +207,18 @@ TEST(GPUDebugAllocatorTest, ResetToNanWithHeaderFooter) {
 }
 
 TEST(GPUDebugAllocatorTest, TracksSizes) {
-  const PhysicalGpuId physical_gpu_id(0);
-  GPUDebugAllocator a(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                      physical_gpu_id);
+  const PlatformGpuId platform_gpu_id(0);
+  GPUDebugAllocator a(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                      platform_gpu_id);
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
-  const PhysicalGpuId physical_gpu_id(0);
+  const PlatformGpuId platform_gpu_id(0);
   GPUNanResetAllocator a(
-      new GPUDebugAllocator(new GPUBFCAllocator(physical_gpu_id, 1 << 30, ""),
-                            physical_gpu_id),
-      physical_gpu_id);
+      new GPUDebugAllocator(new GPUBFCAllocator(platform_gpu_id, 1 << 30, ""),
+                            platform_gpu_id),
+      platform_gpu_id);
   float* t1 = a.Allocate<float>(1);
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));

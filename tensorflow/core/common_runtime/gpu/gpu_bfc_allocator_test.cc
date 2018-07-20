@@ -46,7 +46,7 @@ static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
 }
 
 TEST(GPUBFCAllocatorTest, NoDups) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
   // Allocate a lot of raw pointers
@@ -75,7 +75,7 @@ TEST(GPUBFCAllocatorTest, NoDups) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   // Allocate 256 raw pointers of sizes between 100 bytes and about
   // a meg
   random::PhiloxRandom philox(123, 17);
@@ -133,7 +133,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 }
 
 TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
   float* first_ptr = a.Allocate<float>(1024);
@@ -168,18 +168,18 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocateZeroBufSize) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   float* ptr = a.Allocate<float>(0);
   EXPECT_EQ(nullptr, ptr);
 }
 
 TEST(GPUBFCAllocatorTest, TracksSizes) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   float* t1 = a.Allocate<float>(1);
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
@@ -188,7 +188,7 @@ TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
 
 TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
   // Configure a 1MiB byte limit
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 20, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 20, "GPU_0_bfc");
 
   float* first_ptr = a.Allocate<float>(1 << 6);
   float* second_ptr = a.Allocate<float>(1 << 20);
@@ -203,7 +203,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   options.set_allow_growth(true);
 
   // Max of 2GiB, but starts out small.
-  GPUBFCAllocator a(PhysicalGpuId(0), 1LL << 31, options, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1LL << 31, options, "GPU_0_bfc");
 
   // Allocate 10 raw pointers of sizes between 100 bytes and about
   // 64 megs.
@@ -264,8 +264,8 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1UL << 60, "GPU_0_bfc");
-  GPUBFCAllocator b(PhysicalGpuId(0), 1UL << 60, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1UL << 60, "GPU_0_bfc");
+  GPUBFCAllocator b(PlatformGpuId(0), 1UL << 60, "GPU_0_bfc");
   void* amem = a.AllocateRaw(1, 1);
   void* bmem = b.AllocateRaw(1, 1 << 30);
   a.DeallocateRaw(amem);
@@ -273,7 +273,7 @@ TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
 }
 
 static void BM_Allocation(int iters) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1uLL << 33, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1uLL << 33, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<size_t> sizes = {256,        4096,      16384,    524288,
                                512,        1048576,   10485760, 104857600,
@@ -289,7 +289,7 @@ static void BM_Allocation(int iters) {
 BENCHMARK(BM_Allocation);
 
 static void BM_AllocationThreaded(int iters, int num_threads) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1uLL << 33, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1uLL << 33, "GPU_0_bfc");
   thread::ThreadPool pool(Env::Default(), "test", num_threads);
   std::atomic_int_fast32_t count(iters);
   mutex done_lock;
@@ -325,7 +325,7 @@ BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
 // A more complex benchmark that defers deallocation of an object for
 // "delay" allocations.
 static void BM_AllocationDelayed(int iters, int delay) {
-  GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+  GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
   int size_index = 0;
@@ -363,7 +363,7 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
   // only methods inside this class can access private members of BFCAllocator.
 
   void TestBinDebugInfo() {
-    GPUBFCAllocator a(PhysicalGpuId(0), 1 << 30, "GPU_0_bfc");
+    GPUBFCAllocator a(PlatformGpuId(0), 1 << 30, "GPU_0_bfc");
 
     std::vector<void*> initial_ptrs;
     std::vector<size_t> initial_ptrs_allocated_sizes;
@@ -441,7 +441,7 @@ class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
   }
 
   void TestLog2FloorNonZeroSlow() {
-    GPUBFCAllocator a(PhysicalGpuId(0), 1 /* total_memory */, "GPU_0_bfc");
+    GPUBFCAllocator a(PlatformGpuId(0), 1 /* total_memory */, "GPU_0_bfc");
     EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
     EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
     EXPECT_EQ(1, a.Log2FloorNonZeroSlow(2));
