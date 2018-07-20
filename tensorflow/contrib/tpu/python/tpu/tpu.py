@@ -633,23 +633,14 @@ def split_compile_and_replicate(computation,
     with tpu_function.tpu_shard_context(
         num_replicas), ops.control_dependencies([metadata]):
 
-      # For backward compatibility reasons, we tag replicated inputs with the
-      # _tpu_replicated_input attribute. This does nothing and exists only for
-      # backward compatibility.
-      # TODO(phawkins): delete the attr_scope after 6/28/2018.
-      # pylint: disable=protected-access
-      with graph._attr_scope({
-          "_tpu_replicated_input": attr_value_pb2.AttrValue(b=True)
-      }):
-        # Add identity ops so even unused inputs are "consumed" by the
-        # computation. This is to avoid orphaned TPUReplicatedInput nodes.
-        # TODO(phawkins): consider instead pruning unused TPUReplicatedInput
-        # and eliding trivial TPUReplicatedInput/TPUReplicatedOutput pairs.
-        computation_inputs = [
-            array_ops.identity(x, name="replicated_input_{}".format(i))
-            for i, x in enumerate(computation_inputs)
-        ]
-      # pylint: enable=protected-access
+      # Add identity ops so even unused inputs are "consumed" by the
+      # computation. This is to avoid orphaned TPUReplicatedInput nodes.
+      # TODO(phawkins): consider instead pruning unused TPUReplicatedInput
+      # and eliding trivial TPUReplicatedInput/TPUReplicatedOutput pairs.
+      computation_inputs = [
+          array_ops.identity(x, name="replicated_input_{}".format(i))
+          for i, x in enumerate(computation_inputs)
+      ]
 
       # If there is an infeed queue, adds the dequeued values to the
       # computation's inputs.
