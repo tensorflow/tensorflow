@@ -114,7 +114,7 @@ TEST_F(RecomputeSubgraphTest, TwoInputSubgraphs) {
   (*pre_transform_node_map.GetNode("b")->mutable_attr())["_recompute_hint"]
       .set_i(0);
 
-  MemoryOptimizer optimizer(RewriterConfig::MANUAL,
+  MemoryOptimizer optimizer(RewriterConfig::MANUAL,1.0,
                             "some_name_scope/gradients");
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
