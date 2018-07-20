@@ -52,7 +52,7 @@ def extract_all_strings_from_event_trace(events):
   result = ""
   for e in events:
     evt = IpuTraceEvent.FromString(e)
-    result = result + evt.data_str
+    result = result + evt.data_str.decode('utf-8')
   return result
 
 def extract_all_types_from_event_trace(events):
@@ -75,7 +75,7 @@ def extract_all_io_events(events):
     evt = IpuTraceEvent.FromString(e)
     if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
                     IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
-      result += [(evt.type, evt.data_str)]
+      result += [(evt.type, evt.data_str.decode('utf-8'))]
   return result
 
 def ipu_compile_summary(name, op_list, collections=None):
