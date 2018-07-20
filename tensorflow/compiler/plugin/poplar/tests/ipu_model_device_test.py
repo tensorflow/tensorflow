@@ -181,7 +181,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
                     config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
                 fd = {pa: np.zeros([480]), pb: np.zeros([480])}
                 sess.run(output, fd)
-        except errors.InternalError:
+        except errors.ResourceExhaustedError:
             pass
 
     def testIpuWithSpecificTiles(self):
@@ -204,7 +204,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
                     config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
                 fd = {pa: np.zeros([480]), pb: np.zeros([480])}
                 sess.run(output, fd)
-        except errors.InternalError:
+        except errors.ResourceExhaustedError:
             pass
 
     def testEngineCompilationOptions(self):
@@ -232,26 +232,6 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
                 sess.run(output, fd)
         except errors.UnknownError:
             pass
-
-    def testIpuSimulatorDevice(self):
-        with ops.device("/device:IPU:0"):
-            pa = array_ops.placeholder(np.float32, [16], name="a")
-            pb = array_ops.placeholder(np.float32, [16], name="b")
-            output = pa + pb
-
-        opts = config_pb2.IPUOptions()
-        dev = opts.device_config.add()
-        dev.type = config_pb2.IPUOptions.DeviceConfig.IPU_SIMULATOR
-
-        try:
-            with session_lib.Session(
-                    config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
-                fd = {pa: np.zeros([16]), pb: np.zeros([16])}
-                res = sess.run(output, fd)
-
-                self.assertAllClose(res, np.zeros([16]))
-        except errors.InternalError as e:
-            self.assertTrue(e.message.startswith("Failed to create session"))
 
     def testNamedOperations(self):
         with ops.device("/device:IPU:0"):

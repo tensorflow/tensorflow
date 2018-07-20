@@ -124,6 +124,8 @@ ArrayElementwiseOpTest.AddTwoConstantU64s POPLAR
 ReduceInitializerTest.U64InitializerZero POPLAR
 ReduceInitializerTest.U64InitializerOne POPLAR
 ReduceInitializerTest.U64InitializerBigValue POPLAR
+ReduceTest.AndReduceU64 POPLAR
+ReduceTest.OrReduceU64 POPLAR
 
 ParamsTest.ConstantR1U8Param      POPLAR // U8
 ScalarComputationsTest.AddTwoScalarsU8      POPLAR
