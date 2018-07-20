@@ -28,12 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
-#define GPU_PLATFORM_NAME "CUDA"
-#elif TENSORFLOW_USE_ROCM
-#define GPU_PLATFORM_NAME "ROCM"
-#endif
-
 Status ValidateGPUMachineManager() {
   return se::MultiPlatformManager::PlatformWithName(GPU_PLATFORM_NAME).status();
 }
