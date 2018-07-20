@@ -278,7 +278,9 @@ inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
 
 // Gets next index to iterate through a multidimensional array.
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
-  TFLITE_DCHECK_GT(num_dims, 0);
+  if (num_dims == 0) {
+    return false;
+  }
   TFLITE_DCHECK(dims != nullptr);
   TFLITE_DCHECK(current != nullptr);
   int carry = 1;
@@ -305,7 +307,9 @@ inline bool NextIndex(const int num_dims, const int* dims, int* current) {
 inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
                                   const int* index, const int num_axis,
                                   const int* axis) {
-  TFLITE_DCHECK_GT(num_dims, 0);
+  if (num_dims == 0) {
+    return 0;
+  }
   TFLITE_DCHECK(dims != nullptr);
   TFLITE_DCHECK(index != nullptr);
   size_t offset = 0;
