@@ -1928,14 +1928,6 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   execution is enabled.
   @end_compatibility
   """  # pylint: disable=g-doc-exception
-  return _import_meta_graph_with_return_elements(
-      meta_graph_or_file, clear_devices, import_scope, **kwargs)[0]
-
-
-def _import_meta_graph_with_return_elements(
-    meta_graph_or_file, clear_devices=False, import_scope=None,
-    return_elements=None, **kwargs):
-  """Import MetaGraph, and return both a saver and returned elements."""
   if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
@@ -1945,22 +1937,12 @@ def _import_meta_graph_with_return_elements(
   else:
     meta_graph_def = meta_graph_or_file
 
-  imported_vars, imported_return_elements = (
-      meta_graph.import_scoped_meta_graph_with_return_elements(
-          meta_graph_def,
-          clear_devices=clear_devices,
-          import_scope=import_scope,
-          return_elements=return_elements,
-          **kwargs))
+  imported_vars = meta_graph.import_scoped_meta_graph(
+      meta_graph_def,
+      clear_devices=clear_devices,
+      import_scope=import_scope,
+      **kwargs)
 
-  saver = _create_saver_from_imported_meta_graph(
-      meta_graph_def, import_scope, imported_vars)
-  return saver, imported_return_elements
-
-
-def _create_saver_from_imported_meta_graph(
-    meta_graph_def, import_scope, imported_vars):
-  """Return a saver for restoring variable values to an imported MetaGraph."""
   if meta_graph_def.HasField("saver_def"):
     # Infer the scope that is prepended by `import_scoped_meta_graph`.
     scope = import_scope
