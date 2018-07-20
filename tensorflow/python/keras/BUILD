@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 config_setting(
     name = "empty_condition",
@@ -440,7 +440,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "cudnn_recurrent_test",
     size = "large",
     srcs = ["layers/cudnn_recurrent_test.py"],
@@ -690,7 +690,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "multi_gpu_utils_test",
     srcs = ["utils/multi_gpu_utils_test.py"],
     additional_deps = [
@@ -704,7 +704,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "training_gpu_test",
     size = "small",
     srcs = ["engine/training_gpu_test.py"],

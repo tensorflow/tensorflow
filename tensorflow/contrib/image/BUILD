@@ -16,7 +16,7 @@ load(
     "tf_kernel_library",
     "tf_py_test",
 )
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_library(
@@ -95,7 +95,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "image_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/image_ops_test.py"],
@@ -175,7 +175,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "distort_image_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/distort_image_ops_test.py"],
@@ -239,7 +239,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "sparse_image_warp_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_image_warp_test.py"],
@@ -267,7 +267,7 @@ filegroup(
     srcs = glob(["python/kernel_tests/test_data/*.png"]),
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "dense_image_warp_test",
     size = "medium",
     srcs = ["python/kernel_tests/dense_image_warp_test.py"],
@@ -288,7 +288,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "interpolate_spline_test",
     size = "medium",
     srcs = ["python/kernel_tests/interpolate_spline_test.py"],
@@ -368,7 +368,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "single_image_random_dot_stereograms_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/single_image_random_dot_stereograms_ops_test.py"],

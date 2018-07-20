@@ -16,7 +16,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
@@ -508,7 +508,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "debug_gradients_test",
     size = "small",
     srcs = ["lib/debug_gradients_test.py"],
@@ -596,7 +596,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "stepper_test",
     size = "small",
     srcs = ["lib/stepper_test.py"],
@@ -755,7 +755,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "session_debug_file_test",
     size = "small",
     srcs = ["lib/session_debug_file_test.py"],
@@ -772,7 +772,7 @@ cuda_py_test(
     tags = ["notsan"],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "debug_graph_reconstruction_test",
     size = "small",
     srcs = ["lib/debug_graph_reconstruction_test.py"],
@@ -789,7 +789,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "session_debug_multi_gpu_test",
     size = "small",
     srcs = ["lib/session_debug_multi_gpu_test.py"],
@@ -901,7 +901,7 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "analyzer_cli_test",
     size = "small",
     srcs = ["cli/analyzer_cli_test.py"],
@@ -952,7 +952,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "stepper_cli_test",
     size = "small",
     srcs = ["cli/stepper_cli_test.py"],
@@ -972,7 +972,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "session_debug_grpc_test",
     size = "medium",
     srcs = ["lib/session_debug_grpc_test.py"],
@@ -999,7 +999,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "grpc_large_data_test",
     size = "medium",
     srcs = ["lib/grpc_large_data_test.py"],
@@ -1025,7 +1025,7 @@ cuda_py_test(
 )
 
 # TODO(cais): Run the test in OSS, perhaps through a sh_test.
-cuda_py_test(
+gpu_py_test(
     name = "dist_session_debug_grpc_test",
     size = "medium",
     srcs = ["lib/dist_session_debug_grpc_test.py"],

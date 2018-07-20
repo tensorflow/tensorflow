@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_library(
     name = "neural_nets",
@@ -26,7 +26,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "l2hmc_test",
     size = "large",
     srcs = ["l2hmc_test.py"],

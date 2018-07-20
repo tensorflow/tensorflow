@@ -14,8 +14,8 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -37,7 +37,7 @@ tf_custom_op_library(
     ]),
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "nccl_manager_test",
     size = "medium",
     srcs = if_cuda(
@@ -131,7 +131,7 @@ tf_custom_op_py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "nccl_ops_test",
     size = "small",
     srcs = ["python/ops/nccl_ops_test.py"],
@@ -153,7 +153,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "nccl_dependency_test",
     size = "small",
     srcs = ["python/ops/nccl_dependency_test.py"],

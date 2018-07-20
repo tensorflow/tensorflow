@@ -14,9 +14,9 @@ package(default_visibility = [
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_library", "tf_copts")
 
-tf_cuda_library(
+tf_gpu_library(
     name = "native",
     srcs = glob(["*.cc"]) + select({
         # The Android toolchain makes "jni.h" available in the include path.
@@ -51,7 +51,7 @@ tf_cuda_library(
 # Silly rules to make
 # #include <jni.h>
 # in the source headers work
-# (in combination with the "includes" attribute of the tf_cuda_library rule
+# (in combination with the "includes" attribute of the tf_gpu_library rule
 # above. Not needed when using the Android toolchain).
 #
 # Inspired from:

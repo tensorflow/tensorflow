@@ -10,10 +10,10 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_cuda_library",
+    "tf_gpu_library",
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "eager_executor",
     srcs = [
         "eager_executor.cc",
@@ -37,7 +37,7 @@ tf_cuda_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "context",
     srcs = [
         "context.cc",
@@ -68,7 +68,7 @@ tf_cuda_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "eager_operation",
     srcs = [
         "eager_operation.cc",
@@ -84,7 +84,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "tensor_handle",
     srcs = [
         "tensor_handle.cc",
@@ -113,7 +113,7 @@ tf_cuda_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "copy_to_device_node",
     hdrs = [
         "copy_to_device_node.h",
@@ -138,7 +138,7 @@ tf_cuda_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "kernel_and_device",
     srcs = [
         "kernel_and_device.cc",
@@ -212,7 +212,7 @@ cc_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "attr_builder",
     srcs = ["attr_builder.cc"],
     hdrs = ["attr_builder.h"],

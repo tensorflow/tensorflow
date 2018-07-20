@@ -50,7 +50,7 @@ cc_library(
 # Silly rules to make
 # #include <jni.h>
 # in the source headers work
-# (in combination with the "includes" attribute of the tf_cuda_library rule
+# (in combination with the "includes" attribute of the tf_gpu_library rule
 # above. Not needed when using the Android toolchain).
 #
 # Inspired from:

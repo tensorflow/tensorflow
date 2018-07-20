@@ -25,7 +25,7 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
@@ -475,7 +475,7 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "xla_fusion_optimizer_test",
     srcs = ["xla_fusion_optimizer_test.cc"],
     deps = [

@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
 
 py_library(
     name = "seq2seq_py",
@@ -36,7 +36,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "seq2seq_test",
     size = "medium",
     srcs = ["python/kernel_tests/seq2seq_test.py"],
