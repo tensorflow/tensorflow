@@ -1595,19 +1595,34 @@ def make_reshape_tests(zip_path):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
       "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
+      "constant_shape": [True, False],
   }]
 
   def build_graph(parameters):
     input_tensor = tf.placeholder(dtype=parameters["dtype"], name="input",
                                   shape=parameters["input_shape"])
-    out = tf.reshape(input_tensor, shape=parameters["output_shape"])
-    return [input_tensor], [out]
+
+    # Get shape as either a placeholder or constants.
+    if parameters["constant_shape"]:
+      output_shape = parameters["output_shape"]
+      input_tensors = [input_tensor]
+    else:
+      # The shape of the shape tensor.
+      shape_tensor_shape = [len(parameters["output_shape"])]
+      output_shape = tf.placeholder(
+          dtype=tf.int32, name="output_shape", shape=shape_tensor_shape)
+      input_tensors = [input_tensor, output_shape]
+    out = tf.reshape(input_tensor, shape=output_shape)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_shape"]:
+      values.append(np.array(parameters["output_shape"]))
+
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
