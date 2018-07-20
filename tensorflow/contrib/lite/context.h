@@ -464,6 +464,12 @@ typedef struct _TfLiteDelegate {
 } TfLiteDelegate;
 
 // WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateDelegateParams` function in `interpreter.cc` details.
 typedef struct {
   TfLiteDelegate* delegate;
   TfLiteIntArray* nodes_to_replace;
