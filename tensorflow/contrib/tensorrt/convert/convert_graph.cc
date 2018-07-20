@@ -780,12 +780,12 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
     // If device is not set, use the first found GPU device for the conversion.
     for (int tf_gpu_id_value = 0; tf_gpu_id_value < 100; ++tf_gpu_id_value) {
       TfGpuId tf_gpu_id(tf_gpu_id_value);
-      CudaGpuId cuda_gpu_id;
-      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (s.ok()) {
         VLOG(1) << "Found TF GPU " << tf_gpu_id.value() << " at cuda device "
-                << cuda_gpu_id.value();
-        cuda_device_id = cuda_gpu_id.value();
+                << platform_gpu_id.value();
+        cuda_device_id = platform_gpu_id.value();
         GPUOptions gpu_options;
         // If the TF to Cuda gpu id mapping exist, the device and corresponding
         // allocator must have been initialized already, so the
