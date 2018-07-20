@@ -96,6 +96,19 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(grads_and_vars[0][0], 1.0)
     self.assertAllEqual(id(grads_and_vars[0][1]), id(x))
 
+  def testGradientInsideLoop(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      def body(_):
+        _ = v + 1.0  # This reads the variable inside the loop context
+        with backprop.GradientTape() as t:
+          result = v * 2
+        self.assertTrue(t.gradient(result, v) is not None)
+        return 1.0
+
+      control_flow_ops.while_loop(lambda i: False, body, [1.0])
+
   def testWhereGradient(self):
     # Note: where is special because only some of its arguments are of
     # differentiable dtypes.
