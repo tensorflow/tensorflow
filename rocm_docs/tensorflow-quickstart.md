@@ -171,10 +171,10 @@ cd $HOME
 git clone https://github.com/tensorflow/benchmarks.git
 cd benchmarks
 
-# Temporary workaround to allow support for TF 1.3 without NCCL
-git checkout -b oct23 f5d85aef2851881001130b28385795bc4c59fa38
+# Temporary workaround to allow support for TF 1.8 without NCCL
+
+git checkout -b may22 ddb23306fdc60fefe620e6ce633bcd645561cb0d && \
 sed -i 's|from tensorflow.contrib import nccl|#from tensorflow.contrib import nccl|g' ./scripts/tf_cnn_benchmarks/variable_mgr.py
-sed -i 's|from tensorflow.contrib.all_reduce.python import all_reduce|#from tensorflow.contrib.all_reduce.python import all_reduce|g' ./scripts/tf_cnn_benchmarks/variable_mgr.py
 
 # Run the training benchmark (e.g. ResNet-50)
 python ./scripts/tf_cnn_benchmarks/tf_cnn_benchmarks.py --model=resnet50 --num_gpus=1
