@@ -155,6 +155,10 @@ Status HloCostAnalysis::HandleConstant(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleIota(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleGetTupleElement(const HloInstruction*) {
   // GetTupleElement forwards a pointer and does not touch each element in the
   // output.

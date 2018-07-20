@@ -2546,6 +2546,11 @@ Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleIota(HloInstruction* iota) {
+  // TODO(b/64798317): implement iota on CPU.
+  return Unimplemented("Iota is not implemented on CPU.");
+}
+
 Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding

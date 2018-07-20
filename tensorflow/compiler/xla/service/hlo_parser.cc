@@ -492,6 +492,14 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateConstant(std::move(literal)));
       break;
     }
+    case HloOpcode::kIota: {
+      if (!ParseOperands(&operands, /*expected_size=*/0) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateIota(shape));
+      break;
+    }
     // Unary ops.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:

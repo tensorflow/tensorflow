@@ -30,6 +30,9 @@ class NumericTest : public ClientLibraryTestBase {
   void TestMatrixDiagonal();
 };
 
+// TODO(b/64798317): Delete this test case once xla::IotaGen is converted to
+// xla::Iota. This test is already implemented for xla::IotaGen in
+// xla/tests/iota_test.cc.
 XLA_TEST_F(NumericTest, Iota) {
   XlaBuilder builder(TestName());
   Iota(&builder, S32, 10);

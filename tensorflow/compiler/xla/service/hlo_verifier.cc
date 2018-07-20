@@ -210,6 +210,12 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
   return CheckShape(constant, constant->literal().shape());
 }
 
+Status ShapeVerifier::HandleIota(HloInstruction* iota) {
+  return ShapeUtil::Rank(iota->shape()) == 1
+             ? Status::OK()
+             : InternalError("Iota only supports arrays of rank 1.");
+}
+
 Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return CheckShape(get_tuple_element,
                     ShapeInference::InferGetTupleElementShape(

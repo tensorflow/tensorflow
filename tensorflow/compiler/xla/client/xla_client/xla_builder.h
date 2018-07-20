@@ -1253,6 +1253,9 @@ class XlaBuilder {
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
+  // TODO(b/64798317): Finish CPU & GPU implementation, then replace xla::Iota
+  // in xla/client/lib/numeric.h with this (renamed to xla::Iota).
+  friend XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size);
   friend XlaOp ConvertElementType(const XlaOp& operand,
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(const XlaOp& operand,

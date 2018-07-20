@@ -1005,6 +1005,17 @@ ENTRY CrossReplicaSumWithSubgroups {
 }
 
 )"
+},
+// Iota
+{
+"Iota",
+R"(HloModule iota
+
+ENTRY Iota {
+  ROOT iota = f32[100]{0} iota()
+}
+
+)"
 }
   });
   // clang-format on

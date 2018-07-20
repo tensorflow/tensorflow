@@ -1293,6 +1293,19 @@ Infeed of the device.
 > which case the compiler will provide information about how the Infeed
 > operations are serialized in the compiled program.
 
+## Iota
+
+<b> `Iota()` </b>
+
+Builds a constant literal on device rather than a potentially large host
+transfer.  Creates a rank 1 tensor of values starting at zero and incrementing
+by one.
+
+Arguments          | Type            | Semantics
+------------------ | --------------- | ---------------------------
+`type`             | `PrimitiveType` | type U
+`size`             | `int64`         | The number of elements in the tensor.
+
 ## Map
 
 See also
