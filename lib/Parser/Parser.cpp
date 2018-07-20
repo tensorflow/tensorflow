@@ -691,14 +691,15 @@ private:
   AffineExpr *parseBareIdExpr();
 
   AffineExpr *getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr *lhs,
-                                    AffineExpr *rhs);
+                                    AffineExpr *rhs, SMLoc opLoc);
   AffineExpr *getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr *lhs,
                                     AffineExpr *rhs);
   AffineExpr *parseAffineOperandExpr(AffineExpr *lhs);
   AffineExpr *parseAffineLowPrecOpExpr(AffineExpr *llhs,
                                        AffineLowPrecOp llhsOp);
   AffineExpr *parseAffineHighPrecOpExpr(AffineExpr *llhs,
-                                        AffineHighPrecOp llhsOp);
+                                        AffineHighPrecOp llhsOp,
+                                        SMLoc llhsOpLoc);
 
 private:
   // TODO(bondhugula): could just use an vector/ArrayRef and scan the numbers.
@@ -710,37 +711,39 @@ private:
 };
 } // end anonymous namespace
 
-/// Create an affine binary high precedence op expression (mul's, div's, mod)
+/// Create an affine binary high precedence op expression (mul's, div's, mod).
+/// opLoc is the location of the op token to be used to report errors
+/// for non-conforming expressions.
 AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
                                                    AffineExpr *lhs,
-                                                   AffineExpr *rhs) {
+                                                   AffineExpr *rhs, SMLoc opLoc) {
   // TODO: make the error location info accurate.
   switch (op) {
   case Mul:
     if (!lhs->isSymbolicOrConstant() && !rhs->isSymbolicOrConstant()) {
-      emitError("non-affine expression: at least one of the multiply "
-                "operands has to be either a constant or symbolic");
+      emitError(opLoc, "non-affine expression: at least one of the multiply "
+                       "operands has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getMulExpr(lhs, rhs);
   case FloorDiv:
     if (!rhs->isSymbolicOrConstant()) {
-      emitError("non-affine expression: right operand of floordiv "
-                "has to be either a constant or symbolic");
+      emitError(opLoc, "non-affine expression: right operand of floordiv "
+                       "has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getFloorDivExpr(lhs, rhs);
   case CeilDiv:
     if (!rhs->isSymbolicOrConstant()) {
-      emitError("non-affine expression: right operand of ceildiv "
-                "has to be either a constant or symbolic");
+      emitError(opLoc, "non-affine expression: right operand of ceildiv "
+                       "has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getCeilDivExpr(lhs, rhs);
   case Mod:
     if (!rhs->isSymbolicOrConstant()) {
-      emitError("non-affine expression: right operand of mod "
-                "has to be either a constant or symbolic");
+      emitError(opLoc, "non-affine expression: right operand of mod "
+                       "has to be either a constant or symbolic");
       return nullptr;
     }
     return builder.getModExpr(lhs, rhs);
@@ -809,29 +812,31 @@ AffineHighPrecOp AffineMapParser::consumeIfHighPrecOp() {
 /// All affine binary ops are left associative.
 /// Given llhs, returns (llhs llhsOp lhs) op rhs, or (lhs op rhs) if llhs is
 /// null. If no rhs can be found, returns (llhs llhsOp lhs) or lhs if llhs is
-/// null.
-AffineExpr *
-AffineMapParser::parseAffineHighPrecOpExpr(AffineExpr *llhs,
-                                           AffineHighPrecOp llhsOp) {
+/// null. llhsOpLoc is the location of the llhsOp token that will be used to
+/// report an error for non-conforming expressions.
+AffineExpr *AffineMapParser::parseAffineHighPrecOpExpr(AffineExpr *llhs,
+                                                       AffineHighPrecOp llhsOp,
+                                                       SMLoc llhsOpLoc) {
   AffineExpr *lhs = parseAffineOperandExpr(llhs);
   if (!lhs)
     return nullptr;
 
   // Found an LHS. Parse the remaining expression.
+  auto opLoc = getToken().getLoc();
   if (AffineHighPrecOp op = consumeIfHighPrecOp()) {
     if (llhs) {
-      AffineExpr *expr = getBinaryAffineOpExpr(llhsOp, llhs, lhs);
+      AffineExpr *expr = getBinaryAffineOpExpr(llhsOp, llhs, lhs, opLoc);
       if (!expr)
         return nullptr;
-      return parseAffineHighPrecOpExpr(expr, op);
+      return parseAffineHighPrecOpExpr(expr, op, opLoc);
     }
     // No LLHS, get RHS
-    return parseAffineHighPrecOpExpr(lhs, op);
+    return parseAffineHighPrecOpExpr(lhs, op, opLoc);
   }
 
   // This is the last operand in this expression.
   if (llhs)
-    return getBinaryAffineOpExpr(llhsOp, llhs, lhs);
+    return getBinaryAffineOpExpr(llhsOp, llhs, lhs, llhsOpLoc);
 
   // No llhs, 'lhs' itself is the expression.
   return lhs;
@@ -989,10 +994,11 @@ AffineExpr *AffineMapParser::parseAffineLowPrecOpExpr(AffineExpr *llhs,
     // No LLHS, get RHS and form the expression.
     return parseAffineLowPrecOpExpr(lhs, lOp);
   }
+  auto opLoc = getToken().getLoc();
   if (AffineHighPrecOp hOp = consumeIfHighPrecOp()) {
     // We have a higher precedence op here. Get the rhs operand for the llhs
     // through parseAffineHighPrecOpExpr.
-    AffineExpr *highRes = parseAffineHighPrecOpExpr(lhs, hOp);
+    AffineExpr *highRes = parseAffineHighPrecOpExpr(lhs, hOp, opLoc);
     if (!highRes)
       return nullptr;
 
