@@ -3517,7 +3517,6 @@ inline bool Reduce(const In* input_data, const int* input_dims,
                    Out reducer(const Out current, const In in),
                    Out* output_data) {
   // Reset input iterator.
-  TFLITE_DCHECK(input_num_dims > 0);
   for (int idx = 0; idx < input_num_dims; ++idx) {
     input_iter[idx] = 0;
   }
@@ -3537,6 +3536,10 @@ inline bool ResolveAxis(const int num_dims, const int* axis,
                         const int64_t num_axis, int* out_axis,
                         int* out_num_axis) {
   *out_num_axis = 0;  // Just in case.
+  // Short-circuit axis resolution for scalars; the axis will go unused.
+  if (num_dims == 0) {
+    return true;
+  }
   // o(n^2) is fine since out_num_axis should be really small, mostly <= 4
   for (int64_t idx = 0; idx < num_axis; ++idx) {
     // Handle negative index.
