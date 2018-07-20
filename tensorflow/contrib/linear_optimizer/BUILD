@@ -43,7 +43,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
-        "no_windows_gpu"
+        "no_windows_gpu",
     ],
     deps = [
         ":sdca_ops_py",
