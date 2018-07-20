@@ -66,11 +66,13 @@ for ARG in "$@"; do
   fi
 done
 
-if [[ "$release_build" != 1 ]]; then
+if [[ "$release_build" == 1 ]]; then
   # Overriding eigen strong inline speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
   # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
   # Because this hurts the performance of TF, we don't override it in release build.
   export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
+else
+  export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
