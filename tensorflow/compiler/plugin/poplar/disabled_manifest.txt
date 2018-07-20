@@ -31,4 +31,4 @@ RandomOpsTest.testTruncatedNormalIsNotConstant # T3760
 RandomOpsTest.testShuffle1d # Need to implement 'sort'
 MatrixBandPartTest  # Too slow
 UnaryOpsTest.testAllTypeOps # Need bitwise reductions
-QrOpTest # Assertion in reduction
+QrOpTest.testLarge2000x2000 # Assertion in reduction
