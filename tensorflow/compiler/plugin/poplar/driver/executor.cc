@@ -301,11 +301,6 @@ Status PoplarExecutor::ConfigurePoplarDevice(
             if (d.attach()) {
               poplar_device_ = d;
 
-              // Temporary fix to prevent many long compilation times
-              if (tiles_per_ipu == 0) {
-                tiles_per_ipu = 8;
-              }
-
               if (tiles_per_ipu > 0) {
                 poplar_device_ =
                   poplar_device_.createVirtualDevice(tiles_per_ipu);
