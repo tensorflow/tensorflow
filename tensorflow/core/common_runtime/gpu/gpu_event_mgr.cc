@@ -15,10 +15,79 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+
+namespace {
+// The EventMgr has 1 thread for the polling loop and one to execute
+// event callback functions. Issues for reconsideration:
+//  - Is this the right number of threads?
+//  - Should EventMgrs be shared between GPUDevices on a multi-GPU machine?
+static const int kNumThreads = 2;
+}  // namespace
+
+namespace gpu_event_mgr {
+class ThreadLabel {
+ public:
+  static const char* GetValue() { return value_; }
+
+  // v must be a static const because value_ will capture and use its value
+  // until reset or thread terminates.
+  static void SetValue(const char* v) { value_ = v; }
+
+ private:
+  static thread_local const char* value_;
+};
+thread_local const char* ThreadLabel::value_ = "";
+
+void WarnIfInCallback(std::function<void()> f) {
+  const char* label = ThreadLabel::GetValue();
+  if (label && !strcmp(label, "gpu_event_mgr")) {
+    if (f) {
+      f();
+    } else {
+      LOG(WARNING) << "Executing inside EventMgr callback thread: "
+                   << CurrentStackTrace();
+    }
+  }
+}
+
+void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
+  static const char* label = "gpu_event_mgr";
+  mutex mu;
+  int init_count = 0;
+  condition_variable all_initialized;
+  int exit_count = 0;
+  condition_variable ready_to_exit;
+  const int num_threads = threadpool->NumThreads();
+  for (int i = 0; i < num_threads; ++i) {
+    threadpool->Schedule([num_threads, &mu, &init_count, &all_initialized,
+                          &exit_count, &ready_to_exit]() {
+      gpu_event_mgr::ThreadLabel::SetValue(label);
+      mutex_lock l(mu);
+      ++init_count;
+      if (init_count == num_threads) {
+        all_initialized.notify_all();
+      }
+      while (init_count < num_threads) {
+        all_initialized.wait(l);
+      }
+      if (++exit_count == num_threads) {
+        ready_to_exit.notify_all();
+      }
+    });
+  }
+  {
+    mutex_lock l(mu);
+    while (exit_count < num_threads) {
+      ready_to_exit.wait(l);
+    }
+  }
+}
+}  // namespace gpu_event_mgr
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
@@ -31,9 +100,8 @@ EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
       accumulated_stream_(nullptr),
       accumulated_tensors_(new TensorReferenceVector),
       accumulated_tensor_bytes_(0),
-      // threadpool_ has 1 thread for the polling loop, and one to execute
-      // event callback functions. Maybe we should have more?
-      threadpool_(Env::Default(), "GPU_Event_Manager", 2) {
+      threadpool_(Env::Default(), "GPU_Event_Manager", kNumThreads) {
+  gpu_event_mgr::InitThreadpoolLabels(&threadpool_);
   StartPollingLoop();
 }
 
