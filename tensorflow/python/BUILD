@@ -745,8 +745,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":framework_ops",
         ":function",
-        ":op_def_registry",
         ":tensor_shape",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -762,8 +762,10 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":constant_op",
         ":dtypes",
         ":framework_ops",
+        ":function",
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
