@@ -883,6 +883,16 @@ cc_library(
     copts = tf_copts(),
 )
 
+tf_cc_test(
+    name = "stats_calculator_test",
+    srcs = ["util/stats_calculator_test.cc"],
+    deps = [
+        ":stats_calculator_portable",
+        ":test",
+        ":test_main",
+    ],
+)
+
 cc_library(
     name = "overflow",
     hdrs = ["util/overflow.h"],
