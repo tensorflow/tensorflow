@@ -44,8 +44,6 @@ public:
   static bool classof(const StmtBlock *block) {
     return block->getStmtBlockKind() == StmtBlockKind::MLFunc;
   }
-
-  void print(raw_ostream &os) const;
 };
 
 } // end namespace mlir

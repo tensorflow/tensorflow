@@ -105,8 +105,6 @@ public:
     return expr->getKind() <= Kind::LAST_AFFINE_BINARY_OP;
   }
 
-  void print(raw_ostream &os) const;
-
 protected:
   explicit AffineBinaryOpExpr(Kind kind, AffineExpr *lhs, AffineExpr *rhs);
 
@@ -143,7 +141,6 @@ public:
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::DimId;
   }
-  void print(raw_ostream &os) const;
 
 private:
   explicit AffineDimExpr(unsigned position)
@@ -168,7 +165,6 @@ public:
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::SymbolId;
   }
-  void print(raw_ostream &os) const;
 
 private:
   explicit AffineSymbolExpr(unsigned position)
@@ -189,7 +185,6 @@ public:
   static bool classof(const AffineExpr *expr) {
     return expr->getKind() == Kind::Constant;
   }
-  void print(raw_ostream &os) const;
 
 private:
   explicit AffineConstantExpr(int64_t constant)

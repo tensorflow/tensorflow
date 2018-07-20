@@ -74,8 +74,6 @@ public:
   static bool classof(const Function *func) {
     return func->getKind() == Kind::ExtFunc;
   }
-
-  void print(raw_ostream &os) const;
 };
 
 
