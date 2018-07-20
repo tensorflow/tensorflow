@@ -54,7 +54,16 @@ class XlaOp {
   }
   ~XlaOp() = default;
 
-  XlaBuilder* builder() const { return builder_; }
+  // Precondition: !IsUninitialized().
+  //
+  // It's very common to do foo.builder()->bar().  Without this precondition, if
+  // foo.builder() is null, the call to bar will segfault at some point possibly
+  // deep in the callstack when we finally dereference `this`.  The precondition
+  // lets us avoid this tricky-to-debug problem.
+  XlaBuilder* builder() const {
+    CHECK(builder_ != nullptr);
+    return builder_;
+  }
 
   // Returns true if the XlaOp represents valid, non-erroneous value.
   bool valid() const { return handle_ >= 0; }
