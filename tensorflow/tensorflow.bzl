@@ -137,6 +137,14 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+# Config setting selector used when building for products
+# which requires restricted licenses to be avoided.
+def if_not_lgpl_restricted(a):
+  _ = (a,)
+  return select({
+      "//conditions:default": [],
+  })
+
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
