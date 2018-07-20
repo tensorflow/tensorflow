@@ -3243,6 +3243,40 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
     return false;
   }
 
+  // Each of our shared memory tiles has 32*33 elements (so ~4kb, if the
+  // elements are of size 4 bytes), and CUDA has an architectural limit of 48kb
+  // shared memory per SM.  (This is increased to 96kb in Volta, but we don't
+  // use this, in part because it eats into our L1 cache space.)
+  //
+  // For correctness we need to ensure that we don't make more than 48kb worth
+  // of shmem tiles per block.  And for performance, we'd probably like to use
+  // significantly less, so that we can fit more than one block at a time on a
+  // gpu core.
+  //
+  // We say without benchmarks that we want at least 3 threads/block,
+  // corresponding to 3 shmem tiles if the elements are 32 bits wide.  We choose
+  // which params get the shmem transpose treatment arbitrarily; it's not clear
+  // if there's a Right Choice.
+  //
+  // This is only sound if tiled transposes are the only place where we use
+  // shared memory in fusions.  If in the future other fusile ops use shared
+  // memory, we'll have to adjust this heuristic.
+  constexpr int kMinBlocksPerCore = 3;
+  constexpr int64 kShmemPerCore = 48 * 1024;
+  int64 shmem_used = 0;
+  for (int64 i = 0; i < params_012.size(); ++i) {
+    const HloInstruction* operand = hlo->operand(params_012[i]);
+    shmem_used +=
+        32 * 33 *
+        ShapeUtil::ByteSizeOfPrimitiveType(operand->shape().element_type());
+
+    if (kMinBlocksPerCore * shmem_used > kShmemPerCore) {
+      // Erase this element and everything after it from params_012.
+      params_012.resize(i);
+      break;
+    }
+  }
+
   VLOG(3) << "EmitHlo021Tile Emitting hlo tile 0-2-1" << hlo->ToString();
   thunk_sequence_->emplace_back(
       BuildKernelThunk(hlo, /*implements_whole_instruction=*/true));
