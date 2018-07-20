@@ -6,7 +6,7 @@ This instruction provides a starting point for build TensorFlow ROCm port from s
 
 ## Install ROCm
 
-Follow steps at [Basic Installation](https://github.com/ROCmSoftwarePlatform/tensorflow/blob/rocm-v1/rocm_docs/tensorflow-install-basic.md#install-rocm) to install ROCm stack.
+Follow steps at [Basic Installation](https://github.com/ROCmSoftwarePlatform/tensorflow-upstream/blob/develop-upstream/rocm_docs/tensorflow-install-basic.md#install-rocm) to install ROCm stack.
 
 Setup environment variables, and add those environment variables at the end of ~/.bashrc 
 ```
@@ -59,7 +59,7 @@ sudo bash ~/bazel*.sh
 ## Build TensorFlow ROCm port
 ```
 # Clone it
-cd ~ && git clone https://github.com/ROCmSoftwarePlatform/tensorflow.git
+cd ~ && git clone -b r1.8-rocm https://github.com/ROCmSoftwarePlatform/tensorflow-upstream.git
 
 # Configure TensorFlow ROCm port
 # Enter all the way
