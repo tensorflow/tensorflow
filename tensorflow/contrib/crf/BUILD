@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
 
 py_library(
     name = "crf_py",
@@ -26,7 +26,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "crf_test",
     srcs = ["python/kernel_tests/crf_test.py"],
     additional_deps = [

@@ -4,7 +4,7 @@ package(
     ],
 )
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -83,7 +83,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
     additional_deps = [
@@ -112,7 +112,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "gradients_test",
     size = "large",
     srcs = ["gradients_test.py"],

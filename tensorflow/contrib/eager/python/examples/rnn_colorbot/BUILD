@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_binary(
     name = "rnn_colorbot",
@@ -16,7 +16,7 @@ py_binary(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "rnn_colorbot_test",
     srcs = ["rnn_colorbot_test.py"],
     additional_deps = [

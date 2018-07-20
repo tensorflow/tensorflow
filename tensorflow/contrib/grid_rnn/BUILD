@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
 
 py_library(
     name = "grid_rnn_py",
@@ -25,7 +25,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "grid_rnn_test",
     srcs = ["python/kernel_tests/grid_rnn_test.py"],
     additional_deps = [

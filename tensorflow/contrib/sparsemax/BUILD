@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -36,7 +36,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "sparsemax_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparsemax_test.py"],
@@ -51,7 +51,7 @@ cuda_py_tests(
     ],
 )
 
-cuda_py_tests(
+gpu_py_tests(
     name = "sparsemax_loss_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparsemax_loss_test.py"],

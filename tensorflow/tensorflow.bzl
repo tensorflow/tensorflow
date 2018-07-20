@@ -4,7 +4,7 @@
 # Uses the ":optmode" config_setting to pick the options.
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
     "tf_sycl_tests_tags",
     "tf_additional_grpc_deps_py",
     "tf_additional_xla_deps_py",
@@ -731,7 +731,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_cc_test(name,
+def tf_gpu_cc_test(name,
                     srcs=[],
                     deps=[],
                     tags=[],
@@ -766,7 +766,7 @@ def tf_cuda_cc_test(name,
           "@local_config_cuda//cuda:using_clang": 1,
           "//conditions:default": 0,
       }),
-      tags=tags + tf_cuda_tests_tags(),
+      tags=tags + tf_gpu_tests_tags(),
       data=data,
       size=size,
       extra_copts=extra_copts,
@@ -774,11 +774,11 @@ def tf_cuda_cc_test(name,
       args=args)
 
 register_extension_info(
-    extension_name = "tf_cuda_cc_test",
+    extension_name = "tf_gpu_cc_test",
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_only_cc_test(name,
+def tf_gpu_only_cc_test(name,
                     srcs=[],
                     deps=[],
                     tags=[],
@@ -805,10 +805,10 @@ def tf_cuda_only_cc_test(name,
           clean_dep("//tensorflow:darwin"): 1,
           "//conditions:default": 0,
       }),
-      tags=tags + tf_cuda_tests_tags())
+      tags=tags + tf_gpu_tests_tags())
 
 register_extension_info(
-    extension_name = "tf_cuda_only_cc_test",
+    extension_name = "tf_gpu_only_cc_test",
     label_regex_for_dep = "{extension_name}_gpu",
 )
 
@@ -882,7 +882,7 @@ def tf_cc_tests_gpu(srcs,
                     args=None):
   tf_cc_tests(srcs, deps, linkstatic, tags=tags, size=size, args=args)
 
-def tf_cuda_cc_tests(srcs,
+def tf_gpu_cc_tests(srcs,
                      deps,
                      name="",
                      tags=[],
@@ -891,7 +891,7 @@ def tf_cuda_cc_tests(srcs,
                      args=None,
                      linkopts=[]):
   for src in srcs:
-    tf_cuda_cc_test(
+    tf_gpu_cc_test(
         name=src_to_test_name(src),
         srcs=[src],
         deps=deps,
@@ -966,7 +966,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
+def tf_gpu_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
   """Generate a cc_library with a conditional set of CUDA dependencies.
 
   When the library is built with --config=cuda:
@@ -1000,7 +1000,7 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
       **kwargs)
 
 register_extension_info(
-    extension_name = "tf_cuda_library",
+    extension_name = "tf_gpu_library",
     label_regex_for_dep = "{extension_name}",
 )
 
@@ -1017,7 +1017,7 @@ def tf_kernel_library(
         **kwargs):
   """A rule to build a TensorFlow OpKernel.
 
-  May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
+  May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
   but with alwayslink=1 by default.  If prefix is specified:
     * prefix*.cc (except *.cu.cc) is added to srcs
     * prefix*.h (except *.cu.h) is added to hdrs
@@ -1071,7 +1071,7 @@ def tf_kernel_library(
     tf_gpu_kernel_library(
         name=name + "_gpu", srcs=gpu_srcs, deps=deps, **kwargs)
     cuda_deps.extend([":" + name + "_gpu"])
-  tf_cuda_library(
+  tf_gpu_library(
       name=name,
       srcs=srcs,
       hdrs=hdrs,
@@ -1591,7 +1591,7 @@ register_extension_info(
     label_regex_map = {"additional_deps": "deps:{extension_name}"},
 )
 
-def cuda_py_test(name,
+def gpu_py_test(name,
                  srcs,
                  size="medium",
                  data=[],
@@ -1603,7 +1603,7 @@ def cuda_py_test(name,
                  flaky=0,
                  xla_enabled=False,
                  grpc_enabled=False):
-  test_tags = tags + tf_cuda_tests_tags()
+  test_tags = tags + tf_gpu_tests_tags()
   tf_py_test(
       name=name,
       size=size,
@@ -1619,7 +1619,7 @@ def cuda_py_test(name,
       grpc_enabled=grpc_enabled)
 
 register_extension_info(
-    extension_name = "cuda_py_test",
+    extension_name = "gpu_py_test",
     label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
 )
 
@@ -1681,7 +1681,7 @@ def py_tests(name,
         xla_enabled=xla_enabled,
         grpc_enabled=grpc_enabled)
 
-def cuda_py_tests(name,
+def gpu_py_tests(name,
                   srcs,
                   size="medium",
                   additional_deps=[],
@@ -1691,7 +1691,7 @@ def cuda_py_tests(name,
                   prefix="",
                   xla_enabled=False,
                   grpc_enabled=False):
-  test_tags = tags + tf_cuda_tests_tags()
+  test_tags = tags + tf_gpu_tests_tags()
   py_tests(
       name=name,
       size=size,

@@ -18,7 +18,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -109,7 +109,7 @@ tf_gen_op_wrapper_py(
     deps = [":fused_conv2d_bias_activation_op_op_lib"],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "fused_conv2d_bias_activation_op_test",
     size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_op_test.py"],
@@ -135,7 +135,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "fused_conv2d_bias_activation_benchmark",
     size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_benchmark.py"],

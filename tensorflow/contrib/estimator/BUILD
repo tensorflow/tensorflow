@@ -7,7 +7,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 py_library(
     name = "estimator_py",
@@ -382,7 +382,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "replicate_model_fn_test",
     size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],

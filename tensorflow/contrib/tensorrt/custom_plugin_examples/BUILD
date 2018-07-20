@@ -16,7 +16,7 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -98,7 +98,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "plugin_test",
     size = "small",
     srcs = ["plugin_test.py"],

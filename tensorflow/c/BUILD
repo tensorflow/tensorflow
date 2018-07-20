@@ -6,9 +6,9 @@ licenses(["notice"])  # Apache 2.0
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_cuda_cc_test",
+    "tf_gpu_cc_test",
     "tf_copts",
-    "tf_cuda_library",
+    "tf_gpu_library",
     "tf_custom_op_library",
 )
 
@@ -42,7 +42,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
     hdrs = ["c_api_internal.h"],
@@ -63,7 +63,7 @@ tf_cuda_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "c_api",
     srcs = [
         "c_api.cc",
@@ -104,7 +104,7 @@ tf_cuda_library(
     }),
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
@@ -135,7 +135,7 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "tf_status_helper",
     srcs = ["tf_status_helper.cc"],
     hdrs = ["tf_status_helper.h"],
@@ -147,7 +147,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+tf_gpu_library(
     name = "checkpoint_reader",
     srcs = ["checkpoint_reader.cc"],
     hdrs = ["checkpoint_reader.h"],
@@ -163,7 +163,7 @@ tf_cuda_library(
 # -----------------------------------------------------------------------------
 # Tests
 
-tf_cuda_library(
+tf_gpu_library(
     name = "c_test_util",
     testonly = 1,
     srcs = ["c_test_util.cc"],
@@ -182,7 +182,7 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_cc_test(
+tf_gpu_cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
@@ -276,7 +276,7 @@ tf_custom_op_library(
 # -----------------------------------------------------------------------------
 # Python API target
 
-tf_cuda_library(
+tf_gpu_library(
     name = "python_api",
     srcs = ["python_api.cc"],
     hdrs = ["python_api.h"],

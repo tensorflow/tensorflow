@@ -7,11 +7,11 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "sycl_py_test")
 
-# CPU only tests should use tf_py_test, GPU tests use cuda_py_test
-# Please avoid the py_tests and cuda_py_tests (plural) while we
+# CPU only tests should use tf_py_test, GPU tests use gpu_py_test
+# Please avoid the py_tests and gpu_py_tests (plural) while we
 # fix the shared/overbroad dependencies.
 
 tf_py_test(
@@ -29,7 +29,7 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "multinomial_op_test",
     size = "small",
     srcs = ["multinomial_op_test.py"],
@@ -47,7 +47,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "multinomial_op_big_test",
     size = "medium",
     srcs = ["multinomial_op_big_test.py"],
@@ -66,7 +66,7 @@ cuda_py_test(
     shard_count = 3,
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "random_crop_test",
     size = "small",
     srcs = ["random_crop_test.py"],
@@ -77,7 +77,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "random_ops_test",
     size = "medium",
     srcs = ["random_ops_test.py"],
@@ -90,7 +90,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "random_gamma_test",
     size = "medium",
     srcs = ["random_gamma_test.py"],
@@ -107,7 +107,7 @@ cuda_py_test(
     tags = ["nozapfhahn"],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "random_grad_test",
     size = "small",
     srcs = ["random_grad_test.py"],
@@ -124,7 +124,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "random_poisson_test",
     size = "medium",
     srcs = ["random_poisson_test.py"],

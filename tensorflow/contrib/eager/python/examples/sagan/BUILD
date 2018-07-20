@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 
 # Model
 py_library(
@@ -34,7 +34,7 @@ py_library(
 )
 
 # Tests
-cuda_py_test(
+gpu_py_test(
     name = "ops_test",
     size = "small",
     srcs = ["ops_test.py"],
@@ -44,7 +44,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "sagan_test",
     size = "large",
     srcs = ["sagan_test.py"],

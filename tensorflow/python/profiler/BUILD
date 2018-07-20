@@ -2,7 +2,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "gpu_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
@@ -43,7 +43,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
     additional_deps = [
@@ -63,7 +63,7 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
     additional_deps = [
@@ -117,7 +117,7 @@ py_library(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "profile_context_test",
     srcs = ["profile_context_test.py"],
     additional_deps = [
