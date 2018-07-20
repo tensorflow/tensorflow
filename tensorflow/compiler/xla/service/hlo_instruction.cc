@@ -463,6 +463,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   return MakeUnique<HloConstantInstruction>(std::move(literal));
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
+    const Shape& shape) {
+  return WrapUnique(new HloInstruction(HloOpcode::kIota, shape));
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64 index) {
@@ -1119,6 +1124,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
     case HloOpcode::kGather:
+    case HloOpcode::kIota:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1556,6 +1562,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
+    case HloOpcode::kIota:
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
@@ -1576,6 +1583,7 @@ bool HloInstruction::IdenticalSlowPath(
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
+  return false;
 }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
@@ -2300,6 +2308,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleDomain(this);
     case HloOpcode::kAfterAll:
       return visitor->HandleAfterAll(this);
+    case HloOpcode::kIota:
+      return visitor->HandleIota(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

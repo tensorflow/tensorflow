@@ -784,6 +784,11 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
       "to a cudnn CustomCall using CudnnBatchNormRewriter.");
 }
 
+Status IrEmitter::HandleIota(HloInstruction*) {
+  // TODO(b/64798317): implement iota on GPU.
+  return Unimplemented("Iota is not implemented on GPU.");
+}
+
 StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(
     const HloComputation& computation,
     tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements) {
