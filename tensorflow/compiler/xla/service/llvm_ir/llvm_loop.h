@@ -79,7 +79,7 @@ class ForLoop {
   //  loop.
   static std::unique_ptr<ForLoop> EmitForLoop(
       tensorflow::StringPiece prefix, llvm::Value* start_index,
-      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* ir_builder,
+      llvm::Value* end_index, llvm::Value* step, llvm::IRBuilder<>* b,
       UnrollMode unroll_mode = llvm_ir::UnrollMode::kDefaultUnroll,
       bool prevent_vectorization = false);
 
@@ -138,10 +138,10 @@ class ForLoop {
           UnrollMode unroll_mode, bool prevent_vectorization);
 
   // Emit the loop at the insert point of the builder.
-  void Emit(llvm::IRBuilder<>* ir_builder);
+  void Emit(llvm::IRBuilder<>* b);
 
   llvm::BasicBlock* CreateLoopBB(tensorflow::StringPiece name,
-                                 llvm::IRBuilder<>* ir_builder);
+                                 llvm::IRBuilder<>* b);
 
   // Creates a name for an LLVM construct, appending prefix_ and suffix_, if
   // they are set.
@@ -149,7 +149,7 @@ class ForLoop {
 
   // Return a list of metadata nodes that should be associated with the
   // llvm::Loop for this `ForLoop`.
-  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* ir_builder);
+  std::vector<llvm::Metadata*> GetLoopMetadata(llvm::IRBuilder<>* b);
 
   string prefix_;
   string suffix_;
@@ -177,19 +177,18 @@ class ForLoop {
 // A simple class for constructing nested for-loops.
 class ForLoopNest {
  public:
-  explicit ForLoopNest(llvm::IRBuilder<>* ir_builder,
-                       llvm::Type* index_ty = nullptr)
-      : ForLoopNest(/*name=*/"", ir_builder) {
+  explicit ForLoopNest(llvm::IRBuilder<>* b, llvm::Type* index_ty = nullptr)
+      : ForLoopNest(/*name=*/"", b) {
     SetIndexType(index_ty);
   }
 
-  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder,
+  ForLoopNest(tensorflow::StringPiece name, llvm::IRBuilder<>* b,
               llvm::Type* index_ty = nullptr)
       : name_(std::string(name)),
         outer_loop_preheader_bb_(nullptr),
         outer_loop_exit_bb_(nullptr),
         inner_loop_body_bb_(nullptr),
-        ir_builder_(ir_builder) {
+        b_(b) {
     SetIndexType(index_ty);
   }
 
@@ -270,7 +269,7 @@ class ForLoopNest {
 
  private:
   void SetIndexType(llvm::Type* index_ty) {
-    index_type_ = index_ty == nullptr ? ir_builder_->getInt64Ty() : index_ty;
+    index_type_ = index_ty == nullptr ? b_->getInt64Ty() : index_ty;
   }
 
   llvm::Constant* GetConstantWithIndexType(int64 c) const {
@@ -289,7 +288,7 @@ class ForLoopNest {
   // has been added yet.
   llvm::BasicBlock* inner_loop_body_bb_;
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
 
   llvm::Type* index_type_;
 

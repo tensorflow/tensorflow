@@ -40,14 +40,14 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const ElementGenerator& start_indices_generator,
     bool is_signed, ElementGenerator update_array_generator,
     const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
-    tensorflow::StringPiece name, llvm::IRBuilder<>* ir_builder) {
+    tensorflow::StringPiece name, llvm::IRBuilder<>* b) {
   const Shape& output_shape = output_array.GetShape();
 
   // Read start indices from start_indices_generator.
   const int64 rank = ShapeUtil::Rank(output_shape);
-  IrArray::Index start_index(ir_builder->getInt64Ty(), rank);
+  IrArray::Index start_index(b->getInt64Ty(), rank);
   for (int64 i = 0; i < rank; ++i) {
-    IrArray::Index dim_index({ir_builder->getInt64(i)});
+    IrArray::Index dim_index({b->getInt64(i)});
     TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(dim_index));
     llvm::Value* output_dim_size = llvm::ConstantInt::get(
         start_index[i]->getType(), output_shape.dimensions(i));
@@ -60,20 +60,19 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     // TODO(b/74360564): This is implementation defined behavior, but is
     // currently respected by all implementations. Change this if we ever decide
     // to officially document different behavior.
-    llvm::Value* max_bound =
-        ir_builder->CreateSub(output_dim_size, update_dim_size);
+    llvm::Value* max_bound = b->CreateSub(output_dim_size, update_dim_size);
     llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
-    start_index[i] = ir_builder->CreateSelect(
-        ir_builder->CreateICmp(
-            is_signed ? llvm::ICmpInst::ICMP_SGE : llvm::ICmpInst::ICMP_UGE,
-            zero, start_index[i]),
-        zero, start_index[i]);
+    start_index[i] =
+        b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
+                                                : llvm::ICmpInst::ICMP_UGE,
+                                      zero, start_index[i]),
+                        zero, start_index[i]);
 
-    start_index[i] = ir_builder->CreateSelect(
-        ir_builder->CreateICmp(
-            is_signed ? llvm::ICmpInst::ICMP_SLE : llvm::ICmpInst::ICMP_ULE,
-            max_bound, start_index[i]),
-        max_bound, start_index[i]);
+    start_index[i] =
+        b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
+                                                : llvm::ICmpInst::ICMP_ULE,
+                                      max_bound, start_index[i]),
+                        max_bound, start_index[i]);
   }
 
   auto loop_body_emitter = [&](const IrArray::Index& update_index) -> Status {
@@ -84,31 +83,30 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     //
     IrArray::Index output_index(start_index.GetType(), rank);
     for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* start_index0 = ir_builder->CreateSExtOrBitCast(
-          start_index[i], update_index[i]->getType());
-      output_index[i] = ir_builder->CreateAdd(start_index0, update_index[i]);
+      llvm::Value* start_index0 =
+          b->CreateSExtOrBitCast(start_index[i], update_index[i]->getType());
+      output_index[i] = b->CreateAdd(start_index0, update_index[i]);
     }
 
     // Do output[output_index] = update[update_index].
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
-    output_array.EmitWriteArrayElement(output_index, update_data, ir_builder);
+    output_array.EmitWriteArrayElement(output_index, update_data, b);
     return Status::OK();
   };
 
   if (launch_dimensions != nullptr) {
     return gpu::ParallelLoopEmitter(loop_body_emitter, update_shape,
-                                    *launch_dimensions, ir_builder)
+                                    *launch_dimensions, b)
         .EmitLoop(name);
   }
-  return LoopEmitter(loop_body_emitter, update_shape, ir_builder)
-      .EmitLoop(name);
+  return LoopEmitter(loop_body_emitter, update_shape, b).EmitLoop(name);
 }
 
 Status EmitDynamicUpdateSliceInPlace(
     tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
     const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* ir_builder) {
+    llvm::IRBuilder<>* b) {
   VLOG(2) << "EmitDynamicUpdateSliceInPlace for " << name;
 
   // No need to use operand_arrays[0], the input array of the
@@ -119,16 +117,16 @@ Status EmitDynamicUpdateSliceInPlace(
   Shape update_shape = update_array.GetShape();
 
   ElementGenerator start_indices_generator = [&](const IrArray::Index& index) {
-    return start_indices_array.EmitReadArrayElement(index, ir_builder);
+    return start_indices_array.EmitReadArrayElement(index, b);
   };
   ElementGenerator update_array_generator = [&](const IrArray::Index& index) {
-    return update_array.EmitReadArrayElement(index, ir_builder);
+    return update_array.EmitReadArrayElement(index, b);
   };
 
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices_array.GetShape());
   return EmitDynamicUpdateSliceInPlaceImpl(
       update_shape, start_indices_generator, is_signed, update_array_generator,
-      output_array, /*launch_dimensions=*/nullptr, name, ir_builder);
+      output_array, /*launch_dimensions=*/nullptr, name, b);
 }
 
 // Shared implementation for EmitFusedDynamicUpdateSliceInPlace and
@@ -139,8 +137,7 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    const gpu::LaunchDimensions* launch_dimensions,
-    llvm::IRBuilder<>* ir_builder) {
+    const gpu::LaunchDimensions* launch_dimensions, llvm::IRBuilder<>* b) {
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
   VLOG(2) << "EmitFusedDynamicUpdateSliceInPlace for "
           << fusion->ToShortString();
@@ -177,28 +174,27 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
   return EmitDynamicUpdateSliceInPlaceImpl(
       update_shape, start_indices_generator, is_signed, update_array_generator,
-      fusion_output_array, launch_dimensions, IrName(fusion), ir_builder);
+      fusion_output_array, launch_dimensions, IrName(fusion), b);
 }
 
 Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    llvm::IRBuilder<>* ir_builder) {
+    llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
       fusion, fusion_operand_arrays, fusion_output_array, elemental_emitter,
-      /*launch_dimensions=*/nullptr, ir_builder);
+      /*launch_dimensions=*/nullptr, b);
 }
 
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    const gpu::LaunchDimensions& launch_dimensions,
-    llvm::IRBuilder<>* ir_builder) {
+    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
       fusion, fusion_operand_arrays, fusion_output_array, elemental_emitter,
-      &launch_dimensions, ir_builder);
+      &launch_dimensions, b);
 }
 
 }  // namespace llvm_ir

@@ -94,24 +94,24 @@ tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(
 IrArray::Index GetUnreducedOutputIndex(
     const IrArray::Index& reduced_output_index,
     const Shape& reduced_output_shape, const Shape& unreduced_output_shape,
-    llvm::IRBuilder<>* ir_builder) {
+    llvm::IRBuilder<>* b) {
   auto bounds = reduced_output_shape.dimensions();
   auto minor_to_major = reduced_output_shape.layout().minor_to_major();
   llvm::Value* linear_index = reduced_output_index.GetConstantWithIndexType(0);
   int64 multiplier = 1;
   for (int i = 0; i < reduced_output_index.size(); ++i) {
     int64 dim = minor_to_major[i];
-    llvm::Value* addend = ir_builder->CreateMul(
-        reduced_output_index[dim],
-        reduced_output_index.GetConstantWithIndexType(multiplier),
-        "linearizing",
-        /*HasNUW=*/true, /*HasNSW=*/true);
-    linear_index = ir_builder->CreateAdd(linear_index, addend, "",
-                                         /*HasNUW=*/true, /*HasNSW=*/true);
+    llvm::Value* addend =
+        b->CreateMul(reduced_output_index[dim],
+                     reduced_output_index.GetConstantWithIndexType(multiplier),
+                     "linearizing",
+                     /*HasNUW=*/true, /*HasNSW=*/true);
+    linear_index = b->CreateAdd(linear_index, addend, "",
+                                /*HasNUW=*/true, /*HasNSW=*/true);
     multiplier *= bounds[dim];
   }
 
-  return IrArray::Index(linear_index, unreduced_output_shape, ir_builder);
+  return IrArray::Index(linear_index, unreduced_output_shape, b);
 }
 
 }  // namespace llvm_ir
