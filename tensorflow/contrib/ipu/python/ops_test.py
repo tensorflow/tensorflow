@@ -30,7 +30,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     summary = ipu.ops.ipu_compile_summary('comp', out)
 
-    cfg = ipu.utils.create_ipu_config(True)
+    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       fd = {
         a: [1.0],
@@ -61,7 +61,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     events = gen_ipu_ops.ipu_event_trace()
 
-    cfg = ipu.utils.create_ipu_config(True)
+    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Discard any existing events
       sess.run(events)
@@ -109,7 +109,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
     self.assertTrue("ResourceVariable" in str(type(c)))
     self.assertEqual(logits.device, "/device:IPU:0")
 
-    cfg = ipu.utils.create_ipu_config(True)
+    cfg = ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       # Initialize and then discard events relating to initialization
       sess.run(variables.global_variables_initializer())

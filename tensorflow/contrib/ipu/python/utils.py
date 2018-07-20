@@ -36,7 +36,7 @@ def create_ipu_config(profiling=False, num_ipus=None, tiles_per_ipu=None,
     of the ConfigProto session options.
 
     ```python
-    opts = create_ipu_config(True, 1, 64)
+    opts = create_ipu_config(profiling=True, num_ipus=1, tiles_per_ipu=64)
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
     ```

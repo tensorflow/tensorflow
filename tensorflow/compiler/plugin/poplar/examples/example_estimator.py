@@ -95,7 +95,7 @@ def main():
 
 
   # Create a run configuration using the IPU model device
-  opts = tf.contrib.ipu.utils.create_ipu_config(True)
+  opts = tf.contrib.ipu.utils.create_ipu_config(profiling=True, type='IPU_MODEL')
   sess_cfg = tf.ConfigProto(ipu_options=opts)
   run_cfg = tf.estimator.RunConfig(session_config=sess_cfg)
 
