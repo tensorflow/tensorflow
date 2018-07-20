@@ -28,6 +28,7 @@ py_library(
         ":multi_head",
         ":replicate_model_fn",
         ":rnn",
+        ":saved_model_estimator",
         "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
@@ -463,5 +464,45 @@ py_test(
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/estimator",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "saved_model_estimator",
+    srcs = ["python/estimator/saved_model_estimator.py"],
+    deps = [
+        ":export",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:export",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/saved_model",
+    ],
+)
+
+py_test(
+    name = "saved_model_estimator_test",
+    size = "medium",
+    srcs = ["python/estimator/saved_model_estimator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":export",
+        ":saved_model_estimator",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:export_export",
+        "//tensorflow/python/estimator:export_output",
+        "//tensorflow/python/estimator:model_fn",
     ],
 )
