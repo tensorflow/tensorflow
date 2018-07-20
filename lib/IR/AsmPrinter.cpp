@@ -38,6 +38,12 @@ void Identifier::print(raw_ostream &os) const { os << str(); }
 
 void Identifier::dump() const { print(llvm::errs()); }
 
+template <typename Container, typename UnaryFunctor>
+inline void interleaveComma(raw_ostream &os, const Container &c,
+                            UnaryFunctor each_fn) {
+  interleave(c.begin(), c.end(), each_fn, [&]() { os << ", "; });
+}
+
 //===----------------------------------------------------------------------===//
 // Module printing
 //===----------------------------------------------------------------------===//
@@ -222,9 +228,7 @@ void ModuleState::print(const Attribute *attr) const {
   case Attribute::Kind::Array: {
     auto elts = cast<ArrayAttr>(attr)->getValue();
     os << '[';
-    interleave(elts,
-                [&](Attribute *attr) { print(attr); },
-                [&]() { os << ", "; });
+    interleaveComma(os, elts, [&](Attribute *attr) { print(attr); });
     os << ']';
     break;
   }
@@ -260,16 +264,14 @@ void ModuleState::print(const Type *type) const {
   case Type::Kind::Function: {
     auto *func = cast<FunctionType>(type);
     os << '(';
-    interleave(func->getInputs(), [&](Type *type) { os << *type; },
-               [&]() { os << ", "; });
+    interleaveComma(os, func->getInputs(), [&](Type *type) { os << *type; });
     os << ") -> ";
     auto results = func->getResults();
     if (results.size() == 1)
       os << *results[0];
     else {
       os << '(';
-      interleave(results, [&](Type *type) { os << *type; },
-                 [&]() { os << ", "; });
+      interleaveComma(os, results, [&](Type *type) { os << *type; });
       os << ')';
     }
     return;
@@ -331,9 +333,8 @@ static void printFunctionSignature(const Function *fn,
   auto type = fn->getType();
 
   os << "@" << fn->getName() << '(';
-  interleave(type->getInputs(),
-             [&](Type *eltType) { moduleState->print(eltType); },
-             [&]() { os << ", "; });
+  interleaveComma(os, type->getInputs(),
+                  [&](Type *eltType) { moduleState->print(eltType); });
   os << ')';
 
   switch (type->getResults().size()) {
@@ -345,9 +346,8 @@ static void printFunctionSignature(const Function *fn,
     break;
   default:
     os << " -> (";
-    interleave(type->getResults(),
-               [&](Type *eltType) { moduleState->print(eltType); },
-               [&]() { os << ", "; });
+    interleaveComma(os, type->getResults(),
+                    [&](Type *eltType) { moduleState->print(eltType); });
     os << ')';
     break;
   }
@@ -374,6 +374,26 @@ protected:
   raw_ostream &os;
   const ModuleState *moduleState;
   const OperationSet &operationSet;
+
+  void numberValueID(const SSAValue *value) {
+    assert(!valueIDs.count(value) && "Value numbered multiple times");
+    valueIDs[value] = nextValueID++;
+  }
+
+  void printValueID(const SSAValue *value) const {
+    // TODO: If this is the result of an operation with multiple results, look
+    // up the first result, and print the #32 syntax.
+    auto it = valueIDs.find(value);
+    if (it != valueIDs.end())
+      os << '%' << it->getSecond();
+    else
+      os << "<<INVALID SSA VALUE>>";
+  }
+
+private:
+  /// This is the value ID for each SSA value in the current function.
+  DenseMap<const SSAValue *, unsigned> valueIDs;
+  unsigned nextValueID = 0;
 };
 }  // end anonymous namespace
 
@@ -384,32 +404,72 @@ FunctionState::FunctionState(MLIRContext *context,
       operationSet(OperationSet::get(context)) {}
 
 void FunctionState::printOperation(const Operation *op) {
+  os << "  ";
+
+  // TODO: When we have SSAValue version of operands & results wired into
+  // Operation this check can go away.
+  if (auto *inst = dyn_cast<OperationInst>(op)) {
+    if (inst->getNumResults()) {
+      printValueID(inst->getResult(0));
+      os << " = ";
+    }
+  }
+
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
   if (auto opInfo = operationSet.lookup(op->getName().str())) {
-    os << "  ";
     opInfo->printAssembly(op, os);
     return;
   }
 
+  // Otherwise use the standard verbose printing approach.
+
   // TODO: escape name if necessary.
-  os << "  \"" << op->getName().str() << "\"()";
+  os << "\"" << op->getName().str() << "\"(";
 
-  // FIXME: Print operand references.
+  // TODO: When we have SSAValue version of operands & results wired into
+  // Operation this check can go away.
+  if (auto *inst = dyn_cast<OperationInst>(op)) {
+    // TODO: Use getOperands() when we have it.
+    interleaveComma(
+        os, inst->getInstOperands(),
+        [&](const InstOperand &operand) { printValueID(operand.get()); });
+  }
 
+  os << ')';
   auto attrs = op->getAttrs();
   if (!attrs.empty()) {
     os << '{';
-    interleave(
-        attrs,
-        [&](NamedAttribute attr) {
-          os << attr.first << ": ";
-          moduleState->print(attr.second); },
-        [&]() { os << ", "; });
+    interleaveComma(os, attrs, [&](NamedAttribute attr) {
+      os << attr.first << ": ";
+      moduleState->print(attr.second);
+    });
     os << '}';
   }
 
-  // TODO: Print signature type once that is plumbed through to Operation.
+  // TODO: When we have SSAValue version of operands & results wired into
+  // Operation this check can go away.
+  if (auto *inst = dyn_cast<OperationInst>(op)) {
+    // Print the type signature of the operation.
+    os << " : (";
+    // TODO: Switch to getOperands() when we have it.
+    interleaveComma(os, inst->getInstOperands(), [&](const InstOperand &op) {
+      moduleState->print(op.get()->getType());
+    });
+    os << ") -> ";
+
+    // TODO: Switch to getResults() when we have it.
+    if (inst->getNumResults() == 1) {
+      moduleState->print(inst->getInstResult(0).getType());
+    } else {
+      os << '(';
+      interleaveComma(os, inst->getInstResults(),
+                      [&](const InstResult &result) {
+                        moduleState->print(result.getType());
+                      });
+      os << ')';
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -441,6 +501,8 @@ public:
 private:
   const CFGFunction *function;
   DenseMap<const BasicBlock *, unsigned> basicBlockIDs;
+
+  void numberBlock(const BasicBlock *block);
 };
 }  // end anonymous namespace
 
@@ -451,7 +513,23 @@ CFGFunctionState::CFGFunctionState(const CFGFunction *function,
       function(function) {
   // Each basic block gets a unique ID per function.
   unsigned blockID = 0;
-  for (auto &block : *function) basicBlockIDs[&block] = blockID++;
+  for (auto &block : *function) {
+    basicBlockIDs[&block] = blockID++;
+    numberBlock(&block);
+  }
+}
+
+/// Number all of the SSA values in the specified basic block.
+void CFGFunctionState::numberBlock(const BasicBlock *block) {
+  // TODO: basic block arguments.
+  for (auto &op : *block) {
+    // We number instruction that have results, and we only number the first
+    // result.
+    if (op.getNumResults() != 0)
+      numberValueID(op.getResult(0));
+  }
+
+  // Terminators do not define values.
 }
 
 void CFGFunctionState::print() {
@@ -489,29 +567,6 @@ void CFGFunctionState::print(const Instruction *inst) {
 
 void CFGFunctionState::print(const OperationInst *inst) {
   printOperation(inst);
-
-  // FIXME: Move this into printOperation when Operation has operands and
-  // results
-
-  // Print the type signature of the operation.
-  os << " : (";
-  interleave(
-      inst->getOperands(),
-      [&](const InstOperand &op) { moduleState->print(op.get()->getType()); },
-      [&]() { os << ", "; });
-  os << ") -> ";
-
-  auto resultList = inst->getResults();
-  if (resultList.size() == 1) {
-    moduleState->print(resultList[0].getType());
-  } else {
-    os << '(';
-    interleave(
-        resultList,
-        [&](const InstResult &result) { moduleState->print(result.getType()); },
-        [&]() { os << ", "; });
-    os << ')';
-  }
 }
 void CFGFunctionState::print(const BranchInst *inst) {
   os << "  br bb" << getBBID(inst->getDest());
@@ -753,8 +808,7 @@ void AffineMap::print(raw_ostream &os) const {
   assert(!getResults().empty());
   // Result affine expressions.
   os << " -> (";
-  interleave(getResults(), [&](AffineExpr *expr) { os << *expr; },
-             [&]() { os << ", "; });
+  interleaveComma(os, getResults(), [&](AffineExpr *expr) { os << *expr; });
   os << ")";
 
   if (!isBounded()) {
@@ -763,8 +817,7 @@ void AffineMap::print(raw_ostream &os) const {
 
   // Print range sizes for bounded affine maps.
   os << " size (";
-  interleave(getRangeSizes(), [&](AffineExpr *expr) { os << *expr; },
-             [&]() { os << ", "; });
+  interleaveComma(os, getRangeSizes(), [&](AffineExpr *expr) { os << *expr; });
   os << ")";
 }
 

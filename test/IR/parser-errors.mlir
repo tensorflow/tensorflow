@@ -168,7 +168,7 @@ bb42:
 
 cfgfunc @test() {
 bb40:
-  %1 = "foo"() : (i32)->i64 // expected-error {{expected 0 types in operand list but had 1}}
+  %1 = "foo"() : (i32)->i64 // expected-error {{expected 0 operand types but had 1}}
   return
 }
 

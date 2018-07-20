@@ -1364,8 +1364,7 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   if (operandTypes.size() != operandInfos.size()) {
     auto plural = "s"[operandInfos.size() == 1];
     return emitError(typeLoc, "expected " + llvm::utostr(operandInfos.size()) +
-                                  " type" + plural +
-                                  " in operand list but had " +
+                                  " operand type" + plural + " but had " +
                                   llvm::utostr(operandTypes.size()));
   }
 
@@ -1395,11 +1394,10 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
     // FIXME: Add result infra to handle Stmt results as well to make this
     // generic.
     if (auto *inst = dyn_cast<OperationInst>(op)) {
-      if (inst->getResults().empty())
+      if (inst->getNumResults() == 0)
         return emitError(loc, "cannot name an operation with no results");
 
-      // TODO: This should be getResult(0)
-      addDefinition({resultID, loc}, &inst->getResults()[0]);
+      addDefinition({resultID, loc}, inst->getResult(0));
     }
   }
 

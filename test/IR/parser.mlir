@@ -70,10 +70,10 @@ extfunc @functions((memref<1x?x4x?x?xaffineint, #map0, 0>, memref<i8, #map1, 0>)
 cfgfunc @simpleCFG(i32, f32) {
 // CHECK: bb0:
 bb42: // (%0: i32, %f: f32):    TODO(clattner): implement bbargs.
-  // CHECK: "foo"() : () -> i64
+  // CHECK: %0 = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
-  // CHECK: "bar"() : (i64) -> (i1, i1, i1)
-  "bar"(%1) : (i64) -> (i1,i1,i1)
+  // CHECK: "bar"(%0) : (i64) -> (i1, i1, i1)
+  %2 = "bar"(%1) : (i64) -> (i1,i1,i1)
   // CHECK: return
   return
 // CHECK: }
@@ -104,6 +104,7 @@ mlfunc @mlfunc_with_args(%a : f16) {
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops() {
 cfgfunc @cfgfunc_with_ops() {
 bb0:
+  // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
   // CHECK: dim xxx, 2 : sometype
@@ -166,6 +167,7 @@ bb42:       // CHECK: bb0:
 // CHECK-LABEL: cfgfunc @standard_instrs() {
 cfgfunc @standard_instrs() {
 bb42:       // CHECK: bb0:
+  // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
   %42 = "getTensor"() : () -> tensor<4x4x?xf32>
 
   // CHECK: dim xxx, 2 : sometype

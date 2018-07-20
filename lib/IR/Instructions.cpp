@@ -67,11 +67,11 @@ OperationInst *OperationInst::create(Identifier name,
       name, operands.size(), resultTypes.size(), attributes, context);
 
   // Initialize the operands and results.
-  auto instOperands = inst->getOperands();
+  auto instOperands = inst->getInstOperands();
   for (unsigned i = 0, e = operands.size(); i != e; ++i)
     new (&instOperands[i]) InstOperand(inst, operands[i]);
 
-  auto instResults = inst->getResults();
+  auto instResults = inst->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
     new (&instResults[i]) InstResult(resultTypes[i], inst);
   return inst;
@@ -87,10 +87,10 @@ OperationInst::OperationInst(Identifier name, unsigned numOperands,
 
 OperationInst::~OperationInst() {
   // Explicitly run the destructors for the operands and results.
-  for (auto &operand : getOperands())
+  for (auto &operand : getInstOperands())
     operand.~InstOperand();
 
-  for (auto &result : getResults())
+  for (auto &result : getInstResults())
     result.~InstResult();
 }
 

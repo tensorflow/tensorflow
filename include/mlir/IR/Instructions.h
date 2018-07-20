@@ -97,18 +97,43 @@ public:
                                MLIRContext *context);
   ~OperationInst();
 
-  ArrayRef<InstOperand> getOperands() const {
+  unsigned getNumOperands() const { return numOperands; }
+
+  // TODO: Add a getOperands() custom sequence that provides a value projection
+  // of the operand list.
+  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+  const CFGValue *getOperand(unsigned idx) const {
+    return getInstOperand(idx).get();
+  }
+
+  unsigned getNumResults() const { return numResults; }
+
+  // TODO: Add a getResults() custom sequence that provides a value projection
+  // of the result list.
+  CFGValue *getResult(unsigned idx) { return &getInstResult(idx); }
+  const CFGValue *getResult(unsigned idx) const { return &getInstResult(idx); }
+
+  ArrayRef<InstOperand> getInstOperands() const {
     return {getTrailingObjects<InstOperand>(), numOperands};
   }
-  MutableArrayRef<InstOperand> getOperands() {
+  MutableArrayRef<InstOperand> getInstOperands() {
     return {getTrailingObjects<InstOperand>(), numOperands};
   }
 
-  ArrayRef<InstResult> getResults() const {
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
+  }
+
+  ArrayRef<InstResult> getInstResults() const {
     return {getTrailingObjects<InstResult>(), numResults};
   }
-  MutableArrayRef<InstResult> getResults() {
+  MutableArrayRef<InstResult> getInstResults() {
     return {getTrailingObjects<InstResult>(), numResults};
+  }
+  InstResult &getInstResult(unsigned idx) { return getInstResults()[idx]; }
+  const InstResult &getInstResult(unsigned idx) const {
+    return getInstResults()[idx];
   }
 
   /// Unlink this instruction from its BasicBlock and delete it.

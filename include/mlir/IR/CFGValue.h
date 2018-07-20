@@ -40,7 +40,7 @@ enum class CFGValueKind {
 /// The operand of a CFG Instruction contains a CFGValue.
 using InstOperand = SSAOperandImpl<CFGValue, Instruction>;
 
-/// CFGValue is the base class for CFG value types.
+/// CFGValue is the base class for SSA values in CFG functions.
 class CFGValue : public SSAValueImpl<InstOperand, CFGValueKind> {
 public:
   static bool classof(const SSAValue *value) {
