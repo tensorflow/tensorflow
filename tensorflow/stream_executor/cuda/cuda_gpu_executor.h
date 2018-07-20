@@ -210,7 +210,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override;
 
-  void *CudaContextHack() override;
+  void *GpuContextHack() override;
 
   CudaContext* cuda_context();
 

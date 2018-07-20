@@ -45,6 +45,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -138,7 +139,7 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
-  def testRandomSeed(self):
+  def disabled_testRandomSeed(self):
 
     @function.defun
     def f():
@@ -1165,6 +1166,23 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     value = train()
     self.assertEqual(value.numpy(), -1.0)
+
+  # TODO(b/111663004): This should work when the outer context is graph
+  # building.
+  def testOptimizerNonSlotVarsInDefunNoError(self):
+    def loss(v):
+      return v**2
+
+    optimizer = adam.AdamOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(v)
+      optimizer.apply_gradients(grad)
+      return v.read_value()
+
+    train()
 
   def testOptimizerInDefunWithCapturedVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)

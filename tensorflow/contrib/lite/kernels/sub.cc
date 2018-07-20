@@ -81,40 +81,43 @@ template <KernelType kernel_type>
 void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
              const OpData* data, const TfLiteTensor* input1,
              const TfLiteTensor* input2, TfLiteTensor* output) {
-#define TF_LITE_SUB(type, opname, data_type)                            \
-  data_type output_activation_min, output_activation_max;               \
-  CalculateActivationRange(params->activation, &output_activation_min,  \
-                           &output_activation_max);                     \
-  type::opname(GetTensorData<data_type>(input1), GetTensorDims(input1), \
-               GetTensorData<data_type>(input2), GetTensorDims(input2), \
-               output_activation_min, output_activation_max,            \
-               GetTensorData<data_type>(output), GetTensorDims(output))
+#define TF_LITE_SUB(type, opname, data_type)                             \
+  data_type output_activation_min, output_activation_max;                \
+  CalculateActivationRange(params->activation, &output_activation_min,   \
+                           &output_activation_max);                      \
+  tflite::ArithmeticParams op_params;                                    \
+  SetActivationParams(output_activation_min, output_activation_max,      \
+                      &op_params);                                       \
+  type::opname(op_params, GetTensorShape(input1),                        \
+               GetTensorData<data_type>(input1), GetTensorShape(input2), \
+               GetTensorData<data_type>(input2), GetTensorShape(output), \
+               GetTensorData<data_type>(output))
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSub, int32_t);
+        TF_LITE_SUB(reference_ops, BroadcastSub4DSlow, int32_t);
       } else {
-        TF_LITE_SUB(reference_ops, Sub, int32_t);
+        TF_LITE_SUB(reference_ops, SubWithActivation, int32_t);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSub, int32_t);
+        TF_LITE_SUB(optimized_ops, BroadcastSub4DSlow, int32_t);
       } else {
-        TF_LITE_SUB(optimized_ops, Sub, int32_t);
+        TF_LITE_SUB(optimized_ops, SubWithActivation, int32_t);
       }
     }
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSub, float);
+        TF_LITE_SUB(reference_ops, BroadcastSub4DSlow, float);
       } else {
-        TF_LITE_SUB(reference_ops, Sub, float);
+        TF_LITE_SUB(reference_ops, SubWithActivation, float);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSub, float);
+        TF_LITE_SUB(optimized_ops, BroadcastSub4DSlow, float);
       } else {
-        TF_LITE_SUB(optimized_ops, Sub, float);
+        TF_LITE_SUB(optimized_ops, SubWithActivation, float);
       }
     }
   }
@@ -143,36 +146,43 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   int input1_shift;
   QuantizeMultiplierSmallerThanOneExp(real_input1_multiplier,
                                       &input1_multiplier, &input1_shift);
-  input1_shift *= -1;
   int32 input2_multiplier;
   int input2_shift;
   QuantizeMultiplierSmallerThanOneExp(real_input2_multiplier,
                                       &input2_multiplier, &input2_shift);
-  input2_shift *= -1;
   int32 output_multiplier;
   int output_shift;
   QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
                                       &output_multiplier, &output_shift);
-  output_shift *= -1;
 
   int32 output_activation_min, output_activation_max;
   CalculateActivationRangeUint8(params->activation, output,
                                 &output_activation_min, &output_activation_max);
 
-#define TF_LITE_SUB(type, opname)                                            \
-  type::opname(left_shift, GetTensorData<uint8_t>(input1),                   \
-               GetTensorDims(input1), input1_offset, input1_multiplier,      \
-               input1_shift, GetTensorData<uint8_t>(input2),                 \
-               GetTensorDims(input2), input2_offset, input2_multiplier,      \
-               input2_shift, output_offset, output_multiplier, output_shift, \
-               output_activation_min, output_activation_max,                 \
-               GetTensorData<uint8_t>(output), GetTensorDims(output));
+#define TF_LITE_SUB(type, opname)                                      \
+  tflite::ArithmeticParams op_params;                                  \
+  op_params.left_shift = left_shift;                                   \
+  op_params.input1_offset = input1_offset;                             \
+  op_params.input1_multiplier = input1_multiplier;                     \
+  op_params.input1_shift = input1_shift;                               \
+  op_params.input2_offset = input2_offset;                             \
+  op_params.input2_multiplier = input2_multiplier;                     \
+  op_params.input2_shift = input2_shift;                               \
+  op_params.output_offset = output_offset;                             \
+  op_params.output_multiplier = output_multiplier;                     \
+  op_params.output_shift = output_shift;                               \
+  SetActivationParams(output_activation_min, output_activation_max,    \
+                      &op_params);                                     \
+  type::opname(op_params, GetTensorShape(input1),                      \
+               GetTensorData<uint8_t>(input1), GetTensorShape(input2), \
+               GetTensorData<uint8_t>(input2), GetTensorShape(output), \
+               GetTensorData<uint8_t>(output))
   // The quantized version of Sub doesn't support activations, so we
   // always use BroadcastSub.
   if (kernel_type == kReference) {
-    TF_LITE_SUB(reference_ops, BroadcastSub);
+    TF_LITE_SUB(reference_ops, BroadcastSub4DSlow);
   } else {
-    TF_LITE_SUB(optimized_ops, BroadcastSub);
+    TF_LITE_SUB(optimized_ops, BroadcastSub4DSlow);
   }
 #undef TF_LITE_SUB
 }

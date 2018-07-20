@@ -138,7 +138,7 @@ class RevNetTest(tf.test.TestCase):
           minval=0,
           maxval=self.config.n_classes,
           dtype=tf.int32)
-      global_step = tfe.Variable(0., trainable=False)
+      global_step = tf.Variable(0., trainable=False)
       model = revnet.RevNet(config=config)
       model(x)
       updates = model.get_updates_for(x)

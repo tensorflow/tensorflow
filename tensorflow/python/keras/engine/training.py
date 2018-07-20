@@ -217,10 +217,9 @@ class Model(Network):
       for name in self.output_names:
         if name not in loss:
           logging.warning(
-              'Output "' + name + '" missing from loss dictionary. '
-              'We assume this was done on purpose, '
-              'and we will not be expecting '
-              'any data to be passed to "' + name + '" during training.')
+              'Output "' + name + '" missing from loss dictionary. We assume '
+              'this was done on purpose. The fit and evaluate APIs will not be '
+              'expecting any data to be passed to "' + name + '".')
         loss_functions.append(losses.get(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
@@ -897,7 +896,11 @@ class Model(Network):
         for output_shape, loss_fn in zip(self._feed_output_shapes,
                                          self._feed_loss_fns):
           if loss_fn is losses.sparse_categorical_crossentropy:
-            feed_output_shapes.append(output_shape[:-1] + (1,))
+            if K.image_data_format() == 'channels_first':
+              feed_output_shapes.append(
+                  (output_shape[0], 1) + output_shape[2:])
+            else:
+              feed_output_shapes.append(output_shape[:-1] + (1,))
           elif (not hasattr(loss_fn, '__name__') or
                 getattr(losses, loss_fn.__name__, None) is None):
             # If `loss_fn` is not a function (e.g. callable class)

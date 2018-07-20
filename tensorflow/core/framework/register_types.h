@@ -151,6 +151,12 @@ limitations under the License.
 
 // Defines for sets of types.
 
+// TODO(b/111604096): Add uint32 and uint64 to TF_CALL_INTEGRAL_TYPES.
+//
+// The uint32 and uint64 types were introduced in 10/2017 to be used via XLA and
+// thus were not included in TF_CALL_INTEGRAL_TYPES. Including them in
+// TF_CALL_INTEGRAL_TYPES should only happen after evaluating the effect on the
+// TF binary size and performance.
 #define TF_CALL_INTEGRAL_TYPES(m)                                      \
   TF_CALL_int64(m) TF_CALL_int32(m) TF_CALL_uint16(m) TF_CALL_int16(m) \
       TF_CALL_uint8(m) TF_CALL_int8(m)

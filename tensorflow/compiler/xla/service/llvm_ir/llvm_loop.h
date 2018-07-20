@@ -248,6 +248,17 @@ class ForLoopNest {
       const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::StringPiece suffix);
 
+  // Emits a series of nested loops for iterating over an operand array. Loops
+  // are constructed in major to minor dimension layout order. No loop is
+  // emitted for the given 'dimension_to_skip'. The function returns an IrArray
+  // index for the given operand_array containing the indvars of the loops. All
+  // dimensions of the index are filled except for 'dimension_to_skip'.
+  // name_suffix is the string to append to the names of LLVM constructs (eg,
+  // basic blocks) constructed by this method.
+  IrArray::Index EmitOperandArrayLoopNest(const llvm_ir::IrArray& operand_array,
+                                          int64 dimension_to_skip,
+                                          tensorflow::StringPiece name_suffix);
+
   // Convenience methods which return particular basic blocks of the outermost
   // or innermost loops. These methods return nullptr if no loops have been
   // added yet.

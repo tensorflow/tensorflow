@@ -103,7 +103,6 @@ py_library(
         "//tensorflow/contrib/summary:summary",
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
-        "//tensorflow/contrib/tensorrt:init_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",
@@ -133,6 +132,7 @@ py_library(
         "//tensorflow/contrib/cloud:cloud_py",  # doesn't compile on Windows
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
+        "//tensorflow/contrib/tensorrt:init_py",  # doesn't compile on windows
     ]),
 )
 

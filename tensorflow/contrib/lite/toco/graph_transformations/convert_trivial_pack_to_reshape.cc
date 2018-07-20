@@ -25,19 +25,19 @@ limitations under the License.
 
 namespace toco {
 
-bool ConvertTrivialStackToReshape::Run(Model* model, std::size_t op_index) {
-  auto stack_it = model->operators.begin() + op_index;
-  if (stack_it->get()->type != OperatorType::kStack) {
+bool ConvertTrivialPackToReshape::Run(Model* model, std::size_t op_index) {
+  auto pack_it = model->operators.begin() + op_index;
+  if (pack_it->get()->type != OperatorType::kPack) {
     return false;
   }
-  auto* stack_op = static_cast<StackOperator*>(stack_it->get());
-  if (stack_op->inputs.size() > 1) {
+  auto* pack_op = static_cast<PackOperator*>(pack_it->get());
+  if (pack_op->inputs.size() > 1) {
     // Not trivial.
     return false;
   }
-  CHECK_EQ(stack_op->outputs.size(), 1);
+  CHECK_EQ(pack_op->outputs.size(), 1);
 
-  const auto& input_array = model->GetArray(stack_op->inputs[0]);
+  const auto& input_array = model->GetArray(pack_op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until input dims have been resolved.
     return false;
@@ -48,16 +48,16 @@ bool ConvertTrivialStackToReshape::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
-  AddMessageF("Converting trivial %s to a reshape", LogName(*stack_op));
+  AddMessageF("Converting trivial %s to a reshape", LogName(*pack_op));
 
   // Note that we could convert to ExpandDims but toco prefers reshapes.
   auto* reshape_op = new TensorFlowReshapeOperator;
-  reshape_op->inputs = {stack_op->inputs[0]};
-  reshape_op->outputs = stack_op->outputs;
+  reshape_op->inputs = {pack_op->inputs[0]};
+  reshape_op->outputs = pack_op->outputs;
 
   // Create shape param.
   string shape_array_name =
-      AvailableArrayName(*model, stack_op->outputs[0] + "_shape");
+      AvailableArrayName(*model, pack_op->outputs[0] + "_shape");
   Array& shape_array = model->GetOrCreateArray(shape_array_name);
   *(shape_array.mutable_shape()->mutable_dims()) = {
       1 + input_array.shape().dimensions_count()};
@@ -70,10 +70,10 @@ bool ConvertTrivialStackToReshape::Run(Model* model, std::size_t op_index) {
   }
 
   // Replace the operator in the graph.
-  const auto reshape_it = model->operators.emplace(stack_it, reshape_op);
-  stack_it = reshape_it + 1;
-  CHECK_EQ(stack_it->get(), stack_op);
-  model->operators.erase(stack_it);
+  const auto reshape_it = model->operators.emplace(pack_it, reshape_op);
+  pack_it = reshape_it + 1;
+  CHECK_EQ(pack_it->get(), pack_op);
+  model->operators.erase(pack_it);
 
   return true;
 }

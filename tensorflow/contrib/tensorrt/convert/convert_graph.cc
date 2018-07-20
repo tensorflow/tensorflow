@@ -831,9 +831,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     // The allocator is used to build the engine. The build and the built engine
     // will be destroyed after we get the serialized engine string, so it's fine
     // to use unique_ptr here.
-    // TODO(aaroey): nvinfer1::IGpuAllocator doesn't have a virtual destructor
-    // and destructing the unique_ptr will result in segfault, fix it.
-    std::unique_ptr<TRTDeviceAllocator> alloc;
+    std::unique_ptr<TRTBaseAllocator> alloc;
     auto device_alloc = GetDeviceAndAllocator(params, engine);
     int cuda_device_id = 0;
     if (device_alloc.first >= 0) {

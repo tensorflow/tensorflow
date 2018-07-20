@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/delegates/eager/util.h"
 
 namespace tflite {
+namespace eager {
 
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
@@ -67,4 +68,5 @@ TF_DataType GetTensorFlowDataType(TfLiteType type) {
   }
 }
 
+}  // namespace eager
 }  // namespace tflite

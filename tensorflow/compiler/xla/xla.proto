@@ -296,6 +296,7 @@ message ComputationStatsResponse {
 }
 
 message CreateChannelHandleRequest {
+  ChannelHandle.ChannelType channel_type = 1;
 }
 
 message CreateChannelHandleResponse {

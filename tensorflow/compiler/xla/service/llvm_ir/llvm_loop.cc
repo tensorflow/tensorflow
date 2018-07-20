@@ -262,5 +262,35 @@ IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
   return index;
 }
 
+IrArray::Index ForLoopNest::EmitOperandArrayLoopNest(
+    const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
+    tensorflow::StringPiece name_suffix) {
+  // Prepares the dimension list we will use to emit the loop nest. Outermost
+  // loops are added first. Add loops in major-to-minor order, and skip the
+  // 'dimension_to_skip' dimension.
+  std::vector<int64> dimensions;
+  const Shape& shape = operand_array.GetShape();
+  for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
+    if (dimension != dimension_to_skip) {
+      dimensions.push_back(dimension);
+    }
+  }
+
+  // Create loop nest with one for-loop for each dimension of the
+  // output.
+  llvm_ir::IrArray::Index index =
+      AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
+  // Verify every dimension except the 'dimension_to_skip' dimension was set in
+  // the index.
+  for (size_t dimension = 0; dimension < index.size(); ++dimension) {
+    if (dimension == dimension_to_skip) {
+      DCHECK_EQ(nullptr, index[dimension]);
+    } else {
+      DCHECK_NE(nullptr, index[dimension]);
+    }
+  }
+  return index;
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

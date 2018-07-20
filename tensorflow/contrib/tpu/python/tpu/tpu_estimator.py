@@ -701,8 +701,6 @@ def generate_per_core_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -837,8 +835,6 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -862,12 +858,13 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
       raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
 
-    hooks.append(inputs.dataset_initializer_hook())
+    if is_dataset:
+      hooks.append(inputs.dataset_initializer_hook())
     num_replicas_per_host = ctx.num_of_replicas_per_host
 
   def tpu_ordinal_function_impl(replica_id):
     if ctx.device_assignment:
-      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+      return ctx.device_assignment.tpu_ordinal(replica=replica_id)
     else:
       return replica_id % num_replicas_per_host
 
@@ -1340,7 +1337,8 @@ class _ModelFnWrapper(object):
       loss = tpu_estimator_spec.loss
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
       to_record = {}
-      to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
+      if tpu_estimator_spec.eval_metrics:
+        to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
       if tpu_estimator_spec.host_call is not None:
         # We assume that evaluate won't update global step, so we don't wrap
         # this host_call.
@@ -1643,7 +1641,7 @@ class _OutfeedHostCall(object):
       RuntimeError: If outfeed tensor is scalar.
     """
     if not self._names:
-      return []
+      return {}
 
     ret = {}
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -2518,7 +2516,8 @@ class TPUEstimator(estimator_lib.Estimator):
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
-          for k, v in host_call_ret['eval_metrics'].items():
+
+          for k, v in host_call_ret.get('eval_metrics', {}).items():
             eval_metric_ops[k] = (v[0], dummy_update_op)
             eval_update_ops.append(v[1])
 

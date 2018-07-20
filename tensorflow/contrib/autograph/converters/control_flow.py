@@ -171,8 +171,8 @@ class ControlFlowTransformer(converter.Base):
       # actually has some return value as well.
       cond_results = None
       # TODO(mdan): This doesn't belong here; it's specific to the operator.
-      returned_from_body = templates.replace_as_expression('1')
-      returned_from_orelse = templates.replace_as_expression('1')
+      returned_from_body = templates.replace_as_expression('tf.constant(1)')
+      returned_from_orelse = templates.replace_as_expression('tf.constant(1)')
 
     body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
     orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)

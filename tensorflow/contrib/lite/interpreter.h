@@ -629,7 +629,7 @@ class Interpreter {
   bool tensor_resized_since_op_invoke_ = false;
 
   // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
 
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];

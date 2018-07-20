@@ -45,6 +45,30 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "glorot_normal"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "glorot_uniform"
+    argspec: "args=[\'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "he_normal"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "he_uniform"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "lecun_normal"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "lecun_uniform"
+    argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "local_variables"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

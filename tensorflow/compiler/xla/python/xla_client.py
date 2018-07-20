@@ -99,12 +99,27 @@ _UNARY_OPS = [
     'Cos',
     'Sin',
     'Tanh',
-    'Sqrt',
-    'Square',
     'IsFinite',
+    'Sqrt',
+    'Rsqrt',
+    'Square',
     'Reciprocal',
     'Neg',
     'Sort',
+    'Erf',
+    'Erfc',
+    'ErfInv',
+    'Lgamma',
+    'Digamma',
+    'Acos',
+    'Asin',
+    'Atan',
+    'Tan',
+    'Acosh',
+    'Asinh',
+    'Atanh',
+    'Cosh',
+    'Sinh',
 ]
 
 _BINARY_OPS = [
@@ -125,6 +140,10 @@ _BINARY_OPS = [
     'Or',
     'Xor',
     'Pow',
+    'ShiftLeft',
+    'ShiftRightArithmetic',
+    'ShiftRightLogical',
+    'Atan2',
 ]
 
 

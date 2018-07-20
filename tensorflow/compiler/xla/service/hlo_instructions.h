@@ -141,12 +141,15 @@ class HloSendRecvInstruction : public HloInstruction {
   // channel.
   int64 channel_id() const { return channel_id_; }
 
+  // Returns whether this send/recv instruction sends data to/from the host.
+  bool is_host_transfer() const { return is_host_transfer_; }
+
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
  protected:
   explicit HloSendRecvInstruction(HloOpcode opcode, const Shape& shape,
-                                  int64 channel_id);
+                                  int64 channel_id, bool is_host_transfer);
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -157,12 +160,15 @@ class HloSendRecvInstruction : public HloInstruction {
           eq_computations) const override;
   // Represents a unique identifier for each Send/Recv instruction pair.
   int64 channel_id_;
+
+  // Whether this send/recv instruction sends data to/from the host.
+  bool is_host_transfer_;
 };
 
 class HloSendInstruction : public HloSendRecvInstruction {
  public:
   explicit HloSendInstruction(HloInstruction* operand, HloInstruction* token,
-                              int64 channel_id);
+                              int64 channel_id, bool is_host_transfer);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -174,7 +180,8 @@ class HloSendInstruction : public HloSendRecvInstruction {
 
 class HloSendDoneInstruction : public HloSendRecvInstruction {
  public:
-  explicit HloSendDoneInstruction(HloSendInstruction* operand);
+  explicit HloSendDoneInstruction(HloSendInstruction* operand,
+                                  bool is_host_transfer);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -187,7 +194,7 @@ class HloSendDoneInstruction : public HloSendRecvInstruction {
 class HloRecvInstruction : public HloSendRecvInstruction {
  public:
   explicit HloRecvInstruction(const Shape& shape, HloInstruction* token,
-                              int64 channel_id);
+                              int64 channel_id, bool is_host_transfer);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.
@@ -199,7 +206,8 @@ class HloRecvInstruction : public HloSendRecvInstruction {
 
 class HloRecvDoneInstruction : public HloSendRecvInstruction {
  public:
-  explicit HloRecvDoneInstruction(HloRecvInstruction* operand);
+  explicit HloRecvDoneInstruction(HloRecvInstruction* operand,
+                                  bool is_host_transfer);
 
  private:
   // Implementation for non-common logic of CloneWithNewOperands.

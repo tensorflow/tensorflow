@@ -370,6 +370,29 @@ class ScatterNdTest(test.TestCase):
     return array_ops.scatter_nd(indices, updates, shape)
 
   @test_util.run_in_graph_and_eager_modes
+  def testBool(self):
+    indices = constant_op.constant(
+        [[4], [3], [1], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [False, True, False, True], dtype=dtypes.bool)
+    expected = np.array(
+        [False, False, False, True, False, False, False, True])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    result = self.evaluate(scatter)
+    self.assertAllEqual(expected, result)
+
+    # Same indice is updated twice by same value.
+    indices = constant_op.constant(
+        [[4], [3], [3], [7]], dtype=dtypes.int32)
+    updates = constant_op.constant(
+        [False, True, True, True], dtype=dtypes.bool)
+    expected = np.array([
+        False, False, False, True, False, False, False, True])
+    scatter = self.scatter_nd(indices, updates, shape=(8,))
+    result = self.evaluate(scatter)
+    self.assertAllEqual(expected, result)
+
+  @test_util.run_in_graph_and_eager_modes
   def testInvalidShape(self):
     # TODO(apassos) figure out how to unify these errors
     with self.assertRaises(errors.InvalidArgumentError

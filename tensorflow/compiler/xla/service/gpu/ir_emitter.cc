@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -123,9 +124,15 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleSort(HloInstruction*) {
-  // TODO(b/26783907): Implement sort on GPU.
-  return Unimplemented("sort");
+Status IrEmitter::HandleSort(HloInstruction* sort) {
+  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  if (values != nullptr) {
+    // TODO(b/26783907): Also sort the values by their corresponding key.
+    return Unimplemented("Key/Value Sort is not implemented on GPU");
+  }
+  int dimension_to_sort = sort->dimensions(0);
+  return llvm_ir::EmitSortInPlace(dimension_to_sort, GetIrArray(*sort, *sort),
+                                  IrName(sort), &ir_builder_);
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
@@ -525,10 +532,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
   llvm_ir::ForLoopNest loop_nest(IrName(dot), &ir_builder_);
-  llvm_ir::IrArray::Index lhs_index = EmitOperandArrayLoopNest(
-      lhs_array, lhs_reduction_dimension, "lhs", &loop_nest);
-  llvm_ir::IrArray::Index rhs_index = EmitOperandArrayLoopNest(
-      rhs_array, rhs_reduction_dimension, "rhs", &loop_nest);
+  llvm_ir::IrArray::Index lhs_index = loop_nest.EmitOperandArrayLoopNest(
+      lhs_array, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
+  llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
+      rhs_array, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
 
   // Create the reduction loop which does the sum of products reduction.
   std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
@@ -775,36 +782,6 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
       "The GPU backend does not implement BatchNormGrad directly.  It should "
       "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
       "to a cudnn CustomCall using CudnnBatchNormRewriter.");
-}
-
-llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
-    const llvm_ir::IrArray& operand_array, int64 reduction_dimension,
-    tensorflow::StringPiece name_suffix, llvm_ir::ForLoopNest* loop_nest) {
-  // Prepares the dimension list we will use to emit the loop nest. Outermost
-  // loops are added first. Add loops in major-to-minor order, and skip the
-  // reduction dimension.
-  std::vector<int64> dimensions;
-  const Shape& shape = operand_array.GetShape();
-  for (int i = 0; i < LayoutUtil::MinorToMajor(shape).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape.layout(), i);
-    if (dimension != reduction_dimension) {
-      dimensions.push_back(dimension);
-    }
-  }
-
-  // Create loop nest with one for-loop for each dimension of the
-  // output.
-  llvm_ir::IrArray::Index index =
-      loop_nest->AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
-  // Verify every dimension except the reduction dimension was set in the index.
-  for (size_t dimension = 0; dimension < index.size(); ++dimension) {
-    if (dimension == reduction_dimension) {
-      DCHECK_EQ(nullptr, index[dimension]);
-    } else {
-      DCHECK_NE(nullptr, index[dimension]);
-    }
-  }
-  return index;
 }
 
 StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(

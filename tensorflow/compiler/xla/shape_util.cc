@@ -883,40 +883,51 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   }
 
   int64 shape_size = [&shape]() {
-    int64 shape_size;
     if (LayoutUtil::IsSparseArray(shape)) {
-      shape_size = LayoutUtil::MaxSparseElements(shape.layout());
-      if (shape_size < 0) {
-        return shape_size;
+      int64 max_sparse_elements = LayoutUtil::MaxSparseElements(shape.layout());
+      if (max_sparse_elements < 0) {
+        return max_sparse_elements;
       }
-      shape_size = MultiplyWithoutOverflow(shape_size, ShapeUtil::Rank(shape));
-      if (shape_size < 0) {
-        return shape_size;
+      int64 sparse_elements_size = MultiplyWithoutOverflow(
+          max_sparse_elements, ByteSizeOfPrimitiveType(shape.element_type()));
+      if (sparse_elements_size < 0) {
+        return sparse_elements_size;
       }
-      shape_size = MultiplyWithoutOverflow(shape_size, sizeof(int64));
-      if (shape_size < 0) {
-        return shape_size;
+      int64 sparse_indices_size =
+          MultiplyWithoutOverflow(max_sparse_elements, ShapeUtil::Rank(shape));
+      if (sparse_indices_size < 0) {
+        return sparse_indices_size;
+      }
+      sparse_indices_size =
+          MultiplyWithoutOverflow(sparse_indices_size, sizeof(int64));
+      if (sparse_indices_size < 0) {
+        return sparse_indices_size;
+      }
+      // At this point, both sparse_indices_size and sparse_elements_size are
+      // non-negative, so we can easily check if adding them wraps.
+      if (static_cast<uint64>(sparse_elements_size) +
+              static_cast<uint64>(sparse_indices_size) >
+          INT64_MAX) {
+        return static_cast<int64>(-1);
       }
     }
-
-    shape_size = 1;
 
     // This is intentionally unconditional: even if the shape is sparse, we want
     // to verify the densified version has a reasonable size.
+    int64 dense_shape_size = 1;
     if (shape.dimensions().empty()) {
-      return shape_size;
+      return dense_shape_size;
     }
 
     for (int64 dim : shape.dimensions()) {
-      shape_size = MultiplyWithoutOverflow(shape_size, dim);
-      if (shape_size < 0) {
-        return shape_size;
+      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
+      if (dense_shape_size < 0) {
+        return dense_shape_size;
       }
     }
-    shape_size = MultiplyWithoutOverflow(
-        shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
-
-    return shape_size;
+    dense_shape_size = MultiplyWithoutOverflow(
+        dense_shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
+    return dense_shape_size;
   }();
 
   if (shape_size < 0) {

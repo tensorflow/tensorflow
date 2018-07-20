@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
+#include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
 
 #include <stdlib.h>
 #include <atomic>
@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
@@ -96,8 +96,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-/* static */ const char* GpuCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
-/* static */ const char* GpuCompiler::kDataLayout =
+/* static */ const char* NVPTXCompiler::kTargetTriple = "nvptx64-nvidia-cuda";
+/* static */ const char* NVPTXCompiler::kDataLayout =
     "e-i64:64-i128:128-v16:16-v32:32-n16:32:64";
 
 namespace {
@@ -362,8 +362,8 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   // b/70245379.
   //
   // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
-  // that appears related to address calculations.  ptxas 9.2.88 appears to
-  // work, as far as we can tell.
+  // that appears related to address calculations, b/111107644.  ptxas 9.2.88
+  // appears to work, as far as we can tell.
   if (vmaj < 9) {
     LOG(ERROR)
         << "You are using ptxas 8.x, but XLA requires ptxas 9.x (and strongly "
@@ -406,20 +406,17 @@ void WarnIfBadDriverJITVersion() {
     //  - 387.x before 387.40
     //  - 390.x before 390.10.
     //
-    // TODO(jlebar): This list does not cover the address-calculation bug we've
-    // observed in ptxas 9.1.121.  Need to get a new safe range from nvidia
-    // corresponding to ptxas >= 9.2.88.
-    auto vmaj = std::get<0>(version);
-    auto vmin = std::get<1>(version);
-    if ((vmaj == 384 && vmin < 108) ||  //
-        (vmaj == 387 && vmin < 40) ||   //
-        (vmaj == 390 && vmin < 10)) {
+    // In addition, only >= 396.20 contains ptxas >= 9.2.88, which contains the
+    // fix for the "large multioutput fusions" miscompile, b/111107644.
+    if (version < std::make_tuple(396, 20, 0)) {
       LOG(WARNING)
           << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
           << se::cuda::DriverVersionToString(version)
-          << ", which is in range [384.0.0, 384.108.0) + [387.0.0, 387.40.0) + "
-             "[390.0.0, 390.10.0). These versions are known to miscompile XLA "
-             "code, leading to incorrect results or invalid-address errors.";
+          << ", which is older than 396.20.0. These versions are known to "
+             "miscompile XLA code, leading to incorrect results or "
+             "invalid-address errors.\nXLA only uses the driver JIT if it "
+             "cannot find ptxas; you don't need to update your driver if "
+             "you can point XLA to ptxas 9.2.88 or newer.";
     }
   });
 }
@@ -491,14 +488,14 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
 
 }  // namespace
 
-GpuCompiler::GpuCompiler()
+NVPTXCompiler::NVPTXCompiler()
     : pointer_size_(llvm::DataLayout(kDataLayout)
                         .getPointerSize(0 /* default address space */)) {}
 
-StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   tracing::ScopedActivity activity("HLO Transforms", module->name(),
                                    /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
@@ -506,10 +503,10 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
-StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
+StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
 
@@ -569,7 +566,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - IR emission");
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
   }
 
@@ -596,7 +593,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
+    XLA_SCOPED_LOGGING_TIMER(
+        "NVPTXCompiler::RunBackend - Running LLVM verifier");
 
     std::string err;
     llvm::raw_string_ostream err_stream(err);
@@ -636,7 +634,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   string ptx;
   {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - CompileToPtx");
+    XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - CompileToPtx");
     TF_ASSIGN_OR_RETURN(ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                           module->config(), libdevice_dir));
   }
@@ -705,10 +703,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   return std::unique_ptr<Executable>(gpu_executable);
 }
 
-std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
-                                                            int cc_major,
-                                                            int cc_minor) {
-  XLA_SCOPED_LOGGING_TIMER("GpuCompiler::CompilePtxOrGetCachedResult");
+std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
+                                                              int cc_major,
+                                                              int cc_minor) {
+  XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompilePtxOrGetCachedResult");
   tracing::ScopedActivity activity("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
@@ -781,12 +779,14 @@ std::vector<uint8> GpuCompiler::CompilePtxOrGetCachedResult(const string& ptx,
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-GpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
-                                const AotCompilationOptions& options) {
-  return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
+NVPTXCompiler::CompileAheadOfTime(
+    std::vector<std::unique_ptr<HloModule>> module,
+    const AotCompilationOptions& options) {
+  return Unimplemented(
+      "not yet implemented: NVPTXCompiler::CompileAheadOfTime");
 }
 
-se::Platform::Id GpuCompiler::PlatformId() const {
+se::Platform::Id NVPTXCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
 }
 
@@ -796,7 +796,7 @@ se::Platform::Id GpuCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return xla::MakeUnique<xla::gpu::GpuCompiler>(); });
+      []() { return xla::MakeUnique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();
