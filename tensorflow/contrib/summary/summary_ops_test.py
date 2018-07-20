@@ -17,7 +17,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import pathlib
 import tempfile
 import time
 
@@ -280,7 +279,7 @@ class EagerDbTest(summary_test_util.SummaryDbTest):
 
   def testDbURIOpen(self):
     tmpdb_path = os.path.join(self.get_temp_dir(), 'tmpDbURITest.sqlite')
-    tmpdb_uri = pathlib.Path(tmpdb_path).as_uri()
+    tmpdb_uri = six.moves.urllib_parse.urljoin("file:", tmpdb_path)
     tmpdb_writer = summary_ops.create_db_writer(
         tmpdb_uri,
         "experimentA",
