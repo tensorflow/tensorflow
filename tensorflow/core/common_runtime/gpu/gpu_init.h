@@ -24,8 +24,17 @@ class Platform;
 
 namespace tensorflow {
 
-// Initializes the CUDA platform and returns OK if the CUDA
-// platform could be initialized.
+const char* const kCudaGpuConstant = "CUDA";
+const char* const kNoGpuConstant = "NO_GPU_PLATFORM";
+
+#if GOOGLE_CUDA
+#define GPU_PLATFORM_NAME kCudaGpuConstant
+#else
+#define GPU_PLATFORM_NAME kNoGpuConstant
+#endif
+
+// Initializes the GPU platform and returns OK if the GPU platform could be
+// initialized.
 Status ValidateGPUMachineManager();
 
 // Returns the GPU machine manager singleton, creating it and
