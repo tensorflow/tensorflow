@@ -3,6 +3,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
@@ -72,6 +73,10 @@ StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
   TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
 
   return *static_cast<const int64*>(s64_lit->untyped_data());
+}
+
+bool IsPopOpsCall(xla::HloComputation* computation) {
+  return tensorflow::str_util::StartsWith(computation->name(), "_pop_op");
 }
 
 }  // namespace poplarplugin

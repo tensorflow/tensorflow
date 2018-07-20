@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/computation_flattener.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -31,8 +32,7 @@ namespace {
 // operation, then merge with the calling computation.
 Status FlattenNode(const CallGraphNode &node) {
   if (node.caller_callsites().size() == 1 &&
-      !tensorflow::str_util::StartsWith(node.computation()->name(),
-                                        "_pop_op")) {
+      !IsPopOpsCall(node.computation())) {
     CallSite call_site = node.caller_callsites()[0];
     if (call_site.instruction()->opcode() == HloOpcode::kCall) {
       CallInliner::InlinedInstructionMap map;

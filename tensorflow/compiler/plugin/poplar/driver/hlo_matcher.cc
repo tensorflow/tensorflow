@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -183,7 +184,7 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
                                        module->computations().end());
 
     for (auto* comp : comps) {
-      if (!comp->IsFusionComputation()) {
+      if (!comp->IsFusionComputation() && !IsPopOpsCall(comp)) {
         MatchPatternStart(comp, comp->root_instruction());
       }
     }
