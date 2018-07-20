@@ -24,9 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-import operator
-
 import six
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
@@ -45,71 +42,9 @@ class RevNet(tf.keras.Model):
     self.axis = 1 if config.data_format == "channels_first" else 3
     self.config = config
 
-    self._init_block = self._construct_init_block()
+    self._init_block = blocks.InitBlock(config=self.config)
+    self._final_block = blocks.FinalBlock(config=self.config)
     self._block_list = self._construct_intermediate_blocks()
-    self._final_block = self._construct_final_block()
-
-  def _construct_init_block(self):
-    init_block = tf.keras.Sequential(
-        [
-            tf.keras.layers.Conv2D(
-                filters=self.config.init_filters,
-                kernel_size=self.config.init_kernel,
-                strides=(self.config.init_stride, self.config.init_stride),
-                data_format=self.config.data_format,
-                use_bias=False,
-                padding="SAME",
-                input_shape=self.config.input_shape,
-                dtype=self.config.dtype),
-            tf.keras.layers.BatchNormalization(
-                axis=self.axis,
-                fused=self.config.fused,
-                dtype=self.config.dtype),
-            tf.keras.layers.Activation("relu"),
-        ],
-        name="init")
-    if self.config.init_max_pool:
-      init_block.add(
-          tf.keras.layers.MaxPooling2D(
-              pool_size=(3, 3),
-              strides=(2, 2),
-              padding="SAME",
-              data_format=self.config.data_format,
-              dtype=self.config.dtype))
-    return init_block
-
-  def _construct_final_block(self):
-    f = self.config.filters[-1]  # Number of filters
-    r = functools.reduce(operator.mul, self.config.strides, 1)  # Reduce ratio
-    r *= self.config.init_stride
-    if self.config.init_max_pool:
-      r *= 2
-
-    if self.config.data_format == "channels_first":
-      w, h = self.config.input_shape[1], self.config.input_shape[2]
-      input_shape = (f, w // r, h // r)
-    elif self.config.data_format == "channels_last":
-      w, h = self.config.input_shape[0], self.config.input_shape[1]
-      input_shape = (w // r, h // r, f)
-    else:
-      raise ValueError("Data format should be either `channels_first`"
-                       " or `channels_last`")
-
-    final_block = tf.keras.Sequential(
-        [
-            tf.keras.layers.BatchNormalization(
-                axis=self.axis,
-                input_shape=input_shape,
-                fused=self.config.fused,
-                dtype=self.config.dtype),
-            tf.keras.layers.Activation("relu"),
-            tf.keras.layers.GlobalAveragePooling2D(
-                data_format=self.config.data_format, dtype=self.config.dtype),
-            tf.keras.layers.Dense(
-                self.config.n_classes, dtype=self.config.dtype)
-        ],
-        name="final")
-    return final_block
 
   def _construct_intermediate_blocks(self):
     # Precompute input shape after initial block
@@ -206,13 +141,20 @@ class RevNet(tf.keras.Model):
       l2_reg: Apply l2 regularization
 
     Returns:
-      list of tuples each being (grad, var) for optimizer to use
+      A tuple with the first entry being a list of all gradients, the second
+      entry being a list of respective variables, the third being the logits,
+      and the forth being the loss
     """
 
-    # Run forward pass to record hidden states; avoid updating running averages
+    # Run forward pass to record hidden states
     vars_and_vals = self.get_moving_stats()
     _, saved_hidden = self.call(inputs, training=training)
-    self.restore_moving_stats(vars_and_vals)
+    if tf.executing_eagerly():
+      # Restore moving averages when executing eagerly to avoid updating twice
+      self.restore_moving_stats(vars_and_vals)
+    else:
+      # Fetch batch norm updates in graph mode
+      updates = self.get_updates_for(inputs)
 
     grads_all = []
     vars_all = []
@@ -220,9 +162,8 @@ class RevNet(tf.keras.Model):
     # Manually backprop through last block
     x = saved_hidden[-1]
     with tf.GradientTape() as tape:
-      x = tf.identity(x)
       tape.watch(x)
-      # Running stats updated below
+      # Running stats updated here
       logits = self._final_block(x, training=training)
       loss = self.compute_loss(logits, labels)
 
@@ -236,6 +177,7 @@ class RevNet(tf.keras.Model):
     for block in reversed(self._block_list):
       y = saved_hidden.pop()
       x = saved_hidden[-1]
+      # Running stats updated here
       dy, grads, vars_ = block.backward_grads_and_vars(
           x, y, dy, training=training)
       grads_all += grads
@@ -247,8 +189,7 @@ class RevNet(tf.keras.Model):
     assert not saved_hidden  # Cleared after backprop
 
     with tf.GradientTape() as tape:
-      x = tf.identity(x)
-      # Running stats updated below
+      # Running stats updated here
       y = self._init_block(x, training=training)
 
     grads_all += tape.gradient(
@@ -259,7 +200,13 @@ class RevNet(tf.keras.Model):
     if l2_reg:
       grads_all = self._apply_weight_decay(grads_all, vars_all)
 
-    return grads_all, vars_all, loss
+    if not tf.executing_eagerly():
+      # Force updates to be executed before gradient computation in graph mode
+      # This does nothing when the function is wrapped in defun
+      with tf.control_dependencies(updates):
+        grads_all[0] = tf.identity(grads_all[0])
+
+    return grads_all, vars_all, logits, loss
 
   def _apply_weight_decay(self, grads, vars_):
     """Update gradients to reflect weight decay."""
@@ -284,8 +231,10 @@ class RevNet(tf.keras.Model):
       n = v.name
       return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
 
-    for v in filter(_is_moving_var, self.variables):
-      vars_and_vals[v] = v.read_value()
+    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
+    with tf.device(device):
+      for v in filter(_is_moving_var, self.variables):
+        vars_and_vals[v] = v.read_value()
 
     return vars_and_vals
 
@@ -297,5 +246,8 @@ class RevNet(tf.keras.Model):
     Args:
       vars_and_vals: The dictionary mapping variables to their previous values.
     """
-    for var_, val in six.iteritems(vars_and_vals):
-      var_.assign(val)
+    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
+    with tf.device(device):
+      for var_, val in six.iteritems(vars_and_vals):
+        # `assign` causes a copy to GPU (if variable is already on GPU)
+        var_.assign(val)
