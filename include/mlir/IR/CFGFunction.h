@@ -81,8 +81,6 @@ public:
     return func->getKind() == Kind::CFGFunc;
   }
 
-  void print(raw_ostream &os) const;
-
 private:
   BasicBlockListType blocks;
 };
