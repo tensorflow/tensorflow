@@ -43,6 +43,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",
+        "no_pip_gpu",
         "no_windows_gpu",
     ],
     deps = [
