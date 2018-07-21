@@ -9,18 +9,6 @@ config_setting(
     },
 )
 
-config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "freebsd",
-    values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "rocm_headers",
     hdrs = [
@@ -35,26 +23,9 @@ cc_library(
 )
 
 cc_library(
-    name = "rocmrt_static",
-    srcs = ["rocm/lib/%{rocmrt_static_lib}"],
-    includes = [
-        ".",
-        "rocm/include",
-    ],
-    linkopts = select({
-        ":freebsd": [],
-        "//conditions:default": ["-ldl"],
-    }) + [
-        "-lpthread",
-        %{rocmrt_static_linkopt}
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "rocmrt",
-    srcs = ["rocm/lib/%{rocmrt_lib}"],
-    data = ["rocm/lib/%{rocmrt_lib}"],
+    name = "hip",
+    srcs = ["rocm/lib/%{hip_lib}"],
+    data = ["rocm/lib/%{hip_lib}"],
     includes = [
         ".",
         "rocm/include",
@@ -117,7 +88,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":rocm_headers",
-        ":rocmrt",
+        ":hip",
         ":rocblas",
         ":rocfft",
         ":hiprand",
