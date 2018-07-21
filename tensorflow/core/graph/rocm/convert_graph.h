@@ -82,7 +82,7 @@ struct Converter {
     bool isCandidate(const Node*);
     bool isRegistered(const Node*);
     void add_instruction(const Node*, bool);
-    void add_parameter(const NodeDef&);
+    void add_parameter(const NodeDef&, TensorShapeProto&);
     int get_offset(int bytes, int ele_size) {
         int cur_offset = ALIGN_BYTES(next_offset, ele_size);
         next_offset = cur_offset + bytes;
@@ -97,7 +97,7 @@ struct Converter {
     void decodeAttr(const NameAttrList&);
     void getNodeType(const NodeDef&, DataType*);
     bool getNCHWFormat(const T_RTG_INST_REFS&);
-    migraph::shape getNodeShape(const NodeDef&, DataType* p_dtype = nullptr);
+    migraph::shape getNodeShape(const NodeDef&, DataType* p_dtype = nullptr, TensorShapeProto* proto = nullptr);
     migraph::shape getAttrShape(const NameAttrList&);
     migraph::shape::type_t getShapeType(const DataType&);
     migraph::shape getShape(const Tensor*);
@@ -156,7 +156,7 @@ Status AddIdentity(Converter&, const NodeDef&, const T_RTG_INST_REFS&);
 Status AddMaxPool(Converter&, const NodeDef&, const T_RTG_INST_REFS&);
 Status AddScale(Converter&, const NodeDef&, const T_RTG_INST_REFS&);
 Status ConvertGraphToRTG(std::unique_ptr<Graph>*, T_INPUT_MAP*);
-Status ConvertSubGraphToRTG(std::unique_ptr<Graph>*, Cluster&, T_INPUT_MAP*, std::unordered_map<int, unsigned>&, bool);
+Status ConvertSubGraphToRTG(std::unique_ptr<Graph>*, Cluster&, T_INPUT_MAP*, std::unordered_map<int, unsigned>&, bool, ShapeRefiner&);
 Status BuildLaunchNode(std::unique_ptr<Graph>*, Cluster&,Converter&, string&);
 void SetInputAttr(migraph::instruction&, NameAttrList&, Converter&);
 void SetNameAttr(migraph::instruction&, NameAttrList&, Converter&); 

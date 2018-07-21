@@ -19,6 +19,7 @@ limitations under the License.
 #include "dump_graph.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+
 #include <stack>
 #include <unordered_map>
 
@@ -126,15 +127,6 @@ Status AddConv2D(Converter& ctx, const NodeDef& nodeDef, const T_RTG_INST_REFS& 
     if (addInputTranspose)
         ctx.rtgInsOutputFormat[&(*new_ins)] = "NCHW";
     
-#if 0    
-    if (addInputTranspose) {
-        T_RTG_INST_REF outs;
-        outs.push_back(new_ins);
-        std::vector<int64_t> perm = {0, 2, 3, 1};
-        auto result1 = ctx.program->add_instruction(migraph::transpose{perm}, outs);
-        auto result2 = ctx.program->add_instruction(migraph::contiguous{}, result1);
-    }
-#endif    
     return Status::OK();
 }
 
@@ -188,7 +180,6 @@ void Converter::register_op_converters()  {
     op_registry_["Const"] = AddConst;
     op_registry_["Conv2D"] = AddConv2D;
     op_registry_["Relu"] = AddActivation;
-    op_registry_["MaxPool"] = AddMaxPool;
 #if 0
     op_registry_["BiasAdd"] = AddScale;
     op_registry_["MaxPool"] = AddMaxPool;
@@ -282,8 +273,8 @@ bool Converter::isCandidate(const Node * node) {
     return true;
 }
 
-void Converter::add_parameter(const NodeDef& nodeDef)  {
-    const migraph::shape shape = getNodeShape(nodeDef);
+void Converter::add_parameter(const NodeDef& nodeDef, TensorShapeProto &proto)  {
+    const migraph::shape shape = getNodeShape(nodeDef, nullptr, &proto);
     const string& name = nodeDef.name();
     instructions[name] = program->add_parameter(name, shape);
 }
@@ -432,7 +423,7 @@ migraph::shape Converter::getAttrShape(const NameAttrList& func)
     return {shape_type, dims};
 }
 
-migraph::shape Converter::getNodeShape(const NodeDef& nodeDef, DataType *p_dtype) {
+migraph::shape Converter::getNodeShape(const NodeDef& nodeDef, DataType *p_dtype, TensorShapeProto* proto) {
     std::string name = nodeDef.name();
     DataType data_type;
     if (p_dtype == nullptr)
@@ -448,8 +439,7 @@ migraph::shape Converter::getNodeShape(const NodeDef& nodeDef, DataType *p_dtype
         const TensorShape& tensor_shape = raw_val.tensor_shape();
         for (int64 i = 0, e = tensor_shape.dims(); i < e; i++)
             dims.push_back(tensor_shape.dim_size(i));
-    } else if (inputs != nullptr) {
-        // CHECK(node->type_string() == "_Arg") << "unknown shape";
+    } else if ((inputs != nullptr) && (nodeDef.op() == "_Arg")) {
         CHECK(nodeDef.attr().count("index")) << "unknown argument index";
         int index;
         GetNodeAttr(nodeDef, "index", &index);
@@ -457,6 +447,11 @@ migraph::shape Converter::getNodeShape(const NodeDef& nodeDef, DataType *p_dtype
         const TensorShape& tensor_shape = tensor.shape();
         for (int64 i = 0, e = tensor_shape.dims(); i < e; i++)
             dims.push_back(tensor_shape.dim_size(i));
+    } else if (proto != nullptr) {
+        for (const auto& dim_proto : proto->dim()) {
+            int size = dim_proto.size();
+            dims.push_back(size);
+        }
     } else {
         CHECK(false) << "unknown shape";
     }
@@ -776,8 +771,7 @@ Status BuildLaunchNode(std::unique_ptr<Graph>* g, Cluster& cluster, Converter& c
         string rtg_name = convert.lookupEncoder(name);
         if (rtg_name != "") {
             AttrEncoder attr_encoder = convert.attr_encoder_registry_.at(rtg_name);
-            migraph::instruction instr = *ins;
-            attr_encoder(instr, attrs, convert);
+            attr_encoder(*ins, attrs, convert);
         } else {
             CHECK(false) << "Unknown RTG instruction";
         }
@@ -855,7 +849,7 @@ Status BuildLaunchNode(std::unique_ptr<Graph>* g, Cluster& cluster, Converter& c
     return Status::OK();    
 }
 
-Status ConvertSubgraphToRTG(std::unique_ptr<Graph>* g, Cluster& cluster, T_INPUT_MAP * inputs, std::unordered_map<int, unsigned>& id2Mask, bool use_gpu) {
+Status ConvertSubgraphToRTG(std::unique_ptr<Graph>* g, Cluster& cluster, T_INPUT_MAP * inputs, std::unordered_map<int, unsigned>& id2Mask, bool use_gpu, ShapeRefiner& refiner) {
     migraph::program * program = new migraph::program;
     if (!program)
         return errors::Internal("Fail to create RTG program");
@@ -867,7 +861,10 @@ Status ConvertSubgraphToRTG(std::unique_ptr<Graph>* g, Cluster& cluster, T_INPUT
             continue;
         Node* src = edge->src();
         param_device = src->assigned_device_name();
-        fwd_convert.add_parameter(src->def());
+        shape_inference::InferenceContext* ic = refiner.GetContext(src);
+        TensorShapeProto proto;
+        ic->ShapeHandleToProto(ic->output(edge->dst_input()), &proto);
+        fwd_convert.add_parameter(src->def(), proto);
     }
 
     string cluster_name;
@@ -896,10 +893,14 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
     bool use_gpu = false;
     if (env_val != nullptr)
         use_gpu = atoi(env_val);
+    const char* cluster_dbg_env = getenv("TF_MIGRAPH_CLUSTER_DBG_LIMIT");
+    int cluster_dbg_limit = -1;
+    if (cluster_dbg_env != nullptr)
+        cluster_dbg_limit = atoi(cluster_dbg_env);
     CHECK_NOTNULL(g);
     const Graph& graph = **g;
     RTGLIB::dump_graph::DumpGraphToFile("Before convert graph to RTG", graph);
-
+    
     std::unordered_map<int, unsigned> id2Order, id2Segment, id2Mask;
     std::unordered_map<int, bool> id2Candidate, id2Visit;
     std::unordered_map<unsigned, unsigned> segment2Cluster;
@@ -909,12 +910,14 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
     std::vector<Node *> rpOrder;
     GetReversePostOrder(graph, &rpOrder);
     Converter convert(nullptr, nullptr);
-
+    ShapeRefiner refiner(graph.versions().producer(), graph.op_registry());
+    
     for (Node* n : rpOrder) {
         int id = n->id();
         id2Order[id] = maxNodeNum++;
         id2Candidate[id] = convert.isCandidate(n) ? true : false;
         id2Mask[id] = 0;
+        refiner.AddNode(n);
     }
 
     Node * sinkNode = graph.sink_node();
@@ -956,10 +959,15 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
                     id2Segment[nextId] = id2Segment[id];
                 iterStack.push(nextNode);
             } else if (bothAreCandidates && !isCtrlEdge) {
-                // TODO: merge cluster by hashing segment ID to cluster Id.
+#if 1                
                 string name1 = node->def().name();
                 string name2 = nextNode->def().name();
-                CHECK(false) << "TODO: merge segments";
+#endif
+                // hash two segments into the same cluster.
+                int nextSegmentId = id2Segment[nextId];
+                if (segment2Cluster.find(nextSegmentId) == segment2Cluster.end())
+                    segment2Cluster[nextSegmentId] = maxClusterNum++;
+                segment2Cluster[id2Segment[id]] = segment2Cluster[nextSegmentId];
             }
 
             if (isCandidate && (!id2Candidate[nextId] || isCtrlEdge))
@@ -1019,7 +1027,9 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
             Cluster& cluster = clusters[id];
             if (cluster.getSize() < MIN_CLUSTER_SIZE)
                 continue;
-            ConvertSubgraphToRTG(g, cluster, inputs, id2Mask, use_gpu);
+            if ((cluster_dbg_limit >= 0) && (id > cluster_dbg_limit))
+                continue;
+            ConvertSubgraphToRTG(g, cluster, inputs, id2Mask, use_gpu, refiner);
         }
     }
 

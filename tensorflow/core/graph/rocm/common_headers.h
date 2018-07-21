@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/common_runtime/shape_refiner.h"
 
 #endif // TENSORFLOW_RTGLIB_COMMON_HEADER_
 #endif // TENSORFLOW_USE_ROCM

@@ -16,7 +16,6 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_ROCM
 #include "attr_to_rtg.h"
 #include "convert_graph.h"
-
 namespace tensorflow {
 namespace rtglib {
 namespace convert {
@@ -63,15 +62,10 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
         } else if (convert.starts_with(name, Converter::literal_prefix)) {
             // place literal in GPU memory
             std::string str = ins->op.name();
-#if 1
             migraph::shape shape = ins->lit.get_shape();
             char * lit_ptr = base_ptr + convert.get_offset(shape);
             hipMemcpy(lit_ptr, ins->lit.data(), shape.bytes(), hipMemcpyHostToDevice);
             params[str] = {shape, lit_ptr};
-#else            
-            migraph::argument arg = migraph::miopen::to_gpu(ins->lit.get_argument());
-            params[str] = arg;
-#endif            
         }
     }
     if (!use_gpu) {
