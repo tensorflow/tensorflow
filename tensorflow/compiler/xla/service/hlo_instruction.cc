@@ -1522,8 +1522,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTupleSelect:
       return true;
 
-    // These opcodes have complex or special behavior so just return false.
-    case HloOpcode::kWhile:
+    // This opcode has complex or special behavior so just return false.
     case HloOpcode::kAfterAll:
       return false;
 
@@ -1538,6 +1537,14 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());
+
+    case HloOpcode::kWhile: {
+      if (eq_computations(while_body(), other.while_body()) &&
+          eq_computations(while_condition(), other.while_condition())) {
+        return true;
+      }
+      return false;
+    }
 
     case HloOpcode::kDomain:
       return operand_side_metadata().Matches(other.operand_side_metadata()) &&
