@@ -409,6 +409,7 @@ Status ComputeGradientError(const Scope& scope, const Output& x,
       const Output& y, const TensorShape& y_shape, JAC_T* max_error);
 
 INSTANTIATE_GRAD_ERR_TYPE(float, float, float);
+INSTANTIATE_GRAD_ERR_TYPE(double, float, double);
 INSTANTIATE_GRAD_ERR_TYPE(double, double, double);
 INSTANTIATE_GRAD_ERR_TYPE(complex64, float, float);
 INSTANTIATE_GRAD_ERR_TYPE(float, complex64, float);
