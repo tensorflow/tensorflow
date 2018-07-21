@@ -28,7 +28,9 @@
 #include "llvm/ADT/iterator_range.h"
 
 namespace mlir {
+class OperationInst;
 class SSAOperand;
+template <typename OperandType, typename OwnerType> class SSAValueUseIterator;
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
@@ -53,24 +55,32 @@ public:
 
   Type *getType() const { return typeAndKind.getPointer(); }
 
-  /// Replace every use of this value with the corresponding value 'newVal'.
-  ///
-  void replaceAllUsesWith(SSAValue *newVal);
-
   /// Returns true if this value has no uses.
   bool use_empty() const { return firstUse == nullptr; }
 
-  // TODO: using use_iterator = SSAValueUseIterator<SSAOperandTy>;
-  // TODO: using use_range = llvm::iterator_range<use_iterator>;
-
-  // TODO: inline use_iterator use_begin() const;
-  // TODO: inline use_iterator use_end() const;
-
-  /// Returns a range of all uses, which is useful for iterating over all uses.
-  // TODO: inline use_range getUses() const;
-
   /// Returns true if this value has exactly one use.
   inline bool hasOneUse() const;
+
+  using use_iterator = SSAValueUseIterator<SSAOperand, void>;
+  using use_range = llvm::iterator_range<use_iterator>;
+
+  inline use_iterator use_begin() const;
+  inline use_iterator use_end() const;
+
+  /// Returns a range of all uses, which is useful for iterating over all uses.
+  inline use_range getUses() const;
+
+  /// Replace all uses of 'this' value with the new value, updating anything in
+  /// the IR that uses 'this' to use the other value instead.  When this returns
+  /// there are zero uses of 'this'.
+  void replaceAllUsesWith(SSAValue *newValue);
+
+  /// If this value is the result of an OperationInst, return the instruction
+  /// that defines it.
+  OperationInst *getDefiningInst();
+  const OperationInst *getDefiningInst() const {
+    return const_cast<SSAValue *>(this)->getDefiningInst();
+  }
 
 protected:
   SSAValue(SSAValueKind kind, Type *type) : typeAndKind(type, kind) {}
@@ -108,6 +118,46 @@ protected:
 };
 
 // FIXME: Implement SSAValueUseIterator here.
+
+/// An iterator over all uses of a ValueBase.
+template <typename OperandType, typename OwnerType>
+class SSAValueUseIterator
+    : public std::iterator<std::forward_iterator_tag, SSAOperand> {
+public:
+  SSAValueUseIterator() = default;
+  explicit SSAValueUseIterator(SSAOperand *current) : current(current) {}
+  OperandType *operator->() const { return current; }
+  OperandType &operator*() const { return current; }
+
+  template<typename SFINAE_Owner = OwnerType>
+  typename std::enable_if<!std::is_void<OwnerType>::value, SFINAE_Owner>::type
+  getUser() const {
+    return current->getOwner();
+  }
+
+  SSAValueUseIterator &operator++() {
+    assert(current && "incrementing past end()!");
+    current = (OperandType *)current->getNextOperandUsingThisValue();
+    return *this;
+  }
+
+  SSAValueUseIterator operator++(int unused) {
+    SSAValueUseIterator copy = *this;
+    ++*this;
+    return copy;
+  }
+
+  friend bool operator==(SSAValueUseIterator lhs, SSAValueUseIterator rhs) {
+    return lhs.current == rhs.current;
+  }
+
+  friend bool operator!=(SSAValueUseIterator lhs, SSAValueUseIterator rhs) {
+    return !(lhs == rhs);
+  }
+
+private:
+  OperandType *current;
+};
 
 } // namespace mlir
 

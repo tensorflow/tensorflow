@@ -57,18 +57,24 @@ protected:
 /// Instruction results are CFG Values.
 class InstResult : public CFGValue {
 public:
-  InstResult(Type *type, Instruction *owner)
+  InstResult(Type *type, OperationInst *owner)
       : CFGValue(CFGValueKind::InstResult, type), owner(owner) {}
 
   static bool classof(const SSAValue *value) {
     return value->getKind() == SSAValueKind::InstResult;
   }
 
+  OperationInst *getOwner() { return owner; }
+  const OperationInst *getOwner() const { return owner; }
+
+  /// Return the number of this result.
+  unsigned getResultNumber() const;
+
 private:
   /// The owner of this operand.
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
-  Instruction *const owner;
+  OperationInst *const owner;
 };
 
 } // namespace mlir

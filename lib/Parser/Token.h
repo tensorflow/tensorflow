@@ -83,6 +83,11 @@ public:
   /// For an inttype token, return its bitwidth.
   Optional<unsigned> getIntTypeBitwidth() const;
 
+  /// Given a hash_identifier token like #123, try to parse the number out of
+  /// the identifier, returning None if it is a named identifier like #x or
+  /// if the integer doesn't fit.
+  Optional<unsigned> getHashIdentifierNumber() const;
+
   /// Given a 'string' token, return its value, including removing the quote
   /// characters and unescaping the contents of the string.
   std::string getStringValue() const;

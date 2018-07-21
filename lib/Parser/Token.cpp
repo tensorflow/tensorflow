@@ -35,7 +35,6 @@ SMLoc Token::getEndLoc() const {
 SMRange Token::getLocRange() const {
   return SMRange(getLoc(), getEndLoc());
 }
-#include "llvm/Support/raw_ostream.h"
 
 /// For an integer token, return its value as an unsigned.  If it doesn't fit,
 /// return None.
@@ -81,6 +80,16 @@ std::string Token::getStringValue() const {
   return getSpelling().drop_front().drop_back().str();
 }
 
+/// Given a hash_identifier token like #123, try to parse the number out of
+/// the identifier, returning None if it is a named identifier like #x or
+/// if the integer doesn't fit.
+Optional<unsigned> Token::getHashIdentifierNumber() const {
+  assert(getKind() == hash_identifier);
+  unsigned result = 0;
+  if (spelling.drop_front().getAsInteger(10, result))
+    return None;
+  return result;
+}
 
 /// Given a punctuation or keyword token kind, return the spelling of the
 /// token as a string.  Warning: This will abort on markers, identifiers and

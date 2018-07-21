@@ -19,6 +19,23 @@
 #include "mlir/IR/BasicBlock.h"
 using namespace mlir;
 
+/// Replace all uses of 'this' value with the new value, updating anything in
+/// the IR that uses 'this' to use the other value instead.  When this returns
+/// there are zero uses of 'this'.
+void SSAValue::replaceAllUsesWith(SSAValue *newValue) {
+  assert(this != newValue && "cannot RAUW a value with itself");
+  while (!use_empty()) {
+    use_begin()->set(newValue);
+  }
+}
+
+/// Return the result number of this result.
+unsigned InstResult::getResultNumber() const {
+  // Results are always stored consecutively, so use pointer subtraction to
+  // figure out what number this is.
+  return this - &getOwner()->getInstResults()[0];
+}
+
 //===----------------------------------------------------------------------===//
 // Instruction
 //===----------------------------------------------------------------------===//
@@ -30,18 +47,23 @@ Instruction::~Instruction() {
 }
 
 /// Destroy this instruction or one of its subclasses.
-void Instruction::destroy(Instruction *inst) {
-  switch (inst->getKind()) {
+void Instruction::destroy() {
+  switch (getKind()) {
   case Kind::Operation:
-    delete cast<OperationInst>(inst);
+    cast<OperationInst>(this)->destroy();
     break;
   case Kind::Branch:
-    delete cast<BranchInst>(inst);
+    delete cast<BranchInst>(this);
     break;
   case Kind::Return:
-    delete cast<ReturnInst>(inst);
+    delete cast<ReturnInst>(this);
     break;
   }
+}
+
+void OperationInst::destroy() {
+  this->~OperationInst();
+  free(this);
 }
 
 CFGFunction *Instruction::getFunction() const {
@@ -60,7 +82,7 @@ OperationInst *OperationInst::create(Identifier name,
                                      MLIRContext *context) {
   auto byteSize = totalSizeToAlloc<InstOperand, InstResult>(operands.size(),
                                                             resultTypes.size());
-  void *rawMem = ::operator new(byteSize);
+  void *rawMem = malloc(byteSize);
 
   // Initialize the OperationInst part of the instruction.
   auto inst = ::new (rawMem) OperationInst(
@@ -141,6 +163,14 @@ void OperationInst::eraseFromBlock() {
   getBlock()->getOperations().erase(this);
 }
 
+/// If this value is the result of an OperationInst, return the instruction
+/// that defines it.
+OperationInst *SSAValue::getDefiningInst() {
+  if (auto *result = dyn_cast<InstResult>(this))
+    return result->getOwner();
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // Terminators
 //===----------------------------------------------------------------------===//
@@ -149,7 +179,7 @@ void OperationInst::eraseFromBlock() {
 void TerminatorInst::eraseFromBlock() {
   assert(getBlock() && "Instruction has no parent");
   getBlock()->setTerminator(nullptr);
-  TerminatorInst::destroy(this);
+  destroy();
 }
 
 

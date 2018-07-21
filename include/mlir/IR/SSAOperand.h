@@ -56,6 +56,11 @@ public:
 
   ~SSAOperand() { removeFromCurrent(); }
 
+  /// Return the next operand on the use-list of the value we are referring to.
+  /// This should generally only be used by the internal implementation details
+  /// of the SSA machinery.
+  SSAOperand *getNextOperandUsingThisValue() { return nextUse; }
+
 private:
   /// The value used as this operand.  This can be null when in a
   /// "dropAllUses" state.
@@ -115,6 +120,24 @@ private:
   /// The owner of this operand.
   SSAOwnerTy *const owner;
 };
+
+inline auto SSAValue::use_begin() const -> use_iterator {
+  return SSAValue::use_iterator(firstUse);
+}
+
+inline auto SSAValue::use_end() const -> use_iterator {
+  return SSAValue::use_iterator(nullptr);
+}
+
+inline auto SSAValue::getUses() const -> llvm::iterator_range<use_iterator> {
+  return {use_begin(), use_end()};
+}
+
+/// Returns true if this value has exactly one use.
+inline bool SSAValue::hasOneUse() const {
+  return firstUse && firstUse->getNextOperandUsingThisValue() == nullptr;
+}
+
 } // namespace mlir
 
 #endif

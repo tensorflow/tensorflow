@@ -519,14 +519,30 @@ protected:
     valueIDs[value] = nextValueID++;
   }
 
-  void printValueID(const SSAValue *value) const {
-    // TODO: If this is the result of an operation with multiple results, look
-    // up the first result, and print the #32 syntax.
-    auto it = valueIDs.find(value);
-    if (it != valueIDs.end())
-      os << '%' << it->getSecond();
-    else
+  void printValueID(const SSAValue *value,
+                    bool dontPrintResultNo = false) const {
+    int resultNo = -1;
+    auto lookupValue = value;
+
+    // If this is a reference to the result of a multi-result instruction, print
+    // out the # identifier and make sure to map our lookup to the first result
+    // of the instruction.
+    if (auto *result = dyn_cast<InstResult>(value)) {
+      if (result->getOwner()->getNumResults() != 1) {
+        resultNo = result->getResultNumber();
+        lookupValue = result->getOwner()->getResult(0);
+      }
+    }
+
+    auto it = valueIDs.find(lookupValue);
+    if (it == valueIDs.end()) {
       os << "<<INVALID SSA VALUE>>";
+      return;
+    }
+
+    os << '%' << it->getSecond();
+    if (resultNo != -1 && !dontPrintResultNo)
+      os << '#' << resultNo;
   }
 
 private:
@@ -543,7 +559,7 @@ void FunctionState::printOperation(const Operation *op) {
   // Operation this check can go away.
   if (auto *inst = dyn_cast<OperationInst>(op)) {
     if (inst->getNumResults()) {
-      printValueID(inst->getResult(0));
+      printValueID(inst->getResult(0), /*dontPrintResultNo*/ true);
       os << " = ";
     }
   }

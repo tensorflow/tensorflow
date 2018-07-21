@@ -56,7 +56,7 @@ public:
   CFGFunction *getFunction() const;
 
   /// Destroy this instruction and its subclass data.
-  static void destroy(Instruction *inst);
+  void destroy();
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -95,7 +95,6 @@ public:
                                ArrayRef<Type *> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
-  ~OperationInst();
 
   unsigned getNumOperands() const { return numOperands; }
 
@@ -139,6 +138,8 @@ public:
   /// Unlink this instruction from its BasicBlock and delete it.
   void eraseFromBlock();
 
+  void destroy();
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Operation;
@@ -152,6 +153,7 @@ private:
 
   OperationInst(Identifier name, unsigned numOperands, unsigned numResults,
                 ArrayRef<NamedAttribute> attributes, MLIRContext *context);
+  ~OperationInst();
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<OperationInst, InstOperand, InstResult>;
@@ -237,9 +239,7 @@ struct ilist_traits<::mlir::OperationInst> {
   using OperationInst = ::mlir::OperationInst;
   using instr_iterator = simple_ilist<OperationInst>::iterator;
 
-  static void deleteNode(OperationInst *inst) {
-    OperationInst::destroy(inst);
-  }
+  static void deleteNode(OperationInst *inst) { inst->destroy(); }
 
   void addNodeToList(OperationInst *inst);
   void removeNodeFromList(OperationInst *inst);

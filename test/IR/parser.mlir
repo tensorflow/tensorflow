@@ -178,3 +178,21 @@ bb42:       // CHECK: bb0:
   "addf"(%f, %f) : (f32,f32) -> f32
   return
 }
+
+// CHECK-LABEL: cfgfunc @ssa_values() {
+cfgfunc @ssa_values() {
+bb0:       // CHECK: bb0:
+  // CHECK: %0 = "foo"() : () -> (i1, i17)
+  %0 = "foo"() : () -> (i1, i17)
+  br bb2
+
+bb1:       // CHECK: bb1:
+  // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> i16
+  %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> i16
+  return
+
+bb2:       // CHECK: bb2:
+  // CHECK: %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
+  %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
+  br bb1
+}

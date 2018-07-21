@@ -176,10 +176,20 @@ bb40:
 
 cfgfunc @redef() {
 bb42:
-  %x = "dim"(){index: 0} : ()->i32
-  %x = "dim"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value %x}}
+  %x = "dim"(){index: 0} : ()->i32 // expected-error {{previously defined here}}
+  %x = "dim"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
   return
 }
+
+// -----
+
+cfgfunc @undef() {
+bb42:
+  %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undeclared SSA value}}
+  return
+}
+
+// -----
 
 mlfunc @missing_rbrace() {
   return %a
