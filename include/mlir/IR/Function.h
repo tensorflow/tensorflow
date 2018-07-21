@@ -46,8 +46,9 @@ public:
   MLIRContext *getContext() const;
 
   /// Perform (potentially expensive) checks of invariants, used to detect
-  /// compiler bugs.  This aborts on failure.
-  void verify() const;
+  /// compiler bugs.  On error, this fills in the string and return true,
+  /// or aborts if the string was not provided.
+  bool verify(std::string *errorResult = nullptr) const;
 
   void print(raw_ostream &os) const;
   void dump() const;

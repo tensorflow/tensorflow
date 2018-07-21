@@ -193,7 +193,7 @@ bb42:
 
 mlfunc @missing_rbrace() {
   return %a
-mlfunc @d {return} // expected-error {{expected ',' or '}'}}
+mlfunc @d {return} // expected-error {{expected '}' to end mlfunc}}
 
 // -----
 
@@ -202,3 +202,9 @@ mlfunc @malformed_type(%a : intt) { // expected-error {{expected type}}
 
 // -----
 
+cfgfunc @resulterror() -> i32 {  // expected-error {{return has 0 operands, but enclosing function returns 1}}
+bb42:
+  return
+}
+
+// -----

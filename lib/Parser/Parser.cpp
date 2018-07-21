@@ -137,10 +137,16 @@ public:
     return true;
   }
 
-  ParseResult parseCommaSeparatedList(
-      Token::Kind rightToken,
-      const std::function<ParseResult()> &parseElement,
-      bool allowEmptyList = true);
+  /// Parse a comma-separated list of elements up until the specified end token.
+  ParseResult
+  parseCommaSeparatedListUntil(Token::Kind rightToken,
+                               const std::function<ParseResult()> &parseElement,
+                               bool allowEmptyList = true);
+
+  /// Parse a comma separated list of elements that must have at least one entry
+  /// in it.
+  ParseResult
+  parseCommaSeparatedList(const std::function<ParseResult()> &parseElement);
 
   // We have two forms of parsing methods - those that return a non-null
   // pointer on success, and those that return a ParseResult to indicate whether
@@ -188,24 +194,10 @@ ParseResult Parser::emitError(SMLoc loc, const Twine &message) {
   return ParseFailure;
 }
 
-/// Parse a comma-separated list of elements, terminated with an arbitrary
-/// token.  This allows empty lists if allowEmptyList is true.
-///
-///   abstract-list ::= rightToken                  // if allowEmptyList == true
-///   abstract-list ::= element (',' element)* rightToken
-///
-ParseResult Parser::
-parseCommaSeparatedList(Token::Kind rightToken,
-                        const std::function<ParseResult()> &parseElement,
-                        bool allowEmptyList) {
-  // Handle the empty case.
-  if (getToken().is(rightToken)) {
-    if (!allowEmptyList)
-      return emitError("expected list element");
-    consumeToken(rightToken);
-    return ParseSuccess;
-  }
-
+/// Parse a comma separated list of elements that must have at least one entry
+/// in it.
+ParseResult Parser::parseCommaSeparatedList(
+    const std::function<ParseResult()> &parseElement) {
   // Non-empty case starts with an element.
   if (parseElement())
     return ParseFailure;
@@ -215,6 +207,28 @@ parseCommaSeparatedList(Token::Kind rightToken,
     if (parseElement())
       return ParseFailure;
   }
+  return ParseSuccess;
+}
+
+/// Parse a comma-separated list of elements, terminated with an arbitrary
+/// token.  This allows empty lists if allowEmptyList is true.
+///
+///   abstract-list ::= rightToken                  // if allowEmptyList == true
+///   abstract-list ::= element (',' element)* rightToken
+///
+ParseResult Parser::parseCommaSeparatedListUntil(
+    Token::Kind rightToken, const std::function<ParseResult()> &parseElement,
+    bool allowEmptyList) {
+  // Handle the empty case.
+  if (getToken().is(rightToken)) {
+    if (!allowEmptyList)
+      return emitError("expected list element");
+    consumeToken(rightToken);
+    return ParseSuccess;
+  }
+
+  if (parseCommaSeparatedList(parseElement))
+    return ParseFailure;
 
   // Consume the end character.
   if (!consumeIf(rightToken))
@@ -447,8 +461,8 @@ Type *Parser::parseMemRefType() {
   };
 
   // Parse comma separated list of affine maps, followed by memory space.
-  if (parseCommaSeparatedList(Token::greater, parseElt,
-                              /*allowEmptyList=*/false)) {
+  if (parseCommaSeparatedListUntil(Token::greater, parseElt,
+                                   /*allowEmptyList=*/false)) {
     return nullptr;
   }
   // Check that MemRef type specifies at least one affine map in composition.
@@ -520,7 +534,7 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
   if (!consumeIf(Token::l_paren))
     return parseElt();
 
-  if (parseCommaSeparatedList(Token::r_paren, parseElt))
+  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt))
     return ParseFailure;
 
   return ParseSuccess;
@@ -585,7 +599,7 @@ Attribute *Parser::parseAttribute() {
       return elements.back() ? ParseSuccess : ParseFailure;
     };
 
-    if (parseCommaSeparatedList(Token::r_bracket, parseElt))
+    if (parseCommaSeparatedListUntil(Token::r_bracket, parseElt))
       return nullptr;
     return builder.getArrayAttr(elements);
   }
@@ -628,7 +642,7 @@ ParseResult Parser::parseAttributeDict(
     return ParseSuccess;
   };
 
-  if (parseCommaSeparatedList(Token::r_brace, parseElt))
+  if (parseCommaSeparatedListUntil(Token::r_brace, parseElt))
     return ParseFailure;
 
   return ParseSuccess;
@@ -717,7 +731,8 @@ private:
 /// for non-conforming expressions.
 AffineExpr *AffineMapParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
                                                    AffineExpr *lhs,
-                                                   AffineExpr *rhs, SMLoc opLoc) {
+                                                   AffineExpr *rhs,
+                                                   SMLoc opLoc) {
   // TODO: make the error location info accurate.
   switch (op) {
   case Mul:
@@ -1066,7 +1081,7 @@ ParseResult AffineMapParser::parseSymbolIdList() {
     return emitError("expected '['");
 
   auto parseElt = [&]() -> ParseResult { return parseDimOrSymbolId(false); };
-  return parseCommaSeparatedList(Token::r_bracket, parseElt);
+  return parseCommaSeparatedListUntil(Token::r_bracket, parseElt);
 }
 
 /// Parse the list of dimensional identifiers to an affine map.
@@ -1075,7 +1090,7 @@ ParseResult AffineMapParser::parseDimIdList() {
     return emitError("expected '(' at start of dimensional identifiers list");
 
   auto parseElt = [&]() -> ParseResult { return parseDimOrSymbolId(true); };
-  return parseCommaSeparatedList(Token::r_paren, parseElt);
+  return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
 }
 
 /// Parse an affine map definition.
@@ -1114,7 +1129,7 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
   // Parse a multi-dimensional affine expression (a comma-separated list of 1-d
   // affine expressions); the list cannot be empty.
   // Grammar: multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-  if (parseCommaSeparatedList(Token::r_paren, parseElt, false))
+  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
     return nullptr;
 
   // Parse optional range sizes.
@@ -1137,7 +1152,7 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
     };
 
     setSymbolicParsing(true);
-    if (parseCommaSeparatedList(Token::r_paren, parseRangeSize, false))
+    if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
       return nullptr;
     if (exprs.size() > rangeSizes.size())
       return (emitError(loc, "fewer range sizes than range expressions"),
@@ -1182,7 +1197,7 @@ public:
 
   /// After the function is finished parsing, this function checks to see if
   /// there are any remaining issues.
-  ParseResult finalizeFunction();
+  ParseResult finalizeFunction(Function *func, SMLoc loc);
 
   /// This represents a use of an SSA value in the program.  The first two
   /// entries in the tuple are the name and result number of a reference.  The
@@ -1203,12 +1218,12 @@ public:
 
   // SSA parsing productions.
   ParseResult parseSSAUse(SSAUseInfo &result);
-  ParseResult parseOptionalSSAUseList(Token::Kind endToken,
-                                      SmallVectorImpl<SSAUseInfo> &results);
+  ParseResult parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results);
   SSAValue *parseSSAUseAndType();
+
+  template <typename ValueTy>
   ParseResult
-  parseOptionalSSAUseAndTypeList(Token::Kind endToken,
-                                 SmallVectorImpl<SSAValue *> &results);
+  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results);
 
   // Operations
   ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
@@ -1315,7 +1330,7 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, SSAValue *value) {
 
 /// After the function is finished parsing, this function checks to see if
 /// there are any remaining issues.
-ParseResult FunctionParser::finalizeFunction() {
+ParseResult FunctionParser::finalizeFunction(Function *func, SMLoc loc) {
   // Check for any forward references that are left.  If we find any, error out.
   if (!forwardReferencePlaceholders.empty()) {
     SmallVector<std::pair<const char *, SSAValue *>, 4> errors;
@@ -1329,6 +1344,11 @@ ParseResult FunctionParser::finalizeFunction() {
                 "use of undeclared SSA value name");
     return ParseFailure;
   }
+
+  // Run the verifier on this function.  If an error is detected, report it.
+  std::string errorString;
+  if (func->verify(&errorString))
+    return emitError(loc, errorString);
 
   return ParseSuccess;
 }
@@ -1363,9 +1383,10 @@ ParseResult FunctionParser::parseSSAUse(SSAUseInfo &result) {
 ///   ssa-use-list-opt ::= ssa-use-list?
 ///
 ParseResult
-FunctionParser::parseOptionalSSAUseList(Token::Kind endToken,
-                                        SmallVectorImpl<SSAUseInfo> &results) {
-  return parseCommaSeparatedList(endToken, [&]() -> ParseResult {
+FunctionParser::parseOptionalSSAUseList(SmallVectorImpl<SSAUseInfo> &results) {
+  if (!getToken().is(Token::percent_identifier))
+    return ParseSuccess;
+  return parseCommaSeparatedList([&]() -> ParseResult {
     SSAUseInfo result;
     if (parseSSAUse(result))
       return ParseFailure;
@@ -1396,11 +1417,15 @@ SSAValue *FunctionParser::parseSSAUseAndType() {
 ///
 ///   ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
 ///
+template <typename ValueTy>
 ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
-    Token::Kind endToken, SmallVectorImpl<SSAValue *> &results) {
-  return parseCommaSeparatedList(endToken, [&]() -> ParseResult {
+    SmallVectorImpl<ValueTy *> &results) {
+  if (getToken().isNot(Token::percent_identifier))
+    return ParseSuccess;
+
+  return parseCommaSeparatedList([&]() -> ParseResult {
     if (auto *value = parseSSAUseAndType()) {
-      results.push_back(value);
+      results.push_back(cast<ValueTy>(value));
       return ParseSuccess;
     }
     return ParseFailure;
@@ -1442,7 +1467,11 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
 
   // Parse the operand list.
   SmallVector<SSAUseInfo, 8> operandInfos;
-  parseOptionalSSAUseList(Token::r_paren, operandInfos);
+  if (parseOptionalSSAUseList(operandInfos))
+    return ParseFailure;
+
+  if (!consumeIf(Token::r_paren))
+    return emitError("expected ')' to end operand list");
 
   SmallVector<NamedAttribute, 4> attributes;
   if (getToken().is(Token::l_brace)) {
@@ -1548,6 +1577,7 @@ private:
 } // end anonymous namespace
 
 ParseResult CFGFunctionParser::parseFunctionBody() {
+  auto braceLoc = getToken().getLoc();
   if (!consumeIf(Token::l_brace))
     return emitError("expected '{' in CFG function");
 
@@ -1572,7 +1602,7 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
 
   getModule()->functionList.push_back(function);
 
-  return finalizeFunction();
+  return finalizeFunction(function, braceLoc);
 }
 
 /// Basic block declaration.
@@ -1600,9 +1630,11 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
 
   // If an argument list is present, parse it.
   if (consumeIf(Token::l_paren)) {
-    SmallVector<SSAValue *, 8> bbArgs;
-    if (parseOptionalSSAUseAndTypeList(Token::r_paren, bbArgs))
+    SmallVector<SSAUseInfo, 8> bbArgs;
+    if (parseOptionalSSAUseList(bbArgs))
       return ParseFailure;
+    if (!consumeIf(Token::r_paren))
+      return emitError("expected ')' to end argument list");
 
     // TODO: attach it.
   }
@@ -1648,9 +1680,14 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
   default:
     return (emitError("expected terminator at end of basic block"), nullptr);
 
-  case Token::kw_return:
+  case Token::kw_return: {
     consumeToken(Token::kw_return);
-    return builder.createReturnInst();
+    SmallVector<CFGValue *, 8> results;
+    if (parseOptionalSSAUseAndTypeList(results))
+      return nullptr;
+
+    return builder.createReturnInst(results);
+  }
 
   case Token::kw_br: {
     consumeToken(Token::kw_br);
@@ -1693,6 +1730,7 @@ private:
 } // end anonymous namespace
 
 ParseResult MLFunctionParser::parseFunctionBody() {
+  auto braceLoc = getToken().getLoc();
   if (!consumeIf(Token::l_brace))
     return emitError("expected '{' in ML function");
 
@@ -1705,12 +1743,15 @@ ParseResult MLFunctionParser::parseFunctionBody() {
 
   // TODO: store return operands in the IR.
   SmallVector<SSAUseInfo, 4> dummyUseInfo;
-  if (parseOptionalSSAUseList(Token::r_brace, dummyUseInfo))
+  if (parseOptionalSSAUseList(dummyUseInfo))
     return ParseFailure;
+
+  if (!consumeIf(Token::r_brace))
+    return emitError("expected '}' to end mlfunc");
 
   getModule()->functionList.push_back(function);
 
-  return finalizeFunction();
+  return finalizeFunction(function, braceLoc);
 }
 
 /// For statement.
@@ -1959,7 +2000,7 @@ ModuleParser::parseMLArgumentList(SmallVectorImpl<Type *> &argTypes,
   if (!consumeIf(Token::l_paren))
     llvm_unreachable("expected '('");
 
-  return parseCommaSeparatedList(Token::r_paren, parseElt);
+  return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
 }
 
 /// Parse a function signature, starting with a name and including the parameter

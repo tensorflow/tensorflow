@@ -56,7 +56,7 @@ void Instruction::destroy() {
     delete cast<BranchInst>(this);
     break;
   case Kind::Return:
-    delete cast<ReturnInst>(this);
+    cast<ReturnInst>(this)->destroy();
     break;
   }
 }
@@ -182,4 +182,28 @@ void TerminatorInst::eraseFromBlock() {
   destroy();
 }
 
+/// Create a new OperationInst with the specific fields.
+ReturnInst *ReturnInst::create(ArrayRef<CFGValue *> operands) {
+  auto byteSize = totalSizeToAlloc<InstOperand>(operands.size());
+  void *rawMem = malloc(byteSize);
 
+  // Initialize the ReturnInst part of the instruction.
+  auto inst = ::new (rawMem) ReturnInst(operands.size());
+
+  // Initialize the operands and results.
+  auto instOperands = inst->getInstOperands();
+  for (unsigned i = 0, e = operands.size(); i != e; ++i)
+    new (&instOperands[i]) InstOperand(inst, operands[i]);
+  return inst;
+}
+
+void ReturnInst::destroy() {
+  this->~ReturnInst();
+  free(this);
+}
+
+ReturnInst::~ReturnInst() {
+  // Explicitly run the destructors for the operands.
+  for (auto &operand : getInstOperands())
+    operand.~InstOperand();
+}

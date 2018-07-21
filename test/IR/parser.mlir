@@ -79,8 +79,8 @@ bb42: // (%0: i32, %f: f32):    TODO(clattner): implement bbargs.
 // CHECK: }
 }
 
-// CHECK-LABEL: cfgfunc @multiblock() -> i32 {
-cfgfunc @multiblock() -> i32 {
+// CHECK-LABEL: cfgfunc @multiblock() {
+cfgfunc @multiblock() {
 bb0:         // CHECK: bb0:
   return     // CHECK:   return
 bb1:         // CHECK: bb1:
@@ -179,17 +179,19 @@ bb42:       // CHECK: bb0:
   return
 }
 
-// CHECK-LABEL: cfgfunc @ssa_values() {
-cfgfunc @ssa_values() {
+// CHECK-LABEL: cfgfunc @ssa_values() -> (i16, i8) {
+cfgfunc @ssa_values() -> (i16, i8) {
 bb0:       // CHECK: bb0:
   // CHECK: %0 = "foo"() : () -> (i1, i17)
   %0 = "foo"() : () -> (i1, i17)
   br bb2
 
 bb1:       // CHECK: bb1:
-  // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> i16
-  %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> i16
-  return
+  // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
+  %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
+  
+  // CHECK: return %1#0 : i16, %1#1 : i8
+  return %1#0 : i16, %1#1 : i8
 
 bb2:       // CHECK: bb2:
   // CHECK: %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)

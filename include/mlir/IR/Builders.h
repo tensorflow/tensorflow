@@ -134,10 +134,12 @@ public:
 
   // Terminators.
 
-  ReturnInst *createReturnInst() { return insertTerminator(new ReturnInst()); }
+  ReturnInst *createReturnInst(ArrayRef<CFGValue *> operands) {
+    return insertTerminator(ReturnInst::create(operands));
+  }
 
   BranchInst *createBranchInst(BasicBlock *dest) {
-    return insertTerminator(new BranchInst(dest));
+    return insertTerminator(BranchInst::create(dest));
   }
 
 private:

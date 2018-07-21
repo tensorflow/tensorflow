@@ -187,9 +187,7 @@ protected:
 /// and may pass basic block arguments to the successor.
 class BranchInst : public TerminatorInst {
 public:
-  explicit BranchInst(BasicBlock *dest)
-    : TerminatorInst(Kind::Branch), dest(dest) {
-  }
+  static BranchInst *create(BasicBlock *dest) { return new BranchInst(dest); }
   ~BranchInst() {}
 
   /// Return the block this branch jumps to.
@@ -205,6 +203,9 @@ public:
   }
 
 private:
+  explicit BranchInst(BasicBlock *dest)
+      : TerminatorInst(Kind::Branch), dest(dest) {}
+
   BasicBlock *dest;
 };
 
@@ -212,17 +213,53 @@ private:
 /// The 'return' instruction represents the end of control flow within the
 /// current function, and can return zero or more results.  The result list is
 /// required to align with the result list of the containing function's type.
-class ReturnInst : public TerminatorInst {
+class ReturnInst final
+    : public TerminatorInst,
+      private llvm::TrailingObjects<ReturnInst, InstOperand> {
 public:
-  explicit ReturnInst() : TerminatorInst(Kind::Return) {}
-  ~ReturnInst() {}
+  /// Create a new OperationInst with the specific fields.
+  static ReturnInst *create(ArrayRef<CFGValue *> operands);
 
-  // TODO: Needs to take an operand list.
+  unsigned getNumOperands() const { return numOperands; }
+
+  // TODO: Add a getOperands() custom sequence that provides a value projection
+  // of the operand list.
+  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+  const CFGValue *getOperand(unsigned idx) const {
+    return getInstOperand(idx).get();
+  }
+
+  ArrayRef<InstOperand> getInstOperands() const {
+    return {getTrailingObjects<InstOperand>(), numOperands};
+  }
+  MutableArrayRef<InstOperand> getInstOperands() {
+    return {getTrailingObjects<InstOperand>(), numOperands};
+  }
+
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
+  }
+
+  void destroy();
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Return;
   }
+
+private:
+  // This stuff is used by the TrailingObjects template.
+  friend llvm::TrailingObjects<ReturnInst, InstOperand>;
+  size_t numTrailingObjects(OverloadToken<InstOperand>) const {
+    return numOperands;
+  }
+
+  explicit ReturnInst(unsigned numOperands)
+      : TerminatorInst(Kind::Return), numOperands(numOperands) {}
+  ~ReturnInst();
+
+  unsigned numOperands;
 };
 
 } // end namespace mlir

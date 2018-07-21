@@ -41,73 +41,131 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
-template <typename T>
-static void failure(const Twine &message, const T &value) {
-  // Print the error message and flush the stream in case printing the value
-  // causes a crash.
-  llvm::errs() << "MLIR verification failure: " << message << "\n";
-  llvm::errs().flush();
-  value.dump();
-}
+namespace {
+/// Base class for the verifiers in this file.  It is a pervasive truth that
+/// this file treats "true" as an error that needs to be recovered from, and
+/// "false" as success.
+///
+class Verifier {
+public:
+  template <typename T>
+  static void failure(const Twine &message, const T &value, raw_ostream &os) {
+    // Print the error message and flush the stream in case printing the value
+    // causes a crash.
+    os << "MLIR verification failure: " + message + "\n";
+    os.flush();
+    value.print(os);
+  }
+
+  template <typename T>
+  bool failure(const Twine &message, const T &value) {
+    // If the caller isn't trying to collect failure information, just print
+    // the result and abort.
+    if (!errorResult) {
+      failure(message, value, llvm::errs());
+      abort();
+    }
+
+    // Otherwise, emit the error into the string and return true.
+    llvm::raw_string_ostream os(*errorResult);
+    failure(message, value, os);
+    os.flush();
+    return true;
+  }
+
+protected:
+  explicit Verifier(std::string *errorResult) : errorResult(errorResult) {}
+
+private:
+  std::string *errorResult;
+};
+} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // CFG Functions
 //===----------------------------------------------------------------------===//
 
 namespace {
-class CFGFuncVerifier {
+class CFGFuncVerifier : public Verifier {
 public:
   const CFGFunction &fn;
   OperationSet &operationSet;
 
-  CFGFuncVerifier(const CFGFunction &fn)
-      : fn(fn), operationSet(OperationSet::get(fn.getContext())) {}
+  CFGFuncVerifier(const CFGFunction &fn, std::string *errorResult)
+      : Verifier(errorResult), fn(fn),
+        operationSet(OperationSet::get(fn.getContext())) {}
 
-  void verify();
-  void verifyBlock(const BasicBlock &block);
-  void verifyTerminator(const TerminatorInst &term);
-  void verifyOperation(const OperationInst &inst);
+  bool verify();
+  bool verifyBlock(const BasicBlock &block);
+  bool verifyOperation(const OperationInst &inst);
+  bool verifyTerminator(const TerminatorInst &term);
+  bool verifyReturn(const ReturnInst &inst);
 };
 } // end anonymous namespace
 
-void CFGFuncVerifier::verify() {
+bool CFGFuncVerifier::verify() {
   // TODO: Lots to be done here, including verifying dominance information when
   // we have uses and defs.
 
   for (auto &block : fn) {
-    verifyBlock(block);
+    if (verifyBlock(block))
+      return true;
   }
+  return false;
 }
 
-void CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
+bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
   if (!block.getTerminator())
-    failure("basic block with no terminator", block);
-  verifyTerminator(*block.getTerminator());
+    return failure("basic block with no terminator", block);
+
+  if (verifyTerminator(*block.getTerminator()))
+    return true;
 
   for (auto &inst : block) {
-    verifyOperation(inst);
+    if (verifyOperation(inst))
+      return true;
   }
+  return false;
 }
 
-void CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
+bool CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
   if (term.getFunction() != &fn)
-    failure("terminator in the wrong function", term);
+    return failure("terminator in the wrong function", term);
 
   // TODO: Check that operands are structurally ok.
   // TODO: Check that successors are in the right function.
+
+  if (auto *ret = dyn_cast<ReturnInst>(&term))
+    return verifyReturn(*ret);
+
+  return false;
 }
 
-void CFGFuncVerifier::verifyOperation(const OperationInst &inst) {
+bool CFGFuncVerifier::verifyReturn(const ReturnInst &inst) {
+  // Verify that the return operands match the results of the function.
+  auto results = fn.getType()->getResults();
+  if (inst.getNumOperands() != results.size())
+    return failure("return has " + Twine(inst.getNumOperands()) +
+                       " operands, but enclosing function returns " +
+                       Twine(results.size()),
+                   inst);
+
+  return false;
+}
+
+bool CFGFuncVerifier::verifyOperation(const OperationInst &inst) {
   if (inst.getFunction() != &fn)
-    failure("operation in the wrong function", inst);
+    return failure("operation in the wrong function", inst);
 
   // TODO: Check that operands are structurally ok.
 
   // See if we can get operation info for this.
   if (auto *opInfo = inst.getAbstractOperation(fn.getContext())) {
     if (auto errorMessage = opInfo->verifyInvariants(&inst))
-      failure(errorMessage, inst);
+      return failure(errorMessage, inst);
   }
+
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -115,14 +173,16 @@ void CFGFuncVerifier::verifyOperation(const OperationInst &inst) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-class MLFuncVerifier {
+class MLFuncVerifier : public Verifier {
 public:
   const MLFunction &fn;
 
-  MLFuncVerifier(const MLFunction &fn) : fn(fn) {}
+  MLFuncVerifier(const MLFunction &fn, std::string *errorResult)
+      : Verifier(errorResult), fn(fn) {}
 
-  void verify() {
+  bool verify() {
     // TODO.
+    return false;
   }
 };
 } // end anonymous namespace
@@ -132,24 +192,33 @@ public:
 //===----------------------------------------------------------------------===//
 
 /// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  This aborts on failure.
-void Function::verify() const {
+/// compiler bugs.  On error, this fills in the string and return true,
+/// or aborts if the string was not provided.
+bool Function::verify(std::string *errorResult) const {
   switch (getKind()) {
   case Kind::ExtFunc:
     // No body, nothing can be wrong here.
-    break;
+    return false;
   case Kind::CFGFunc:
-    return CFGFuncVerifier(*cast<CFGFunction>(this)).verify();
+    return CFGFuncVerifier(*cast<CFGFunction>(this), errorResult).verify();
   case Kind::MLFunc:
-    return MLFuncVerifier(*cast<MLFunction>(this)).verify();
+    return MLFuncVerifier(*cast<MLFunction>(this), errorResult).verify();
   }
 }
 
 /// Perform (potentially expensive) checks of invariants, used to detect
-/// compiler bugs.  This aborts on failure.
-void Module::verify() const {
+/// compiler bugs.  On error, this fills in the string and return true,
+/// or aborts if the string was not provided.
+bool Module::verify(std::string *errorResult) const {
+
   /// Check that each function is correct.
   for (auto fn : functionList) {
-    fn->verify();
+    if (fn->verify(errorResult))
+      return true;
   }
+
+  // Make sure the error string is empty on success.
+  if (errorResult)
+    errorResult->clear();
+  return false;
 }
