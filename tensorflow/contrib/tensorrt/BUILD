@@ -32,7 +32,10 @@ tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
     srcs = ["tensorrt_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -234,7 +237,10 @@ tf_cc_test(
     name = "trt_allocator_test",
     size = "small",
     srcs = ["resources/trt_allocator_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         ":trt_allocator",
         "//tensorflow/core:test",
@@ -302,7 +308,10 @@ tf_cc_test(
     name = "segment_test",
     size = "small",
     srcs = ["segment/segment_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         ":segment",
         "//tensorflow/c:c_api",
@@ -338,7 +347,11 @@ tf_cuda_cc_test(
     name = "trt_plugin_factory_test",
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         ":trt_plugins",
         "//tensorflow/core:lib",
@@ -382,6 +395,7 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],
