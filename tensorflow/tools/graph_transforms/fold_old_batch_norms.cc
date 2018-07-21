@@ -110,24 +110,23 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
                                     const string& conv_output_name,
                                     std::vector<NodeDef>* new_nodes) {
   const NodeDef& conv_node = conv_node_match.node;
-  CHECK_EQ("Conv2D", conv_node.op());
+  // CHECK_EQ("Conv2D", conv_node.op());
   const NodeDef& input_node = conv_node_match.inputs[0].node;
   const NodeDef& weights_node = conv_node_match.inputs[1].node;
   CHECK_EQ("Const", weights_node.op());
 
   Tensor weights = GetNodeTensorAttr(weights_node, "value");
-  const int64 weights_cols = weights.shape().dim_size(3);
+  const int weights_cols_idx = conv_node.op() == "Conv2D" ? 3 : 2;
+  const int64 weights_cols = weights.shape().dim_size(weights_cols_idx);
   CHECK_EQ(weights_cols, scale_values.size());
 
   // Multiply the original weights by the scale vector.
-  auto weights_matrix = weights.flat_inner_dims<float>();
+  auto weights_vector = weights.flat<float>();
   Tensor scaled_weights(DT_FLOAT, weights.shape());
-  auto scaled_weights_matrix = scaled_weights.flat_inner_dims<float>();
-  for (int64 row = 0; row < weights_matrix.dimension(0); ++row) {
-    for (int64 col = 0; col < weights_cols; ++col) {
-      scaled_weights_matrix(row, col) =
-          weights_matrix(row, col) * scale_values[col];
-    }
+  auto scaled_weights_vector = scaled_weights.flat<float>();
+  for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
+    scaled_weights_vector(row) =
+          weights_vector(row) * scale_values[row % weights_cols];
   }
   // Figure out the remaining bias to add on.
   Tensor bias_offset(DT_FLOAT, {weights_cols});
@@ -293,7 +292,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
         current_graph_def,  // clang-format off
       {"BatchNormWithGlobalNormalization|FusedBatchNorm",    // batch_norm_node
         {
-          {"Conv2D",                          // conv_node
+          {"Conv2D|DepthwiseConv2dNative",                          // conv_node
             {
               {"*"},                          // input_node
               {"Const"},                      // weights_node
@@ -326,7 +325,7 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
          {
              {"BatchToSpaceND",                  // batch_to_space_node
               {
-                  {"Conv2D",                     // conv_node
+                  {"Conv2D|DepthwiseConv2dNative",                     // conv_node
                    {
                        {"*"},                    // input_node
                        {"Const"},                // weights_node
@@ -364,13 +363,13 @@ Status FoldOldBatchNorms(const GraphDef& input_graph_def,
         {
           {"ConcatV2|Concat",                     // concat two conv2d.
             {
-              {"Conv2D",                          // conv_node
+              {"Conv2D|DepthwiseConv2dNative",                          // conv_node
                 {
                   {"*"},                          // input_node
                   {"Const"},                      // weights_node
                 }
               },
-              {"Conv2D",                          // conv_node
+              {"Conv2D|DepthwiseConv2dNative",                          // conv_node
                 {
                   {"*"},                          // input_node
                   {"Const"},                      // weights_node
