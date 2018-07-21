@@ -259,6 +259,9 @@ class LocalComputationBuilder {
   LocalOp ConvertElementType(const LocalOp& operand,
                              PrimitiveType new_element_type);
 
+  LocalOp BitcastConvertType(const LocalOp& operand,
+                             PrimitiveType new_element_type);
+
   LocalOp Call(const LocalComputation& local_computation,
                tensorflow::gtl::ArraySlice<LocalOp> operands);
 
