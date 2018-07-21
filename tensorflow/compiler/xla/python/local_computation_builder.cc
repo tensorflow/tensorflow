@@ -486,6 +486,11 @@ LocalOp LocalComputationBuilder::ConvertElementType(
   return xla::ConvertElementType(operand.op(), new_element_type);
 }
 
+LocalOp LocalComputationBuilder::BitcastConvertType(
+    const LocalOp& operand, PrimitiveType new_element_type) {
+  return xla::BitcastConvertType(operand.op(), new_element_type);
+}
+
 LocalOp LocalComputationBuilder::Call(
     const LocalComputation& local_computation,
     tensorflow::gtl::ArraySlice<LocalOp> operands) {
