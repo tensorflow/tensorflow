@@ -25,8 +25,8 @@ from tensorflow.contrib.tensorrt.wrap_conversion import get_linked_tensorrt_vers
 from tensorflow.contrib.tensorrt.wrap_conversion import get_loaded_tensorrt_version
 from tensorflow.contrib.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import errors_impl as _impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
