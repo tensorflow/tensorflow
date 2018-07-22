@@ -2892,6 +2892,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     bool do_rewrite = false;
 
     for (const Edge* e : n->in_edges()) {
+      // Rewrite only if there is corresponding LRN, i.e workspace is available
       if (e->dst()->type_string() == csinfo_.lrn_grad && e->dst_input() == 2 &&
           e->src()->type_string() == mkl_op_registry::GetMklOpName(csinfo_.lrn) &&
           e->src_output() == 0) {
@@ -2906,7 +2907,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     CHECK_NOTNULL(n);
     bool do_rewrite = false;
     for (const Edge* e : n->in_edges()) {
-      if (e->dst()->type_string() == csinfo_.max_pool_grad && e->dst_input() == 1 && 
+      // Rewrite only if there is corresponding Maxpool, i.e workspace is available
+      if (e->dst()->type_string() == csinfo_.max_pool_grad && e->dst_input() == 1 &&
           e->src()->type_string() == mkl_op_registry::GetMklOpName(csinfo_.max_pool) &&
           e->src_output() == 0) {
         do_rewrite = true;
