@@ -90,10 +90,12 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+  option(systemlin_GRPC "Use the system installed library as shared objects instead of downloading GRPC and statically linking to it: GRPC" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
     set (systemlib_ZLIB ON)
+    set (systemlib_GRPC ON)
   endif (systemlib_ALL)
 endif()
 
@@ -322,7 +324,11 @@ if(tensorflow_ENABLE_GRPC_SUPPORT)
   include(grpc)
   include_directories(${GRPC_INCLUDE_DIRS})
   # Place boringssl after grpc as grpc depends on boringssl.
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
+  if (systemlib_GRPC)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
+  else (systemlib_GRPC)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_LIBRARIES})
+  endif (systemlib_GRPC)
   list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
   if(tensorflow_ENABLE_SSL_SUPPORT)
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
