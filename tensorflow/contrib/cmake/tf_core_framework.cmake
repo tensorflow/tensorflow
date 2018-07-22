@@ -318,6 +318,16 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/loader.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/vacuum.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.cc"
+)
+
+########################################################
+# tf_core_kernel_registry library
+########################################################
+file(GLOB_RECURSE tf_core_kernel_registry_srcs
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.cc"
 )
 
 # TODO(jart): Why doesn't this work?
@@ -326,6 +336,9 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
 #     PROPERTIES COMPILE_FLAGS -DSQLITE_OMIT_LOAD_EXTENSION)
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
+
+add_library(tf_core_kernel_registry SHARED ${tf_core_kernel_registry_srcs} )
+add_dependencies( tf_core_kernel_registry tf_core_lib )
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}
@@ -336,3 +349,5 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+
