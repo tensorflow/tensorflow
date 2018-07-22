@@ -29,6 +29,7 @@ using ops::Abs;
 using ops::Add;
 using ops::AddN;
 using ops::BatchMatMul;
+using ops::Cast;
 using ops::Const;
 using ops::Div;
 using ops::MatMul;
@@ -56,6 +57,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
 
   enum UnaryOpType {
     ABS,
+    CAST,
     NEG,
     INV,
     SQUARE,
@@ -105,6 +107,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
       using namespace ops;  // NOLINT(build/namespaces)
       case ABS:
         y = Abs(scope_, x);
+        break;
+      case CAST:
+        y = Cast(scope_, x, DataTypeToEnum<Y_T>::v());
         break;
       case NEG:
         y = Neg(scope_, x);
@@ -222,6 +227,15 @@ class CWiseUnaryGradTest : public ::testing::Test {
 TEST_F(CWiseUnaryGradTest, Abs) {
   auto x_fn = [this](const int i) { return RV({-1, 0, 1}); };
   TestCWiseGrad<float, float>(ABS, x_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Cast) {
+  auto x_rvfn = [this](const int i) { return RV({-0.5, 0, 1, 1.5}); };
+  TestCWiseGrad<float, complex64>(CAST, x_rvfn);
+  auto x_crvfn = [this](const int i) {
+    return CRV({{-1, 0.5}, {1, 0}, {2.5, -1}});
+  };
+  TestCWiseGrad<complex64, float>(CAST, x_crvfn);
 }
 
 TEST_F(CWiseUnaryGradTest, Neg) {

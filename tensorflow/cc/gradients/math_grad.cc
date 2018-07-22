@@ -38,7 +38,15 @@ REGISTER_NO_GRADIENT_OP("NotEqual");
 REGISTER_NO_GRADIENT_OP("LogicalAnd");
 REGISTER_NO_GRADIENT_OP("LogicalOr");
 REGISTER_NO_GRADIENT_OP("LogicalNot");
+// These are really zero (almost everywhere) gradients, but we return
+// NoGradient() following the current python implementation.
+// Additional discussion on this topic:
+// https://github.com/tensorflow/tensorflow/issues/897
+// https://github.com/tensorflow/tensorflow/issues/783
 REGISTER_NO_GRADIENT_OP("Floor");
+REGISTER_NO_GRADIENT_OP("Ceil");
+REGISTER_NO_GRADIENT_OP("Round");
+REGISTER_NO_GRADIENT_OP("Rint");
 
 // Conjugate helper function returns the conjugate of an Output if it
 // is complex valued.
@@ -51,6 +59,11 @@ Output ConjugateHelper(const Scope& scope, const Output& out) {
   }
 }
 
+// Returns true if the datatype is a continuous numeric type.
+bool DataTypeIsContinuous(const DataType t) {
+  return DataTypeIsFloating(t) || DataTypeIsComplex(t);
+}
+
 // TODO(andydavis) Add control dependencies to gradient functions (as needed).
 
 Status AbsGrad(const Scope& scope, const Operation& op,
@@ -61,6 +74,29 @@ Status AbsGrad(const Scope& scope, const Operation& op,
   return scope.status();
 }
 REGISTER_GRADIENT_OP("Abs", AbsGrad);
+
+Status CastGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  auto src_type = op.input(0).type();
+  auto dst_type = grad_inputs[0].type();
+  // Gradients are propagated only if both input and output are
+  // continuous numeric values.
+  // Like Floor and Ceil, gradients are actually zero almost
+  // everywhere when the input is continuous but the output is a
+  // quantized numeric value. But following the current python
+  // implementations, we return NoGradient() in these cases as
+  // well. See:
+  // https://github.com/tensorflow/tensorflow/issues/897
+  // https://github.com/tensorflow/tensorflow/issues/783
+  if (DataTypeIsContinuous(src_type) && DataTypeIsContinuous(dst_type)) {
+    grad_outputs->push_back(Cast(scope, grad_inputs[0], src_type));
+  } else {
+    grad_outputs->push_back(NoGradient());
+  }
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Cast", CastGrad);
 
 Status NegGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
@@ -483,25 +519,20 @@ Status PowGrad(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   // grad * y * pow(x, y - 1)
   auto one = Cast(scope, Const(scope, 1.0), y.type());
-  auto gx_1 = Mul(scope,
-                  Mul(scope, grad, y),
-                  Pow(scope, x, Sub(scope, y, one)));
+  auto gx_1 =
+      Mul(scope, Mul(scope, grad, y), Pow(scope, x, Sub(scope, y, one)));
   // Avoid false singularity at x = 0
   DataType x_dtype = x.type();
   auto zero = Cast(scope, Const(scope, 0.0), x_dtype);
   if (x_dtype == DT_COMPLEX64 || x_dtype == DT_COMPLEX128) {
     // real(x) < 0 is fine for the complex case
-    auto log_x = Where3(scope,
-                        NotEqual(scope, x, zero),
-                        Log(scope, x),
+    auto log_x = Where3(scope, NotEqual(scope, x, zero), Log(scope, x),
                         ZerosLike(scope, x));
     auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
     return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
   } else {
     // There's no sensible real value to return if x < 0, so return 0
-    auto log_x = Where3(scope,
-                        Greater(scope, x, zero),
-                        Log(scope, x),
+    auto log_x = Where3(scope, Greater(scope, x, zero), Log(scope, x),
                         ZerosLike(scope, x));
     auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
     return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
@@ -739,13 +770,12 @@ Status ErfGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
-  auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
-                               grad.type());
+  auto two_over_root_pi =
+      Cast(scope, Const(scope, 2 / std::sqrt(M_PI)), grad.type());
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
   // grad * 2/sqrt(pi) * exp(-x**2)
-  auto dx = Mul(grad_scope,
-                Mul(grad_scope, grad, two_over_root_pi),
+  auto dx = Mul(grad_scope, Mul(grad_scope, grad, two_over_root_pi),
                 Exp(grad_scope, Neg(grad_scope, Square(grad_scope, x))));
   grad_outputs->push_back(dx);
   return grad_scope.status();
@@ -894,9 +924,9 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   // [3]
   auto rank = Rank(cpu_scope, op.input(0));
 
-
   // Normalize any negative indices in the reduction_axes to positive values.
-  auto reduction_indices_pos = Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
+  auto reduction_indices_pos =
+      Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
 
   // [1]
   auto reduced = Cast(cpu_scope, reduction_indices_pos, DataType::DT_INT32);
@@ -983,7 +1013,7 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   // ]
   auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
 
-  // out = 
+  // out =
   // [
   //   [
   //     [ 35.,  48.],
@@ -996,8 +1026,8 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   //     [ 0.,  30.]
   //   ]
   // ]
-  auto out =
-      Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
+  auto out = Mul(scope, grad_tiled,
+                 Transpose(scope, y, InvertPermutation(scope, perm)));
 
   grad_outputs->push_back(Reshape(scope, out, input_shape));
 
