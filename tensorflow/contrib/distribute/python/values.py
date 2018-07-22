@@ -30,6 +30,7 @@ from tensorflow.contrib.distribute.python import prefetching_ops_v2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -76,6 +77,13 @@ class DistributedValues(object):
   @property
   def devices(self):
     return list(self._index.keys())
+
+  @property
+  def is_tensor_like(self):
+    for v in self._index.values():
+      if not tensor_util.is_tensor(v):
+        return False
+    return True
 
   def __str__(self):
     return "%s:%s" % (self.__class__.__name__, self._index)
@@ -352,6 +360,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
       return distribute_lib.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:
+      _assert_tower_context()
       # We are calling an assign function on the mirrored variable in tower
       # context.
       # We reduce the value we want to assign/add/sub. More details about how we
@@ -448,14 +457,7 @@ class _TowerLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    # To preserve the sum across save and restore, we have to divide the
-    # total across all devices when restoring a variable that was summed
-    # when saving.
-    if self._tower_local_variable.aggregation == vs.VariableAggregation.SUM:
-      tensor *= 1. / len(self._tower_local_variable.devices)
-    return control_flow_ops.group([
-        _assign_on_device(d, v, tensor)
-        for d, v in six.iteritems(self._tower_local_variable._index)])  # pylint: disable=protected-access
+    return self._tower_local_variable.assign(tensor)
 
 
 def _assert_tower_context():
@@ -482,8 +484,19 @@ class TowerLocalVariable(DistributedVariable, PerDevice,
     return self.get().assign_add(*args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    _assert_tower_context()
-    return self.get().assign(*args, **kwargs)
+    if distribute_lib.get_cross_tower_context():
+      # To preserve the sum across save and restore, we have to divide the
+      # total across all devices when restoring a variable that was summed
+      # when saving.
+      tensor = args[0]
+      if self._aggregation == vs.VariableAggregation.SUM:
+        tensor *= 1. / len(self.devices)
+      return control_flow_ops.group(
+          [_assign_on_device(d, v, tensor)
+           for d, v in six.iteritems(self._index)])
+    else:
+      _assert_tower_context()
+      return self.get().assign(*args, **kwargs)
 
   @property
   def aggregation(self):
