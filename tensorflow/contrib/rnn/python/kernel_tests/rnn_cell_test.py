@@ -1671,5 +1671,64 @@ class WeightNormLSTMCellTest(test.TestCase):
     self.assertAllClose(expected_c, actual_c, 1e-5)
     self.assertAllClose(expected_h, actual_h, 1e-5)
 
+class MLSTMCellTest(test.TestCase):
+  """Test the MLSTM cell."""
+
+  def _cell_output(self, cell):
+    """Calculates cell output."""
+
+    with self.test_session() as sess:
+      init = init_ops.constant_initializer(0.5)
+      with variable_scope.variable_scope("root",
+                                         initializer=init):
+        x = array_ops.zeros([1, 2])
+        c0 = array_ops.zeros([1, 2])
+        h0 = array_ops.zeros([1, 2])
+
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
+
+        xout, sout = cell()(x, state0)
+
+      sess.run([variables.global_variables_initializer()])
+      res = sess.run([xout, sout], {
+          x.name: np.array([[1., 1.]]),
+          c0.name: 0.1 * np.asarray([[0, 1]]),
+          h0.name: 0.1 * np.asarray([[2, 3]]),
+      })
+
+    actual_state_c = res[1].c
+    actual_state_h = res[1].h
+
+    return actual_state_c, actual_state_h
+
+  def testMLSTMCellWithoutNorm(self):
+    """"""
+
+    def cell():
+      return contrib_rnn_cell.MLSTMCell(2,weight_normalization=False)
+
+    actual_c, actual_h = self._cell_output(cell)
+
+    expected_c = np.array([[0.80200753, 0.88720281]])
+    expected_h = np.array([[0.56668288, 0.60489449]])
+
+    self.assertAllClose(expected_c, actual_c, 1e-5)
+    self.assertAllClose(expected_h, actual_h, 1e-5)
+
+
+  def testMLSTMCellWithNorm(self):
+    """"""
+
+    def cell():
+      return contrib_rnn_cell.MLSTMCell(2,weight_normalization=True)
+
+    actual_c, actual_h = self._cell_output(cell)
+
+    expected_c = np.array([[0.67560404, 0.75411162]])
+    expected_h = np.array([[0.46213814, 0.50056081]])
+
+    self.assertAllClose(expected_c, actual_c, 1e-5)
+    self.assertAllClose(expected_h, actual_h, 1e-5)
+
 if __name__ == "__main__":
   test.main()
