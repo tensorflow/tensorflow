@@ -59,8 +59,8 @@ Status GetPrecisionMode(const string& name, int* precision_mode) {
   } else if (name == "INT8") {
     *precision_mode = INT8MODE;
   } else {
-    return tensorflow::errors::InvalidArgument(
-        "Invalid precision mode name: ", name);
+    return tensorflow::errors::InvalidArgument("Invalid precision mode name: ",
+                                               name);
   }
   return Status::OK();
 }
