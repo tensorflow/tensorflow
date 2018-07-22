@@ -278,11 +278,14 @@ tf_cc_test(
     tags = ["no_windows"],
     deps = [
         ":segment",
-        "//tensorflow/c:c_api",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
