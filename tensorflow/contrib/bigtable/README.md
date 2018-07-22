@@ -17,7 +17,7 @@ APIs, see the [official Cloud Bigtable client library documentation][clientdoc].
 
 ## Sample Use
 
-There are three main reading styles supported by the `BigTable` class:
+There are three main reading styles supported by the `BigtableTable` class:
 
  1. **Reading keys**: Read only the row keys in a table. Keys are returned in
     sorted order from the table. Most key reading operations retrieve all keys
@@ -34,9 +34,9 @@ There are three main reading styles supported by the `BigTable` class:
 When using the Cloud Bigtable API, the workflow is:
 
  1. Create a `BigtableClient` object.
- 2. Use the `BigtableClient` to create `BigTable` objects corresponding to each
-    table in the Bigtable instance you would like to access.
- 3. Call methods on the `BigTable` object to create `tf.data.Dataset`s to
+ 2. Use the `BigtableClient` to create `BigtableTable` objects corresponding to
+    each table in the Cloud Bigtable instance you would like to access.
+ 3. Call methods on the `BigtableTable` object to create `tf.data.Dataset`s to
     retrieve data.
 
 The following is an example for how to read all row keys with the prefix
@@ -116,7 +116,7 @@ Given a contiguous range of rows retrieve both the row key and the data
 associated with a fixed set of columns. Scanning is the most efficient way to
 retrieve data from Cloud Bigtable and is thus a very common API for high
 performance data pipelines. To construct a scanning `tf.data.Dataset` from a
-`BigTable` object, call one of the following methods:
+`BigtableTable` object, call one of the following methods:
 
  - `table.scan_prefix(prefix, ...)`
  - `table.scan_range(start, end, ...)`
@@ -342,9 +342,3 @@ are available.
  - **Cloud TPU**: Your Cloud TPUs run with the designated Cloud TPU service
    account dedicated to your GCP project. Ensure the service account has been
    authorized via the Cloud Console to access your Cloud Bigtable instances.
-
-### `BigTable` vs Bigtable?
-
-Cloud Bigtable is spelled with a lower-case (aka common) `t`. The Python class
-`BigTable`, however is short for `BigtableTable`, and thus uses an upper-case
-(aka capital) `T`.
