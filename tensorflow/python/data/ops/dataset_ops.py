@@ -428,7 +428,7 @@ class Dataset(object):
         ret_arrays = []
         for ret, dtype in zip(flattened_values, flattened_types):
           try:
-            ret_arrays.append(script_ops.FuncRegistry._convert(  # pylint: disable=protected-access
+            ret_arrays.append(script_ops.PythonFunc._convert(  # pylint: disable=protected-access
                 ret, dtype=dtype.as_numpy_dtype))
           except (TypeError, ValueError):
             raise TypeError(
