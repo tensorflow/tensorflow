@@ -1997,6 +1997,30 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleReducePrecision<ElementwiseT>(reduce_precision);
   }
 
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, float>::value ||
+                std::is_same<NativeT, int32>::value ||
+                std::is_same<NativeT, uint32>::value>::type* = nullptr>
+  Status HandleIota(HloInstruction* iota) {
+    auto result = MakeUnique<Literal>(iota->shape());
+    auto data = result->data<ReturnT>();
+    std::iota(data.begin(), data.end(), 0);
+    parent_->evaluated_[iota] = std::move(result);
+    return Status::OK();
+  }
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_same<NativeT, float>::value ||
+                  std::is_same<NativeT, int32>::value ||
+                  std::is_same<NativeT, uint32>::value)>::type* = nullptr>
+  Status HandleIota(HloInstruction* iota) {
+    return InvalidArgument("Unsupported type for iota");
+  }
+  Status HandleIota(HloInstruction* iota) override {
+    return HandleIota<ReturnT>(iota);
+  }
+
  private:
   // Creates a vector of multipliers which can be used to create a linear index
   // into shape.

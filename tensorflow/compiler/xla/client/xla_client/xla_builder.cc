@@ -2873,4 +2873,11 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                                           grad_output, epsilon, feature_index);
 }
 
+XlaOp IotaGen(XlaBuilder* builder, PrimitiveType type, int64 size) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = ShapeUtil::MakeShape(type, {size});
+  return builder->ReportErrorOrReturn(
+      builder->AddInstruction(std::move(instr), HloOpcode::kIota));
+}
+
 }  // namespace xla

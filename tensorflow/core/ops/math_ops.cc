@@ -1504,6 +1504,13 @@ REGISTER_OP("QuantizedAdd")
     .SetIsCommutative()
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      // min_x, max_x, min_y, max_y should be scalar.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

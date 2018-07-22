@@ -2411,19 +2411,6 @@ port::Status CudnnSupport::DoConvolveImpl(
                           stream, cudnn, algorithm_config, input_nd, filter,
                           conv, output_nd, scratch_allocator, &scratch));
 
-  if (cudnn_type == CUDNN_DATA_HALF &&
-      filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
-      (algo_desc.algo_id() != CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM ||
-       input_descriptor.layout() != dnn::DataLayout::kBatchYXDepth ||
-       output_descriptor.layout() != dnn::DataLayout::kBatchYXDepth)) {
-    // TODO(timshen): Attach a nvbugs number.
-    return port::Status(
-        port::error::INTERNAL,
-        "Cudnn doesn't return an error code on this documented unsupported "
-        "layout combination. Instead, it accesses out-of-bounds memory. "
-        "Being nice and returning an error instead.");
-  }
-
   std::unique_ptr<CUDATimer, TimerDeleter> timer;
   if (is_profiling) {
     timer.reset(new CUDATimer(parent_));  // NOLINT
@@ -3093,21 +3080,9 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
     }
   }
 
-  if (cudnn_type == CUDNN_DATA_HALF &&
-      filter_descriptor.layout() == dnn::FilterLayout::kOutputYXInput &&
-      ((algo_desc.algo_id() != CUDNN_CONVOLUTION_BWD_FILTER_ALGO_0 &&
-        algo_desc.algo_id() != CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1) ||
-       input_descriptor.layout() != dnn::DataLayout::kBatchYXDepth ||
-       output_descriptor.layout() != dnn::DataLayout::kBatchYXDepth)) {
-    return port::Status(
-        port::error::INTERNAL,
-        "Cudnn doesn't return an error code on this documented unsupported "
-        "layout combination. Instead, it crashes. Being nice and returning an "
-        "error instead. See nvbugs/2260917");
-  }
-
   // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
-  // zero-initialized. See nvbugs/2254619.
+  // zero-initialized.
+  // TODO(timshen): Add an nvbugs/ link.
   if (CUDNN_VERSION >= 7000 &&
       algorithm_config.algorithm().algo_id() ==
           CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&

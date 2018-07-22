@@ -100,3 +100,30 @@ tf_cc_shared_object(
         ":test_example_proto_cc",
     ],
 )
+
+py_library(
+    name = "descriptor_source_test_base",
+    testonly = 1,
+    srcs = ["descriptor_source_test_base.py"],
+    deps = [
+        ":proto_op_test_base",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@protobuf_archive//:protobuf_python",
+    ],
+)
+
+tf_py_test(
+    name = "descriptor_source_test",
+    size = "small",
+    srcs = ["descriptor_source_test.py"],
+    additional_deps = [
+        ":descriptor_source_test_base",
+        "//tensorflow/contrib/proto/python/ops:decode_proto_op_py",
+        "//tensorflow/contrib/proto/python/ops:encode_proto_op_py",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)

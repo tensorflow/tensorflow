@@ -29,7 +29,6 @@ import time
 
 import tensorflow as tf
 
-import tensorflow.contrib.eager as tfe
 from tensorflow.examples.tutorials.mnist import input_data
 
 layers = tf.keras.layers
@@ -265,7 +264,7 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
 
 def main(_):
   (device, data_format) = ('/gpu:0', 'channels_first')
-  if FLAGS.no_gpu or tfe.num_gpus() <= 0:
+  if FLAGS.no_gpu or tf.contrib.eager.num_gpus() <= 0:
     (device, data_format) = ('/cpu:0', 'channels_last')
   print('Using device %s, and data format %s.' % (device, data_format))
 
@@ -291,7 +290,7 @@ def main(_):
   latest_cpkt = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
   if latest_cpkt:
     print('Using latest checkpoint at ' + latest_cpkt)
-  checkpoint = tfe.Checkpoint(**model_objects)
+  checkpoint = tf.train.Checkpoint(**model_objects)
   # Restore variables on creation if a checkpoint exists.
   checkpoint.restore(latest_cpkt)
 

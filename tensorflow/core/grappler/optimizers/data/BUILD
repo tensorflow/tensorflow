@@ -48,10 +48,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",
     ] + tf_protos_all(),
 )
 

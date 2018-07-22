@@ -74,7 +74,7 @@ class ShapeIndex {
   // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
-  using container_type = gtl::InlinedVector<int64, 2>;
+  using container_type = tensorflow::gtl::InlinedVector<int64, 2>;
 
   container_type::const_iterator begin() const { return indices_.begin(); }
   container_type::const_iterator end() const { return indices_.end(); }

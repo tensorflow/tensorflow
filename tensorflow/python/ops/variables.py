@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import enum  # pylint: disable=g-bad-import-order
+
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -38,25 +40,94 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _default_variable_creator(_, *args, **kwds):
-  return RefVariable(*args, **kwds)
+def default_variable_creator(_, **kwds):
+  del kwds
+  raise NotImplementedError("variable_scope needs to be imported")
 
 
 def _make_getter(captured_getter, captured_previous):
   """To avoid capturing loop variables."""
-  def getter(*args, **kwargs):
-    return captured_getter(captured_previous, *args, **kwargs)
+  def getter(**kwargs):
+    return captured_getter(captured_previous, **kwargs)
   return getter
+
+
+@tf_export("VariableSynchronization")
+class VariableSynchronization(enum.Enum):
+  """Indicates when a distributed variable will be synced."""
+
+  # Indicates that the synchronization will be determined by the current
+  # `DistributionStrategy` (eg. With `MirroredStrategy` this would be
+  # `ON_WRITE`).
+  AUTO = 0
+
+  # Indicates that there will only be one copy of the variable, so there is no
+  # need to sync.
+  NONE = 1
+
+  # Indicates that the variable will be aggregated across devices
+  # every time it is updated.
+  ON_WRITE = 2
+
+  # Indicates that the variable will be aggregated across devices
+  # when it is read (eg. when checkpointing or when evaluating an op that uses
+  # the variable).
+  ON_READ = 3
+
+
+@tf_export("VariableAggregation")
+class VariableAggregation(enum.Enum):
+  """Indicates how a distributed variable will be aggregated."""
+  NONE = 0
+  SUM = 1
+  MEAN = 2
 
 
 class VariableMetaclass(type):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
+  def _variable_call(cls,
+                     initial_value=None,
+                     trainable=None,
+                     collections=None,
+                     validate_shape=True,
+                     caching_device=None,
+                     name=None,
+                     variable_def=None,
+                     dtype=None,
+                     expected_shape=None,
+                     import_scope=None,
+                     constraint=None,
+                     use_resource=None,
+                     synchronization=VariableSynchronization.AUTO,
+                     aggregation=VariableAggregation.NONE):
+    """Call on Variable class. Useful to force the signature."""
+    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+    for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        collections=collections,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        expected_shape=expected_shape,
+        import_scope=import_scope,
+        constraint=constraint,
+        use_resource=use_resource,
+        synchronization=synchronization,
+        aggregation=aggregation)
+
   def __call__(cls, *args, **kwargs):
     if cls is Variable:
-      previous_getter = lambda *a, **k: _default_variable_creator(None, *a, **k)
-      # TODO(apassos) use a stack of getters here
-      return previous_getter(*args, **kwargs)
+      return cls._variable_call(*args, **kwargs)
     else:
       return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
@@ -172,14 +243,6 @@ class Variable(six.with_metaclass(VariableMetaclass,
   * Replace `tf.Variable` with `tf.contrib.eager.Variable`;
   * Call `tf.get_variable_scope().set_use_resource(True)` inside a
     `tf.variable_scope` before the `tf.get_variable()` call.
-
-  @compatibility(eager)
-  `tf.Variable` is not compatible with eager execution.  Use
-  `tf.contrib.eager.Variable` instead which is compatible with both eager
-  execution and graph construction.  See [the TensorFlow Eager Execution
-  guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
-  for details on how variables work in eager execution.
-  @end_compatibility
   """
 
   def __init__(self,
@@ -193,7 +256,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
                dtype=None,
                expected_shape=None,
                import_scope=None,
-               constraint=None):
+               constraint=None,
+               use_resource=None,
+               synchronization=VariableSynchronization.AUTO,
+               aggregation=VariableAggregation.NONE):
     """Creates a new variable with value `initial_value`.
 
     The new variable is added to the graph collections listed in `collections`,
@@ -245,20 +311,24 @@ class Variable(six.with_metaclass(VariableMetaclass,
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      use_resource: if True, a ResourceVariable is created; otherwise an
+       old-style ref-based variable is created. When eager execution is enabled
+       a resource variable is always created.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        @{tf.VariableSynchronization}. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        @{tf.VariableAggregation}.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
       RuntimeError: If eager execution is enabled.
-
-    @compatibility(eager)
-    `tf.Variable` is not compatible with eager execution.  Use
-    `tfe.Variable` instead which is compatible with both eager execution
-    and graph construction.  See [the TensorFlow Eager Execution
-    guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
-    for details on how variables work in eager execution.
-    @end_compatibility
     """
     raise NotImplementedError
 
@@ -617,8 +687,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
   @staticmethod
   def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return Variable(variable_def=variable_def,
-                    import_scope=import_scope)
+    return RefVariable(variable_def=variable_def,
+                       import_scope=import_scope)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
@@ -1714,7 +1784,7 @@ class PartitionedVariable(object):
   """A container for partitioned `Variable` objects.
 
   @compatibility(eager) `tf.PartitionedVariable` is not compatible with
-  eager execution.  Use `tfe.Variable` instead which is compatible
+  eager execution.  Use `tf.Variable` instead which is compatible
   with both eager execution and graph construction.  See [the
   TensorFlow Eager Execution
   guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)

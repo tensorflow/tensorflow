@@ -52,12 +52,12 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   llvm::BasicBlock* vector_tanh_body =
       llvm::BasicBlock::Create(*context, "body", vector_tanh_function);
 
-  llvm::IRBuilder<> ir_builder(vector_tanh_body);
+  llvm::IRBuilder<> b(vector_tanh_body);
   llvm::FastMathFlags fast_math_flags;
   fast_math_flags.setFast();
-  ir_builder.setFastMathFlags(fast_math_flags);
+  b.setFastMathFlags(fast_math_flags);
 
-  VectorSupportLibrary vsl(F32, vector_width, &ir_builder, "tanh_f32");
+  VectorSupportLibrary vsl(F32, vector_width, &b, "tanh_f32");
 
   llvm::Value* input = &*vector_tanh_function->arg_begin();
   CHECK_EQ(input->getType(), vsl.vector_type());
@@ -91,7 +91,7 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   }
 
   llvm::Value* result = vsl.Div(numerator, denominator);
-  ir_builder.CreateRet(result);
+  b.CreateRet(result);
 
   DCHECK(!llvm::verifyFunction(*vector_tanh_function));
   return vector_tanh_function;
@@ -113,12 +113,12 @@ llvm::Function* EmitVectorF32ExpIfNeeded(llvm::Module* module,
   llvm::BasicBlock* vector_exp_body =
       llvm::BasicBlock::Create(*context, "body", vector_exp_function);
 
-  llvm::IRBuilder<> ir_builder(vector_exp_body);
+  llvm::IRBuilder<> b(vector_exp_body);
   llvm::FastMathFlags fast_math_flags;
   fast_math_flags.setFast();
-  ir_builder.setFastMathFlags(fast_math_flags);
+  b.setFastMathFlags(fast_math_flags);
 
-  VectorSupportLibrary vsl(F32, vector_width, &ir_builder, "exp_f32");
+  VectorSupportLibrary vsl(F32, vector_width, &b, "exp_f32");
 
   // This implements the same polynomial approximation as implemented in Eigen3.
 
@@ -160,21 +160,21 @@ llvm::Function* EmitVectorF32ExpIfNeeded(llvm::Module* module,
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.
   llvm::Value* vector_constant_0x7f =
-      ir_builder.CreateVectorSplat(vector_width, ir_builder.getInt32(0x7f));
+      b.CreateVectorSplat(vector_width, b.getInt32(0x7f));
   llvm::Value* vector_constant_23 =
-      ir_builder.CreateVectorSplat(vector_width, ir_builder.getInt32(23));
+      b.CreateVectorSplat(vector_width, b.getInt32(23));
   llvm::Type* i32_vector_type =
-      llvm::VectorType::get(ir_builder.getInt32Ty(), vector_width);
+      llvm::VectorType::get(b.getInt32Ty(), vector_width);
   // fx is clamped so we don't have to worry about it being out of range for
   // i32.
-  llvm::Value* emm0 = ir_builder.CreateFPToSI(fx, i32_vector_type);
-  emm0 = ir_builder.CreateAdd(emm0, vector_constant_0x7f);
-  emm0 = ir_builder.CreateShl(emm0, vector_constant_23);
-  llvm::Value* emm0_f32 = ir_builder.CreateBitCast(emm0, vsl.vector_type());
+  llvm::Value* emm0 = b.CreateFPToSI(fx, i32_vector_type);
+  emm0 = b.CreateAdd(emm0, vector_constant_0x7f);
+  emm0 = b.CreateShl(emm0, vector_constant_23);
+  llvm::Value* emm0_f32 = b.CreateBitCast(emm0, vsl.vector_type());
 
   llvm::Value* result = vsl.Max(vsl.Mul(y, emm0_f32), input);
 
-  ir_builder.CreateRet(result);
+  b.CreateRet(result);
 
   DCHECK(!llvm::verifyFunction(*vector_exp_function));
   return vector_exp_function;
@@ -196,13 +196,13 @@ llvm::Function* EmitVectorF32LogIfNeeded(llvm::Module* module,
   llvm::BasicBlock* vector_log_body =
       llvm::BasicBlock::Create(*context, "body", vector_log_function);
 
-  llvm::IRBuilder<> ir_builder(vector_log_body);
+  llvm::IRBuilder<> b(vector_log_body);
   llvm::FastMathFlags fast_math_flags;
   fast_math_flags.setFast();
-  ir_builder.setFastMathFlags(fast_math_flags);
+  b.setFastMathFlags(fast_math_flags);
 
   llvm::Value* input = &*vector_log_function->arg_begin();
-  VectorSupportLibrary vsl(F32, vector_width, &ir_builder, "log_f32");
+  VectorSupportLibrary vsl(F32, vector_width, &b, "log_f32");
 
   const llvm::APFloat half = GetIeeeF32(0.5);
   const llvm::APFloat one = GetIeeeF32(1.0);
@@ -238,22 +238,21 @@ llvm::Function* EmitVectorF32LogIfNeeded(llvm::Module* module,
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.
   llvm::Value* vector_constant_0x7f =
-      ir_builder.CreateVectorSplat(vector_width, ir_builder.getInt32(0x7f));
+      b.CreateVectorSplat(vector_width, b.getInt32(0x7f));
   llvm::Value* vector_constant_23 =
-      ir_builder.CreateVectorSplat(vector_width, ir_builder.getInt32(23));
+      b.CreateVectorSplat(vector_width, b.getInt32(23));
   llvm::Type* i32_vector_type =
-      llvm::VectorType::get(ir_builder.getInt32Ty(), vector_width);
+      llvm::VectorType::get(b.getInt32Ty(), vector_width);
 
-  llvm::Value* emm0 = ir_builder.CreateLShr(
-      ir_builder.CreateBitCast(input, i32_vector_type), vector_constant_23);
+  llvm::Value* emm0 =
+      b.CreateLShr(b.CreateBitCast(input, i32_vector_type), vector_constant_23);
 
   // Keep only the fractional part.
   input = vsl.FloatAnd(input, inv_mant_mask);
   input = vsl.FloatOr(input, half);
 
-  emm0 = ir_builder.CreateSub(emm0, vector_constant_0x7f);
-  llvm::Value* e =
-      vsl.Add(one, ir_builder.CreateSIToFP(emm0, vsl.vector_type()));
+  emm0 = b.CreateSub(emm0, vector_constant_0x7f);
+  llvm::Value* e = vsl.Add(one, b.CreateSIToFP(emm0, vsl.vector_type()));
 
   // part2:
   //   if( x < SQRTHF ) {
@@ -294,7 +293,7 @@ llvm::Function* EmitVectorF32LogIfNeeded(llvm::Module* module,
   llvm::Value* or_rhs = vsl.FloatAnd(iszero_mask, minus_inf);
   llvm::Value* result = vsl.FloatOr(or_lhs, or_rhs);
 
-  ir_builder.CreateRet(result);
+  b.CreateRet(result);
 
   DCHECK(!llvm::verifyFunction(*vector_log_function));
   return vector_log_function;

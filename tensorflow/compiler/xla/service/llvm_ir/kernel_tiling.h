@@ -44,7 +44,7 @@ tensorflow::gtl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
 IrArray::Index GetUnreducedOutputIndex(
     const IrArray::Index& reduced_output_index,
     const Shape& reduced_output_shape, const Shape& unreduced_output_shape,
-    llvm::IRBuilder<>* ir_builder);
+    llvm::IRBuilder<>* b);
 
 // A class to represent information for tiled parameters to support IR emission
 // for 021 transpose.

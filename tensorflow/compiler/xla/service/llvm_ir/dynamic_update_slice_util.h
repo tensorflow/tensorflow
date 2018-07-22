@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
@@ -66,7 +66,7 @@ inline bool CanEmitFusedDynamicUpdateSliceInPlace(
 Status EmitDynamicUpdateSliceInPlace(
     tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
     const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* ir_builder);
+    llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
@@ -76,7 +76,7 @@ Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    llvm::IRBuilder<>* ir_builder);
+    llvm::IRBuilder<>* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions.
@@ -84,10 +84,9 @@ Status EmitParallelFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    const gpu::LaunchDimensions& launch_dimensions,
-    llvm::IRBuilder<>* ir_builder);
+    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 
 }  // namespace llvm_ir
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_DYNAMIC_UPDATE_SLICE_UTIL_H_
