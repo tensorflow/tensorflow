@@ -967,5 +967,74 @@ class MirroredAndTowerLocalVariableInitializerTest(test.TestCase):
         self.evaluate(tower_local_var.initializer)
         self.assertTrue(self.evaluate(tower_local_var.is_initialized()))
 
+
+class TowerLocalVariableAssignTest(test.TestCase):
+  config = config_pb2.ConfigProto()
+  config.allow_soft_placement = True
+
+  def _skip_eager_if_gpus_less_than(self, num_gpus):
+    if context.num_gpus() < num_gpus and context.executing_eagerly():
+      self.skipTest("Enough GPUs not available for this test in eager mode.")
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignTowerLocalVarSumAggregation(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def model_fn():
+      v_sum = variable_scope.variable(
+          1.0,
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          aggregation=variable_scope.VariableAggregation.SUM)
+      return v_sum
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      tower_local_var = dist.call_for_each_tower(model_fn,
+                                                 run_concurrently=False)
+      self.assertTrue(isinstance(tower_local_var, values.TowerLocalVariable))
+      self.evaluate(variables.global_variables_initializer())
+      # Each tower has a value of 1.0 assigned to it in tower context.
+      # When we read the value using `read_var` we should see the SUM of each of
+      # values on each of the towers.
+      self.assertEqual(2.0, self.evaluate(dist.read_var(tower_local_var)))
+      # Assigning 6.0 in cross tower context will assign a value of
+      # 6.0/num_towers to each tower.
+      tlv_ops = tower_local_var.assign(6.0)
+      self.evaluate(tlv_ops)
+      # On reading the tower local var we should get the assigned value back.
+      # The value on all the towers are added before being returned by
+      # `read_var`.
+      self.assertEqual(6.0, self.evaluate(dist.read_var(tower_local_var)))
+
+  @test_util.run_in_graph_and_eager_modes(config=config)
+  def testAssignTowerLocalVarMeanAggregation(self):
+    self._skip_eager_if_gpus_less_than(1)
+    def model_fn():
+      v_sum = variable_scope.variable(
+          1.0,
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          aggregation=variable_scope.VariableAggregation.MEAN)
+      return v_sum
+
+    dist = mirrored_strategy.MirroredStrategy(
+        ["/device:GPU:0", "/device:CPU:0"])
+
+    with dist.scope():
+      tower_local_var = dist.call_for_each_tower(model_fn,
+                                                 run_concurrently=False)
+      self.assertTrue(isinstance(tower_local_var, values.TowerLocalVariable))
+      self.evaluate(variables.global_variables_initializer())
+      # Each tower has a value of 1.0 assigned to it in tower context.
+      # When we read the value using `read_var` we should see the MEAN of values
+      # on all towers which is the value assigned in tower context.
+      self.assertEqual(1.0, self.evaluate(dist.read_var(tower_local_var)))
+      tlv_ops = tower_local_var.assign(6.0)
+      self.evaluate(tlv_ops)
+      # On reading the tower local var we should get the MEAN of all values
+      # which is equal to the value assigned.
+      self.assertEqual(6.0, self.evaluate(dist.read_var(tower_local_var)))
+
+
 if __name__ == "__main__":
   test.main()
