@@ -34,7 +34,7 @@ template <typename OperandType, typename OwnerType> class SSAValueUseIterator;
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
-  // TODO: BBArg,
+  BBArgument,
   InstResult,
 
   // FnArg

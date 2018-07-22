@@ -22,6 +22,7 @@
 #include <memory>
 
 namespace mlir {
+class BBArgument;
 
 /// Each basic block in a CFG function contains a list of basic block arguments,
 /// normal instructions, and a terminator instruction.
@@ -39,10 +40,32 @@ public:
     return function;
   }
 
-  // TODO: bb arguments
-
   /// Unlink this BasicBlock from its CFGFunction and delete it.
   void eraseFromFunction();
+
+  //===--------------------------------------------------------------------===//
+  // Block arguments management
+  //===--------------------------------------------------------------------===//
+
+  // This is the list of arguments to the block.
+  typedef ArrayRef<BBArgument *> BBArgListType;
+  BBArgListType getArguments() const { return arguments; }
+
+  using args_iterator = BBArgListType::iterator;
+  using reverse_args_iterator = BBArgListType::reverse_iterator;
+  args_iterator args_begin() const { return getArguments().begin(); }
+  args_iterator args_end() const { return getArguments().end(); }
+  reverse_args_iterator args_rbegin() const { return getArguments().rbegin(); }
+  reverse_args_iterator args_rend() const { return getArguments().rend(); }
+
+  bool args_empty() const { return arguments.empty(); }
+  BBArgument *addArgument(Type *type);
+  llvm::iterator_range<BBArgListType::iterator>
+  addArguments(ArrayRef<Type *> types);
+
+  unsigned getNumArguments() const { return arguments.size(); }
+  BBArgument *getArgument(unsigned i) { return arguments[i]; }
+  const BBArgument *getArgument(unsigned i) const { return arguments[i]; }
 
   //===--------------------------------------------------------------------===//
   // Operation list management
@@ -104,6 +127,9 @@ private:
 
   /// This is the list of operations in the block.
   OperationListType operations;
+
+  /// This is the list of arguments to the block.
+  std::vector<BBArgument *> arguments;
 
   /// This is the owning reference to the terminator of the block.
   TerminatorInst *terminator = nullptr;

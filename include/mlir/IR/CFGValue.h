@@ -26,6 +26,7 @@
 #include "mlir/IR/SSAValue.h"
 
 namespace mlir {
+class BasicBlock;
 class CFGValue;
 class Instruction;
 
@@ -33,7 +34,7 @@ class Instruction;
 /// function.  This should be kept as a proper subtype of SSAValueKind,
 /// including having all of the values of the enumerators align.
 enum class CFGValueKind {
-  // TODO: BBArg,
+  BBArgument = (int)SSAValueKind::BBArgument,
   InstResult = (int)SSAValueKind::InstResult,
 };
 
@@ -45,6 +46,7 @@ class CFGValue : public SSAValueImpl<InstOperand, CFGValueKind> {
 public:
   static bool classof(const SSAValue *value) {
     switch (value->getKind()) {
+    case SSAValueKind::BBArgument:
     case SSAValueKind::InstResult:
       return true;
     }
@@ -52,6 +54,27 @@ public:
 
 protected:
   CFGValue(CFGValueKind kind, Type *type) : SSAValueImpl(kind, type) {}
+};
+
+/// Basic block arguments are CFG Values.
+class BBArgument : public CFGValue {
+public:
+  static bool classof(const SSAValue *value) {
+    return value->getKind() == SSAValueKind::BBArgument;
+  }
+
+  BasicBlock *getOwner() { return owner; }
+  const BasicBlock *getOwner() const { return owner; }
+
+private:
+  friend class BasicBlock; // For access to private constructor.
+  BBArgument(Type *type, BasicBlock *owner)
+      : CFGValue(CFGValueKind::BBArgument, type), owner(owner) {}
+
+  /// The owner of this operand.
+  /// TODO: can encode this more efficiently to avoid the space hit of this
+  /// through bitpacking shenanigans.
+  BasicBlock *const owner;
 };
 
 /// Instruction results are CFG Values.

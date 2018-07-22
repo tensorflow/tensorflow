@@ -665,7 +665,9 @@ CFGFunctionPrinter::CFGFunctionPrinter(const CFGFunction *function,
 
 /// Number all of the SSA values in the specified basic block.
 void CFGFunctionPrinter::numberValuesInBlock(const BasicBlock *block) {
-  // TODO: basic block arguments.
+  for (auto *arg : block->getArguments()) {
+    numberValueID(arg);
+  }
   for (auto &op : *block) {
     // We number instruction that have results, and we only number the first
     // result.
@@ -686,16 +688,26 @@ void CFGFunctionPrinter::print() {
 }
 
 void CFGFunctionPrinter::print(const BasicBlock *block) {
-  os << "bb" << getBBID(block) << ":\n";
+  os << "bb" << getBBID(block);
 
-  // TODO Print arguments.
+  if (!block->args_empty()) {
+    os << '(';
+    interleaveComma(block->getArguments(), [&](const BBArgument *arg) {
+      printValueID(arg);
+      os << ": ";
+      ModulePrinter::print(arg->getType());
+    });
+    os << ')';
+  }
+  os << ":\n";
+
   for (auto &inst : block->getOperations()) {
     print(&inst);
-    os << "\n";
+    os << '\n';
   }
 
   print(block->getTerminator());
-  os << "\n";
+  os << '\n';
 }
 
 void CFGFunctionPrinter::print(const Instruction *inst) {

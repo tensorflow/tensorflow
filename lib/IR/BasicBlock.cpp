@@ -19,12 +19,14 @@
 #include "mlir/IR/CFGFunction.h"
 using namespace mlir;
 
-BasicBlock::BasicBlock() {
-}
+BasicBlock::BasicBlock() {}
 
 BasicBlock::~BasicBlock() {
   if (terminator)
     terminator->eraseFromBlock();
+  for (BBArgument *arg : arguments)
+    delete arg;
+  arguments.clear();
 }
 
 /// Unlink this BasicBlock from its CFGFunction and delete it.
@@ -83,4 +85,18 @@ transferNodesFromList(ilist_traits<BasicBlock> &otherList,
   // Update the 'function' member of each BasicBlock.
   for (; first != last; ++first)
     first->function = curParent;
+}
+
+BBArgument *BasicBlock::addArgument(Type *type) {
+  arguments.push_back(new BBArgument(type, this));
+  return arguments.back();
+}
+
+llvm::iterator_range<BasicBlock::BBArgListType::iterator>
+BasicBlock::addArguments(ArrayRef<Type *> types) {
+  auto initial_size = arguments.size();
+  for (auto *type : types) {
+    addArgument(type);
+  }
+  return {arguments.data() + initial_size, arguments.data() + arguments.size()};
 }

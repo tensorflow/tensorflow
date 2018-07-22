@@ -118,7 +118,7 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
                                  SMLoc());
 
     // Extracing the expected errors.
-    llvm::Regex expected("expected-error(@[+-][0-9]+)? {{(.*)}}");
+    llvm::Regex expected("expected-error(@[+-][0-9]+)? *{{(.*)}}");
     SmallVector<ExpectedError, 2> expectedErrors;
     SmallVector<StringRef, 100> lines;
     subbuffer.split(lines, '\n');

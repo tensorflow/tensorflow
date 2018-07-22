@@ -91,6 +91,27 @@ bb42:        // expected-error {{expected operation name}}
 
 // -----
 
+cfgfunc @block_no_rparen() {
+bb42 (%bb42 : i32: // expected-error {{expected ')' to end argument list}}
+  return
+}
+
+// -----
+
+cfgfunc @block_arg_no_ssaid() {
+bb42 (i32): // expected-error {{expected SSA operand}}
+  return
+}
+
+// -----
+
+cfgfunc @block_arg_no_type() {
+bb42 (%0): // expected-error {{expected ':' and type for SSA operand}}
+  return
+}
+
+// -----
+
 mlfunc @foo()
 mlfunc @bar() // expected-error {{expected '{' in ML function}}
 
@@ -208,3 +229,17 @@ bb42:
 }
 
 // -----
+
+cfgfunc @argError() {  
+bb1(%a: i64):  // expected-error {{previously defined here}}
+  br bb2
+bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
+  return
+}
+
+// -----
+
+cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of cfgfunc must have 2 arguments to match function signature}}
+bb42(%0: f32):
+  return
+}

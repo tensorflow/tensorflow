@@ -106,6 +106,26 @@ public:
 bool CFGFuncVerifier::verify() {
   // TODO: Lots to be done here, including verifying dominance information when
   // we have uses and defs.
+  // TODO: Verify the first block has no predecessors.
+
+  if (fn.empty())
+    return failure("cfgfunc must have at least one basic block", fn);
+
+  // Verify that the argument list of the function and the arg list of the first
+  // block line up.
+  auto *firstBB = &fn.front();
+  auto fnInputTypes = fn.getType()->getInputs();
+  if (fnInputTypes.size() != firstBB->getNumArguments())
+    return failure("first block of cfgfunc must have " +
+                       Twine(fnInputTypes.size()) +
+                       " arguments to match function signature",
+                   fn);
+  for (unsigned i = 0, e = firstBB->getNumArguments(); i != e; ++i)
+    if (fnInputTypes[i] != firstBB->getArgument(i)->getType())
+      return failure(
+          "type of argument #" + Twine(i) +
+              " must match corresponding argument in function signature",
+          fn);
 
   for (auto &block : fn) {
     if (verifyBlock(block))
@@ -120,6 +140,11 @@ bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
 
   if (verifyTerminator(*block.getTerminator()))
     return true;
+
+  for (auto *arg : block.getArguments()) {
+    if (arg->getOwner() != &block)
+      return failure("basic block argument not owned by block", block);
+  }
 
   for (auto &inst : block) {
     if (verifyOperation(inst))
