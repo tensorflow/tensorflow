@@ -3392,3 +3392,176 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
 
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
+
+BIAS_VARIABLE_NAME = "bias"
+_WEIGHTS_VARIABLE_NAME = "kernel"
+
+class mLSTMCell(rnn_cell_impl.LayerRNNCell):
+  """Mulitiplicative LSTM Cell (mLSTM)
+
+  Implementation of a Mulitiplicative LSTM based on:
+  https://arxiv.org/pdf/1609.07959.pdf.
+  Ben Krause, Liang Lu, Iain Murray, Steve Renals.
+  Multiplicative LSTM for sequence modelling
+
+  There is also an option to implement weight normalization within the cell
+  based on:
+  https://arxiv.org/abs/1602.07868
+  Tim Salimans, Diederik P. Kingma.
+  Weight Normalization: A Simple Reparameterization to Accelerate
+  Training of Deep Neural Networks
+  """
+
+  def __init__(self,
+               num_units,
+               state_is_tuple=True,
+               kernel_initializer=None,
+               bias_initializer=None,
+               weight_normalization=True,
+               reuse=None,
+               name=None):
+
+    """Initialize the Mulitiplicative LSTM (mLSTM) cell.
+
+    Args:
+      num_units: int, The number of units in the mLSTM cell.
+      state_is_tuple: If True, accepted and returned states are 2-tuples of
+        the `c_state` and `h_state`.  If False, they are concatenated
+        along the column axis.  The latter behavior will soon be deprecated.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
+      name: String, the name of the layer. Layers with the same name will
+        share weights, but to avoid mistakes we require reuse=True in such
+        cases.
+      kernel_initializer: (optional) The initializer to use for the weights
+      bias_initializer: (optional) The initializer to use for the bias.
+      weight_normalization: When set to True, weight normalization is applied to
+      the model weights (but not the biases). Default: True
+    """
+    super(mLSTMCell, self).__init__(_reuse=reuse, name=name)
+    if not state_is_tuple:
+      logging.warn("%s: Using a concatenated state is slower and will soon be "
+                   "deprecated.  Use state_is_tuple=True.", self)
+
+    # Inputs must be 2-dimensional.
+    self.input_spec = base_layer.InputSpec(ndim=2)
+    self._num_units = num_units
+    self._state_is_tuple = state_is_tuple
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
+    self._weight_normalization = weight_normalization
+
+  @property
+  def state_size(self):
+    return (rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
+            if self._state_is_tuple else 2 * self._num_units)
+
+  @property
+  def output_size(self):
+    return self._num_units
+
+  def build(self, inputs_shape):
+    if inputs_shape[1].value is None:
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % inputs_shape)
+
+    input_depth = inputs_shape[1].value
+    h_depth = self._num_units
+    self._wx_kernel = self.add_variable(
+        "wx/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth, 4 * h_depth],
+        initializer=self._kernel_initializer)
+    self._wh_kernel = self.add_variable(
+        "wh/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[h_depth, 4 * h_depth],
+        initializer=self._kernel_initializer)
+    self._wmx_kernel = self.add_variable(
+        "wmx/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[input_depth, h_depth],
+        initializer=self._kernel_initializer)
+    self._wmh_kernel = self.add_variable(
+        "wmh/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[h_depth, h_depth],
+        initializer=self._kernel_initializer)
+    self.bias = self.add_variable(
+        "b/%s" % _BIAS_VARIABLE_NAME,
+        shape=[4 * h_depth],
+        initializer=self._bias_initializer)
+
+    if self._weight_normalization is True:
+        self._gx_kernel = self.add_variable(
+        "gx/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[4 * h_depth],
+        initializer=self._kernel_initializer
+        )
+        self._gh_kernel = self.add_variable(
+        "gh/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[4 * h_depth],
+        initializer=self._kernel_initializer
+        )
+        self._gmx_kernel = self.add_variable(
+        "gmx/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[h_depth],
+        initializer=self._kernel_initializer
+        )
+        self._gmh_kernel = self.add_variable(
+        "gmh/%s" % _WEIGHTS_VARIABLE_NAME,
+        shape=[h_depth],
+        initializer=self._kernel_initializer
+        )
+
+        self._wx_kernel = nn_impl.l2_normalize(self._wx_kernel,axis=0) * self._gx_kernel
+
+        self._wh_kernel = nn_impl.l2_normalize(self._wh_kernel,axis=0) * self._gh_kernel
+
+        self._wmx_kernel = nn_impl.l2_normalize(self._wmx_kernel,axis=0) * self._gmx_kernel
+
+        self._wmh_kernel = nn_impl.l2_normalize(self._wmh_kernel,axis=0) * self._gmh_kernel
+
+    self.built = True
+
+  def call(self, inputs, state):
+    """Mulitiplicative Long short-term memory cell (mLSTM).
+
+    Args:
+      inputs: `2-D` tensor with shape `[batch_size, input_size]`.
+      state: An `LSTMStateTuple` of state tensors, each shaped
+        `[batch_size, self.state_size]`, if `state_is_tuple` has been set to
+        `True`.  Otherwise, a `Tensor` shaped
+        `[batch_size, 2 * self.state_size]`.
+
+    Returns:
+      A pair containing the new hidden state, and the new state (either a
+        `LSTMStateTuple` or a concatenated state, depending on
+        `state_is_tuple`).
+    """
+    sigmoid = math_ops.sigmoid
+    tanh = math_ops.tanh
+    add = math_ops.add
+    multiply = math_ops.multiply
+
+    if self._state_is_tuple:
+      c, h = state
+    else:
+      c, h = array_ops.split(value=state, num_or_size_splits=2, axis=one)
+
+    m = multiply(
+    math_ops.matmul(inputs, self._wmx_kernel),
+    math_ops.matmul(h, self._wmh_kernel))
+
+    z = nn_ops.bias_add(
+    add(math_ops.matmul(inputs, self._wx_kernel), math_ops.matmul(m, self._wh_kernel)),
+    self.bias)
+
+    i, f, o, u = array_ops.split(
+        value=z, num_or_size_splits=4, axis=1)
+
+    new_c = add(multiply(sigmoid(f),c), multiply(sigmoid(i),tanh(u)))
+    new_h = multiply(tanh(new_c), sigmoid(o))
+
+    if self._state_is_tuple:
+      new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
+    else:
+      new_state = array_ops.concat([new_c, new_h], 1)
+    return new_h, new_state
