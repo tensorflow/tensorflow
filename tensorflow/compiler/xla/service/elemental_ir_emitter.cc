@@ -222,9 +222,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED);
+      CHECK(primitive_util::IsIntegralType(from_type) || from_type == PRED)
+          << from_type;
       if (from_type == to_type) {
         return operand_value;
+      }
+      if (to_type == PRED) {
+        return b_->CreateZExt(
+            b_->CreateICmpNE(operand_value, llvm::ConstantInt::get(
+                                                operand_value->getType(), 0)),
+            llvm_ir::PrimitiveTypeToIrType(PRED, module_));
       }
       if (primitive_util::IsIntegralType(to_type)) {
         return b_->CreateIntCast(
@@ -342,7 +349,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
-      CHECK(primitive_util::IsFloatingPointType(from_type));
+      CHECK(primitive_util::IsFloatingPointType(from_type)) << from_type;
       if (from_type == to_type) {
         return operand_value;
       }
@@ -368,6 +375,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == F32 && to_type == BF16) {
         return EmitF32ToBF16(operand_value, b_);
+      }
+      if (to_type == PRED) {
+        return b_->CreateZExt(
+            b_->CreateFCmpUNE(
+                operand_value,
+                llvm::ConstantFP::get(operand_value->getType(), 0.0)),
+            llvm_ir::PrimitiveTypeToIrType(PRED, module_));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         return b_->CreateFPCast(
