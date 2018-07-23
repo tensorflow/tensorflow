@@ -34,6 +34,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -133,39 +134,32 @@ class SavedModelBuilder(object):
     tf_logging.info("Assets written to: %s",
                     compat.as_text(assets_destination_dir))
 
-  def _maybe_add_legacy_init_op(self, legacy_init_op=None):
-    """Add legacy init op to the SavedModel.
+  def _maybe_add_main_op(self, main_op):
+    """Adds main op to the SavedModel.
 
     Args:
-      legacy_init_op: Optional legacy init op to support backward compatibility.
+      main_op: Main op to run as part of graph initialization. If None, no
+        main op will be added to the graph.
 
     Raises:
-      TypeError if legacy init op is not of type `Operation`.
-      AssertionError if the graph already contains one or more legacy init ops.
+      TypeError: if main op is provided but is not of type `Operation`.
+      ValueError: if the Graph already contains an init op.
     """
-    if legacy_init_op is not None:
-      if not isinstance(legacy_init_op, ops.Operation):
-        raise TypeError("legacy_init_op needs to be an Operation: %r" %
-                        legacy_init_op)
-      if ops.get_collection(constants.LEGACY_INIT_OP_KEY):
-        raise AssertionError(
-            "graph already contains one or more legacy init ops under the "
-            "collection {}.".format(constants.LEGACY_INIT_OP_KEY))
-      ops.add_to_collection(constants.LEGACY_INIT_OP_KEY, legacy_init_op)
+    if main_op is None:
+      return
 
-  def _add_main_op(self, main_op):
-    """Add main op to the SavedModel.
+    if not isinstance(main_op, ops.Operation):
+      raise TypeError("main_op needs to be an Operation: %r" % main_op)
 
-    Args:
-      main_op: Main op to run as part of graph initialization.
+    # Validate that no other init ops have been added to this graph already.
+    # We check main_op and legacy_init_op for thoroughness and explicitness.
+    for init_op_key in (constants.MAIN_OP_KEY, constants.LEGACY_INIT_OP_KEY):
+      if ops.get_collection(init_op_key):
+        raise ValueError(
+            "Graph already contains one or more main ops under the "
+            "collection {}.".format(init_op_key))
 
-    Raises:
-      TypeError if main op is not of type `Operation`.
-    """
-    if main_op is not None:
-      if not isinstance(main_op, ops.Operation):
-        raise TypeError("main_op needs to be an Operation: %r" % main_op)
-      ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
+    ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
 
   def _add_train_op(self, train_op):
     """Add train op to the SavedModel.
@@ -257,16 +251,12 @@ class SavedModelBuilder(object):
           self._validate_tensor_info(outputs[outputs_key])
 
   def _add_collections(
-      self, assets_collection, legacy_init_op, main_op, train_op):
+      self, assets_collection, main_op, train_op):
     """Add asset and op collections to be saved."""
     # Save asset files and write them to disk, if any.
     self._save_and_write_assets(assets_collection)
 
-    if main_op is None:
-      # Add legacy init op to the SavedModel.
-      self._maybe_add_legacy_init_op(legacy_init_op)
-    else:
-      self._add_main_op(main_op)
+    self._maybe_add_main_op(main_op)
 
     self._add_train_op(train_op)
 
@@ -282,6 +272,9 @@ class SavedModelBuilder(object):
           allow_empty=True)
     return saver
 
+  @deprecated_args(None,
+                   "Pass your op to the equivalent parameter main_op instead.",
+                   "legacy_init_op")
   def add_meta_graph(self,
                      tags,
                      signature_def_map=None,
@@ -306,7 +299,7 @@ class SavedModelBuilder(object):
           that this collection should be a subset of the assets saved as part of
           the first meta graph in the SavedModel.
       legacy_init_op: Legacy support for op or group of ops to execute after the
-          restore op upon a load.
+          restore op upon a load. Deprecated; please use main_op instead.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
       main_op: Op or group of ops to execute when the graph is loaded. Note
@@ -333,8 +326,12 @@ class SavedModelBuilder(object):
     # properly populated.
     self._validate_signature_def_map(signature_def_map)
 
+    # legacy_init_op is deprecated, and going away in TF 2.0.
+    # Re-mapping to main_op, as treatment is identical regardless.
+    main_op = main_op or legacy_init_op
+
     # Add assets and ops
-    self._add_collections(assets_collection, legacy_init_op, main_op, None)
+    self._add_collections(assets_collection, main_op, None)
 
     saver = self._maybe_create_saver(saver)
 
@@ -351,6 +348,9 @@ class SavedModelBuilder(object):
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
 
+  @deprecated_args(None,
+                   "Pass your op to the equivalent parameter main_op instead.",
+                   "legacy_init_op")
   def add_meta_graph_and_variables(self,
                                    sess,
                                    tags,
@@ -378,7 +378,7 @@ class SavedModelBuilder(object):
         def.
       assets_collection: Assets collection to be saved with SavedModel.
       legacy_init_op: Legacy support for op or group of ops to execute after the
-          restore op upon a load.
+          restore op upon a load. Deprecated; please use main_op instead.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
       main_op: Op or group of ops to execute when the graph is loaded. Note
@@ -402,8 +402,12 @@ class SavedModelBuilder(object):
     # properly populated.
     self._validate_signature_def_map(signature_def_map)
 
+    # legacy_init_op is deprecated, and going away in TF 2.0.
+    # Re-mapping to main_op, as treatment is identical regardless.
+    main_op = main_op or legacy_init_op
+
     # Add assets and ops
-    self._add_collections(assets_collection, legacy_init_op, main_op, None)
+    self._add_collections(assets_collection, main_op, None)
 
     # Create the variables sub-directory, if it does not exist.
     variables_dir = os.path.join(
