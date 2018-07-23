@@ -767,6 +767,22 @@ class LossMaskingTest(test.TestCase):
               keras.backend.variable(weights), keras.backend.variable(mask)))
 
 
+class LearningPhaseTest(test.TestCase):
+
+  def test_empty_model_no_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      self.assertFalse(model.uses_learning_phase)
+
+  def test_dropout_has_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.add(keras.layers.Dropout(0.5))
+      model.add(keras.layers.Dense(2))
+      self.assertTrue(model.uses_learning_phase)
+
+
 class TestDynamicTrainability(test.TestCase):
 
   def test_trainable_warning(self):
