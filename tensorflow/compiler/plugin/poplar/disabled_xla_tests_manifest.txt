@@ -265,3 +265,5 @@ TokenHloTest.TokenTree POPLAR
 TokenHloTest.TokenInConditional POPLAR
 
 R4ReduceWindowTest POPLAR // Issues with zero size windows
+
+IotaTest POPLAR // Don't support iota

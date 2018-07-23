@@ -413,5 +413,9 @@ Status BaseVisitor::HandleAfterAll(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleIota(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
