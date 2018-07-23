@@ -100,6 +100,7 @@ public:
   bool verifyOperation(const OperationInst &inst);
   bool verifyTerminator(const TerminatorInst &term);
   bool verifyReturn(const ReturnInst &inst);
+  bool verifyBranch(const BranchInst &inst);
 };
 } // end anonymous namespace
 
@@ -163,6 +164,9 @@ bool CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
   if (auto *ret = dyn_cast<ReturnInst>(&term))
     return verifyReturn(*ret);
 
+  if (auto *br = dyn_cast<BranchInst>(&term))
+    return verifyBranch(*br);
+
   return false;
 }
 
@@ -174,6 +178,31 @@ bool CFGFuncVerifier::verifyReturn(const ReturnInst &inst) {
                        " operands, but enclosing function returns " +
                        Twine(results.size()),
                    inst);
+
+  for (unsigned i = 0, e = results.size(); i != e; ++i)
+    if (inst.getOperand(i)->getType() != results[i])
+      return failure("type of return operand " + Twine(i) +
+                         " doesn't match result function result type",
+                     inst);
+
+  return false;
+}
+
+bool CFGFuncVerifier::verifyBranch(const BranchInst &inst) {
+  // Verify that the number of operands lines up with the number of BB arguments
+  // in the successor.
+  auto dest = inst.getDest();
+  if (inst.getNumOperands() != dest->getNumArguments())
+    return failure("branch has " + Twine(inst.getNumOperands()) +
+                       " operands, but target block has " +
+                       Twine(dest->getNumArguments()),
+                   inst);
+
+  for (unsigned i = 0, e = inst.getNumOperands(); i != e; ++i)
+    if (inst.getOperand(i)->getType() != dest->getArgument(i)->getType())
+      return failure("type of branch operand " + Twine(i) +
+                         " doesn't match target bb argument type",
+                     inst);
 
   return false;
 }

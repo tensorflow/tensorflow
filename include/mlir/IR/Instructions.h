@@ -260,7 +260,31 @@ public:
     return dest;
   }
 
-  // TODO: need to take operands to specify BB arguments
+  unsigned getNumOperands() const { return operands.size(); }
+
+  // TODO: Add a getOperands() custom sequence that provides a value projection
+  // of the operand list.
+  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+  const CFGValue *getOperand(unsigned idx) const {
+    return getInstOperand(idx).get();
+  }
+
+  ArrayRef<InstOperand> getInstOperands() const { return operands; }
+  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
+
+  InstOperand &getInstOperand(unsigned idx) { return operands[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return operands[idx];
+  }
+
+  /// Add one value to the operand list.
+  void addOperand(CFGValue *value);
+
+  /// Add a list of values to the operand list.
+  void addOperands(ArrayRef<CFGValue *> values);
+
+  /// Erase a specific argument from the arg list.
+  // TODO: void eraseArgument(int Index);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
@@ -272,6 +296,7 @@ private:
       : TerminatorInst(Kind::Branch), dest(dest) {}
 
   BasicBlock *dest;
+  std::vector<InstOperand> operands;
 };
 
 

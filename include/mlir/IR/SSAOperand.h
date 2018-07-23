@@ -61,6 +61,17 @@ public:
   /// of the SSA machinery.
   SSAOperand *getNextOperandUsingThisValue() { return nextUse; }
 
+  /// We support a move constructor so SSAOperands can be in vectors, but this
+  /// shouldn't be used by general clients.
+  SSAOperand(SSAOperand &&other) {
+    other.removeFromCurrent();
+    value = other.value;
+    other.value = nullptr;
+    nextUse = nullptr;
+    back = nullptr;
+    insertIntoCurrent();
+  }
+
 private:
   /// The value used as this operand.  This can be null when in a
   /// "dropAllUses" state.
@@ -115,6 +126,11 @@ public:
 
   /// Return which operand this is in the operand list of the User.
   // TODO:  unsigned getOperandNumber() const;
+
+  /// We support a move constructor so SSAOperands can be in vectors, but this
+  /// shouldn't be used by general clients.
+  SSAOperandImpl(SSAOperandImpl &&other)
+      : SSAOperand(std::move(other)), owner(other.owner) {}
 
 private:
   /// The owner of this operand.

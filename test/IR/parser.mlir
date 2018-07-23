@@ -66,16 +66,16 @@ extfunc @memrefs23(memref<2x4x8xi8, (d0, d1, d2) -> (d0, d1, d2), (d0, d1, d2) -
 // CHECK: extfunc @functions((memref<1x?x4x?x?xaffineint, (d0, d1, d2, d3, d4) [s0] -> (d0, d1, d2, d3, d4), 0>, memref<i8, (d0) -> (d0), 0>) -> (), () -> ())
 extfunc @functions((memref<1x?x4x?x?xaffineint, #map0, 0>, memref<i8, #map1, 0>) -> (), ()->())
 
-// CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) {
-cfgfunc @simpleCFG(i32, f32) {
+// CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) -> i1 {
+cfgfunc @simpleCFG(i32, f32) -> i1 {
 // CHECK: bb0(%0: i32, %1: f32):
 bb42 (%0: i32, %f: f32):
   // CHECK: %2 = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
   // CHECK: "bar"(%2) : (i64) -> (i1, i1, i1)
   %2 = "bar"(%1) : (i64) -> (i1,i1,i1)
-  // CHECK: return
-  return
+  // CHECK: return %3#1
+  return %2#1 : i1
 // CHECK: }
 }
 
@@ -208,4 +208,17 @@ bb2:       // CHECK: bb2:
   // CHECK: %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   br bb1
+}
+
+// CHECK-LABEL: cfgfunc @bbargs() -> (i16, i8) {
+cfgfunc @bbargs() -> (i16, i8) {
+bb0:       // CHECK: bb0:
+  // CHECK: %0 = "foo"() : () -> (i1, i17)
+  %0 = "foo"() : () -> (i1, i17)
+  br bb1(%0#1, %0#0) : i17, i1
+
+bb1(%x: i17, %y: i1):       // CHECK: bb1(%1: i17, %2: i1):
+  // CHECK: %3 = "baz"(%1, %2, %0#1) : (i17, i1, i17) -> (i16, i8)
+  %1 = "baz"(%x, %y, %0#1) : (i17, i1, i17) -> (i16, i8)
+  return %1#0 : i16, %1#1 : i8
 }

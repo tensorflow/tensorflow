@@ -207,3 +207,15 @@ ReturnInst::~ReturnInst() {
   for (auto &operand : getInstOperands())
     operand.~InstOperand();
 }
+
+/// Add one value to the operand list.
+void BranchInst::addOperand(CFGValue *value) {
+  operands.emplace_back(InstOperand(this, value));
+}
+
+/// Add a list of values to the operand list.
+void BranchInst::addOperands(ArrayRef<CFGValue *> values) {
+  operands.reserve(operands.size() + values.size());
+  for (auto *value : values)
+    addOperand(value);
+}

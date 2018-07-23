@@ -706,9 +706,23 @@ void CFGFunctionPrinter::print(const Instruction *inst) {
 void CFGFunctionPrinter::print(const OperationInst *inst) {
   printOperation(inst);
 }
+
 void CFGFunctionPrinter::print(const BranchInst *inst) {
   os << "  br bb" << getBBID(inst->getDest());
+
+  if (inst->getNumOperands() != 0) {
+    os << '(';
+    // TODO: Use getOperands() when we have it.
+    interleaveComma(inst->getInstOperands(), [&](const InstOperand &operand) {
+      printValueID(operand.get());
+    });
+    os << ") : ";
+    interleaveComma(inst->getInstOperands(), [&](const InstOperand &operand) {
+      ModulePrinter::print(operand.get()->getType());
+    });
+  }
 }
+
 void CFGFunctionPrinter::print(const ReturnInst *inst) {
   os << "  return";
 

@@ -37,6 +37,8 @@ public:
 
   // FIXME: wrong representation and API.
   // TODO(someone): This should switch to llvm::iplist<Function>.
+  // TODO(someone): we also need a symbol table for function names +
+  // autorenaming like LLVM does.
   std::vector<Function*> functionList;
 
   /// Perform (potentially expensive) checks of invariants, used to detect

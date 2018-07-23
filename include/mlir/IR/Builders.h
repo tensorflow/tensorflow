@@ -186,7 +186,7 @@ public:
     return op;
   }
 
-  // Creates for statement. When step is not specified, it is set to 1. 
+  // Creates for statement. When step is not specified, it is set to 1.
   ForStmt *createFor(AffineConstantExpr *lowerBound,
                      AffineConstantExpr *upperBound,
                      AffineConstantExpr *step = nullptr);

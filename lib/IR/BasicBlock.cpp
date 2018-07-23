@@ -35,6 +35,31 @@ void BasicBlock::eraseFromFunction() {
   getFunction()->getBlocks().erase(this);
 }
 
+//===----------------------------------------------------------------------===//
+// Argument list management.
+//===----------------------------------------------------------------------===//
+
+BBArgument *BasicBlock::addArgument(Type *type) {
+  auto *arg = new BBArgument(type, this);
+  arguments.push_back(arg);
+  return arg;
+}
+
+/// Add one argument to the argument list for each type specified in the list.
+auto BasicBlock::addArguments(ArrayRef<Type *> types)
+    -> llvm::iterator_range<args_iterator> {
+  arguments.reserve(arguments.size() + types.size());
+  auto initialSize = arguments.size();
+  for (auto *type : types) {
+    addArgument(type);
+  }
+  return {arguments.data() + initialSize, arguments.data() + arguments.size()};
+}
+
+//===----------------------------------------------------------------------===//
+// Terminator management
+//===----------------------------------------------------------------------===//
+
 void BasicBlock::setTerminator(TerminatorInst *inst) {
   // If we already had a terminator, abandon it.
   if (terminator)
@@ -45,6 +70,10 @@ void BasicBlock::setTerminator(TerminatorInst *inst) {
   if (inst)
     inst->block = this;
 }
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for BasicBlock
+//===----------------------------------------------------------------------===//
 
 mlir::CFGFunction *
 llvm::ilist_traits<::mlir::BasicBlock>::getContainingFunction() {
@@ -85,18 +114,4 @@ transferNodesFromList(ilist_traits<BasicBlock> &otherList,
   // Update the 'function' member of each BasicBlock.
   for (; first != last; ++first)
     first->function = curParent;
-}
-
-BBArgument *BasicBlock::addArgument(Type *type) {
-  arguments.push_back(new BBArgument(type, this));
-  return arguments.back();
-}
-
-llvm::iterator_range<BasicBlock::BBArgListType::iterator>
-BasicBlock::addArguments(ArrayRef<Type *> types) {
-  auto initial_size = arguments.size();
-  for (auto *type : types) {
-    addArgument(type);
-  }
-  return {arguments.data() + initial_size, arguments.data() + arguments.size()};
 }

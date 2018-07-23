@@ -243,3 +243,16 @@ cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of cfgfunc mu
 bb42(%0: f32):
   return
 }
+
+// -----
+
+cfgfunc @br_mismatch() {  // expected-error {{branch has 2 operands, but target block has 1}}
+bb0:       // CHECK: bb0:
+  // CHECK: %0 = "foo"() : () -> (i1, i17)
+  %0 = "foo"() : () -> (i1, i17)
+  br bb1(%0#1, %0#0) : i17, i1
+
+bb1(%x: i17):
+  return
+}
+
