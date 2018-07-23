@@ -38,6 +38,7 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export as export_helpers
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -103,6 +104,15 @@ class Estimator(object):
   None of `Estimator`'s methods can be overridden in subclasses (its
   constructor enforces this). Subclasses should use `model_fn` to configure
   the base class, and may add methods implementing specialized functionality.
+
+  @compatbility(eager)
+  Calling methods of `Estimator` will work while eager execution is enabled.
+  However, the `model_fn` and `input_fn` is not executed eagerly, `Estimator`
+  will switch to graph model before calling all user-provided functions (incl.
+  hooks), so their code has to be compatible with graph mode execution. Note
+  that `input_fn` code using `tf.data` generally works in both graph and eager
+  modes.
+  @end_compatibility
   """
 
   def __init__(self, model_fn, model_dir=None, config=None, params=None,
@@ -566,7 +576,9 @@ class Estimator(object):
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
-        '_tf_api_names', '_estimator_api_names', '_estimator_api_constants',
+        '_tf_api_names', '_tf_api_names_v1', '_estimator_api_names',
+        '_estimator_api_names_v1', '_estimator_api_constants',
+        '_estimator_api_constants_v1',
         '_validate_features_in_predict_input',
         '_call_model_fn', '_add_meta_graph_for_mode'
     ])
@@ -839,7 +851,8 @@ class Estimator(object):
                                strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
-                               export_tags=None):
+                               export_tags=None,
+                               check_variables=True):
     # pylint: disable=line-too-long
     """Loads variables and adds them along with a MetaGraphDef for saving.
 
@@ -860,6 +873,10 @@ class Estimator(object):
       mode: tf.estimator.ModeKeys value indicating which mode will be exported.
       export_tags: The set of tags with which to save `MetaGraphDef`. If None,
         a default set will be selected to matched the passed mode.
+      check_variables: bool, whether to check the checkpoint has all variables.
+
+    Raises:
+      ValueError: if `save_variables` is `True` and `check_variable` is `False`.
     """
     # pylint: enable=line-too-long
     if export_tags is None:
@@ -900,16 +917,20 @@ class Estimator(object):
         # SavedModel for restore later.
         graph_saver = estimator_spec.scaffold.saver or saver.Saver(sharded=True)
 
-        try:
-          graph_saver.restore(session, checkpoint_path)
-        except errors.NotFoundError as e:
-          msg = ('Could not load all requested variables from the checkpoint. '
-                 'Please make sure your model_fn does not expect variables '
-                 'that were not saved in the checkpoint.\n\n'
-                 'Encountered error with mode `{}` while restoring checkpoint '
-                 'from: `{}`. Full Traceback:\n\n{}').format(
-                     mode, checkpoint_path, e)
-          raise ValueError(msg)
+        if save_variables and not check_variables:
+          raise ValueError('If `save_variables` is `True, `check_variables`'
+                           'must not be `False`.')
+        if check_variables:
+          try:
+            graph_saver.restore(session, checkpoint_path)
+          except errors.NotFoundError as e:
+            msg = ('Could not load all requested variables from checkpoint. '
+                   'Please make sure your model_fn does not expect variables '
+                   'that were not saved in the checkpoint.\n\n'
+                   'Encountered error with mode `{}` while restoring '
+                   'checkpoint from: `{}`. Full Traceback:\n\n{}').format(
+                       mode, checkpoint_path, e)
+            raise ValueError(msg)
 
         # We add the train op explicitly for now, so that we don't have to
         # change the Builder public interface. Note that this is a no-op
@@ -1124,6 +1145,18 @@ class Estimator(object):
       return self._train_model_default(input_fn, hooks, saving_listeners)
 
   def _train_model_default(self, input_fn, hooks, saving_listeners):
+    """Initiate training with input_fn, without DistributionStrategies.
+
+    Args:
+      input_fn: A function that provides input data for training as minibatches.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the training loop.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
+
+    Returns:
+      Loss from training
+    """
     worker_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -1140,29 +1173,86 @@ class Estimator(object):
                                              saving_listeners)
 
   def _train_model_distributed(self, input_fn, hooks, saving_listeners):
+    """Initiate training with input_fn, using DistributionStrategies.
+
+    Args:
+      input_fn: A function that provides input data for training as minibatches.
+      hooks: List of `SessionRunHook` subclass instances. Used for callbacks
+        inside the training loop.
+      saving_listeners: list of `CheckpointSaverListener` objects. Used for
+        callbacks that run immediately before or after checkpoint savings.
+
+    Returns:
+      Loss from training
+    """
     self._distribution.configure(self._session_config)
+
+    # TODO(sourabhbajaj): Remove this hack once we migrate the other strategies
+    # to use the new API
+    is_tpu_strategy = self._distribution.__class__.__name__ == 'TPUStrategy'
+
     worker_hooks = []
     with ops.Graph().as_default() as g:
       with self._distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
-        features, labels, input_hooks = (
-            self._get_features_and_labels_from_input_fn(
-                input_fn, model_fn_lib.ModeKeys.TRAIN))
-        worker_hooks.extend(input_hooks)
-        global_step_tensor = self._create_and_assert_global_step(g)
-        # The default destination for the global_step_tensor fetch call is the
-        # CPU.
-        global_step_read_tensor = self._distribution.fetch(global_step_tensor)
-        # we want to add to the global collection in the main thread not the
-        # tower threads.
-        ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
-                              global_step_read_tensor)
-        grouped_estimator_spec = self._distribution.call_for_each_tower(
-            self._call_model_fn,
-            features,
-            labels,  # although this will be None it seems
-            model_fn_lib.ModeKeys.TRAIN,
-            self.config)
+
+        if is_tpu_strategy:
+          # Create the iterator for run_on_dataset function
+          # TODO(sourabhbajaj): refactor this out to call a function on the
+          # strategy
+          dataset = self._distribution.distribute_dataset(
+              lambda: self._call_input_fn(input_fn,  # pylint: disable=g-long-lambda
+                                          model_fn_lib.ModeKeys.TRAIN))
+          iterator = dataset.make_initializable_iterator()
+          worker_hooks.append(
+              estimator_util._DatasetInitializerHook(iterator))  # pylint: disable=protected-access
+
+          global_step_tensor = self._create_and_assert_global_step(g)
+          # we want to add to the global collection in the main thread not the
+          # tower threads.
+          ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
+                                self._distribution.read_var(global_step_tensor))
+
+          # Create a step_fn from the train_op of grouped_estimator_spec
+          def step_fn(ctx, inputs):
+            """A single step that is passed to run_on_dataset."""
+            features, labels = inputs
+            estimator_spec = self._distribution.call_for_each_tower(
+                self._call_model_fn,
+                features,
+                labels,
+                model_fn_lib.ModeKeys.TRAIN,
+                self.config)
+            ctx.last_step_outputs = estimator_spec.loss
+            ctx.non_tensor_outputs = {'estimator_spec': estimator_spec}
+            with ops.control_dependencies([estimator_spec.train_op]):
+              return array_ops.identity(estimator_spec.loss)
+
+          # Create new train_op post graph rewrites
+          # TODO(sourabhbajaj): Make sure train_steps and tpu_iterations
+          # work correctly. Currently hardcoded at 2
+          initial_training_loss = constant_op.constant(1e7)
+          distributed_train_op, tpu_result, ctx = \
+              self._distribution._run_steps_on_dataset(  # pylint: disable=protected-access
+                  step_fn, iterator, iterations=2,
+                  initial_loop_values=initial_training_loss)
+          grouped_estimator_spec = ctx.non_tensor_outputs['estimator_spec']
+        else:
+          features, labels, input_hooks = (
+              self._get_features_and_labels_from_input_fn(
+                  input_fn, model_fn_lib.ModeKeys.TRAIN))
+          worker_hooks.extend(input_hooks)
+          global_step_tensor = self._create_and_assert_global_step(g)
+          # we want to add to the global collection in the main thread not the
+          # tower threads.
+          ops.add_to_collection(training_util.GLOBAL_STEP_READ_KEY,
+                                self._distribution.read_var(global_step_tensor))
+          grouped_estimator_spec = self._distribution.call_for_each_tower(
+              self._call_model_fn,
+              features,
+              labels,  # although this will be None it seems
+              model_fn_lib.ModeKeys.TRAIN,
+              self.config)
 
         # TODO(anjalisridhar): Figure out how to resolve the following scaffold
         # parameters: init_feed_dict, init_fn.
@@ -1190,10 +1280,16 @@ class Estimator(object):
         else:
           init_op = None
 
+        def _unwrap_and_concat(value):
+          value = nest.flatten(self._distribution.unwrap(value))
+          if len(value) != 1:
+            return array_ops.concat(value)
+          return value[0]
+
         ready_op = self._distribution.call_for_each_tower(
             create_per_tower_ready_op, grouped_estimator_spec.scaffold)
         if ready_op is not None:
-          ready_op = self._distribution.group(ready_op)
+          ready_op = _unwrap_and_concat(ready_op)
         else:
           ready_op = None
 
@@ -1201,8 +1297,7 @@ class Estimator(object):
             create_per_tower_ready_for_local_init_op,
             grouped_estimator_spec.scaffold)
         if ready_for_local_init_op is not None:
-          ready_for_local_init_op = self._distribution.group(
-              ready_for_local_init_op)
+          ready_for_local_init_op = _unwrap_and_concat(ready_for_local_init_op)
         else:
           ready_for_local_init_op = None
 
@@ -1243,18 +1338,33 @@ class Estimator(object):
         training_chief_hooks = get_hooks_from_the_first_device(
             grouped_estimator_spec.training_chief_hooks)
 
+        # TODO(sourabhbajaj): Merge the two code paths once we can
+        # handle per device variables correctly in reduce and can output
+        # the loss scaler.
+        if is_tpu_strategy:
+          loss = self._distribution.unwrap(
+              self._distribution.reduce(distribute_lib.get_loss_reduction(),
+                                        tpu_result)[0])[0]
+          worker_hooks.append(
+              estimator_util.StrategyInitFinalizeHook(
+                  self._distribution.get_initialization_ops,
+                  self._distribution.get_finalize_ops))
+        else:
+          loss = self._distribution.unwrap(
+              self._distribution.reduce(distribute_lib.get_loss_reduction(),
+                                        grouped_estimator_spec.loss,
+                                        destinations='/device:CPU:0'))[0]
+          distributed_train_op = grouped_estimator_spec.train_op
+
         estimator_spec = model_fn_lib.EstimatorSpec(
             mode=grouped_estimator_spec.mode,
-            loss=self._distribution.unwrap(
-                self._distribution.reduce(distribute_lib.get_loss_reduction(),
-                                          grouped_estimator_spec.loss,
-                                          destinations='/device:CPU:0'))[0],
-            train_op=self._distribution.group(grouped_estimator_spec.train_op),
+            loss=loss,
+            train_op=self._distribution.group(distributed_train_op),
             training_hooks=training_hooks,
             training_chief_hooks=training_chief_hooks,
             scaffold=scaffold)
         return self._train_with_estimator_spec(estimator_spec, worker_hooks,
-                                               hooks, global_step_read_tensor,
+                                               hooks, global_step_tensor,
                                                saving_listeners)
 
   def _train_with_estimator_spec(self, estimator_spec, worker_hooks, hooks,

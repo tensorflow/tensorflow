@@ -31,7 +31,10 @@ load(
     "if_mkl",
     "if_mkl_lnx_x64"
 )
-
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_mkl_open_source_only",
+)
 def register_extension_info(**kwargs):
     pass
 
@@ -155,6 +158,12 @@ def if_windows(a):
       "//conditions:default": [],
   })
 
+def if_not_windows_cuda(a):
+  return select({
+      clean_dep("//tensorflow:with_cuda_support_windows_override"): [],
+      "//conditions:default": a,
+  })
+
 def if_linux_x86_64(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
@@ -181,9 +190,13 @@ def get_win_copts(is_external=False):
         "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
-        "/U_HAS_EXCEPTIONS",
-        "/D_HAS_EXCEPTIONS=1",
-        "/EHsc",  # -fno-exceptions
+        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+        # default. We can't pass /EHs-c- to disable exception, otherwise
+        # we will get a waterfall of flag conflict warnings. Wait for
+        # Bazel to fix this.
+        # "/D_HAS_EXCEPTIONS=0",
+        # "/EHs-c-",
+        "/wd4577",
         "/DNOGDI",
     ]
     if is_external:
@@ -215,6 +228,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
+      + if_mkl_open_source_only(["-DDO_NOT_USE_ML"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
@@ -247,6 +261,9 @@ def tf_opts_nortti_if_android():
   ])
 
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
+
+def tf_features_nomodules_if_android():
+  return if_android(["-use_header_modules"])
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
 # without their .cc extensions), generate a library for that file.
@@ -734,27 +751,26 @@ def tf_gpu_cc_test(name,
       linkstatic=linkstatic,
       linkopts=linkopts,
       args=args)
-  if if_cuda_is_configured(True) or if_rocm_is_configured(True):
-      tf_cc_test(
-          name=name,
-          srcs=srcs,
-          suffix="_gpu",
-          deps=deps + [
-              clean_dep("//tensorflow/core:gpu_runtime"),
-          ],
-          linkstatic=select({
-              # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-              clean_dep("//tensorflow:darwin"): 1,
-              "@local_config_cuda//cuda:using_nvcc": 1,
-              "@local_config_cuda//cuda:using_clang": 1,
-              "//conditions:default": 0,
-          }),
-          tags=tags + tf_gpu_tests_tags(),
-          data=data,
-          size=size,
-          extra_copts=extra_copts,
-          linkopts=linkopts,
-          args=args)
+  tf_cc_test(
+      name=name,
+      srcs=srcs,
+      suffix="_gpu",
+      deps=deps + [
+          clean_dep("//tensorflow/core:gpu_runtime"),
+      ],
+      linkstatic=select({
+          # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
+          clean_dep("//tensorflow:darwin"): 1,
+          "@local_config_cuda//cuda:using_nvcc": 1,
+          "@local_config_cuda//cuda:using_clang": 1,
+          "//conditions:default": 0,
+      }),
+      tags=tags + tf_gpu_tests_tags(),
+      data=data,
+      size=size,
+      extra_copts=extra_copts,
+      linkopts=linkopts,
+      args=args)
 
 register_extension_info(
     extension_name = "tf_gpu_cc_test",
@@ -828,6 +844,9 @@ def tf_cc_test_mkl(srcs,
                    tags=[],
                    size="medium",
                    args=None):
+  # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
+  disable_header_modules = ["-use_header_modules"]
+
   for src in srcs:
     native.cc_test(
       name=src_to_test_name(src),
@@ -853,6 +872,7 @@ def tf_cc_test_mkl(srcs,
       tags=tags,
       size=size,
       args=args,
+      features=disable_header_modules,
       nocopts="-fno-exceptions")
 
 
@@ -901,7 +921,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def _cuda_copts():
+def _cuda_copts(opts=[]):
   """Gets the appropriate set of copts for (maybe) CUDA compilation.
 
     If we're doing CUDA compilation, returns copts for our particular CUDA
@@ -916,10 +936,10 @@ def _cuda_copts():
       ]),
       "@local_config_cuda//cuda:using_clang": ([
           "-fcuda-flush-denormals-to-zero",
-      ]),
+      ]) + if_cuda_is_configured(opts)
   })
 
-def _rocm_copts():
+def _rocm_copts(opts=[]):
   """Gets the appropriate set of copts for (maybe) ROCm compilation.
 
     If we're doing ROCm compilation, returns copts for our particular ROCm
@@ -930,7 +950,7 @@ def _rocm_copts():
       "//conditions:default": [],
       "@local_config_rocm//rocm:using_hipcc": ([
           "",
-      ]),
+      ]) + if_rocm_is_configured(opts)
   })
 
 # Build defs for TensorFlow kernels
@@ -948,7 +968,8 @@ def tf_gpu_kernel_library(srcs,
                           deps=[],
                           hdrs=[],
                           **kwargs):
-  copts=copts + tf_copts() + _cuda_copts() + _rocm_copts() + if_cuda_is_configured(gpu_copts) + if_rocm_is_configured(gpu_copts)
+  copts = copts + tf_copts() + _cuda_copts(opts=gpu_copts) + _rocm_copts(opts=gpu_copts)
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
   native.cc_library(
       srcs=srcs,
@@ -994,6 +1015,7 @@ def tf_gpu_library(deps=None, gpu_deps=None, copts=tf_copts(), **kwargs):
   if not gpu_deps:
     gpu_deps = []
 
+  kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
   native.cc_library(
       deps=deps +
           if_cuda_is_configured(gpu_deps + [
@@ -1013,16 +1035,17 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_kernel_library(name,
-                      prefix=None,
-                      srcs=None,
-                      gpu_srcs=None,
-                      hdrs=None,
-                      deps=None,
-                      alwayslink=1,
-                      copts=None,
-                      is_external=False,
-                      **kwargs):
+def tf_kernel_library(
+        name,
+        prefix = None,
+        srcs = None,
+        gpu_srcs = None,
+        hdrs = None,
+        deps = None,
+        alwayslink = 1,
+        copts = None,
+        is_external = False,
+        **kwargs):
   """A rule to build a TensorFlow OpKernel.
 
   May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
@@ -1052,6 +1075,7 @@ def tf_kernel_library(name,
     deps = []
   if not copts:
     copts = []
+  textual_hdrs = []
   copts = copts + tf_copts(is_external=is_external)
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude=["*test*"]):
@@ -1062,8 +1086,13 @@ def tf_kernel_library(name,
     srcs = srcs + native.glob(
         [prefix + "*.cc"], exclude=[prefix + "*test*", prefix + "*.cu.cc"])
     hdrs = hdrs + native.glob(
-        [prefix + "*.h"], exclude=[prefix + "*test*", prefix + "*.cu.h"])
-
+            [prefix + "*.h"],
+            exclude = [prefix + "*test*", prefix + "*.cu.h", prefix + "*impl.h"],
+        )
+    textual_hdrs = native.glob(
+            [prefix + "*impl.h"],
+            exclude = [prefix + "*test*", prefix + "*.cu.h"],
+        )
   gpu_deps = [clean_dep("//tensorflow/core:gpu_lib")]
   if gpu_srcs:
     for gpu_src in gpu_srcs:
@@ -1077,6 +1106,7 @@ def tf_kernel_library(name,
       name=name,
       srcs=srcs,
       hdrs=hdrs,
+      textual_hdrs = textual_hdrs,
       copts=copts,
       gpu_deps=gpu_deps,
       linkstatic=1,  # Needed since alwayslink is broken in bazel b/27630669
@@ -1110,6 +1140,9 @@ def tf_mkl_kernel_library(name,
     hdrs = hdrs + native.glob(
         [prefix + "*.h"])
 
+  # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
+  disable_header_modules = ["-use_header_modules"]
+
   native.cc_library(
       name=name,
       srcs=if_mkl(srcs),
@@ -1117,7 +1150,8 @@ def tf_mkl_kernel_library(name,
       deps=deps,
       alwayslink=alwayslink,
       copts=copts,
-      nocopts=nocopts
+      nocopts=nocopts,
+      features = disable_header_modules
   )
 
 register_extension_info(
@@ -1344,6 +1378,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
         name=basename + "_gpu",
         srcs=gpu_srcs,
         copts=_cuda_copts() + _rocm_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+        features = if_cuda(["-use_header_modules"]),
         deps=deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps))
     cuda_deps.extend([":" + basename + "_gpu"])
     rocm_deps.extend([":" + basename + "_gpu"])

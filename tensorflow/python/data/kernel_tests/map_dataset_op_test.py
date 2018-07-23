@@ -659,6 +659,20 @@ class MapDatasetTest(test.TestCase):
         break
     self.assertTrue(found_warning)
 
+  def testNestedDatasetError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        NotImplementedError, r"The Dataset.map\(\) transformation does not "
+        "currently support nested datasets as outputs."):
+      _ = dataset.map(dataset_ops.Dataset.from_tensor_slices)
+
+  def testReturnValueError(self):
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Unsupported return value from function passed to "
+        r"Dataset.map\(\): None."):
+      _ = dataset.map(lambda x: None)
+
 
 class MapDatasetBenchmark(test.Benchmark):
 

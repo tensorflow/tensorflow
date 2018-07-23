@@ -222,6 +222,33 @@ func TestOperationConsumers(t *testing.T) {
 			t.Fatalf("%d. Got op name %q, wanted %q", i, got, want)
 		}
 	}
+
+	if len(b.Consumers()) != 0 {
+		t.Fatalf("expected %+v to have no consumers", b)
+	}
+}
+
+func TestOperationDevice(t *testing.T) {
+	graph := NewGraph()
+	v, err := NewTensor(float32(1.0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	op, err := graph.AddOperation(OpSpec{
+		Type: "Const",
+		Name: "Const",
+		Attrs: map[string]interface{}{
+			"dtype": v.DataType(),
+			"value": v,
+		},
+		Device: "/device:GPU:0",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := op.Device(), "/device:GPU:0"; got != want {
+		t.Errorf("Got %q, want %q", got, want)
+	}
 }
 
 func forceGC() {

@@ -42,6 +42,7 @@ namespace grappler {
 namespace {
 
 constexpr int kDefaultNumberOfIterations = 2;
+constexpr int kDefaultMinGraphNodes = 4;
 
 int64 NumEdges(const GraphDef& graph) {
   int64 num_edges = 0;
@@ -90,7 +91,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("dependency", new DependencyOptimizer(cfg_.dependency_optimization()));
   MK_OPT("debug_stripper", new DebugStripper());
   MK_OPT("scoped_allocator",
-         new ScopedAllocatorOptimizer(cfg_.scoped_allocator_opts()));
+         new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
+                                      cfg_.scoped_allocator_opts()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -149,8 +151,8 @@ Status MetaOptimizer::InitializeOptimizers(
         new AutoParallel(cfg_.auto_parallel().num_replicas()));
   }
   if (cfg_.scoped_allocator_optimization()) {
-    optimizers->emplace_back(
-        new ScopedAllocatorOptimizer(cfg_.scoped_allocator_opts()));
+    optimizers->emplace_back(new ScopedAllocatorOptimizer(
+        cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
   }
   return Status::OK();
 }
@@ -194,6 +196,15 @@ Status MetaOptimizer::InitializeOptimizersByName(
 
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
+  int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
+                                                    : cfg_.min_graph_nodes();
+  if (item.graph.node_size() < min_graph_nodes) {
+    VLOG(3) << "Skipping optimization, graph has less than " << min_graph_nodes
+            << " nodes.";
+    *optimized_graph = item.graph;
+    return Status::OK();
+  }
+
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   if (cfg_.optimizers().empty() && cfg_.custom_optimizers().empty()) {
     TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
@@ -202,10 +213,11 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   }
 
   VLOG(2) << "Optimize GrapplerItem: item.id=" << item.id
-          << " num_optimizers=" << optimizers.size();
+          << " num_optimizers=" << optimizers.size()
+          << ", num nodes = " << item.graph.node_size();
 
   if (optimizers.empty()) {
-    VLOG(3) << "Skip graph optimization, no optimizers registered";
+    VLOG(3) << "Skipping graph optimization, no optimizers registered";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -221,8 +233,15 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   GraphOptimizer* sa_optimizer = nullptr;
 
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
-    VLOG(4) << "Starting optimization iteration " << iteration + 1;
+    // Don't bother optimizing further if the graph is already tiny.
+    if (optimized_graph->node_size() < min_graph_nodes) {
+      VLOG(3) << "Stopping after iteration " << iteration
+              << ", graph is tiny (#nodes = " << optimized_graph->node_size()
+              << "  < " << min_graph_nodes << ")";
+      break;
+    }
 
+    VLOG(4) << "Starting optimization iteration " << iteration;
     for (const auto& optimizer : optimizers) {
       // Some optimizers can run only once.
       if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
@@ -235,7 +254,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
       }
-
       Status status = RunOptimizer(optimizer.get(), cluster, &optimized_item,
                                    optimized_graph, &optimization_result);
       if (status.ok()) is_optimized = true;
@@ -297,7 +315,7 @@ Status MetaOptimizer::RunOptimizer(
         PrintSizesBeforeAfter(optimized_item->graph, *optimized_graph),
         ", time = ", duration_ms, "ms.");
   }
-  VLOG(4) << optimizer->name() << ": " << result;
+  VLOG(1) << optimizer->name() << ": " << result;
 
   OptimizerResult optimizer_result{optimizer->name(), result};
   optimization_result->results.push_back(optimizer_result);

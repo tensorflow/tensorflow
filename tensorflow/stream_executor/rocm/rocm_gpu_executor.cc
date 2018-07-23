@@ -87,14 +87,14 @@ static hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase *gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
 }
 
-static ROCmContext* GetROCmContext(Stream *stream) {
+static int GetROCmDeviceOrdinal(Stream *stream) {
   return static_cast<ROCMExecutor *>(stream->parent()->implementation())
-      ->rocm_context();
+    ->device_ordinal();
 }
 
-ROCmContext* ExtractROCmContext(ROCMExecutor *rocm_exec) {
+int ExtractROCmDeviceOrdinal(ROCMExecutor *rocm_exec) {
   CHECK(rocm_exec != nullptr);
-  return rocm_exec->rocm_context();
+  return rocm_exec->device_ordinal();
 }
 
 ROCMExecutor *ExtractROCmExecutor(StreamExecutor *stream_exec) {
@@ -103,13 +103,10 @@ ROCMExecutor *ExtractROCmExecutor(StreamExecutor *stream_exec) {
 
 ROCMExecutor::~ROCMExecutor() {
   for (auto &it : disk_modules_) {
-    ROCMDriver::UnloadModule(context_, it.second);
+    ROCMDriver::UnloadModule(device_ordinal_, it.second);
   }
   for (auto &it : in_memory_modules_) {
-    ROCMDriver::UnloadModule(context_, it.second);
-  }
-  if (context_ != nullptr) {
-    ROCMDriver::DestroyContext(context_);
+    ROCMDriver::UnloadModule(device_ordinal_, it.second);
   }
 }
 
@@ -123,11 +120,6 @@ port::Status ROCMExecutor::Init(int device_ordinal,
   }
 
   status = ROCMDriver::GetDevice(device_ordinal_, &device_);
-  if (!status.ok()) {
-    return status;
-  }
-
-  status = ROCMDriver::CreateContext(device_, device_options, &context_);
   if (!status.ok()) {
     return status;
   }
@@ -205,7 +197,7 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
     module = in_memory_modules_[hsaco];
 
     if (module == nullptr) {
-      if (!ROCMDriver::LoadHsaco(context_, hsaco, &module)) {
+      if (!ROCMDriver::LoadHsaco(device_ordinal_, hsaco, &module)) {
         LOG(ERROR) << "failed to load HSACO\n";
         return false;
       }
@@ -217,7 +209,7 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
   }
 
   VLOG(2) << "getting function " << kernelname << " from module " << module;
-  if (!ROCMDriver::GetModuleFunction(context_, module, kernelname->c_str(),
+  if (!ROCMDriver::GetModuleFunction(device_ordinal_, module, kernelname->c_str(),
                                      rocm_kernel->rocm_function_ptr())) {
     return false;
   }
@@ -238,20 +230,10 @@ bool ROCMExecutor::GetKernel(const MultiKernelLoaderSpec &spec,
 bool ROCMExecutor::GetKernelMetadata(ROCMKernel *rocm_kernel,
                                      KernelMetadata *kernel_metadata) {
   int value = 0;
-  // XXX FIXME
-  //if (!ROCMDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS,
-  //                                  *rocm_kernel->rocm_function_ptr(),
-  //                                  &value)) {
-  //  return false;
-  //}
+  // ROCM TODO implement this feature in HIP
   kernel_metadata->set_registers_per_thread(value);
 
-  // XXX FIXME
-  //if (!ROCMDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-  //                                  *rocm_kernel->rocm_function_ptr(),
-  //                                  &value)) {
-  //  return false;
-  //}
+  // ROCM TODO implement this feature in HIP
   kernel_metadata->set_shared_memory_bytes(value);
 
   return true;
@@ -301,7 +283,7 @@ bool ROCMExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
     HIP_LAUNCH_PARAM_END
   };
 
-  if (!ROCMDriver::LaunchKernel(GetROCmContext(stream), hipfunc, block_dims.x,
+  if (!ROCMDriver::LaunchKernel(GetROCmDeviceOrdinal(stream), hipfunc, block_dims.x,
                                 block_dims.y, block_dims.z, thread_dims.x,
                                 thread_dims.y, thread_dims.z,
                                 args.number_of_shared_bytes(), hipstream,
@@ -322,54 +304,11 @@ bool ROCMExecutor::Launch(Stream *stream, const ThreadDim &thread_dims,
 void ROCMExecutor::VlogOccupancyInfo(const KernelBase &kernel,
                                      const ThreadDim &thread_dims,
                                      const BlockDim &block_dims) {
-  // FIXME XXX review implementation later
-  //VLOG(2) << "Computing kernel occupancy for kernel "
-  //        << kernel.demangled_name();
-  //VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
-  //        << ", " << thread_dims.z << ")";
-
-  //int regs_per_thread;
-  //if (!kernel.metadata().registers_per_thread(&regs_per_thread)) {
-  //  return;
-  //}
-
-  //int smem_per_block;
-  //if (!kernel.metadata().shared_memory_bytes(&smem_per_block)) {
-  //  return;
-  //}
-
-  //const DeviceDescription &device_description =
-  //    kernel.parent()->GetDeviceDescription();
-
-  //uint64 blocks_per_sm = CalculateOccupancy(
-  //    device_description, regs_per_thread, smem_per_block, thread_dims);
-  //VLOG(2) << "Resident blocks per CU is " << blocks_per_sm;
-
-  //// To increase occupancy, there must be a sufficient number of blocks
-  //// available to spread across the sm's at this new improved occupancy level.
-  //int multiprocessor_count = device_description.core_count();
-  //int block_count = block_dims.x * block_dims.y * block_dims.z;
-  //int available_blocks_per_sm =
-  //    port::MathUtil::CeilOfRatio(block_count, multiprocessor_count);
-  //if (available_blocks_per_sm <= static_cast<int64>(blocks_per_sm)) {
-  //  VLOG(2) << "Occupancy is limited by number of blocks available per sm.";
-  //  return;
-  //}
-
-  //uint64 improved_regs_per_thread = CalculateRegisterLimitForTargetOccupancy(
-  //    device_description, smem_per_block, thread_dims, blocks_per_sm + 1);
-  //if (improved_regs_per_thread != 0) {
-  //  VLOG(2) << "Reducing register usage from " << regs_per_thread
-  //          << " to " << improved_regs_per_thread
-  //          << " could increase resident blocks per CU by one.";
-  //} else {
-  //  VLOG(2) << "Resident blocks per SM cannot be increased by reducing "
-  //      "register usage.";
-  //}
+  // ROCM TODO implement this feature in HIP
 }
 
 void *ROCMExecutor::Allocate(uint64 size) {
-  return ROCMDriver::DeviceAllocate(context_, size);
+  return ROCMDriver::DeviceAllocate(device_ordinal_, size);
 }
 
 void *ROCMExecutor::AllocateSubBuffer(DeviceMemoryBase *mem,
@@ -381,7 +320,7 @@ void *ROCMExecutor::AllocateSubBuffer(DeviceMemoryBase *mem,
 void ROCMExecutor::Deallocate(DeviceMemoryBase *mem) {
   // ROCM "sub-buffers" are just pointer + offset, so no dealloc is necessary.
   if (!mem->is_sub_buffer()) {
-    ROCMDriver::DeviceDeallocate(context_, mem->opaque());
+    ROCMDriver::DeviceDeallocate(device_ordinal_, mem->opaque());
   }
 }
 
@@ -391,25 +330,25 @@ bool ROCMExecutor::HostMemoryRegister(void *location, uint64 size) {
                  << location << "; size " << size;
   }
   VLOG(2) << "registering " << location << " size " << size;
-  return ROCMDriver::HostRegister(context_, location, size);
+  return ROCMDriver::HostRegister(device_ordinal_, location, size);
 }
 
 bool ROCMExecutor::HostMemoryUnregister(void *location) {
   VLOG(2) << "unregistering " << location;
-  return ROCMDriver::HostUnregister(context_, location);
+  return ROCMDriver::HostUnregister(device_ordinal_, location);
 }
 
 bool ROCMExecutor::SynchronizeAllActivity() {
-  return ROCMDriver::SynchronizeContext(context_);
+  return ROCMDriver::SynchronizeDevice(device_ordinal_);
 }
 
 bool ROCMExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
       size % 4 == 0) {
     return ROCMDriver::SynchronousMemsetUint32(
-        context_, AsROCmDevicePtr(location), 0x0, size / 4);
+        device_ordinal_, AsROCmDevicePtr(location), 0x0, size / 4);
   }
-  return ROCMDriver::SynchronousMemsetUint8(context_, AsROCmDevicePtr(location),
+  return ROCMDriver::SynchronousMemsetUint8(device_ordinal_, AsROCmDevicePtr(location),
                                             0x0, size);
 }
 
@@ -422,29 +361,29 @@ bool ROCMExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
     uint32 pattern = (byte_value << 24) | (byte_value << 16) |
                      (byte_value << 8) | byte_value;
     return ROCMDriver::SynchronousMemsetUint32(
-        context_, AsROCmDevicePtr(location), pattern, size / 4);
+        device_ordinal_, AsROCmDevicePtr(location), pattern, size / 4);
   }
-  return ROCMDriver::SynchronousMemsetUint8(context_, AsROCmDevicePtr(location),
+  return ROCMDriver::SynchronousMemsetUint8(device_ordinal_, AsROCmDevicePtr(location),
                                             value, size);
 }
 
 port::Status ROCMExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                              const void *host_src,
                                              uint64 size) {
-  return ROCMDriver::SynchronousMemcpyH2D(context_, AsROCmDevicePtr(gpu_dst),
+  return ROCMDriver::SynchronousMemcpyH2D(device_ordinal_, AsROCmDevicePtr(gpu_dst),
                                           host_src, size);
 }
 
 port::Status ROCMExecutor::SynchronousMemcpy(void *host_dst,
                                              const DeviceMemoryBase &gpu_src,
                                              uint64 size) {
-  return ROCMDriver::SynchronousMemcpyD2H(context_, host_dst,
+  return ROCMDriver::SynchronousMemcpyD2H(device_ordinal_, host_dst,
                                           AsROCmDevicePtr(gpu_src), size);
 }
 
 port::Status ROCMExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src, uint64 size) {
-  return ROCMDriver::SynchronousMemcpyD2D(context_, AsROCmDevicePtr(gpu_dst),
+  return ROCMDriver::SynchronousMemcpyD2D(device_ordinal_, AsROCmDevicePtr(gpu_dst),
                                           AsROCmDevicePtr(gpu_src), size);
 }
 
@@ -464,7 +403,7 @@ bool ROCMExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
           << " at location " << location << " with size " << size
           << " and pattern " << std::hex << pattern;
   return ROCMDriver::AsynchronousMemsetUint8(
-      context_, AsROCmDevicePtr(location), pattern, size,
+      device_ordinal_, AsROCmDevicePtr(location), pattern, size,
       AsROCMStreamValue(stream));
 }
 
@@ -476,20 +415,20 @@ bool ROCMExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
   CHECK(reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&
         size % 4 == 0);
   return ROCMDriver::AsynchronousMemsetUint32(
-      context_, AsROCmDevicePtr(location), pattern, size / 4,
+      device_ordinal_, AsROCmDevicePtr(location), pattern, size / 4,
       AsROCMStreamValue(stream));
 }
 
 bool ROCMExecutor::Memcpy(Stream *stream, void *host_dst,
                           const DeviceMemoryBase &gpu_src, uint64 size) {
-  return ROCMDriver::AsynchronousMemcpyD2H(context_, host_dst,
+  return ROCMDriver::AsynchronousMemcpyD2H(device_ordinal_, host_dst,
                                            AsROCmDevicePtr(gpu_src), size,
                                            AsROCMStreamValue(stream));
 }
 
 bool ROCMExecutor::Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
                           const void *host_src, uint64 size) {
-  return ROCMDriver::AsynchronousMemcpyH2D(context_, AsROCmDevicePtr(gpu_dst),
+  return ROCMDriver::AsynchronousMemcpyH2D(device_ordinal_, AsROCmDevicePtr(gpu_dst),
                                            host_src, size,
                                            AsROCMStreamValue(stream));
 }
@@ -498,7 +437,7 @@ bool ROCMExecutor::MemcpyDeviceToDevice(Stream *stream,
                                         DeviceMemoryBase *gpu_dst,
                                         const DeviceMemoryBase &gpu_src,
                                         uint64 size) {
-  return ROCMDriver::AsynchronousMemcpyD2D(context_, AsROCmDevicePtr(gpu_dst),
+  return ROCMDriver::AsynchronousMemcpyD2D(device_ordinal_, AsROCmDevicePtr(gpu_dst),
                                            AsROCmDevicePtr(gpu_src), size,
                                            AsROCMStreamValue(stream));
 }
@@ -506,7 +445,7 @@ bool ROCMExecutor::MemcpyDeviceToDevice(Stream *stream,
 bool ROCMExecutor::HostCallback(Stream *stream,
                                 std::function<void()> callback) {
   auto callback_ptr = new std::function<void()>(callback);
-  return ROCMDriver::AddStreamCallback(context_, AsROCMStreamValue(stream),
+  return ROCMDriver::AddStreamCallback(device_ordinal_, AsROCMStreamValue(stream),
                                        InternalHostCallback, callback_ptr);
 }
 
@@ -532,7 +471,7 @@ port::Status ROCMExecutor::RecordEvent(Stream *stream, Event *event) {
 }
 
 port::Status ROCMExecutor::WaitForEvent(Stream *stream, Event *event) {
-  if (ROCMDriver::WaitStreamOnEvent(context_,
+  if (ROCMDriver::WaitStreamOnEvent(device_ordinal_,
                                     AsROCMStream(stream)->rocm_stream(),
                                     AsROCMEvent(event)->rocm_event())) {
     return port::Status::OK();
@@ -570,7 +509,7 @@ void ROCMExecutor::DeallocateTimer(Timer *timer) {
 
 bool ROCMExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
   hipEvent_t other_completed_event = *AsROCMStream(other)->completed_event();
-  bool ok = ROCMDriver::RecordEvent(context_, other_completed_event,
+  bool ok = ROCMDriver::RecordEvent(device_ordinal_, other_completed_event,
                                     AsROCMStreamValue(other))
       .ok();
   if (!ok) {
@@ -579,7 +518,7 @@ bool ROCMExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
     return false;
   }
 
-  return ROCMDriver::WaitStreamOnEvent(context_, AsROCMStreamValue(dependent),
+  return ROCMDriver::WaitStreamOnEvent(device_ordinal_, AsROCMStreamValue(dependent),
                                        other_completed_event);
 }
 
@@ -592,7 +531,7 @@ bool ROCMExecutor::StopTimer(Stream *stream, Timer *timer) {
 }
 
 port::Status ROCMExecutor::BlockHostUntilDone(Stream *stream) {
-  return ROCMDriver::SynchronizeStream(context_, AsROCMStreamValue(stream));
+  return ROCMDriver::SynchronizeStream(device_ordinal_, AsROCMStreamValue(stream));
 }
 
 blas::BlasSupport *ROCMExecutor::CreateBlas() {
@@ -658,17 +597,17 @@ bool ROCMExecutor::SupportsDnn() const {
 
 bool ROCMExecutor::CanEnablePeerAccessTo(StreamExecutorInterface *other) {
   ROCMExecutor *rocm_other = static_cast<ROCMExecutor *>(other);
-  return ROCMDriver::CanEnablePeerAccess(context_, rocm_other->context_);
+  return ROCMDriver::CanEnablePeerAccess(device_ordinal_, rocm_other->device_ordinal());
 }
 
 port::Status ROCMExecutor::EnablePeerAccessTo(StreamExecutorInterface *other) {
   ROCMExecutor *rocm_other = static_cast<ROCMExecutor *>(other);
-  return ROCMDriver::EnablePeerAccess(context_, rocm_other->context_);
+  return ROCMDriver::EnablePeerAccess(device_ordinal_, rocm_other->device_ordinal());
 }
 
 SharedMemoryConfig ROCMExecutor::GetDeviceSharedMemoryConfig() {
   port::StatusOr<hipSharedMemConfig> rocm_config =
-      ROCMDriver::ContextGetSharedMemConfig(context_);
+      ROCMDriver::DeviceGetSharedMemConfig(device_ordinal_);
   if (!rocm_config.ok()) {
     // Don't log; the failed call will log necessary output.
     return SharedMemoryConfig::kDefault;
@@ -704,11 +643,11 @@ port::Status ROCMExecutor::SetDeviceSharedMemoryConfig(
       LOG(FATAL) << "Invalid shared memory configuration specified: "
                  << static_cast<int>(config);
   }
-  return ROCMDriver::ContextSetSharedMemConfig(context_, rocm_config);
+  return ROCMDriver::DeviceSetSharedMemConfig(device_ordinal_, rocm_config);
 }
 
 bool ROCMExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
-  return ROCMDriver::GetDeviceMemoryInfo(context_, free, total);
+  return ROCMDriver::GetDeviceMemoryInfo(device_ordinal_, free, total);
 }
 
 bool ROCMExecutor::GetSymbol(const string& symbol_name, void **mem,
@@ -716,7 +655,7 @@ bool ROCMExecutor::GetSymbol(const string& symbol_name, void **mem,
   {  // give limited scope to mutex_lock
     mutex_lock lock{disk_modules_mu_};
     for (auto &it : disk_modules_) {
-      if (ROCMDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
+      if (ROCMDriver::GetModuleSymbol(device_ordinal_, it.second, symbol_name.c_str(),
                                       reinterpret_cast<hipDeviceptr_t *>(mem),
                                       bytes)) {
         return true;
@@ -727,7 +666,7 @@ bool ROCMExecutor::GetSymbol(const string& symbol_name, void **mem,
   {  // give limited scope to mutex_lock
     mutex_lock lock{in_memory_modules_mu_};
     for (auto &it : in_memory_modules_) {
-      if (ROCMDriver::GetModuleSymbol(context_, it.second, symbol_name.c_str(),
+      if (ROCMDriver::GetModuleSymbol(device_ordinal_, it.second, symbol_name.c_str(),
                                       reinterpret_cast<hipDeviceptr_t *>(mem),
                                       bytes)) {
         return true;
@@ -781,9 +720,7 @@ ROCMExecutor::GetTimerImplementation() {
   return std::unique_ptr<internal::TimerInterface>(new ROCMTimer(this));
 }
 
-void *ROCMExecutor::GPUContextHack() { return context_; }
-
-ROCmContext* ROCMExecutor::rocm_context() { return context_; }
+void *ROCMExecutor::GPUContextHack() { return nullptr; }
 
 // Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.
@@ -791,57 +728,8 @@ ROCmContext* ROCMExecutor::rocm_context() { return context_; }
 // For anything more complicated/prod-focused than this, you'll likely want to
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const string &pci_bus_id, int device_ordinal) {
-// XXX TODO FIX THIS LATER ON
+  // ROCM TODO implement this feature in HIP
   return 1;
-
-#if 0
-  VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
-  static const int kUnknownNumaNode = -1;
-
-  if (pci_bus_id.empty()) {
-    LOG(INFO) << "no PCI bus ID for device ordinal: " << device_ordinal;
-    return kUnknownNumaNode;
-  }
-
-  string filename =
-      port::Printf("/sys/bus/pci/devices/%s/numa_node", pci_bus_id.c_str());
-
-  // We have to use fopen/fread here so that the device properties can be
-  // populated before InitGoogle procedure has been completed (at which point we
-  // could use the file::* utilities).
-  FILE *file = fopen(filename.c_str(), "r");
-  if (file == nullptr) {
-    LOG(ERROR) << "could not open file to read NUMA node: " << filename
-               << "\nYour kernel may have been built without NUMA support.";
-    return kUnknownNumaNode;
-  }
-
-  string content;
-  char buf[32];
-  size_t did_read = fread(buf, sizeof(buf[0]), sizeof(buf) - 1, file);
-  buf[did_read] = '\0';
-  content = buf;
-
-  int32 value;
-  if (port::safe_strto32(content, &value)) {
-    if (value < 0) {  // See http://b/18228951 for details on this path.
-      LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
-                << value << "), but there must be at least one NUMA node"
-                            ", so returning NUMA node zero";
-      fclose(file);
-      return 0;
-    }
-    fclose(file);
-    return value;
-  }
-
-  LOG(WARNING)
-      << "could not convert SysFS file contents to integral NUMA node value: "
-      << content;
-
-  fclose(file);
-  return kUnknownNumaNode;
-#endif
 }
 
 // Set of device-specific parameters that cannot be

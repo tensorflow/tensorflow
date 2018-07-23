@@ -404,9 +404,10 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     // image ('work_unit_size').
 
     // TODO(andydavis)
+    // *) Get L3 cache size from device at runtime (30MB is from ivybridge).
     // *) Consider reducing 'target_working_set_size' if L3 is shared by
     //    other concurrently running tensorflow ops.
-    const size_t target_working_set_size = Eigen::l3CacheSize() / sizeof(T);
+    const size_t target_working_set_size = (30LL << 20) / sizeof(T);
 
     const size_t size_A = output_image_size * filter_total_size;
 
@@ -986,7 +987,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                              !profile_result.algorithm().is_default(),
                 errors::NotFound("Failed to find backward filter algorithm!"));
     algorithm_config.set_algorithm(profile_result.algorithm());
-    algorithm_config.set_algorithm_scratch_size(profile_result.scratch_size());
     algorithm_config.set_algorithm_no_scratch(profile_result.algorithm());
 #endif
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,

@@ -18,17 +18,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
-
-// Copies 'host_tensor' to an XLA Literal. Fails if host_tensor is of an
-// unsupported type.
-Status HostTensorToLiteral(const Tensor& host_tensor, xla::Literal* literal);
 
 // Returns a BorrowingLiteral that utilizes the same underlying buffer owned by
 // 'host_tensor'.

@@ -42,7 +42,7 @@ __all__ = ["LinearOperator"]
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
-  Subclasses of `LinearOperator` provide a access to common methods on a
+  Subclasses of `LinearOperator` provide access to common methods on a
   (batch) matrix, without the need to materialize the matrix.  This allows:
 
   * Matrix free computations
@@ -69,11 +69,11 @@ class LinearOperator(object):
 
   #### Shape compatibility
 
-  `LinearOperator` sub classes should operate on a [batch] matrix with
+  `LinearOperator` subclasses should operate on a [batch] matrix with
   compatible shape.  Class docstrings should define what is meant by compatible
-  shape.  Some sub-classes may not support batching.
+  shape.  Some subclasses may not support batching.
 
-  An example is:
+  Examples:
 
   `x` is a batch matrix with compatible shape for `matmul` if
 

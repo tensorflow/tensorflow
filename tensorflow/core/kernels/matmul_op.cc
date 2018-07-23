@@ -490,8 +490,31 @@ class MatMulOp : public OpKernel {
       return;
     }
 
-    LaunchMatMul<Device, T, USE_CUBLAS>::launch(
-        ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
+    if (std::is_same<T, bfloat16>::value) {
+      bool is_cpu = std::is_same<Device, CPUDevice>::value;
+      OP_REQUIRES(ctx, is_cpu,
+                  errors::Internal("bfloat16 matmul is not supported by GPU"));
+      Tensor a_float, b_float, out_float;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, a.shape(), &a_float));
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, b.shape(), &b_float));
+      OP_REQUIRES_OK(ctx,
+                     ctx->allocate_temp(DT_FLOAT, out->shape(), &out_float));
+
+      // TODO: Avoid extra copy to make bfloat16 matmul efficient on CPU.
+      BFloat16ToFloat(a.flat<bfloat16>().data(), a_float.flat<float>().data(),
+                      a.NumElements());
+      BFloat16ToFloat(b.flat<bfloat16>().data(), b_float.flat<float>().data(),
+                      b.NumElements());
+
+      LaunchMatMul<Device, float, USE_CUBLAS>::launch(
+          ctx, a_float, b_float, dim_pair, &algorithms_, use_autotune_,
+          &out_float);
+      FloatToBFloat16(out_float.flat<float>().data(),
+                      out->flat<bfloat16>().data(), out->NumElements());
+    } else {
+      LaunchMatMul<Device, T, USE_CUBLAS>::launch(
+          ctx, a, b, dim_pair, &algorithms_, use_autotune_, out);
+    }
   }
 
  private:
@@ -561,6 +584,7 @@ struct MatMulFunctor<SYCLDevice, T> {
 TF_CALL_float(REGISTER_CPU_EIGEN);
 TF_CALL_double(REGISTER_CPU_EIGEN);
 TF_CALL_half(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
 
 TF_CALL_int32(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU_EIGEN);
@@ -569,6 +593,7 @@ TF_CALL_complex128(REGISTER_CPU_EIGEN);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
 
 TF_CALL_int32(REGISTER_CPU);
 TF_CALL_complex64(REGISTER_CPU);

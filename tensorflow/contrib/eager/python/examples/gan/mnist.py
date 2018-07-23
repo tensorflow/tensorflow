@@ -214,7 +214,7 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
 
   total_generator_loss = 0.0
   total_discriminator_loss = 0.0
-  for (batch_index, images) in enumerate(tfe.Iterator(dataset)):
+  for (batch_index, images) in enumerate(dataset):
     with tf.device('/cpu:0'):
       tf.assign_add(step_counter, 1)
 
@@ -227,7 +227,10 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
           maxval=1.,
           seed=batch_index)
 
-      with tf.GradientTape(persistent=True) as g:
+      # we can use 2 tapes or a single persistent tape.
+      # Using two tapes is memory efficient since intermediate tensors can be
+      # released between the two .gradient() calls below
+      with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
         generated_images = generator(noise)
         tf.contrib.summary.image(
             'generated_images',
@@ -243,9 +246,10 @@ def train_one_epoch(generator, discriminator, generator_optimizer,
         generator_loss_val = generator_loss(discriminator_gen_outputs)
         total_generator_loss += generator_loss_val
 
-      generator_grad = g.gradient(generator_loss_val, generator.variables)
-      discriminator_grad = g.gradient(discriminator_loss_val,
-                                      discriminator.variables)
+      generator_grad = gen_tape.gradient(generator_loss_val,
+                                         generator.variables)
+      discriminator_grad = disc_tape.gradient(discriminator_loss_val,
+                                              discriminator.variables)
 
       generator_optimizer.apply_gradients(
           zip(generator_grad, generator.variables))

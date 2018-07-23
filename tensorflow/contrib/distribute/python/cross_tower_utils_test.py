@@ -38,7 +38,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
         self.evaluate(ops.convert_to_tensor(left)),
         self.evaluate(ops.convert_to_tensor(right)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAggregateTensors(self):
     t0 = constant_op.constant([[1., 2.], [0, 0], [3., 4.]])
     t1 = constant_op.constant([[0., 0.], [5, 6], [7., 8.]])
@@ -46,7 +46,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     result = cross_tower_utils.aggregate_tensors_or_indexed_slices([t0, t1])
     self._assert_values_equal(total, result)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAggregateIndexedSlices(self):
     t0 = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
@@ -57,7 +57,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(result, ops.IndexedSlices)
     self._assert_values_equal(total, result)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDivideTensor(self):
     t = constant_op.constant([[1., 2.], [0, 0], [3., 4.]])
     n = 2
@@ -65,7 +65,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     result = cross_tower_utils.divide_by_n_tensors_or_indexed_slices(t, n)
     self._assert_values_equal(expected, result)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDivideIndexedSlices(self):
     t = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
@@ -75,13 +75,13 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(result, ops.IndexedSlices)
     self._assert_values_equal(expected, result)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testIsIndexedSlices(self):
     t = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
     self.assertTrue(cross_tower_utils.contains_indexed_slices(t))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testContainsIndexedSlices_List(self):
     t0 = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
@@ -89,7 +89,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
     self.assertTrue(cross_tower_utils.contains_indexed_slices([t0, t1]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testContainsIndexedSlices_Tuple(self):
     t0 = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
@@ -97,7 +97,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
     self.assertTrue(cross_tower_utils.contains_indexed_slices((t0, t1)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testContainsIndexedSlices_PerDevice(self):
     t0 = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
@@ -106,7 +106,7 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     per_device = value_lib.PerDevice({"/gpu:0": t0, "/cpu:0": t1})
     self.assertTrue(cross_tower_utils.contains_indexed_slices(per_device))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testContainsIndexedSlices_PerDeviceMapOutput(self):
     t0 = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))

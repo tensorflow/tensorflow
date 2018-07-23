@@ -227,7 +227,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     class FakeOp(object):
       """A helper class to determine the current device.
 
-      Supports only the device set/get methods needed to run the
+      Supports only the type and device set/get methods needed to run the
       graph's _apply_device_function method.
       """
 
@@ -235,11 +235,18 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         self._device = ""
 
       @property
+      def type(self):
+        return "FakeOp"
+
+      @property
       def device(self):
         return self._device
 
       def _set_device(self, device):
-        self._device = device.to_string()
+        if isinstance(device, pydev.DeviceSpec):
+          self._device = device.to_string()
+        else:
+          self._device = device
 
     if self._outside_compilation_cluster:
       raise NotImplementedError("Cannot nest outside_compilation clusters")
@@ -591,16 +598,22 @@ def split_compile_and_replicate(computation,
     with tpu_function.tpu_shard_context(
         num_replicas), ops.control_dependencies([metadata]):
 
-      # The EncapsulateTPUComputations rewrite needs to identify the
-      # replicated arguments inside each computation. Adds identity operators
-      # tagged with an attribute _tpu_replicated_input to identify the
-      # replicated inputs.
+      # For backward compatibility reasons, we tag replicated inputs with the
+      # _tpu_replicated_input attribute. This does nothing and exists only for
+      # backward compatibility.
+      # TODO(phawkins): delete the attr_scope after 6/28/2018.
       # pylint: disable=protected-access
-      with graph._attr_scope({"_tpu_replicated_input":
-                              attr_value_pb2.AttrValue(b=True)}):
+      with graph._attr_scope({
+          "_tpu_replicated_input": attr_value_pb2.AttrValue(b=True)
+      }):
+        # Add identity ops so even unused inputs are "consumed" by the
+        # computation. This is to avoid orphaned TPUReplicatedInput nodes.
+        # TODO(phawkins): consider instead pruning unused TPUReplicatedInput
+        # and eliding trivial TPUReplicatedInput/TPUReplicatedOutput pairs.
         computation_inputs = [
             array_ops.identity(x, name="replicated_input_{}".format(i))
-            for i, x in enumerate(computation_inputs)]
+            for i, x in enumerate(computation_inputs)
+        ]
       # pylint: enable=protected-access
 
       # If there is an infeed queue, adds the dequeued values to the

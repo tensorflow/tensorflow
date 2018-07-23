@@ -30,9 +30,9 @@ class HloMetadataTest : public LocalClientTestBase {
   }
 
   void BuildAddComputation(XlaBuilder* builder) {
-    auto x = builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-    auto y = builder->Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
-    builder->Add(x, y);
+    auto x = Parameter(builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = Parameter(builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
+    Add(x, y);
   }
 
   OpMetadata metadata_;

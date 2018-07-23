@@ -55,8 +55,10 @@ ops.NotDifferentiable('SampleDistortedBoundingBoxV2')
 ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
+ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
 
 
+# pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
   """A polymorphic assert, works with tensors and boolean expressions.
 
@@ -945,7 +947,7 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  @{tf.image.resize_image_with_crop_or_pad}.
+  @{tf.image.resize_image_with_pad}.
 
   `method` can be one of:
 
@@ -1067,6 +1069,106 @@ def resize_images(images,
     if not is_batch:
       images = array_ops.squeeze(images, axis=[0])
     return images
+
+
+@tf_export('image.resize_image_with_pad')
+def resize_image_with_pad(image,
+                          target_height,
+                          target_width,
+                          method=ResizeMethod.BILINEAR):
+  """Resizes and pads an image to a target width and height.
+
+  Resizes an image to a target width and height by keeping
+  the aspect ratio the same without distortion. If the target
+  dimensions don't match the image dimensions, the image
+  is resized and then padded with zeroes to match requested
+  dimensions.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or
+           3-D Tensor of shape `[height, width, channels]`.
+    target_height: Target height.
+    target_width: Target width.
+    method: Method to use for resizing image. See `resize_images()`
+
+  Raises:
+    ValueError: if `target_height` or `target_width` are zero or negative.
+
+  Returns:
+    Resized and padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+  with ops.name_scope(None, 'resize_image_with_pad', [image]):
+    image = ops.convert_to_tensor(image, name='image')
+    image_shape = image.get_shape()
+    is_batch = True
+    if image_shape.ndims == 3:
+      is_batch = False
+      image = array_ops.expand_dims(image, 0)
+    elif image_shape.ndims is None:
+      is_batch = False
+      image = array_ops.expand_dims(image, 0)
+      image.set_shape([None] * 4)
+    elif image_shape.ndims != 4:
+      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+
+    assert_ops = _CheckAtLeast3DImage(image, require_static=False)
+    assert_ops += _assert(target_width > 0, ValueError,
+                          'target_width must be > 0.')
+    assert_ops += _assert(target_height > 0, ValueError,
+                          'target_height must be > 0.')
+
+    image = control_flow_ops.with_dependencies(assert_ops, image)
+
+    def max_(x, y):
+      if _is_tensor(x) or _is_tensor(y):
+        return math_ops.maximum(x, y)
+      else:
+        return max(x, y)
+
+    _, height, width, _ = _ImageDimensions(image, rank=4)
+
+    # convert values to float, to ease divisions
+    f_height = math_ops.cast(height, dtype=dtypes.float64)
+    f_width = math_ops.cast(width, dtype=dtypes.float64)
+    f_target_height = math_ops.cast(target_height, dtype=dtypes.float64)
+    f_target_width = math_ops.cast(target_width, dtype=dtypes.float64)
+
+    # Find the ratio by which the image must be adjusted
+    # to fit within the target
+    ratio = max_(f_width / f_target_width, f_height / f_target_height)
+    resized_height_float = f_height / ratio
+    resized_width_float = f_width / ratio
+    resized_height = math_ops.cast(
+        math_ops.floor(resized_height_float), dtype=dtypes.int32)
+    resized_width = math_ops.cast(
+        math_ops.floor(resized_width_float), dtype=dtypes.int32)
+
+    padding_height = (f_target_height - resized_height_float) / 2
+    padding_width = (f_target_width - resized_width_float) / 2
+    f_padding_height = math_ops.floor(padding_height)
+    f_padding_width = math_ops.floor(padding_width)
+    p_height = max_(0, math_ops.cast(f_padding_height, dtype=dtypes.int32))
+    p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
+
+    # Resize first, then pad to meet requested dimensions
+    resized = resize_images(image, [resized_height, resized_width], method)
+
+    padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
+                                 target_width)
+
+    if padded.get_shape().ndims is None:
+      raise ValueError('padded contains no shape.')
+
+    _ImageDimensions(padded, rank=4)
+
+    if not is_batch:
+      padded = array_ops.squeeze(padded, squeeze_dims=[0])
+
+    return padded
 
 
 @tf_export('image.per_image_standardization')
@@ -1651,6 +1753,22 @@ def is_jpeg(contents, name=None):
     return math_ops.equal(substr, b'\xff\xd8\xff', name=name)
 
 
+def _is_png(contents, name=None):
+  r"""Convenience function to check if the 'contents' encodes a PNG image.
+
+  Args:
+    contents: 0-D `string`. The encoded image bytes.
+    name: A name for the operation (optional)
+
+  Returns:
+     A scalar boolean tensor indicating if 'contents' may be a PNG image.
+     is_png is susceptible to false positives.
+  """
+  with ops.name_scope(name, 'is_png'):
+    substr = string_ops.substr(contents, 0, 3)
+    return math_ops.equal(substr, b'\211PN', name=name)
+
+
 @tf_export('image.decode_image')
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
@@ -1728,8 +1846,8 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
 
     def check_png():
       """Checks if an image is PNG."""
-      is_png = math_ops.equal(substr, b'\211PN', name='is_png')
-      return control_flow_ops.cond(is_png, _png, check_gif, name='cond_png')
+      return control_flow_ops.cond(
+          _is_png(contents), _png, check_gif, name='cond_png')
 
     def _jpeg():
       """Decodes a jpeg image."""
@@ -1990,6 +2108,50 @@ def non_max_suppression(boxes,
         score_threshold, name='score_threshold')
     return gen_image_ops.non_max_suppression_v3(boxes, scores, max_output_size,
                                                 iou_threshold, score_threshold)
+
+
+@tf_export('image.non_max_suppression_overlaps')
+def non_max_suppression_with_overlaps(overlaps,
+                                      scores,
+                                      max_output_size,
+                                      overlap_threshold=0.5,
+                                      score_threshold=float('-inf'),
+                                      name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Prunes away boxes that have high overlap with previously selected boxes.
+  N-by-n overlap values are supplied as square matrix.
+  The output of this operation is a set of integers indexing into the input
+  collection of bounding boxes representing the selected boxes.  The bounding
+  box coordinates corresponding to the selected indices can then be obtained
+  using the `tf.gather operation`.  For example:
+    selected_indices = tf.image.non_max_suppression_overlaps(
+        overlaps, scores, max_output_size, iou_threshold)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    overlaps: A 2-D float `Tensor` of shape `[num_boxes, num_boxes]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    overlap_threshold: A float representing the threshold for deciding whether
+      boxes overlap too much with respect to the provided overlap values.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the overlaps tensor, where `M <= max_output_size`.
+  """
+  with ops.name_scope(name, 'non_max_suppression_overlaps'):
+    overlap_threshold = ops.convert_to_tensor(
+        overlap_threshold, name='overlap_threshold')
+    # pylint: disable=protected-access
+    return gen_image_ops._non_max_suppression_v3(
+        overlaps, scores, max_output_size, overlap_threshold, score_threshold)
+    # pylint: enable=protected-access
 
 
 _rgb_to_yiq_kernel = [[0.299, 0.59590059,

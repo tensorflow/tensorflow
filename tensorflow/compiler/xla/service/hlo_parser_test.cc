@@ -277,12 +277,13 @@ ENTRY %WhileWithScalarS32Result.v2 () -> s32[] {
 "SendRecv",
 R"(HloModule TwoSendRecvBothWayRecvFist_module
 
-ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15, sharding={maximal device=1}
-  ROOT %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15, sharding={maximal device=1}
+ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> (f32[], token[]) {
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15, sharding={maximal device=1}
+  ROOT %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15, sharding={maximal device=1}
   %constant = f32[] constant(2.1), sharding={maximal device=0}
-  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16, sharding={maximal device=0}
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, sharding={maximal device=0}, control-predecessors={%recv}
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16, sharding={maximal device=0}
 }
 
 )"
@@ -795,10 +796,14 @@ ENTRY ReduceR3ToR2.v3 {
 R"(HloModule outfeed_module
 
 ENTRY InfeedToOutfeed {
-  infeed = (u32[3]{0}, pred[]) infeed()
-  outfeed = () outfeed(infeed)
-  ROOT infeed.1 = (u32[3]{0}, pred[]) infeed()
-  outfeed.1 = () outfeed(infeed.1)
+  token = token[] after-all()
+  infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
+  outfeed = token[] outfeed(infeed.data, token)
+  ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+  infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
+  infeed.1.token = token[] get-tuple-element(infeed.1), index=1
+  outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
 }
 
 )"
@@ -824,6 +829,56 @@ R"(HloModule reduce_precision
 ENTRY ReducePrecision {
   constant = f32[1]{0} constant({3.14159})
   ROOT reduce-precision = f32[1]{0} reduce-precision(constant), exponent_bits=8, mantissa_bits=10
+}
+
+)"
+},
+// Sort (Key)
+{
+"SortKey",
+R"(HloModule sort
+
+ENTRY Sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
+}
+
+)"
+},
+// Sort (Key, Value)
+{
+"SortKeyValue",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024]{0} parameter(0)
+  values = s32[1024]{0} parameter(1)
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key)
+{
+"SortKeyR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  x = f32[1024,16]{0,1} parameter(0)
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+}
+
+)"
+},
+// R2 Sort (Key, Value)
+{
+"SortKeyValueR2",
+R"(HloModule sort
+
+ENTRY Sort {
+  keys = f32[1024,16]{0,1} parameter(0)
+  values = s32[1024,16]{0,1} parameter(1)
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
 }
 
 )"
@@ -913,7 +968,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), to_apply=add
+  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_group_ids={}, to_apply=add
 }
 
 )"
@@ -931,7 +986,7 @@ add {
 
 ENTRY CrossReplicaSumWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), to_apply=add, replica_group_ids={0,0,1,1}, barrier="abc"
+  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_group_ids={0,0,1,1}, barrier="abc", to_apply=add
 }
 
 )"
@@ -1192,11 +1247,12 @@ TEST_F(HloParserTest, UnexpectedAttribute) {
   const string original = R"(HloModule unexpected_attr_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15
-  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(2.1)
-  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, calls=%recv
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, calls=%recv
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
 )";
@@ -1208,11 +1264,12 @@ TEST_F(HloParserTest, MissingAttribute) {
   const string original = R"(HloModule missing_attr_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15
-  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(-2.1)
-  %send = (f32[], u32[]) send(f32[] %constant)
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token)
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
 )";
@@ -1224,11 +1281,12 @@ TEST_F(HloParserTest, PredecessorUndefined) {
   const string original = R"(HloModule pre_not_found_module
 
 ENTRY %TwoSendRecvBothWayRecvFist.v3 () -> f32[] {
-  %recv = (f32[], u32[]) recv(), channel_id=15
-  %recv-done = f32[] recv-done((f32[], u32[]) %recv), channel_id=15
+  %token = token[] after-all()
+  %recv = (f32[], u32[], token[]) recv(token[] %token), channel_id=15
+  %recv-done = (f32[], token[]) recv-done((f32[], u32[], token[]) %recv), channel_id=15
   ROOT %constant = f32[] constant(2.1)
-  %send = (f32[], u32[]) send(f32[] %constant), channel_id=16, control-predecessors={%done}
-  %send-done = () send-done((f32[], u32[]) %send), channel_id=16
+  %send = (f32[], u32[], token[]) send(f32[] %constant, token[] %token), channel_id=16, control-predecessors={%done}
+  %send-done = token[] send-done((f32[], u32[], token[]) %send), channel_id=16
 }
 
 )";
@@ -1302,7 +1360,7 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   auto module = ParseHloString(original);
   TF_ASSERT_OK(module.status());
-  auto program_layout = module.ValueOrDie()->host_entry_computation_layout();
+  auto program_layout = module.ValueOrDie()->entry_computation_layout();
   ASSERT_EQ(program_layout.parameter_count(), 1);
   auto param_layout = program_layout.parameter_layout(0).layout();
   auto result_layout = program_layout.result_layout().layout();
@@ -1416,6 +1474,16 @@ TEST_F(HloParserTest, ParseConvolutionDimensionNumbers) {
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers(original));
   EXPECT_EQ(original, ConvolutionDimensionNumbersToString(dnums));
+}
+
+TEST_F(HloParserTest, NontupleInfeed) {
+  const string original = R"(HloModule nontuple_infeed:
+ENTRY nontuple_infeed {
+  token = token[] after-all()
+  ROOT infeed = pred[] infeed(token)
+})";
+  ExpectHasSubstr(ParseHloString(original).status().error_message(),
+                  "infeed must have a non-empty tuple shape");
 }
 
 }  // namespace

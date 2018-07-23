@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document serves as the overall document to explain what was changed to allow TensorFlow 1.3.0 running on ROCm platform.
+This document serves as the overall document to explain what was changed to allow TensorFlow 1.8.0 running on ROCm platform.
 
 In this port efforts were made to try ensure logic for existing CUDA / NVPTX path stay as-is. Places where platform neutrality were broken are marked as **XXX**.
 
@@ -22,12 +22,10 @@ In this port efforts were made to try ensure logic for existing CUDA / NVPTX pat
   - adopted `rocm_configrue()` to be ROCm-aware
   - changed how Eigen is fetched to cope with HIP on ROCm platform
   - removed some dead links
-  - used LLVM 5.0.1 for XLA
 - **tensorflow/tensorflow.bzl**:
   - renamed `tf_cuda_library()` to `tf_gpu_library`
   - renamed `cuda_py_tests()` to `gpu_py_tests()`
   - renamed `tf_cuda_test_tags()` to `tf_gpu_tests_tags()`
-  - **XXX**: temporarily disabled dependencies introduced by `if_cuda()`
 - **BUILD** files within TensorFlow directories
   - adopted naming changes introduced in **tensorflow/tensorflow.bzl**
   - added logic to load ROCm-specific functions such as `if_rocm()` or `if_rocm_is_configured()`
@@ -39,12 +37,10 @@ An ROCm backend is added to implement StreamExecutor interface. Existing CUDA ba
 
 - added **tensorflow/stream_executor/rocm** to contain ROCm implementation for StreamExecutor interface
 - integrated with HIP runtime APIs for stream, memory management, and copy
-- integrated with MIOpen for convolution / pooling / LRN / batch normalization operators
-  - fp16 kernels are not enabled yet and would likely be introduced in the upcoming MIOpen 1.3 release
-  - RNN kernels are not enabled yet. A working branch `rocm-v1-rnn` would be merged along with upcoming MIOpen 1.3 release
+- integrated with MIOpen
 - integrated with rocBLAS for certain GEMM operations
 - integrated with rocRAND for RNG operations. Thoughly practically speaking it doesn't seem to be used by any TensorFlow operators.
-- intergated with hcFFT for FFT operations. Logic here will be replaced with rocFFT as hcFFT project has been deprecated.
+- intergated with rocFFT for FFT operations.
 
 ---
 ## Common Runtime

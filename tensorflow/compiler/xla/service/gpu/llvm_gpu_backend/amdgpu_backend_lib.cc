@@ -264,19 +264,22 @@ std::vector<char> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target_
     LOG(FATAL) << "unable to find ld.lld in PATH: "
                << lld_program.getError().message();
   }
-  const char* lld_args[] = {
-    "ld.lld",
-    "-flavor", "gnu",
-    "-shared", "isabin_path",
-    "-o", "hsaco_path",
-    nullptr,
+  std::vector<llvm::StringRef> lld_args {
+    llvm_ir::AsStringRef("ld.lld"),
+    llvm_ir::AsStringRef("-flavor"),
+    llvm_ir::AsStringRef("gnu"),
+    llvm_ir::AsStringRef("-shared"),
+    llvm_ir::AsStringRef("isabin_path"),
+    llvm_ir::AsStringRef("-o"),
+    llvm_ir::AsStringRef("hsaco_path"),
   };
-  lld_args[4] = isabin_path.c_str();
-  lld_args[6] = hsaco_path.c_str();
+  lld_args[4] = llvm_ir::AsStringRef(isabin_path.c_str());
+  lld_args[6] = llvm_ir::AsStringRef(hsaco_path.c_str());
 
   std::string error_message;
-  int lld_result = llvm::sys::ExecuteAndWait(*lld_program, lld_args,
-                                             nullptr, {}, 0, 0,
+  int lld_result = llvm::sys::ExecuteAndWait(*lld_program,
+                                             llvm_ir::AsArrayRef(lld_args),
+                                             llvm::None, {}, 0, 0,
                                              &error_message); 
 
   if (lld_result) {

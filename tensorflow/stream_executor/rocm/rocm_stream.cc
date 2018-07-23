@@ -23,10 +23,10 @@ namespace stream_executor {
 namespace rocm {
 
 bool ROCMStream::Init() {
-  if (!ROCMDriver::CreateStream(parent_->rocm_context(), &rocm_stream_)) {
+  if (!ROCMDriver::CreateStream(parent_->device_ordinal(), &rocm_stream_)) {
     return false;
   }
-  return ROCMDriver::CreateEvent(parent_->rocm_context(), &completed_event_,
+  return ROCMDriver::CreateEvent(parent_->device_ordinal(), &completed_event_,
                                  ROCMDriver::EventFlags::kDisableTiming)
       .ok();
 }
@@ -34,17 +34,17 @@ bool ROCMStream::Init() {
 void ROCMStream::Destroy() {
   if (completed_event_ != nullptr) {
     port::Status status =
-        ROCMDriver::DestroyEvent(parent_->rocm_context(), &completed_event_);
+        ROCMDriver::DestroyEvent(parent_->device_ordinal(), &completed_event_);
     if (!status.ok()) {
       LOG(ERROR) << status.error_message();
     }
   }
 
-  ROCMDriver::DestroyStream(parent_->rocm_context(), &rocm_stream_);
+  ROCMDriver::DestroyStream(parent_->device_ordinal(), &rocm_stream_);
 }
 
 bool ROCMStream::IsIdle() const {
-  return ROCMDriver::IsStreamIdle(parent_->rocm_context(), rocm_stream_);
+  return ROCMDriver::IsStreamIdle(parent_->device_ordinal(), rocm_stream_);
 }
 
 ROCMStream *AsROCMStream(Stream *stream) {

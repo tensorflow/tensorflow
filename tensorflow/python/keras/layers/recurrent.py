@@ -29,8 +29,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine import InputSpec
-from tensorflow.python.keras.engine import Layer
+from tensorflow.python.keras.engine.base_layer import InputSpec
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -235,7 +235,8 @@ class RNN(Layer):
   """Base class for recurrent layers.
 
   Arguments:
-      cell: A RNN cell instance. A RNN cell is a class that has:
+      cell: A RNN cell instance or a list of RNN cell instances.
+          A RNN cell is a class that has:
           - a `call(input_at_t, states_at_t)` method, returning
               `(output_at_t, states_at_t_plus_1)`. The call method of the
               cell can also take the optional argument `constants`, see
@@ -248,9 +249,9 @@ class RNN(Layer):
               (one size per state). In this case, the first entry
               (`state_size[0]`) should be the same as
               the size of the cell output.
-          It is also possible for `cell` to be a list of RNN cell instances,
-          in which cases the cells get stacked on after the other in the RNN,
-          implementing an efficient stacked RNN.
+          In the case that `cell` is a list of RNN cell instances, the cells
+          will be stacked on after the other in the RNN, implementing an
+          efficient stacked RNN.
       return_sequences: Boolean. Whether to return the last output
           in the output sequence, or the full sequence.
       return_state: Boolean. Whether to return the last state

@@ -195,7 +195,7 @@ def json_to_tflite(name, src, out):
 def generated_test_models():
     return [
         "add",
-        "arg_max",
+        "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
         "concat",
@@ -214,6 +214,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "sum",
         "l2norm",
         "l2_pool",
         "less",
@@ -221,8 +222,7 @@ def generated_test_models():
         "local_response_norm",
         "log_softmax",
         "log",
-        # TODO(b/110143200): Enable after resolving issues with LSTM conversion.
-        # "lstm",
+        "lstm",
         "max_pool",
         "maximum",
         "mean",
@@ -232,12 +232,15 @@ def generated_test_models():
         "not_equal",
         "pad",
         "padv2",
-        # "prelu",
+        "prelu",
+        "pow",
         "relu",
         "relu1",
         "relu6",
         "reshape",
         "resize_bilinear",
+        "rsqrt",
+        "shape",
         "sigmoid",
         "sin",
         "slice",
@@ -246,6 +249,7 @@ def generated_test_models():
         "space_to_depth",
         "sparse_to_dense",
         "split",
+        "sqrt",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
@@ -253,7 +257,7 @@ def generated_test_models():
         "tile",
         "topk",
         "transpose",
-        "transpose_conv",
+        #"transpose_conv",   # disabled due to b/111213074
         "where",
     ]
 

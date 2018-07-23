@@ -46,7 +46,6 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
   // be a ROCM type.
   explicit ROCMExecutor(const PluginConfig &plugin_config)
       : device_(0),
-        context_(nullptr),
         device_ordinal_(0),
         version_(0),
         plugin_config_(plugin_config) {}
@@ -77,11 +76,11 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
   // There's no external interface for us to otherwise control these DMA
   // settings.
   void *HostMemoryAllocate(uint64 size) override {
-    return ROCMDriver::HostAllocate(context_, size);
+    return ROCMDriver::HostAllocate(device_ordinal_, size);
   }
 
   void HostMemoryDeallocate(void *location) override {
-    return ROCMDriver::HostDeallocate(context_, location);
+    return ROCMDriver::HostDeallocate(device_ordinal_, location);
   }
 
   bool HostMemoryRegister(void *location, uint64 size) override;
@@ -202,8 +201,8 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
 
   void *GPUContextHack() override;
 
-  ROCmContext* rocm_context();
-
+  int device_ordinal() const { return device_ordinal_; }
+  
  private:
   // Attempts to find a more specific version of the file indicated by
   // filename by looking for AMDGPU ISA-specific suffixed versions.
@@ -251,9 +250,6 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
   // Handle for the ROCM device being operated on. Immutable
   // post-initialization.
   hipDevice_t device_;
-
-  // Handle for session with the library/driver. Immutable post-initialization.
-  ROCmContext* context_;
 
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.

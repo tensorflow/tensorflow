@@ -43,7 +43,8 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import data_structures_base
+from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -80,6 +81,20 @@ class Network(base_layer.Layer):
       # Subclassed network
       self._init_subclassed_network(**kwargs)
 
+  # Several Network methods have "no_automatic_dependency_tracking"
+  # annotations. Since Network does automatic dependency tracking on attribute
+  # assignment, including for common data structures such as lists, by default
+  # we'd have quite a few empty dependencies which users don't care about (or
+  # would need some way to ignore dependencies automatically, which is confusing
+  # when applied to user code). Some attributes, such as _layers, would cause
+  # structural issues (_layers being the place where Layers assigned to tracked
+  # attributes are stored).
+  #
+  # Aside from these aesthetic and structural issues, useless dependencies on
+  # empty lists shouldn't cause issues; adding or removing them will not break
+  # checkpoints, but may cause "all Python objects matched" assertions to fail
+  # (in which case less strict assertions may be substituted if necessary).
+  @checkpointable.no_automatic_dependency_tracking
   def _base_init(self, name=None):
     # The following are implemented as property functions:
     # self.trainable_weights
@@ -134,6 +149,7 @@ class Network(base_layer.Layer):
     # restore operations when graph building.
     self._in_progress_restore_finalizer = None
 
+  @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
     self._call_convention = base_layer.CallConvention.EXPLICIT_INPUTS_ARGUMENT
     # Normalize and set self.inputs, self.outputs.
@@ -292,6 +308,7 @@ class Network(base_layer.Layer):
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
+  @checkpointable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
@@ -361,14 +378,35 @@ class Network(base_layer.Layer):
       self._track_checkpointable(
           layer, name='layer-%d' % layer_index, overwrite=True)
 
+  def _no_dependency(self, value):
+    """Override to allow `Layer` to disable dependency tracking.
+
+    `CheckpointableBase` defines this method, whose semantics are "if a subclass
+    does dependency tracking, this method exempts `value`." Layer uses
+    `_no_dependency` to exempt some of its attribute assignments (conditional on
+    attribute assignment causing tracking in the subclass).
+
+    Args:
+      value: An object which will be assigned to an object attribute, whose
+        value should not be tracked.
+
+    Returns:
+      A wrapped object which, when assigned to an attribute, will not be
+      tracked (`value` will be stored in the attribute).
+    """
+    return data_structures.NoDependency(value)
+
   def __setattr__(self, name, value):
-    no_dependency = isinstance(value, checkpointable.NoDependency)
-    if no_dependency:
-      value = value.value
+    if not getattr(self, '_setattr_tracking', True):
+      super(Network, self).__setattr__(name, value)
+      return
+    no_dependency = isinstance(value, data_structures.NoDependency)
+    value = data_structures.sticky_attribute_assignment(
+        checkpointable=self, value=value, name=name)
     if isinstance(value, (
         base_layer.Layer,
         Network,
-        data_structures_base.CheckpointableDataStructureBase)):
+        data_structures.CheckpointableDataStructure)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -376,7 +414,9 @@ class Network(base_layer.Layer):
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
       if not is_graph_network:
-        if value not in self._layers:
+        # We need to check object identity to avoid de-duplicating empty
+        # container types which compare equal.
+        if not any((layer is value for layer in self._layers)):
           self._layers.append(value)
           if hasattr(value, '_use_resource_variables'):
             # In subclassed models, legacy layers (tf.layers) must always use
@@ -384,12 +424,6 @@ class Network(base_layer.Layer):
             value._use_resource_variables = True
     if (not no_dependency
         and isinstance(value, checkpointable.CheckpointableBase)):
-      # Layer (and therefore Network/Model) inherit from CheckpointableBase
-      # rather than Checkpointable, which means there is no Checkpointable
-      # __setattr__ override (it would be a performance issue for functional
-      # layers). Therefore Model tracks Checkpointable objects itself.
-      self._track_checkpointable(
-          checkpointable=value, name=name, overwrite=True)
       if (  # For subclassed models only, users may add extra weights/variables
             # simply by assigning them to attributes.
           not self._is_graph_network
@@ -492,7 +526,8 @@ class Network(base_layer.Layer):
 
   @property
   def layers(self):
-    return self._layers
+    return checkpointable_layer_utils.filter_empty_layer_containers(
+        self._layers)
 
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
@@ -528,6 +563,28 @@ class Network(base_layer.Layer):
     raise ValueError('No such layer: ' + name)
 
   @property
+  def _unfiltered_updates(self):
+    if context.executing_eagerly():
+      return []
+    updates = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        updates += layer._unfiltered_updates
+      else:
+        updates += layer.updates
+    return updates
+
+  @property
+  def _unfiltered_losses(self):
+    losses = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        losses += layer._unfiltered_losses
+      else:
+        losses += layer.losses
+    return losses
+
+  @property
   def updates(self):
     """Retrieves the network's updates.
 
@@ -535,6 +592,8 @@ class Network(base_layer.Layer):
     unconditional, or conditional on inputs to this model
     (e.g. will not include updates that were created by layers of this model
     outside of the model).
+
+    When the network has no registered inputs, all updates are returned.
 
     Effectively, `network.updates` behaves like `layer.updates`.
 
@@ -581,22 +640,20 @@ class Network(base_layer.Layer):
     if not self.trainable and not self.stateful:
       return []
 
-    updates = []
-    for layer in self.layers:
-      updates += layer.updates
+    updates = self._unfiltered_updates
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
-    if self.inputs:
-      relevant_inputs = self.inputs[:]
-    else:
-      relevant_inputs = []
-    for i in range(1, len(self._inbound_nodes)):
+    relevant_inputs = []
+    for i in range(0, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
+    if not relevant_inputs:
+      return updates
+
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
     unconditional_updates = [
@@ -615,25 +672,25 @@ class Network(base_layer.Layer):
     (e.g. will not include losses that depend on tensors
     that aren't inputs to this model).
 
+    When the network has no registered inputs, all losses are returned.
+
     Returns:
         A list of loss tensors.
     """
-    losses = []
-    for layer in self.layers:
-      losses += layer.losses
+    losses = self._unfiltered_losses
     if context.executing_eagerly():
       return losses
 
-    if self.inputs:
-      relevant_inputs = self.inputs[:]
-    else:
-      relevant_inputs = []
-    for i in range(1, len(self._inbound_nodes)):
+    relevant_inputs = []
+    for i in range(0, len(self._inbound_nodes)):
       inputs = self.get_input_at(i)
       if isinstance(inputs, list):
         relevant_inputs += inputs
       else:
         relevant_inputs.append(inputs)
+    if not relevant_inputs:
+      return losses
+
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, losses)
     relevant_conditional_losses = [x for x in losses if x in reachable]
     unconditional_losses = [
@@ -643,14 +700,14 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    return layer_utils.gather_trainable_weights(
+    return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self.layers,
         extra_variables=self._extra_variables)
 
   @property
   def non_trainable_weights(self):
-    return layer_utils.gather_non_trainable_weights(
+    return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self.layers,
         extra_variables=self._extra_variables)
@@ -1494,47 +1551,6 @@ class Network(base_layer.Layer):
                               line_length=line_length,
                               positions=positions,
                               print_fn=print_fn)
-
-
-def get_source_inputs(tensor, layer=None, node_index=None):
-  """Returns the list of input tensors necessary to compute `tensor`.
-
-  Output will always be a list of tensors
-  (potentially with 1 element).
-
-  Arguments:
-      tensor: The tensor to start from.
-      layer: Origin layer of the tensor. Will be
-          determined via tensor._keras_history if not provided.
-      node_index: Origin node index of the tensor.
-
-  Returns:
-      List of input tensors.
-  """
-  if not hasattr(tensor, '_keras_history'):
-    return tensor
-
-  if layer is None or node_index:
-    layer, node_index, _ = tensor._keras_history
-  if not layer._inbound_nodes:
-    return [tensor]
-  else:
-    node = layer._inbound_nodes[node_index]
-    if not node.inbound_layers:
-      # Reached an Input layer, stop recursion.
-      return node.input_tensors
-    else:
-      source_tensors = []
-      for i in range(len(node.inbound_layers)):
-        x = node.input_tensors[i]
-        layer = node.inbound_layers[i]
-        node_index = node.node_indices[i]
-        previous_sources = get_source_inputs(x, layer, node_index)
-        # Avoid input redundancy.
-        for x in previous_sources:
-          if x not in source_tensors:
-            source_tensors.append(x)
-      return source_tensors
 
 
 def _is_hdf5_filepath(filepath):

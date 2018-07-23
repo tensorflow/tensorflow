@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -499,17 +500,17 @@ bool c_is_sorted(const C& c, Compare&& comp) {
 }
 
 template <typename C>
-auto c_adjacent_find(const C& c) -> decltype(std::begin(c)) {
+auto c_adjacent_find(C& c) -> decltype(std::begin(c)) {
   return std::adjacent_find(std::begin(c), std::end(c));
 }
 
 template <typename C, typename Pred>
-auto c_find_if(const C& c, Pred&& pred) -> decltype(std::begin(c)) {
+auto c_find_if(C& c, Pred&& pred) -> decltype(std::begin(c)) {
   return std::find_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
 template <typename C, typename Value>
-auto c_find(const C& c, Value&& value) -> decltype(std::begin(c)) {
+auto c_find(C& c, Value&& value) -> decltype(std::begin(c)) {
   return std::find(std::begin(c), std::end(c), std::forward<Value>(value));
 }
 
@@ -533,10 +534,22 @@ c_count_if(const C& c, Pred&& pred) {
   return std::count_if(std::begin(c), std::end(c), std::forward<Pred>(pred));
 }
 
+// Determines whether `value` is present in `c`.
+template <typename C, typename T>
+bool c_linear_search(const C& c, T&& value) {
+  auto last = std::end(c);
+  return std::find(std::begin(c), last, std::forward<T>(value)) != last;
+}
+
 template <typename C, typename Value>
 int64 FindIndex(const C& c, Value&& value) {
   auto it = c_find(c, std::forward<Value>(value));
   return std::distance(c.begin(), it);
+}
+
+template <typename T>
+bool ArrayContains(tensorflow::gtl::ArraySlice<T> c, const T& value) {
+  return c_find(c, value) != c.end();
 }
 
 template <typename C, typename Value>
@@ -547,6 +560,17 @@ void InsertAt(C* c, int64 index, Value&& value) {
 template <typename C>
 void EraseAt(C* c, int64 index) {
   c->erase(c->begin() + index);
+}
+
+template <typename T>
+std::vector<T> ArraySliceToVector(tensorflow::gtl::ArraySlice<T> slice) {
+  return std::vector<T>(slice.begin(), slice.end());
+}
+
+template <typename T, int N>
+std::vector<T> InlinedVectorToVector(
+    const tensorflow::gtl::InlinedVector<T, N>& inlined_vector) {
+  return std::vector<T>(inlined_vector.begin(), inlined_vector.end());
 }
 
 // Returns true if `x` fits in 32-bits.

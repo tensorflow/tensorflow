@@ -12,6 +12,7 @@ load(
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -57,15 +58,18 @@ COMMON_PIP_DEPS = [
     "//tensorflow:tensorflow_py",
     "//tensorflow/contrib/autograph:autograph",
     "//tensorflow/contrib/autograph/converters:converters",
-    "//tensorflow/contrib/autograph/converters:test_lib",
+    "//tensorflow/contrib/autograph/core:core",
+    "//tensorflow/contrib/autograph/core:test_lib",
     "//tensorflow/contrib/autograph/impl:impl",
+    "//tensorflow/contrib/autograph/lang:lang",
     "//tensorflow/contrib/autograph/operators:operators",
     "//tensorflow/contrib/autograph/pyct:pyct",
     "//tensorflow/contrib/autograph/pyct/static_analysis:static_analysis",
+    "//tensorflow/contrib/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
-    "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
+    "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/contrib/data/python/ops:contrib_op_loader",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
@@ -91,6 +95,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/timeseries:timeseries_pip",
     "//tensorflow/contrib/tpu",
     "//tensorflow/examples/tutorials/mnist:package",
+    "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",
@@ -100,6 +105,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
+    "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
@@ -126,6 +132,8 @@ filegroup(
         "@astor_archive//:LICENSE",
         "@aws//:LICENSE",
         "@boringssl//:LICENSE",
+        "@com_github_googleapis_googleapis//:LICENSE",
+        "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",
@@ -138,17 +146,14 @@ filegroup(
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
-        "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@kafka//:LICENSE",
-        "@libxsmm_archive//:LICENSE",
+        "@libxsmm_archive//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_nccl//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@grpc//third_party/nanopb:LICENSE.txt",
-        "@grpc//third_party/address_sorting:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@pcre//:LICENCE",
@@ -162,7 +167,15 @@ filegroup(
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + if_mkl([
         "//third_party/mkl:LICENSE",
-    ]) + tf_additional_license_deps(),
+        "//third_party/mkl_dnn:LICENSE",
+    ]) + if_not_system_lib(
+        "grpc",
+        [
+            "@grpc//:LICENSE",
+            "@grpc//third_party/nanopb:LICENSE.txt",
+            "@grpc//third_party/address_sorting:LICENSE",
+        ],
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(

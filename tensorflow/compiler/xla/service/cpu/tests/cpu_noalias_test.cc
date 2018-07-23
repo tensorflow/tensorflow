@@ -17,7 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
@@ -42,7 +42,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   HloComputation::Builder builder(TestName());
 
   std::unique_ptr<Literal> literal =
-      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto param_shape = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));

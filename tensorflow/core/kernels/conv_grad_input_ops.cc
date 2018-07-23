@@ -420,8 +420,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const int output_image_size =
         dims.spatial_dims[0].output_size * dims.spatial_dims[1].output_size;
 
-    const size_t l2_cache_size = Eigen::l2CacheSize();
-    const size_t l3_cache_size = Eigen::l3CacheSize();
+    // TODO(andydavis) Get L2/L3 cache sizes from device.
+    const size_t l2_cache_size = 256LL << 10;
+    const size_t l3_cache_size = 30LL << 20;
 
     // Use L3 cache size as target working set size.
     const size_t target_working_set_size = l3_cache_size / sizeof(T);
@@ -1036,7 +1037,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
 
     algorithm_config.set_algorithm(profile_result.algorithm());
-    algorithm_config.set_algorithm_scratch_size(profile_result.scratch_size());
     // TODO - Add support for no-scratch algorithm
     algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
 #endif

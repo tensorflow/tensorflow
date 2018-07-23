@@ -59,8 +59,8 @@ release_build=0
 for ARG in "$@"; do
   if [[ "$ARG" == --skip_test ]]; then
     skip_test=1
-  elif [[ "$ARG" == --enable_gcs_remote_cache ]]; then
-    set_gcs_remote_cache_options
+  elif [[ "$ARG" == --enable_remote_cache ]]; then
+    set_remote_cache_options
   elif [[ "$ARG" == --release_build ]]; then
     release_build=1
   fi
@@ -77,7 +77,12 @@ fi
 # to distinct them. This helps avoid building the same targets twice.
 echo "build --distinct_host_configuration=false" >> "${TMP_BAZELRC}"
 
-echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+# Enable short object file path to avoid long path issue on Windows.
+echo "startup --output_user_root=${TMPDIR}" >> "${TMP_BAZELRC}"
+
+if ! grep -q "import %workspace%/${TMP_BAZELRC}" .bazelrc; then
+  echo "import %workspace%/${TMP_BAZELRC}" >> .bazelrc
+fi
 
 run_configure_for_cpu_build
 

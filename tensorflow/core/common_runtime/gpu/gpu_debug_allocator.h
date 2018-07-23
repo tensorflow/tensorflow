@@ -34,7 +34,7 @@ namespace tensorflow {
 class GPUDebugAllocator : public VisitableAllocator {
  public:
   explicit GPUDebugAllocator(VisitableAllocator* allocator,
-                             PhysicalGpuId physical_gpu_id);
+                             PlatformGpuId platform_gpu_id);
   ~GPUDebugAllocator() override;
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
@@ -66,7 +66,7 @@ class GPUDebugAllocator : public VisitableAllocator {
 class GPUNanResetAllocator : public VisitableAllocator {
  public:
   explicit GPUNanResetAllocator(VisitableAllocator* allocator,
-                                PhysicalGpuId physical_gpu_id);
+                                PlatformGpuId platform_gpu_id);
   ~GPUNanResetAllocator() override;
   string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

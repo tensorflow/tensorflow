@@ -33,10 +33,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
-#endif  // GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/process_state.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
@@ -273,10 +274,10 @@ Status GdrMemoryManager::Init() {
   }
 
   Allocator* allocators[] = {
-#if GOOGLE_CUDA
-    ProcessState::singleton()->GetCUDAHostAllocator(0),
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    GPUProcessState::singleton()->GetGPUHostAllocator(0),
     ProcessState::singleton()->GetCPUAllocator(0),
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     cpu_allocator(),
   };
 
@@ -302,16 +303,17 @@ Status GdrMemoryManager::Init() {
     }
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   VisitableAllocator::Visitor cuda_alloc_visitor =
       std::bind(&GdrMemoryManager::InsertMemoryRegion, this, _1, _2);
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
     int32_t bus_id = TryToReadNumaNode(listening_->verbs->device) + 1;
-    ProcessState::singleton()->AddGPUAllocVisitor(bus_id, cuda_alloc_visitor);
+    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
+                                                     cuda_alloc_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   return Status::OK();
 }
@@ -428,9 +430,9 @@ void GdrMemoryManager::TransportOptionsFromTensor(
 
   ibv_mr* mr = FindMemoryRegion(addr, length);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (!on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    Allocator* alloc = GPUProcessState::singleton()->GetGPUHostAllocator(0);
     Tensor* host_copy = new Tensor(alloc, tensor.dtype(), tensor.shape());
     GPUUtil::CopyGPUTensorToCPU(
         device, device_context, &tensor, host_copy,
@@ -493,7 +495,7 @@ void GdrMemoryManager::TransportOptionsFromTensor(
 
   uint64_t checksum = 0;
   if (VLOG_IS_ON(2)) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (!on_host) {
       checksum = GPUUtil::Checksum(device, device_context, tensor);
     } else {
@@ -530,16 +532,16 @@ void GdrMemoryManager::TensorFromTransportOptions(
   ibv_mr* mr = FindMemoryRegion(addr, length);
 
   Tensor host_copy;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mr == nullptr && !on_host) {
-    Allocator* alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    Allocator* alloc = GPUProcessState::singleton()->GetGPUHostAllocator(0);
     host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
     buffer = DMAHelper::buffer(&host_copy);
     addr = buffer->data();
     length = buffer->size();
     mr = FindMemoryRegion(addr, length);
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   if (mr == nullptr) {
     done(errors::Unavailable("Cannot find pinned memory region"));
@@ -591,7 +593,7 @@ void GdrMemoryManager::TensorFromTransportOptions(
     return;
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (host_copy.NumElements() > 0) {
     uint64_t checksum = 0;
     if (VLOG_IS_ON(2)) {
@@ -620,7 +622,7 @@ void GdrMemoryManager::TensorFromTransportOptions(
         });
     return;
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   uint64_t end = Env::Default()->NowMicros();
 
@@ -630,7 +632,7 @@ void GdrMemoryManager::TensorFromTransportOptions(
 
   uint64_t checksum = 0;
   if (VLOG_IS_ON(2)) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     if (device->tensorflow_gpu_device_info() && (!on_host)) {
       checksum = GPUUtil::Checksum(device, device_context, *tensor);
     } else {

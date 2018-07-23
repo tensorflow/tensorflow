@@ -145,3 +145,8 @@ install(DIRECTORY ${tensorflow_source_dir}/third_party/eigen3/
 # unsupported Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen/
         DESTINATION include/unsupported/Eigen)
+# mkl
+if (tensorflow_ENABLE_MKL_SUPPORT)
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/include/
+            DESTINATION include/mkl)
+endif (tensorflow_ENABLE_MKL_SUPPORT)

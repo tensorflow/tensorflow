@@ -21,8 +21,9 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/grpc_verbs_client.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/framework/allocator_registry.h"
@@ -281,10 +282,10 @@ void RdmaMgr::InitAllocators() {
   RdmaMemoryMgr::Singleton().pd_ = rdma_adapter_->pd_;
 
   Allocator* allocators[] = {
-#if GOOGLE_CUDA
-    ProcessState::singleton()->GetCUDAHostAllocator(0),
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    GPUProcessState::singleton()->GetGPUHostAllocator(0),
     ProcessState::singleton()->GetCPUAllocator(0),
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     cpu_allocator(),
   };
 
@@ -312,7 +313,7 @@ void RdmaMgr::InitAllocators() {
     }
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
     int32_t bus_id = TryToReadNumaNode(rdma_adapter_->context_->device) + 1;
@@ -323,10 +324,11 @@ void RdmaMgr::InitAllocators() {
         std::bind(&RdmaMemoryMgr::InsertMemoryRegion,
                   &RdmaMemoryMgr::Singleton(), _1, _2, std::string(buf));
 
-    ProcessState::singleton()->AddGPUAllocVisitor(bus_id, cuda_alloc_visitor);
+    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
+                                                     cuda_alloc_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 }  // end namespace tensorflow

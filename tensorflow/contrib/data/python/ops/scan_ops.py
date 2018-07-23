@@ -22,7 +22,6 @@ import collections
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_dataset_ops
@@ -67,104 +66,45 @@ class _ScanDataset(dataset_ops.Dataset):
     need_to_rerun = True
     while need_to_rerun:
 
-      # Create a list in which `tf_scan_func` will store the new shapes.
-      flat_new_state_shapes = []
+      wrapped_func = dataset_ops.StructuredFunctionWrapper(
+          scan_func, "tf.contrib.data.scan()",
+          input_classes=(self._state_classes, input_dataset.output_classes),
+          input_shapes=(self._state_shapes, input_dataset.output_shapes),
+          input_types=(self._state_types, input_dataset.output_types),
+          add_to_graph=False)
+      if not (
+          isinstance(wrapped_func.output_types, collections.Sequence) and
+          len(wrapped_func.output_types) == 2):
+        raise TypeError("The scan function must return a pair comprising the "
+                        "new state and the output value.")
 
-      @function.Defun(*(nest.flatten(
-          sparse.as_dense_types(
-              self._state_types, self._state_classes)) + nest.flatten(
-                  sparse.as_dense_types(input_dataset.output_types,
-                                        input_dataset.output_classes))))
-      def tf_scan_func(*args):
-        """A wrapper for Defun that facilitates shape inference."""
-        # Pass in shape information from the state and input_dataset.
-        for arg, shape in zip(
-            args,
-            nest.flatten(
-                sparse.as_dense_shapes(self._state_shapes, self._state_classes))
-            + nest.flatten(
-                sparse.as_dense_shapes(input_dataset.output_shapes,
-                                       input_dataset.output_classes))):
-          arg.set_shape(shape)
+      new_state_classes, self._output_classes = wrapped_func.output_classes
 
-        pivot = len(nest.flatten(self._state_shapes))
-        print(self._state_classes)
-        nested_state_args = nest.pack_sequence_as(self._state_types,
-                                                  args[:pivot])
-        nested_state_args = sparse.deserialize_sparse_tensors(
-            nested_state_args, self._state_types, self._state_shapes,
-            self._state_classes)
-        print(input_dataset.output_classes)
-        nested_input_args = nest.pack_sequence_as(input_dataset.output_types,
-                                                  args[pivot:])
-        nested_input_args = sparse.deserialize_sparse_tensors(
-            nested_input_args, input_dataset.output_types,
-            input_dataset.output_shapes, input_dataset.output_classes)
+      # Extract and validate class information from the returned values.
+      for new_state_class, state_class in zip(
+          nest.flatten(new_state_classes),
+          nest.flatten(self._state_classes)):
+        if not issubclass(new_state_class, state_class):
+          raise TypeError(
+              "The element classes for the new state must match the initial "
+              "state. Expected %s; got %s." %
+              (self._state_classes, new_state_classes))
 
-        ret = scan_func(nested_state_args, nested_input_args)
-        if not isinstance(ret, collections.Sequence) or len(ret) != 2:
-          raise TypeError("The scan function must return a pair comprising the "
-                          "new state and the output value.")
+      # Extract and validate type information from the returned values.
+      new_state_types, self._output_types = wrapped_func.output_types
+      for new_state_type, state_type in zip(
+          nest.flatten(new_state_types), nest.flatten(self._state_types)):
+        if new_state_type != state_type:
+          raise TypeError(
+              "The element types for the new state must match the initial "
+              "state. Expected %s; got %s." %
+              (self._state_types, new_state_types))
 
-        # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-        # values to tensors.
-        ret = nest.pack_sequence_as(ret, [
-            sparse_tensor.SparseTensor.from_value(t)
-            if sparse_tensor.is_sparse(t) else ops.convert_to_tensor(t)
-            for t in nest.flatten(ret)
-        ])
-        new_state, output_value = ret
-
-        # Extract and validate class information from the returned values.
-        for t, clazz in zip(
-            nest.flatten(new_state), nest.flatten(self._state_classes)):
-          if not isinstance(t, clazz):
-            raise TypeError(
-                "The element classes for the new state must match the initial "
-                "state. Expected %s; got %s." %
-                (self._state_classes,
-                 nest.pack_sequence_as(
-                     self._state_types,
-                     [type(t) for t in nest.flatten(new_state)])))
-        self._output_classes = sparse.get_classes(output_value)
-
-        # Extract shape information from the returned values.
-        flat_new_state_shapes.extend(
-            [t.get_shape() for t in nest.flatten(new_state)])
-        self._output_shapes = nest.pack_sequence_as(
-            output_value, [t.get_shape() for t in nest.flatten(output_value)])
-
-        # Extract and validate type information from the returned values.
-        for t, dtype in zip(
-            nest.flatten(new_state), nest.flatten(self._state_types)):
-          if t.dtype != dtype:
-            raise TypeError(
-                "The element types for the new state must match the initial "
-                "state. Expected %s; got %s." %
-                (self._state_types,
-                 nest.pack_sequence_as(
-                     self._state_types,
-                     [t.dtype for t in nest.flatten(new_state)])))
-        self._output_types = nest.pack_sequence_as(
-            output_value, [t.dtype for t in nest.flatten(output_value)])
-
-        dataset_ops._warn_if_collections("tf.contrib.data.scan()")  # pylint: disable=protected-access
-
-        # Serialize any sparse tensors.
-        new_state = nest.pack_sequence_as(new_state, [
-            t for t in nest.flatten(sparse.serialize_sparse_tensors(new_state))
-        ])
-        output_value = nest.pack_sequence_as(output_value, [
-            t for t in nest.flatten(
-                sparse.serialize_sparse_tensors(output_value))
-        ])
-        return nest.flatten(new_state) + nest.flatten(output_value)
-
-      # Use the private method that will execute `tf_scan_func` but delay
-      # adding it to the graph in case we need to rerun the function.
-      tf_scan_func._create_definition_if_needed()  # pylint: disable=protected-access
+      # Extract shape information from the returned values.
+      new_state_shapes, self._output_shapes = wrapped_func.output_shapes
 
       flat_state_shapes = nest.flatten(self._state_shapes)
+      flat_new_state_shapes = nest.flatten(new_state_shapes)
       weakened_state_shapes = [
           original.most_specific_compatible_shape(new)
           for original, new in zip(flat_state_shapes, flat_new_state_shapes)
@@ -180,12 +120,10 @@ class _ScanDataset(dataset_ops.Dataset):
           break
 
       if need_to_rerun:
-        # NOTE(mrry): `self._output_shapes` will be overwritten when we rerun
-        # `tf_scan_func`.
         self._state_shapes = nest.pack_sequence_as(self._state_shapes,
                                                    weakened_state_shapes)
 
-    self._scan_func = tf_scan_func
+    self._scan_func = wrapped_func.function
     self._scan_func.add_to_graph(ops.get_default_graph())
 
   def _as_variant_tensor(self):

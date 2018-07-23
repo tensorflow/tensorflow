@@ -30,6 +30,15 @@ from tensorflow.python.platform import test
 
 class QNTest(test.TestCase):
 
+  def test_from_str(self):
+    a = QN('a')
+    b = QN('b')
+    a_dot_b = QN(a, attr='b')
+    a_sub_b = QN(a, subscript=b)
+    self.assertEqual(qual_names.from_str('a.b'), a_dot_b)
+    self.assertEqual(qual_names.from_str('a'), a)
+    self.assertEqual(qual_names.from_str('a[b]'), a_sub_b)
+
   def test_basic(self):
     a = QN('a')
     self.assertEqual(a.qn, ('a',))

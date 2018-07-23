@@ -1980,7 +1980,7 @@ GetCudnnConvolutionBackwardFilterAlgo(const CudnnHandle& cudnn,
 
 port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
-    const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::AlgorithmDesc& algorithm_desc,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
     const CudnnTensorDescriptor& output_nd,
@@ -1998,6 +1998,7 @@ port::StatusOr<DeviceMemory<uint8>> AllocateCudnnConvolutionForwardWorkspace(
       /*wDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
       /*yDesc=*/output_nd.handle(), /*algo=*/ToConvForwardAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
+  algorithm_desc.set_scratch_size(size_in_bytes);
   int64 size_in_bytes_int64 = size_in_bytes;
 
   if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
@@ -2042,6 +2043,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
       /*dxDesc=*/input_nd.handle(),
       /*algo=*/ToConvBackwardDataAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
+  algorithm_desc.set_scratch_size(size_in_bytes);
   int64 size_in_bytes_int64 = size_in_bytes;
 
   if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
@@ -2066,7 +2068,7 @@ AllocateCudnnConvolutionBackwardDataWorkspace(
 port::StatusOr<DeviceMemory<uint8>>
 AllocateCudnnConvolutionBackwardFilterWorkspace(
     Stream* stream, const CudnnHandle& cudnn,
-    const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::AlgorithmDesc& algorithm_desc,
     const CudnnTensorDescriptor& input_nd, const CudnnFilterDescriptor& filter,
     const CudnnConvolutionDescriptor& conv,
     const CudnnTensorDescriptor& output_nd,
@@ -2086,6 +2088,7 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
       /*gradDesc=*/filter.handle(),
       /*algo=*/ToConvBackwardFilterAlgo(algorithm_desc),
       /*sizeInBytes=*/&size_in_bytes));
+  algorithm_desc.set_scratch_size(size_in_bytes);
   int64 size_in_bytes_int64 = size_in_bytes;
 
   if (TF_PREDICT_FALSE(size_in_bytes_int64 < 0)) {
@@ -3072,6 +3075,22 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
     if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
+  }
+
+  // Cudnn 7.1.4 has a bug if the workspace of the following convolution is not
+  // zero-initialized.
+  // TODO(timshen): Add an nvbugs/ link.
+  if (CUDNN_VERSION >= 7000 &&
+      algorithm_config.algorithm().algo_id() ==
+          CUDNN_CONVOLUTION_BWD_DATA_ALGO_1 &&
+      cudnn_type == CUDNN_DATA_HALF &&
+      algorithm_config.algorithm().tensor_ops_enabled() &&
+      input_descriptor.layout() == dnn::DataLayout::kBatchYXDepth &&
+      filter_descriptor.layout() == dnn::FilterLayout::kOutputInputYX &&
+      output_descriptor.layout() == dnn::DataLayout::kBatchDepthYX &&
+      (convolution_descriptor.vertical_filter_stride() > 1 ||
+       convolution_descriptor.horizontal_filter_stride() > 1)) {
+    stream->ThenMemZero(&scratch, scratch.size());
   }
 
   RETURN_IF_CUDNN_ERROR(

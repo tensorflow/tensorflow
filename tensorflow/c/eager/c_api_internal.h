@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/remote_device.h"
-#include "tensorflow/core/distributed_runtime/rpc/eager/eager_grpc_server_lib.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
@@ -78,7 +78,7 @@ struct TFE_Context {
       TFE_ContextDevicePlacementPolicy default_policy, bool async,
       tensorflow::DeviceMgr* local_device_mgr,
       tensorflow::Rendezvous* rendezvous,
-      std::unique_ptr<tensorflow::GrpcServer> server,
+      std::unique_ptr<tensorflow::ServerInterface> server,
       std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<tensorflow::DeviceMgr> remote_device_mgr,
       const tensorflow::gtl::FlatMap<tensorflow::string, tensorflow::uint64>&

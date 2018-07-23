@@ -97,7 +97,7 @@ void ForLoop::Emit(llvm::IRBuilder<>* ir_builder) {
   ir_builder->SetInsertPoint(&func->getEntryBlock(),
                              func->getEntryBlock().getFirstInsertionPt());
   llvm::Value* indvar_address =
-      ir_builder->CreateAlloca(ir_builder->getInt64Ty(), nullptr,
+      ir_builder->CreateAlloca(start_index_->getType(), nullptr,
                                AsStringRef(GetQualifiedName("invar_address")));
 
   // Preheader basic block.
@@ -185,7 +185,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(tensorflow::StringPiece suffix,
                                               llvm::Value* end_index,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
-  return AddLoop(suffix, start_index, end_index, ir_builder_->getInt64(1),
+  return AddLoop(suffix, start_index, end_index, GetConstantWithIndexType(1),
                  unroll_mode, prevent_vectorization);
 }
 
@@ -223,8 +223,8 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
   CHECK_LE(start_index, end_index);
-  return AddLoop(suffix, ir_builder_->getInt64(start_index),
-                 ir_builder_->getInt64(end_index), unroll_mode,
+  return AddLoop(suffix, GetConstantWithIndexType(start_index),
+                 GetConstantWithIndexType(end_index), unroll_mode,
                  prevent_vectorization);
 }
 
@@ -234,9 +234,9 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
                                               UnrollMode unroll_mode,
                                               bool prevent_vectorization) {
   CHECK_LE(start_index, end_index);
-  return AddLoop(suffix, ir_builder_->getInt64(start_index),
-                 ir_builder_->getInt64(end_index),
-                 ir_builder_->getInt64(stride), unroll_mode,
+  return AddLoop(suffix, GetConstantWithIndexType(start_index),
+                 GetConstantWithIndexType(end_index),
+                 GetConstantWithIndexType(stride), unroll_mode,
                  prevent_vectorization);
 }
 
@@ -250,7 +250,7 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
     const Shape& shape, tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::StringPiece suffix) {
-  llvm_ir::IrArray::Index index(shape.dimensions_size(), nullptr);
+  llvm_ir::IrArray::Index index(index_type_, shape.dimensions_size());
   for (int64 dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,

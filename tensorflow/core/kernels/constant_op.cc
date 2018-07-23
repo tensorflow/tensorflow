@@ -297,7 +297,8 @@ class ZerosLikeOp : public OpKernel {
           errors::InvalidArgument("ZerosLike non-scalar Tensor with "
                                   "dtype=DT_VARIANT is not supported."));
       const Variant& v = input.scalar<Variant>()();
-      Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+      Tensor out(ctx->device()->GetAllocator(AllocatorAttributes()), DT_VARIANT,
+                 TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
       OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
                               ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));

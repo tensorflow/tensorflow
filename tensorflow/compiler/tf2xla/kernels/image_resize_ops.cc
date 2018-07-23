@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -127,48 +129,41 @@ const int64 kMax2DKernelSize = 16;
 xla::XlaOp MakeBilinearResizeKernel(xla::XlaBuilder* builder,
                                     gtl::ArraySlice<int64> kernel_size,
                                     int64 channels) {
-  xla::XlaOp channels_iota;
-  // DT_INT32 Iota will always return status::OK().
-  TF_CHECK_OK(
-      XlaHelpers::Iota(builder, DataType::DT_INT32, channels, &channels_iota));
+  xla::XlaOp channels_iota = xla::Iota(builder, xla::S32, channels);
 
-  auto diag = builder->ConvertElementType(
-      builder->Eq(
-          builder->Broadcast(channels_iota, {2 * kernel_size[0] - 1,
+  auto diag = xla::ConvertElementType(
+      xla::Eq(xla::Broadcast(channels_iota, {2 * kernel_size[0] - 1,
                                              2 * kernel_size[1] - 1, channels}),
-          channels_iota, /*broadcast_dimensions=*/{2}),
+              channels_iota, /*broadcast_dimensions=*/{2}),
       xla::PrimitiveType::F32);
-  return builder->Mul(
-      builder->Mul(diag,
-                   builder->ConstantR1<float>(Make1DKernel(kernel_size[1])),
-                   /*broadcast_dimensions=*/{1}),
-      builder->ConstantR1<float>(Make1DKernel(kernel_size[0])),
+  return xla::Mul(
+      xla::Mul(diag,
+               xla::ConstantR1<float>(builder, Make1DKernel(kernel_size[1])),
+               /*broadcast_dimensions=*/{1}),
+      xla::ConstantR1<float>(builder, Make1DKernel(kernel_size[0])),
       /*broadcast_dimensions=*/{0});
 }
 
 xla::XlaOp MakeBilinearResizeKernelInDim(xla::XlaBuilder* builder,
                                          gtl::ArraySlice<int64> kernel_size,
                                          int64 channels, int64 dim) {
-  xla::XlaOp channels_iota;
-  // DT_INT32 Iota will always return status::OK().
-  TF_CHECK_OK(
-      XlaHelpers::Iota(builder, DataType::DT_INT32, channels, &channels_iota));
+  xla::XlaOp channels_iota = xla::Iota(builder, xla::S32, channels);
 
-  auto diag = builder->ConvertElementType(
-      builder->Eq(builder->Broadcast(
-                      channels_iota,
-                      {dim == 0 ? (2 * kernel_size[0] - 1) : 1,
-                       dim == 1 ? (2 * kernel_size[1] - 1) : 1, channels}),
-                  channels_iota, /*broadcast_dimensions=*/{2}),
+  auto diag = xla::ConvertElementType(
+      xla::Eq(
+          xla::Broadcast(channels_iota,
+                         {dim == 0 ? (2 * kernel_size[0] - 1) : 1,
+                          dim == 1 ? (2 * kernel_size[1] - 1) : 1, channels}),
+          channels_iota, /*broadcast_dimensions=*/{2}),
       xla::PrimitiveType::F32);
   if (dim == 1) {
-    return builder->Mul(
-        diag, builder->ConstantR1<float>(Make1DKernel(kernel_size[1])),
+    return xla::Mul(
+        diag, xla::ConstantR1<float>(builder, Make1DKernel(kernel_size[1])),
         /*broadcast_dimensions=*/{1});
   }
-  return builder->Mul(diag,
-                      builder->ConstantR1<float>(Make1DKernel(kernel_size[0])),
-                      /*broadcast_dimensions=*/{0});
+  return xla::Mul(diag,
+                  xla::ConstantR1<float>(builder, Make1DKernel(kernel_size[0])),
+                  /*broadcast_dimensions=*/{0});
 }
 
 xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
@@ -208,7 +203,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
   if (dims.kernel_size[0] * dims.kernel_size[1] < kMax2DKernelSize) {
     xla::XlaOp kernel =
         MakeBilinearResizeKernel(builder, dims.kernel_size, channels);
-    output = builder->ConvGeneralDilated(
+    output = xla::ConvGeneralDilated(
         input, kernel, dims.stride,
         /*padding=*/
         {{dims.kernel_size[0] - 1, dims.kernel_size[0] - 1},
@@ -218,7 +213,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
   } else {
     xla::XlaOp kernel0 =
         MakeBilinearResizeKernelInDim(builder, dims.kernel_size, channels, 0);
-    output = builder->ConvGeneralDilated(
+    output = xla::ConvGeneralDilated(
         input, kernel0, {dims.stride[0], 1},
         /*padding=*/
         {{dims.kernel_size[0] - 1, dims.kernel_size[0] - 1}, {0, 0}},
@@ -226,7 +221,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
         /*rhs_dilation=*/{1, 1}, dimension_numbers);
     xla::XlaOp kernel1 =
         MakeBilinearResizeKernelInDim(builder, dims.kernel_size, channels, 1);
-    output = builder->ConvGeneralDilated(
+    output = xla::ConvGeneralDilated(
         output, kernel1, {1, dims.stride[1]},
         /*padding=*/
         {{0, 0}, {dims.kernel_size[1] - 1, dims.kernel_size[1] - 1}},
@@ -238,8 +233,8 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
   // size > 1 dimension.
   for (int i = 0; i < num_spatial_dims; ++i) {
     if (in_size[i] == 1 && out_size[i] > 1) {
-      output = builder->Add(output, builder->ConstantR1<float>(out_size[i], 0),
-                            /*broadcast_dimensions=*/{1 + i});
+      output = xla::Add(output, xla::ConstantR1<float>(builder, out_size[i], 0),
+                        /*broadcast_dimensions=*/{1 + i});
     }
   }
   return output;
@@ -279,12 +274,12 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
     for (int i = 0; i < num_spatial_dims; ++i) {
       if (in_size[i] == 1 && grad_size[i] > 1) {
         kernel =
-            builder->Add(kernel, builder->ConstantR1<float>(grad_size[i], 0),
-                         /*broadcast_dimensions=*/{i});
+            xla::Add(kernel, xla::ConstantR1<float>(builder, grad_size[i], 0),
+                     /*broadcast_dimensions=*/{i});
       }
     }
 
-    output = builder->ConvGeneralDilated(
+    output = xla::ConvGeneralDilated(
         grad, kernel, /*window_strides=*/dims.kernel_size,
         /*padding=*/
         {{dims.kernel_size[0] - 1, dims.kernel_size[0] - 1},
@@ -302,23 +297,23 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
     // gradient contributions in that dimension.
     if (in_size[0] == 1 && grad_size[0] > 1) {
       kernel0 =
-          builder->Add(kernel0, builder->ConstantR1<float>(grad_size[0], 0),
-                       /*broadcast_dimensions=*/{0});
+          xla::Add(kernel0, xla::ConstantR1<float>(builder, grad_size[0], 0),
+                   /*broadcast_dimensions=*/{0});
     }
     if (in_size[1] == 1 && grad_size[1] > 1) {
       kernel1 =
-          builder->Add(kernel0, builder->ConstantR1<float>(grad_size[1], 0),
-                       /*broadcast_dimensions=*/{1});
+          xla::Add(kernel0, xla::ConstantR1<float>(builder, grad_size[1], 0),
+                   /*broadcast_dimensions=*/{1});
     }
 
-    output = builder->ConvGeneralDilated(
+    output = xla::ConvGeneralDilated(
         grad, kernel0, /*window_strides=*/{dims.kernel_size[0], 1},
         /*padding=*/
         {{dims.kernel_size[0] - 1, dims.kernel_size[0] - 1}, {0, 0}},
         /*lhs_dilation=*/{dims.stride[0], 1},
         /*rhs_dilation=*/{1, 1}, dimension_numbers);
 
-    output = builder->ConvGeneralDilated(
+    output = xla::ConvGeneralDilated(
         output, kernel1, /*window_strides=*/{1, dims.kernel_size[1]},
         /*padding=*/
         {{0, 0}, {dims.kernel_size[1] - 1, dims.kernel_size[1] - 1}},
@@ -337,7 +332,7 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(xla::XlaBuilder* builder,
     }
   }
   if (pad_output) {
-    output = builder->Pad(output, builder->ConstantR0<float>(0.0f), padding);
+    output = xla::Pad(output, xla::ConstantR0<float>(builder, 0.0f), padding);
   }
   return output;
 }
@@ -393,13 +388,13 @@ class ResizeBilinearOp : public XlaOpKernel {
       }
     }
     if (slice_input) {
-      input = b->Slice(input, {0, 0, 0, 0},
-                       {batch, slice_size[0], slice_size[1], channels},
-                       {1, 1, 1, 1});
+      input = xla::Slice(input, {0, 0, 0, 0},
+                         {batch, slice_size[0], slice_size[1], channels},
+                         {1, 1, 1, 1});
     }
 
     // Output is always type float.
-    input = b->ConvertElementType(input, xla::F32);
+    input = xla::ConvertElementType(input, xla::F32);
 
     // Special Case:
     // Instead of doing a ResizeUsingDilationAndConvolution directly,
@@ -529,7 +524,7 @@ class ResizeBilinearGradOp : public XlaOpKernel {
       }
     }
 
-    output = b->ConvertElementType(output, output_type_);
+    output = xla::ConvertElementType(output, output_type_);
     ctx->SetOutput(0, output);
   }
 
