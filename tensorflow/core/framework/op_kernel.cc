@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define EIGEN_USE_THREADS
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/kernel_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -42,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -265,26 +263,15 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
       outputs_(num_outputs),
       temp_memory_allocated_(0),
       persistent_memory_allocated_(0) {
-  Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
-  params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
-                                         params_->op_device_context,
-                                         eigen_gpu_allocator);
+  if (params_->eigen_gpu_device != nullptr) {
+    Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
+    params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
+                                           params_->op_device_context,
+                                           eigen_gpu_allocator);
+  }
   if (params_->record_tensor_accesses) {
     referenced_tensors_.Init();
-  }
-  if (params->device->has_eigen_cpu_device()) {
-    int64 block_size = -1, output_size = -1, num_threads = 1;
-    const Eigen::ThreadPoolDevice* thread_pool =
-        params_->device->eigen_cpu_device();
-    AttrSlice attributes(op_kernel().def());
-    if (GetNodeAttr(attributes, "_block_size", &block_size) == Status::OK() &&
-        GetNodeAttr(attributes, "_output_size", &output_size) == Status::OK()) {
-      num_threads = std::min(Eigen::divup(output_size, block_size),
-                             static_cast<int64>(thread_pool->numThreads()));
-      eigen_cpu_device_ = MakeUnique<Eigen::ThreadPoolDevice>(
-          thread_pool->getPool(), num_threads);
-    }
   }
 }
 
@@ -985,62 +972,6 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
 
 namespace {
 
-// Helper for AttrsMatch().
-bool InTypeList(DataType dt, const AttrValue& type_list) {
-  for (int in_list : type_list.list().type()) {
-    if (dt == in_list) return true;
-  }
-  return false;
-}
-
-// Returns whether the attrs satisfy the constraints in the kernel_def.  Returns
-// an error if attrs in kernel_def are not found, or have a mismatching type.
-Status AttrsMatch(AttrSlice attrs, const KernelDef& kernel_def, bool* match) {
-  *match = false;
-  for (const auto& constraint : kernel_def.constraint()) {
-    if (constraint.allowed_values().list().type_size() == 0) {
-      return errors::Unimplemented(
-          "KernelDef '", ProtoShortDebugString(kernel_def),
-          " has constraint on attr '", constraint.name(),
-          "' with unsupported type: ",
-          SummarizeAttrValue(constraint.allowed_values()));
-    }
-
-    const AttrValue* found = attrs.Find(constraint.name());
-    if (found) {
-      if (found->type() != DT_INVALID) {
-        if (!InTypeList(found->type(), constraint.allowed_values())) {
-          return Status::OK();
-        }
-      } else {
-        if (!AttrValueHasType(*found, "list(type)").ok()) {
-          return errors::InvalidArgument(
-              "KernelDef '", ProtoShortDebugString(kernel_def),
-              "' has constraint on attr '", constraint.name(),
-              "' that has value '", SummarizeAttrValue(*found),
-              "' that does not have type 'type' or 'list(type)' in NodeDef "
-              "'",
-              attrs.SummarizeNode(), "'");
-        }
-
-        for (int t : found->list().type()) {
-          if (!InTypeList(static_cast<DataType>(t),
-                          constraint.allowed_values())) {
-            return Status::OK();
-          }
-        }
-      }
-    } else {
-      return errors::InvalidArgument(
-          "OpKernel '", kernel_def.op(), "' has constraint on attr '",
-          constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
-          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
-    }
-  }
-  *match = true;
-  return Status::OK();
-}
-
 static const StringPiece kKernelAttr("_kernel");
 
 // TODO(irving): Replace with const Node& version below.
@@ -1059,7 +990,7 @@ Status FindKernelRegistration(const DeviceType& device_type,
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(AttrsMatch(node_def, iter->second.def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(
@@ -1136,14 +1067,14 @@ void LogAllRegisteredKernels() {
   }
 }
 
-std::vector<KernelDef> GetAllRegisteredKernels() {
+KernelList GetAllRegisteredKernels() {
   const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
-  std::vector<KernelDef> kernels;
-  kernels.reserve(typed_registry->size());
+  KernelList kernel_list;
+  kernel_list.mutable_kernel()->Reserve(typed_registry->size());
   for (const auto& p : *typed_registry) {
-    kernels.emplace_back(p.second.def);
+    *kernel_list.add_kernel() = p.second.def;
   }
-  return kernels;
+  return kernel_list;
 }
 
 string KernelsRegisteredForOp(StringPiece op_name) {

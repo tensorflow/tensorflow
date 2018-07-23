@@ -23,17 +23,20 @@ function run_configure_for_gpu_build {
   # Enable CUDA support
   export TF_NEED_CUDA=1
 
-  # TODO(pcloudy): Remove this after TensorFlow uses its own CRSOOTOOL
-  # for GPU build on Windows
-  export USE_MSVC_WRAPPER=1
-
   yes "" | ./configure
 }
 
-function set_gcs_remote_cache_options {
-  echo "build --experimental_remote_spawn_cache" >> "${TMP_BAZELRC}"
+function set_remote_cache_options {
+  echo "build --remote_instance_name=projects/tensorflow-testing-cpu" >> "${TMP_BAZELRC}"
   echo "build --experimental_remote_platform_override='properties:{name:\"build\" value:\"windows-x64\"}'" >> "${TMP_BAZELRC}"
-  echo "build --remote_http_cache=https://storage.googleapis.com/$GCS_BUCKET_NAME" >> "${TMP_BAZELRC}"
+  echo "build --remote_cache=remotebuildexecution.googleapis.com" >> "${TMP_BAZELRC}"
+  echo "build --tls_enabled=true" >> "${TMP_BAZELRC}"
+  echo "build --remote_timeout=3600" >> "${TMP_BAZELRC}"
+  echo "build --auth_enabled=true" >> "${TMP_BAZELRC}"
+  echo "build --spawn_strategy=remote" >> "${TMP_BAZELRC}"
+  echo "build --strategy=Javac=remote" >> "${TMP_BAZELRC}"
+  echo "build --strategy=Closure=remote" >> "${TMP_BAZELRC}"
+  echo "build --genrule_strategy=remote" >> "${TMP_BAZELRC}"
   echo "build --google_credentials=$GOOGLE_CLOUD_CREDENTIAL" >> "${TMP_BAZELRC}"
 }
 

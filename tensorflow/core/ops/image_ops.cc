@@ -709,4 +709,36 @@ REGISTER_OP("NonMaxSuppressionV3")
       return Status::OK();
     });
 
+REGISTER_OP("NonMaxSuppressionWithOverlaps")
+    .Input("overlaps: float")
+    .Input("scores: float")
+    .Input("max_output_size: int32")
+    .Input("overlap_threshold: float")
+    .Input("score_threshold: float")
+    .Output("selected_indices: int32")
+    .SetShapeFn([](InferenceContext* c) {
+      // Get inputs and validate ranks.
+      ShapeHandle overlaps;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &overlaps));
+      ShapeHandle scores;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &scores));
+      ShapeHandle max_output_size;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
+      ShapeHandle overlap_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &overlap_threshold));
+      ShapeHandle score_threshold;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &score_threshold));
+      // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
+      DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(overlaps, 0), c->Dim(overlaps, 1), &unused));
+
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

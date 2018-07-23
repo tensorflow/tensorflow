@@ -56,6 +56,10 @@ java_library(
     srcs = glob(["src/gen/java/org/tensorflow/processor/**/*.java"]),
     javacopts = JAVACOPTS,
     resources = glob(["src/gen/resources/META-INF/services/javax.annotation.processing.Processor"]),
+    deps = [
+        "@com_google_guava",
+        "@com_squareup_javapoet",
+    ],
 )
 
 filegroup(
@@ -70,6 +74,7 @@ tf_java_op_gen_srcjar(
     name = "java_op_gen_sources",
     api_def_srcs = [
         "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:java_api_def",
     ],
     base_package = "org.tensorflow.op",
     gen_tool = ":java_op_gen_tool",

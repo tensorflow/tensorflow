@@ -116,17 +116,17 @@ void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
   T* dst = y->flat<T>().data();
   switch (op) {
     case I_UPDATE:
-      GPU_LAUNCH_KERNEL(DoInplaceOpKernel<T, I_UPDATE>,
+      GPU_LAUNCH_KERNEL((DoInplaceOpKernel<T, I_UPDATE>),
           dim3(cfg.block_count), dim3(cfg.thread_per_block), 0, d.stream(),
           cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
       break;
     case I_ADD:
-      GPU_LAUNCH_KERNEL(DoInplaceOpKernel<T, I_ADD>,
+      GPU_LAUNCH_KERNEL((DoInplaceOpKernel<T, I_ADD>),
           dim3(cfg.block_count), dim3(cfg.thread_per_block), 0, d.stream(),
           cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
       break;
     case I_SUB:
-      GPU_LAUNCH_KERNEL(DoInplaceOpKernel<T, I_SUB>,
+      GPU_LAUNCH_KERNEL((DoInplaceOpKernel<T, I_SUB>),
           dim3(cfg.block_count), dim3(cfg.thread_per_block), 0, d.stream(),
           cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
       break;

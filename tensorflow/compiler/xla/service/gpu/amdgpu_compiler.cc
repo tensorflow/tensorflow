@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
@@ -165,9 +164,6 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true);
 
-      // Rewrite gather ops into smaller ones.
-      pass.AddPass<GatherExpander>();
-
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
@@ -252,7 +248,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("layout_assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_device_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(), stream_exec);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -393,8 +389,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
                                &ir_emitter_context);
   {
     XLA_SCOPED_LOGGING_TIMER("AMDGPUCompiler::RunBackend - IR emission");
-    TF_RETURN_IF_ERROR(
-        entry_computation->root_instruction()->Accept(&ir_emitter));
+    TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
   }
 
   if (user_pre_optimization_hook_) {

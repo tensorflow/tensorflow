@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
+#include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 
 #include <map>
 #include <memory>
@@ -206,7 +206,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
       codegen_opt_level = CodeGenOpt::None;
   }
   return WrapUnique(target->createTargetMachine(
-      triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx42", target_options,
+      triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
       Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
       codegen_opt_level));
 }

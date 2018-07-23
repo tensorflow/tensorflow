@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/contrib/image/kernels/adjust_hsv_in_yiq_op.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 

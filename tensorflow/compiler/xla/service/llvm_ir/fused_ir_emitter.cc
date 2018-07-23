@@ -119,7 +119,24 @@ Status FusedIrEmitter::HandleGetTupleElement(
 }
 
 Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
-  generators_[parameter] = [=](const IrArray::Index& index) {
+  generators_[parameter] = [=](const IrArray::Index& index) -> llvm::Value* {
+    if (tiled_parameter_info_) {
+      if (llvm::Value* param_tile_buffer =
+              tiled_parameter_info_->GetBufferForParameter(
+                  parameter->parameter_number())) {
+        // TODO(jlebar): Add AA metadata to this load.  Tile buffers are global
+        // variables, so LLVM's points-to analysis doesn't help us much.  And we
+        // want the AA info to be present before address spaces are inferred
+        // (which is pretty late in the pipeline), so even if we had
+        // address-space-based AA in LLVM, it wouldn't help us much here.
+        return ir_builder_->CreateLoad(
+            ir_builder_->CreateGEP(
+                param_tile_buffer,
+                {index.GetConstantWithIndexType(0), tiled_parameter_info_->x(),
+                 tiled_parameter_info_->y()}),
+            "tiled_buffer");
+      }
+    }
     return parameter_arrays_[parameter->parameter_number()]
         .EmitReadArrayElement(index, ir_builder_);
   };

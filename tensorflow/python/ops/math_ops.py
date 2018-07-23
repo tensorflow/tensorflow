@@ -37,11 +37,11 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
-from tensorflow.python.platform import tf_logging as logging
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -651,6 +651,9 @@ def cast(x, dtype, name=None):
     TypeError: If `x` cannot be cast to the `dtype`.
   """
   base_type = dtypes.as_dtype(dtype).base_dtype
+  if isinstance(x,
+                (ops.Tensor, _resource_variable_type)) and base_type == x.dtype:
+    return x
   with ops.name_scope(name, "Cast", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
       values_cast = cast(x.values, base_type, name=name)
@@ -1222,8 +1225,9 @@ def _ReductionDims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x._rank() is not None:  # pylint: disable=protected-access
-      return constant_op.constant(np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
+    rank = common_shapes.rank(x)
+    if rank is not None:
+      return constant_op.constant(np.arange(rank), dtype=dtypes.int32)
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.dense_shape.get_shape().is_fully_defined()):
       rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
@@ -1234,8 +1238,8 @@ def _ReductionDims(x, axis, reduction_indices):
 
 
 def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
-  """Set a reduction's output's shape to be a scalar if we are certain."""
-  if (not output.shape.is_fully_defined()) and (not keepdims) and (
+  """Set a reduction's output shape to be a scalar if we are certain."""
+  if not common_shapes.has_fully_defined_shape(output) and (not keepdims) and (
       axis is None) and (reduction_indices is None):
     output.set_shape(())
   return output
@@ -1990,7 +1994,7 @@ def matmul(a,
       sparse_matmul_types = [dtypes.bfloat16, dtypes.float32]
       use_sparse_matmul = (
           a.dtype in sparse_matmul_types and b.dtype in sparse_matmul_types)
-    if (a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16 and
+    if ((a.dtype == dtypes.bfloat16 or b.dtype == dtypes.bfloat16) and
         a.dtype != b.dtype):
       # matmul currently doesn't handle mixed-precision inputs.
       use_sparse_matmul = True

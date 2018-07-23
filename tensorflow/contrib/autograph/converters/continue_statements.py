@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.autograph.core import converter
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import templates
-from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
 
 
@@ -31,7 +31,7 @@ GUARD_CREATED = 'guard_created'
 CREATE_GUARD_NEXT = 'create_guard_next'
 
 
-class ContinueCanonicalizationTransformer(transformer.Base):
+class ContinueCanonicalizationTransformer(converter.Base):
   """Canonicalizes continue statements into additional conditionals."""
 
   def visit_Continue(self, node):
@@ -85,7 +85,7 @@ class ContinueCanonicalizationTransformer(transformer.Base):
   def _visit_loop_body(self, node, nodes):
     self.enter_local_scope()
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
-    continue_var = self.context.namer.new_symbol('continue_', scope.referenced)
+    continue_var = self.ctx.namer.new_symbol('continue_', scope.referenced)
     self.set_local(CONTROL_VAR_NAME, continue_var)
 
     nodes = self.visit_block(nodes, after_visit=self._postprocess_statement)
@@ -135,5 +135,5 @@ class ContinueCanonicalizationTransformer(transformer.Base):
     return node
 
 
-def transform(node, namer):
-  return ContinueCanonicalizationTransformer(namer).visit(node)
+def transform(node, ctx):
+  return ContinueCanonicalizationTransformer(ctx).visit(node)

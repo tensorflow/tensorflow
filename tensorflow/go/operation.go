@@ -45,6 +45,12 @@ func (op *Operation) NumOutputs() int {
 	return int(C.TF_OperationNumOutputs(op.c))
 }
 
+// Device returns a specification of the device on which this operation
+// will be executed, or the empty string if there is no such specification.
+func (op *Operation) Device() string {
+	return C.GoString(C.TF_OperationDevice(op.c))
+}
+
 // OutputListSize returns the size of the list of Outputs that is produced by a
 // named output of op.
 //
@@ -131,6 +137,9 @@ func (p Output) canBeAnInput() {}
 // Consumers returns the inputs that consume this output.
 func (p Output) Consumers() []Consumer {
 	max := int(C.TF_OperationOutputNumConsumers(p.c()))
+	if max == 0 {
+		return nil
+	}
 	inputs := make([]C.TF_Input, max)
 	n := C.TF_OperationOutputConsumers(p.c(), (*C.TF_Input)(unsafe.Pointer(&inputs[0])), C.int(max))
 	inputs = inputs[:int(n)]

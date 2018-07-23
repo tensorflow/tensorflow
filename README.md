@@ -14,7 +14,7 @@ data flow graphs.  The graph nodes represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
 between them.  This flexible architecture enables you to deploy computation to one
 or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
-code.  TensorFlow also includes [TensorBoard](https://www.tensorflow.org/programmers_guide/summaries_and_tensorboard), a data visualization toolkit.
+code.  TensorFlow also includes [TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard), a data visualization toolkit.
 
 TensorFlow was originally developed by researchers and engineers
 working on the Google Brain team within Google's Machine Intelligence Research
@@ -25,6 +25,17 @@ variety of other domains, as well.
 Keep up to date with release announcements and security updates by
 subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
+
+** Tensorflow ROCm port **
+This project is based on TensorFlow 1.8.0. It has been verified to work with the latest ROCm1.8.2 release. Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
+
+A docker container: **rocm/tensorflow:rocm1.7.1(https://hub.docker.com/r/rocm/tensorflow/)** is readily available to be used.
+
+The Wheels:
+- Python 2: http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl
+- Python 3: http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl
+
+For details on Tensorflow ROCm port, please take a look at the [ROCm-specific README file](README.ROCm.md).
 
 ## Installation
 *See [Installing TensorFlow](https://www.tensorflow.org/get_started/os_setup.html) for instructions on how to install our release binaries or how to build from source.*
@@ -96,6 +107,8 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 | ---             | ---    | ---       |
 | **IBM s390x**       | [![Build Status](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/badge/icon)](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/) | TBA |
 | **IBM ppc64le CPU** | [![Build Status](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_CPU/badge/icon)](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_CPU/) | TBA |
+| **IBM ppc64le GPU** | [![Build Status](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_PPC64LE_GPU/badge/icon)](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_PPC64LE_GPU/) | TBA |
+| **Linux CPU with Intel® MKL-DNN®** | [![Build Status](https://tensorflow-ci.intel.com/job/tensorflow-mkl-linux-cpu/badge/icon)](https://tensorflow-ci.intel.com/job/tensorflow-mkl-linux-cpu/) | TBA |
 
 
 ## For more information

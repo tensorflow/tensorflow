@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
@@ -165,9 +164,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true);
 
-      // Rewrite gather ops into smaller ones.
-      pass.AddPass<GatherExpander>();
-
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
@@ -209,7 +205,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
   {
     HloPassPipeline pipeline("layout_assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_device_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(), stream_exec);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -260,6 +256,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
     fusion.AddPass<GpuMultiOutputFusion>();
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
@@ -356,16 +354,30 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
     return;
   }
 
+  // We need ptxas >= 9.0 as a hard requirement, because we compile targeting
+  // PTX 6.0.  An older ptxas will just fail to compile any of our code.
+  //
   // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
   // address calculations with large offsets (e.g. "load ptr + large_constant"),
   // b/70245379.
-  if ((vmaj == 9 && vmin == 0 && vdot < 276) ||
-      (vmaj == 9 && vmin == 1 && vdot < 121)) {
-    LOG(WARNING) << "*** WARNING *** You are using ptxas " << vmaj << "."
-                 << vmin << "." << vdot
-                 << ", which is in range [9.0.0, 9.0.276) + [9.1.0, 9.1.121). "
-                    "These versions are known to miscompile XLA code, leading "
-                    "to incorrect results or invalid-address errors.";
+  //
+  // ptxas 9.1.121 miscompiles some large multioutput fusions, again in a way
+  // that appears related to address calculations.  ptxas 9.2.88 appears to
+  // work, as far as we can tell.
+  if (vmaj < 9) {
+    LOG(ERROR)
+        << "You are using ptxas 8.x, but XLA requires ptxas 9.x (and strongly "
+           "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
+           "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
+           "binary is sufficient.";
+  } else if ((vmaj < 9 || vmin < 2 || vdot < 88)) {
+    LOG(WARNING)
+        << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
+        << vdot
+        << ", which older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+           "miscompile XLA code, leading to incorrect results or "
+           "invalid-address errors.\n\nYou do not need to update to CUDA "
+           "9.2.88; cherry-picking the ptxas binary is sufficient.";
   }
 }
 
@@ -393,6 +405,10 @@ void WarnIfBadDriverJITVersion() {
     //  - 384.x before 384.108
     //  - 387.x before 387.40
     //  - 390.x before 390.10.
+    //
+    // TODO(jlebar): This list does not cover the address-calculation bug we've
+    // observed in ptxas 9.1.121.  Need to get a new safe range from nvidia
+    // corresponding to ptxas >= 9.2.88.
     auto vmaj = std::get<0>(version);
     auto vmin = std::get<1>(version);
     if ((vmaj == 384 && vmin < 108) ||  //
@@ -554,8 +570,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
                                &ir_emitter_context);
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
-    TF_RETURN_IF_ERROR(
-        entry_computation->root_instruction()->Accept(&ir_emitter));
+    TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));
   }
 
   if (user_pre_optimization_hook_) {

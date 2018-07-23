@@ -74,13 +74,14 @@ DeviceProperties GetLocalCPUInfo() {
   return device;
 }
 
-DeviceProperties GetLocalGPUInfo(PhysicalGpuId physical_gpu_id) {
+DeviceProperties GetLocalGPUInfo(PlatformGpuId platform_gpu_id) {
   DeviceProperties device;
   device.set_type("GPU");
 
 #if GOOGLE_CUDA
   cudaDeviceProp properties;
-  cudaError_t error = cudaGetDeviceProperties(&properties, physical_gpu_id.value());
+  cudaError_t error =
+      cudaGetDeviceProperties(&properties, platform_gpu_id.value());
   if (error != cudaSuccess) {
     device.set_type("UNKNOWN");
     LOG(ERROR) << "Failed to get device properties, error code: " << error;
@@ -114,7 +115,7 @@ DeviceProperties GetLocalGPUInfo(PhysicalGpuId physical_gpu_id) {
   (*device.mutable_environment())["cudnn"] = strings::StrCat(CUDNN_VERSION);
 #elif TENSORFLOW_USE_ROCM
   hipDeviceProp_t properties;
-  hipError_t error = hipGetDeviceProperties(&properties, physical_gpu_id.value());
+  hipError_t error = hipGetDeviceProperties(&properties, platform_gpu_id.value());
   if (error != hipSuccess) {
     device.set_type("UNKNOWN");
     LOG(ERROR) << "Failed to get device properties, error code: " << error;
@@ -154,15 +155,15 @@ DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
   } else if (device.type == "GPU") {
     if (device.has_id) {
       TfGpuId tf_gpu_id(device.id);
-      PhysicalGpuId physical_gpu_id;
-      Status s = GpuIdManager::TfToPhysicalGpuId(tf_gpu_id, &physical_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (!s.ok()) {
         LOG(ERROR) << s;
         return unknown;
       }
-      return GetLocalGPUInfo(physical_gpu_id);
+      return GetLocalGPUInfo(platform_gpu_id);
     } else {
-      return GetLocalGPUInfo(PhysicalGpuId(0));
+      return GetLocalGPUInfo(PlatformGpuId(0));
     }
   }
   return unknown;

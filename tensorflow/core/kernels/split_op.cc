@@ -27,11 +27,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/work_sharder.h"
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -260,13 +260,13 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
   }
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 struct SplitOpGPULaunch {
   void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
            int32 split_dim_size, int32 suffix_dim_size,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
+           const GpuDeviceArrayStruct<T*>& output_ptr_data);
 };
 
 // Partial specialization for GPU
@@ -303,7 +303,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     TensorShape output_shape(input_shape);
     output_shape.set_dim(split_dim, split_dim_output_size);
 
-    CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+    GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
     OP_REQUIRES_OK(context, ptrs.Init());
 
     for (int i = 0; i < num_split; ++i) {
@@ -324,7 +324,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
                 errors::Internal("Launch of gpu kernel for SplitOp failed"));
   }
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
@@ -408,7 +408,7 @@ REGISTER_SPLIT(quint8);
 
 #undef REGISTER_SPLIT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                               \
   REGISTER_KERNEL_BUILDER(Name("Split")                  \
@@ -423,7 +423,7 @@ TF_CALL_complex128(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type)                              \

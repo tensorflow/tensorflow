@@ -226,5 +226,128 @@ TEST_F(InstructionFusionTest,
   ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
+TEST_F(InstructionFusionTest, MultiOutputFusionTwoLoops) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[6400]{0} parameter(0)
+      ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[6400]{0} parameter(0)
+      const.2 = f32[] constant(1)
+      ROOT div = f32[6400]{0} divide(p0.2, const.2)
+    }
+
+    ENTRY entry {
+      p0 = f32[6400]{0} parameter(0)
+      fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
+      fusion.2 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (f32[6400]{0}, f32[6400]{0}) tuple(fusion.1, fusion.2)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* fusion =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Multiply(), op::Divide()));
+}
+
+TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduce) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
+      p1.1 = f32[2,2,2]{2,1,0} parameter(1)
+      ROOT add = f32[2,2,2]{2,1,0} add(p0.1, p1.1)
+    }
+
+    ENTRY reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      p1 = f32[2,2,2]{2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      add = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_add
+      reduce = f32[2,2]{1,0} reduce(add, c0), dimensions={2}, to_apply=scalar_add_computation
+      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(reduce, add)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement()));
+  const HloInstruction* fusion = root->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Add()));
+}
+
+TEST_F(InstructionFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_select {
+      p1.1 = f32[2,2,2]{2,1,0} parameter(1)
+      c0 = f32[] constant(0)
+      broadcast = f32[2,2,2]{2,1,0} broadcast(f32[] c0), dimensions={}
+      greater-than = pred[2,2,2]{2,1,0} greater-than(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast)
+      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
+      ROOT select = f32[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f32[2,2,2]{2,1,0} p0.1, f32[2,2,2]{2,1,0} broadcast)
+    }
+
+    fused_reduce {
+      p0.2 = f32[2,2,2]{2,1,0} parameter(0)
+      c1 = f32[] constant(0)
+      r1 = f32[2,2]{1,0} reduce(p0.2, c1), dimensions={2}, to_apply=scalar_add_computation
+      mul = f32[2,2,2]{2,1,0} multiply(p0.2, p0.2)
+      r2 = f32[2,2]{1,0} reduce(mul, c1), dimensions={2}, to_apply=scalar_add_computation
+      ROOT tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) tuple(r1, r2)
+    }
+
+    ENTRY reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      p1 = f32[2,2,2]{2,1,0} parameter(1)
+      select = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_select
+      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(select), kind=kInput, calls=fused_reduce
+      gte0 = f32[2,2]{1,0} get-tuple-element(fusion), index=0
+      gte1 = f32[2,2]{1,0} get-tuple-element(fusion), index=1
+      ROOT root = (f32[2,2]{1,0}, f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(gte1, gte1, select)
+    })"))
+                    .ValueOrDie();
+  ASSERT_TRUE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Tuple(op::GetTupleElement(), op::GetTupleElement(),
+                              op::GetTupleElement()));
+  const HloInstruction* fusion = root->operand(0)->operand(0);
+  ASSERT_TRUE(fusion->IsMultiOutputFusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Reduce(), op::Select()));
+}
+
+TEST_F(InstructionFusionTest, ProducerConsumerFusionDoNotFuseLoopReduceFusion) {
+  auto module = ParseHloString(tensorflow::strings::StrCat(kModulePrefix, R"(
+    fused_element_wise {
+      p0.1 = f32[2,2,2]{2,1,0} parameter(0)
+      p1.1 = f32[2,2,2]{2,1,0} parameter(1)
+      ROOT root = f32[2,2,2]{2,1,0} add(p0.1, p1.1)
+    }
+
+    fused_reduce {
+      p0.2 = f32[2,2,2]{2,1,0} parameter(0)
+      mul = f32[2,2,2]{2,1,0} multiply(f32[2,2,2]{2,1,0} p0.2, f32[2,2,2]{2,1,0} p0.2)
+      c1 = f32[] constant(0)
+      ROOT reduce = f32[2,2]{1,0} reduce(f32[2,2,2]{2,1,0} mul, f32[] c1), dimensions={1}, to_apply=scalar_add_computation
+    }
+
+    ENTRY reduce {
+      p0 = f32[2,2,2]{2,1,0} parameter(0)
+      p1 = f32[2,2,2]{2,1,0} parameter(1)
+      element_wise = f32[2,2,2]{2,1,0} fusion(p0, p1), kind=kLoop, calls=fused_element_wise
+      fusion = (f32[2,2]{1,0}, f32[2,2]{1,0}) fusion(element_wise), kind=kLoop, calls=fused_reduce
+      ROOT root = (f32[2,2]{1,0}, f32[2,2,2]{2,1,0}) tuple(fusion, element_wise)
+    })"))
+                    .ValueOrDie();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -144,7 +145,7 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   //   ROOT %subtract = f32[4]{0} subtract(
   //     f32[4]{0} %body_param, f32[1,4]{1,0} %constant.1)
   // }
-  // %SubcomputationsNotAccounted () -> f32[2,4] {
+  // %ListAccountsForSubcomputations () -> f32[2,4] {
   //   %constant.3 = f32[2,4]{1,0} constant(
   //     f32[2,4] { { 1, 2, 3, 4 }, { 1, 2, 3, 4 } })
   //   %transpose = f32[2,4]{1,0} transpose(
@@ -167,8 +168,9 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "cond_param"));
-  HloInstruction* zero_vector = cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{0, 0, 0, 0}})));
+  HloInstruction* zero_vector =
+      cond_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
   cond_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
@@ -178,16 +180,18 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   auto body_builder = HloComputation::Builder("WhileBody");
   HloInstruction* body_param = body_builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "body_param"));
-  HloInstruction* one_vector = body_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1, 1, 1}})));
+  HloInstruction* one_vector =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
   body_builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, body_param, one_vector));
   auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
 
   // transpose(matrix) + bcast(while)
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* while_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1, 1, 1}})));
+  HloInstruction* while_init =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
   // Creates 16 bytes, ignoring subcomputations
   HloInstruction* while_loop =
       builder.AddInstruction(HloInstruction::CreateWhile(
@@ -198,7 +202,7 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
       HloInstruction::CreateBroadcast(r2f32, while_loop, {0}));
 
   HloInstruction* matrix = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>(
           {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}})));
   // Creates 32 bytes
   HloInstruction* transpose = builder.AddInstruction(
@@ -210,16 +214,16 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(SequentialHloOrdering::HloModuleSequence sequence,
-                          ScheduleComputationsInModule(
-                              *module,
-                              [](const BufferValue& buffer) {
-                                return ShapeUtil::ByteSizeOf(buffer.shape());
-                              },
-                              ListMemoryScheduler));
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      SequentialHloOrdering::HloModuleSequence sequence,
+      ScheduleComputationsInModule(*module, size_fn, ListMemoryScheduler));
   // Verify that all instructions are in the sequence.
-  EXPECT_EQ(module->entry_computation()->instruction_count(),
-            sequence.at(module->entry_computation()).size());
+  auto entry_computation = module->entry_computation();
+  EXPECT_EQ(entry_computation->instruction_count(),
+            sequence.at(entry_computation).size());
   SequentialHloOrdering ordering(module.get(), sequence);
   // This schedule is an example of List's greedy heuristics being suboptimal.
   // The while_loop is more expensive than transpose, so it would have been
@@ -228,6 +232,24 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   EXPECT_TRUE(ordering.ExecutesBefore(transpose, bcast));
   EXPECT_TRUE(ordering.ExecutesBefore(bcast, add));
   EXPECT_TRUE(ordering.ExecutesBefore(transpose, add));
+
+  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
+  memory_by_computation[cond_computation] = 17;
+  memory_by_computation[body_computation] = 16;
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =
+      TuplePointsToAnalysis::Run(module.get()).ValueOrDie();
+
+  // HeapSimulator doesn't account for subcomputations
+  EXPECT_EQ(80, HeapSimulator::MinimumMemoryForComputation(
+                    *entry_computation, sequence.at(entry_computation),
+                    *points_to_analysis, size_fn)
+                    .ValueOrDie());
+  // HeapSimulator accounts for subcomputations. The max mem doesn't change
+  // because the while body isn't live during the peak.
+  EXPECT_EQ(80, HeapSimulator::MinimumMemoryForComputation(
+                    *entry_computation, sequence.at(entry_computation),
+                    *points_to_analysis, size_fn, &memory_by_computation)
+                    .ValueOrDie());
 }
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
@@ -238,7 +260,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   // Wrap lit in abs because constants are considered free by
   // IgnoreInstruction, and it skews the accounting.
   auto lit = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1, 1, 1, 1, 1, 1})));
+      LiteralUtil::CreateR1<float>({1, 1, 1, 1, 1, 1})));
   auto abs_const = builder.AddInstruction(
       HloInstruction::CreateUnary(r1f32, HloOpcode::kAbs, lit));
 
@@ -281,11 +303,11 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   HloComputation::Builder builder(TestName());
 
   auto c1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1, 1, 1, 1, 1})));
+      LiteralUtil::CreateR1<float>({1, 1, 1, 1, 1})));
   auto c2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1, 2, 3, 4, 5})));
+      LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5})));
   auto c3 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({0, 2, 4, 6, 8})));
+      LiteralUtil::CreateR1<float>({0, 2, 4, 6, 8})));
 
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, c1, c2));
@@ -323,6 +345,74 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   // fusion allocates memory for the tuple elements and doesn't free anything,
   // so it's more expensive than exp.
   EXPECT_TRUE(ordering.ExecutesBefore(exp, fusion));
+}
+
+TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
+  auto module = CreateNewModule();
+  const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
+  const Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 4});
+
+  // param != 0
+  // Needs 17 bytes
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "cond_param"));
+  HloInstruction* zero_vector =
+      cond_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
+  cond_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
+  auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
+
+  // param - 1
+  // Needs 16 bytes
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "body_param"));
+  HloInstruction* one_vector =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
+  body_builder.AddInstruction(HloInstruction::CreateBinary(
+      r1f32, HloOpcode::kSubtract, body_param, one_vector));
+  auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* while_init =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
+  // Creates 16 bytes, ignoring subcomputations
+  builder.AddInstruction(HloInstruction::CreateWhile(
+      r1f32, cond_computation, body_computation, while_init));
+
+  module->AddEntryComputation(builder.Build());
+
+  auto size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape());
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      SequentialHloOrdering::HloModuleSequence sequence,
+      ScheduleComputationsInModule(*module, size_fn, ListMemoryScheduler));
+  // Verify that all instructions are in the sequence.
+  auto entry_computation = module->entry_computation();
+  EXPECT_EQ(entry_computation->instruction_count(),
+            sequence.at(entry_computation).size());
+
+  tensorflow::gtl::FlatMap<const HloComputation*, int64> memory_by_computation;
+  memory_by_computation[cond_computation] = 17;
+  memory_by_computation[body_computation] = 16;
+  std::unique_ptr<TuplePointsToAnalysis> points_to_analysis =
+      TuplePointsToAnalysis::Run(module.get()).ValueOrDie();
+
+  // HeapSimulator doesn't account for subcomputations
+  EXPECT_EQ(16, HeapSimulator::MinimumMemoryForComputation(
+                    *entry_computation, sequence.at(entry_computation),
+                    *points_to_analysis, size_fn)
+                    .ValueOrDie());
+  // HeapSimulator accounts for subcomputations
+  EXPECT_EQ(33, HeapSimulator::MinimumMemoryForComputation(
+                    *entry_computation, sequence.at(entry_computation),
+                    *points_to_analysis, size_fn, &memory_by_computation)
+                    .ValueOrDie());
 }
 
 }  // namespace

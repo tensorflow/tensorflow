@@ -28,6 +28,7 @@ echo ""
 export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
+export TF_NEED_ROCM=0
 export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
 

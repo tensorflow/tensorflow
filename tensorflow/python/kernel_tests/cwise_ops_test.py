@@ -96,7 +96,8 @@ class UnaryOpTest(test.TestCase):
     np_ans = np_func(x)
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      if x.dtype in (np.float32, np.float64):
+      if x.dtype in (np.float32, np.float64,
+                     dtypes_lib.bfloat16.as_numpy_dtype):
         y = 1.1 * tf_func(inx)
         np_ans *= 1.1
       else:
@@ -105,6 +106,8 @@ class UnaryOpTest(test.TestCase):
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
         self.assertAllClose(np_ans, tf_cpu, rtol=1e-3, atol=1e-3)
+      elif x.dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+        self.assertAllClose(np_ans, tf_cpu, rtol=1e-2, atol=1e-2)
       else:
         self.assertAllClose(np_ans, tf_cpu)
 
@@ -668,12 +671,11 @@ class BinaryOpTest(test.TestCase):
     self._compareCpu(x, y, np_func, tf_func, also_compare_variables)
     if x.dtype in (np.float16, np.float32, np.float64, np.complex64,
                    np.complex128):
-      if tf_func not in (_FLOORDIV, math_ops.floordiv, math_ops.igamma,
-                         math_ops.igammac, math_ops.zeta, math_ops.polygamma):
+      if tf_func not in (_FLOORDIV, math_ops.floordiv, math_ops.zeta,
+                         math_ops.polygamma):
         self._compareGradientX(x, y, np_func, tf_func)
         self._compareGradientY(x, y, np_func, tf_func)
-      if tf_func in (math_ops.igamma, math_ops.igammac, math_ops.zeta,
-                     math_ops.polygamma):
+      if tf_func in (math_ops.zeta, math_ops.polygamma):
         # These methods only support gradients in the second parameter
         self._compareGradientY(x, y, np_func, tf_func)
       self._compareGpu(x, y, np_func, tf_func)

@@ -23,6 +23,9 @@ import six
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops.init_ops import Constant
+from tensorflow.python.ops.init_ops import glorot_normal_initializer
+from tensorflow.python.ops.init_ops import glorot_uniform_initializer
+
 from tensorflow.python.ops.init_ops import Identity
 from tensorflow.python.ops.init_ops import Initializer  # pylint: disable=unused-import
 from tensorflow.python.ops.init_ops import Ones
@@ -80,52 +83,6 @@ def lecun_uniform(seed=None):
       scale=1., mode='fan_in', distribution='uniform', seed=seed)
 
 
-@tf_export('keras.initializers.glorot_normal')
-def glorot_normal(seed=None):
-  """Glorot normal initializer, also called Xavier normal initializer.
-
-  It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
-
-  Arguments:
-      seed: A Python integer. Used to seed the random generator.
-
-  Returns:
-      An initializer.
-
-  References:
-      Glorot & Bengio, AISTATS 2010
-      http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
-  """
-  return VarianceScaling(
-      scale=1., mode='fan_avg', distribution='normal', seed=seed)
-
-
-@tf_export('keras.initializers.glorot_uniform')
-def glorot_uniform(seed=None):
-  """Glorot uniform initializer, also called Xavier uniform initializer.
-
-  It draws samples from a uniform distribution within [-limit, limit]
-  where `limit` is `sqrt(6 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
-
-  Arguments:
-      seed: A Python integer. Used to seed the random generator.
-
-  Returns:
-      An initializer.
-
-  References:
-      Glorot & Bengio, AISTATS 2010
-      http://jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf
-  """
-  return VarianceScaling(
-      scale=1., mode='fan_avg', distribution='uniform', seed=seed)
-
-
 @tf_export('keras.initializers.he_normal')
 def he_normal(seed=None):
   """He normal initializer.
@@ -179,6 +136,8 @@ normal = random_normal = RandomNormal
 truncated_normal = TruncatedNormal
 identity = Identity
 orthogonal = Orthogonal
+glorot_normal = glorot_normal_initializer
+glorot_uniform = glorot_uniform_initializer
 
 # pylint: enable=invalid-name
 

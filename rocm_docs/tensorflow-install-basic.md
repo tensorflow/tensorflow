@@ -110,17 +110,17 @@ pip list | grep tensorflow && pip uninstall -y tensorflow
 For Python 2-based systems:
 ```
 # wget the TensorFlow ROCm port whl package
-cd ~/ && wget http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.3.0-cp27-cp27mu-linux_x86_64.whl
+cd ~/ && wget http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl
 
 # Pip install the whl package 
-cd ~ && sudo pip install tensorflow-1.3.0-cp27-cp27mu-linux_x86_64.whl && rm tensorflow-1.3.0-cp27-cp27mu-linux_x86_64.whl
+cd ~ && sudo pip install tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl && rm tensorflow-1.8.0-cp27-cp27mu-manylinux1_x86_64.whl
 ```
 
 For Python 3-based systems:
 ```
 # wget the TensorFlow ROCm port whl package
-cd ~/ && wget http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.3.0-cp35-cp35m-linux_x86_64.whl
+cd ~/ && wget http://repo.radeon.com/rocm/misc/tensorflow/tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl
 
 # Pip3 install the whl package 
-cd ~ && sudo pip3 install tensorflow-1.3.0-cp35-cp35m-linux_x86_64.whl && rm tensorflow-1.3.0-cp35-cp35m-linux_x86_64.whl
+cd ~ && sudo pip3 install tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl && rm tensorflow-1.8.0-cp35-cp35m-manylinux1_x86_64.whl
 ```

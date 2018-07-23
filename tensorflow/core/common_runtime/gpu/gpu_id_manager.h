@@ -21,15 +21,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Class that maintains a map from TfGpuId to PhysicalGpuId, and manages the
+// Class that maintains a map from TfGpuId to PlatformGpuId, and manages the
 // translation between them.
 class GpuIdManager {
  public:
-  // Adds a mapping from tf_gpu_id to physical_gpu_id.
-  static Status InsertTfPhysicalGpuIdPair(TfGpuId tf_gpu_id, PhysicalGpuId physical_gpu_id);
+  // Adds a mapping from tf_gpu_id to platform_gpu_id.
+  static Status InsertTfPlatformGpuIdPair(TfGpuId tf_gpu_id,
+                                          PlatformGpuId platform_gpu_id);
 
-  // Gets the physical_gpu_id associated with tf_gpu_id. Returns OK if found.
-  static Status TfToPhysicalGpuId(TfGpuId tf_gpu_id, PhysicalGpuId* physical_gpu_id);
+  // Gets the platform_gpu_id associated with tf_gpu_id. Returns OK if found.
+  static Status TfToPlatformGpuId(TfGpuId tf_gpu_id,
+                                  PlatformGpuId* platform_gpu_id);
 
   // Clears the map. Used in unit tests only.
   static void TestOnlyReset();

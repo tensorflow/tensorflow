@@ -137,7 +137,7 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
 }
 
 llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
-                                              const ShapeIndex& shape_index,
+                                              ShapeIndexView shape_index,
                                               llvm::Value* ir_value) {
   llvm::Type* pointee_type = llvm_ir::ShapeToIrType(
       ShapeUtil::GetSubshape(hlo.shape(), shape_index), module_);
@@ -145,7 +145,7 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
 
   llvm::Value* typed_ir_value;
   if (llvm::isa<llvm::GlobalVariable>(ir_value)) {
-    typed_ir_value = llvm::ConstantExpr::getAddrSpaceCast(
+    typed_ir_value = llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
         llvm::cast<llvm::GlobalVariable>(ir_value), dest_type);
   } else {
     typed_ir_value =
@@ -158,7 +158,7 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
 
 void HloToIrBindings::BindHloToIrValue(const HloInstruction& hlo,
                                        llvm::Value* ir_value,
-                                       const ShapeIndex& shape_index) {
+                                       ShapeIndexView shape_index) {
   VLOG(2) << "Binding " << hlo.ToString();
 
   const Shape& hlo_shape = hlo.shape();
@@ -202,7 +202,7 @@ llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
       << " of " << hlo.ToString();
   llvm_ir::IrArray ir_array(base_ptr,
                             ShapeUtil::GetSubshape(hlo.shape(), shape_index));
-  alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array);
+  alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array, shape_index);
 
   // The GPU backend emits one kernel per top-level HLO, and LLVM views
   // execution of one kernel as the "whole program" executed on the GPU.

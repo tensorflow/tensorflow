@@ -49,7 +49,8 @@ class _BoostedTreesEstimator(estimator.Estimator):
                l2_regularization=0.,
                tree_complexity=0.,
                min_node_weight=0.,
-               config=None):
+               config=None,
+               center_bias=False):
     """Initializes a `BoostedTreesEstimator` instance.
 
     Args:
@@ -82,17 +83,30 @@ class _BoostedTreesEstimator(estimator.Estimator):
         considered. The value will be compared with sum(leaf_hessian)/
         (batch_size * n_batches_per_layer).
       config: `RunConfig` object to configure the runtime settings.
+      center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
+
     """
     # pylint:disable=protected-access
     # HParams for the model.
     tree_hparams = canned_boosted_trees._TreeHParams(
         n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-        tree_complexity, min_node_weight)
+        tree_complexity, min_node_weight, center_bias)
 
     def _model_fn(features, labels, mode, config):
       return canned_boosted_trees._bt_model_fn(
-          features, labels, mode, head, feature_columns, tree_hparams,
-          n_batches_per_layer, config)
+          features,
+          labels,
+          mode,
+          head,
+          feature_columns,
+          tree_hparams,
+          n_batches_per_layer,
+          config=config)
 
     super(_BoostedTreesEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)
@@ -114,7 +128,8 @@ def boosted_trees_classifier_train_in_memory(
     tree_complexity=0.,
     min_node_weight=0.,
     config=None,
-    train_hooks=None):
+    train_hooks=None,
+    center_bias=False):
   """Trains a boosted tree classifier with in memory dataset.
 
   Example:
@@ -186,7 +201,13 @@ def boosted_trees_classifier_train_in_memory(
         considered. The value will be compared with sum(leaf_hessian)/
         (batch_size * n_batches_per_layer).
     config: `RunConfig` object to configure the runtime settings.
-    train_hooks: a list of Hook instances to be passed to estimator.train().
+    train_hooks: a list of Hook instances to be passed to estimator.train()
+    center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
 
   Returns:
     a `BoostedTreesClassifier` instance created with the given arguments and
@@ -207,7 +228,7 @@ def boosted_trees_classifier_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity, min_node_weight)
+      tree_complexity, min_node_weight, center_bias)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(
@@ -247,7 +268,8 @@ def boosted_trees_regressor_train_in_memory(
     tree_complexity=0.,
     min_node_weight=0.,
     config=None,
-    train_hooks=None):
+    train_hooks=None,
+    center_bias=False):
   """Trains a boosted tree regressor with in memory dataset.
 
   Example:
@@ -313,6 +335,12 @@ def boosted_trees_regressor_train_in_memory(
         (batch_size * n_batches_per_layer).
     config: `RunConfig` object to configure the runtime settings.
     train_hooks: a list of Hook instances to be passed to estimator.train().
+    center_bias: Whether bias centering needs to occur. Bias centering refers
+        to the first node in the very first tree returning the prediction that
+        is aligned with the original labels distribution. For example, for
+        regression problems, the first node will return the mean of the labels.
+        For binary classification problems, it will return a logit for a prior
+        probability of label 1.
 
   Returns:
     a `BoostedTreesClassifier` instance created with the given arguments and
@@ -332,7 +360,7 @@ def boosted_trees_regressor_train_in_memory(
   # HParams for the model.
   tree_hparams = canned_boosted_trees._TreeHParams(
       n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
-      tree_complexity, min_node_weight)
+      tree_complexity, min_node_weight, center_bias)
 
   def _model_fn(features, labels, mode, config):
     return canned_boosted_trees._bt_model_fn(

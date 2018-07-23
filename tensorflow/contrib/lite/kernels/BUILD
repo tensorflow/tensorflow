@@ -46,11 +46,17 @@ cc_library(
     hdrs = [
         "eigen_support.h",
     ],
-    copts = tflite_copts(),
+    copts = tflite_copts() + [
+        "-Wno-error=reorder",
+    ] + select({
+        "//tensorflow:ios": ["-Wno-error=invalid-partial-specialization"],
+        "//conditions:default": [
+        ],
+    }),
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "//third_party/eigen3",
+        "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
 )
 
@@ -130,7 +136,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
-        "arg_max.cc",
+        "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
@@ -142,12 +148,14 @@ cc_library(
         "conv.cc",
         "depthwise_conv.cc",
         "dequantize.cc",
+        "detection_postprocess.cc",
         "div.cc",
         "elementwise.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
         "exp.cc",
         "expand_dims.cc",
+        "fake_quant.cc",
         "floor.cc",
         "fully_connected.cc",
         "gather.cc",
@@ -157,16 +165,18 @@ cc_library(
         "lsh_projection.cc",
         "lstm.cc",
         "maximum_minimum.cc",
-        "mean.cc",
         "mfcc.cc",
         "mul.cc",
         "neg.cc",
         "pad.cc",
         "pooling.cc",
+        "pow.cc",
+        "reduce.cc",
         "register.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "select.cc",
+        "shape.cc",
         "skip_gram.cc",
         "slice.cc",
         "space_to_batch_nd.cc",
@@ -247,6 +257,20 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "detection_postprocess_test",
+    size = "small",
+    srcs = ["detection_postprocess_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
@@ -273,9 +297,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "arg_max_test",
+    name = "arg_min_max_test",
     size = "small",
-    srcs = ["arg_max_test.cc"],
+    srcs = ["arg_min_max_test.cc"],
     tags = [
         "tflite_not_portable_ios",
     ],
@@ -541,6 +565,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "fake_quant_test",
+    size = "small",
+    srcs = ["fake_quant_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "maximum_minimum_test",
     size = "small",
     srcs = ["maximum_minimum_test.cc"],
@@ -554,9 +591,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "mean_test",
+    name = "reduce_test",
     size = "small",
-    srcs = ["mean_test.cc"],
+    srcs = ["reduce_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
@@ -969,6 +1006,34 @@ tf_cc_test(
     name = "sparse_to_dense_test",
     size = "small",
     srcs = ["sparse_to_dense_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_test",
+    size = "small",
+    srcs = ["shape_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pow_test",
+    size = "small",
+    srcs = ["pow_test.cc"],
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",

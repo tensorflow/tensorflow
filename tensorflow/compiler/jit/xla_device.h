@@ -57,7 +57,7 @@ class XlaDevice : public LocalDevice {
     Metadata(int device_ordinal, se::Platform* platform,
              const DeviceType& device_type,
              XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-             PaddedShapeFn padded_shape_fn);
+             PaddedShapeFn padded_shape_fn, bool use_multiple_streams);
 
     // The index of the device on this host.
     int device_ordinal() const;
@@ -70,12 +70,15 @@ class XlaDevice : public LocalDevice {
     }
     const PaddedShapeFn& padded_shape_fn() const { return padded_shape_fn_; }
 
+    bool UseMultipleStreams() const { return use_multiple_streams_; }
+
    private:
     const int device_ordinal_;
     const DeviceType device_type_;
     se::Platform* platform_;  // Not owned.
     XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
     PaddedShapeFn padded_shape_fn_;
+    const bool use_multiple_streams_;
 
     TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
   };
@@ -89,6 +92,8 @@ class XlaDevice : public LocalDevice {
   // 'transfer_as_literal' is true if device<->host transfers must be done using
   // XLA's TransferLiteral{To,From}Device interface. If false, we can use
   // ThenMemcpy instead.
+  // If 'use_multiple_streams' is true, we create separate streams for
+  // host-to-device and device-to-host communication.
   // If padded_shape_fn is empty, a default implementation that returns
   // the on-host shape is used.
   static Status Create(
@@ -96,7 +101,7 @@ class XlaDevice : public LocalDevice {
       int device_ordinal, const string& jit_device_name,
       const SessionOptions& options, const string& name_prefix,
       const XlaOpRegistry::DeviceRegistration& registration,
-      bool transfer_as_literal,
+      bool transfer_as_literal, bool use_multiple_streams,
       const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
       const PaddedShapeFn& padded_shape_fn, std::unique_ptr<XlaDevice>* device);
 
@@ -106,6 +111,7 @@ class XlaDevice : public LocalDevice {
   XlaDevice(const SessionOptions& options, const DeviceAttributes& attrs,
             int device_ordinal, const DeviceType& jit_device_name,
             se::Platform* platform, bool transfer_as_literal,
+            bool use_multiple_streams,
             const XlaCompiler::ShapeRepresentationFn& shape_representation_fn,
             const PaddedShapeFn& padded_shape_fn);
   ~XlaDevice() override;
@@ -126,6 +132,8 @@ class XlaDevice : public LocalDevice {
   xla::LocalClient* client() const;
   const Metadata& metadata() { return xla_metadata_; }
   xla::StatusOr<se::Stream*> GetStream();
+  xla::StatusOr<se::Stream*> GetHostToDeviceStream();
+  xla::StatusOr<se::Stream*> GetDeviceToHostStream();
 
   // If not already set, create and set GpuDeviceInfo.
   // Not thread-safe
@@ -146,6 +154,16 @@ class XlaDevice : public LocalDevice {
   // copying back and forth between CPU and the device, and
   // computations enqueued by XLA.
   xla::Backend::StreamPtr stream_;
+  // If true, only stream_ is valid and all computation and transfers use
+  // stream_. If false, computation is performed by stream_ and transfers are
+  // performed by host_to_device/device_to_host_stream.
+  bool use_multiple_streams_;
+  // If use_multiple_streams_, host to device transfers are performed using this
+  // stream.
+  xla::Backend::StreamPtr host_to_device_stream_;
+  // If use_multiple_streams_, device to host transfers are performed using this
+  // stream.
+  xla::Backend::StreamPtr device_to_host_stream_;
   // Must we use XLA's transfer manager for correct host<->device transfers? if
   // false, we can use ThenMemcpy() instead.
   bool transfer_as_literal_;

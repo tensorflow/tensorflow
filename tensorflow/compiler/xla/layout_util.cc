@@ -190,9 +190,13 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 
   if (!ShapeUtil::IsArray(shape)) {
-    return InvalidArgument(
-        "shape of primitive type %s should not have a layout",
-        PrimitiveType_Name(shape.element_type()).c_str());
+    if (layout.minor_to_major_size() != 0 ||
+        layout.padded_dimensions_size() != 0) {
+      return InvalidArgument(
+          "shape of primitive type %s should not have a non-trivial layout",
+          PrimitiveType_Name(shape.element_type()).c_str());
+    }
+    return Status::OK();
   }
 
   if (layout.format() == INVALID_FORMAT) {
@@ -241,6 +245,12 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
               i, layout.padded_dimensions(i), shape.dimensions(i));
         }
       }
+    }
+  }
+
+  if (layout.format() == SPARSE) {
+    if (!layout.padded_dimensions().empty()) {
+      return InvalidArgument("Sparse layout has padded dimensions");
     }
   }
 

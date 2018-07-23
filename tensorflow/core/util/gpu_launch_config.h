@@ -128,23 +128,13 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   GpuLaunchConfig config;
   const int virtual_thread_count = work_element_count;
 
-#if GOOGLE_CUDA
   const int physical_thread_count = std::min(
-      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       virtual_thread_count);
-  const int thread_per_block = std::min(1024, d.maxCudaThreadsPerBlock());
+  const int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   const int block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumCudaMultiProcessors());
-#elif TENSORFLOW_USE_ROCM
-  const int physical_thread_count = std::min(
-      d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor(),
-      virtual_thread_count);
-  const int thread_per_block = std::min(1024, d.maxHipThreadsPerBlock());
-  const int block_count =
-      std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumHipMultiProcessors());
-#endif
+               d.getNumGpuMultiProcessors());
 
   config.virtual_thread_count = virtual_thread_count;
   config.thread_per_block = thread_per_block;
@@ -180,12 +170,12 @@ inline GpuLaunchConfig GetGpuLaunchConfig(int work_element_count,
   //CHECK_EQ(err, hipSuccess);
 
   const int physical_thread_count = std::min(
-      d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor(),
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       work_element_count);
-  thread_per_block = std::min(1024, d.maxHipThreadsPerBlock());
+  thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumHipMultiProcessors());
+               d.getNumGpuMultiProcessors());
 #endif
 
   block_count =
@@ -224,12 +214,12 @@ inline GpuLaunchConfig GetGpuLaunchConfigFixedBlockSize(
   //CHECK_EQ(err, hipSuccess);
 
   const int physical_thread_count = std::min(
-      d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor(),
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       work_element_count);
-  int thread_per_block = std::min(1024, d.maxHipThreadsPerBlock());
+  int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumHipMultiProcessors());
+               d.getNumGpuMultiProcessors());
 #endif
 
   config.virtual_thread_count = work_element_count;
@@ -257,13 +247,8 @@ inline Gpu2DLaunchConfig GetGpu2DLaunchConfig(int xdim, int ydim,
   // ok to round down here and just do more loops in the kernel
   int block_rows = std::max(kThreadsPerBlock / block_cols, 1);
 
-#if GOOGLE_CUDA
   const int physical_thread_count =
-      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor();
-#elif TENSORFLOW_USE_ROCM
-  const int physical_thread_count =
-      d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor();
-#endif
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
 
   const int max_blocks = std::max(physical_thread_count / kThreadsPerBlock, 1);
 
@@ -326,11 +311,11 @@ inline Gpu3DLaunchConfig GetGpu3DLaunchConfig(
   //CHECK_EQ(err, hipSuccess);
 
   const int physical_thread_count =
-      d.getNumHipMultiProcessors() * d.maxHipThreadsPerMultiProcessor();
-  thread_per_block = std::min(1024, d.maxHipThreadsPerBlock());
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
+  thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumHipMultiProcessors());
+               d.getNumGpuMultiProcessors());
 #endif
 
   int threadsx = std::min({xdim, thread_per_block, xthreadlimit});

@@ -19,11 +19,7 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python.training import training_util
-from tensorflow.contrib.layers.python.layers import optimizers
-
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
-
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
@@ -35,8 +31,9 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.util import nest
 from tensorflow.python.summary import summary
+from tensorflow.python.training import training_util
+from tensorflow.python.util import nest
 
 
 class _NoStatePredictOutput(export_lib.PredictOutput):
@@ -102,12 +99,9 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         use_resource=True):
       model_outputs = self.create_loss(features, mode)
 
-    train_op = optimizers.optimize_loss(
+    train_op = self.optimizer.minimize(
         model_outputs.loss,
-        global_step=training_util.get_global_step(),
-        optimizer=self.optimizer,
-        # Learning rate is set in the Optimizer object
-        learning_rate=None)
+        global_step=training_util.get_global_step())
     return estimator_lib.EstimatorSpec(
         loss=model_outputs.loss,
         mode=mode,
@@ -132,7 +126,8 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
         loss=model_outputs.loss,
         mode=mode,
         eval_metric_ops=metrics,
-        predictions={})
+        # needed for custom metrics.
+        predictions=model_outputs.predictions)
 
   def _predict_ops(self, features):
     """Add ops for prediction to the graph."""
@@ -210,12 +205,12 @@ class TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acce
   def create_estimator_spec(self, features, mode, labels=None):
     """Performs basic error checking and returns an EstimatorSpec."""
     with ops.name_scope(self._name, "head"):
-      if labels:
+      if labels is not None and labels != {}:  # for better error messages.
         raise ValueError(
-            "The model received a `labels` dictionary, which is "
-            "not supported. Pass '{}' and '{}' as "
-            "features.".format(feature_keys.TrainEvalFeatures.TIMES,
-                               feature_keys.TrainEvalFeatures.VALUES))
+            "The model received a `labels`, which is not supported. "
+            "Pass '{}' and '{}' as features.".format(
+                feature_keys.TrainEvalFeatures.TIMES,
+                feature_keys.TrainEvalFeatures.VALUES))
       del labels
       features = {
           name: self._convert_feature_to_tensor(name=name, value=value)

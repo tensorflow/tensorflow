@@ -3,6 +3,7 @@ licenses(["restricted"])
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 
 STREAM_EXECUTOR_HEADERS = glob([
     "*.h",
@@ -36,7 +37,6 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "@local_config_cuda//cuda:cuda_headers",
@@ -52,10 +52,17 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
-        "//tensorflow/compiler/xla:statusor",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_rocm//rocm:rocm_headers",
     ] + if_static([":stream_executor_impl"]),
+)
+
+cc_header_only_library(
+    name = "stream_executor_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":stream_executor",
+    ],
 )
 
 cc_library(

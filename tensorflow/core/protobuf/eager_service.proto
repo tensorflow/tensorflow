@@ -7,6 +7,7 @@ import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
 
 message RemoteTensorHandle {
   // The ID of the operation that produced this tensor.
@@ -45,6 +46,10 @@ message QueueItem {
   }
 }
 
+message QueueResponse {
+  repeated TensorShapeProto shape = 1;
+}
+
 message CreateContextRequest {
   // Identifies the full cluster, and this particular worker's position within.
   ServerDef server_def = 1;
@@ -60,6 +65,11 @@ message CreateContextRequest {
 
   // This is the version for all the ops that will be enqueued by the client.
   VersionDef version_def = 4;
+
+  // This ID will be used for all future communications. It is essential that
+  // both ends use this ID for selecting a rendezvous to get everything to
+  // match.
+  int64 rendezvous_id = 5;
 }
 
 message CreateContextResponse {
@@ -79,6 +89,8 @@ message EnqueueRequest {
 }
 
 message EnqueueResponse {
+  // A single operation response for every item in the request.
+  repeated QueueResponse queue_response = 1;
 }
 
 message WaitQueueDoneRequest {

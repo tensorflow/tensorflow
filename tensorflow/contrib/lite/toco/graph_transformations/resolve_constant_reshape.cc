@@ -25,7 +25,7 @@ namespace toco {
 bool ResolveConstantReshape::Run(Model* model, std::size_t op_index) {
   auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
-  if (base_op->type != OperatorType::kTensorFlowReshape) {
+  if (base_op->type != OperatorType::kReshape) {
     return false;
   }
   const auto* op = static_cast<const TensorFlowReshapeOperator*>(base_op);

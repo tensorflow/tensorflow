@@ -23,9 +23,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/kernels/control_flow_ops.h"
+#include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
+#include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/sendrecv_ops.h"
 #include "tensorflow/core/kernels/shape_ops.h"
@@ -88,6 +90,9 @@ class XlaAssignVariableOp : public AsyncOpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("ReadVariableOp").Device(DEVICE).HostMemory("resource"),            \
       ReadVariableOp);                                                         \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("DestroyResourceOp").Device(DEVICE).HostMemory("resource"),         \
+      DestroyResourceOp);                                                      \
   REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -145,7 +150,32 @@ class XlaAssignVariableOp : public AsyncOpKernel {
                               .Device(DEVICE)                                  \
                               .HostMemory("input")                             \
                               .HostMemory("output"),                           \
-                          LoopCondOp);
+                          LoopCondOp);                                         \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueEnqueueV2").Device(DEVICE).HostMemory("handle"), EnqueueOp);  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueDequeueV2").Device(DEVICE).HostMemory("handle"), DequeueOp);  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueCloseV2").Device(DEVICE).HostMemory("handle"), QueueCloseOp); \
+  REGISTER_KERNEL_BUILDER(Name("QueueSizeV2")                                  \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("size")                              \
+                              .HostMemory("handle"),                           \
+                          QueueSizeOp);                                        \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("QueueIsClosedV2").Device(DEVICE).HostMemory("handle"),             \
+      QueueIsClosedOp);                                                        \
+                                                                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);
+
+// TODO(phawkins): currently we do not register the QueueEnqueueMany,
+// QueueDequeueMany, or QueueDequeueUpTo kernels because they attempt to read
+// and write the tensors they access in order to concatenate them into a batch.
+// We would need either to call out to an XLA computation to perform the
+// concatenation, or we would need to refactor those kernels so the splitting
+// or merging is done in a separate operator that can be compiled.
 
 }  // namespace tensorflow
 
