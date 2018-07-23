@@ -259,9 +259,7 @@ static bool DeviceConfigurationsEqual(
 
 Status PoplarExecutor::ConfigurePoplarDevice(
     const tensorflow::IPUOptions::DeviceConfig& cfg) {
-
   if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
-
     current_config_ = cfg;
 
     tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
@@ -303,7 +301,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
               if (tiles_per_ipu > 0) {
                 poplar_device_ =
-                  poplar_device_.createVirtualDevice(tiles_per_ipu);
+                    poplar_device_.createVirtualDevice(tiles_per_ipu);
               }
 
               opened = true;
@@ -336,7 +334,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       }
       default:
         return xla::InternalError(
-            "Unrecognized poplar device type for ordinal %d: %d", ordinal_, type);
+            "Unrecognized poplar device type for ordinal %d: %d", ordinal_,
+            type);
     }
 
     if (!opened) {
@@ -348,10 +347,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     device_open_ = true;
 
     option_flags_ = poplar::OptionFlags();
-    if (type == tensorflow::IPUOptions::DeviceConfig::IPU) {
-      option_flags_.set("target.textSectionSizeInBytes", "0x8000");
-      option_flags_.set("target.workerStackSizeInBytes", "0x400");
-    }
+    option_flags_.set("target.textSectionSizeInBytes", "0xe000");
+    option_flags_.set("target.workerStackSizeInBytes", "0x2000");
     for (const auto& opt : cfg.compilation_options()) {
       option_flags_.set(opt.option(), opt.value());
     }
@@ -370,7 +367,6 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     for (int64 h : poplar_target) {
       poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
     }
-
   }
 
   return Status::OK();
@@ -550,9 +546,8 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::RemapArgs(
 }
 
 std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
-    xla::DeviceMemoryAllocator* allocator,
-    const xla::Shape& shape, const int64 n,
-    const std::vector<std::unique_ptr<Literal>>& constant) {
+    xla::DeviceMemoryAllocator* allocator, const xla::Shape& shape,
+    const int64 n, const std::vector<std::unique_ptr<Literal>>& constant) {
   if (shape.element_type() != xla::TUPLE) {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
     se::DeviceMemoryBase allocated =
@@ -577,8 +572,8 @@ std::tuple<se::DeviceMemoryBase, int64> PoplarExecutor::ConstantOutput(
     int64 new_n = n;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); i++) {
       se::DeviceMemoryBase out;
-      std::tie(out, new_n) = ConstantOutput(
-          allocator, shape.tuple_shapes(i), new_n, constant);
+      std::tie(out, new_n) =
+          ConstantOutput(allocator, shape.tuple_shapes(i), new_n, constant);
       *buf++ = out.opaque();
     }
 
@@ -655,9 +650,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       // An empty engine is either a graph that just passes its inputs through
       // to its outputs, or a graph which returns a constant.
       if (executable.LiteralValue().size() > 0) {
-        std::tie(retbuf, tensor_count) =
-            ConstantOutput(allocator, output_shape, 0,
-                           executable.LiteralValue());
+        std::tie(retbuf, tensor_count) = ConstantOutput(
+            allocator, output_shape, 0, executable.LiteralValue());
       } else {
         std::tie(retbuf, tensor_count) =
             RemapArgs(output_shape, 0, output_map, args);
@@ -702,8 +696,8 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         try {
           engine->load(poplar_device_);
         } catch (std::logic_error e) {
-          return tensorflow::errors::Internal(
-            "Poplar engine load error ", e.what());
+          return tensorflow::errors::Internal("Poplar engine load error ",
+                                              e.what());
         }
 
         if (current_config_.profiling().enable_io_trace()) {
@@ -737,15 +731,16 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
               tc->on_device = true;
               tc->input_handle = mem.first;
               if (current_config_.profiling().enable_io_trace()) {
-                AddEventRecord(tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER,
-                               "", mem.first, 0);
+                AddEventRecord(
+                    tensorflow::IpuTraceEvent::HOST_TO_DEVICE_TRANSFER, "",
+                    mem.first, 0);
               }
             }
           }
         }
       } catch (std::logic_error e) {
-        return tensorflow::errors::Internal(
-          "Poplar host write error ", e.what());
+        return tensorflow::errors::Internal("Poplar host write error ",
+                                            e.what());
       }
 
       std::tie(retbuf, tensor_count) =
@@ -765,12 +760,10 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         }
 
         current_engine_->run(0);
+      } catch (std::logic_error e) {
+        return tensorflow::errors::Internal("Poplar execution error ",
+                                            e.what());
       }
-      catch (std::logic_error e) {
-        return tensorflow::errors::Internal(
-            "Poplar execution error ", e.what());
-      }
-
 
       try {
         if (current_config_.profiling().enable_execution_trace()) {
