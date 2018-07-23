@@ -57,6 +57,17 @@ SSAValue *Operation::getOperand(unsigned idx) {
   }
 }
 
+void Operation::setOperand(unsigned idx, SSAValue *value) {
+  if (auto *inst = dyn_cast<OperationInst>(this)) {
+    inst->setOperand(idx, cast<CFGValue>(value));
+  } else {
+    auto *stmt = cast<OperationStmt>(this);
+    (void)stmt;
+    // TODO: Add operands to OperationStmt.
+    abort();
+  }
+}
+
 /// Return the number of results this operation has.
 unsigned Operation::getNumResults() const {
   if (auto *inst = dyn_cast<OperationInst>(this)) {

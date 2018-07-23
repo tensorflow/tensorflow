@@ -70,6 +70,28 @@ CFGFunction *Instruction::getFunction() const {
   return getBlock()->getFunction();
 }
 
+unsigned Instruction::getNumOperands() const {
+  switch (getKind()) {
+  case Kind::Operation:
+    return cast<OperationInst>(this)->getNumOperands();
+  case Kind::Branch:
+    return cast<BranchInst>(this)->getNumOperands();
+  case Kind::Return:
+    return cast<ReturnInst>(this)->getNumOperands();
+  }
+}
+
+MutableArrayRef<InstOperand> Instruction::getInstOperands() {
+  switch (getKind()) {
+  case Kind::Operation:
+    return cast<OperationInst>(this)->getInstOperands();
+  case Kind::Branch:
+    return cast<BranchInst>(this)->getInstOperands();
+  case Kind::Return:
+    return cast<ReturnInst>(this)->getInstOperands();
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // OperationInst
 //===----------------------------------------------------------------------===//

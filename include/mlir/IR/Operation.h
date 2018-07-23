@@ -54,6 +54,7 @@ public:
   const SSAValue *getOperand(unsigned idx) const {
     return const_cast<Operation *>(this)->getOperand(idx);
   }
+  void setOperand(unsigned idx, SSAValue *value);
 
   // Support non-const operand iteration.
   using operand_iterator = OperandIterator<Operation, SSAValue>;

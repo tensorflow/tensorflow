@@ -61,6 +61,59 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
+  //===--------------------------------------------------------------------===//
+  // Operands
+  //===--------------------------------------------------------------------===//
+
+  unsigned getNumOperands() const;
+
+  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+  const CFGValue *getOperand(unsigned idx) const {
+    return getInstOperand(idx).get();
+  }
+  void setOperand(unsigned idx, CFGValue *value) {
+    return getInstOperand(idx).set(value);
+  }
+
+  // Support non-const operand iteration.
+  using operand_iterator = OperandIterator<Instruction, CFGValue>;
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<operand_iterator> getOperands() {
+    return {operand_begin(), operand_end()};
+  }
+
+  // Support const operand iteration.
+  using const_operand_iterator =
+      OperandIterator<const Instruction, const CFGValue>;
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<const_operand_iterator> getOperands() const {
+    return {operand_begin(), operand_end()};
+  }
+
+  MutableArrayRef<InstOperand> getInstOperands();
+  ArrayRef<InstOperand> getInstOperands() const {
+    return const_cast<Instruction *>(this)->getInstOperands();
+  }
+
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
+  }
+
 protected:
   Instruction(Kind kind) : kind(kind) {}
 
@@ -105,6 +158,9 @@ public:
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
     return getInstOperand(idx).get();
+  }
+  void setOperand(unsigned idx, CFGValue *value) {
+    return getInstOperand(idx).set(value);
   }
 
   // Support non-const operand iteration.
@@ -268,6 +324,9 @@ public:
   const CFGValue *getOperand(unsigned idx) const {
     return getInstOperand(idx).get();
   }
+  void setOperand(unsigned idx, CFGValue *value) {
+    return getInstOperand(idx).set(value);
+  }
 
   ArrayRef<InstOperand> getInstOperands() const { return operands; }
   MutableArrayRef<InstOperand> getInstOperands() { return operands; }
@@ -315,6 +374,10 @@ public:
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
     return getInstOperand(idx).get();
+  }
+
+  void setOperand(unsigned idx, CFGValue *value) {
+    return getInstOperand(idx).set(value);
   }
 
   // Support non-const operand iteration.

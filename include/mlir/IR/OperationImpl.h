@@ -147,13 +147,13 @@ private:
 
 /// This class provides the API for ops that are known to have exactly one
 /// SSA operand.
-class OneOperand {
+template <typename ConcreteType> class OneOperand {
 public:
-  void getOperand() const {
-    /// TODO.
+  SSAValue *getOperand() const {
+    return static_cast<ConcreteType *>(this)->getOperand(0);
   }
-  void setOperand() {
-    /// TODO.
+  void setOperand(SSAValue *value) {
+    static_cast<ConcreteType *>(this)->setOperand(0, value);
   }
 
   static const char *verifyBase(const Operation *op) {

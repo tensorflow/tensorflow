@@ -57,7 +57,7 @@ private:
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>
 ///
 class DimOp
-    : public OpImpl::Base<DimOp, OpImpl::OneOperand, OpImpl::OneResult> {
+    : public OpImpl::Base<DimOp, OpImpl::OneOperand<DimOp>, OpImpl::OneResult> {
 public:
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
