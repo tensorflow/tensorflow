@@ -398,10 +398,25 @@ class Base(gast.NodeTransformer):
     try:
       source, _ = compiler.ast_to_source(node)
       return source
-    except AssertionError:
+    # pylint: disable=broad-except
+    # This function is used for error reporting.  If an exception occurs here,
+    # it should be suppressed, in favor of emitting as informative a message
+    # about the original error as possible.
+    except Exception:
       return '<could not convert AST to source>'
 
   def visit(self, node):
+    if not isinstance(node, gast.AST):
+      # This is not that uncommon a mistake: various node bodies are lists, for
+      # example, posing a land mine for transformers that need to recursively
+      # call `visit`.  The error needs to be raised before the exception handler
+      # below is installed, because said handler will mess up if `node` is not,
+      # in fact, a node.
+      msg = (
+          'invalid value for "node": expected "ast.AST", got "{}"; to'
+          ' visit lists of nodes, use "visit_block" instead').format(type(node))
+      raise ValueError(msg)
+
     source_code = self.entity_info.source_code
     source_file = self.entity_info.source_file
     did_enter_function = False
