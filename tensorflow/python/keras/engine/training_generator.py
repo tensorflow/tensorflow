@@ -364,7 +364,7 @@ def evaluate_generator(model,
         averages.append(
             np.average([out[i] for out in all_outs], weights=batch_sizes))
       else:
-        averages.append(float(all_outs[-1][i]))
+        averages.append(np.float64(all_outs[-1][i]))
     return averages
 
 
