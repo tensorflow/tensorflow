@@ -204,9 +204,7 @@ public:
     return ArrayRef<unsigned>(shapeElements, getSubclassData());
   }
 
-  PrimitiveType *getElementType() const {
-    return elementType;
-  }
+  Type *getElementType() const { return elementType; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Type *type) {
@@ -215,10 +213,9 @@ public:
 
 private:
   const unsigned *shapeElements;
-  PrimitiveType *elementType;
+  Type *elementType;
 
-  VectorType(ArrayRef<unsigned> shape, PrimitiveType *elementType,
-             MLIRContext *context);
+  VectorType(ArrayRef<unsigned> shape, Type *elementType, MLIRContext *context);
 };
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:

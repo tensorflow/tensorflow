@@ -370,7 +370,7 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
   shape = impl.copyInto(shape);
 
   // Initialize the memory using placement new.
-  new (result) VectorType(shape, cast<PrimitiveType>(elementType), context);
+  new (result) VectorType(shape, elementType, context);
 
   // Cache and return it.
   return *existing.first = result;

@@ -35,11 +35,10 @@ FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
     numResults(numResults), inputsAndResults(inputsAndResults) {
 }
 
-VectorType::VectorType(ArrayRef<unsigned> shape, PrimitiveType *elementType,
+VectorType::VectorType(ArrayRef<unsigned> shape, Type *elementType,
                        MLIRContext *context)
-  : Type(Kind::Vector, context, shape.size()),
-    shapeElements(shape.data()), elementType(elementType) {
-}
+    : Type(Kind::Vector, context, shape.size()), shapeElements(shape.data()),
+      elementType(elementType) {}
 
 RankedTensorType::RankedTensorType(ArrayRef<int> shape, Type *elementType,
                                    MLIRContext *context)
