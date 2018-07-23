@@ -36,6 +36,7 @@ cc_library(
 py_library(
     name = "tpu_estimator",
     srcs = [
+        "python/tpu/error_handling.py",
         "python/tpu/tpu_config.py",
         "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
