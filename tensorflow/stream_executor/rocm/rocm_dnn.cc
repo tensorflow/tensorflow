@@ -1748,7 +1748,8 @@ bool MIOpenSupport::DoConvolveImpl(
     // An algorithm has been specified.
     dnn::AlgorithmDesc algo = algorithm_config.algorithm();
     algo_sz.first = ToConvForwardAlgo(algo);
-    algo_sz.second = algorithm_config.scratch_size();
+    algo_sz.second =
+        static_cast<size_t>(algorithm_config.algorithm_scratch_size());
 
     size_t size_in_bytes = algo_sz.second;
     if (size_in_bytes != 0) {
@@ -2309,7 +2310,8 @@ bool MIOpenSupport::DoConvolveBackwardDataImpl(
     // An algorithm has been specified.
     dnn::AlgorithmDesc algo = algorithm_config.algorithm();
     algo_sz.first = ToConvBackwardDataAlgo(algo);
-    algo_sz.second = algorithm_config.scratch_size();
+    algo_sz.second =
+        static_cast<size_t>(algorithm_config.algorithm_scratch_size());
 
     size_t size_in_bytes = algo_sz.second;
     if (size_in_bytes != 0) {
@@ -2532,7 +2534,8 @@ bool MIOpenSupport::DoConvolveBackwardFilterImpl(
     // An algorithm has been specified.
     dnn::AlgorithmDesc algo = algorithm_config.algorithm();
     algo_sz.first = ToConvBackwardFilterAlgo(algorithm_config.algorithm());
-    algo_sz.second = algorithm_config.scratch_size();
+    algo_sz.second =
+        static_cast<size_t>(algorithm_config.algorithm_scratch_size());
 
     size_t size_in_bytes = algo_sz.second;
 
