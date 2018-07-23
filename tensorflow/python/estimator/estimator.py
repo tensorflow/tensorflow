@@ -567,6 +567,10 @@ class Estimator(object):
 
   def _assert_members_are_not_overridden(self):
     """Asserts members of `Estimator` are not overridden."""
+    # TPUEstimator is special cased (owned by TF).
+    if self.__class__.__name__ == 'TPUEstimator':
+      return
+
     allowed_overrides = set([
         '_call_input_fn', '_create_global_step',
         '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
