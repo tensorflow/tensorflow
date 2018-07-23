@@ -629,7 +629,7 @@ class BaseSession(SessionInterface):
     opts = tf_session.TF_NewSessionOptions(target=self._target, config=config)
     try:
       # pylint: disable=protected-access
-      self._session = tf_session.TF_NewSession(self._graph._c_graph, opts)
+      self._session = tf_session.TF_NewSessionRef(self._graph._c_graph, opts)
       # pylint: enable=protected-access
     finally:
       tf_session.TF_DeleteSessionOptions(opts)

@@ -2922,6 +2922,14 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "session_ref",
+    srcs = ["common_runtime/session_ref.cc"],
+    hdrs = ["common_runtime/session_ref.h"],
+    copts = tf_copts(),
+    deps = [":core_cpu_base"],
+)
+
+cc_library(
     name = "gpu_id",
     hdrs = [
         "common_runtime/gpu/gpu_id.h",
