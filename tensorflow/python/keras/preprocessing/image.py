@@ -1543,8 +1543,13 @@ class DirectoryIterator(Iterator):
 
     pool.close()
     pool.join()
+    self._batch_x_processor = None
+    self._batch_y_processor = None
     super(DirectoryIterator, self).__init__(self.samples, batch_size, shuffle,
                                             seed)
+  def register_batch_processor(self, batch_x_processor=None, batch_y_processor=None):
+    self._batch_x_processor = batch_x_processor
+    self._batch_y_processor = batch_y_processor
 
   def _get_batches_of_transformed_samples(self, index_array):
     batch_x = np.zeros((len(index_array),) + self.image_shape, dtype=K.floatx())
@@ -1584,6 +1589,10 @@ class DirectoryIterator(Iterator):
         batch_y[i, label] = 1.
     else:
       return batch_x
+    if self._batch_x_processor is not None:
+        batch_x = self._batch_x_processor(batch_x, self.filenames, index_array)
+    if self._batch_y_processor is not None:
+        batch_y = self._batch_y_processor(batch_y, self.filenames, index_array)
     return batch_x, batch_y
 
   def next(self):
