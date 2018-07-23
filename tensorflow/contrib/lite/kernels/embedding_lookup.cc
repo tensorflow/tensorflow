@@ -29,7 +29,6 @@ limitations under the License.
 //   When indices are out of bound, the ops will not succeed.
 //
 
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
