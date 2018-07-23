@@ -2,6 +2,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_shared_object",
 )
 
 def tflite_copts():
@@ -117,6 +118,20 @@ def tflite_jni_binary(name,
       linkstatic=linkstatic,
       deps= deps + [linkscript],
       linkopts=linkopts)
+
+def tflite_cc_shared_object(name,
+                            copts=tflite_copts(),
+                            linkopts=[],
+                            linkstatic=1,
+                            deps=[]):
+  """Builds a shared object for TFLite."""
+  tf_cc_shared_object(
+      name=name,
+      copts=copts,
+      linkstatic=linkstatic,
+      linkopts=linkopts + tflite_jni_linkopts(),
+      framework_so=[],
+      deps=deps)
 
 def tf_to_tflite(name, src, options, out):
   """Convert a frozen tensorflow graphdef to TF Lite's flatbuffer.
