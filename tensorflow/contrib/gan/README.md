@@ -47,7 +47,7 @@ Easily experiment with already-implemented and well-tested losses and penalties,
 such as the Wasserstein loss, gradient penalty, mutual information penalty, etc
 
 * [evaluation](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/):
-Use `Inception Score` or `Frechet Distance` with a pretrained Inception
+Use `Inception Score`, `Frechet Distance`, or `Kernel Distance` with a pretrained Inception
 network to evaluate your unconditional generative model. You can also use
 your own pretrained classifier for more specific performance numbers, or use
 other methods for evaluating conditional generative models.
