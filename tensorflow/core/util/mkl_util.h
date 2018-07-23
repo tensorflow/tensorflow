@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <string>
 #include <vector>
+#include <memory>
 #include <unordered_map>
 #include <utility>
 
@@ -1657,8 +1658,10 @@ class MklDnnData {
 
   /// allocate function for data buffer
   inline void AllocateBuffer(size_t size) {
-    allocated_buffer_ =  cpu_allocator()->AllocateRaw(64, size);
+    const int64 kMemoryAlginment = 64;  // For AVX512 memory alignment.
+    allocated_buffer_ =  cpu_allocator()->AllocateRaw(kMemoryAlginment, size);
   }
+
   inline void* GetAllocatedBuffer() {
     return allocated_buffer_;
   }
@@ -1884,7 +1887,6 @@ class MklDnnData {
     net.push_back(FindOrCreateReorder<T>(reorder_memory_, user_memory_));
     stream(stream::kind::eager).submit(net).wait();
   }
-
 };
 
 /// Base class for operations with reuse of primitives
@@ -1918,10 +1920,7 @@ class MklPrimitiveFactory {
 
   void SetOp(const std::string& key, MklPrimitive* op) {
     auto &map = MklPrimitiveFactory<T>::GetHashMap();
-    auto stream_iter = map.find(key);
-
-    CHECK(stream_iter == map.end());
-
+    CHECK(map.emplace(key, op).second);
     map[key] = op;
   }
 
@@ -1985,7 +1984,7 @@ static inline memory::format get_desired_format(int channel) {
 }
 
 class MklReorderPrimitive : public MklPrimitive {
-  public:
+ public:
     explicit MklReorderPrimitive(const memory* from, const memory* to) {
       Setup(from, to);
     }
@@ -2000,7 +1999,7 @@ class MklReorderPrimitive : public MklPrimitive {
       context_.dst_mem->set_data_handle(to->get_data_handle());
     }
 
-  private:
+ private:
     struct ReorderContext {
       std::shared_ptr<mkldnn::memory> src_mem;
       std::shared_ptr<mkldnn::memory> dst_mem;
@@ -2024,7 +2023,7 @@ class MklReorderPrimitive : public MklPrimitive {
 
 template <typename T>
 class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
-  public:
+ public:
     static MklReorderPrimitive* Get(const memory* from,
         const memory* to) {
       auto reorderPrim = static_cast<MklReorderPrimitive*>(
@@ -2043,9 +2042,9 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
       return instance_;
     }
 
-  private:
-    MklReorderPrimitiveFactory() {};
-    ~MklReorderPrimitiveFactory() {};
+ private:
+    MklReorderPrimitiveFactory() {}
+    ~MklReorderPrimitiveFactory() {}
 
     static std::string CreateKey(const memory* from, const memory* to) {
       std::string prefix = "reorder";
@@ -2075,15 +2074,16 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     }
 };
 
-  /// Fuction to find(or create) a reorder from memory pointed by from to memory pointed
-  /// by to, it will created primitive or get primitive from pool if it is cached.
+  /// Fuction to find(or create) a reorder from memory pointed by
+  /// from to memory pointed by to, it will created primitive or
+  /// get primitive from pool if it is cached.
   /// Returns the primitive.
   template <typename T>
   inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
     CHECK_NOTNULL(from);
     CHECK_NOTNULL(to);
-    MklReorderPrimitive *reorder_prim = 
-      MklReorderPrimitiveFactory<T>::Get(from, to); 
+    MklReorderPrimitive *reorder_prim =
+      MklReorderPrimitiveFactory<T>::Get(from, to);
     return *reorder_prim->GetPrimitive();
   }
 

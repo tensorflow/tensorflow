@@ -79,15 +79,15 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
     context_.ws_fmt = static_cast<mkldnn::memory::format>(ws_pd.format);
     context_.ws_dims.assign(ws_pd.dims, ws_pd.dims + ws_pd.ndims);
     context_.ws_dt = static_cast<mkldnn::memory::data_type>(ws_pd.data_type);
-    context_.ws_size = 
+    context_.ws_size =
       context_.fwd_pd.get()->workspace_primitive_desc().get_size();
     context_.ws_mem.reset(
         new memory(context_.fwd_pd.get()->workspace_primitive_desc(),
                   DummyData));
-    context_.fwd.reset(new pooling_forward(*context_.fwd_pd, 
+    context_.fwd.reset(new pooling_forward(*context_.fwd_pd,
           *context_.src_mem, *context_.dst_mem, *context_.ws_mem));
   } else {
-    context_.fwd.reset(new pooling_forward(*context_.fwd_pd, 
+    context_.fwd.reset(new pooling_forward(*context_.fwd_pd,
           *context_.src_mem, *context_.dst_mem));
   }
 
@@ -95,15 +95,15 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 }
 
 template <typename T>
-void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, const T* dst_data, 
-                                        const void* ws_data) {
+void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
+                                        void* ws_data) {
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)));
   context_.dst_mem->set_data_handle(
-      static_cast<void*>(const_cast<T*>(dst_data)));
+      static_cast<void*>(dst_data));
   if (context_.alg_kind == pooling_max) {  // max pooling must have ws
     assert(ws_data != nullptr);
-    context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
+    context_.ws_mem->set_data_handle(ws_data);
   }
   context_.fwd_stream->submit(context_.fwd_primitives);
 
@@ -128,13 +128,13 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   context_.alg_kind = bwdParams.alg_kind;
 
   // Create memory desc
-  context_.diff_src_md.reset(new memory::desc({bwdParams.src_dims}, 
+  context_.diff_src_md.reset(new memory::desc({bwdParams.src_dims},
         MklDnnType<T>(), memory::format::any));
-  context_.diff_dst_md.reset(new memory::desc({bwdParams.dst_dims}, 
+  context_.diff_dst_md.reset(new memory::desc({bwdParams.dst_dims},
         MklDnnType<T>(), get_desired_format(bwdParams.dst_dims[1])));
   context_.bwd_desc.reset(new pooling_backward::desc(bwdParams.alg_kind,
-      *context_.diff_src_md, *context_.diff_dst_md, bwdParams.strides, 
-      bwdParams.filter_dims, bwdParams.padding_left, bwdParams.padding_right, 
+      *context_.diff_src_md, *context_.diff_dst_md, bwdParams.strides,
+      bwdParams.filter_dims, bwdParams.padding_left, bwdParams.padding_right,
       padding_kind::zero));
 
   // create a forward primitive,
@@ -165,10 +165,10 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
     context_.ws_dims.assign(ws_pd.dims, ws_pd.dims + ws_pd.ndims);
     context_.ws_fmt = get_desired_format(context_.ws_dims[1]);
     context_.ws_dt =  static_cast<mkldnn::memory::data_type>(ws_pd.data_type);
-    context_.ws_mem.reset(new memory({{{context_.ws_dims}, context_.ws_dt, 
+    context_.ws_mem.reset(new memory({{{context_.ws_dims}, context_.ws_dt,
           context_.ws_fmt}, cpu_engine}, DummyData));
     context_.bwd.reset(new pooling_backward(
-               *context_.bwd_pd, *context_.diff_dst_mem, *context_.ws_mem, 
+               *context_.bwd_pd, *context_.diff_dst_mem, *context_.ws_mem,
                *context_.diff_src_mem));
   } else {
     context_.bwd.reset(new pooling_backward(*context_.bwd_pd,
@@ -179,11 +179,11 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
 
 template<typename T>
 void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
-                            const T* diff_src_data, const void* ws_data) {
+                            T* diff_src_data, const void* ws_data) {
   context_.diff_dst_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(diff_dst_data)));
   context_.diff_src_mem->set_data_handle(
-      static_cast<void*>(const_cast<T*>(diff_src_data)));
+      static_cast<void*>(diff_src_data));
   if (context_.alg_kind == pooling_max) {
     assert(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));

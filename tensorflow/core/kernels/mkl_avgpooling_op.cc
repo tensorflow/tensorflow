@@ -504,21 +504,17 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       OP_REQUIRES_OK(context, context->status());
 
       // check whether we need to reorder src
-      T* src_data = nullptr;
+      const T* src_data = input_tensor.flat<T>().data();
       if (input_md.data.format != pooling_fwd->GetSrcMemoryFormat()) {
         dnn_data_input.SetUsrMem(input_md, &input_tensor);
         auto src_target_primitive_desc = memory::primitive_desc({{src_dims},
             MklDnnType<T>(), pooling_fwd->GetSrcMemoryFormat()}, cpu_engine_);
         dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc);
-        src_data = static_cast<T*>(
-                    dnn_data_input.GetOpMem().get_data_handle());
-      } else {
-        src_data = static_cast<T*>(const_cast<T*>(
-                    input_tensor.flat<T>().data()));
+        src_data = const_cast<T*>(
+            reinterpret_cast<T*>(dnn_data_input.GetOpMem().get_data_handle()));
       }
 
-      T* dst_data = static_cast<T*>(
-          const_cast<T*>(output_tensor->flat<T>().data()));
+      T* dst_data = output_tensor->flat<T>().data();
 
       // execute pooling
       pooling_fwd->Execute(src_data, dst_data);
@@ -599,20 +595,17 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                                  : memory::desc(diff_dst_dims, MklDnnType<T>(),
                                          this->data_format_mkldnn_);
       // Check whether we need to reorder diff_dst
-      T* diff_dst_data = nullptr;
+      const T* diff_dst_data = grad_tensor.flat<T>().data();
       if (diff_dst_md.data.format != pooling_bwd->GetDiffDstFormat()) {
         auto target_diff_dst = memory::primitive_desc({{diff_dst_dims},
             MklDnnType<T>(), pooling_bwd->GetDiffDstFormat()}, cpu_engine_);
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
         grad_dnn_data.CheckReorderToOpMem(target_diff_dst);
-        diff_dst_data = static_cast<T*>(
-            grad_dnn_data.GetOpMem().get_data_handle());
-      } else {
-        diff_dst_data = static_cast<T*>(const_cast<T*>(
-            grad_tensor.flat<T>().data()));
+        diff_dst_data = const_cast<T*>(
+            reinterpret_cast<T*>(grad_dnn_data.GetOpMem().get_data_handle()));
       }
-      T* diff_src_data = static_cast<T*>(
-          const_cast<T*>(output_tensor->flat<T>().data()));
+
+      T* diff_src_data = output_tensor->flat<T>().data();
 
       // execute pooling op
       pooling_bwd->Execute(diff_dst_data, diff_src_data);

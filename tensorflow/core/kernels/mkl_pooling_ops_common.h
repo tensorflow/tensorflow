@@ -76,10 +76,9 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
 
   // Pooling forward execute
   //   src_data:  input data buffer of src
-  //   ws_data:   input data buffer of workspace
+  //   ws_data:   output data buffer of workspace
   //   dst_data:  output data buffer of dst
-  void Execute(const T* src_data, const T* dst_data,
-      const void* ws_data = nullptr);
+  void Execute(const T* src_data, T* dst_data, void* ws_data = nullptr);
 
   std::shared_ptr<mkldnn::pooling_forward::primitive_desc>
   GetPoolingFwdPd() const {
@@ -214,7 +213,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
   //   diff_dst_data:  input data buffer of diff_dst
   //   diff_src_data:  output data buffer of diff_src
   //   ws_data:        input data buffer of workspace
-  void Execute(const T* diff_dst_data, const T* diff_src_data,
+  void Execute(const T* diff_dst_data, T* diff_src_data,
                const void* ws_data = nullptr);
 
  public:
@@ -477,7 +476,7 @@ class MklPoolingOpBase : public OpKernel {
     }
   }
 
-  void PoolParamsToDims(MklPoolParameters* pool_params,
+  void PoolParamsToDims(const MklPoolParameters* pool_params,
                         memory::dims* filter_dims,
                         memory::dims* strides,
                         memory::dims* padding_left,
