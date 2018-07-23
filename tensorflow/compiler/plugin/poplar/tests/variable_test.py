@@ -228,7 +228,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       # Find of the names of compute sets
       r = sess.run(report)
       self.assertTrue(len(r) == 5)
-      cs_list = tu.get_compute_sets_from_report(r[2])
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call',
             'z1/Initializer/truncated_normal/mul',
@@ -257,7 +259,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       # Find of the names of compute sets
       r = sess.run(report)
       self.assertTrue(len(r) == 5)
-      cs_list = tu.get_compute_sets_from_report(r[2])
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call',
             'z1/Initializer/truncated_normal/mul',
@@ -284,7 +288,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       # Find of the names of compute sets
       r = sess.run(report)
       self.assertTrue(len(r) == 5)
-      cs_list = tu.get_compute_sets_from_report(r[2])
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -309,7 +315,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       # Find of the names of compute sets
       r = sess.run(report)
       self.assertTrue(len(r) == 5)
-      cs_list = tu.get_compute_sets_from_report(r[2])
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['z1/Initializer/truncated_normal/TruncatedNormal/call']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
@@ -384,21 +392,21 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       # The initialization is constant, so there are no events generated on the
       # IPU.
 
-      host_to_device = filter(
-        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts)
-      device_to_host = filter(
-        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts)
+      host_to_device = list(filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
+      device_to_host = list(filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
 
       # Weights/biases should be downloaded once, and the input no times
       # because it is streamed
-      self.assertEqual(len(filter(lambda x:x[1]==d_dl, host_to_device)), 0)
-      self.assertEqual(len(filter(lambda x:x[1]==w_dl, host_to_device)), 1)
-      self.assertEqual(len(filter(lambda x:x[1]==b_dl, host_to_device)), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w_dl, host_to_device))), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b_dl, host_to_device))), 1)
 
       # Weights/biases should not be uploaded, and the loss is streamed
-      self.assertEqual(len(filter(lambda x:x[1]==d_ul, device_to_host)), 0)
-      self.assertEqual(len(filter(lambda x:x[1]==w_ul, device_to_host)), 0)
-      self.assertEqual(len(filter(lambda x:x[1]==b_ul, device_to_host)), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b_ul, device_to_host))), 0)
 
       # Explicitly fetch the weights
       vw, vb = sess.run([w, b])
@@ -413,20 +421,20 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       rep = sess.run(report)
       io_evts = tu.extract_all_io_events(rep)
 
-      host_to_device = filter(
-        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts)
-      device_to_host = filter(
-        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts)
+      host_to_device = list(filter(
+        lambda x:x[0]==IpuTraceEvent.HOST_TO_DEVICE_TRANSFER, io_evts))
+      device_to_host = list(filter(
+        lambda x:x[0]==IpuTraceEvent.DEVICE_TO_HOST_TRANSFER, io_evts))
 
       # Weights/biases/inputs should not be downloaded at all
-      self.assertEqual(len(filter(lambda x:x[1]==d_dl, host_to_device)), 0)
-      self.assertEqual(len(filter(lambda x:x[1]==w_dl, host_to_device)), 0)
-      self.assertEqual(len(filter(lambda x:x[1]==b_dl, host_to_device)), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w_dl, host_to_device))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b_dl, host_to_device))), 0)
 
       # Weights/biases should be uploaded once (explicitly fetched)
-      self.assertEqual(len(filter(lambda x:x[1]==d_ul, device_to_host)), 0)
-      self.assertEqual(len(filter(lambda x:x[1]==w_ul, device_to_host)), 1)
-      self.assertEqual(len(filter(lambda x:x[1]==b_ul, device_to_host)), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==d_ul, device_to_host))), 0)
+      self.assertEqual(len(list(filter(lambda x:x[1]==w_ul, device_to_host))), 1)
+      self.assertEqual(len(list(filter(lambda x:x[1]==b_ul, device_to_host))), 1)
 
 if __name__ == "__main__":
     googletest.main()
