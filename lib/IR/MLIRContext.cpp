@@ -33,16 +33,16 @@ using namespace mlir;
 using namespace llvm;
 
 namespace {
-struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType*> {
+struct FunctionTypeKeyInfo : DenseMapInfo<FunctionType *> {
   // Functions are uniqued based on their inputs and results.
-  using KeyTy = std::pair<ArrayRef<Type*>, ArrayRef<Type*>>;
-  using DenseMapInfo<FunctionType*>::getHashValue;
-  using DenseMapInfo<FunctionType*>::isEqual;
+  using KeyTy = std::pair<ArrayRef<Type *>, ArrayRef<Type *>>;
+  using DenseMapInfo<FunctionType *>::getHashValue;
+  using DenseMapInfo<FunctionType *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
-    return hash_combine(hash_combine_range(key.first.begin(), key.first.end()),
-                        hash_combine_range(key.second.begin(),
-                                           key.second.end()));
+    return hash_combine(
+        hash_combine_range(key.first.begin(), key.first.end()),
+        hash_combine_range(key.second.begin(), key.second.end()));
   }
 
   static bool isEqual(const KeyTy &lhs, const FunctionType *rhs) {
@@ -75,16 +75,16 @@ struct AffineMapKeyInfo : DenseMapInfo<AffineMap *> {
   }
 };
 
-struct VectorTypeKeyInfo : DenseMapInfo<VectorType*> {
+struct VectorTypeKeyInfo : DenseMapInfo<VectorType *> {
   // Vectors are uniqued based on their element type and shape.
-  using KeyTy = std::pair<Type*, ArrayRef<unsigned>>;
-  using DenseMapInfo<VectorType*>::getHashValue;
-  using DenseMapInfo<VectorType*>::isEqual;
+  using KeyTy = std::pair<Type *, ArrayRef<unsigned>>;
+  using DenseMapInfo<VectorType *>::getHashValue;
+  using DenseMapInfo<VectorType *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
-    return hash_combine(DenseMapInfo<Type*>::getHashValue(key.first),
-                        hash_combine_range(key.second.begin(),
-                                           key.second.end()));
+    return hash_combine(
+        DenseMapInfo<Type *>::getHashValue(key.first),
+        hash_combine_range(key.second.begin(), key.second.end()));
   }
 
   static bool isEqual(const KeyTy &lhs, const VectorType *rhs) {
@@ -94,16 +94,16 @@ struct VectorTypeKeyInfo : DenseMapInfo<VectorType*> {
   }
 };
 
-struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorType*> {
+struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorType *> {
   // Ranked tensors are uniqued based on their element type and shape.
-  using KeyTy = std::pair<Type*, ArrayRef<int>>;
-  using DenseMapInfo<RankedTensorType*>::getHashValue;
-  using DenseMapInfo<RankedTensorType*>::isEqual;
+  using KeyTy = std::pair<Type *, ArrayRef<int>>;
+  using DenseMapInfo<RankedTensorType *>::getHashValue;
+  using DenseMapInfo<RankedTensorType *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
-    return hash_combine(DenseMapInfo<Type*>::getHashValue(key.first),
-                        hash_combine_range(key.second.begin(),
-                                           key.second.end()));
+    return hash_combine(
+        DenseMapInfo<Type *>::getHashValue(key.first),
+        hash_combine_range(key.second.begin(), key.second.end()));
   }
 
   static bool isEqual(const KeyTy &lhs, const RankedTensorType *rhs) {
@@ -113,17 +113,17 @@ struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorType*> {
   }
 };
 
-struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType*> {
+struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType *> {
   // MemRefs are uniqued based on their element type, shape, affine map
   // composition, and memory space.
-  using KeyTy = std::tuple<Type*, ArrayRef<int>, ArrayRef<AffineMap*>,
-                           unsigned>;
-  using DenseMapInfo<MemRefType*>::getHashValue;
-  using DenseMapInfo<MemRefType*>::isEqual;
+  using KeyTy =
+      std::tuple<Type *, ArrayRef<int>, ArrayRef<AffineMap *>, unsigned>;
+  using DenseMapInfo<MemRefType *>::getHashValue;
+  using DenseMapInfo<MemRefType *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine(
-        DenseMapInfo<Type*>::getHashValue(std::get<0>(key)),
+        DenseMapInfo<Type *>::getHashValue(std::get<0>(key)),
         hash_combine_range(std::get<1>(key).begin(), std::get<1>(key).end()),
         hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()),
         std::get<3>(key));
@@ -137,11 +137,11 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefType*> {
   }
 };
 
-struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttr*> {
+struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttr *> {
   // Array attributes are uniqued based on their elements.
-  using KeyTy = ArrayRef<Attribute*>;
-  using DenseMapInfo<ArrayAttr*>::getHashValue;
-  using DenseMapInfo<ArrayAttr*>::isEqual;
+  using KeyTy = ArrayRef<Attribute *>;
+  using DenseMapInfo<ArrayAttr *>::getHashValue;
+  using DenseMapInfo<ArrayAttr *>::isEqual;
 
   static unsigned getHashValue(KeyTy key) {
     return hash_combine_range(key.begin(), key.end());
@@ -173,7 +173,6 @@ struct AttributeListKeyInfo : DenseMapInfo<AttributeListStorage *> {
 
 } // end anonymous namespace.
 
-
 namespace mlir {
 /// This is the implementation of the MLIRContext class, using the pImpl idiom.
 /// This class is completely private to this file, so everything is public.
@@ -186,10 +185,11 @@ public:
   OperationSet operationSet;
 
   /// These are identifiers uniqued into this MLIRContext.
-  llvm::StringMap<char, llvm::BumpPtrAllocator&> identifiers;
+  llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
 
   // Primitive type uniquing.
-  PrimitiveType *primitives[int(Type::Kind::LAST_PRIMITIVE_TYPE)+1] = {nullptr};
+  PrimitiveType *primitives[int(Type::Kind::LAST_PRIMITIVE_TYPE) + 1] = {
+      nullptr};
 
   // Affine map uniquing.
   using AffineMapSet = DenseSet<AffineMap *, AffineMapKeyInfo>;
@@ -201,36 +201,36 @@ public:
       affineExprs;
 
   /// Integer type uniquing.
-  DenseMap<unsigned, IntegerType*> integers;
+  DenseMap<unsigned, IntegerType *> integers;
 
   /// Function type uniquing.
-  using FunctionTypeSet = DenseSet<FunctionType*, FunctionTypeKeyInfo>;
+  using FunctionTypeSet = DenseSet<FunctionType *, FunctionTypeKeyInfo>;
   FunctionTypeSet functions;
 
   /// Vector type uniquing.
-  using VectorTypeSet = DenseSet<VectorType*, VectorTypeKeyInfo>;
+  using VectorTypeSet = DenseSet<VectorType *, VectorTypeKeyInfo>;
   VectorTypeSet vectors;
 
   /// Ranked tensor type uniquing.
-  using RankedTensorTypeSet = DenseSet<RankedTensorType*,
-                                       RankedTensorTypeKeyInfo>;
+  using RankedTensorTypeSet =
+      DenseSet<RankedTensorType *, RankedTensorTypeKeyInfo>;
   RankedTensorTypeSet rankedTensors;
 
   /// Unranked tensor type uniquing.
-  DenseMap<Type*, UnrankedTensorType*> unrankedTensors;
+  DenseMap<Type *, UnrankedTensorType *> unrankedTensors;
 
   /// MemRef type uniquing.
-  using MemRefTypeSet = DenseSet<MemRefType*, MemRefTypeKeyInfo>;
+  using MemRefTypeSet = DenseSet<MemRefType *, MemRefTypeKeyInfo>;
   MemRefTypeSet memrefs;
 
   // Attribute uniquing.
-  BoolAttr *boolAttrs[2] = { nullptr };
-  DenseMap<int64_t, IntegerAttr*> integerAttrs;
-  DenseMap<int64_t, FloatAttr*> floatAttrs;
-  StringMap<StringAttr*> stringAttrs;
-  using ArrayAttrSet = DenseSet<ArrayAttr*, ArrayAttrKeyInfo>;
+  BoolAttr *boolAttrs[2] = {nullptr};
+  DenseMap<int64_t, IntegerAttr *> integerAttrs;
+  DenseMap<int64_t, FloatAttr *> floatAttrs;
+  StringMap<StringAttr *> stringAttrs;
+  using ArrayAttrSet = DenseSet<ArrayAttr *, ArrayAttrKeyInfo>;
   ArrayAttrSet arrayAttrs;
-  DenseMap<AffineMap*, AffineMapAttr*> affineMapAttrs;
+  DenseMap<AffineMap *, AffineMapAttr *> affineMapAttrs;
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
@@ -242,8 +242,7 @@ public:
 
   /// Copy the specified array of elements into memory managed by our bump
   /// pointer allocator.  This assumes the elements are all PODs.
-  template<typename T>
-  ArrayRef<T> copyInto(ArrayRef<T> elements) {
+  template <typename T> ArrayRef<T> copyInto(ArrayRef<T> elements) {
     auto result = allocator.Allocate<T>(elements.size());
     std::uninitialized_copy(elements.begin(), elements.end(), result);
     return ArrayRef<T>(result, elements.size());
@@ -251,11 +250,9 @@ public:
 };
 } // end namespace mlir
 
-MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
-}
+MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {}
 
-MLIRContext::~MLIRContext() {
-}
+MLIRContext::~MLIRContext() {}
 
 /// Return the operation set associated with the specified MLIRContext object.
 OperationSet &OperationSet::get(MLIRContext *context) {
@@ -301,7 +298,7 @@ PrimitiveType *PrimitiveType::get(Kind kind, MLIRContext *context) {
   auto *ptr = impl.allocator.Allocate<PrimitiveType>();
 
   // Initialize the memory using placement new.
-  new(ptr) PrimitiveType(kind, context);
+  new (ptr) PrimitiveType(kind, context);
 
   // Cache and return it.
   return impl.primitives[(int)kind] = ptr;
@@ -319,7 +316,8 @@ IntegerType *IntegerType::get(unsigned width, MLIRContext *context) {
   return result;
 }
 
-FunctionType *FunctionType::get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
+FunctionType *FunctionType::get(ArrayRef<Type *> inputs,
+                                ArrayRef<Type *> results,
                                 MLIRContext *context) {
   auto &impl = context->getImpl();
 
@@ -335,15 +333,15 @@ FunctionType *FunctionType::get(ArrayRef<Type*> inputs, ArrayRef<Type*> results,
   auto *result = impl.allocator.Allocate<FunctionType>();
 
   // Copy the inputs and results into the bump pointer.
-  SmallVector<Type*, 16> types;
-  types.reserve(inputs.size()+results.size());
+  SmallVector<Type *, 16> types;
+  types.reserve(inputs.size() + results.size());
   types.append(inputs.begin(), inputs.end());
   types.append(results.begin(), results.end());
-  auto typesList = impl.copyInto(ArrayRef<Type*>(types));
+  auto typesList = impl.copyInto(ArrayRef<Type *>(types));
 
   // Initialize the memory using placement new.
-  new (result) FunctionType(typesList.data(), inputs.size(), results.size(),
-                            context);
+  new (result)
+      FunctionType(typesList.data(), inputs.size(), results.size(), context);
 
   // Cache and return it.
   return *existing.first = result;
@@ -378,9 +376,8 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
   return *existing.first = result;
 }
 
-
 TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
-  : Type(kind, context), elementType(elementType) {
+    : Type(kind, context), elementType(elementType) {
   assert((isa<PrimitiveType>(elementType) || isa<VectorType>(elementType) ||
           isa<IntegerType>(elementType)) &&
          "tensor elements must be primitives or vectors");
@@ -433,14 +430,14 @@ UnrankedTensorType *UnrankedTensorType::get(Type *elementType) {
 }
 
 MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
-                            ArrayRef<AffineMap*> affineMapComposition,
+                            ArrayRef<AffineMap *> affineMapComposition,
                             unsigned memorySpace) {
   auto *context = elementType->getContext();
   auto &impl = context->getImpl();
 
   // Look to see if we already have this memref type.
-  auto key = std::make_tuple(elementType, shape, affineMapComposition,
-                             memorySpace);
+  auto key =
+      std::make_tuple(elementType, shape, affineMapComposition, memorySpace);
   auto existing = impl.memrefs.insert_as(nullptr, key);
 
   // If we already have it, return that value.
@@ -455,8 +452,8 @@ MemRefType *MemRefType::get(ArrayRef<int> shape, Type *elementType,
 
   // Copy the affine map composition into the bump pointer.
   // TODO(andydavis) Assert that the structure of the composition is valid.
-  affineMapComposition = impl.copyInto(ArrayRef<AffineMap*>(
-      affineMapComposition));
+  affineMapComposition =
+      impl.copyInto(ArrayRef<AffineMap *>(affineMapComposition));
 
   // Initialize the memory using placement new.
   new (result) MemRefType(shape, elementType, affineMapComposition, memorySpace,
@@ -519,7 +516,7 @@ StringAttr *StringAttr::get(StringRef bytes, MLIRContext *context) {
   return result;
 }
 
-ArrayAttr *ArrayAttr::get(ArrayRef<Attribute*> value, MLIRContext *context) {
+ArrayAttr *ArrayAttr::get(ArrayRef<Attribute *> value, MLIRContext *context) {
   auto &impl = context->getImpl();
 
   // Look to see if we already have this.
@@ -542,7 +539,7 @@ ArrayAttr *ArrayAttr::get(ArrayRef<Attribute*> value, MLIRContext *context) {
   return *existing.first = result;
 }
 
-AffineMapAttr *AffineMapAttr::get(AffineMap* value, MLIRContext *context) {
+AffineMapAttr *AffineMapAttr::get(AffineMap *value, MLIRContext *context) {
   auto *&result = context->getImpl().affineMapAttrs[value];
   if (result)
     return result;

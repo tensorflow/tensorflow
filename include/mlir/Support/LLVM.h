@@ -29,69 +29,68 @@
 
 // We include these two headers because they cannot be practically forward
 // declared, and are effectively language features.
-#include "llvm/Support/Casting.h"
 #include "llvm/ADT/None.h"
+#include "llvm/Support/Casting.h"
 
 // Forward declarations.
 namespace llvm {
-  // Containers.
-  class StringRef;
-  class StringLiteral;
-  class Twine;
-  template <typename T> class SmallPtrSetImpl;
-  template <typename T, unsigned N> class SmallPtrSet;
-  template <typename T> class SmallVectorImpl;
-  template <typename T, unsigned N> class SmallVector;
-  template <unsigned N> class SmallString;
-  template<typename T> class ArrayRef;
-  template<typename T> class MutableArrayRef;
-  template<typename T> class TinyPtrVector;
-  template<typename T> class Optional;
-  template <typename PT1, typename PT2> class PointerUnion;
-  namespace detail {
-    template <typename KeyT, typename ValueT> struct DenseMapPair;
-  }
-  template<typename T> struct DenseMapInfo;
-  template <typename KeyT, typename ValueT, typename KeyInfoT, typename BucketT>
-  class DenseMap;
+// Containers.
+class StringRef;
+class StringLiteral;
+class Twine;
+template <typename T> class SmallPtrSetImpl;
+template <typename T, unsigned N> class SmallPtrSet;
+template <typename T> class SmallVectorImpl;
+template <typename T, unsigned N> class SmallVector;
+template <unsigned N> class SmallString;
+template <typename T> class ArrayRef;
+template <typename T> class MutableArrayRef;
+template <typename T> class TinyPtrVector;
+template <typename T> class Optional;
+template <typename PT1, typename PT2> class PointerUnion;
+namespace detail {
+template <typename KeyT, typename ValueT> struct DenseMapPair;
+}
+template <typename T> struct DenseMapInfo;
+template <typename KeyT, typename ValueT, typename KeyInfoT, typename BucketT>
+class DenseMap;
 
-  // Other common classes.
-  class raw_ostream;
-  class APInt;
-  class APFloat;
+// Other common classes.
+class raw_ostream;
+class APInt;
+class APFloat;
 } // end namespace llvm
 
-
 namespace mlir {
-  // Casting operators.
-  using llvm::isa;
-  using llvm::cast;
-  using llvm::dyn_cast;
-  using llvm::dyn_cast_or_null;
-  using llvm::cast_or_null;
+// Casting operators.
+using llvm::cast;
+using llvm::cast_or_null;
+using llvm::dyn_cast;
+using llvm::dyn_cast_or_null;
+using llvm::isa;
 
-  // Containers.
-  using llvm::None;
-  using llvm::Optional;
-  using llvm::SmallPtrSetImpl;
-  using llvm::SmallPtrSet;
-  using llvm::SmallString;
-  using llvm::StringRef;
-  using llvm::StringLiteral;
-  using llvm::Twine;
-  using llvm::SmallVectorImpl;
-  using llvm::SmallVector;
-  using llvm::ArrayRef;
-  using llvm::MutableArrayRef;
-  using llvm::TinyPtrVector;
-  using llvm::PointerUnion;
-  using llvm::DenseMap;
+// Containers.
+using llvm::ArrayRef;
+using llvm::DenseMap;
+using llvm::MutableArrayRef;
+using llvm::None;
+using llvm::Optional;
+using llvm::PointerUnion;
+using llvm::SmallPtrSet;
+using llvm::SmallPtrSetImpl;
+using llvm::SmallString;
+using llvm::SmallVector;
+using llvm::SmallVectorImpl;
+using llvm::StringLiteral;
+using llvm::StringRef;
+using llvm::TinyPtrVector;
+using llvm::Twine;
 
-  // Other common classes.
-  using llvm::raw_ostream;
-  using llvm::APInt;
-  using llvm::APFloat;
-  using llvm::NoneType;
-} // end namespace swift
+// Other common classes.
+using llvm::APFloat;
+using llvm::APInt;
+using llvm::NoneType;
+using llvm::raw_ostream;
+} // namespace mlir
 
 #endif // MLIR_SUPPORT_LLVM_H

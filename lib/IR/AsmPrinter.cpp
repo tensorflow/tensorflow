@@ -86,8 +86,7 @@ private:
   DenseMap<const AffineMap *, int> affineMapIds;
   int nextAffineMapId = 0;
 };
-}  // end anonymous namespace
-
+} // end anonymous namespace
 
 // TODO Support visiting other types/instructions when implemented.
 void ModuleState::visitType(const Type *type) {
@@ -235,7 +234,8 @@ void ModulePrinter::print(const Module *module) {
     mapAndId.first->print(os);
     os << '\n';
   }
-  for (auto *fn : module->functionList) print(fn);
+  for (auto *fn : module->functionList)
+    print(fn);
 }
 
 void ModulePrinter::print(const Attribute *attr) const {
@@ -308,7 +308,8 @@ void ModulePrinter::print(const Type *type) const {
   case Type::Kind::Vector: {
     auto *v = cast<VectorType>(type);
     os << "vector<";
-    for (auto dim : v->getShape()) os << dim << 'x';
+    for (auto dim : v->getShape())
+      os << dim << 'x';
     os << *v->getElementType() << '>';
     return;
   }
@@ -549,7 +550,7 @@ private:
   DenseMap<const SSAValue *, unsigned> valueIDs;
   unsigned nextValueID = 0;
 };
-}  // end anonymous namespace
+} // end anonymous namespace
 
 void FunctionState::printOperation(const Operation *op) {
   os << "  ";
@@ -632,7 +633,7 @@ private:
 
   void numberValuesInBlock(const BasicBlock *block);
 };
-}  // end anonymous namespace
+} // end anonymous namespace
 
 CFGFunctionPrinter::CFGFunctionPrinter(const CFGFunction *function,
                                        const ModulePrinter &other)
@@ -665,7 +666,8 @@ void CFGFunctionPrinter::print() {
   printFunctionSignature(getFunction());
   os << " {\n";
 
-  for (auto &block : *function) print(&block);
+  for (auto &block : *function)
+    print(&block);
   os << "}\n\n";
 }
 
@@ -768,7 +770,7 @@ private:
   const MLFunction *function;
   int numSpaces;
 };
-}  // end anonymous namespace
+} // end anonymous namespace
 
 MLFunctionPrinter::MLFunctionPrinter(const MLFunction *function,
                                      const ModulePrinter &other)
@@ -843,9 +845,7 @@ void Attribute::print(raw_ostream &os) const {
   ModulePrinter(os, state).print(this);
 }
 
-void Attribute::dump() const {
-  print(llvm::errs());
-}
+void Attribute::dump() const { print(llvm::errs()); }
 
 void Type::print(raw_ostream &os) const {
   ModuleState state(getContext());
