@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/core/common_runtime/session_ref.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -42,19 +41,6 @@ namespace {
 static const char* kFeedDictErrorMsg =
     "feed_dict must be a dictionary mapping strings to NumPy arrays.";
 }  // end namespace
-
-TF_Session* TF_NewSessionRef(TF_Graph* graph, const TF_SessionOptions* opts,
-                             TF_Status* status) {
-  TF_Session* tf_session = TF_NewSession(graph, opts, status);
-  if (tf_session == nullptr) {
-    return nullptr;
-  }
-
-  Session* session = reinterpret_cast<Session*>(tf_session->session);
-  SessionRef* session_ref = new SessionRef(session);
-  tf_session->session = session_ref;
-  return tf_session;
-}
 
 void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
                            const TF_Buffer* run_options, PyObject* feed_dict,
