@@ -560,6 +560,14 @@ TfLiteStatus AddOpsAndParams(
         nnapi_version = 11;  // require NNAPI 1.1
         nn_op_type = ANEURALNETWORKS_TRANSPOSE;
         break;
+      case tflite::BuiltinOperator_L2_NORMALIZATION:
+        nn_op_type = ANEURALNETWORKS_L2_NORMALIZATION;
+        if (reinterpret_cast<TfLiteL2NormParams*>(node.builtin_data)
+                ->activation != kTfLiteActNone) {
+          FATAL(
+              "NNAPI does not support L2Normalization with fused activations");
+        }
+        break;
       case tflite::BuiltinOperator_CONCAT_EMBEDDINGS:
       case tflite::BuiltinOperator_LSH_PROJECTION:
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
@@ -568,7 +576,6 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE:
       case tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
-      case tflite::BuiltinOperator_L2_NORMALIZATION:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
       case tflite::BuiltinOperator_PADV2:
       case tflite::BuiltinOperator_RESIZE_BILINEAR:
