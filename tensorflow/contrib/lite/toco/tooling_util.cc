@@ -1585,11 +1585,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
                                model);
   }
 
-  for (const auto& input_array : model->flags.input_arrays()) {
-    if (input_array.has_shape()) {
-      CHECK(input_array.shape().dims_size());
-    }
-  }
   model->flags.set_change_concat_input_ranges(
       model_flags.change_concat_input_ranges());
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
