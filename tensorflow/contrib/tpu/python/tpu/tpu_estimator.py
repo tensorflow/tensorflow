@@ -1724,6 +1724,9 @@ class InstallSignalHandlerHook(session_run_hook.SessionRunHook):
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
+  TPUEstimator also supports training on CPU and GPU. You don't need to define
+  a separate `tf.estimator.Estimator`.
+
   TPUEstimator handles many of the details of running on TPU devices, such as
   replicating inputs and models for each core, and returning to host
   periodically to run hooks.
