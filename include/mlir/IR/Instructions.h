@@ -96,21 +96,45 @@ public:
                                ArrayRef<NamedAttribute> attributes,
                                MLIRContext *context);
 
+  //===--------------------------------------------------------------------===//
+  // Operands
+  //===--------------------------------------------------------------------===//
+
   unsigned getNumOperands() const { return numOperands; }
 
-  // TODO: Add a getOperands() custom sequence that provides a value projection
-  // of the operand list.
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
     return getInstOperand(idx).get();
   }
 
-  unsigned getNumResults() const { return numResults; }
+  // Support non-const operand iteration.
+  using operand_iterator = OperandIterator<OperationInst, CFGValue>;
 
-  // TODO: Add a getResults() custom sequence that provides a value projection
-  // of the result list.
-  CFGValue *getResult(unsigned idx) { return &getInstResult(idx); }
-  const CFGValue *getResult(unsigned idx) const { return &getInstResult(idx); }
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<operand_iterator> getOperands() {
+    return {operand_begin(), operand_end()};
+  }
+
+  // Support const operand iteration.
+  using const_operand_iterator =
+      OperandIterator<const OperationInst, const CFGValue>;
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<const_operand_iterator> getOperands() const {
+    return {operand_begin(), operand_end()};
+  }
 
   ArrayRef<InstOperand> getInstOperands() const {
     return {getTrailingObjects<InstOperand>(), numOperands};
@@ -124,16 +148,57 @@ public:
     return getInstOperands()[idx];
   }
 
+  //===--------------------------------------------------------------------===//
+  // Results
+  //===--------------------------------------------------------------------===//
+
+  unsigned getNumResults() const { return numResults; }
+
+  CFGValue *getResult(unsigned idx) { return &getInstResult(idx); }
+  const CFGValue *getResult(unsigned idx) const { return &getInstResult(idx); }
+
+  // Support non-const result iteration.
+  typedef ResultIterator<OperationInst, CFGValue> result_iterator;
+  result_iterator result_begin() { return result_iterator(this, 0); }
+  result_iterator result_end() {
+    return result_iterator(this, getNumResults());
+  }
+  llvm::iterator_range<result_iterator> getResults() {
+    return {result_begin(), result_end()};
+  }
+
+  // Support const operand iteration.
+  typedef ResultIterator<const OperationInst, const CFGValue>
+      const_result_iterator;
+  const_result_iterator result_begin() const {
+    return const_result_iterator(this, 0);
+  }
+
+  const_result_iterator result_end() const {
+    return const_result_iterator(this, getNumResults());
+  }
+
+  llvm::iterator_range<const_result_iterator> getResults() const {
+    return {result_begin(), result_end()};
+  }
+
   ArrayRef<InstResult> getInstResults() const {
     return {getTrailingObjects<InstResult>(), numResults};
   }
+
   MutableArrayRef<InstResult> getInstResults() {
     return {getTrailingObjects<InstResult>(), numResults};
   }
+
   InstResult &getInstResult(unsigned idx) { return getInstResults()[idx]; }
+
   const InstResult &getInstResult(unsigned idx) const {
     return getInstResults()[idx];
   }
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
 
   /// Unlink this instruction from its BasicBlock and delete it.
   void eraseFromBlock();
@@ -222,11 +287,38 @@ public:
 
   unsigned getNumOperands() const { return numOperands; }
 
-  // TODO: Add a getOperands() custom sequence that provides a value projection
-  // of the operand list.
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
     return getInstOperand(idx).get();
+  }
+
+  // Support non-const operand iteration.
+  using operand_iterator = OperandIterator<ReturnInst, CFGValue>;
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<operand_iterator> getOperands() {
+    return {operand_begin(), operand_end()};
+  }
+
+  // Support const operand iteration.
+  typedef OperandIterator<const ReturnInst, const CFGValue>
+      const_operand_iterator;
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<const_operand_iterator> getOperands() const {
+    return {operand_begin(), operand_end()};
   }
 
   ArrayRef<InstOperand> getInstOperands() const {

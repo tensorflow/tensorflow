@@ -17,6 +17,8 @@
 
 #include "mlir/IR/Operation.h"
 #include "AttributeListStorage.h"
+#include "mlir/IR/Instructions.h"
+#include "mlir/IR/Statements.h"
 using namespace mlir;
 
 Operation::Operation(Identifier name, bool isInstruction,
@@ -30,7 +32,53 @@ Operation::Operation(Identifier name, bool isInstruction,
 #endif
 }
 
-Operation::~Operation() {
+Operation::~Operation() {}
+
+/// Return the number of operands this operation has.
+unsigned Operation::getNumOperands() const {
+  if (auto *inst = dyn_cast<OperationInst>(this)) {
+    return inst->getNumOperands();
+  } else {
+    auto *stmt = cast<OperationStmt>(this);
+    (void)stmt;
+    // TODO: Add operands to OperationStmt.
+    return 0;
+  }
+}
+
+SSAValue *Operation::getOperand(unsigned idx) {
+  if (auto *inst = dyn_cast<OperationInst>(this)) {
+    return inst->getOperand(idx);
+  } else {
+    auto *stmt = cast<OperationStmt>(this);
+    (void)stmt;
+    // TODO: Add operands to OperationStmt.
+    abort();
+  }
+}
+
+/// Return the number of results this operation has.
+unsigned Operation::getNumResults() const {
+  if (auto *inst = dyn_cast<OperationInst>(this)) {
+    return inst->getNumResults();
+  } else {
+    auto *stmt = cast<OperationStmt>(this);
+    (void)stmt;
+    // TODO: Add results to OperationStmt.
+    return 0;
+  }
+}
+
+/// Return the indicated result.
+SSAValue *Operation::getResult(unsigned idx) {
+  if (auto *inst = dyn_cast<OperationInst>(this)) {
+    return inst->getResult(idx);
+  } else {
+    auto *stmt = cast<OperationStmt>(this);
+    (void)stmt;
+    // TODO: Add operands to OperationStmt.
+    abort();
+  }
 }
 
 ArrayRef<NamedAttribute> Operation::getAttrs() const {

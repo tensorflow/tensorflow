@@ -131,7 +131,6 @@ void ModuleState::visitExtFunction(const ExtFunction *fn) {
 
 void ModuleState::visitCFGFunction(const CFGFunction *fn) {
   visitType(fn->getType());
-  // TODO Visit function body instructions.
   for (auto &block : *fn) {
     for (auto &op : block.getOperations()) {
       visitOperation(&op);
@@ -555,13 +554,9 @@ private:
 void FunctionState::printOperation(const Operation *op) {
   os << "  ";
 
-  // TODO: When we have SSAValue version of operands & results wired into
-  // Operation this check can go away.
-  if (auto *inst = dyn_cast<OperationInst>(op)) {
-    if (inst->getNumResults()) {
-      printValueID(inst->getResult(0), /*dontPrintResultNo*/ true);
-      os << " = ";
-    }
+  if (op->getNumResults()) {
+    printValueID(op->getResult(0), /*dontPrintResultNo*/ true);
+    os << " = ";
   }
 
   // Check to see if this is a known operation.  If so, use the registered
@@ -576,14 +571,8 @@ void FunctionState::printOperation(const Operation *op) {
   // TODO: escape name if necessary.
   os << "\"" << op->getName().str() << "\"(";
 
-  // TODO: When we have SSAValue version of operands & results wired into
-  // Operation this check can go away.
-  if (auto *inst = dyn_cast<OperationInst>(op)) {
-    // TODO: Use getOperands() when we have it.
-    interleaveComma(inst->getInstOperands(), [&](const InstOperand &operand) {
-      printValueID(operand.get());
-    });
-  }
+  interleaveComma(op->getOperands(),
+                  [&](const SSAValue *value) { printValueID(value); });
 
   os << ')';
   auto attrs = op->getAttrs();
@@ -596,26 +585,19 @@ void FunctionState::printOperation(const Operation *op) {
     os << '}';
   }
 
-  // TODO: When we have SSAValue version of operands & results wired into
-  // Operation this check can go away.
-  if (auto *inst = dyn_cast<OperationInst>(op)) {
-    // Print the type signature of the operation.
-    os << " : (";
-    // TODO: Switch to getOperands() when we have it.
-    interleaveComma(inst->getInstOperands(),
-                    [&](const InstOperand &op) { print(op.get()->getType()); });
-    os << ") -> ";
+  // Print the type signature of the operation.
+  os << " : (";
+  interleaveComma(op->getOperands(),
+                  [&](const SSAValue *value) { print(value->getType()); });
+  os << ") -> ";
 
-    // TODO: Switch to getResults() when we have it.
-    if (inst->getNumResults() == 1) {
-      print(inst->getInstResult(0).getType());
-    } else {
-      os << '(';
-      interleaveComma(inst->getInstResults(), [&](const InstResult &result) {
-        print(result.getType());
-      });
-      os << ')';
-    }
+  if (op->getNumResults() == 1) {
+    print(op->getResult(0)->getType());
+  } else {
+    os << '(';
+    interleaveComma(op->getResults(),
+                    [&](const SSAValue *result) { print(result->getType()); });
+    os << ')';
   }
 }
 
@@ -733,11 +715,10 @@ void CFGFunctionPrinter::print(const ReturnInst *inst) {
   if (inst->getNumOperands() != 0)
     os << ' ';
 
-  // TODO: Use getOperands() when we have it.
-  interleaveComma(inst->getInstOperands(), [&](const InstOperand &operand) {
-    printValueID(operand.get());
+  interleaveComma(inst->getOperands(), [&](const CFGValue *operand) {
+    printValueID(operand);
     os << " : ";
-    ModulePrinter::print(operand.get()->getType());
+    ModulePrinter::print(operand->getType());
   });
 }
 
