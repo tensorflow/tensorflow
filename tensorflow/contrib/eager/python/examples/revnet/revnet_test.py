@@ -223,8 +223,6 @@ class RevNetBenchmark(tf.test.Benchmark):
                              execution_mode=None,
                              compiled=False):
     config = config_.get_hparams_imagenet_56()
-    config.add_hparam("n_classes", 1000)
-    config.add_hparam("dataset", "ImageNet")
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       model = revnet.RevNet(config=config)
@@ -270,8 +268,6 @@ class RevNetBenchmark(tf.test.Benchmark):
                              execution_mode=None,
                              compiled=False):
     config = config_.get_hparams_imagenet_56()
-    config.add_hparam("n_classes", 1000)
-    config.add_hparam("dataset", "ImageNet")
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       for batch_size in self._train_batch_sizes():
