@@ -113,8 +113,8 @@ inline raw_ostream &operator<<(raw_ostream &os, const Type &type) {
   return os;
 }
 
-/// Primitive types are the atomic base of the type system, including integer
-/// and floating point values.
+/// Primitive types are the atomic base of the type system, including affine
+/// integer and floating point values.
 class PrimitiveType : public Type {
 public:
   static PrimitiveType *get(Kind kind, MLIRContext *context);
