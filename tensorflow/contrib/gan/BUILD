@@ -257,12 +257,15 @@ py_library(
 py_test(
     name = "random_tensor_pool_test",
     srcs = ["python/features/python/random_tensor_pool_test.py"],
+    shard_count = 6,
     srcs_version = "PY2AND3",
     deps = [
         ":random_tensor_pool",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//third_party/py/numpy",
     ],
 )
