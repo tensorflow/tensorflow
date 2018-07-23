@@ -202,20 +202,18 @@ class _Residual(tf.keras.Model):
     with tf.GradientTape(persistent=True) as tape:
       tape.watch(y)
       y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
-      z1 = y1
-      gz1 = self.g(z1, training=training)
-      x2 = y2 - gz1
+      gy1 = self.g(y1, training=training)
+      x2 = y2 - gy1
       fx2 = self.f(x2, training=training)
-      x1 = z1 - fx2
+      x1 = y1 - fx2
 
     grads_combined = tape.gradient(
-        gz1, [z1] + self.g.trainable_variables, output_gradients=dy2)
-    dz1 = dy1 + grads_combined[0]
+        gy1, [y1] + self.g.trainable_variables, output_gradients=dy2)
     dg = grads_combined[1:]
-    dx1 = dz1
+    dx1 = dy1 + grads_combined[0]
 
     grads_combined = tape.gradient(
-        fx2, [x2] + self.f.trainable_variables, output_gradients=dz1)
+        fx2, [x2] + self.f.trainable_variables, output_gradients=dx1)
     dx2 = dy2 + grads_combined[0]
     df = grads_combined[1:]
 
@@ -263,7 +261,6 @@ class _BottleneckResidualInner(tf.keras.Model):
     if batch_norm_first:
       self.batch_norm_0 = tf.keras.layers.BatchNormalization(
           axis=axis, input_shape=input_shape, fused=fused, dtype=dtype)
-
     self.conv2d_1 = tf.keras.layers.Conv2D(
         filters=filters // 4,
         kernel_size=1,
@@ -273,9 +270,9 @@ class _BottleneckResidualInner(tf.keras.Model):
         use_bias=False,
         padding="SAME",
         dtype=dtype)
+
     self.batch_norm_1 = tf.keras.layers.BatchNormalization(
         axis=axis, fused=fused, dtype=dtype)
-
     self.conv2d_2 = tf.keras.layers.Conv2D(
         filters=filters // 4,
         kernel_size=3,
@@ -303,15 +300,14 @@ class _BottleneckResidualInner(tf.keras.Model):
     if self.batch_norm_first:
       net = self.batch_norm_0(net, training=training)
       net = tf.nn.relu(net)
-
     net = self.conv2d_1(net)
+
     net = self.batch_norm_1(net, training=training)
     net = tf.nn.relu(net)
-
     net = self.conv2d_2(net)
+
     net = self.batch_norm_2(net, training=training)
     net = tf.nn.relu(net)
-
     net = self.conv2d_3(net)
 
     return net
@@ -356,9 +352,9 @@ class _ResidualInner(tf.keras.Model):
         use_bias=False,
         padding="SAME",
         dtype=dtype)
+
     self.batch_norm_1 = tf.keras.layers.BatchNormalization(
         axis=axis, fused=fused, dtype=dtype)
-
     self.conv2d_2 = tf.keras.layers.Conv2D(
         filters=filters,
         kernel_size=3,
@@ -375,10 +371,10 @@ class _ResidualInner(tf.keras.Model):
     if self.batch_norm_first:
       net = self.batch_norm_0(net, training=training)
       net = tf.nn.relu(net)
-
     net = self.conv2d_1(net)
-    net = self.batch_norm_1(net, training=training)
 
+    net = self.batch_norm_1(net, training=training)
+    net = tf.nn.relu(net)
     net = self.conv2d_2(net)
 
     return net
