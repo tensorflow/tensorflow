@@ -295,8 +295,8 @@ class CompClusterOp : public OpKernel {
             std::vector<std::map<int, int>> clusters;
             for (int j = 1; j < n_hits; j++) {
                 if (clusters.size() == 0) clusters.push_back(std::map<int, int>());
-                std::map<int, int> &cluster = clusters.back();
-                if (cluster.size() == 0) cluster[current_hit] = 1;
+                std::map<int, int> *cluster = &clusters.back();
+                if (cluster->size() == 0) (*cluster)[current_hit] = 1;
 
                 double minDist = DBL_MAX;
                 int nextHit = -1;
@@ -317,9 +317,9 @@ class CompClusterOp : public OpKernel {
                 current_hit = nextHit;
                 if (minDist > entropy(i, current_hit)) {
                     clusters.push_back(std::map<int, int>());
-                    cluster = clusters.back();
+                    cluster = &clusters.back();
                 }
-                cluster[current_hit] = 1;
+                (*cluster)[current_hit] = 1;
             }
 
             for (auto cluster : clusters) {
