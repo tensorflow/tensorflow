@@ -25,12 +25,13 @@ py_library(
 
 tf_custom_op_library(
     name = "_dataset_ops.so",
+    srcs = [
+        "ops/dataset_ops.cc",
+        "@local_jdk//:jre/lib/amd64/server/libjvm.so",
+    ],
     linkopts = [
-            "-Wl,--as-needed -ljvm"
-            ],
-    srcs = ["ops/dataset_ops.cc",
-	    "@local_jdk//:jre/lib/amd64/server/libjvm.so"
-	],
+        "-Wl,--as-needed -ljvm",
+    ],
     deps = [":dataset_kernels"],
 )
 
@@ -41,32 +42,31 @@ tf_gen_op_libs(
 cc_library(
     name = "dataset_kernels",
     srcs = [
-    "kernels/ignite_dataset_ops.cc",
-    "kernels/ignite_holder.h"
+        "kernels/ignite_dataset_ops.cc",
+        "kernels/ignite_holder.h",
     ],
+    copts = [
+        "-Wall",
+        "-Iexternal/ignite/modules/platforms/cpp/core/include",
+        "-Iexternal/ignite/modules/platforms/cpp/core/os/linux/include",
+        "-Iexternal/ignite/modules/platforms/cpp/common/include",
+        "-Iexternal/ignite/modules/platforms/cpp/common/os/linux/include",
+        "-Iexternal/ignite/modules/platforms/cpp/binary/include",
+        "-Iexternal/ignite/modules/platforms/cpp/jni/include",
+        "-Iexternal/ignite/modules/platforms/cpp/jni/os/linux/include",
+        "-Iexternal/ignite/modules/platforms/cpp/odbc/include",
+        "-Iexternal/local_jdk/include",
+        "-Iexternal/local_jdk/include/linux",
+        "-lignite-jni",
+    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@ignite",
         "@protobuf_archive//:protobuf_headers",
     ],
-
-    copts = [
-        "-Wall",
-        "-Iexternal/ignite/modules/platforms/cpp/core/include",
-        "-Iexternal/ignite/modules/platforms/cpp/core/os/linux/include",
-        "-Iexternal/ignite/modules/platforms/cpp/common/include",
-       	"-Iexternal/ignite/modules/platforms/cpp/common/os/linux/include",
-       	"-Iexternal/ignite/modules/platforms/cpp/binary/include",
-       	"-Iexternal/ignite/modules/platforms/cpp/jni/include",
-       	"-Iexternal/ignite/modules/platforms/cpp/jni/os/linux/include",
-       	"-Iexternal/ignite/modules/platforms/cpp/odbc/include",
-       	"-Iexternal/local_jdk/include",
-       	"-Iexternal/local_jdk/include/linux",
-       	"-lignite-jni"
-    ],
     alwayslink = 1,
-    linkstatic = 1
 )
 
 py_library(

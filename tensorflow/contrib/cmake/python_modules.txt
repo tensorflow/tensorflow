@@ -202,6 +202,8 @@ tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
 tensorflow/contrib/kafka/python
 tensorflow/contrib/kafka/python/ops
+tensorflow/contrib/ignite/python
+tensorflow/contrib/ignite/python/ops
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras
