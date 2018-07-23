@@ -717,7 +717,8 @@ Status DirectSession::Run(const RunOptions& run_options,
   // Receive outputs.
   if (outputs) {
     std::vector<Tensor> sorted_outputs;
-    const Status s = call_frame.ConsumeRetvals(&sorted_outputs);
+    const Status s = call_frame.ConsumeRetvals(
+        &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
       return errors::InvalidArgument(s.error_message());
     } else if (!s.ok()) {

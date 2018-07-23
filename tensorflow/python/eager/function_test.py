@@ -213,6 +213,19 @@ class FunctionTest(test.TestCase):
     self.assertEqual(fn_op.output_shapes, None)
     self.assertAllEqual(fn_op(x, x), None)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testDefunCondGradient(self):
+
+    @function.defun
+    def f(x):
+      return control_flow_ops.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      t.watch(x)
+      y = f(x)
+    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
+
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
 
