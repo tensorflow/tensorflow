@@ -1754,8 +1754,9 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
   bool all_tuple_elements_have_buffer =
       c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
-        return ir_emitter_context_->buffer_assignment().HasTopLevelAllocation(
-            tuple_element);
+        return ir_emitter_context_->buffer_assignment()
+            .GetUniqueTopLevelSlice(tuple_element)
+            .ok();
       });
   // Tuples (especially tuples that are the final result of a computation) can
   // be so huge that if we were to emit a kernel that took each tuple element as
