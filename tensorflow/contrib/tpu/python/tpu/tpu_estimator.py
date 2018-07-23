@@ -2339,7 +2339,7 @@ class TPUEstimator(estimator_lib.Estimator):
           predict_keys=predict_keys,
           hooks=hooks,
           checkpoint_path=checkpoint_path,
-          yield_single_examples=True):
+          yield_single_examples=yield_single_examples):
         yield result
     except Exception as e:  # pylint: disable=broad-except
       rendezvous.record_error('prediction_loop', e)
