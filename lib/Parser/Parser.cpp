@@ -33,15 +33,12 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace mlir;
-using llvm::SourceMgr;
 using llvm::SMLoc;
+using llvm::SourceMgr;
 
 /// Simple enum to make code read better in cases that would otherwise return a
 /// bool value.  Failure is "true" in a boolean context.
-enum ParseResult {
-  ParseSuccess,
-  ParseFailure
-};
+enum ParseResult { ParseSuccess, ParseFailure };
 
 namespace {
 class Parser;
@@ -163,7 +160,7 @@ public:
   Type *parseFunctionType();
   Type *parseType();
   ParseResult parseTypeListNoParens(SmallVectorImpl<Type *> &elements);
-  ParseResult parseTypeList(SmallVectorImpl<Type*> &elements);
+  ParseResult parseTypeList(SmallVectorImpl<Type *> &elements);
 
   // Attribute parsing.
   Attribute *parseAttribute();
@@ -434,7 +431,7 @@ Type *Parser::parseMemRefType() {
     return (emitError("expected ',' in memref type"), nullptr);
 
   // Parse semi-affine-map-composition.
-  SmallVector<AffineMap*, 2> affineMapComposition;
+  SmallVector<AffineMap *, 2> affineMapComposition;
   unsigned memorySpace;
   bool parsedMemorySpace = false;
 
@@ -453,7 +450,7 @@ Type *Parser::parseMemRefType() {
       // Parse affine map.
       if (parsedMemorySpace)
         return emitError("affine map after memory space in memref type");
-      auto* affineMap = parseAffineMapReference();
+      auto *affineMap = parseAffineMapReference();
       if (affineMap == nullptr)
         return ParseFailure;
       affineMapComposition.push_back(affineMap);
@@ -483,14 +480,14 @@ Type *Parser::parseMemRefType() {
 Type *Parser::parseFunctionType() {
   assert(getToken().is(Token::l_paren));
 
-  SmallVector<Type*, 4> arguments;
+  SmallVector<Type *, 4> arguments;
   if (parseTypeList(arguments))
     return nullptr;
 
   if (!consumeIf(Token::arrow))
     return (emitError("expected '->' in function type"), nullptr);
 
-  SmallVector<Type*, 4> results;
+  SmallVector<Type *, 4> results;
   if (parseTypeList(results))
     return nullptr;
 
@@ -508,10 +505,14 @@ Type *Parser::parseFunctionType() {
 ///
 Type *Parser::parseType() {
   switch (getToken().getKind()) {
-  case Token::kw_memref: return parseMemRefType();
-  case Token::kw_tensor: return parseTensorType();
-  case Token::kw_vector: return parseVectorType();
-  case Token::l_paren:   return parseFunctionType();
+  case Token::kw_memref:
+    return parseMemRefType();
+  case Token::kw_tensor:
+    return parseTensorType();
+  case Token::kw_vector:
+    return parseVectorType();
+  case Token::l_paren:
+    return parseFunctionType();
   default:
     return parsePrimitiveType();
   }
@@ -539,7 +540,7 @@ ParseResult Parser::parseTypeListNoParens(SmallVectorImpl<Type *> &elements) {
 ///   type-list-parens ::= `(` `)`
 ///                      | `(` type-list-no-parens `)`
 ///
-ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
+ParseResult Parser::parseTypeList(SmallVectorImpl<Type *> &elements) {
   auto parseElt = [&]() -> ParseResult {
     auto elt = parseType();
     elements.push_back(elt);
@@ -559,7 +560,6 @@ ParseResult Parser::parseTypeList(SmallVectorImpl<Type*> &elements) {
 //===----------------------------------------------------------------------===//
 // Attribute parsing.
 //===----------------------------------------------------------------------===//
-
 
 /// Attribute parsing.
 ///
@@ -608,7 +608,7 @@ Attribute *Parser::parseAttribute() {
 
   case Token::l_bracket: {
     consumeToken(Token::l_bracket);
-    SmallVector<Attribute*, 4> elements;
+    SmallVector<Attribute *, 4> elements;
 
     auto parseElt = [&]() -> ParseResult {
       elements.push_back(parseAttribute());
@@ -621,7 +621,7 @@ Attribute *Parser::parseAttribute() {
   }
   default:
     // Try to parse affine map reference.
-    auto* affineMap = parseAffineMapReference();
+    auto *affineMap = parseAffineMapReference();
     if (affineMap != nullptr)
       return builder.getAffineMapAttr(affineMap);
 
@@ -636,8 +636,8 @@ Attribute *Parser::parseAttribute() {
 ///                    | `{` attribute-entry (`,` attribute-entry)* `}`
 ///   attribute-entry ::= bare-id `:` attribute-value
 ///
-ParseResult Parser::parseAttributeDict(
-    SmallVectorImpl<NamedAttribute> &attributes) {
+ParseResult
+Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
   consumeToken(Token::l_brace);
 
   auto parseElt = [&]() -> ParseResult {
@@ -652,7 +652,8 @@ ParseResult Parser::parseAttributeDict(
       return emitError("expected ':' in attribute list");
 
     auto attr = parseAttribute();
-    if (!attr) return ParseFailure;
+    if (!attr)
+      return ParseFailure;
 
     attributes.push_back({nameId, attr});
     return ParseSuccess;
@@ -1610,7 +1611,7 @@ public:
 
 private:
   CFGFunction *function;
-  llvm::StringMap<std::pair<BasicBlock*, SMLoc>> blocksByName;
+  llvm::StringMap<std::pair<BasicBlock *, SMLoc>> blocksByName;
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
@@ -1680,8 +1681,8 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
     auto *bb = elt.second.first;
     if (!bb->getFunction())
       return emitError(elt.second.second,
-                       "reference to an undefined basic block '" +
-                       elt.first() + "'");
+                       "reference to an undefined basic block '" + elt.first() +
+                           "'");
   }
 
   getModule()->functionList.push_back(function);
@@ -1923,7 +1924,7 @@ ParseResult MLFunctionParser::parseIfStmt() {
   if (!consumeIf(Token::l_paren))
     return emitError("expected (");
 
-  //TODO: parse condition
+  // TODO: parse condition
 
   if (!consumeIf(Token::r_paren))
     return emitError("expected ')'");
