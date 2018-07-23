@@ -713,20 +713,15 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true), scratch_size_(0) {}
+  AlgorithmDesc() : algo_(kDefaultAlgorithm), tensor_ops_enabled_(true) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(0) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops, size_t scratch_size)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(scratch_size) {}
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {}
   bool is_default() const { return algo_ == kDefaultAlgorithm; }
   bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
   Index algo_id() const { return algo_; }
-  size_t scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmDesc& other) const {
     return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_ &&
-           this->scratch_size_ == other.scratch_size_;
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
   uint64 hash() const;
 
@@ -734,7 +729,6 @@ class AlgorithmDesc {
   enum { kDefaultAlgorithm = -1 };
   Index algo_;
   bool tensor_ops_enabled_;
-  size_t scratch_size_;
 };
 
 // Describes the result from a perf experiment.
@@ -766,18 +760,24 @@ class ProfileResult {
 //    the allocation for the scratch memory fails.
 class AlgorithmConfig {
  public:
-  AlgorithmConfig()
-      : algorithm_(), algorithm_no_scratch_() {}
+  AlgorithmConfig() : algorithm_(), scratch_size_(0), algorithm_no_scratch_() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm)
-      : algorithm_(algorithm), algorithm_no_scratch_() {}
+      : algorithm_(algorithm), scratch_size_(0), algorithm_no_scratch_() {}
+  explicit AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
+      : algorithm_(algorithm),
+        scratch_size_(scratch_size),
+        algorithm_no_scratch_() {}
   AlgorithmDesc algorithm() const { return algorithm_; }
   void set_algorithm(AlgorithmDesc val) { algorithm_ = val; }
   AlgorithmDesc algorithm_no_scratch() const { return algorithm_no_scratch_; }
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
+  size_t scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
+           this->scratch_size_ == other.scratch_size_ &&
            this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
   }
   bool operator!=(const AlgorithmConfig& other) const {
@@ -787,6 +787,7 @@ class AlgorithmConfig {
 
  private:
   AlgorithmDesc algorithm_;
+  size_t scratch_size_;
   AlgorithmDesc algorithm_no_scratch_;
 };
 

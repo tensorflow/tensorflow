@@ -987,6 +987,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                              !profile_result.algorithm().is_default(),
                 errors::NotFound("Failed to find backward filter algorithm!"));
     algorithm_config.set_algorithm(profile_result.algorithm());
+    algorithm_config.set_scratch_size(scratch_allocator.TotalByteSize());
     algorithm_config.set_algorithm_no_scratch(profile_result.algorithm());
 #endif
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,

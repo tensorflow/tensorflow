@@ -792,6 +792,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                 errors::NotFound("Failed to find conv algorithm!"));
 
     algorithm_config.set_algorithm(profile_result.algorithm());
+    algorithm_config.set_scratch_size(scratch_allocator.TotalByteSize());
     // TODO - Add support for no-scratch algorithm
     algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
 #endif
