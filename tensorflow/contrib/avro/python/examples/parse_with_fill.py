@@ -30,20 +30,29 @@ schema = '''{"doc": "Fixed length lists.",
                      {"name": "bytes_list_type", "type": {"type": "array", "items": "bytes"}}
                    ]}'''
 
-data = [{'float_list_type': [-1.0001, 0.1, 23.2],
-         'boolean_list_type': [True],
-         'string_list_type': ["a", "b", "c"],
-         'bytes_list_type': ["a", "b", "c"]},
-        {'float_list_type': [],
-         'boolean_list_type': [],
-         'string_list_type': ["d1", "e1"],
-         'bytes_list_type': ["d1"]}]
+data = [{
+    'float_list_type': [-1.0001, 0.1, 23.2],
+    'boolean_list_type': [True],
+    'string_list_type': ["a", "b", "c"],
+    'bytes_list_type': ["a", "b", "c"]
+}, {
+    'float_list_type': [],
+    'boolean_list_type': [],
+    'string_list_type': ["d1", "e1"],
+    'bytes_list_type': ["d1"]
+}]
 
-features = {'float_list_type': tf.FixedLenFeature([3], tf.float32, default_value=[0, 0, 0]),
-            'boolean_list_type': tf.FixedLenFeature([], tf.bool, default_value=False),
-            'string_list_type': tf.FixedLenSequenceFeature([], tf.string, allow_missing=True, default_value="f"),
-            'bytes_list_type': tf.FixedLenFeature([3], tf.string, default_value=["d", "e", "f"])}
-
+features = {
+    'float_list_type':
+    tf.FixedLenFeature([3], tf.float32, default_value=[0, 0, 0]),
+    'boolean_list_type':
+    tf.FixedLenFeature([], tf.bool, default_value=False),
+    'string_list_type':
+    tf.FixedLenSequenceFeature(
+        [], tf.string, allow_missing=True, default_value="f"),
+    'bytes_list_type':
+    tf.FixedLenFeature([3], tf.string, default_value=["d", "e", "f"])
+}
 
 if __name__ == '__main__':
     # Create a serializer

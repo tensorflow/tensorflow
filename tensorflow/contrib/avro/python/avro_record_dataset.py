@@ -44,12 +44,10 @@ class AvroRecordDataset(Dataset):
         super(AvroRecordDataset, self).__init__()
 
         # Force the type to string even if filenames is an empty list.
-        self._filenames = ops.convert_to_tensor(filenames, dtypes.string, name="filenames")
+        self._filenames = ops.convert_to_tensor(
+            filenames, dtypes.string, name="filenames")
         self._schema = convert.optional_param_to_tensor(
-            "schema",
-            schema,
-            argument_default="",
-            argument_dtype=dtypes.string)
+            "schema", schema, argument_default="", argument_dtype=dtypes.string)
         self._buffer_size = convert.optional_param_to_tensor(
             "buffer_size",
             buffer_size,

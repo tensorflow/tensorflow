@@ -46,28 +46,45 @@ if __name__ == '__main__':
                  ]}'''
 
     # Define some sample data
-    data = [{'index': 1, "data": "First row"},
-            {'index': 2, "data": "Second row"},
-            {'index': 3, "data": "Third row"},
-            {'index': 4, "data": "Fourth row"},
-            {'index': 5, "data": "Fifth row"}]
+    data = [{
+        'index': 1,
+        "data": "First row"
+    }, {
+        'index': 2,
+        "data": "Second row"
+    }, {
+        'index': 3,
+        "data": "Third row"
+    }, {
+        'index': 4,
+        "data": "Fourth row"
+    }, {
+        'index': 5,
+        "data": "Fifth row"
+    }]
 
     # Write the avro data into the sample file
     with open(filename, 'wb') as out:
-        writer = DataFileWriter(out, DatumWriter(), writers_schema=parse(schema))
+        writer = DataFileWriter(
+            out, DatumWriter(), writers_schema=parse(schema))
         for datum in data:
             writer.append(datum)
         writer.close()
 
     # Define the function for parsing avro records into TensorFlow tensors
     def _parse_function(serialized):
-        return parse_avro_record(serialized=serialized, schema=schema,
-                                 features={"index": tf.FixedLenFeature([], tf.int32),
-                                           "data": tf.FixedLenFeature([], tf.string)})
+        return parse_avro_record(
+            serialized=serialized,
+            schema=schema,
+            features={
+                "index": tf.FixedLenFeature([], tf.int32),
+                "data": tf.FixedLenFeature([], tf.string)
+            })
 
     # Create the dataset and apply the parse function
     dataset = AvroRecordDataset(filenames=filenames)
-    dataset = dataset.batch(1)  # A batch dimension is required for the parse function
+    dataset = dataset.batch(
+        1)  # A batch dimension is required for the parse function
     dataset = dataset.map(_parse_function)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()

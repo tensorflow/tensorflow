@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from avro.io import DatumReader, DatumWriter, BinaryDecoder, BinaryEncoder
 from avro.schema import parse
 from StringIO import StringIO
@@ -32,7 +31,8 @@ class AvroDeserializer(object):
         :param schema_json: Json string of the schema.
         """
         schema_object = parse(schema_json)
-        self.datum_reader = DatumReader(writers_schema=schema_object, readers_schema=schema_object)
+        self.datum_reader = DatumReader(
+            writers_schema=schema_object, readers_schema=schema_object)
 
     def deserialize(self, serialized_str):
         """

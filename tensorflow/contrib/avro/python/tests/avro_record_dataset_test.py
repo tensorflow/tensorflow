@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import logging
 import os
 import shutil
@@ -96,54 +95,120 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         #   float64 (double)    (2-2^-52)x2^1023    -(2-2^-52)x2^1023
         self.test_records = [
             # Check empty and defaults
-            {"index": 0,
-             "boolean_type": True,
-             "bytes_type": "",
-             "int_type": 0,
-             "long_type": 0L,
-             "float_type": 0.0,
-             "double_type": 0.0,
-             "string_type": "",
-             "features": [],
-             "map_features": {"first": {"name": "skill", "term": "coding", "value": 1.0},
-                              "second": {"name": "skill", "term": "writing", "value": 1.0}}},
+            {
+                "index": 0,
+                "boolean_type": True,
+                "bytes_type": "",
+                "int_type": 0,
+                "long_type": 0L,
+                "float_type": 0.0,
+                "double_type": 0.0,
+                "string_type": "",
+                "features": [],
+                "map_features": {
+                    "first": {
+                        "name": "skill",
+                        "term": "coding",
+                        "value": 1.0
+                    },
+                    "second": {
+                        "name": "skill",
+                        "term": "writing",
+                        "value": 1.0
+                    }
+                }
+            },
             # Check largest values and special characters
-            {"index": 1,
-             "boolean_type": False,
-             "bytes_type": "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\"?",
-             "int_type": 2147483648-1,
-             "long_type": 9223372036854775807L,
-             "float_type": 3.40282306074e+38,
-             "double_type": 1.7976931348623157e+308,
-             "string_type": "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\"?",
-             "features": [{"name": "skill", "term": "coding", "value": 1.0},
-                          {"name": "skill", "term": "writing", "value": 1.0}],
-             "map_features": {}},
+            {
+                "index":
+                1,
+                "boolean_type":
+                False,
+                "bytes_type":
+                "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\"?",
+                "int_type":
+                2147483648 - 1,
+                "long_type":
+                9223372036854775807L,
+                "float_type":
+                3.40282306074e+38,
+                "double_type":
+                1.7976931348623157e+308,
+                "string_type":
+                "SpecialChars@!#$%^&*()-_=+{}[]|/`~\\\"?",
+                "features": [{
+                    "name": "skill",
+                    "term": "coding",
+                    "value": 1.0
+                }, {
+                    "name": "skill",
+                    "term": "writing",
+                    "value": 1.0
+                }],
+                "map_features": {}
+            },
             # Check smallest values and all characters/digits
-            {"index": 2,
-             "boolean_type": False,
-             "bytes_type": "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
-             "int_type": -2147483648,
-             "long_type": -9223372036854775807L-1L,
-             "float_type": -3.40282306074e+38,
-             "double_type": -1.7976931348623157e+308,
-             "string_type": "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
-             "features": [{"name": "region", "term": "az", "value": 1.0},
-                          {"name": "skill", "term": "writing", "value": 1.0}],
-             "map_features": {}},
+            {
+                "index":
+                2,
+                "boolean_type":
+                False,
+                "bytes_type":
+                "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
+                "int_type":
+                -2147483648,
+                "long_type":
+                -9223372036854775807L - 1L,
+                "float_type":
+                -3.40282306074e+38,
+                "double_type":
+                -1.7976931348623157e+308,
+                "string_type":
+                "ABCDEFGHIJKLMNOPQRSTUVWZabcdefghijklmnopqrstuvwz0123456789",
+                "features": [{
+                    "name": "region",
+                    "term": "az",
+                    "value": 1.0
+                }, {
+                    "name": "skill",
+                    "term": "writing",
+                    "value": 1.0
+                }],
+                "map_features": {}
+            },
             # Check random data
-            {"index": 3,
-             "boolean_type": False,
-             "bytes_type": "alkdfjiwij2oi2jp",
-             "int_type": 213648,
-             "long_type": -234829L,
-             "float_type": 2342.322,
-             "double_type": 2.2250738585072014e-308,
-             "string_type": "aljk2ijlqn,w",
-             "features": [{"name": "region", "term": "ca", "value": 1.0},
-                          {"name": "skill", "term": "writing", "value": 1.0},
-                          {"name": "region", "term": "az", "value": 1.0}],
-             "map_features": {}},
+            {
+                "index":
+                3,
+                "boolean_type":
+                False,
+                "bytes_type":
+                "alkdfjiwij2oi2jp",
+                "int_type":
+                213648,
+                "long_type":
+                -234829L,
+                "float_type":
+                2342.322,
+                "double_type":
+                2.2250738585072014e-308,
+                "string_type":
+                "aljk2ijlqn,w",
+                "features": [{
+                    "name": "region",
+                    "term": "ca",
+                    "value": 1.0
+                }, {
+                    "name": "skill",
+                    "term": "writing",
+                    "value": 1.0
+                }, {
+                    "name": "region",
+                    "term": "az",
+                    "value": 1.0
+                }],
+                "map_features": {}
+            },
         ]
 
     def _read_schema_from_file(self):
@@ -167,12 +232,16 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         records = []
         schema_object = parse_schema(readers_schema)
         with open(self.filename, 'rb') as file_handle:
-            reader = DataFileReader(file_handle, DatumReader(readers_schema=schema_object))
+            reader = DataFileReader(
+                file_handle, DatumReader(readers_schema=schema_object))
             records += [record for record in reader]
         return records
 
     @staticmethod
-    def _write_records_to_file(records, filename, writers_schema, codec='deflate'):
+    def _write_records_to_file(records,
+                               filename,
+                               writers_schema,
+                               codec='deflate'):
         """
         Writes the string data into an avro encoded file
 
@@ -183,7 +252,8 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         """
         schema = parse_schema(writers_schema)
         with open(filename, 'wb') as out:
-            writer = DataFileWriter(out, DatumWriter(), writers_schema=schema, codec=codec)
+            writer = DataFileWriter(
+                out, DatumWriter(), writers_schema=schema, codec=codec)
             for record in records:
                 writer.append(record)
             writer.close()
@@ -196,7 +266,9 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         self.output_dir = tempfile.mkdtemp()
         self.filename = os.path.join(self.output_dir, "test.avro")
         AvroRecordDatasetTest._write_records_to_file(
-            records=self.test_records, writers_schema=self.full_schema, filename=self.filename)
+            records=self.test_records,
+            writers_schema=self.full_schema,
+            filename=self.filename)
 
     def tearDown(self):
         shutil.rmtree(self.output_dir)
@@ -210,7 +282,8 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         :param readers_schema: The schema used when reading the dataset
         """
         with self.test_session() as sess:
-            dataset = AvroRecordDataset(filenames=[self.filename], schema=readers_schema)
+            dataset = AvroRecordDataset(
+                filenames=[self.filename], schema=readers_schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
             sess.run(iterator.initializer)
@@ -229,11 +302,13 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
         """
 
         # Parse cases in sequence
-        config = config_pb2.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
+        config = config_pb2.ConfigProto(
+            intra_op_parallelism_threads=1, inter_op_parallelism_threads=1)
 
         with self.test_session(config=config) as sess:
 
-            dataset = AvroRecordDataset(filenames=[self.filename], schema=readers_schema)
+            dataset = AvroRecordDataset(
+                filenames=[self.filename], schema=readers_schema)
             iterator = dataset.make_initializable_iterator()
             next_element = iterator.get_next()
 
@@ -242,7 +317,8 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
             if readers_schema is None:
                 readers_schema = writers_schema
 
-            records_expected = self._read_records_resolved(readers_schema=readers_schema)
+            records_expected = self._read_records_resolved(
+                readers_schema=readers_schema)
 
             sess.run(iterator.initializer)
 
@@ -250,11 +326,13 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
             while True:
                 i_record = 0
                 try:
-                    record_actual = deserializer.deserialize(sess.run(next_element))
+                    record_actual = deserializer.deserialize(
+                        sess.run(next_element))
                     record_expected = records_expected[record_actual['index']]
                     for name, value_actual in record_actual.iteritems():
                         # The field must be present in the read record
-                        assert name in record_expected, "Could not find {0} in read record.".format(name)
+                        assert name in record_expected, "Could not find {0} in read record.".format(
+                            name)
                         value_expected = record_expected[name]
                         # The types of the fields must be the same
                         assert type(value_expected) == type(value_actual), \
@@ -392,7 +470,8 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                                                   } ]}
                                               ]}'''
         with self.assertRaises(OpError) as error:
-            self._load_and_compare_records(readers_schema=collapse_record_in_array_schema)
+            self._load_and_compare_records(
+                readers_schema=collapse_record_in_array_schema)
         logging.info(error)
 
     def test_remove_field_in_record_in_map_fail(self):
@@ -419,7 +498,8 @@ class AvroRecordDatasetTest(test_util.TensorFlowTestCase):
                                                    }
                                                 }
                                             ]}'''
-        self._load_and_compare_records(readers_schema=collapse_record_in_map_schema)
+        self._load_and_compare_records(
+            readers_schema=collapse_record_in_map_schema)
 
     def test_up_cast(self):
         """

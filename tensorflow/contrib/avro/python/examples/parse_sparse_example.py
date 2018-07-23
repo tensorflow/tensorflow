@@ -39,16 +39,51 @@ schema = '''{"doc": "Sparse features.",
                  }}
              ]}'''
 
-data = [{'index': 0, 'sparse_type': [{'index': 0, 'max_index': 10, 'value': 5.0},
-                                     {'index': 0, 'max_index': 10, 'value': 3.0},
-                                     {'index': 5, 'max_index': 10, 'value': 7.0},
-                                     {'index': 3, 'max_index': 10, 'value': 1.0}]},
-        {'index': 1, 'sparse_type': [{'index': 0, 'max_index': 10, 'value': 2.0},
-                                     {'index': 9, 'max_index': 10, 'value': 1.0}]}]
+data = [{
+    'index':
+    0,
+    'sparse_type': [{
+        'index': 0,
+        'max_index': 10,
+        'value': 5.0
+    }, {
+        'index': 0,
+        'max_index': 10,
+        'value': 3.0
+    }, {
+        'index': 5,
+        'max_index': 10,
+        'value': 7.0
+    }, {
+        'index': 3,
+        'max_index': 10,
+        'value': 1.0
+    }]
+}, {
+    'index':
+    1,
+    'sparse_type': [{
+        'index': 0,
+        'max_index': 10,
+        'value': 2.0
+    }, {
+        'index': 9,
+        'max_index': 10,
+        'value': 1.0
+    }]
+}]
 
-features = {'index': tf.FixedLenFeature([], tf.int32),
-            'sparse_type': tf.SparseFeature(index_key='index', value_key='value', dtype=tf.float32, size=10,
-                                            already_sorted=True)}
+features = {
+    'index':
+    tf.FixedLenFeature([], tf.int32),
+    'sparse_type':
+    tf.SparseFeature(
+        index_key='index',
+        value_key='value',
+        dtype=tf.float32,
+        size=10,
+        already_sorted=True)
+}
 
 if __name__ == '__main__':
     # Create a serializer

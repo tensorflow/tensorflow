@@ -32,8 +32,11 @@ from tensorflow.contrib.avro.ops.gen_parse_avro_record import \
 
 # Load the shared library
 this_dir = os.path.dirname(os.path.abspath(__file__))
-lib_name = os.path.join(this_dir, '_parse_avro_record.so')  # Display the operators with lib_name.OP_LIST
-parse_module = load_library.load_op_library(lib_name)  # Load the library with dependent so's in '.'
+lib_name = os.path.join(
+    this_dir,
+    '_parse_avro_record.so')  # Display the operators with lib_name.OP_LIST
+parse_module = load_library.load_op_library(
+    lib_name)  # Load the library with dependent so's in '.'
 
 
 def parse_avro_record(serialized, schema, features):
@@ -96,28 +99,32 @@ def parse_avro_record(serialized, schema, features):
     # ******************** START difference: This part is different from the originally copied code ********************
     features = _build_keys_for_sparse_features(features)
     # ******************** END difference: This part is different from the originally copied code **********************
-    (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults, dense_shapes) = _features_to_raw_params(
-        features, [VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature])
+    (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
+     dense_shapes) = _features_to_raw_params(features, [
+         VarLenFeature, SparseFeature, FixedLenFeature, FixedLenSequenceFeature
+     ])
 
-    dense_defaults = collections.OrderedDict() if dense_defaults is None else dense_defaults
+    dense_defaults = collections.OrderedDict(
+    ) if dense_defaults is None else dense_defaults
     sparse_keys = [] if sparse_keys is None else sparse_keys
     sparse_types = [] if sparse_types is None else sparse_types
     dense_keys = [] if dense_keys is None else dense_keys
     dense_types = [] if dense_types is None else dense_types
-    dense_shapes = ([[]] * len(dense_keys) if dense_shapes is None else dense_shapes)
+    dense_shapes = ([[]] * len(dense_keys)
+                    if dense_shapes is None else dense_shapes)
 
     num_dense = len(dense_keys)
     num_sparse = len(sparse_keys)
 
     if len(dense_shapes) != num_dense:
-        raise ValueError("len(dense_shapes) != len(dense_keys): %d vs. %d"
-                         % (len(dense_shapes), num_dense))
+        raise ValueError("len(dense_shapes) != len(dense_keys): %d vs. %d" %
+                         (len(dense_shapes), num_dense))
     if len(dense_types) != num_dense:
-        raise ValueError("len(dense_types) != len(num_dense): %d vs. %d"
-                         % (len(dense_types), num_dense))
+        raise ValueError("len(dense_types) != len(num_dense): %d vs. %d" %
+                         (len(dense_types), num_dense))
     if len(sparse_types) != num_sparse:
-        raise ValueError("len(sparse_types) != len(sparse_keys): %d vs. %d"
-                         % (len(sparse_types), num_sparse))
+        raise ValueError("len(sparse_types) != len(sparse_keys): %d vs. %d" %
+                         (len(sparse_types), num_sparse))
     if num_dense + num_sparse == 0:
         raise ValueError("Must provide at least one sparse key or dense key")
     if not set(dense_keys).isdisjoint(set(sparse_keys)):
@@ -144,7 +151,8 @@ def parse_avro_record(serialized, schema, features):
                     default_value = False
                 else:  # Should be numeric type
                     default_value = 0
-                default_value = ops.convert_to_tensor(default_value, dtype=dense_types[i])
+                default_value = ops.convert_to_tensor(
+                    default_value, dtype=dense_types[i])
                 # ************* END difference: This part is different from the originally copied code *****************
             else:
                 # Reshape to a scalar to ensure user gets an error if they
@@ -170,23 +178,27 @@ def parse_avro_record(serialized, schema, features):
     dense_shapes = [shape.as_proto() for shape in dense_shapes]
 
     # ******************** START difference: This part is different from the originally copied code ********************
-    outputs = _parse_avro_record(serialized=serialized,
-                                 sparse_keys=sparse_keys,
-                                 sparse_types=sparse_types,
-                                 dense_defaults=dense_defaults_vec,
-                                 dense_keys=dense_keys,
-                                 dense_shapes=dense_shapes,
-                                 schema=schema)
+    outputs = _parse_avro_record(
+        serialized=serialized,
+        sparse_keys=sparse_keys,
+        sparse_types=sparse_types,
+        dense_defaults=dense_defaults_vec,
+        dense_keys=dense_keys,
+        dense_shapes=dense_shapes,
+        schema=schema)
     # ********************** END difference: This part is different from the originally copied code ********************
 
     (sparse_indices, sparse_values, sparse_shapes, dense_values) = outputs
 
     sparse_tensors = [
-        sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
-        in zip(sparse_indices, sparse_values, sparse_shapes)]
+        sparse_tensor.SparseTensor(ix, val, shape)
+        for (ix, val,
+             shape) in zip(sparse_indices, sparse_values, sparse_shapes)
+    ]
 
     return _construct_sparse_tensors_for_sparse_features(
-        features, dict(zip(sparse_keys + dense_keys, sparse_tensors + dense_values)))
+        features,
+        dict(zip(sparse_keys + dense_keys, sparse_tensors + dense_values)))
 
 
 def _build_keys_for_sparse_features(features):
@@ -203,9 +215,10 @@ def _build_keys_for_sparse_features(features):
         for key in sorted(features.keys()):
             feature = features[key]
             if isinstance(feature, SparseFeature):
-                features[key] = SparseFeature(index_key=key + '.[*].' + feature.index_key,
-                                              value_key=key + '.[*].' + feature.value_key,
-                                              dtype=feature.dtype,
-                                              size=feature.size,
-                                              already_sorted=feature.already_sorted)
+                features[key] = SparseFeature(
+                    index_key=key + '.[*].' + feature.index_key,
+                    value_key=key + '.[*].' + feature.value_key,
+                    dtype=feature.dtype,
+                    size=feature.size,
+                    already_sorted=feature.already_sorted)
     return features
