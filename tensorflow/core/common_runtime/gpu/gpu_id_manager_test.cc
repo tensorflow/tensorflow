@@ -22,10 +22,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-PhysicalGpuId TfToPhysicalGpuId(TfGpuId tf) {
-  PhysicalGpuId cuda;
-  TF_CHECK_OK(GpuIdManager::TfToPhysicalGpuId(tf, &cuda));
-  return cuda;
+PhysicalGpuId TfToPlatformGpuId(TfGpuId tf) {
+  PlatformGpuId platform_gpu_id;
+  TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf, &platform_gpu_id));
+  return platform_gpu_id;
 }
 
 TEST(GpuIdManagerTest, Basics) {
