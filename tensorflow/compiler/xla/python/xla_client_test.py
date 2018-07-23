@@ -489,6 +489,34 @@ class SingleOpTest(LocalComputationTest):
     for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
       _ConvertAndTest(x, src_dtype, dst_dtype)
 
+  def testBitcastConvertType(self):
+    xla_x32_types = {
+        np.int32: xla_client.xla_data_pb2.S32,
+        np.float32: xla_client.xla_data_pb2.F32,
+    }
+
+    xla_x64_types = {
+        np.int64: xla_client.xla_data_pb2.S64,
+        np.float64: xla_client.xla_data_pb2.F64,
+    }
+
+    def _ConvertAndTest(template, src_dtype, dst_dtype, dst_etype):
+      c = self._NewComputation()
+      x = c.Constant(np.array(template, dtype=src_dtype))
+      c.BitcastConvertType(x, dst_etype)
+
+      result = c.Build().Compile().Execute()
+      expected = np.array(template, src_dtype).view(dst_dtype)
+
+      self.assertEqual(result.shape, expected.shape)
+      self.assertEqual(result.dtype, expected.dtype)
+      np.testing.assert_equal(result, expected)
+
+    x = [0, 1, 0, 0, 1]
+    for xla_types in [xla_x32_types, xla_x64_types]:
+      for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
+        _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
+
   def testCrossReplicaSumOneReplica(self):
     samples = [
         NumpyArrayF32(42.0),

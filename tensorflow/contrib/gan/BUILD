@@ -57,6 +57,7 @@ py_library(
 py_test(
     name = "train_test",
     srcs = ["python/train_test.py"],
+    shard_count = 50,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -80,6 +81,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

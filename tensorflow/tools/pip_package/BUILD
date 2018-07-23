@@ -79,7 +79,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
     "//tensorflow/contrib/nn:nn_py",
     "//tensorflow/contrib/predictor:predictor_pip",
-    "//tensorflow/contrib/proto:proto_pip",
+    "//tensorflow/contrib/proto:proto",
     "//tensorflow/contrib/receptive_field:receptive_field_pip",
     "//tensorflow/contrib/rpc:rpc_pip",
     "//tensorflow/contrib/session_bundle:session_bundle_pip",

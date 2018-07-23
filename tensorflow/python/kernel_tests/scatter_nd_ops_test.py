@@ -268,12 +268,12 @@ class StatefulScatterNdTest(test.TestCase):
         # Test some out of range errors.
         indices = np.array([[-1], [0], [5]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[0,0\] = \[-1\] does not index into \[6\]"):
+            r"indices\[0\] = \[-1\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
 
         indices = np.array([[2], [0], [6]])
         with self.assertRaisesOpError(
-            r"Invalid indices: \[2,0\] = \[6\] does not index into \[6\]"):
+            r"indices\[2\] = \[6\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
 
   def testRank3ValidShape(self):

@@ -189,7 +189,7 @@ class InMemoryEvaluatorHook(training.SessionRunHook):
         init_fn=feed_variables, copy_from_scaffold=self._scaffold)
 
     with self._graph.as_default():
-      return self._estimator._evaluate_run(
+      self._estimator._evaluate_run(
           checkpoint_path=None,
           scaffold=scaffold,
           update_op=self._update_op,

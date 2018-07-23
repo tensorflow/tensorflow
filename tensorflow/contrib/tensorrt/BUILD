@@ -11,7 +11,6 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "cuda_py_test",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -20,6 +19,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -32,7 +32,10 @@ tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
     srcs = ["tensorrt_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -154,6 +157,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":tf_trt_integration_test_base",
         ":trt_convert_py",
         ":trt_ops_py",
         "//tensorflow/python:errors",
@@ -233,7 +237,10 @@ tf_cc_test(
     name = "trt_allocator_test",
     size = "small",
     srcs = ["resources/trt_allocator_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         ":trt_allocator",
         "//tensorflow/core:test",
@@ -301,7 +308,10 @@ tf_cc_test(
     name = "segment_test",
     size = "small",
     srcs = ["segment/segment_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         ":segment",
         "//tensorflow/c:c_api",
@@ -337,7 +347,11 @@ tf_cuda_cc_test(
     name = "trt_plugin_factory_test",
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
-    tags = ["no_windows"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
     deps = [
         ":trt_plugins",
         "//tensorflow/core:lib",
@@ -349,16 +363,39 @@ tf_cuda_cc_test(
     ]),
 )
 
-cuda_py_test(
-    name = "tf_trt_integration_test",
-    srcs = ["test/tf_trt_integration_test.py"],
-    additional_deps = [
-        ":init_py",
+py_library(
+    name = "tf_trt_integration_test_base",
+    srcs = ["test/tf_trt_integration_test_base.py"],
+    deps = [
+        ":trt_convert_py",
+        ":trt_ops_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
-    main = "test/tf_trt_integration_test.py",
+)
+
+cuda_py_tests(
+    name = "tf_trt_integration_test",
+    srcs = [
+        "test/base_test.py",
+        # "test/batch_matmul_test.py",
+        # "test/biasadd_matmul_test.py",
+        "test/binary_tensor_weight_broadcast_test.py",
+        "test/concatenation_test.py",
+        "test/const_broadcast_test.py",
+        "test/multi_connection_neighbor_engine_test.py",
+        "test/neighboring_engine_test.py",
+        "test/unary_test.py",
+        # "test/vgg_block_nchw_test.py",
+        # "test/vgg_block_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],

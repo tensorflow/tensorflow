@@ -177,7 +177,7 @@ XLA_TEST_F(PrngTest, Uniformity108) {
   EXPECT_LT(UniformChiSquared(108, 256), 132.144);
 }
 XLA_TEST_F(PrngTest, Uniformity256) {
-  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+  EXPECT_LT(UniformChiSquared(256, 512), 293.248);
 }
 
 XLA_TEST_F(PrngTest, MapUsingRng) {

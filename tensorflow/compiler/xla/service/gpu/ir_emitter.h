@@ -96,6 +96,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  Status HandleIota(HloInstruction* iota) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -162,7 +163,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // The following fields track the IR emission state. According to LLVM memory
   // management rules, their memory is owned by the module.
-  llvm::IRBuilder<> ir_builder_;
+  llvm::IRBuilder<> b_;
 
   // Mapping from HLO to its underlying LLVM value.
   HloToIrBindings bindings_;
