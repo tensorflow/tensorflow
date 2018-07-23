@@ -623,6 +623,8 @@ class BatchNormalization(Layer):
     variance = math_ops.cast(variance, inputs.dtype)
     if offset is not None:
       offset = math_ops.cast(offset, inputs.dtype)
+    if scale is not None:
+      scale = math_ops.cast(scale, inputs.dtype)
     outputs = nn.batch_normalization(inputs,
                                      _broadcast(mean),
                                      _broadcast(variance),
