@@ -580,24 +580,19 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       OP_REQUIRES_OK(context, context->status());
 
       // check wehther we need to reorder src
-      T* src_data = nullptr;
+      const T* src_data = input_tensor.flat<T>().data();
       if (input_md.data.format != pooling_fwd->GetSrcMemoryFormat()) {
         dnn_data_input.SetUsrMem(input_md, &input_tensor);
         auto src_target_primitive_desc = memory::primitive_desc(
             {{src_dims}, MklDnnType<T>(), pooling_fwd->GetSrcMemoryFormat()},
             cpu_engine);
         dnn_data_input.CheckReorderToOpMem(src_target_primitive_desc);
-        src_data = static_cast<T*>(
-                    dnn_data_input.GetOpMem().get_data_handle());
-      } else {
-        src_data = static_cast<T*>(const_cast<T*>(
-                    input_tensor.flat<T>().data()));
+        src_data = const_cast<T*>(
+            reinterpret_cast<T*>(dnn_data_input.GetOpMem().get_data_handle()));
       }
 
-      T* dst_data = static_cast<T*>(
-          const_cast<T*>(output_tensor->flat<T>().data()));
-      T* ws_data = static_cast<T*>(
-          dnn_data_wksp.GetOpMem().get_data_handle());
+      T* dst_data = output_tensor->flat<T>().data();
+      void* ws_data = dnn_data_wksp.GetOpMem().get_data_handle();
 
       // execute pooling op
       pooling_fwd->Execute(src_data, dst_data, ws_data);
@@ -702,19 +697,18 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                                : memory::desc(diff_dst_dims, MklDnnType<T>(),
                                               this->data_format_mkldnn_);
       // check if diff_dst needs to be reordered
-      T* diff_dst_data = nullptr;
+      const T* diff_dst_data = grad_tensor.flat<T>().data();
       if (diff_dst_md.data.format != pooling_bwd->GetDiffDstFormat()) {
         auto target_diff_dst = memory::primitive_desc({{diff_dst_dims},
             MklDnnType<T>(), pooling_bwd->GetDiffDstFormat()}, cpu_engine);
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
         grad_dnn_data.CheckReorderToOpMem(target_diff_dst);
-        diff_dst_data = static_cast<T*>(
-            grad_dnn_data.GetOpMem().get_data_handle());
-      } else {
-        diff_dst_data = static_cast<T*>(
-            const_cast<T*>(grad_tensor.flat<T>().data()));
+        diff_dst_data = const_cast<T*>(reinterpret_cast<T*>(
+            grad_dnn_data.GetOpMem().get_data_handle()));
       }
-      void* ws_data = nullptr;
+
+      void* ws_data = static_cast<void*>(const_cast<uint8*>(
+              workspace_tensor.flat<uint8>().data()));;
       auto ws_md =
         pooling_bwd->GetPoolingFwdPd()->workspace_primitive_desc().desc();
       if (ws_md.data.format != pooling_bwd->GetWorkspaceFormat()) {
@@ -726,13 +720,9 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         workspace_dnn_data.SetUsrMem(ws_md, &workspace_tensor);
         workspace_dnn_data.CheckReorderToOpMem(target_ws);
         ws_data = workspace_dnn_data.GetOpMem().get_data_handle();
-      } else {
-        ws_data = static_cast<void*>(const_cast<uint8*>(
-            workspace_tensor.flat<uint8>().data()));
       }
 
-      T* diff_src_data = static_cast<T*>(
-          const_cast<T*>(output_tensor->flat<T>().data()));
+      T* diff_src_data = output_tensor->flat<T>().data();
 
       // execute pooling
       pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data);
