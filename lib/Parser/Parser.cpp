@@ -1249,7 +1249,8 @@ public:
 
   template <typename ValueTy>
   ParseResult
-  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results);
+  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results,
+                                 bool isParenthesized);
 
   // Operations
   ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
@@ -1440,29 +1441,59 @@ ResultType FunctionParser::parseSSADefOrUseAndType(
   return action(useInfo, type);
 }
 
-/// Parse a (possibly empty) list of SSA operands with types.
+/// Parse a (possibly empty) list of SSA operands, followed by a colon, then
+/// followed by a type list.  If hasParens is true, then the operands are
+/// surrounded by parens.
 ///
-///   ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
+///   ssa-use-and-type-list[parens]
+///     ::= `(` ssa-use-list `)` ':' type-list-no-parens
+///
+///   ssa-use-and-type-list[!parens]
+///     ::= ssa-use-list ':' type-list-no-parens
 ///
 template <typename ValueTy>
 ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
-    SmallVectorImpl<ValueTy *> &results) {
-  if (getToken().isNot(Token::percent_identifier))
+    SmallVectorImpl<ValueTy *> &results, bool isParenthesized) {
+
+  // If we are in the parenthesized form and no paren exists, then we succeed
+  // with an empty list.
+  if (isParenthesized && !consumeIf(Token::l_paren))
     return ParseSuccess;
 
-  return parseCommaSeparatedList([&]() -> ParseResult {
-    if (auto *value = parseSSAUseAndType()) {
-      results.push_back(cast<ValueTy>(value));
-      return ParseSuccess;
-    }
+  SmallVector<SSAUseInfo, 4> valueIDs;
+  if (parseOptionalSSAUseList(valueIDs))
     return ParseFailure;
-  });
+
+  if (isParenthesized && !consumeIf(Token::r_paren))
+    return emitError("expected ')' in operand list");
+
+  // If there were no operands, then there is no colon or type lists.
+  if (valueIDs.empty())
+    return ParseSuccess;
+
+  if (!consumeIf(Token::colon))
+    return emitError("expected ':' in operand list");
+
+  SmallVector<Type *, 4> types;
+  if (parseTypeListNoParens(types))
+    return ParseFailure;
+
+  if (valueIDs.size() != types.size())
+    return emitError("expected " + Twine(valueIDs.size()) +
+                     " types to match operand list");
+
+  results.reserve(valueIDs.size());
+  for (unsigned i = 0, e = valueIDs.size(); i != e; ++i) {
+    if (auto *value = resolveSSAUse(valueIDs[i], types[i]))
+      results.push_back(cast<ValueTy>(value));
+    else
+      return ParseFailure;
+  }
+
+  return ParseSuccess;
 }
 
 /// Parse the CFG or MLFunc operation.
-///
-/// TODO(clattner): This is a change from the MLIR spec as written, it is an
-/// experiment that will eliminate "builtin" instructions as a thing.
 ///
 ///  operation ::=
 ///    (ssa-id `=`)? string '(' ssa-use-list? ')' attribute-dict?
@@ -1608,8 +1639,7 @@ private:
 } // end anonymous namespace
 
 /// Parse a (possibly empty) list of SSA operands with types as basic block
-/// arguments. Unlike parseOptionalSsaUseAndTypeList the SSA IDs are treated as
-/// defs, not uses.
+/// arguments.
 ///
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 ///
@@ -1734,11 +1764,12 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
 
   case Token::kw_return: {
     consumeToken(Token::kw_return);
-    SmallVector<CFGValue *, 8> results;
-    if (parseOptionalSSAUseAndTypeList(results))
-      return nullptr;
 
-    return builder.createReturnInst(results);
+    // Parse any operands.
+    SmallVector<CFGValue *, 8> operands;
+    if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized*/ false))
+      return nullptr;
+    return builder.createReturnInst(operands);
   }
 
   case Token::kw_br: {
@@ -1748,37 +1779,10 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
       return (emitError("expected basic block name"), nullptr);
     auto branch = builder.createBranchInst(destBB);
 
-    // Parse the use list.
-    if (!consumeIf(Token::l_paren))
-      return branch;
-
-    SmallVector<SSAUseInfo, 4> valueIDs;
-    if (parseOptionalSSAUseList(valueIDs))
+    SmallVector<CFGValue *, 8> operands;
+    if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized*/ true))
       return nullptr;
-    if (!consumeIf(Token::r_paren))
-      return (emitError("expected ')' in branch argument list"), nullptr);
-    if (!consumeIf(Token::colon))
-      return (emitError("expected ':' in branch argument list"), nullptr);
-
-    auto typeLoc = getToken().getLoc();
-    SmallVector<Type *, 4> types;
-    if (parseTypeListNoParens(types))
-      return nullptr;
-
-    if (types.size() != valueIDs.size())
-      return (emitError(typeLoc, "expected " + Twine(valueIDs.size()) +
-                                     " types to match operand list"),
-              nullptr);
-
-    SmallVector<CFGValue *, 4> values;
-    values.reserve(valueIDs.size());
-    for (unsigned i = 0, e = valueIDs.size(); i != e; ++i) {
-      if (auto *value = resolveSSAUse(valueIDs[i], types[i]))
-        values.push_back(cast<CFGValue>(value));
-      else
-        return nullptr;
-    }
-    branch->addOperands(values);
+    branch->addOperands(operands);
     return branch;
   }
     // TODO: cond_br.

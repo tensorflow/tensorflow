@@ -318,14 +318,41 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  // TODO: Add a getOperands() custom sequence that provides a value projection
-  // of the operand list.
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
     return getInstOperand(idx).get();
   }
   void setOperand(unsigned idx, CFGValue *value) {
     return getInstOperand(idx).set(value);
+  }
+
+  // Support non-const operand iteration.
+  using operand_iterator = OperandIterator<BranchInst, CFGValue>;
+
+  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+
+  operand_iterator operand_end() {
+    return operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<operand_iterator> getOperands() {
+    return {operand_begin(), operand_end()};
+  }
+
+  // Support const operand iteration.
+  typedef OperandIterator<const BranchInst, const CFGValue>
+      const_operand_iterator;
+
+  const_operand_iterator operand_begin() const {
+    return const_operand_iterator(this, 0);
+  }
+
+  const_operand_iterator operand_end() const {
+    return const_operand_iterator(this, getNumOperands());
+  }
+
+  llvm::iterator_range<const_operand_iterator> getOperands() const {
+    return {operand_begin(), operand_end()};
   }
 
   ArrayRef<InstOperand> getInstOperands() const { return operands; }
