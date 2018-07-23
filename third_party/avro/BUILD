@@ -1,5 +1,7 @@
+licenses(["notice"])
+
 cc_library(
-    name = "avro_c",
+    name = "avro",
     srcs = ["lib/libavro.so"],
     includes = ["include/"],
     visibility = ["//visibility:public"],

@@ -35,7 +35,7 @@ tf_custom_op_py_library(
 # TODO(fraudies): Remove this copy rule;
 genrule(
     name = "copy_libavro.so",
-    srcs = ["@avro_c//:libavro_so"],
+    srcs = ["//third_party/avro:libavro_so"],
     outs = ["python/libavro.so"],
     cmd = "cp -f $< $@",
     output_to_bindir = 1,
@@ -44,21 +44,21 @@ genrule(
 tf_custom_op_library(
     name = "python/_avro_record_dataset.so",
     srcs = ["ops/avro_record_dataset.cc"],
-    deps = ["@avro_c//:avro_c"]
+    deps = ["//third_party/avro"]
 )
 
 tf_custom_op_library(
     name = "python/_parse_avro_record.so",
     srcs = ["ops/parse_avro_record.cc"],
     deps = [
-        "@avro_c//:avro_c",
+        "//third_party/avro"
     ]
 )
 
 tf_gen_op_libs(
     op_lib_names = ["avro_record_dataset"],
     deps = [
-         "@avro_c//:avro_c",
+         "//third_party/avro"
     ],
 )
 
@@ -66,14 +66,14 @@ tf_gen_op_wrapper_py(
     name = "avro_record_dataset",
     deps = [
          ":avro_record_dataset_op_lib",
-         "@avro_c//:avro_c",
+         "//third_party/avro"
     ],
 )
 
 tf_gen_op_libs(
     op_lib_names = ["parse_avro_record"],
     deps = [
-         "@avro_c//:avro_c",
+         "//third_party/avro"
     ],
 )
 
@@ -81,7 +81,7 @@ tf_gen_op_wrapper_py(
     name = "parse_avro_record",
     deps = [
          ":parse_avro_record_op_lib",
-         "@avro_c//:avro_c",
+         "//third_party/avro"
     ],
 )
 

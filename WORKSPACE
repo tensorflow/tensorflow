@@ -79,11 +79,3 @@ new_http_archive(
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
-
-# I think this must belong in this file. See here:
-# https://docs.bazel.build/versions/master/be/workspace.html#new_local_repository
-new_local_repository(
-    name = "avro_c",
-    path = "tensorflow/contrib/avro/third_party/avro_c/",
-    build_file = "avro_c.BUILD"
-)

@@ -1394,6 +1394,34 @@ def set_other_mpi_vars(environ_cp):
   else:
     raise ValueError('Cannot find the MPI library file in %s/lib' % mpi_home)
 
+def set_avro_home(environ_cp):
+
+  default_avro_home = which('avrocat') or ''
+  default_avro_home = os.path.dirname(os.path.dirname(default_avro_home))
+
+  def valid_avro_path(avro_home):
+    exists = (os.path.exists(os.path.join(avro_home, 'include')) and
+              os.path.exists(os.path.join(avro_home, 'lib')))
+    if not exists:
+      print('Invalid path to the Avro C installation. %s or %s cannot be found' %
+            (os.path.join(avro_home, 'include'),
+             os.path.join(avro_home, 'lib')))
+    return exists
+
+  _ = prompt_loop_or_load_from_env(
+    environ_cp,
+    var_name='AVRO_C_HOME',
+    var_default=default_avro_home,
+    ask_for_var='Please specify the Avro C library installation path.',
+    check_success=valid_avro_path,
+    error_msg='',
+    suppress_default_error=True)
+
+  print('%s/lib/' % environ_cp['AVRO_C_HOME'])
+  symlink_force(os.path.join(environ_cp['AVRO_C_HOME'], 'lib'),
+                'third_party/avro/lib')
+  symlink_force(os.path.join(environ_cp['AVRO_C_HOME'], 'include'),
+                'third_party/avro/include')
 
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
@@ -1561,6 +1589,11 @@ def main():
   if environ_cp.get('TF_NEED_MPI') == '1':
     set_mpi_home(environ_cp)
     set_other_mpi_vars(environ_cp)
+
+  set_build_var(environ_cp, 'TF_NEED_AVRO', "AVRO", 'with_avro_support', False,
+                'avro')
+  if environ_cp.get('TF_NEED_AVRO') == '1':
+    set_avro_home(environ_cp)
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
