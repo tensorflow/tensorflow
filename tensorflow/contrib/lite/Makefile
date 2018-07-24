@@ -6,91 +6,58 @@ endif
 # Try to figure out the host system
 HOST_OS :=
 ifeq ($(OS),Windows_NT)
-	HOST_OS = WINDOWS
+	HOST_OS = windows
 else
 	UNAME_S := $(shell uname -s)
 	ifeq ($(UNAME_S),Linux)
-	        HOST_OS := LINUX
+		HOST_OS := linux
 	endif
 	ifeq ($(UNAME_S),Darwin)
-		HOST_OS := OSX
+		HOST_OS := osx
 	endif
 endif
 
 HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
 
-# Self-hosting
-TARGET_ARCH := ${HOST_ARCH}
+# Override these on the make command line to target a specific architecture. For example:
+# make -f tensorflow/contrib/lite/Makefile CROSS=rpi TARGET_ARCH=armv7l
+CROSS := $(HOST_OS)
+TARGET_ARCH := $(HOST_ARCH)
 
-# Cross compiling
-ifeq ($(CROSS),rpi)
-  TARGET_ARCH := armv7l
-  TARGET_TOOLCHAIN_PREFIX := arm-linux-gnueabihf-
-endif
+# These are the default libraries needed, but they can be added to or
+# overridden by the platform-specific settings in target_makefiles.
+LIBS := \
+-lstdc++ \
+-lpthread \
+-lm \
+-lz
 
-ifeq ($(CROSS),riscv)
-  TARGET_ARCH := riscv
-  TARGET_TOOLCHAIN_PREFIX := riscv32-unknown-elf-
-endif
-ifeq ($(CROSS),stm32f7)
-  TARGET_ARCH := armf7
-  TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
-endif
-ifeq ($(CROSS),stm32f1)
-  TARGET_ARCH := armm1
-  TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
-endif
-
-# Where compiled objects are stored.
-OBJDIR := $(MAKEFILE_DIR)/gen/obj/
-BINDIR := $(MAKEFILE_DIR)/gen/bin/
-LIBDIR := $(MAKEFILE_DIR)/gen/lib/
-GENDIR := $(MAKEFILE_DIR)/gen/obj/
-
-LIBS :=
-ifeq ($(TARGET_ARCH),x86_64)
-        CXXFLAGS += -fPIC -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK -pthread # -msse4.2
-endif
-
-ifeq ($(TARGET_ARCH),armv7l)
-        CXXFLAGS += -mfpu=neon -pthread -fPIC
-	LIBS += -ldl
-endif
-
-ifeq ($(TARGET_ARCH),riscv)
-#        CXXFLAGS += -march=gap8
-        CXXFLAGS += -DTFLITE_MCU
-	LIBS += -ldl
-	BUILD_TYPE := micro
-endif
-
-ifeq ($(TARGET_ARCH),armf7)
-        CXXFLAGS += -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK -DTFLITE_MCU
-        CXXFLAGS += -fno-rtti -fmessage-length=0 -fno-exceptions -fno-builtin -ffunction-sections -fdata-sections
-        CXXFLAGS += -funsigned-char -MMD
-        CXXFLAGS += -mcpu=cortex-m7 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=softfp
-        CXXFLAGS += '-std=gnu++11' '-fno-rtti' '-Wvla' '-c' '-Wall' '-Wextra' '-Wno-unused-parameter' '-Wno-missing-field-initializers' '-fmessage-length=0' '-fno-exceptions' '-fno-builtin' '-ffunction-sections' '-fdata-sections' '-funsigned-char' '-MMD' '-fno-delete-null-pointer-checks' '-fomit-frame-pointer' '-Os'
-	LIBS += -ldl
-	BUILD_TYPE := micro
-endif
-ifeq ($(TARGET_ARCH),armm1)
-        CXXFLAGS += -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK -mcpu=cortex-m1 -mthumb -DTFLITE_MCU
-        CXXFLAGS += -fno-rtti -fmessage-length=0 -fno-exceptions -fno-builtin -ffunction-sections -fdata-sections
-        CXXFLAGS += -funsigned-char -MMD
-	LIBS += -ldl
-endif
-
-# Settings for the host compiler.
-CXX := $(CC_PREFIX) ${TARGET_TOOLCHAIN_PREFIX}g++
-CXXFLAGS += -O3 -DNDEBUG
+# There are no rules for compiling objects for the host system (since we don't
+# generate things like the protobuf compiler that require that), so all of
+# these settings are for the target compiler.
+CXXFLAGS := -O3 -DNDEBUG
 CCFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
-CC := $(CC_PREFIX) ${TARGET_TOOLCHAIN_PREFIX}gcc
-AR := $(CC_PREFIX) ${TARGET_TOOLCHAIN_PREFIX}ar
 CFLAGS :=
-LDOPTS :=
-LDOPTS += -L/usr/local/lib
+LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
+TARGET_TOOLCHAIN_PREFIX :=
+CC_PREFIX :=
+
+# These target-specific makefiles should modify or replace options like
+# CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
+# based on platforms or architectures should happen within these files, to
+# keep this main makefile focused on the sources and dependencies.
+$(warning foo)
+$(warning $(wildcard $(MAKEFILE_DIR)/target_makefiles/*_makefile.inc))
+$(warning bar)
+include $(wildcard $(MAKEFILE_DIR)/target_makefiles/*_makefile.inc)
+
+# Where compiled objects are stored.
+GENDIR := $(MAKEFILE_DIR)/gen/$(CROSS)_$(TARGET_ARCH)/
+OBJDIR := $(GENDIR)obj/
+BINDIR := $(GENDIR)bin/
+LIBDIR := $(GENDIR)lib/
 
 INCLUDES := \
 -I. \
@@ -101,24 +68,14 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
--I$(GENDIR)
+-I$(OBJDIR)
 # This is at the end so any globally-installed frameworks like protobuf don't
 # override local versions in the source tree.
 INCLUDES += -I/usr/local/include
 
-LIBS += \
--lstdc++ \
--lpthread \
--lm \
--lz
-
-# If we're on Linux, also link in the dl library.
-ifeq ($(HOST_OS),LINUX)
-	LIBS += -ldl
-endif
-
-include $(MAKEFILE_DIR)/ios_makefile.inc
-include $(MAKEFILE_DIR)/rpi_makefile.inc
+CXX := $(CC_PREFIX) ${TARGET_TOOLCHAIN_PREFIX}g++
+CC := $(CC_PREFIX) ${TARGET_TOOLCHAIN_PREFIX}gcc
+AR := $(CC_PREFIX) ${TARGET_TOOLCHAIN_PREFIX}ar
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
