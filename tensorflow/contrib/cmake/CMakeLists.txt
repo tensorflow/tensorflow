@@ -91,11 +91,13 @@ if (NOT WIN32)
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
   option(systemlin_GRPC "Use the system installed GRPC library" OFF)
+  option(systemlib_JSONCPP "Use the system installed JSONCPP library" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
     set (systemlib_ZLIB ON)
     set (systemlib_GRPC ON)
+    set (systemlib_JSONCPP ON)
   endif (systemlib_ALL)
 endif()
 
