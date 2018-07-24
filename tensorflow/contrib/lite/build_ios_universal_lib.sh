@@ -23,7 +23,7 @@ cd "$SCRIPT_DIR/../../.."
 make_library() {
     for arch in x86_64 armv7 armv7s arm64
     do
-        make -f tensorflow/contrib/lite/Makefile TARGET=IOS IOS_ARCH=${arch} \
+        make -f tensorflow/contrib/lite/Makefile TARGET=ios TARGET_ARCH=${arch} \
         -j 8 \
         $SCRIPT_DIR/gen/lib/ios_${arch}/${1}
     done
