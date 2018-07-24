@@ -202,3 +202,22 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+tf_cc_test(
+    name = "gpu_alignment_test",
+    testonly = True,
+    srcs = ["gpu_alignment_test.cc"],
+    tags = [
+        "requires-gpu-sm35",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
