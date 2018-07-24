@@ -991,10 +991,14 @@ class Model(Network):
         inputs = inputs[0]
 
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+        if context.executing_eagerly():
+          input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+          self.build(input_shape=input_shape)
+        else:
+          self.symbolic_set_inputs(inputs)
       else:
         input_shape = (None,) + inputs.shape[1:]
-      self.build(input_shape=input_shape)
+        self.build(input_shape=input_shape)
     elif context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:
