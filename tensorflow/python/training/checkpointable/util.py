@@ -361,24 +361,42 @@ class _ObjectIdentityWeakKeyDictionary(_ObjectIdentityDictionary):
         yield unwrapped
 
 
-class _ObjectIdentityWeakSet(collections.MutableSet):
-  """Like weakref.WeakSet, but compares objects with "is"."""
+class _ObjectIdentitySet(collections.MutableSet):
+  """Like the built-in set, but compares objects with "is"."""
 
-  def __init__(self):
-    self._storage = set()
+  def __init__(self, *args):
+    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
 
   def __contains__(self, key):
-    return _WeakObjectIdentityWrapper(key) in self._storage
+    return self._wrap_key(key) in self._storage
 
   def discard(self, key):
-    self._storage.discard(_WeakObjectIdentityWrapper(key))
+    self._storage.discard(self._wrap_key(key))
 
   def add(self, key):
-    self._storage.add(_WeakObjectIdentityWrapper(key))
+    self._storage.add(self._wrap_key(key))
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakSet(_ObjectIdentitySet):
+  """Like weakref.WeakSet, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
 
   def __len__(self):
     # Iterate, discarding old weak refs
-    return len(list(self))
+    return len([_ for _ in self])
 
   def __iter__(self):
     keys = list(self._storage)
@@ -857,8 +875,8 @@ class CheckpointLoadStatus(_LoadStatus):
     for checkpointable_object in list_objects(self._root_checkpointable):
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
-        set(self._checkpoint.all_python_objects)
-        - set(self._checkpoint.object_by_proto_id.values()))
+        _ObjectIdentitySet(self._checkpoint.all_python_objects)
+        - _ObjectIdentitySet(self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
       raise AssertionError(
           ("Some Python objects were not bound to checkpointed values, likely "

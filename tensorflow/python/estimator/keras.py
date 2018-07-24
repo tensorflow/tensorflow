@@ -184,7 +184,7 @@ def _in_place_subclassed_model_reset(model):
   # Replace layers on the model with fresh layers
   layers_to_names = {value: key for key, value in attributes_cache.items()}
   original_layers = model._layers[:]
-  model._layers = []
+  model._layers = data_structures.NoDependency([])
   for layer in original_layers:  # We preserve layer order.
     config = layer.get_config()
     # This will not work for nested subclassed models used as layers.
@@ -232,7 +232,8 @@ def _in_place_subclassed_model_reset(model):
       ]
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
-  model._original_attributes_cache = attributes_cache
+  model._original_attributes_cache = data_structures.NoDependency(
+      attributes_cache)
   # Reset built state
   model.built = False
   model.inputs = None
