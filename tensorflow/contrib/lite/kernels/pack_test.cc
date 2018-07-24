@@ -22,6 +22,7 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 
 template <typename T>
 class PackOpModel : public SingleOpModel {
@@ -57,7 +58,7 @@ TEST(PackOpTest, FloatThreeInputs) {
   model.SetInput(2, {3, 6});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(1, 4, 2, 5, 3, 6));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
 
 TEST(PackOpTest, FloatThreeInputsDifferentAxis) {
@@ -67,7 +68,7 @@ TEST(PackOpTest, FloatThreeInputsDifferentAxis) {
   model.SetInput(2, {3, 6});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(1, 2, 3, 4, 5, 6));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
 TEST(PackOpTest, FloatMultilDimensions) {
@@ -77,7 +78,7 @@ TEST(PackOpTest, FloatMultilDimensions) {
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAre(1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12));
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
 TEST(PackOpTest, IntThreeInputs) {
@@ -87,7 +88,7 @@ TEST(PackOpTest, IntThreeInputs) {
   model.SetInput(2, {3, 6});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(1, 4, 2, 5, 3, 6));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
 }
 
 TEST(PackOpTest, IntThreeInputsDifferentAxis) {
@@ -97,7 +98,7 @@ TEST(PackOpTest, IntThreeInputsDifferentAxis) {
   model.SetInput(2, {3, 6});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(1, 2, 3, 4, 5, 6));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
 TEST(PackOpTest, IntMultilDimensions) {
@@ -107,7 +108,7 @@ TEST(PackOpTest, IntMultilDimensions) {
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAre(1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12));
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 }  // namespace
 }  // namespace tflite
