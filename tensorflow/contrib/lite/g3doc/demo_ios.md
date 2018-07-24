@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # iOS Demo App
 
 The TensorFlow Lite demo is a camera app that continuously classifies whatever

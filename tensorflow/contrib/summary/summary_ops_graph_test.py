@@ -228,6 +228,26 @@ class GraphFileTest(test_util.TensorFlowTestCase):
       sess.run(writer.flush())
       self.assertEqual(2, get_total())
 
+  def testSummaryOpsCollector(self):
+    summary_ops.scalar('x', 1.0, step=1)
+    with summary_ops.create_file_writer(self.get_temp_dir()).as_default():
+      s2 = summary_ops.scalar('x', 1.0, step=1)
+      collector1 = summary_ops._SummaryOpsCollector()
+      collector2 = summary_ops._SummaryOpsCollector()
+      with collector1.capture():
+        s3 = summary_ops.scalar('x', 1.0, step=1)
+        with collector2.capture():
+          s4 = summary_ops.scalar('x', 1.0, step=1)
+        s5 = summary_ops.scalar('x', 1.0, step=1)
+      s6 = summary_ops.scalar('x', 1.0, step=1)
+    summary_ops.scalar('six', 1.0, step=1)
+
+    # Ops defined outside summary writer context are ignored; ops defined inside
+    # SummaryOpsCollector capture context are stored to innermost such context.
+    self.assertItemsEqual([s2, s6], summary_ops.all_summary_ops())
+    self.assertItemsEqual([s3, s5], collector1.collected_ops)
+    self.assertItemsEqual([s4], collector2.collected_ops)
+
 
 class GraphDbTest(summary_test_util.SummaryDbTest):
 

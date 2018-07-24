@@ -663,6 +663,7 @@ cc_library(
         "lib/random/random_distributions.h",
         "lib/random/simple_philox.h",
         "lib/strings/numbers.h",
+        "lib/strings/proto_serialization.h",
         "lib/strings/str_util.h",
         "lib/strings/strcat.h",
         "lib/strings/stringprintf.h",

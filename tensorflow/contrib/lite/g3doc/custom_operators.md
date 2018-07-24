@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # How to use custom operators
 
 TensorFlow Lite currently supports a subset of TensorFlow operators. However, it
@@ -89,3 +92,47 @@ builtins.AddCustom("Sin", Register_SIN());
 
 Note that a similar process as above can be followed for supporting for a set of
 operations instead of a single operator.
+
+## Best Practices for writing custom operators
+
+1.  Optimize memory allocations and de-allocations cautiously. It is more
+    efficient to allocate memory in Prepare() instead of Invoke(), and allocate
+    memory before a loop instead of in every iteration. Use temporary tensors
+    data rather than mallocing yourself (see item 2). Use pointers/references
+    instead of copying as much as possible.
+
+2.  If a data structure will persist during the entire operation, we advise
+    pre-allocating the memory using temporary tensors. You may need to use
+    OpData struct to reference the tensor indices in other functions. See
+    example in the
+    [kernel for convolution](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/kernels/conv.cc).
+    A sample code snippet is below
+
+    ```
+    auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+    TfLiteIntArrayFree(node->temporaries);
+    node->temporaries = TfLiteIntArrayCreate(1);
+    node->temporaries->data[0] = op_data->temp_tensor_index;
+    TfLiteTensor* temp_tensor = &context->tensors[op_data->temp_tensor_index];
+    temp_tensor->type =  kTfLiteFloat32;
+    temp_tensor->allocation_type = kTfLiteArenaRw;
+    ```
+
+3.  If it doesn't cost too much wasted memory, prefer using a static fixed size
+    array (or in Resize() pre-allocated std::vector) rather than using a
+    dynamically allocating std::vector every iteration of execution.
+
+4.  Avoid instantiating standard library container templates that don't already
+    exist, because they affect binary size. For example, if you need a std::map
+    in your operation that doesn't exist in other kernels, using a std::vector
+    with direct indexing mapping could work while keeping the binary size small.
+    See what other kernels use to gain insight (or ask).
+
+5.  Check the pointer to the memory returned by malloc. If this pointer is
+    nullptr, no operations should be performed using that pointer. If you
+    malloc() in a function and have an error exit, deallocate memory before you
+    exit.
+
+6.  Use TF_LITE_ENSURE(context, condition) to check for a specific condition.
+    Your code must not leave memory hanging when TF_LITE_ENSURE is done, i.e.,
+    these should be done before any resources are allocated that will leak.

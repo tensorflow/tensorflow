@@ -643,10 +643,10 @@ class GradientTape(object):
   Operations are recorded if they are executed within this context manager and
   at least one of their inputs is being "watched".
 
-  Trainable variables (created by `tf.contrib.eager.Variable` or
-  @{tf.get_variable}, trainable=True is default in both cases) are automatically
-  watched. Tensors can be manually watched by invoking the `watch` method on
-  this context manager.
+  Trainable variables (created by `tf.Variable` or @{tf.get_variable},
+  trainable=True is default in both cases) are automatically watched. Tensors
+  can be manually watched by invoking the `watch` method on this context
+  manager.
 
   For example, consider the function `y = x * x`. The gradient at `x = 3.0` can
   be computed as:

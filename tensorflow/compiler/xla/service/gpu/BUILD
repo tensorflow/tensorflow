@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["gpu_constants.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -269,6 +270,7 @@ cc_library(
         "memset_thunk.cc",
         "outfeed_thunk.cc",
         "sequential_thunk.cc",
+        "thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
         "while_thunk.cc",

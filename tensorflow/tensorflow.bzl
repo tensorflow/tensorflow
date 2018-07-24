@@ -244,6 +244,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
             clean_dep("//tensorflow:windows_msvc"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): ["-std=c++11"],
+            clean_dep("//tensorflow:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"]
       }))
 

@@ -1529,6 +1529,7 @@ tensorflow::Status ConvertPackOperator(
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
+  op->values_count = HasAttr(node, "N") ? GetIntAttr(node, "N") : num_inputs;
   op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : 0;
   op->dtype = ConvertDataType(toco::GetDataTypeAttr(node, "T"));
   op->outputs.push_back(node.name());

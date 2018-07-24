@@ -2059,7 +2059,7 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
 
   def _extract_loss_and_global_step(self, event_folder):
     """Returns the loss and global step in last event."""
-    event_paths = glob.glob(os.path.join(event_folder, 'events*'))
+    event_paths = sorted(glob.glob(os.path.join(event_folder, 'events*')))
 
     loss = None
     global_step_count = None
@@ -2139,10 +2139,12 @@ class TrainAndEvaluateIntegrationTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    # Examine the training events. Use a range to check global step to avoid
-    # flakyness due to global step race condition.
-    training_loss, _ = self._extract_loss_and_global_step(est.model_dir)
+    # Examine the training events.
+    training_loss, training_global_step = self._extract_loss_and_global_step(
+        est.model_dir)
     self.assertIsNotNone(training_loss)
+    # Training summaries are logged for steps 1 and 10, so we see final step.
+    self.assertEqual(max_steps, training_global_step)
 
     # Examine the eval events. The global step should be accurate.
     eval_loss, eval_global_step = self._extract_loss_and_global_step(
