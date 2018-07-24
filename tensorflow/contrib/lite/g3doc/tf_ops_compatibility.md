@@ -815,6 +815,18 @@ Outputs {
 }
 ```
 
+**PACK**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: an integer.
+}
+Outputs {
+  0: A tensor of stacked tensors.
+}
+```
+
 And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 

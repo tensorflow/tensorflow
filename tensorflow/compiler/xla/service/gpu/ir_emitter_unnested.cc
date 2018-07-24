@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -71,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
@@ -230,7 +232,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     kernel->addDereferenceableAttr(arg_no + 1, alloc->size());
     kernel->addParamAttr(
         arg_no, llvm::Attribute::get(context, llvm::Attribute::Alignment,
-                                     kCudaMallocAlignBytes));
+                                     alloc->is_entry_computation_parameter()
+                                         ? kEntryParameterAlignBytes
+                                         : kXlaAllocatedBufferAlignBytes));
 
     if (alloc->IsPreallocatedTempBuffer()) {
       fn_arg->setName("temp_buf");
@@ -1754,8 +1758,9 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
   bool all_tuple_elements_have_buffer =
       c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
-        return ir_emitter_context_->buffer_assignment().HasTopLevelAllocation(
-            tuple_element);
+        return ir_emitter_context_->buffer_assignment()
+            .GetUniqueTopLevelSlice(tuple_element)
+            .ok();
       });
   // Tuples (especially tuples that are the final result of a computation) can
   // be so huge that if we were to emit a kernel that took each tuple element as
@@ -2035,11 +2040,51 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
   }
 
-  thunks.push_back(
-      BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
+  int64 dimension_to_sort = sort->dimensions(0);
+  int64 dimension_to_sort_bound = sort->shape().dimensions(dimension_to_sort);
+  int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
+  auto index_type = b_.getInt64Ty();
+
+  // Naive C++ code for the outer loops:
+  //
+  // for (int64 stage = 0; stage < Log2Ceiling(dimension_to_sort_bound);
+  //     ++stage) {
+  //   int64 first_xor_mask = (1LL << (stage + 1)) - 1;
+  //   SortInPlace(first_xor_mask);
+  //   for (int64 mask = stage - 1; mask >= 0; --mask) {
+  //     int64 later_xor_mask = 1LL << mask;
+  //     SortInPlace(later_xor_mask);
+  //   }
+  // }
+  //
+  // This follows the algorithm described on Wikipedia:
+  // https://en.wikipedia.org/wiki/Bitonic_sorter
+
+  for (int64 stage = 0; stage < num_stages; ++stage) {
+    for (int64 mask = stage; mask >= 0; --mask) {
+      thunks.push_back(
+          BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
+      LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+          sort->shape(), ir_emitter_context_->device_description());
+      UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
+                             ir_emitter_context_->llvm_module());
+
+      llvm::Value* xor_mask;
+      if (mask == stage) {
+        xor_mask = llvm::ConstantInt::get(index_type, (1LL << (stage + 1)) - 1);
+      } else {
+        xor_mask = llvm::ConstantInt::get(index_type, 1LL << mask);
+      }
+
+      TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
+          dimension_to_sort, GetIrArray(*sort, *sort), IrName(sort), xor_mask,
+          &b_, &launch_dimensions));
+    }
+  }
+
   thunk_sequence_->emplace_back(
       MakeUnique<SequentialThunk>(std::move(thunks), sort));
-  return IrEmitter::HandleSort(sort);
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
@@ -2777,7 +2822,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
 Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  CHECK(Thunk::Kind::kKernel == LastThunk()->kind());
+  CHECK_EQ(Thunk::Kind::kKernel, LastThunk()->kind());
   return EmitTargetElementLoopInThunk(hlo, element_generator,
                                       static_cast<KernelThunk*>(LastThunk()));
 }

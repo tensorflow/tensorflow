@@ -45,7 +45,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
  private:
 #define HANDLER(method)                                                        \
   void method##Handler(EagerCall<method##Request, method##Response>* call) {   \
-    request_handler_threadpool_->Schedule([this, call]() {                     \
+    env_->compute_pool->Schedule([this, call]() {                              \
       call->SendResponse(                                                      \
           ToGrpcStatus(local_impl_.method(&call->request, &call->response)));  \
     });                                                                        \
@@ -64,14 +64,13 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   HANDLER(RegisterFunction);
 #undef HANDLER
 
+  const WorkerEnv* const env_;  // Not owned.
   EagerServiceImpl local_impl_;
 
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   tensorflow::eager::grpc::EagerService::AsyncService service_;
-
-  std::unique_ptr<thread::ThreadPool> request_handler_threadpool_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcEagerServiceImpl);
 };

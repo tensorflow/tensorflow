@@ -1744,6 +1744,25 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   if (ReplaceInstructionIfSameShape(slice, slice->mutable_operand(0))) {
     return Status::OK();
   }
+
+  auto is_unstrided_slice = [](const HloInstruction* hlo) {
+    return c_all_of(hlo->slice_strides(),
+                    [](int64 stride) { return stride == 1; });
+  };
+  if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
+      is_unstrided_slice(slice) && is_unstrided_slice(slice->operand(0))) {
+    HloInstruction* operand_slice = slice->mutable_operand(0);
+    std::vector<int64> new_slice_starts = slice->slice_starts();
+    std::vector<int64> new_slice_limits = slice->slice_limits();
+    for (int64 i = 0; i < new_slice_starts.size(); ++i) {
+      new_slice_starts[i] += operand_slice->slice_starts(i);
+      new_slice_limits[i] += operand_slice->slice_starts(i);
+    }
+    return ReplaceWithNewInstruction(
+        slice, HloInstruction::CreateSlice(
+                   slice->shape(), operand_slice->mutable_operand(0),
+                   new_slice_starts, new_slice_limits, slice->slice_strides()));
+  }
   return Status::OK();
 }
 
@@ -1903,6 +1922,26 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
                       reduce->shape(), arg->mutable_operand(0), init_value,
                       new_reduce_dimensions, function));
     }
+  }
+  // Convert Reduce(concat({a,b,...})) to
+  //  map(reduce(a),map(reduce(b),...,))
+  //
+  // This should make fusion easier or use less memory bandwidth in the unfused
+  // case.
+  if (arg->opcode() == HloOpcode::kConcatenate &&
+      c_linear_search(reduce->dimensions(), arg->concatenate_dimension())) {
+    HloInstruction* old_reduce = nullptr;
+    for (HloInstruction* operand : arg->operands()) {
+      HloInstruction* new_reduce = computation_->AddInstruction(
+          HloInstruction::CreateReduce(reduce->shape(), operand, init_value,
+                                       reduce->dimensions(), function));
+      if (old_reduce != nullptr) {
+        new_reduce = computation_->AddInstruction(HloInstruction::CreateMap(
+            reduce->shape(), {old_reduce, new_reduce}, function));
+      }
+      old_reduce = new_reduce;
+    }
+    return ReplaceInstruction(reduce, old_reduce);
   }
   return Status::OK();
 }

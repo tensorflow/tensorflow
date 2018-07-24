@@ -772,6 +772,11 @@ def make_binary_op_tests(zip_path, binary_operator):
       "input_shape_1": [[1, 3, 4, 3]],
       "input_shape_2": [[3]],
       "activation": [True]
+  }, {
+      "dtype": [tf.float32],
+      "input_shape_1": [[]],
+      "input_shape_2": [[]],
+      "activation": [False]
   }]
 
   def build_graph(parameters):
@@ -821,7 +826,7 @@ def make_reduce_tests(reduce_op):
         "input_dtype": [tf.float32, tf.int32, tf.int64],
         "input_shape": [[3, 2, 4]],
         "axis": [
-            None, 0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
+            0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
             [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
             [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
         ],
@@ -831,12 +836,18 @@ def make_reduce_tests(reduce_op):
         "input_dtype": [tf.float32],
         "input_shape": [[1, 8, 8, 3]],
         "axis": [
-            None, 0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
+            0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
             [3, 2, 1, 0], [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2,
             -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
             [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
         ],
         "const_axis": [True, False],
+        "keepdims": [True, False],
+    }, {
+        "input_dtype": [tf.float32],
+        "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
+        "axis": [None],
+        "const_axis": [True],
         "keepdims": [True, False],
     }]
 
@@ -855,7 +866,7 @@ def make_reduce_tests(reduce_op):
         if isinstance(parameters["axis"], list):
           shape = [len(parameters["axis"])]
         else:
-          shape = [0]  # shape for None or integers.
+          shape = []  # shape for None or integers.
         axis = tf.placeholder(dtype=tf.int32, name="axis", shape=shape)
         input_tensors = [input_tensor, axis]
 
@@ -866,10 +877,11 @@ def make_reduce_tests(reduce_op):
     def build_inputs(parameters, sess, inputs, outputs):
       values = [
           create_tensor_data(parameters["input_dtype"],
-                             parameters["input_shape"])]
+                             parameters["input_shape"],
+                             min_value=-10,
+                             max_value=10)]
       if not parameters["const_axis"]:
-        if parameters["axis"]:
-          values.append(np.array(parameters["axis"]))
+        values.append(np.array(parameters["axis"]))
       return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
     make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
@@ -902,7 +914,7 @@ def make_exp_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
   }]
 
   def build_graph(parameters):
@@ -961,8 +973,8 @@ def make_maximum_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape_1": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "input_shape_2": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
   }]
 
   def build_graph(parameters):
@@ -996,8 +1008,8 @@ def make_minimum_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape_1": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "input_shape_2": [[3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
   }]
 
   def build_graph(parameters):
@@ -2252,7 +2264,7 @@ def make_arg_min_max_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
+      "input_shape": [[], [1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
       "output_type": [tf.int32, tf.int64],
       "axis_is_last_dim": [True, False],
       "is_arg_max": [True],
@@ -2288,7 +2300,8 @@ def make_equal_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32, tf.int64],
-      "input_shape_pair": [([1, 1, 1, 3], [1, 1, 1, 3]),
+      "input_shape_pair": [([], []),
+                           ([1, 1, 1, 3], [1, 1, 1, 3]),
                            ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
                            ([5, 5], [1]), ([10], [2, 4, 10])],
   }]
@@ -2545,7 +2558,7 @@ def _make_elementwise_tests(op):
     """Actual function that generates examples."""
     test_parameters = [{
         "input_dtype": [tf.float32],
-        "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+        "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
     }]
 
     def build_graph(parameters):
@@ -2863,6 +2876,44 @@ def make_sparse_to_dense_tests(zip_path):
                                        [parameters["value_count"]])
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_pack_tests(zip_path):
+  """Make a set of tests to do stack."""
+
+  test_parameters = [{
+      "base_shape": [[3, 4, 3], [3, 4], [5]],
+      "num_tensors": [1, 2, 3, 4, 5, 6],
+      "axis": [0, 1, 2, 3],
+      "additional_shape": [1, 2, 3],
+  }]
+
+  def get_shape(parameters):
+    """Return a tweaked version of 'base_shape'."""
+    axis = parameters["axis"]
+    shape = parameters["base_shape"][:]
+    if axis < len(shape):
+      shape[axis] += parameters["additional_shape"]
+    return shape
+
+  def build_graph(parameters):
+    all_tensors = []
+    for n in range(0, parameters["num_tensors"]):
+      input_tensor = tf.placeholder(
+          dtype=tf.float32, name=("input%d" % n), shape=get_shape(parameters))
+      all_tensors.append(input_tensor)
+    out = tf.stack(all_tensors, parameters["axis"])
+    return all_tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    all_values = []
+    for _ in range(0, parameters["num_tensors"]):
+      input_values = create_tensor_data(np.float32, get_shape(parameters))
+      all_values.append(input_values)
+    return all_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, all_values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

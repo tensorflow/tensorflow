@@ -88,6 +88,8 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
   TF_RETURN_IF_ERROR((*handle)->Device(&handle_device));
   const Device* actual_device =
       handle_device == nullptr ? ctx->HostCPU() : handle_device;
+  const Device* op_device =
+      op->Device() == nullptr ? ctx->HostCPU() : op->Device();
 
   if (expected_device != actual_device) {
     switch (ctx->GetDevicePlacementPolicy()) {
@@ -106,8 +108,8 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
             " cannot compute ",
             op->Name(), " as input #", i, " was expected to be on ",
             expected_device->name(), " but is actually on ",
-            actual_device->name(), " (operation running on ",
-            op->Device()->name(), ")",
+            actual_device->name(), " (operation running on ", op_device->name(),
+            ")",
             " Tensors can be copied explicitly using .gpu() or .cpu() "
             "methods,"
             " or transparently copied by using tf.enable_eager_execution("
@@ -118,7 +120,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
         LOG(WARNING) << "before computing " << op->Name() << " input #" << i
                      << " was expected to be on " << expected_device->name()
                      << " but is actually on " << actual_device->name()
-                     << " (operation running on " << op->Device()->name()
+                     << " (operation running on " << op_device->name()
                      << "). This triggers a copy which can be a performance "
                         "bottleneck.";
         break;

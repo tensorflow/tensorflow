@@ -1013,6 +1013,26 @@ class ExpandDims
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class Pack : public BuiltinOperator<PackOperator, ::tflite::PackOptions,
+                                    ::tflite::BuiltinOptions_PackOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreatePackOptions(*builder, op.values_count, op.axis);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->values_count = options.values_count();
+    op->axis = options.axis();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 class Shape
     : public BuiltinOperator<TensorFlowShapeOperator, ::tflite::ShapeOptions,
                              ::tflite::BuiltinOptions_ShapeOptions> {
@@ -1256,6 +1276,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Shape(::tflite::BuiltinOperator_SHAPE, OperatorType::kShape));
   ops.emplace_back(new FakeQuant(::tflite::BuiltinOperator_FAKE_QUANT,
                                  OperatorType::kFakeQuant));
+  ops.emplace_back(
+      new Pack(::tflite::BuiltinOperator_PACK, OperatorType::kPack));
 
   // Custom Operators.
   ops.emplace_back(

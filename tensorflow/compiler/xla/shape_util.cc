@@ -682,7 +682,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                            CompatibleIgnoringElementType);
   } else {
     // Opaque, token, etc types are vacuously compatible.
-    return true;
+    return lhs.element_type() == rhs.element_type();
   }
 }
 
@@ -697,7 +697,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                            CompatibleIgnoringFpPrecision);
   } else {
     // Opaque, token, etc types are vacuously compatible.
-    return true;
+    return lhs.element_type() == rhs.element_type();
   }
 }
 

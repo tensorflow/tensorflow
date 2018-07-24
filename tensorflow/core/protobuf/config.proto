@@ -478,6 +478,11 @@ message RunOptions {
   int64 timeout_in_ms = 2;
 
   // The thread pool to use, if session_inter_op_thread_pool is configured.
+  // To use the caller thread set this to -1 - this uses the caller thread
+  // to execute Session::Run() and thus avoids a context switch. Using the
+  // caller thread to execute Session::Run() should be done ONLY for simple
+  // graphs, where the overhead of an additional context switch is
+  // comparable with the overhead of Session::Run().
   int32 inter_op_thread_pool = 3;
 
   // Whether the partition graph(s) executed by the executor(s) should be

@@ -641,6 +641,41 @@ TEST(NNAPIDelegate, SqueezeWithAxisTest) {
                         17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
 }
 
+class L2NormOpModel : public SingleOpModelWithNNAPI {
+ public:
+  L2NormOpModel(const TensorData& input, const TensorData& output,
+                ActivationFunctionType activation_type) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_L2_NORMALIZATION, BuiltinOptions_L2NormOptions,
+                 CreateL2NormOptions(builder_, activation_type).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor<float>(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int new_shape_;
+  int output_;
+};
+
+TEST(NNAPIDelegate, L2NormSimpleTest) {
+  std::initializer_list<float> data = {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1};
+  L2NormOpModel m({TensorType_FLOAT32, {1, 1, 1, 6}},
+                  {TensorType_FLOAT32, {1, 1, 1, 6}},
+                  ActivationFunctionType_NONE);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 6}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+}
+
 class TransposeSimpleModel : public SingleOpModelWithNNAPI {
  public:
   TransposeSimpleModel(std::initializer_list<int> input_shape,

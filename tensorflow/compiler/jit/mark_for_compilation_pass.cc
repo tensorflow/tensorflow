@@ -477,15 +477,6 @@ Status MarkForCompilationPass::Run(
       return false;
     }
 
-    // TODO(b/111570009): This bailout for ControlTrigger is probably not
-    // needed.
-    //
-    // Don't compile control trigger nodes. We won't preserve their deadness
-    // semantics correctly, so it's safest not to compile them.
-    //if (node->IsControlTrigger()) {
-    //  return false;
-    //}
-
     // If this device requires a JIT, we must say yes.
     if (registration->requires_compilation) return true;
 
