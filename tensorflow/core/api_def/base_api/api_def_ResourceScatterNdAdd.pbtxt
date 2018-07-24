@@ -51,7 +51,7 @@ For example, say we want to update 4 scattered elements to a rank-1 tensor to
 8 elements. In Python, that update would look like this:
 
 ```python
-    ref = tfe.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8], use_resource=True)
     indices = tf.constant([[4], [3], [1] ,[7]])
     updates = tf.constant([9, 10, 11, 12])
     update = tf.scatter_nd_add(ref, indices, updates)

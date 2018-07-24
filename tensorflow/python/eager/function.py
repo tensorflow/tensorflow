@@ -1077,7 +1077,7 @@ def defun(func=None, compiled=False):
   tf.enable_eager_execution()
 
   def fn():
-    x = tf.contrib.eager.Variable(0.0)
+    x = tf.Variable(0.0)
     x.assign_add(1.0)
     return x.read_value()
 
@@ -1094,19 +1094,18 @@ def defun(func=None, compiled=False):
   ```
 
   Finally, because each input signature is bound to a unique graph, if your
-  Python function constructs `tf.contrib.eager.Variable` objects, then each
-  graph constructed for that Python function will reference a unique set of
-  variables. To circumvent this problem, we recommend against compiling Python
-  functions that create `tf.contrib.eager.Variable` objects. Instead, Python
-  functions should either lexically close over `tf.contrib.eager.Variable`
-  objects or accept them as arguments, preferably encapsulated in an
-  object-oriented container. If you must create variables inside your Python
-  function and you want each graph generated for it to reference the same set of
-  variables, add logic to your Python function that ensures that variables are
-  only created the first time it is called and are reused for every subsequent
-  invocation; note that this is precisely what @{tf.keras.layers.Layer} objects
-  do, so we recommend using them to represent variable-bearing computations
-  whenever possible.
+  Python function constructs `tf.Variable` objects, then each graph constructed
+  for that Python function will reference a unique set of variables. To
+  circumvent this problem, we recommend against compiling Python functions that
+  create `tf.Variable` objects. Instead, Python functions should either
+  lexically close over `tf.Variable` objects or accept them as arguments,
+  preferably encapsulated in an object-oriented container. If you must create
+  variables inside your Python function and you want each graph generated for it
+  to reference the same set of variables, add logic to your Python function that
+  ensures that variables are only created the first time it is called and are
+  reused for every subsequent invocation; note that this is precisely what
+  @{tf.keras.layers.Layer} objects do, so we recommend using them to represent
+  variable-bearing computations whenever possible.
 
   Args:
     func: function to be compiled. If `func` is None, returns a
