@@ -123,8 +123,6 @@ class DiagPartOp : public XlaOpKernel {
   explicit DiagPartOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-
     const TensorShape input_shape = ctx->InputShape(0);
     auto dims = input_shape.dim_sizes();
 
@@ -150,37 +148,13 @@ class DiagPartOp : public XlaOpKernel {
       new_dims.push_back(dims[i]);
     }
 
-    xla::XlaOp diag = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
 
-    // TODO(b/30878775): use Slice with strides when supported, in place of
-    // the Pad -> Reshape -> Slice.
+    xla::XlaOp output = xla::Reshape(
+        xla::GetMatrixDiagonal(xla::Reshape(input, {new_size, new_size})),
+        new_dims);
 
-    // Picture:
-    // [[1, 0, 0, 0]  pad and reshape to [[1, 0, 0, 0, 0],
-    //  [0, 2, 0, 0]  =================>  [2, 0, 0, 0, 0],
-    //  [0, 0, 3, 0]                      [3, 0, 0, 0, 0],
-    //  [0, 0, 0, 4]]                     [4, 0, 0, 0, 0]]
-    // and then slice out the first column.
-
-    // Flattens the input to 1D.
-    int64 size = input_shape.num_elements();
-    diag = xla::Reshape(diag, {size});
-
-    // Adds padding after the last element of 'new_size'.
-    xla::PaddingConfig config;
-    auto* dim = config.add_dimensions();
-    dim->set_edge_padding_high(new_size);
-    auto zero = XlaHelpers::Zero(builder, input_type(0));
-    diag = xla::Pad(diag, zero, config);
-
-    // Reshapes so the diagonal is now in the first column.
-    diag = xla::Reshape(diag, {new_size, new_size + 1});
-
-    // Slices out the first column and reshapes to the final shape.
-    diag = xla::Slice(diag, {0, 0}, {new_size, 1}, {1, 1});
-    diag = xla::Reshape(diag, new_dims);
-
-    ctx->SetOutput(0, diag);
+    ctx->SetOutput(0, output);
   }
 };
 
@@ -220,8 +194,6 @@ class MatrixDiagPartOp : public XlaOpKernel {
   explicit MatrixDiagPartOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaBuilder* builder = ctx->builder();
-
     const TensorShape input_shape = ctx->InputShape(0);
     auto dims = input_shape.dim_sizes();
 
@@ -229,71 +201,8 @@ class MatrixDiagPartOp : public XlaOpKernel {
                 errors::InvalidArgument("Expected 2 <= dims, got shape ",
                                         input_shape.DebugString()));
 
-    xla::XlaOp diag = ctx->Input(0);
-
-    int last_dim = dims.size() - 1;
-    int64 last_dim_size = dims[last_dim];
-
-    // The smaller of the last two dimension sizes.
-    int64 smaller_dim_size = std::min(dims[last_dim - 1], dims[last_dim]);
-
-    // TODO(b/30878775): use Slice with strides when supported, in place of
-    // the Pad -> Reshape -> Slice.
-
-    // Picture: for each 2D matrix in the tensor's last two dimensions:
-    // [[1, 0, 0, 0]  pad and reshape to [[1, 0, 0, 0, 0],
-    //  [0, 2, 0, 0]  =================>  [2, 0, 0, 0, 0],
-    //  [0, 0, 3, 0]]                     [3, 0, 0, 0, 0],
-    // and then slice out the first column.
-    //
-    // Another example, with tall and narrow input.
-    // [[1, 0]  pad and reshape to [[1, 0, 0],
-    //  [0, 2]  =================>  [2, 0, 0]]
-    //  [0, 0]
-    //  [0, 0]]
-
-    // Collapses the last two dimensions.
-    std::vector<int64> flattened_dims(dims.begin(), dims.end() - 1);
-    flattened_dims.back() *= dims.back();
-    diag = xla::Reshape(diag, flattened_dims);
-
-    // Slices or pads the last dimension to 'target_size'.
-    int64 actual_size = flattened_dims.back();
-    int64 target_size = smaller_dim_size * (last_dim_size + 1);
-    if (actual_size < target_size) {
-      xla::PaddingConfig config =
-          xla::MakeNoPaddingConfig(flattened_dims.size());
-      auto* dim = config.mutable_dimensions(flattened_dims.size() - 1);
-      dim->set_edge_padding_high(target_size - actual_size);
-      auto zero = XlaHelpers::Zero(builder, input_type(0));
-      diag = xla::Pad(diag, zero, config);
-    } else if (actual_size > target_size) {
-      std::vector<int64> start(flattened_dims.size(), 0);
-      std::vector<int64> limits(flattened_dims.begin(), flattened_dims.end());
-      std::vector<int64> strides(flattened_dims.size(), 1);
-      limits[flattened_dims.size() - 1] = target_size;
-      diag = xla::Slice(diag, start, limits, strides);
-    }
-
-    // Reshape so the target values are in the first position of the last
-    // dimension.
-    std::vector<int64> unflattened_dims(dims.begin(), dims.end());
-    dims[last_dim - 1] = smaller_dim_size;
-    dims[last_dim] = last_dim_size + 1;
-    diag = xla::Reshape(diag, dims);
-
-    // Slices out the first column and reshapes to the final shape.
-    std::vector<int64> start(dims.size(), 0);
-    std::vector<int64> limits(dims.begin(), dims.end());
-    std::vector<int64> strides(dims.size(), 1);
-    limits[last_dim] = 1;
-    diag = xla::Slice(diag, start, limits, strides);
-
-    // Collapses away the last dimension.
-    dims.pop_back();
-    diag = xla::Reshape(diag, dims);
-
-    ctx->SetOutput(0, diag);
+    xla::XlaOp input = ctx->Input(0);
+    ctx->SetOutput(0, xla::GetMatrixDiagonal(input));
   }
 };
 

@@ -18,7 +18,7 @@ device to reduce variance (see
 Models are assumed to have been downloaded from the link, unzipped and pushed to
 `/data/local/tmp/tflite_models` folder. The benchmark binary is built according
 to instructions listed
-[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/tools/benchmark#on-android).
+[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/tools/benchmark#on-android)
 and is assumed to have been pushed to `/data/local/tmp`.
 
 The following command was used to run the benchmark:
@@ -62,7 +62,7 @@ Pixel xl | 0c |
   </tr>
   <tr>
     <td rowspan = 2>
-      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224_quant.tgz)">Mobilenet_1.0_224 (quant)</a>
+      <a href="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224_quant.tgz">Mobilenet_1.0_224 (quant)</a>
     </td>
     <td>Pixel 2 </td>
     <td>69.5 ms (0.9 ms)</td>

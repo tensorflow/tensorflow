@@ -25,6 +25,15 @@ namespace xla {
 // Returns a rank 1 tensor of `type` containing values [0, 1, 2, ...].
 XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size);
 
+// Returns an m x n matrix with 1s on the diagonal elements, zeros everywhere
+// else.
+XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
+
+// Get the diagonals of the last two dimensions. If 'x' has shape
+// [..., M, N], then the output has shape [..., min(M, N)], containing the
+// diagonal elements (i.e., with indices [..., i, i]).
+XlaOp GetMatrixDiagonal(XlaOp x);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_

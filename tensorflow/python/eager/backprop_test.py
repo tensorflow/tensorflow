@@ -96,6 +96,19 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(grads_and_vars[0][0], 1.0)
     self.assertAllEqual(id(grads_and_vars[0][1]), id(x))
 
+  def testGradientInsideLoop(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      def body(_):
+        _ = v + 1.0  # This reads the variable inside the loop context
+        with backprop.GradientTape() as t:
+          result = v * 2
+        self.assertTrue(t.gradient(result, v) is not None)
+        return 1.0
+
+      control_flow_ops.while_loop(lambda i: False, body, [1.0])
+
   def testWhereGradient(self):
     # Note: where is special because only some of its arguments are of
     # differentiable dtypes.
@@ -223,10 +236,22 @@ class BackpropTest(test.TestCase):
 
   def testTapeStopRecording(self):
     with backprop.GradientTape() as t:
-      x = constant_op.constant(1.0)
+      x = resource_variable_ops.ResourceVariable(1.0)
       with t.stop_recording():
         y = x * x
     self.assertEqual(t.gradient(y, x), None)
+
+  def testTapeStopStartRecording(self):
+    with backprop.GradientTape(persistent=True) as t:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      x2 = x * 2  # This should be differentiated through.
+      with t.stop_recording():
+        y = x2 * x2
+      z = x2 * x2
+    self.assertEqual(t.gradient(y, x2), None)
+
+    # If the x*2 was not differentiated through, this would be 2.0, not 4.0
+    self.assertEqual(t.gradient(z, x2).numpy(), 4.0)
 
   def testTapeReset(self):
     with backprop.GradientTape() as t:

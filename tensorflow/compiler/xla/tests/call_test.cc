@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -76,7 +77,8 @@ class CallOpTest : public ClientLibraryTestBase {
 XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR0F32IdentityComputation();
-  auto constant = ConstantLiteral(&builder, *Literal::CreateR0<float>(42.0));
+  auto constant =
+      ConstantLiteral(&builder, *LiteralUtil::CreateR0<float>(42.0));
   Call(&builder, callee, {constant});
 
   ComputeAndCompareR0<float>(&builder, 42.0, {}, ErrorSpec(0.01f));
@@ -85,8 +87,8 @@ XLA_TEST_F(CallOpTest, CallR0F32IdentityScalar) {
 XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR1S0F32AdditionComputation();
-  auto x = ConstantLiteral(&builder, *Literal::CreateR1<float>({}));
-  auto y = ConstantLiteral(&builder, *Literal::CreateR1<float>({}));
+  auto x = ConstantLiteral(&builder, *LiteralUtil::CreateR1<float>({}));
+  auto y = ConstantLiteral(&builder, *LiteralUtil::CreateR1<float>({}));
   Call(&builder, callee, {x, y});
 
   ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.01f));
@@ -95,8 +97,10 @@ XLA_TEST_F(CallOpTest, CallR1S0F32AddArray) {
 XLA_TEST_F(CallOpTest, CallR1S2F32AddArray) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR1S2F32AdditionComputation();
-  auto x = ConstantLiteral(&builder, *Literal::CreateR1<float>({1.0f, 2.0f}));
-  auto y = ConstantLiteral(&builder, *Literal::CreateR1<float>({2.0f, 3.0f}));
+  auto x =
+      ConstantLiteral(&builder, *LiteralUtil::CreateR1<float>({1.0f, 2.0f}));
+  auto y =
+      ConstantLiteral(&builder, *LiteralUtil::CreateR1<float>({2.0f, 3.0f}));
   Call(&builder, callee, {x, y});
 
   ComputeAndCompareR1<float>(&builder, {3.0f, 5.0f}, {}, ErrorSpec(0.01f));
@@ -129,15 +133,15 @@ XLA_TEST_F(CallOpTest, CallTreeTwoDeepBranchFactorThree) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> start,
-      client_->TransferToServer(*Literal::CreateR0<float>(1.0f)));
+      client_->TransferToServer(*LiteralUtil::CreateR0<float>(1.0f)));
   ComputeAndCompareR0<float>(&builder3, 10.0f, {start.get()}, ErrorSpec(0.0f));
 }
 
 XLA_TEST_F(CallOpTest, CallR0F32Tuple) {
   XlaBuilder builder(TestName());
   XlaComputation callee = CreateR0F32TupleComputation();
-  auto elem = Literal::CreateR0<float>(42.0);
-  auto tuple = Literal::MakeTuple({elem.get()});
+  auto elem = LiteralUtil::CreateR0<float>(42.0);
+  auto tuple = LiteralUtil::MakeTuple({elem.get()});
   Call(&builder, callee, {ConstantLiteral(&builder, *elem)});
 
   ComputeAndCompareTuple(&builder, *tuple, {}, ErrorSpec(0.01f));

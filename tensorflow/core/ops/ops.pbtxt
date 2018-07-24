@@ -2490,8 +2490,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -2674,8 +2672,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -3989,8 +3985,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4040,8 +4034,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4140,6 +4132,8 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
         type: DT_COMPLEX64
@@ -4165,6 +4159,8 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
         type: DT_COMPLEX64
@@ -4338,6 +4334,34 @@ op {
     has_minimum: true
     minimum: 1
   }
+}
+op {
+  name: "BoostedTreesCenterBias"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mean_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "mean_hessians"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "continue_centering"
+    type: DT_BOOL
+  }
+  is_stateful: true
 }
 op {
   name: "BoostedTreesCreateEnsemble"
@@ -5702,8 +5726,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5781,8 +5803,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5860,8 +5880,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8564,8 +8582,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8636,8 +8652,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8708,8 +8722,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -11457,7 +11469,9 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -11513,7 +11527,9 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -12342,29 +12358,6 @@ op {
   }
 }
 op {
-  name: "IdentityDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
   name: "IdentityN"
   input_arg {
     name: "input"
@@ -12457,7 +12450,6 @@ op {
     name: "Tout"
     type: "list(type)"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "then_branch"
@@ -13237,6 +13229,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandleV2"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -13293,6 +13315,34 @@ op {
   output_arg {
     name: "string_handle"
     type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorV2"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -15443,8 +15493,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15522,8 +15570,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15594,8 +15640,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15737,8 +15781,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -16946,6 +16988,33 @@ op {
   }
   input_arg {
     name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+}
+op {
+  name: "NonMaxSuppressionWithOverlaps"
+  input_arg {
+    name: "overlaps"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "overlap_threshold"
     type: DT_FLOAT
   }
   input_arg {
@@ -26113,6 +26182,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -27339,6 +27409,17 @@ op {
   }
 }
 op {
+  name: "SinkDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "Size"
   input_arg {
     name: "input"
@@ -27502,7 +27583,11 @@ op {
     type: DT_INT64
   }
   input_arg {
-    name: "stride"
+    name: "window_shift"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "window_stride"
     type: DT_INT64
   }
   output_arg {
@@ -31214,6 +31299,32 @@ op {
     default_value {
       s: ""
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatefulPartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
   }
   is_stateful: true
 }
@@ -35116,6 +35227,33 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "WindowDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "window_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "WriteAudioSummary"

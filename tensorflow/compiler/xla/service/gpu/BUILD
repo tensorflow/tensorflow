@@ -150,7 +150,7 @@ cc_library(
         ":parallel_loop_emitter",
         ":partition_assignment",
         ":while_transformer",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -162,13 +162,15 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_tiling",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
-        "//tensorflow/compiler/xla/service/llvm_ir:ops",
+        "//tensorflow/compiler/xla/service/llvm_ir:sort_util",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -199,7 +201,7 @@ cc_library(
     srcs = ["elemental_ir_emitter.cc"],
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -265,7 +267,9 @@ cc_library(
         "infeed_thunk.cc",
         "kernel_thunk.cc",
         "memset_thunk.cc",
+        "outfeed_thunk.cc",
         "sequential_thunk.cc",
+        "thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
         "while_thunk.cc",
@@ -282,6 +286,7 @@ cc_library(
         "infeed_thunk.h",
         "kernel_thunk.h",
         "memset_thunk.h",
+        "outfeed_thunk.h",
         "sequential_thunk.h",
         "thunk.h",
         "thunk_schedule.h",
@@ -289,15 +294,16 @@ cc_library(
         "while_thunk.h",
     ],
     deps = [
-        ":backend_configs",
         ":buffer_allocations",
         ":cudnn_convolution_runner",
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
+        ":outfeed_manager",
         ":partition_assignment",
         ":stream_assignment",
         "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -351,6 +357,7 @@ cc_library(
         ":cudnn_convolution_runner",
         ":gpu_executable",
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -382,7 +389,7 @@ cc_library(
     hdrs = ["cudnn_convolution_rewriter.h"],
     deps = [
         ":ir_emission_utils",
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -517,6 +524,7 @@ cc_library(
     hdrs = ["pad_insertion.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
@@ -533,7 +541,10 @@ cc_library(
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
         ":gpu_compiler",
+        ":outfeed_manager",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -552,8 +563,8 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = ["gpu_compiler.cc"],
-    hdrs = ["gpu_compiler.h"],
+    srcs = ["nvptx_compiler.cc"],
+    hdrs = ["nvptx_compiler.h"],
     deps = [
         ":cudnn_convolution_algorithm_picker",
         ":cudnn_convolution_rewriter",
@@ -624,6 +635,7 @@ cc_library(
     hdrs = ["cudnn_batchnorm_rewriter.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -631,14 +643,35 @@ cc_library(
 )
 
 cc_library(
+    name = "xfeed_queue",
+    hdrs = ["xfeed_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
     deps = [
+        ":xfeed_queue",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "outfeed_manager",
+    srcs = ["outfeed_manager.cc"],
+    hdrs = ["outfeed_manager.h"],
+    deps = [
+        ":xfeed_queue",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -716,7 +749,7 @@ cc_library(
     srcs = ["while_transformer.cc"],
     hdrs = ["while_transformer.h"],
     deps = [
-        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

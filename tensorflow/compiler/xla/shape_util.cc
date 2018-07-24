@@ -46,28 +46,14 @@ namespace xla {
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
-string ShapeIndex::ToString() const {
+string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
+
+string ShapeIndexView::ToString() const {
   return StrCat("{", tensorflow::str_util::Join(indices_, ","), "}");
 }
 
-string ShapeIndexView::ToString() const {
-  return StrCat("{",
-                tensorflow::str_util::Join(
-                    tensorflow::gtl::make_range(begin_, end_), ","),
-                "}");
-}
-
 bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
-  if (size() != other.size()) {
-    return false;
-  }
-  for (auto it = begin(), other_it = other.begin(); it != end();
-       ++it, ++other_it) {
-    if (*it != *other_it) {
-      return false;
-    }
-  }
-  return true;
+  return indices_ == other.indices_;
 }
 
 bool ShapeIndexView::operator!=(const ShapeIndexView& other) const {
@@ -696,7 +682,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                            CompatibleIgnoringElementType);
   } else {
     // Opaque, token, etc types are vacuously compatible.
-    return true;
+    return lhs.element_type() == rhs.element_type();
   }
 }
 
@@ -711,7 +697,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                            CompatibleIgnoringFpPrecision);
   } else {
     // Opaque, token, etc types are vacuously compatible.
-    return true;
+    return lhs.element_type() == rhs.element_type();
   }
 }
 
@@ -897,40 +883,51 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   }
 
   int64 shape_size = [&shape]() {
-    int64 shape_size;
     if (LayoutUtil::IsSparseArray(shape)) {
-      shape_size = LayoutUtil::MaxSparseElements(shape.layout());
-      if (shape_size < 0) {
-        return shape_size;
+      int64 max_sparse_elements = LayoutUtil::MaxSparseElements(shape.layout());
+      if (max_sparse_elements < 0) {
+        return max_sparse_elements;
       }
-      shape_size = MultiplyWithoutOverflow(shape_size, ShapeUtil::Rank(shape));
-      if (shape_size < 0) {
-        return shape_size;
+      int64 sparse_elements_size = MultiplyWithoutOverflow(
+          max_sparse_elements, ByteSizeOfPrimitiveType(shape.element_type()));
+      if (sparse_elements_size < 0) {
+        return sparse_elements_size;
       }
-      shape_size = MultiplyWithoutOverflow(shape_size, sizeof(int64));
-      if (shape_size < 0) {
-        return shape_size;
+      int64 sparse_indices_size =
+          MultiplyWithoutOverflow(max_sparse_elements, ShapeUtil::Rank(shape));
+      if (sparse_indices_size < 0) {
+        return sparse_indices_size;
+      }
+      sparse_indices_size =
+          MultiplyWithoutOverflow(sparse_indices_size, sizeof(int64));
+      if (sparse_indices_size < 0) {
+        return sparse_indices_size;
+      }
+      // At this point, both sparse_indices_size and sparse_elements_size are
+      // non-negative, so we can easily check if adding them wraps.
+      if (static_cast<uint64>(sparse_elements_size) +
+              static_cast<uint64>(sparse_indices_size) >
+          INT64_MAX) {
+        return static_cast<int64>(-1);
       }
     }
-
-    shape_size = 1;
 
     // This is intentionally unconditional: even if the shape is sparse, we want
     // to verify the densified version has a reasonable size.
+    int64 dense_shape_size = 1;
     if (shape.dimensions().empty()) {
-      return shape_size;
+      return dense_shape_size;
     }
 
     for (int64 dim : shape.dimensions()) {
-      shape_size = MultiplyWithoutOverflow(shape_size, dim);
-      if (shape_size < 0) {
-        return shape_size;
+      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
+      if (dense_shape_size < 0) {
+        return dense_shape_size;
       }
     }
-    shape_size = MultiplyWithoutOverflow(
-        shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
-
-    return shape_size;
+    dense_shape_size = MultiplyWithoutOverflow(
+        dense_shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
+    return dense_shape_size;
   }();
 
   if (shape_size < 0) {
@@ -1126,12 +1123,41 @@ Status ForEachMutableSubshapeHelper(
   for (auto dim : Permute(permutation, shape.dimensions())) {
     new_shape.add_dimensions(dim);
   }
+
+  // If `shape` has a layout, by contract we choose a new layout such that the
+  // transpose defined by this permutation is a bitcast.
+  //
+  // Some formalism helps to understand the correct way to do this.  We're going
+  // to do algebra in the group of permutations of the dimensions of `shape`.
+  //
+  // Since the order of `shape`'s dimensions is not permuted relative to itself,
+  // `shape`'s list of dimensions is isomorphic to the identity I.
+  //
+  // Let `shape`'s layout be L.  A layout is a permutation which maps a
+  // minor-to-major physical layout to the order of a shape's logical dims.
+  // Therefore inverse of a layout maps from logical to physical dims, and so
+  // the physical layout of I is simply L'.I = L', where L' is the inverse of L.
+  //
+  // Let the argument `permutation` be P.  This is a permutation over `shape`'s
+  // dimensions, so our return value will be a shape with dims P.I = P.  Our
+  // goal is to construct a layout permutation L* that we can apply to P such
+  // that that the physical dimension ordering of the returned shape is the same
+  // as that of the original shape, namely L'.
+  //
+  // Our returned shape has dims P and layout L*, so its in-memory layout is
+  // L*'.P.  Setting this equal to L' and solving for L*, we get:
+  //
+  //   L*'.P = L'    =>
+  //   L*'   = L'P'  =>
+  //   L*    = P.L
+  //
   if (shape.has_layout()) {
     CHECK(LayoutUtil::IsDenseArray(shape));
     Layout* new_layout = new_shape.mutable_layout();
     new_layout->set_format(DENSE);
     new_layout->clear_minor_to_major();
-    for (auto index : Permute(permutation, shape.layout().minor_to_major())) {
+    for (auto index : ComposePermutations(
+             permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
       new_layout->add_minor_to_major(index);
     }
     if (shape.layout().padded_dimensions_size() > 0) {
@@ -1141,6 +1167,13 @@ Status ForEachMutableSubshapeHelper(
         new_layout->add_padded_dimensions(dim);
       }
     }
+    // The permutation accepted by TransposeIsBitcast is the inverse of the
+    // permutation here.
+    CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
+        << "shape=" << HumanStringWithLayout(shape)
+        << ", new_shape=" << HumanStringWithLayout(new_shape)
+        << ", permutation={" << tensorflow::str_util::Join(permutation, ",")
+        << "}";
   }
   return new_shape;
 }

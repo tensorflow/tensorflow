@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         libcudnn7=7.1.4.18-1+cuda9.0 \
         libcudnn7-dev=7.1.4.18-1+cuda9.0 \
+        libnccl2=2.2.13-1+cuda9.0 \
+        libnccl-dev=2.2.13-1+cuda9.0 \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
@@ -32,6 +34,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     find /usr/local/cuda-9.0/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
     rm /usr/lib/x86_64-linux-gnu/libcudnn_static_v7.a
+
+# Link NCCL libray and header where the build script expects them.
+RUN mkdir /usr/local/cuda-9.0/lib &&  \
+    ln -s /usr/lib/x86_64-linux-gnu/libnccl.so.2 /usr/local/cuda/lib/libnccl.so.2 && \
+    ln -s /usr/include/nccl.h /usr/local/cuda/include/nccl.h
 
 RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
     python get-pip.py && \
@@ -72,7 +79,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.11.0
+ENV BAZEL_VERSION 0.14.1
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -91,9 +98,12 @@ RUN git clone --branch=r1.9 --depth=1 https://github.com/tensorflow/tensorflow.g
 ENV CI_BUILD_PYTHON python
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 ENV TF_NEED_CUDA 1
-ENV TF_CUDA_COMPUTE_CAPABILITIES=3.0,3.5,5.2,6.0,6.1
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.0,6.1,7.0
 ENV TF_CUDA_VERSION=9.0
 ENV TF_CUDNN_VERSION=7
+
+# NCCL 2.x
+ENV TF_NCCL_VERSION=2
 
 RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
     LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \

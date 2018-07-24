@@ -24,7 +24,10 @@ load(
     "if_mkl",
     "if_mkl_lnx_x64"
 )
-
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_mkl_open_source_only",
+)
 def register_extension_info(**kwargs):
     pass
 
@@ -134,6 +137,14 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+# Config setting selector used when building for products
+# which requires restricted licenses to be avoided.
+def if_not_lgpl_restricted(a):
+  _ = (a,)
+  return select({
+      "//conditions:default": [],
+  })
+
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
@@ -180,9 +191,13 @@ def get_win_copts(is_external=False):
         "/DEIGEN_AVOID_STL_ARRAY",
         "/Iexternal/gemmlowp",
         "/wd4018",  # -Wno-sign-compare
-        "/U_HAS_EXCEPTIONS",
-        "/D_HAS_EXCEPTIONS=1",
-        "/EHsc",  # -fno-exceptions
+        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+        # default. We can't pass /EHs-c- to disable exception, otherwise
+        # we will get a waterfall of flag conflict warnings. Wait for
+        # Bazel to fix this.
+        # "/D_HAS_EXCEPTIONS=0",
+        # "/EHs-c-",
+        "/wd4577",
         "/DNOGDI",
     ]
     if is_external:
@@ -214,6 +229,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
+      + if_mkl_open_source_only(["-DDO_NOT_USE_ML"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
@@ -825,6 +841,9 @@ def tf_cc_test_mkl(srcs,
                    tags=[],
                    size="medium",
                    args=None):
+  # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
+  disable_header_modules = ["-use_header_modules"]
+
   for src in srcs:
     native.cc_test(
       name=src_to_test_name(src),
@@ -850,6 +869,7 @@ def tf_cc_test_mkl(srcs,
       tags=tags,
       size=size,
       args=args,
+      features=disable_header_modules,
       nocopts="-fno-exceptions")
 
 
@@ -984,16 +1004,17 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_kernel_library(name,
-                      prefix=None,
-                      srcs=None,
-                      gpu_srcs=None,
-                      hdrs=None,
-                      deps=None,
-                      alwayslink=1,
-                      copts=None,
-                      is_external=False,
-                      **kwargs):
+def tf_kernel_library(
+        name,
+        prefix = None,
+        srcs = None,
+        gpu_srcs = None,
+        hdrs = None,
+        deps = None,
+        alwayslink = 1,
+        copts = None,
+        is_external = False,
+        **kwargs):
   """A rule to build a TensorFlow OpKernel.
 
   May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
@@ -1023,6 +1044,7 @@ def tf_kernel_library(name,
     deps = []
   if not copts:
     copts = []
+  textual_hdrs = []
   copts = copts + tf_copts(is_external=is_external)
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude=["*test*"]):
@@ -1033,8 +1055,13 @@ def tf_kernel_library(name,
     srcs = srcs + native.glob(
         [prefix + "*.cc"], exclude=[prefix + "*test*", prefix + "*.cu.cc"])
     hdrs = hdrs + native.glob(
-        [prefix + "*.h"], exclude=[prefix + "*test*", prefix + "*.cu.h"])
-
+            [prefix + "*.h"],
+            exclude = [prefix + "*test*", prefix + "*.cu.h", prefix + "*impl.h"],
+        )
+    textual_hdrs = native.glob(
+            [prefix + "*impl.h"],
+            exclude = [prefix + "*test*", prefix + "*.cu.h"],
+        )
   cuda_deps = [clean_dep("//tensorflow/core:gpu_lib")]
   if gpu_srcs:
     for gpu_src in gpu_srcs:
@@ -1048,6 +1075,7 @@ def tf_kernel_library(name,
       name=name,
       srcs=srcs,
       hdrs=hdrs,
+      textual_hdrs = textual_hdrs,
       copts=copts,
       cuda_deps=cuda_deps,
       linkstatic=1,  # Needed since alwayslink is broken in bazel b/27630669
@@ -1081,6 +1109,9 @@ def tf_mkl_kernel_library(name,
     hdrs = hdrs + native.glob(
         [prefix + "*.h"])
 
+  # -fno-exceptions in nocopts breaks compilation if header modules are enabled.
+  disable_header_modules = ["-use_header_modules"]
+
   native.cc_library(
       name=name,
       srcs=if_mkl(srcs),
@@ -1088,7 +1119,8 @@ def tf_mkl_kernel_library(name,
       deps=deps,
       alwayslink=alwayslink,
       copts=copts,
-      nocopts=nocopts
+      nocopts=nocopts,
+      features = disable_header_modules
   )
 
 register_extension_info(
@@ -1327,7 +1359,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       name=name,
       srcs=srcs,
       deps=deps + if_cuda(cuda_deps),
-      data=[name + "_check_deps"],
+      data=if_static([name + "_check_deps"]),
       copts=tf_copts(is_external=True),
       features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({

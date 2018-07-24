@@ -1293,6 +1293,19 @@ Infeed of the device.
 > which case the compiler will provide information about how the Infeed
 > operations are serialized in the compiled program.
 
+## Iota
+
+<b> `Iota()` </b>
+
+Builds a constant literal on device rather than a potentially large host
+transfer.  Creates a rank 1 tensor of values starting at zero and incrementing
+by one.
+
+Arguments          | Type            | Semantics
+------------------ | --------------- | ---------------------------
+`type`             | `PrimitiveType` | type U
+`size`             | `int64`         | The number of elements in the tensor.
+
 ## Map
 
 See also
@@ -2015,30 +2028,37 @@ two-operand version.
 
 <b>`Sort(operand)`</b>
 
-Arguments | Type    | Semantics
---------- | ------- | --------------------
-`operand` | `XlaOp` | The operand to sort.
+Arguments   | Type    | Semantics
+----------- | ------- | --------------------
+`operand`   | `XlaOp` | The operand to sort.
+`dimension` | `int64` | The dimension along which to sort.
 
-Sorts the elements in the operand in ascending order. The operand must be rank-1.
-If the operand's elements have floating point type, and the operand contains
-NaN elements, the order of elements in the output is implementation-defined.
+Sorts the elements in the operand in ascending order along the provided
+dimension. For example, for a rank-2 (matrix) operand, a `dimension` value of 0
+will sort each column independently, and a `dimension` value of 1 will sort each
+row independently. If the operand's elements have floating point type, and the
+operand contains NaN elements, the order of elements in the output is
+implementation-defined.
 
 <b>`Sort(key, value)`</b>
 
 Sorts both the key and the value operands. The keys are sorted as in the
 single-operand version. The values are sorted according to the order of their
 corresponding keys. For example, if the inputs are `keys = [3, 1]` and
-`values = [42, 50]`, then the output of the sort is the tuple `{[1, 3], [50, 42]}`.
+`values = [42, 50]`, then the output of the sort is the tuple 
+`{[1, 3], [50, 42]}`.
+
 The sort is not guaranteed to be stable, that is, if the keys array contains
 duplicates, the order of their corresponding values may not be preserved.
 
-Arguments | Type    | Semantics
---------- | ------- | -------------------
-`keys`    | `XlaOp` | The sort keys.
-`values`  | `XlaOp` | The values to sort.
+Arguments   | Type    | Semantics
+----------- | ------- | -------------------
+`keys`      | `XlaOp` | The sort keys.
+`values`    | `XlaOp` | The values to sort.
+`dimension` | `int64` | The dimension along which to sort.
 
-The `keys` and `values` operand must both be rank-1, and must have the same
-dimensions, but may have different element types.
+The `keys` and `values` must have the same dimensions, but may have different
+element types.
 
 ## Transpose
 

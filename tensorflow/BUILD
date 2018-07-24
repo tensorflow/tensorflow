@@ -20,8 +20,16 @@ load(
     "tf_additional_binary_deps",
 )
 load(
-    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
+)
+
+# Config setting used when building for products
+# which requires restricted licenses to be avoided.
+config_setting(
+    name = "no_lgpl_deps",
+    values = {"define": "__TENSORFLOW_NO_LGPL_DEPS__=1"},
+    visibility = ["//visibility:public"],
 )
 
 # Config setting for determining if we are building for Android.

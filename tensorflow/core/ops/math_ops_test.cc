@@ -528,4 +528,34 @@ TEST(MathOpsTest, Cross_ShapeFn) {
   INFER_OK(op, "[?];[?]", "in0");
   INFER_OK(op, "[1,?,3];[?,?,?]", "in0");
 }
+
+TEST(MathOpsTest, HistogramFixedWidth_ShapeFn) {
+  ShapeInferenceTestOp op("HistogramFixedWidth");
+
+  // value_range should be vector.
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[];[];[]");
+  // value_range should have 2 elements.
+  INFER_ERROR("Dimension must be 2 but is 3", op, "[];[3];[]");
+  // nbins should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[];[2];[2]");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "[?];[2];[]", "[?]");
+  INFER_OK(op, "[?];[2];?", "[?]");
+}
+
+TEST(MathOpsTest, QuantizedAdd_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizedAdd");
+
+  INFER_OK(op, "?;?;?;?;?;?", "?;[];[]");
+  INFER_OK(op, "?;?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[1,2];?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[];[2];[];[];[];[]", "[d1_0];[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;?;[4]");
+}
 }  // end namespace tensorflow

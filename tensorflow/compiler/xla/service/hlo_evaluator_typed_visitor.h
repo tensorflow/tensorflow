@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/core/lib/core/casts.h"
@@ -33,6 +34,37 @@ template <typename T>
 using is_complex_t = std::is_same<T, complex64>;
 template <typename T>
 using is_complex64_t = std::is_same<T, complex64>;
+
+// It's UB to use std::sort with std::less<float>, because of NaNs. Define
+// "safe" less functions which are actually strict weak orders.
+template <
+    typename NativeT,
+    typename std::enable_if<std::is_integral<NativeT>::value>::type* = nullptr>
+bool SafeLess(const NativeT& a, const NativeT& b) {
+  return a < b;
+}
+
+template <typename NativeT,
+          typename std::enable_if<
+              std::is_floating_point<NativeT>::value ||
+              std::is_same<NativeT, bfloat16>::value>::type* = nullptr>
+bool SafeLess(const NativeT& a, const NativeT& b) {
+  if (std::isnan(b)) {
+    return !std::isnan(a);
+  } else {
+    return a < b;
+  }
+}
+
+template <typename NativeT, typename std::enable_if<std::is_same<
+                                NativeT, Eigen::half>::value>::type* = nullptr>
+bool SafeLess(const NativeT& a, const NativeT& b) {
+  if (Eigen::half_impl::isnan(b)) {
+    return !Eigen::half_impl::isnan(a);
+  } else {
+    return a < b;
+  }
+}
 
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
@@ -267,6 +299,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleFloor(HloInstruction* floor) override {
     return HandleFloor<ReturnT>(floor);
+  }
+
+  Status HandleImag(HloInstruction* imag) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[imag],
+                        ElementWiseUnaryOp(imag, [](ElementwiseT elem_operand) {
+                          return std::imag(elem_operand);
+                        }));
+    return Status::OK();
   }
 
   Status HandleLog(HloInstruction* log) override {
@@ -568,6 +608,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
                                                       ElementwiseT rhs_el) {
                           return std::pow(lhs_el, rhs_el);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleReal(HloInstruction* real) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[real],
+                        ElementWiseUnaryOp(real, [](ElementwiseT elem_operand) {
+                          return std::real(elem_operand);
                         }));
     return Status::OK();
   }
@@ -1285,7 +1333,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 parent_->GetEvaluatedLiteralFor(operand);
 
             auto curr_val = arg_literal.Get<NativeT>(multi_index);
-            auto curr_val_literal = Literal::CreateR0<NativeT>(curr_val);
+            auto curr_val_literal = LiteralUtil::CreateR0<NativeT>(curr_val);
 
             arg_literals.push_back(std::move(curr_val_literal));
           }
@@ -1367,66 +1415,47 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                 !std::is_same<NativeT, bool>::value>::type* = nullptr>
   Status HandleSort(HloInstruction* sort) {
     auto keys = sort->operand(0);
-    TF_RET_CHECK(ShapeUtil::Rank(keys->shape()) == 1)
-        << "Sort is only supported for R1 shapes";
+    auto rank = ShapeUtil::Rank(keys->shape());
+    TF_RET_CHECK(rank > 0 && rank <= 2)
+        << "Sort is only supported for R1 and R2 shapes";
+    TF_RET_CHECK(sort->operand_count() == 1)
+        << "Typed visitor does not support key-value sort";
 
     const Literal& keys_literal = parent_->GetEvaluatedLiteralFor(keys);
-    VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
-    const auto& keys_data = keys_literal.data<ReturnT>();
 
-    if (sort->operand_count() == 1) {
+    auto sort_r1 = [this](const Literal& keys_literal) {
+      VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
+      const auto& keys_data = keys_literal.data<ReturnT>();
+
       std::vector<ReturnT> result_data(keys_data.begin(), keys_data.end());
       std::sort(result_data.begin(), result_data.end(),
                 [](const ReturnT& a, const ReturnT& b) {
                   return SafeLess<ReturnT>(a, b);
                 });
-      auto result_literal = MakeUnique<Literal>(sort->shape());
+      auto result_literal = MakeUnique<Literal>(keys_literal.shape());
       result_literal->PopulateR1(
           tensorflow::gtl::ArraySlice<ReturnT>(result_data));
       VLOG(3) << "HandleSort result_literal: " << result_literal->ToString();
-      parent_->evaluated_[sort] = std::move(result_literal);
-    } else {
-      CHECK_EQ(sort->operand_count(), 2);
-      auto values = sort->operand(1);
-      if (values->shape().element_type() !=
-          primitive_util::NativeToPrimitiveType<ReturnT>()) {
-        return InvalidArgument(
-            "Evaluator requires value and key types for Sort to match");
-      }
+      return result_literal;
+    };
 
-      // We need to sort and array of keys and an array of values, where the
-      // sorted order of the values is determined by the keys. The simplest(?)
-      // way to do this is to go to an array-of-pairs representation, sort the
-      // array using the keys, and then go back to pair-of-arrays.
-      const Literal& values_literal = parent_->GetEvaluatedLiteralFor(values);
-      VLOG(3) << "HandleSort values_literal: " << values_literal.ToString();
-      const auto& values_data = values_literal.data<ReturnT>();
-      using kv_pair = std::pair<ReturnT, ReturnT>;
-      std::vector<kv_pair> key_value_vector;
-      CHECK_EQ(keys_data.size(), values_data.size());
-      for (int i = 0; i < keys_data.size(); ++i) {
-        key_value_vector.push_back(
-            std::make_pair(keys_data[i], values_data[i]));
+    if (rank == 1) {
+      parent_->evaluated_[sort] = std::move(sort_r1(keys_literal));
+    } else {
+      // For R2 sort, the desired semantics are to sort each matrix row
+      // independently.
+      auto result_literal = MakeUnique<Literal>(keys_literal.shape());
+      int64 r1_length = keys->shape().dimensions(1);
+      for (int64 row = 0; row < keys->shape().dimensions(0); ++row) {
+        TF_ASSIGN_OR_RETURN(auto r1_slice,
+                            keys_literal.Slice({row, 0}, {row + 1, r1_length})
+                                ->Reshape({r1_length}));
+        auto r1_result = sort_r1(*r1_slice);
+        TF_ASSIGN_OR_RETURN(r1_result, r1_result->Reshape({1, r1_length}));
+        TF_RETURN_IF_ERROR(result_literal->CopySliceFrom(
+            *r1_result, {0, 0}, {row, 0}, {1, r1_length}));
       }
-      std::sort(key_value_vector.begin(), key_value_vector.end(),
-                [](const kv_pair& a, const kv_pair& b) {
-                  return SafeLess<ReturnT>(a.first, b.first);
-                });
-      std::vector<ReturnT> result_keys, result_values;
-      for (const auto& key_value : key_value_vector) {
-        result_keys.push_back(key_value.first);
-        result_values.push_back(key_value.second);
-      }
-      auto result_keys_literal = MakeUnique<Literal>(keys->shape());
-      result_keys_literal->PopulateR1(
-          tensorflow::gtl::ArraySlice<ReturnT>(result_keys));
-      auto result_values_literal = MakeUnique<Literal>(values->shape());
-      result_values_literal->PopulateR1(
-          tensorflow::gtl::ArraySlice<ReturnT>(result_values));
-      auto result_tuple = Literal::MakeTuple(
-          {result_keys_literal.get(), result_values_literal.get()});
-      VLOG(3) << "HandleSort result_tuple: " << result_tuple->ToString();
-      parent_->evaluated_[sort] = std::move(result_tuple);
+      parent_->evaluated_[sort] = std::move(result_literal);
     }
     return Status::OK();
   }
@@ -1515,8 +1544,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             auto curr_val = arg_literal.Get<ReturnT>(input_index);
 
             // Evaluate computation with specified literal operands.
-            auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
-            auto result_val_literal = Literal::CreateR0<ReturnT>(result_val);
+            auto curr_val_literal = LiteralUtil::CreateR0<ReturnT>(curr_val);
+            auto result_val_literal =
+                LiteralUtil::CreateR0<ReturnT>(result_val);
 
             std::unique_ptr<Literal> computed_result =
                 embedded_evaluator
@@ -1594,10 +1624,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // Used in the dual IterateThroughWindow lambdas below. Hoisted to avoid
     // dynamic memory allocations.
-    auto curr_val_literal = Literal::CreateR0<ReturnT>(ReturnT());
-    auto selected_val_literal = Literal::CreateR0<ReturnT>(ReturnT());
-    auto source_literal_scatter = Literal::CreateR0<ReturnT>(ReturnT());
-    auto scattered_literal = Literal::CreateR0<ReturnT>(ReturnT());
+    auto curr_val_literal = LiteralUtil::CreateR0<ReturnT>(ReturnT());
+    auto selected_val_literal = LiteralUtil::CreateR0<ReturnT>(ReturnT());
+    auto source_literal_scatter = LiteralUtil::CreateR0<ReturnT>(ReturnT());
+    auto scattered_literal = LiteralUtil::CreateR0<ReturnT>(ReturnT());
     do {
       // For each element in `source`, we place a window in `operand`. For each
       // window placement, we iterate inside the window twice:
@@ -1718,9 +1748,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
                 // Evaluate computation with specified literal operands.
                 const auto curr_val_literal =
-                    Literal::CreateR0<ReturnT>(curr_val);
+                    LiteralUtil::CreateR0<ReturnT>(curr_val);
                 const auto result_val_literal =
-                    Literal::CreateR0<ReturnT>(result_val);
+                    LiteralUtil::CreateR0<ReturnT>(result_val);
                 std::unique_ptr<Literal> computed_result =
                     embedded_evaluator
                         .Evaluate<const Literal*>(
@@ -1765,7 +1795,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       return operand_literal.Get<ReturnT>(operand_index);
     };
 
-    auto result = Literal::CreateFromDimensions(
+    auto result = LiteralUtil::CreateFromDimensions(
         shape.element_type(), AsInt64Slice(shape.dimensions()));
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(func));
     parent_->evaluated_[slice] = std::move(result);
@@ -1965,6 +1995,30 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleReducePrecision(HloInstruction* reduce_precision) override {
     return HandleReducePrecision<ElementwiseT>(reduce_precision);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, float>::value ||
+                std::is_same<NativeT, int32>::value ||
+                std::is_same<NativeT, uint32>::value>::type* = nullptr>
+  Status HandleIota(HloInstruction* iota) {
+    auto result = MakeUnique<Literal>(iota->shape());
+    auto data = result->data<ReturnT>();
+    std::iota(data.begin(), data.end(), 0);
+    parent_->evaluated_[iota] = std::move(result);
+    return Status::OK();
+  }
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_same<NativeT, float>::value ||
+                  std::is_same<NativeT, int32>::value ||
+                  std::is_same<NativeT, uint32>::value)>::type* = nullptr>
+  Status HandleIota(HloInstruction* iota) {
+    return InvalidArgument("Unsupported type for iota");
+  }
+  Status HandleIota(HloInstruction* iota) override {
+    return HandleIota<ReturnT>(iota);
   }
 
  private:
@@ -2181,38 +2235,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     UnsignedT lhs_size_unsigned = sizeof(NativeT) * CHAR_BIT;
     UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
     return rhs_unsigned >= lhs_size_unsigned;
-  }
-
-  // It's UB to use std::sort with std::less<float>, because of NaNs. Define
-  // "safe" less functions which are actually strict weak orders.
-  template <typename NativeT,
-            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
-                nullptr>
-  static bool SafeLess(const NativeT& a, const NativeT& b) {
-    return a < b;
-  }
-
-  template <typename NativeT,
-            typename std::enable_if<
-                std::is_floating_point<NativeT>::value ||
-                std::is_same<NativeT, bfloat16>::value>::type* = nullptr>
-  static bool SafeLess(const NativeT& a, const NativeT& b) {
-    if (std::isnan(b)) {
-      return !std::isnan(a);
-    } else {
-      return a < b;
-    }
-  }
-
-  template <typename NativeT,
-            typename std::enable_if<
-                std::is_same<NativeT, Eigen::half>::value>::type* = nullptr>
-  static bool SafeLess(const NativeT& a, const NativeT& b) {
-    if (Eigen::half_impl::isnan(b)) {
-      return !Eigen::half_impl::isnan(a);
-    } else {
-      return a < b;
-    }
   }
 
   HloEvaluator* parent_;

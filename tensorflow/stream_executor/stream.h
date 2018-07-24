@@ -629,19 +629,22 @@ class Stream {
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<double> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<double> *output_data);
+                          DeviceMemory<double> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<float> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<float> *output_data);
+                          DeviceMemory<float> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                           const dnn::BatchDescriptor &input_dimensions,
                           const DeviceMemory<Eigen::half> &input_data,
                           const dnn::BatchDescriptor &output_dimensions,
-                          DeviceMemory<Eigen::half> *output_data);
+                          DeviceMemory<Eigen::half> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -649,7 +652,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<double> &output_data,
                            const DeviceMemory<double> &input_diff_data,
-                           DeviceMemory<double> *output_diff_data);
+                           DeviceMemory<double> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -657,7 +661,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<float> &output_data,
                            const DeviceMemory<float> &input_diff_data,
-                           DeviceMemory<float> *output_diff_data);
+                           DeviceMemory<float> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
@@ -665,7 +670,8 @@ class Stream {
                            const dnn::BatchDescriptor &output_dimensions,
                            const DeviceMemory<Eigen::half> &output_data,
                            const DeviceMemory<Eigen::half> &input_diff_data,
-                           DeviceMemory<Eigen::half> *output_diff_data);
+                           DeviceMemory<Eigen::half> *output_diff_data,
+                           ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenNormalize(const dnn::NormalizeDescriptor &normalize_descriptor,
                         const DeviceMemory<float> &input_data,
@@ -684,7 +690,8 @@ class Stream {
       const DeviceMemory<float> &raw_data,
       const DeviceMemory<float> &normalized_data,
       const DeviceMemory<float> &normalized_variable_gradient,
-      DeviceMemory<float> *raw_variable_gradient);
+      DeviceMemory<float> *raw_variable_gradient,
+      ScratchAllocator *workspace_allocator = nullptr);
 
   Stream &ThenActivate(dnn::ActivationMode activation_mode,
                        const dnn::BatchDescriptor &dimensions,

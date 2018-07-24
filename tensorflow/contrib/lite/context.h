@@ -39,6 +39,26 @@ extern "C" {
 
 typedef enum { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 
+// The list of external context types known to TF Lite. This list exists solely
+// to avoid conflicts and to ensure ops can share the external contexts they
+// need. Access to the external contexts is controled by one of the
+// corresponding support files.
+typedef enum {
+  kTfLiteEigenContext = 0,     // include eigen_support.h to use.
+  kTfLiteGemmLowpContext = 1,  // include gemm_support.h to use.
+  kTfLiteMaxExternalContexts = 2
+} TfLiteExternalContextType;
+
+// An external context is a collection of information unrelated to the TF Lite
+// framework, but useful to a subset of the ops. TF Lite knows very little
+// about about the actual contexts, but it keeps a list of them, and is able to
+// refresh them if configurations like the number of recommended threads
+// change.
+typedef struct {
+  TfLiteExternalContextType type;
+  TfLiteStatus (*Refresh)(struct TfLiteContext* context);
+} TfLiteExternalContext;
+
 // Forward declare so GetNode can use this is in Context.
 typedef struct _TfLiteRegistration TfLiteRegistration;
 typedef struct _TfLiteDelegate TfLiteDelegate;
@@ -339,10 +359,15 @@ typedef struct TfLiteContext {
   // eigen.
   int recommended_num_threads;
 
-  // TODO(ahentz): we should create a more general mechanism for this sort of
-  // library-global objects.
-  void* gemm_context;
-  void* eigen_context;
+  // Access external contexts by type.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteExternalContext* (*GetExternalContext)(struct TfLiteContext*,
+                                               TfLiteExternalContextType);
+  // Set the value of a external context. Does not take ownership of the
+  // pointer.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*SetExternalContext)(struct TfLiteContext*, TfLiteExternalContextType,
+                             TfLiteExternalContext*);
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {
@@ -439,6 +464,12 @@ typedef struct _TfLiteDelegate {
 } TfLiteDelegate;
 
 // WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateDelegateParams` function in `interpreter.cc` details.
 typedef struct {
   TfLiteDelegate* delegate;
   TfLiteIntArray* nodes_to_replace;

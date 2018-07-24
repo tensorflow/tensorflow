@@ -830,7 +830,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
     tol = 1e-3
     gain = 3.14
     # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and ouputs.
+    # the 2-norms of the inputs and outputs.
     for kernel_size in [[1], [2], [3], [4], [5], [6]]:
       convolution = convolutional.conv1d
       inputs = random_ops.random_normal(shape, dtype=dtype)
@@ -925,7 +925,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
     tol = 1e-3
     gain = 3.14
     # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and ouputs.
+    # the 2-norms of the inputs and outputs.
     for kernel_size in [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]:
       convolution = convolutional.conv2d
       inputs = random_ops.random_normal(shape, dtype=dtype)
@@ -1050,7 +1050,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
     tol = 1e-3
     gain = 3.14
     # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and ouputs.
+    # the 2-norms of the inputs and outputs.
     for kernel_size in [[1, 1, 1], [2, 2, 2], [3, 3, 3]]:
       convolution = convolutional.conv3d
       inputs = random_ops.random_normal(shape, dtype=dtype)

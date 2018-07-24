@@ -416,6 +416,13 @@ TEST_F(OperatorTest, BuiltinArgMax) {
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
 }
 
+TEST_F(OperatorTest, BuiltinArgMin) {
+  ArgMinOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ARG_MIN", OperatorType::kArgMin), op);
+  EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
 TEST_F(OperatorTest, BuiltinTransposeConv) {
   TransposeConvOperator op;
   op.stride_width = 123;
@@ -443,6 +450,16 @@ TEST_F(OperatorTest, BuiltinSparseToDense) {
       SerializeAndDeserialize(
           GetOperator("SPARSE_TO_DENSE", OperatorType::kSparseToDense), op);
   EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
+}
+
+TEST_F(OperatorTest, BuiltinPack) {
+  PackOperator op;
+  op.values_count = 3;
+  op.axis = 1;
+  std::unique_ptr<toco::PackOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("PACK", OperatorType::kPack), op);
+  EXPECT_EQ(op.values_count, output_toco_op->values_count);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

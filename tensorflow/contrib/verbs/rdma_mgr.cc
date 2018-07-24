@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -255,28 +256,25 @@ void MRDeleter(ibv_mr* mr) {
   }
 }
 
-// TODO(byronyi): remove this class duplicated from the one in
-// common/runtime/gpu/pool_allocator.h when it is available in common_runtime
-class BasicCPUAllocator : public SubAllocator {
- public:
-  ~BasicCPUAllocator() override {}
-
-  void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
-  }
-  void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
-};
-
 // TODO(byronyi): remove this class and its registration when the default
-// cpu_allocator() returns visitable allocator
+// cpu_allocator() returns visitable allocator, or cpu_allocator() is no
+// longer in use.
 class BFCRdmaAllocator : public BFCAllocator {
  public:
   BFCRdmaAllocator()
-      : BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {
+      : BFCAllocator(new BasicCPUAllocator(port::kNUMANoAffinity), 1LL << 36,
+                     true, "cpu_rdma_bfc") {}
+};
+class BFCRdmaAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() { return new BFCRdmaAllocator; }
+
+  SubAllocator* CreateSubAllocator(int numa_node) {
+    return new BasicCPUAllocator(numa_node);
   }
 };
 
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocator);
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
 
 void RdmaMgr::InitAllocators() {
   RdmaMemoryMgr::Singleton().pd_ = rdma_adapter_->pd_;
@@ -284,8 +282,8 @@ void RdmaMgr::InitAllocators() {
   Allocator* allocators[] = {
 #if GOOGLE_CUDA
     GPUProcessState::singleton()->GetCUDAHostAllocator(0),
-    ProcessState::singleton()->GetCPUAllocator(0),
 #endif  // GOOGLE_CUDA
+    ProcessState::singleton()->GetCPUAllocator(0),
     cpu_allocator(),
   };
 

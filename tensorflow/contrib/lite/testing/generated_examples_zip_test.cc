@@ -53,10 +53,6 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    {R"(^\/mul.*int32)", "68808744"},
-    {R"(^\/div.*int32)", "68808744"},
-    {R"(^\/sub.*int32)", "68808744"},
-
     // Pad and PadV2 only supports 4D tensors.
     {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
@@ -97,11 +93,12 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/gather.*axis=1)", "76910444"},
 
     // No support for arbitrary dimensions in ArgMax.
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.,.\])",
      "77546240"},
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.,.\])",
      "77546240"},
-    {R"(^\/arg_max.*axis_is_last_dim=False.*input_shape=\[.,.\])", "77546240"},
+    {R"(^\/arg_min_max.*axis_is_last_dim=False.*input_shape=\[.,.\])",
+     "77546240"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes

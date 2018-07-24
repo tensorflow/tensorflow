@@ -24,6 +24,7 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
@@ -107,8 +108,12 @@ class Dataset(object):
           "execution is enabled.")
     if shared_name is None:
       shared_name = ""
-    iterator_resource = gen_dataset_ops.iterator(
-        container="", shared_name=shared_name, **flat_structure(self))
+    if compat.forward_compatible(2018, 8, 3):
+      iterator_resource = gen_dataset_ops.iterator_v2(
+          container="", shared_name=shared_name, **flat_structure(self))
+    else:
+      iterator_resource = gen_dataset_ops.iterator(
+          container="", shared_name=shared_name, **flat_structure(self))
     with ops.colocate_with(iterator_resource):
       initializer = gen_dataset_ops.make_iterator(self._as_variant_tensor(),
                                                   iterator_resource)
@@ -1244,10 +1249,29 @@ class _NestedDatasetComponent(object):
   custom component types.
   """
 
-  def __init__(self, dataset):
-    self._output_classes = dataset.output_classes
-    self._output_shapes = dataset.output_shapes
-    self._output_types = dataset.output_types
+  def __init__(self,
+               dataset=None,
+               output_shapes=None,
+               output_types=None,
+               output_classes=None):
+    if dataset is None:
+      if (output_classes is None or output_shapes is None or
+          output_types is None):
+        raise ValueError(
+            "Either `dataset`, or all of `output_classes`, "
+            "`output_shapes`, and `output_types` must be specified.")
+      self._output_classes = output_classes
+      self._output_shapes = output_shapes
+      self._output_types = output_types
+    else:
+      if not (output_classes is None and output_shapes is None and
+              output_types is None):
+        raise ValueError(
+            "Either `dataset`, or all of `output_classes`, "
+            "`output_shapes`, and `output_types` must be specified.")
+      self._output_classes = dataset.output_classes
+      self._output_shapes = dataset.output_shapes
+      self._output_types = dataset.output_types
 
   @property
   def output_classes(self):
@@ -1406,7 +1430,11 @@ class StructuredFunctionWrapper(object):
           flat_shapes.append(component)
           flat_types.append(component)
         else:
-          t = ops.convert_to_tensor(t)
+          try:
+            t = ops.convert_to_tensor(t)
+          except (ValueError, TypeError):
+            raise TypeError("Unsupported return value from function passed to "
+                            "%s: %s." % (transformation_name, t))
           flat_ret.append(t)
           flat_classes.append(ops.Tensor)
           flat_shapes.append(t.get_shape())
@@ -1482,11 +1510,30 @@ def flat_structure(dataset):
     A dictionary of keyword arguments that can be passed to many Dataset op
     constructors.
   """
+  output_classes = []
+  output_shapes = []
+  output_types = []
+  for output_class, output_shape, output_type in zip(
+      nest.flatten(dataset.output_classes), nest.flatten(dataset.output_shapes),
+      nest.flatten(dataset.output_types)):
+    if isinstance(output_class, _NestedDatasetComponent):
+      output_classes.append(output_class.output_classes)
+      output_shapes.append(output_shape.output_shapes)
+      output_types.append(output_type.output_types)
+    else:
+      output_classes.append(output_class)
+      output_shapes.append(output_shape)
+      output_types.append(output_type)
+
+  output_classes = nest.pack_sequence_as(dataset.output_classes, output_classes)
+  output_shapes = nest.pack_sequence_as(dataset.output_shapes, output_shapes)
+  output_types = nest.pack_sequence_as(dataset.output_types, output_types)
+
   return {
-      "output_shapes": nest.flatten(sparse.as_dense_shapes(
-          dataset.output_shapes, dataset.output_classes)),
-      "output_types": nest.flatten(sparse.as_dense_types(
-          dataset.output_types, dataset.output_classes)),
+      "output_shapes":
+          nest.flatten(sparse.as_dense_shapes(output_shapes, output_classes)),
+      "output_types":
+          nest.flatten(sparse.as_dense_types(output_types, output_classes)),
   }
 
 

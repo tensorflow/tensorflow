@@ -169,7 +169,8 @@ Service::Service(const ServiceOptions& options,
 
 Status Service::CreateChannelHandle(const CreateChannelHandleRequest* arg,
                                     CreateChannelHandleResponse* result) {
-  *result->mutable_channel() = channel_tracker_.NewChannel();
+  TF_ASSIGN_OR_RETURN(*result->mutable_channel(),
+                      channel_tracker_.NewChannel(arg->channel_type()));
   return Status::OK();
 }
 

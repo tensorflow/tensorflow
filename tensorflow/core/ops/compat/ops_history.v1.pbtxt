@@ -7681,66 +7681,6 @@ op {
   }
 }
 op {
-  name: "AvgPool"
-  input_arg {
-    name: "value"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "ksize"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-}
-op {
   name: "AvgPool3D"
   input_arg {
     name: "input"
@@ -8413,70 +8353,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-}
-op {
-  name: "AvgPoolGrad"
-  input_arg {
-    name: "orig_input_shape"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "grad"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "ksize"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -10555,61 +10431,6 @@ op {
   }
 }
 op {
-  name: "BiasAdd"
-  input_arg {
-    name: "value"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "bias"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_INT64
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_COMPLEX128
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-}
-op {
   name: "BiasAddGrad"
   input_arg {
     name: "out_backprop"
@@ -10797,57 +10618,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-      }
-    }
-  }
-}
-op {
-  name: "BiasAddGrad"
-  input_arg {
-    name: "out_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_COMPLEX64
-        type: DT_INT64
-        type: DT_QINT8
-        type: DT_QUINT8
-        type: DT_QINT32
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_COMPLEX128
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -11276,6 +11046,71 @@ op {
   }
 }
 op {
+  name: "Bitcast"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+}
+op {
   name: "BitwiseAnd"
   input_arg {
     name: "x"
@@ -11525,6 +11360,34 @@ op {
     has_minimum: true
     minimum: 1
   }
+}
+op {
+  name: "BoostedTreesCenterBias"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "mean_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "mean_hessians"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "continue_centering"
+    type: DT_BOOL
+  }
+  is_stateful: true
 }
 op {
   name: "BoostedTreesCreateEnsemble"
@@ -13429,81 +13292,6 @@ op {
   }
 }
 op {
-  name: "Conv2D"
-  input_arg {
-    name: "input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "filter"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-  }
-  attr {
-    name: "use_cudnn_on_gpu"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "dilations"
-    type: "list(int)"
-    default_value {
-      list {
-        i: 1
-        i: 1
-        i: 1
-        i: 1
-      }
-    }
-  }
-}
-op {
   name: "Conv2DBackpropFilter"
   input_arg {
     name: "input"
@@ -13720,85 +13508,6 @@ op {
   }
 }
 op {
-  name: "Conv2DBackpropFilter"
-  input_arg {
-    name: "input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "filter_sizes"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "out_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-  }
-  attr {
-    name: "use_cudnn_on_gpu"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "dilations"
-    type: "list(int)"
-    default_value {
-      list {
-        i: 1
-        i: 1
-        i: 1
-        i: 1
-      }
-    }
-  }
-}
-op {
   name: "Conv2DBackpropInput"
   input_arg {
     name: "input_sizes"
@@ -13998,85 +13707,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-      }
-    }
-  }
-  attr {
-    name: "dilations"
-    type: "list(int)"
-    default_value {
-      list {
-        i: 1
-        i: 1
-        i: 1
-        i: 1
-      }
-    }
-  }
-}
-op {
-  name: "Conv2DBackpropInput"
-  input_arg {
-    name: "input_sizes"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "filter"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "out_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-  }
-  attr {
-    name: "use_cudnn_on_gpu"
-    type: "bool"
-    default_value {
-      b: true
-    }
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -18824,74 +18454,6 @@ op {
   }
 }
 op {
-  name: "DepthwiseConv2dNative"
-  input_arg {
-    name: "input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "filter"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "dilations"
-    type: "list(int)"
-    default_value {
-      list {
-        i: 1
-        i: 1
-        i: 1
-        i: 1
-      }
-    }
-  }
-}
-op {
   name: "DepthwiseConv2dNativeBackpropFilter"
   input_arg {
     name: "input"
@@ -19130,78 +18692,6 @@ op {
   }
 }
 op {
-  name: "DepthwiseConv2dNativeBackpropFilter"
-  input_arg {
-    name: "input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "filter_sizes"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "out_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "dilations"
-    type: "list(int)"
-    default_value {
-      list {
-        i: 1
-        i: 1
-        i: 1
-        i: 1
-      }
-    }
-  }
-}
-op {
   name: "DepthwiseConv2dNativeBackpropInput"
   input_arg {
     name: "input_sizes"
@@ -19423,78 +18913,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-      }
-    }
-  }
-  attr {
-    name: "dilations"
-    type: "list(int)"
-    default_value {
-      list {
-        i: 1
-        i: 1
-        i: 1
-        i: 1
-      }
-    }
-  }
-}
-op {
-  name: "DepthwiseConv2dNativeBackpropInput"
-  input_arg {
-    name: "input_sizes"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "filter"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "out_backprop"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_HALF
-        type: DT_BFLOAT16
-        type: DT_FLOAT
-        type: DT_DOUBLE
-      }
-    }
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -24750,6 +24168,60 @@ op {
   }
 }
 op {
+  name: "FusedPadConv2D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "paddings"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
   name: "FusedResizeAndPadConv2D"
   input_arg {
     name: "input"
@@ -24777,6 +24249,71 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "resize_align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "mode"
+    type: "string"
+    allowed_values {
+      list {
+        s: "REFLECT"
+        s: "SYMMETRIC"
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+      }
+    }
+  }
+}
+op {
+  name: "FusedResizeAndPadConv2D"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "paddings"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
       }
     }
   }
@@ -26129,29 +25666,6 @@ op {
   }
 }
 op {
-  name: "IdentityDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-}
-op {
   name: "IdentityN"
   input_arg {
     name: "input"
@@ -26306,6 +25820,43 @@ op {
     type: "list(type)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "then_branch"
+    type: "func"
+  }
+  attr {
+    name: "else_branch"
+    type: "func"
+  }
+}
+op {
+  name: "If"
+  input_arg {
+    name: "cond"
+    type_attr: "Tcond"
+  }
+  input_arg {
+    name: "input"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tcond"
+    type: "type"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
   }
   attr {
     name: "then_branch"
@@ -27685,6 +27236,36 @@ op {
   is_stateful: true
 }
 op {
+  name: "IteratorFromStringHandleV2"
+  input_arg {
+    name: "string_handle"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "resource_handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  is_stateful: true
+}
+op {
   name: "IteratorGetNext"
   input_arg {
     name: "iterator"
@@ -27741,6 +27322,34 @@ op {
   output_arg {
     name: "string_handle"
     type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorV2"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -32015,85 +31624,6 @@ op {
   }
 }
 op {
-  name: "MaxPoolGrad"
-  input_arg {
-    name: "orig_input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "orig_output"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "grad"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "ksize"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
-      }
-    }
-  }
-}
-op {
   name: "MaxPoolGradGrad"
   input_arg {
     name: "orig_input"
@@ -32386,82 +31916,6 @@ op {
   }
 }
 op {
-  name: "MaxPoolGradGrad"
-  input_arg {
-    name: "orig_input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "orig_output"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "grad"
-    type_attr: "T"
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "ksize"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "strides"
-    type: "list(int)"
-    has_minimum: true
-    minimum: 4
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
-      }
-    }
-  }
-}
-op {
   name: "MaxPoolGradGradV2"
   input_arg {
     name: "orig_input"
@@ -32713,78 +32167,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
-      }
-    }
-  }
-}
-op {
-  name: "MaxPoolGradGradV2"
-  input_arg {
-    name: "orig_input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "orig_output"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "grad"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "ksize"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "strides"
-    type: DT_INT32
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -33350,81 +32732,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-      }
-    }
-  }
-  attr {
-    name: "T"
-    type: "type"
-    default_value {
-      type: DT_FLOAT
-    }
-    allowed_values {
-      list {
-        type: DT_FLOAT
-        type: DT_DOUBLE
-        type: DT_INT32
-        type: DT_UINT8
-        type: DT_INT16
-        type: DT_INT8
-        type: DT_INT64
-        type: DT_BFLOAT16
-        type: DT_UINT16
-        type: DT_HALF
-        type: DT_UINT32
-        type: DT_UINT64
-      }
-    }
-  }
-}
-op {
-  name: "MaxPoolGradV2"
-  input_arg {
-    name: "orig_input"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "orig_output"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "grad"
-    type_attr: "T"
-  }
-  input_arg {
-    name: "ksize"
-    type: DT_INT32
-  }
-  input_arg {
-    name: "strides"
-    type: DT_INT32
-  }
-  output_arg {
-    name: "output"
-    type_attr: "T"
-  }
-  attr {
-    name: "padding"
-    type: "string"
-    allowed_values {
-      list {
-        s: "SAME"
-        s: "VALID"
-      }
-    }
-  }
-  attr {
-    name: "data_format"
-    type: "string"
-    default_value {
-      s: "NHWC"
-    }
-    allowed_values {
-      list {
-        s: "NHWC"
-        s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -36125,6 +35432,33 @@ op {
   }
   input_arg {
     name: "iou_threshold"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "score_threshold"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "selected_indices"
+    type: DT_INT32
+  }
+}
+op {
+  name: "NonMaxSuppressionWithOverlaps"
+  input_arg {
+    name: "overlaps"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "scores"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_output_size"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "overlap_threshold"
     type: DT_FLOAT
   }
   input_arg {
@@ -55909,6 +55243,61 @@ op {
   }
 }
 op {
+  name: "ScatterNdNonAliasingAdd"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tindices"
+  }
+  input_arg {
+    name: "updates"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+        type: DT_BOOL
+      }
+    }
+  }
+  attr {
+    name: "Tindices"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "ScatterNdSub"
   input_arg {
     name: "ref"
@@ -58701,6 +58090,17 @@ op {
   }
 }
 op {
+  name: "SinkDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "Size"
   input_arg {
     name: "input"
@@ -58891,7 +58291,11 @@ op {
     type: DT_INT64
   }
   input_arg {
-    name: "stride"
+    name: "window_shift"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "window_stride"
     type: DT_INT64
   }
   output_arg {
@@ -68669,6 +68073,32 @@ op {
   is_stateful: true
 }
 op {
+  name: "StatefulPartitionedCall"
+  input_arg {
+    name: "args"
+    type_list_attr: "Tin"
+  }
+  output_arg {
+    name: "output"
+    type_list_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tout"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  is_stateful: true
+}
+op {
   name: "StatelessMultinomial"
   input_arg {
     name: "logits"
@@ -74643,6 +74073,33 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "WindowDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "window_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "WriteAudioSummary"

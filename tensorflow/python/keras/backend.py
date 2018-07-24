@@ -963,13 +963,14 @@ def zeros(shape, dtype=None, name=None):
              [ 0.,  0.,  0.,  0.]], dtype=float32)
   ```
   """
-  if dtype is None:
-    dtype = floatx()
-  tf_dtype = dtypes_module.as_dtype(dtype)
-  v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
-  if py_all(v.get_shape().as_list()):
-    return variable(v, dtype=dtype, name=name)
-  return v
+  with ops.init_scope():
+    if dtype is None:
+      dtype = floatx()
+    tf_dtype = dtypes_module.as_dtype(dtype)
+    v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
+    if py_all(v.get_shape().as_list()):
+      return variable(v, dtype=dtype, name=name)
+    return v
 
 
 @tf_export('keras.backend.ones')
@@ -996,13 +997,14 @@ def ones(shape, dtype=None, name=None):
              [ 1.,  1.,  1.,  1.]], dtype=float32)
   ```
   """
-  if dtype is None:
-    dtype = floatx()
-  tf_dtype = dtypes_module.as_dtype(dtype)
-  v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
-  if py_all(v.get_shape().as_list()):
-    return variable(v, dtype=dtype, name=name)
-  return v
+  with ops.init_scope():
+    if dtype is None:
+      dtype = floatx()
+    tf_dtype = dtypes_module.as_dtype(dtype)
+    v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
+    if py_all(v.get_shape().as_list()):
+      return variable(v, dtype=dtype, name=name)
+    return v
 
 
 @tf_export('keras.backend.eye')
@@ -3456,7 +3458,7 @@ def softsign(x):
 
 
 @tf_export('keras.backend.categorical_crossentropy')
-def categorical_crossentropy(target, output, from_logits=False):
+def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy between an output tensor and a target tensor.
 
   Arguments:
@@ -3466,28 +3468,33 @@ def categorical_crossentropy(target, output, from_logits=False):
           case `output` is expected to be the logits).
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
+      axis: Int specifying the channels axis. `axis=-1` corresponds to data
+          format `channels_last', and `axis=1` corresponds to data format
+          `channels_first`.
 
   Returns:
       Output tensor.
+
+  Raises:
+      ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  rank = len(output.get_shape())
+  axis = axis % rank
   # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
-    output = output / math_ops.reduce_sum(  # pylint: disable=g-no-augmented-assignment
-        output, len(output.get_shape()) - 1, True)
+    output = output / math_ops.reduce_sum(output, axis, True)
     # manual computation of crossentropy
     epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
-    return -math_ops.reduce_sum(
-        target * math_ops.log(output),
-        axis=len(output.get_shape()) - 1)
+    return -math_ops.reduce_sum(target * math_ops.log(output), axis)
   else:
     return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
 
 
 @tf_export('keras.backend.sparse_categorical_crossentropy')
-def sparse_categorical_crossentropy(target, output, from_logits=False):
+def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy with integer targets.
 
   Arguments:
@@ -3497,10 +3504,22 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
           case `output` is expected to be the logits).
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
+      axis: Int specifying the channels axis. `axis=-1` corresponds to data
+          format `channels_last', and `axis=1` corresponds to data format
+          `channels_first`.
 
   Returns:
       Output tensor.
+
+  Raises:
+      ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  rank = len(output.get_shape())
+  axis = axis % rank
+  if axis != rank - 1:
+    permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
+    output = array_ops.transpose(output, perm=permutation)
+
   # Note: nn.sparse_softmax_cross_entropy_with_logits
   # expects logits, Keras expects probabilities.
   if not from_logits:

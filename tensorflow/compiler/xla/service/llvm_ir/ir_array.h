@@ -87,20 +87,19 @@ class IrArray {
     }
 
     // Constructs an index from linear index "linear" and computes the
-    // multi-dimensional index from "linear" and "shape". "ir_builder" is the IR
+    // multi-dimensional index from "linear" and "shape". "b" is the IR
     // builder to emit the index of each dimension in the multi-dimensional
     // index.
     //
     // Precondition: "shape" has a layout.
-    Index(llvm::Value* linear, const Shape& shape,
-          llvm::IRBuilder<>* ir_builder);
+    Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
     // Constructs an index from the given multi-dimensional index and the shape
     // that it indexes into.
     //
     // Precondition: "shape" has a layout.
     Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
-          const Shape& shape, llvm::IRBuilder<>* ir_builder);
+          const Shape& shape, llvm::IRBuilder<>* b);
 
     // Constructs an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
@@ -114,19 +113,19 @@ class IrArray {
     size_t size() const { return multidim().size(); }
 
     llvm::Value* operator[](size_t i) const { return multidim()[i]; }
-    llvm::Value*& operator[](size_t i) { return multidim()[i]; }
+    llvm::Value*& operator[](size_t i) { return mutable_multidim()[i]; }
 
-    void push_back(llvm::Value* value) { multidim().push_back(value); }
+    void push_back(llvm::Value* value) { mutable_multidim().push_back(value); }
     void InsertAt(int64 index, llvm::Value* value) {
       CHECK_LE(index, size());
-      multidim().insert(multidim().begin() + index, value);
+      mutable_multidim().insert(mutable_multidim().begin() + index, value);
     }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
 
-    iterator begin() { return multidim().begin(); }
-    iterator end() { return multidim().end(); }
+    iterator begin() { return mutable_multidim().begin(); }
+    iterator end() { return mutable_multidim().end(); }
 
     const_iterator begin() const { return multidim().begin(); }
     const_iterator end() const { return multidim().end(); }
@@ -185,13 +184,13 @@ class IrArray {
 
    private:
     // Changing the multi-dimensional index invalidates the linear index.
-    std::vector<llvm::Value*>& multidim() {
+    std::vector<llvm::Value*>& mutable_multidim() {
       linear_ = nullptr;
       return multidim_;
     }
 
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
-                     const Shape& shape, llvm::IRBuilder<>* ir_builder) const;
+                     const Shape& shape, llvm::IRBuilder<>* b) const;
 
     std::vector<llvm::Value*> multidim_;
 
@@ -240,8 +239,7 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
-  llvm::Value* EmitArrayElementAddress(const Index& index,
-                                       llvm::IRBuilder<>* ir_builder,
+  llvm::Value* EmitArrayElementAddress(const Index& index, llvm::IRBuilder<>* b,
                                        tensorflow::StringPiece name = "") const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
@@ -255,18 +253,16 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
-  llvm::Value* EmitReadArrayElement(const Index& index,
-                                    llvm::IRBuilder<>* ir_builder,
+  llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
                                     tensorflow::StringPiece name = "") const;
 
   // Emit IR to write the given value to the array element at the given index.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                             llvm::IRBuilder<>* ir_builder) const;
+                             llvm::IRBuilder<>* b) const;
 
   // Returns a new IrArray whose shape is "new_shape" and base pointer is a
   // bitcast of the base pointer of "this" IrArray.
-  IrArray CastToShape(const Shape& new_shape,
-                      llvm::IRBuilder<>* ir_builder) const;
+  IrArray CastToShape(const Shape& new_shape, llvm::IRBuilder<>* b) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
     CHECK_NE(alias_scope, nullptr);
@@ -312,7 +308,7 @@ class IrArray {
   // Bumps the "which_dimension" value within the provided index by the provided
   // addend.
   static Index BumpIndex(const Index& index, int64 which_dimension,
-                         int64 addend, llvm::IRBuilder<>* ir_builder);
+                         int64 addend, llvm::IRBuilder<>* b);
 
  private:
   // Add the specified LLVM IR metadata to loads/stores associated with this

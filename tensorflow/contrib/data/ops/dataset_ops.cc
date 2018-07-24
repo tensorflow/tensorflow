@@ -36,6 +36,7 @@ data_input_datasets: `N` datasets with the same type that will be interleaved
 
 REGISTER_OP("CSVDataset")
     .Input("filenames: string")
+    .Input("compression_type: string")
     .Input("buffer_size: int64")
     .Input("header: bool")
     .Input("field_delim: string")
@@ -52,17 +53,18 @@ REGISTER_OP("CSVDataset")
       shape_inference::ShapeHandle unused;
       // `filenames` must be a scalar or a vector.
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
-      // `buffer_size`, `header`, `field_delim`, `use_quote_delim`,
-      // `na_value` must be scalars
+      // `compression_type`, `buffer_size`, `header`, `field_delim`,
+      // `use_quote_delim`, `na_value` must be scalars
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       // `select_cols` must be a vector
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 1, &unused));
-      // `record_defaults` must be a list of scalars...?
-      for (size_t i = 7; i < c->num_inputs(); ++i) {
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 1, &unused));
+      // `record_defaults` must be lists of scalars
+      for (size_t i = 8; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &unused));
       }
       return shape_inference::ScalarShape(c);
@@ -174,5 +176,18 @@ max_intra_op_parallelism: The maximum degree of parallelism to use within
 display_name: A human-readable name for the threads that may be visible in
   some visualizations.
 )doc");
+
+REGISTER_OP("AssertNextDataset")
+    .Input("input_dataset: variant")
+    .Input("transformations: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // transformations should be a vector.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
 
 }  // namespace tensorflow

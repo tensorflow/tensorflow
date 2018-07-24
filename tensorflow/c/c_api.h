@@ -1521,6 +1521,13 @@ TF_CAPI_EXPORT extern const char* TF_DeviceListType(const TF_DeviceList* list,
 TF_CAPI_EXPORT extern int64_t TF_DeviceListMemoryBytes(
     const TF_DeviceList* list, int index, TF_Status* status);
 
+// Retrieve the incarnation number of a given device.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and 0 will be returned.
+TF_CAPI_EXPORT extern uint64_t TF_DeviceListIncarnation(
+    const TF_DeviceList* list, int index, TF_Status* status);
+
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels
 
@@ -1602,6 +1609,18 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map,
                                                  const char* name,
                                                  size_t name_len,
                                                  TF_Status* status);
+
+// --------------------------------------------------------------------------
+// Kernel definition information.
+
+// Returns a serialized KernelList protocol buffer containing KernelDefs for all
+// registered kernels.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status);
+
+// Returns a serialized KernelList protocol buffer containing KernelDefs for all
+// kernels registered for the operation named `name`.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
+    const char* name, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

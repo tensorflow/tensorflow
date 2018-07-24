@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -49,10 +50,10 @@ XLA_TEST_F(TupleTest, TupleConstant) {
       {1.1f, 2.2f, 3.5f},  // row 0
       {4.8f, 5.0f, 6.7f},  // row 1
   };
-  auto value =
-      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
-                          Literal::CreateR1<float>(constant_vector).get(),
-                          Literal::CreateR2<float>(constant_matrix).get()});
+  auto value = LiteralUtil::MakeTuple(
+      {LiteralUtil::CreateR0<float>(constant_scalar).get(),
+       LiteralUtil::CreateR1<float>(constant_vector).get(),
+       LiteralUtil::CreateR2<float>(constant_matrix).get()});
 
   ConstantLiteral(&builder, *value);
   ComputeAndCompareTuple(&builder, *value, {}, error_spec_);
@@ -64,9 +65,9 @@ XLA_TEST_F(TupleTest, TupleScalarConstant) {
 
   const float constant_scalar1 = 7.3f;
   const float constant_scalar2 = 1.2f;
-  auto value =
-      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar1).get(),
-                          Literal::CreateR0<float>(constant_scalar2).get()});
+  auto value = LiteralUtil::MakeTuple(
+      {LiteralUtil::CreateR0<float>(constant_scalar1).get(),
+       LiteralUtil::CreateR0<float>(constant_scalar2).get()});
 
   ConstantLiteral(&builder, *value);
   ComputeAndCompareTuple(&builder, *value, {}, error_spec_);
@@ -86,10 +87,10 @@ XLA_TEST_F(TupleTest, TupleCreate) {
                    ConstantR1<float>(&builder, constant_vector),
                    ConstantR2<float>(&builder, constant_matrix)});
 
-  auto expected =
-      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar).get(),
-                          Literal::CreateR1<float>(constant_vector).get(),
-                          Literal::CreateR2<float>(constant_matrix).get()});
+  auto expected = LiteralUtil::MakeTuple(
+      {LiteralUtil::CreateR0<float>(constant_scalar).get(),
+       LiteralUtil::CreateR1<float>(constant_vector).get(),
+       LiteralUtil::CreateR2<float>(constant_matrix).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -100,8 +101,9 @@ XLA_TEST_F(TupleTest, TupleCreateWithZeroElementEntry) {
   Tuple(&builder,
         {ConstantR0<float>(&builder, 7.0), ConstantR1<float>(&builder, {})});
 
-  auto expected = Literal::MakeTuple({Literal::CreateR0<float>(7.0).get(),
-                                      Literal::CreateR1<float>({}).get()});
+  auto expected =
+      LiteralUtil::MakeTuple({LiteralUtil::CreateR0<float>(7.0).get(),
+                              LiteralUtil::CreateR1<float>({}).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -109,7 +111,7 @@ XLA_TEST_F(TupleTest, TupleCreateWithZeroElementEntry) {
 XLA_TEST_F(TupleTest, EmptyTupleCreate) {
   XlaBuilder builder(TestName());
   Tuple(&builder, {});
-  auto expected = Literal::MakeTuple({});
+  auto expected = LiteralUtil::MakeTuple({});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -193,9 +195,9 @@ XLA_TEST_F(TupleTest, TupleGTEToTuple) {
                        ConstantR2<float>(&builder, constant_matrix)});
   Tuple(&builder,
         {GetTupleElement(tuple_data, 1), GetTupleElement(tuple_data, 0)});
-  auto expected =
-      Literal::MakeTuple({Literal::CreateR2<float>(constant_matrix).get(),
-                          Literal::CreateR1<float>(constant_vector).get()});
+  auto expected = LiteralUtil::MakeTuple(
+      {LiteralUtil::CreateR2<float>(constant_matrix).get(),
+       LiteralUtil::CreateR1<float>(constant_vector).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -216,8 +218,8 @@ XLA_TEST_F(TupleTest, SelectBetweenPredTuples) {
     auto v2_v1 = Tuple(&b, {v2_gt, v1_gt});  // {true, false}
     Select(direction ? v1_gt : v2_gt, v1_v2, v2_v1);
     auto expected =
-        Literal::MakeTuple({Literal::CreateR0<bool>(direction).get(),
-                            Literal::CreateR0<bool>(!direction).get()});
+        LiteralUtil::MakeTuple({LiteralUtil::CreateR0<bool>(direction).get(),
+                                LiteralUtil::CreateR0<bool>(!direction).get()});
 
     ComputeAndCompareTuple(&b, *expected, {v1_data.get(), v2_data.get()},
                            error_spec_);
@@ -284,8 +286,9 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesOnFalse) {
                                   ConstantR1<float>(&builder, vec1)});
 
   Select(ConstantR0<bool>(&builder, false), tuple12, tuple21);
-  auto expected = Literal::MakeTuple({Literal::CreateR1<float>(vec2).get(),
-                                      Literal::CreateR1<float>(vec1).get()});
+  auto expected =
+      LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>(vec2).get(),
+                              LiteralUtil::CreateR1<float>(vec1).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -328,8 +331,9 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesOnTrue) {
                                   ConstantR1<float>(&builder, vec1)});
 
   Select(ConstantR0<bool>(&builder, true), tuple12, tuple21);
-  auto expected = Literal::MakeTuple({Literal::CreateR1<float>(vec1).get(),
-                                      Literal::CreateR1<float>(vec2).get()});
+  auto expected =
+      LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>(vec1).get(),
+                              LiteralUtil::CreateR1<float>(vec2).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -403,8 +407,9 @@ XLA_TEST_F(TupleTest, SelectBetweenTuplesReuseConstants) {
 
   Select(ConstantR0<bool>(&builder, false), tuple12, tuple21);
 
-  auto expected = Literal::MakeTuple({Literal::CreateR1<float>(vec2).get(),
-                                      Literal::CreateR1<float>(vec1).get()});
+  auto expected =
+      LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>(vec2).get(),
+                              LiteralUtil::CreateR1<float>(vec1).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -414,13 +419,13 @@ XLA_TEST_F(TupleTest, NestedTuples) {
                                       ConstantR0<float>(&builder, 42.0)});
   Tuple(&builder, {inner_tuple, ConstantR1<float>(&builder, {22.0, 44.0})});
 
-  auto expected_v1 = Literal::CreateR1<float>({1.0, 2.0});
-  auto expected_s = Literal::CreateR0<float>(42.0);
+  auto expected_v1 = LiteralUtil::CreateR1<float>({1.0, 2.0});
+  auto expected_s = LiteralUtil::CreateR0<float>(42.0);
   auto expected_inner_tuple =
-      Literal::MakeTuple({expected_v1.get(), expected_s.get()});
-  auto expected_v2 = Literal::CreateR1<float>({22.0, 44.0});
+      LiteralUtil::MakeTuple({expected_v1.get(), expected_s.get()});
+  auto expected_v2 = LiteralUtil::CreateR1<float>({22.0, 44.0});
   auto expected =
-      Literal::MakeTuple({expected_inner_tuple.get(), expected_v2.get()});
+      LiteralUtil::MakeTuple({expected_inner_tuple.get(), expected_v2.get()});
 
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
@@ -440,14 +445,14 @@ XLA_TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
 
   std::unique_ptr<GlobalData> data =
       client_
-          ->TransferToServer(*Literal::MakeTuple({
-              Literal::MakeTuple(
+          ->TransferToServer(*LiteralUtil::MakeTuple({
+              LiteralUtil::MakeTuple(
                   {
-                      Literal::CreateR1<float>({1.0, 2.0, 3.0}).get(),
-                      Literal::CreateR1<float>({4.0, 5.0, 6.0}).get(),
+                      LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0}).get(),
+                      LiteralUtil::CreateR1<float>({4.0, 5.0, 6.0}).get(),
                   })
                   .get(),
-              Literal::CreateR1<float>({7.0, 8.0, 9.0}).get(),
+              LiteralUtil::CreateR1<float>({7.0, 8.0, 9.0}).get(),
           }))
           .ConsumeValueOrDie();
 
@@ -478,11 +483,12 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
 
   std::unique_ptr<GlobalData> arg0 =
       client_
-          ->TransferToServer(*Literal::MakeTuple(
-              {Literal::CreateR0<complex64>({1, 2}).get(),
-               Literal::MakeTuple(
-                   {Literal::CreateR1<complex64>({{10, 20}, {30, 40}}).get(),
-                    Literal::CreateR2<complex64>(
+          ->TransferToServer(*LiteralUtil::MakeTuple(
+              {LiteralUtil::CreateR0<complex64>({1, 2}).get(),
+               LiteralUtil::MakeTuple(
+                   {LiteralUtil::CreateR1<complex64>({{10, 20}, {30, 40}})
+                        .get(),
+                    LiteralUtil::CreateR2<complex64>(
                         {{{100, 200}, {300, 400}},
                          {{1000, 2000}, {3000, 4000}},
                          {{10000, 20000}, {30000, 40000}}})
@@ -491,11 +497,13 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> arg1 =
       client_
-          ->TransferToServer(*Literal::CreateR1<complex64>({{1, 2}, {1, -2}}))
+          ->TransferToServer(
+              *LiteralUtil::CreateR1<complex64>({{1, 2}, {1, -2}}))
           .ConsumeValueOrDie();
-  auto sum = Literal::CreateR2<complex64>({{{111, 222}, {331, 442}},
-                                           {{1011, 2022}, {3031, 4042}},
-                                           {{10011, 20022}, {30031, 40042}}});
+  auto sum =
+      LiteralUtil::CreateR2<complex64>({{{111, 222}, {331, 442}},
+                                        {{1011, 2022}, {3031, 4042}},
+                                        {{10011, 20022}, {30031, 40042}}});
   auto prod = MakeUnique<Literal>(sum->shape());
   ASSERT_TRUE(prod->Populate<complex64>(
                       [&sum](tensorflow::gtl::ArraySlice<int64> indexes) {
@@ -505,9 +513,9 @@ XLA_TEST_F(TupleTest, ComplexTuples) {
                                     : complex64(1, -2));
                       })
                   .ok());
-  auto expected =
-      Literal::MakeTuple({Literal::MakeTuple({prod.get(), sum.get()}).get(),
-                          Literal::CreateR0<complex64>({123, 456}).get()});
+  auto expected = LiteralUtil::MakeTuple(
+      {LiteralUtil::MakeTuple({prod.get(), sum.get()}).get(),
+       LiteralUtil::CreateR0<complex64>({123, 456}).get()});
   ComputeAndCompareTuple(&builder, *expected, {arg0.get(), arg1.get()},
                          error_spec_);
 }
@@ -530,11 +538,58 @@ XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   auto module =
       HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
           .ValueOrDie();
-  auto param = Literal::MakeTupleOwned(Literal::CreateR1<float>({1, 2, 3}));
+  auto param =
+      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}));
   auto result = ExecuteNoHloPasses(std::move(module), {param.get()});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *Literal::MakeTupleOwned(Literal::CreateR2<float>({{1, 2, 3}})),
+      *LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR2<float>({{1, 2, 3}})),
       *result));
+}
+
+// Disabled on interpreter due to lack of outfeed.
+XLA_TEST_F(TupleHloTest,
+           DISABLED_ON_INTERPRETER(NonAmbiguousTopLevelAllocation)) {
+  const char* testcase = R"(
+    HloModule tuple
+
+    ENTRY main {
+      a = f32[2] parameter(0)
+      b = f32[2] parameter(1)
+      c = f32[2] parameter(2)
+      d = f32[2] parameter(3)
+      cond = pred[] parameter(4)
+
+      tup0 = (f32[2],f32[2]) tuple(a, b)
+      tup1 = (f32[2],f32[2]) tuple(c, d)
+
+      s = (f32[2],f32[2]) tuple-select(cond, tup0, tup1)
+      gte = f32[2] get-tuple-element(s), index=0
+      tuple = (f32[2]) tuple(gte)
+      token = token[] after-all()
+      ROOT outfeed = token[] outfeed(tuple, token)
+    }
+  )";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param0 = LiteralUtil::CreateR1<float>({1, 2});
+  auto param1 = LiteralUtil::CreateR1<float>({2, 3});
+  auto param4 = LiteralUtil::CreateR0<bool>(false);
+  // Put execution on a separate thread so we can block on outfeed.
+  std::unique_ptr<tensorflow::Thread> thread(
+      tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "execute_thread", [&] {
+            TF_EXPECT_OK(Execute(std::move(module),
+                                 {param0.get(), param1.get(), param1.get(),
+                                  param0.get(), param4.get()})
+                             .status());
+          }));
+  auto expected =
+      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}));
+  auto literal = MakeUnique<Literal>();
+  TF_EXPECT_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
+      backend().default_stream_executor(), expected->shape(), literal.get()));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *literal));
 }
 
 }  // namespace

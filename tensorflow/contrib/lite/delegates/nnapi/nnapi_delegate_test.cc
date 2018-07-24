@@ -27,14 +27,20 @@ using ::testing::ElementsAreArray;
 // TODO(b/110368244): figure out how to share the existing tests in kernels/ but
 // with the delegation on. Also, add more unit tests to improve code coverage.
 
-class FloatAddOpModel : public SingleOpModel {
+class SingleOpModelWithNNAPI : public SingleOpModel {
+ public:
+  SingleOpModelWithNNAPI() {
+    this->SetApplyDelegate([](Interpreter* interpreter) {
+      interpreter->ModifyGraphWithDelegate(NnApiDelegate(), false);
+    });
+  }
+};
+
+class FloatAddOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatAddOpModel(const TensorData& input1, const TensorData& input2,
                   const TensorData& output,
                   ActivationFunctionType activation_type) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
@@ -81,9 +87,6 @@ class FloatMulOpModel : public SingleOpModel {
   FloatMulOpModel(const TensorData& input1, const TensorData& input2,
                   const TensorData& output,
                   ActivationFunctionType activation_type) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
@@ -114,15 +117,11 @@ TEST(NNAPIDelegate, MulWithNoActivation) {
               ElementsAreArray(ArrayFloatNear({-0.2, 0.04, 0.21, 0.4})));
 }
 
-class FloatPoolingOpModel : public SingleOpModel {
+class FloatPoolingOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatPoolingOpModel(BuiltinOperator type, const TensorData& input,
                       int filter_width, int filter_height,
                       const TensorData& output) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     input_ = AddInput(input);
     output_ = AddOutput(output);
 
@@ -193,10 +192,6 @@ class BaseConvolutionOpModel : public SingleOpModel {
       enum Padding padding = Padding_VALID,
       enum ActivationFunctionType activation = ActivationFunctionType_NONE,
       int dilation_width_factor = 1, int dilation_height_factor = 1) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -344,14 +339,10 @@ TEST(NNAPIDelegate, Conv2DWithNoActivation) {
                              }));
 }
 
-class DepthwiseConvolutionOpModel : public SingleOpModel {
+class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {
  public:
   DepthwiseConvolutionOpModel(const TensorData& input, const TensorData& filter,
                               const TensorData& output) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -426,15 +417,11 @@ TEST(NNAPIDelegate, DepthwiseConv2DWithNoActivation) {
                              }));
 }
 
-class FloatFullyConnectedOpModel : public SingleOpModel {
+class FloatFullyConnectedOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatFullyConnectedOpModel(int units, int batches, const TensorData& input,
                              const TensorData& output = {TensorType_FLOAT32})
       : batches_(batches), units_(units) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     int total_input_size = 1;
     for (int i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
@@ -515,14 +502,10 @@ TEST(NNAPIDelegate, FullyConnectedSimpleTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAre(24, 25, 26, 58, 59, 60));
 }
 
-class SoftmaxOpModel : public SingleOpModel {
+class SoftmaxOpModel : public SingleOpModelWithNNAPI {
  public:
   SoftmaxOpModel(int batches, int size, float beta)
       : batches_(batches), input_size_(size), beta_(beta) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     input_ = AddInput(TensorType_FLOAT32);
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
@@ -566,14 +549,10 @@ TEST(NNAPIDelegate, SoftmaxSimpleTest) {
           1e-6)));
 }
 
-class ReshapeOpModel : public SingleOpModel {
+class ReshapeOpModel : public SingleOpModelWithNNAPI {
  public:
   ReshapeOpModel(std::initializer_list<int> input_shape,
                  std::initializer_list<int> new_shape) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     input_ = AddInput(TensorType_FLOAT32);
     new_shape_ = AddInput(TensorType_INT32);
     output_ = AddOutput(TensorType_FLOAT32);
@@ -605,14 +584,10 @@ TEST(NNAPIDelegate, ReshapeSimpleTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
 
-class SqueezeOpModel : public SingleOpModel {
+class SqueezeOpModel : public SingleOpModelWithNNAPI {
  public:
   SqueezeOpModel(const TensorData& input, const TensorData& output,
                  std::initializer_list<int> axis) {
-    this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
-    });
-
     input_ = AddInput(input);
     output_ = AddOutput(output);
     SetBuiltinOp(
@@ -664,6 +639,78 @@ TEST(NNAPIDelegate, SqueezeWithAxisTest) {
       ElementsAreArray({1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                         9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
                         17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0}));
+}
+
+class L2NormOpModel : public SingleOpModelWithNNAPI {
+ public:
+  L2NormOpModel(const TensorData& input, const TensorData& output,
+                ActivationFunctionType activation_type) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+    SetBuiltinOp(BuiltinOperator_L2_NORMALIZATION, BuiltinOptions_L2NormOptions,
+                 CreateL2NormOptions(builder_, activation_type).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor<float>(input_, data);
+  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int new_shape_;
+  int output_;
+};
+
+TEST(NNAPIDelegate, L2NormSimpleTest) {
+  std::initializer_list<float> data = {-1.1, 0.6, 0.7, 1.2, -0.7, 0.1};
+  L2NormOpModel m({TensorType_FLOAT32, {1, 1, 1, 6}},
+                  {TensorType_FLOAT32, {1, 1, 1, 6}},
+                  ActivationFunctionType_NONE);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 6}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+}
+
+class TransposeSimpleModel : public SingleOpModelWithNNAPI {
+ public:
+  TransposeSimpleModel(std::initializer_list<int> input_shape,
+                       std::initializer_list<int> perm_shape,
+                       std::initializer_list<int> perm) {
+    input_ = AddInput(TensorType_FLOAT32);
+    perm_ = AddConstInput(TensorType_INT32, perm, perm_shape);
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(builder_).Union());
+    BuildInterpreter({input_shape, perm_shape});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    PopulateTensor<float>(input_, data);
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+
+ private:
+  int input_;
+  int perm_;
+  int output_;
+};
+
+TEST(NNAPIDelegate, TransposeSimpleTest) {
+  TransposeSimpleModel m({2, 3, 4}, {3}, {2, 0, 1});
+  m.SetInput({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+              12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4, 2, 3}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({0, 4, 8,  12, 16, 20, 1, 5, 9,  13, 17, 21,
+                                2, 6, 10, 14, 18, 22, 3, 7, 11, 15, 19, 23}));
 }
 
 }  // namespace

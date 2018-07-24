@@ -78,7 +78,7 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
     tags = [
-        "no_pip",
+        "no_pip",  # depends on blocks_test, which is not available in pip package
         "optonly",
     ],
 )
@@ -109,6 +109,42 @@ py_binary(
     deps = [
         ":cifar_input",
         ":config",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_binary(
+    name = "main_estimator",
+    srcs = ["main_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "main_estimator_lib",
+    srcs = ["main_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "main_estimator_tpu_lib",
+    srcs = ["main_estimator_tpu.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
         ":revnet",
         "//tensorflow:tensorflow_py",
     ],

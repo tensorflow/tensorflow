@@ -170,7 +170,7 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   values.FillRandom(3.14f);
   auto expected = ReferenceUtil::Slice4D(values, {{0, 0, 0, 0}}, {{2, 4, 6, 8}},
                                          /*strides=*/{{1, 1, 2, 1}});
-  auto expected_literal = Literal::CreateR4FromArray4DWithLayout(
+  auto expected_literal = LiteralUtil::CreateR4FromArray4DWithLayout(
       *expected, LayoutUtil::MakeLayout({0, 1, 2, 3}));
   XlaBuilder builder(TestName());
   auto original = ConstantR4FromArray4D(&builder, values);
@@ -197,7 +197,7 @@ class SliceR1Test : public ClientLibraryTestBase,
     // vector<bool>.
     tensorflow::gtl::InlinedVector<NativeT, 1> input(spec.input_dim0);
     std::iota(input.begin(), input.end(), NativeT());
-    auto literal = Literal::CreateR1<NativeT>(input);
+    auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
     auto original = Parameter(&builder, 0, literal->shape(), "p0");
@@ -344,7 +344,11 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 2},
         R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 8},
         R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 7},
-        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125}
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125},
+        R1Spec{16 * 1024 * 1024, 0, 16 * 1024 * 1024, 4097},
+        R1Spec{16 * 1024 * 1024, 0, 16 * 1024 * 1024, 4093},
+        R1Spec{16 * 1024 * 1024, 12 * 1024 + 17, 16 * 1024 * 1024 - 231, 4097},
+        R1Spec{16 * 1024 * 1024, 12 * 1024 + 17, 16 * 1024 * 1024 - 231, 4093}
     ),
     SliceR1TestDataToString
 );
@@ -368,7 +372,7 @@ XLA_TEST_P(SliceR2Test, DoIt) {
   const R2Spec& spec = GetParam();
   Array2D<int32> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
-  auto literal = Literal::CreateR2FromArray2DWithLayout(
+  auto literal = LiteralUtil::CreateR2FromArray2DWithLayout(
       input, LayoutUtil::MakeLayout(spec.layout));
 
   XlaBuilder builder(TestName());
@@ -463,7 +467,7 @@ class SliceR4Test : public ClientLibraryTestBase,
     auto expected = ReferenceUtil::Slice4D(
         values, spec.slice_starts, spec.slice_limits, spec.slice_strides);
     XlaBuilder builder(TestName());
-    auto literal = Literal::CreateR4FromArray4DWithLayout(
+    auto literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
     auto parameter = Parameter(&builder, 0, literal->shape(), "p0");
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,

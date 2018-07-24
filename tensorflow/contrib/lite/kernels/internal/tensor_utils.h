@@ -124,6 +124,10 @@ void Sub1Vector(const float* vector, int v_size, float* result);
 // Fill vector with 0.f.
 void ZeroVector(float* vector, int v_size);
 
+// Multiply all elements of vector with a scalar.
+void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
+                          float* result);
+
 // Clip elements of a vector using a abs_limit value.
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result);

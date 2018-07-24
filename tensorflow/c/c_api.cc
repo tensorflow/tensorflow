@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -963,6 +964,7 @@ TF_DEVICELIST_METHOD(const char*, TF_DeviceListName, name().c_str(), nullptr);
 TF_DEVICELIST_METHOD(const char*, TF_DeviceListType, device_type().c_str(),
                      nullptr);
 TF_DEVICELIST_METHOD(int64_t, TF_DeviceListMemoryBytes, memory_limit(), -1);
+TF_DEVICELIST_METHOD(uint64_t, TF_DeviceListIncarnation, incarnation(), 0);
 
 #undef TF_DEVICELIST_METHOD
 
@@ -2727,5 +2729,28 @@ TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
   status->status = MessageToBuffer(*api_def, ret);
   return ret;
 #endif  // __ANDROID__
+}
+
+TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status) {
+  tensorflow::KernelList kernel_list = tensorflow::GetAllRegisteredKernels();
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(kernel_list, ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
+  return ret;
+}
+
+TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
+  tensorflow::KernelList kernel_list =
+      tensorflow::GetRegisteredKernelsForOp(name);
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(kernel_list, ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
+  return ret;
 }
 }  // end extern "C"

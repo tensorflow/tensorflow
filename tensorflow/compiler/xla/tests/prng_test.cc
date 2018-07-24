@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -177,7 +177,7 @@ XLA_TEST_F(PrngTest, Uniformity108) {
   EXPECT_LT(UniformChiSquared(108, 256), 132.144);
 }
 XLA_TEST_F(PrngTest, Uniformity256) {
-  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+  EXPECT_LT(UniformChiSquared(256, 512), 293.248);
 }
 
 XLA_TEST_F(PrngTest, MapUsingRng) {
@@ -193,7 +193,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
 
   XlaBuilder builder(TestName());
   std::unique_ptr<Literal> param0_literal =
-      Literal::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
+      LiteralUtil::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> param0_data,
                           client_->TransferToServer(*param0_literal));
 

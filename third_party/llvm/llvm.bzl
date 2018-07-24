@@ -226,9 +226,9 @@ llvm_all_cmake_vars = select({
 
 })
 
-LLVM_LINKOPTS = ["-ldl", "-lm", "-lpthread"]
+llvm_linkopts = ["-ldl", "-lm", "-lpthread"]
 
-LLVM_DEFINES = [
+llvm_defines = [
     "LLVM_ENABLE_STATS",
     "__STDC_LIMIT_MACROS",
     "__STDC_CONSTANT_MACROS",
@@ -237,4 +237,11 @@ LLVM_DEFINES = [
     "LLVM_BUILD_GLOBAL_ISEL",
 ]
 
-LLVM_COPTS = []
+llvm_copts = []
+
+# Platform specific sources for libSupport.
+
+llvm_support_platform_specific_srcs_glob = [
+    "lib/Support/Unix/*.inc",
+    "lib/Support/Unix/*.h",
+]

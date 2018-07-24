@@ -157,6 +157,9 @@ struct TileOptionsT;
 struct ArgMaxOptions;
 struct ArgMaxOptionsT;
 
+struct ArgMinOptions;
+struct ArgMinOptionsT;
+
 struct GreaterOptions;
 struct GreaterOptionsT;
 
@@ -198,6 +201,15 @@ struct ShapeOptionsT;
 
 struct PowOptions;
 struct PowOptionsT;
+
+struct FakeQuantOptions;
+struct FakeQuantOptionsT;
+
+struct PackOptions;
+struct PackOptionsT;
+
+struct LogicalOrOptions;
+struct LogicalOrOptionsT;
 
 struct OperatorCode;
 struct OperatorCodeT;
@@ -343,11 +355,17 @@ enum BuiltinOperator {
   BuiltinOperator_RSQRT = 76,
   BuiltinOperator_SHAPE = 77,
   BuiltinOperator_POW = 78,
+  BuiltinOperator_ARG_MIN = 79,
+  BuiltinOperator_FAKE_QUANT = 80,
+  BuiltinOperator_REDUCE_PROD = 81,
+  BuiltinOperator_REDUCE_MAX = 82,
+  BuiltinOperator_PACK = 83,
+  BuiltinOperator_LOGICAL_OR = 84,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_POW
+  BuiltinOperator_MAX = BuiltinOperator_LOGICAL_OR
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[78] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[84] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -426,7 +444,13 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[78] {
     BuiltinOperator_SQRT,
     BuiltinOperator_RSQRT,
     BuiltinOperator_SHAPE,
-    BuiltinOperator_POW
+    BuiltinOperator_POW,
+    BuiltinOperator_ARG_MIN,
+    BuiltinOperator_FAKE_QUANT,
+    BuiltinOperator_REDUCE_PROD,
+    BuiltinOperator_REDUCE_MAX,
+    BuiltinOperator_PACK,
+    BuiltinOperator_LOGICAL_OR
   };
   return values;
 }
@@ -512,6 +536,12 @@ inline const char **EnumNamesBuiltinOperator() {
     "RSQRT",
     "SHAPE",
     "POW",
+    "ARG_MIN",
+    "FAKE_QUANT",
+    "REDUCE_PROD",
+    "REDUCE_MAX",
+    "PACK",
+    "LOGICAL_OR",
     nullptr
   };
   return names;
@@ -580,11 +610,15 @@ enum BuiltinOptions {
   BuiltinOptions_NotEqualOptions = 54,
   BuiltinOptions_ShapeOptions = 55,
   BuiltinOptions_PowOptions = 56,
+  BuiltinOptions_ArgMinOptions = 57,
+  BuiltinOptions_FakeQuantOptions = 58,
+  BuiltinOptions_PackOptions = 59,
+  BuiltinOptions_LogicalOrOptions = 60,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_PowOptions
+  BuiltinOptions_MAX = BuiltinOptions_LogicalOrOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[57] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[61] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -642,7 +676,11 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[57] {
     BuiltinOptions_EqualOptions,
     BuiltinOptions_NotEqualOptions,
     BuiltinOptions_ShapeOptions,
-    BuiltinOptions_PowOptions
+    BuiltinOptions_PowOptions,
+    BuiltinOptions_ArgMinOptions,
+    BuiltinOptions_FakeQuantOptions,
+    BuiltinOptions_PackOptions,
+    BuiltinOptions_LogicalOrOptions
   };
   return values;
 }
@@ -706,6 +744,10 @@ inline const char **EnumNamesBuiltinOptions() {
     "NotEqualOptions",
     "ShapeOptions",
     "PowOptions",
+    "ArgMinOptions",
+    "FakeQuantOptions",
+    "PackOptions",
+    "LogicalOrOptions",
     nullptr
   };
   return names;
@@ -942,6 +984,22 @@ template<> struct BuiltinOptionsTraits<ShapeOptions> {
 
 template<> struct BuiltinOptionsTraits<PowOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_PowOptions;
+};
+
+template<> struct BuiltinOptionsTraits<ArgMinOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ArgMinOptions;
+};
+
+template<> struct BuiltinOptionsTraits<FakeQuantOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_FakeQuantOptions;
+};
+
+template<> struct BuiltinOptionsTraits<PackOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_PackOptions;
+};
+
+template<> struct BuiltinOptionsTraits<LogicalOrOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LogicalOrOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1422,6 +1480,38 @@ struct BuiltinOptionsUnion {
   const PowOptionsT *AsPowOptions() const {
     return type == BuiltinOptions_PowOptions ?
       reinterpret_cast<const PowOptionsT *>(value) : nullptr;
+  }
+  ArgMinOptionsT *AsArgMinOptions() {
+    return type == BuiltinOptions_ArgMinOptions ?
+      reinterpret_cast<ArgMinOptionsT *>(value) : nullptr;
+  }
+  const ArgMinOptionsT *AsArgMinOptions() const {
+    return type == BuiltinOptions_ArgMinOptions ?
+      reinterpret_cast<const ArgMinOptionsT *>(value) : nullptr;
+  }
+  FakeQuantOptionsT *AsFakeQuantOptions() {
+    return type == BuiltinOptions_FakeQuantOptions ?
+      reinterpret_cast<FakeQuantOptionsT *>(value) : nullptr;
+  }
+  const FakeQuantOptionsT *AsFakeQuantOptions() const {
+    return type == BuiltinOptions_FakeQuantOptions ?
+      reinterpret_cast<const FakeQuantOptionsT *>(value) : nullptr;
+  }
+  PackOptionsT *AsPackOptions() {
+    return type == BuiltinOptions_PackOptions ?
+      reinterpret_cast<PackOptionsT *>(value) : nullptr;
+  }
+  const PackOptionsT *AsPackOptions() const {
+    return type == BuiltinOptions_PackOptions ?
+      reinterpret_cast<const PackOptionsT *>(value) : nullptr;
+  }
+  LogicalOrOptionsT *AsLogicalOrOptions() {
+    return type == BuiltinOptions_LogicalOrOptions ?
+      reinterpret_cast<LogicalOrOptionsT *>(value) : nullptr;
+  }
+  const LogicalOrOptionsT *AsLogicalOrOptions() const {
+    return type == BuiltinOptions_LogicalOrOptions ?
+      reinterpret_cast<const LogicalOrOptionsT *>(value) : nullptr;
   }
 };
 
@@ -4486,6 +4576,60 @@ inline flatbuffers::Offset<ArgMaxOptions> CreateArgMaxOptions(
 
 flatbuffers::Offset<ArgMaxOptions> CreateArgMaxOptions(flatbuffers::FlatBufferBuilder &_fbb, const ArgMaxOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ArgMinOptionsT : public flatbuffers::NativeTable {
+  typedef ArgMinOptions TableType;
+  TensorType output_type;
+  ArgMinOptionsT()
+      : output_type(TensorType_FLOAT32) {
+  }
+};
+
+struct ArgMinOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ArgMinOptionsT NativeTableType;
+  enum {
+    VT_OUTPUT_TYPE = 4
+  };
+  TensorType output_type() const {
+    return static_cast<TensorType>(GetField<int8_t>(VT_OUTPUT_TYPE, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_OUTPUT_TYPE) &&
+           verifier.EndTable();
+  }
+  ArgMinOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ArgMinOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ArgMinOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ArgMinOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ArgMinOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_output_type(TensorType output_type) {
+    fbb_.AddElement<int8_t>(ArgMinOptions::VT_OUTPUT_TYPE, static_cast<int8_t>(output_type), 0);
+  }
+  explicit ArgMinOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ArgMinOptionsBuilder &operator=(const ArgMinOptionsBuilder &);
+  flatbuffers::Offset<ArgMinOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ArgMinOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ArgMinOptions> CreateArgMinOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    TensorType output_type = TensorType_FLOAT32) {
+  ArgMinOptionsBuilder builder_(_fbb);
+  builder_.add_output_type(output_type);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ArgMinOptions> CreateArgMinOptions(flatbuffers::FlatBufferBuilder &_fbb, const ArgMinOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct GreaterOptionsT : public flatbuffers::NativeTable {
   typedef GreaterOptions TableType;
   GreaterOptionsT() {
@@ -5112,6 +5256,202 @@ inline flatbuffers::Offset<PowOptions> CreatePowOptions(
 
 flatbuffers::Offset<PowOptions> CreatePowOptions(flatbuffers::FlatBufferBuilder &_fbb, const PowOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct FakeQuantOptionsT : public flatbuffers::NativeTable {
+  typedef FakeQuantOptions TableType;
+  float min;
+  float max;
+  int32_t num_bits;
+  bool narrow_range;
+  FakeQuantOptionsT()
+      : min(0.0f),
+        max(0.0f),
+        num_bits(0),
+        narrow_range(false) {
+  }
+};
+
+struct FakeQuantOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef FakeQuantOptionsT NativeTableType;
+  enum {
+    VT_MIN = 4,
+    VT_MAX = 6,
+    VT_NUM_BITS = 8,
+    VT_NARROW_RANGE = 10
+  };
+  float min() const {
+    return GetField<float>(VT_MIN, 0.0f);
+  }
+  float max() const {
+    return GetField<float>(VT_MAX, 0.0f);
+  }
+  int32_t num_bits() const {
+    return GetField<int32_t>(VT_NUM_BITS, 0);
+  }
+  bool narrow_range() const {
+    return GetField<uint8_t>(VT_NARROW_RANGE, 0) != 0;
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<float>(verifier, VT_MIN) &&
+           VerifyField<float>(verifier, VT_MAX) &&
+           VerifyField<int32_t>(verifier, VT_NUM_BITS) &&
+           VerifyField<uint8_t>(verifier, VT_NARROW_RANGE) &&
+           verifier.EndTable();
+  }
+  FakeQuantOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(FakeQuantOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<FakeQuantOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const FakeQuantOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct FakeQuantOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_min(float min) {
+    fbb_.AddElement<float>(FakeQuantOptions::VT_MIN, min, 0.0f);
+  }
+  void add_max(float max) {
+    fbb_.AddElement<float>(FakeQuantOptions::VT_MAX, max, 0.0f);
+  }
+  void add_num_bits(int32_t num_bits) {
+    fbb_.AddElement<int32_t>(FakeQuantOptions::VT_NUM_BITS, num_bits, 0);
+  }
+  void add_narrow_range(bool narrow_range) {
+    fbb_.AddElement<uint8_t>(FakeQuantOptions::VT_NARROW_RANGE, static_cast<uint8_t>(narrow_range), 0);
+  }
+  explicit FakeQuantOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  FakeQuantOptionsBuilder &operator=(const FakeQuantOptionsBuilder &);
+  flatbuffers::Offset<FakeQuantOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<FakeQuantOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<FakeQuantOptions> CreateFakeQuantOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    float min = 0.0f,
+    float max = 0.0f,
+    int32_t num_bits = 0,
+    bool narrow_range = false) {
+  FakeQuantOptionsBuilder builder_(_fbb);
+  builder_.add_num_bits(num_bits);
+  builder_.add_max(max);
+  builder_.add_min(min);
+  builder_.add_narrow_range(narrow_range);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<FakeQuantOptions> CreateFakeQuantOptions(flatbuffers::FlatBufferBuilder &_fbb, const FakeQuantOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct PackOptionsT : public flatbuffers::NativeTable {
+  typedef PackOptions TableType;
+  int32_t values_count;
+  int32_t axis;
+  PackOptionsT()
+      : values_count(0),
+        axis(0) {
+  }
+};
+
+struct PackOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef PackOptionsT NativeTableType;
+  enum {
+    VT_VALUES_COUNT = 4,
+    VT_AXIS = 6
+  };
+  int32_t values_count() const {
+    return GetField<int32_t>(VT_VALUES_COUNT, 0);
+  }
+  int32_t axis() const {
+    return GetField<int32_t>(VT_AXIS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_VALUES_COUNT) &&
+           VerifyField<int32_t>(verifier, VT_AXIS) &&
+           verifier.EndTable();
+  }
+  PackOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(PackOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<PackOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const PackOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct PackOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_values_count(int32_t values_count) {
+    fbb_.AddElement<int32_t>(PackOptions::VT_VALUES_COUNT, values_count, 0);
+  }
+  void add_axis(int32_t axis) {
+    fbb_.AddElement<int32_t>(PackOptions::VT_AXIS, axis, 0);
+  }
+  explicit PackOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  PackOptionsBuilder &operator=(const PackOptionsBuilder &);
+  flatbuffers::Offset<PackOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<PackOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<PackOptions> CreatePackOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t values_count = 0,
+    int32_t axis = 0) {
+  PackOptionsBuilder builder_(_fbb);
+  builder_.add_axis(axis);
+  builder_.add_values_count(values_count);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<PackOptions> CreatePackOptions(flatbuffers::FlatBufferBuilder &_fbb, const PackOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct LogicalOrOptionsT : public flatbuffers::NativeTable {
+  typedef LogicalOrOptions TableType;
+  LogicalOrOptionsT() {
+  }
+};
+
+struct LogicalOrOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef LogicalOrOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  LogicalOrOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(LogicalOrOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<LogicalOrOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogicalOrOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct LogicalOrOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit LogicalOrOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  LogicalOrOptionsBuilder &operator=(const LogicalOrOptionsBuilder &);
+  flatbuffers::Offset<LogicalOrOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<LogicalOrOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<LogicalOrOptions> CreateLogicalOrOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  LogicalOrOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<LogicalOrOptions> CreateLogicalOrOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalOrOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -5413,6 +5753,18 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const PowOptions *builtin_options_as_PowOptions() const {
     return builtin_options_type() == BuiltinOptions_PowOptions ? static_cast<const PowOptions *>(builtin_options()) : nullptr;
   }
+  const ArgMinOptions *builtin_options_as_ArgMinOptions() const {
+    return builtin_options_type() == BuiltinOptions_ArgMinOptions ? static_cast<const ArgMinOptions *>(builtin_options()) : nullptr;
+  }
+  const FakeQuantOptions *builtin_options_as_FakeQuantOptions() const {
+    return builtin_options_type() == BuiltinOptions_FakeQuantOptions ? static_cast<const FakeQuantOptions *>(builtin_options()) : nullptr;
+  }
+  const PackOptions *builtin_options_as_PackOptions() const {
+    return builtin_options_type() == BuiltinOptions_PackOptions ? static_cast<const PackOptions *>(builtin_options()) : nullptr;
+  }
+  const LogicalOrOptions *builtin_options_as_LogicalOrOptions() const {
+    return builtin_options_type() == BuiltinOptions_LogicalOrOptions ? static_cast<const LogicalOrOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -5666,6 +6018,22 @@ template<> inline const ShapeOptions *Operator::builtin_options_as<ShapeOptions>
 
 template<> inline const PowOptions *Operator::builtin_options_as<PowOptions>() const {
   return builtin_options_as_PowOptions();
+}
+
+template<> inline const ArgMinOptions *Operator::builtin_options_as<ArgMinOptions>() const {
+  return builtin_options_as_ArgMinOptions();
+}
+
+template<> inline const FakeQuantOptions *Operator::builtin_options_as<FakeQuantOptions>() const {
+  return builtin_options_as_FakeQuantOptions();
+}
+
+template<> inline const PackOptions *Operator::builtin_options_as<PackOptions>() const {
+  return builtin_options_as_PackOptions();
+}
+
+template<> inline const LogicalOrOptions *Operator::builtin_options_as<LogicalOrOptions>() const {
+  return builtin_options_as_LogicalOrOptions();
 }
 
 struct OperatorBuilder {
@@ -7333,6 +7701,32 @@ inline flatbuffers::Offset<ArgMaxOptions> CreateArgMaxOptions(flatbuffers::FlatB
       _output_type);
 }
 
+inline ArgMinOptionsT *ArgMinOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ArgMinOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ArgMinOptions::UnPackTo(ArgMinOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = output_type(); _o->output_type = _e; };
+}
+
+inline flatbuffers::Offset<ArgMinOptions> ArgMinOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ArgMinOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateArgMinOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ArgMinOptions> CreateArgMinOptions(flatbuffers::FlatBufferBuilder &_fbb, const ArgMinOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ArgMinOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _output_type = _o->output_type;
+  return tflite::CreateArgMinOptions(
+      _fbb,
+      _output_type);
+}
+
 inline GreaterOptionsT *GreaterOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new GreaterOptionsT();
   UnPackTo(_o, _resolver);
@@ -7667,6 +8061,93 @@ inline flatbuffers::Offset<PowOptions> CreatePowOptions(flatbuffers::FlatBufferB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const PowOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   return tflite::CreatePowOptions(
+      _fbb);
+}
+
+inline FakeQuantOptionsT *FakeQuantOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new FakeQuantOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void FakeQuantOptions::UnPackTo(FakeQuantOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = min(); _o->min = _e; };
+  { auto _e = max(); _o->max = _e; };
+  { auto _e = num_bits(); _o->num_bits = _e; };
+  { auto _e = narrow_range(); _o->narrow_range = _e; };
+}
+
+inline flatbuffers::Offset<FakeQuantOptions> FakeQuantOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const FakeQuantOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateFakeQuantOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<FakeQuantOptions> CreateFakeQuantOptions(flatbuffers::FlatBufferBuilder &_fbb, const FakeQuantOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const FakeQuantOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _min = _o->min;
+  auto _max = _o->max;
+  auto _num_bits = _o->num_bits;
+  auto _narrow_range = _o->narrow_range;
+  return tflite::CreateFakeQuantOptions(
+      _fbb,
+      _min,
+      _max,
+      _num_bits,
+      _narrow_range);
+}
+
+inline PackOptionsT *PackOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new PackOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void PackOptions::UnPackTo(PackOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = values_count(); _o->values_count = _e; };
+  { auto _e = axis(); _o->axis = _e; };
+}
+
+inline flatbuffers::Offset<PackOptions> PackOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const PackOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreatePackOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<PackOptions> CreatePackOptions(flatbuffers::FlatBufferBuilder &_fbb, const PackOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const PackOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _values_count = _o->values_count;
+  auto _axis = _o->axis;
+  return tflite::CreatePackOptions(
+      _fbb,
+      _values_count,
+      _axis);
+}
+
+inline LogicalOrOptionsT *LogicalOrOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new LogicalOrOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void LogicalOrOptions::UnPackTo(LogicalOrOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<LogicalOrOptions> LogicalOrOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LogicalOrOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateLogicalOrOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<LogicalOrOptions> CreateLogicalOrOptions(flatbuffers::FlatBufferBuilder &_fbb, const LogicalOrOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const LogicalOrOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateLogicalOrOptions(
       _fbb);
 }
 
@@ -8083,6 +8564,22 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const PowOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_ArgMinOptions: {
+      auto ptr = reinterpret_cast<const ArgMinOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_FakeQuantOptions: {
+      auto ptr = reinterpret_cast<const FakeQuantOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_PackOptions: {
+      auto ptr = reinterpret_cast<const PackOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_LogicalOrOptions: {
+      auto ptr = reinterpret_cast<const LogicalOrOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -8325,6 +8822,22 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const PowOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_ArgMinOptions: {
+      auto ptr = reinterpret_cast<const ArgMinOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_FakeQuantOptions: {
+      auto ptr = reinterpret_cast<const FakeQuantOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_PackOptions: {
+      auto ptr = reinterpret_cast<const PackOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_LogicalOrOptions: {
+      auto ptr = reinterpret_cast<const LogicalOrOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -8555,6 +9068,22 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const PowOptionsT *>(value);
       return CreatePowOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_ArgMinOptions: {
+      auto ptr = reinterpret_cast<const ArgMinOptionsT *>(value);
+      return CreateArgMinOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_FakeQuantOptions: {
+      auto ptr = reinterpret_cast<const FakeQuantOptionsT *>(value);
+      return CreateFakeQuantOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_PackOptions: {
+      auto ptr = reinterpret_cast<const PackOptionsT *>(value);
+      return CreatePackOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_LogicalOrOptions: {
+      auto ptr = reinterpret_cast<const LogicalOrOptionsT *>(value);
+      return CreateLogicalOrOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -8783,6 +9312,22 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_PowOptions: {
       value = new PowOptionsT(*reinterpret_cast<PowOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ArgMinOptions: {
+      value = new ArgMinOptionsT(*reinterpret_cast<ArgMinOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_FakeQuantOptions: {
+      value = new FakeQuantOptionsT(*reinterpret_cast<FakeQuantOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_PackOptions: {
+      value = new PackOptionsT(*reinterpret_cast<PackOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_LogicalOrOptions: {
+      value = new LogicalOrOptionsT(*reinterpret_cast<LogicalOrOptionsT *>(u.value));
       break;
     }
     default:
@@ -9069,6 +9614,26 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_PowOptions: {
       auto ptr = reinterpret_cast<PowOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ArgMinOptions: {
+      auto ptr = reinterpret_cast<ArgMinOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_FakeQuantOptions: {
+      auto ptr = reinterpret_cast<FakeQuantOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_PackOptions: {
+      auto ptr = reinterpret_cast<PackOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_LogicalOrOptions: {
+      auto ptr = reinterpret_cast<LogicalOrOptionsT *>(value);
       delete ptr;
       break;
     }

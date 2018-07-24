@@ -1516,7 +1516,8 @@ void DefineStatefulFunction(const char* name, TF_Function** func) {
 
   TF_Output inputs[] = {};
   TF_Output outputs[] = {{random, 0}};
-  *func = TF_GraphToFunction(func_graph.get(), name, /*append_hash=*/false, -1,
+  *func = TF_GraphToFunction(func_graph.get(), name,
+                             /*append_hash_to_fn_name=*/false, -1,
                              /*opers=*/nullptr, 0, inputs, 1, outputs,
                              /*output_names=*/nullptr,
                              /*opts=*/nullptr, "", s.get());
