@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["gpu_constants.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:framework",
     ],
 )
 

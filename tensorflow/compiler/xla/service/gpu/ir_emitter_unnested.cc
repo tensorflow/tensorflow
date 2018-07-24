@@ -232,7 +232,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     kernel->addDereferenceableAttr(arg_no + 1, alloc->size());
     kernel->addParamAttr(
         arg_no, llvm::Attribute::get(context, llvm::Attribute::Alignment,
-                                     kCudaMallocAlignBytes));
+                                     alloc->is_entry_computation_parameter()
+                                         ? kEntryParameterAlignBytes
+                                         : kXlaAllocatedBufferAlignBytes));
 
     if (alloc->IsPreallocatedTempBuffer()) {
       fn_arg->setName("temp_buf");
