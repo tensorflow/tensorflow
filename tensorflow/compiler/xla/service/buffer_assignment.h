@@ -58,13 +58,8 @@ class BufferAllocation {
   // contiguously and can be used as array indexes.
   using Index = int64;
 
-  BufferAllocation(Index index, int64 size, bool is_thread_local,
-                   bool is_reusable, LogicalBuffer::Color color)
-      : index_(index),
-        size_(size),
-        is_thread_local_(is_thread_local),
-        is_reusable_(is_reusable),
-        color_(color) {}
+  BufferAllocation(Index index, int64 size, LogicalBuffer::Color color)
+      : index_(index), size_(size), color_(color) {}
   ~BufferAllocation() {}
 
   // Returns the index of this allocation.
@@ -74,9 +69,26 @@ class BufferAllocation {
   // inside of a map or reduce computation. Such allocations need to be thread
   // local.
   bool is_thread_local() const { return is_thread_local_; }
+  void set_is_thread_local(bool is_thread_local) {
+    is_thread_local_ = is_thread_local;
+  }
 
   // Whether this allocation can be used by more than one logical buffer.
-  bool is_reusable() const { return is_reusable_; }
+  bool is_reusable() const {
+    // We do not reuse thread-local buffers for now, because they are
+    // dynamically allocated and their lifetimes are hard to compute.
+    //
+    // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
+    // assumes longer buffer liveness than indicated by the analysis.
+    return !is_thread_local() && !is_tuple();
+  }
+
+  // Whether this allocation is readonly i.e. backed by memory we cannot write
+  // to.
+  bool is_readonly() const { return is_entry_computation_parameter(); }
+
+  bool is_tuple() const { return is_tuple_; }
+  void set_is_tuple(bool is_tuple) { is_tuple_ = is_tuple; }
 
   // Whether this allocation holds a LogicalBuffer from a parameter of the entry
   // computation. These buffers have lifetimes which may be longer than the
@@ -256,10 +268,10 @@ class BufferAllocation {
   int64 size_;
 
   // Whether this buffer needs to be thread-local.
-  bool is_thread_local_;
+  bool is_thread_local_ = false;
 
-  // Whether this buffer is usable by more than one logical buffer.
-  bool is_reusable_;
+  // Whether this buffer holds a tuple.
+  bool is_tuple_ = false;
 
   // Color of the allocation.
   LogicalBuffer::Color color_;
@@ -426,14 +438,11 @@ class BufferAssignment {
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
-  BufferAllocation* NewEmptyAllocation(int64 size, bool is_thread_local,
-                                       bool is_reusable,
-                                       LogicalBuffer::Color color);
+  BufferAllocation* NewEmptyAllocation(int64 size, LogicalBuffer::Color color);
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
-  BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size,
-                                  bool is_thread_local, bool is_reusable);
+  BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
   void AddAssignment(BufferAllocation* allocation, const LogicalBuffer& buffer,

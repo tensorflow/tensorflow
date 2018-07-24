@@ -270,7 +270,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   proto.set_index(index_);
   proto.set_size(size_);
   proto.set_is_thread_local(is_thread_local_);
-  proto.set_is_reusable(is_reusable_);
+  proto.set_is_tuple(is_tuple_);
   proto.set_color(color_.value());
   if (is_entry_computation_parameter_) {
     proto.set_is_entry_computation_parameter(true);
@@ -491,20 +491,16 @@ BufferAssignment::GetUniqueTopLevelOutputSlice() const {
 }
 
 BufferAllocation* BufferAssignment::NewEmptyAllocation(
-    int64 size, bool is_thread_local, bool is_reusable,
-    LogicalBuffer::Color color) {
+    int64 size, LogicalBuffer::Color color) {
   BufferAllocation::Index index = allocations_.size();
-  allocations_.emplace_back(index, size, is_thread_local, is_reusable, color);
+  allocations_.emplace_back(index, size, color);
   BufferAllocation* allocation = &allocations_.back();
   return allocation;
 }
 
 BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
-                                                  int64 size,
-                                                  bool is_thread_local,
-                                                  bool is_reusable) {
-  BufferAllocation* allocation =
-      NewEmptyAllocation(size, is_thread_local, is_reusable, buffer.color());
+                                                  int64 size) {
+  BufferAllocation* allocation = NewEmptyAllocation(size, buffer.color());
   AddAssignment(allocation, buffer, /*offset=*/0, size);
   allocation->peak_buffers_.push_back(&buffer);
   return allocation;
@@ -517,7 +513,8 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   CHECK_EQ(0, allocation_index_for_buffer_.count(&buffer))
       << "LogicalBuffer " << buffer << " already has an allocation.";
   CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty())
-      << "Non-reusable allocation already assigned a buffer";
+      << "Non-reusable allocation already assigned a buffer: "
+      << allocation->ToString();
 
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
 
@@ -751,8 +748,8 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
     return false;
   }
 
-  if (allocation->is_entry_computation_parameter()) {
-    VLOG(4) << "Can't assign: allocation holds parameter";
+  if (allocation->is_readonly()) {
+    VLOG(4) << "Can't assign: allocation is readonly";
     return false;
   }
 
@@ -923,9 +920,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       // computations do not need special allocations because they live inside
       // callers.
       BufferAllocation* allocation =
-          assignment->NewAllocation(*buffer, buffer_size,
-                                    /*is_thread_local=*/false,
-                                    /*is_reusable=*/false);
+          assignment->NewAllocation(*buffer, buffer_size);
       allocation->set_entry_computation_parameter(
           instruction->parameter_number(), buffer->index());
       VLOG(3) << "New allocation #" << allocation->index()
@@ -934,20 +929,18 @@ Status BufferAssigner::AssignBuffersForComputation(
     }
 
     if (is_thread_local) {
-      // We do not reuse thread-local buffers for now, because they are
-      // dynamically allocated and their lifetimes are hard to compute.
-      BufferAllocation* allocation = assignment->NewAllocation(
-          *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
+      BufferAllocation* allocation =
+          assignment->NewAllocation(*buffer, buffer_size);
+      allocation->set_is_thread_local(true);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for thread-local: " << *buffer;
       continue;
     }
 
     if (ShapeUtil::IsTuple(buffer->shape())) {
-      // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
-      // assumes longer buffer liveness than indicated by the analysis.
-      BufferAllocation* allocation = assignment->NewAllocation(
-          *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
+      BufferAllocation* allocation =
+          assignment->NewAllocation(*buffer, buffer_size);
+      allocation->set_is_tuple(true);
       VLOG(3) << "New allocation #" << allocation->index()
               << " for tuple-shaped buffer: " << *buffer;
       continue;
@@ -1030,8 +1023,8 @@ Status BufferAssigner::AssignBuffersForComputation(
     }
 
     if (!assignment->HasAllocation(*buffer)) {
-      BufferAllocation* allocation = assignment->NewAllocation(
-          *buffer, buffer_size, is_thread_local, /*is_reusable=*/true);
+      BufferAllocation* allocation =
+          assignment->NewAllocation(*buffer, buffer_size);
       allocation_indices.push_back(allocation->index());
       VLOG(3) << "New allocation #" << allocation->index()
               << " for: " << *buffer;
@@ -1227,8 +1220,8 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
         result.fragmentation_size;
   }
 
-  BufferAllocation* allocation = assignment->NewEmptyAllocation(
-      result.heap_size, /*is_thread_local=*/false, /*is_reusable=*/true, color);
+  BufferAllocation* allocation =
+      assignment->NewEmptyAllocation(result.heap_size, color);
   for (const auto& buffer_chunk : result.chunk_map) {
     // TODO(lauj) Remove this down_cast after downstream users of
     // BufferAllocation::assigned_buffers() are updated to use BufferValue.
@@ -1584,9 +1577,7 @@ void BufferAssigner::AssignColocatedBufferSets(
         // allocations for each colocated buffer set. When liveness has
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
-        allocation = assignment->NewAllocation(*buffer, buffer_size,
-                                               /*is_thread_local=*/false,
-                                               /*is_reusable=*/true);
+        allocation = assignment->NewAllocation(*buffer, buffer_size);
         if (entry_parameter_number >= 0) {
           // This colocated buffer set contains an entry parameter and other
           // logical buffers which use the parameter as read-only in a while
