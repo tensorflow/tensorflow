@@ -452,6 +452,16 @@ TEST_F(OperatorTest, BuiltinSparseToDense) {
   EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
 }
 
+TEST_F(OperatorTest, BuiltinPack) {
+  PackOperator op;
+  op.values_count = 3;
+  op.axis = 1;
+  std::unique_ptr<toco::PackOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("PACK", OperatorType::kPack), op);
+  EXPECT_EQ(op.values_count, output_toco_op->values_count);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";
