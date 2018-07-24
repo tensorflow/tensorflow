@@ -263,6 +263,7 @@ TokenHloTest.TokenInWhileLoop POPLAR // Don't do tokens
 TokenHloTest.SingleTokenInstruction POPLAR
 TokenHloTest.TokenTree POPLAR
 TokenHloTest.TokenInConditional POPLAR
+TupleHloTest.NonAmbiguousTopLevelAllocation POPLAR
 
 R4ReduceWindowTest POPLAR // Issues with zero size windows
 
