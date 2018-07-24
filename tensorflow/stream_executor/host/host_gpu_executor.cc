@@ -93,7 +93,7 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   // the nature of the HostExecutor) memcpy  on the stream (HostStream)
   // associated with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
-      [src_mem, dst_mem, size]() { memcpy(src_mem, dst_mem, size); });
+      [src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
   return true;
 }
 
