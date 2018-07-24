@@ -146,6 +146,13 @@ public:
     return insertTerminator(BranchInst::create(dest));
   }
 
+  CondBranchInst *createCondBranchInst(CFGValue *condition,
+                                       BasicBlock *trueDest,
+                                       BasicBlock *falseDest) {
+    return insertTerminator(
+        CondBranchInst::create(condition, trueDest, falseDest));
+  }
+
 private:
   template <typename T>
   T *insertTerminator(T *term) {

@@ -241,7 +241,7 @@ bb42(%0: f32):
 cfgfunc @br_mismatch() {  // expected-error {{branch has 2 operands, but target block has 1}}
 bb0:
   %0 = "foo"() : () -> (i1, i17)
-  br bb1(%0#1, %0#0) : i17, i1
+  br bb1(%0#1, %0#0 : i17, i1)
 
 bb1(%x: i17):
   return
@@ -252,3 +252,30 @@ bb1(%x: i17):
 // Test no nested vector.
 extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
 // expected-error@-1 {{expected type}}
+
+// -----
+
+cfgfunc @condbr_notbool() {
+bb0:
+  %a = "foo"() : () -> i32 // expected-error {{prior use here}}
+  cond_br %a, bb0, bb0 // expected-error {{use of value '%a' expects different type than prior uses}}
+// expected-error@-1 {{expected type was boolean (i1)}}
+}
+
+// -----
+
+cfgfunc @condbr_badtype() {
+bb0:
+  %c = "foo"() : () -> i1
+  %a = "foo"() : () -> i32
+  cond_br %c, bb0(%a, %a : i32, bb0) // expected-error {{expected type}}
+}
+
+// -----
+
+cfgfunc @condbr_a_bb_is_not_a_type() {
+bb0:
+  %c = "foo"() : () -> i1
+  %a = "foo"() : () -> i32
+  cond_br %c, bb0(%a, %a : i32, i32), i32 // expected-error {{expected basic block name}}
+}

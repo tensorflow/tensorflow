@@ -170,7 +170,7 @@ bb1:       // CHECK: bb1:
   // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
   %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
 
-  // CHECK: return %1#0 : i16, %1#1 : i8
+  // CHECK: return %1#0, %1#1 : i16, i8
   return %1#0, %1#1 : i16, i8
 
 bb2:       // CHECK: bb2:
@@ -184,10 +184,44 @@ cfgfunc @bbargs() -> (i16, i8) {
 bb0:       // CHECK: bb0:
   // CHECK: %0 = "foo"() : () -> (i1, i17)
   %0 = "foo"() : () -> (i1, i17)
-  br bb1(%0#1, %0#0) : i17, i1
+  br bb1(%0#1, %0#0 : i17, i1)
 
 bb1(%x: i17, %y: i1):       // CHECK: bb1(%1: i17, %2: i1):
   // CHECK: %3 = "baz"(%1, %2, %0#1) : (i17, i1, i17) -> (i16, i8)
   %1 = "baz"(%x, %y, %0#1) : (i17, i1, i17) -> (i16, i8)
   return %1#0, %1#1 : i16, i8
+}
+
+// CHECK-LABEL: cfgfunc @condbr_simple
+cfgfunc @condbr_simple() -> (i32) {
+bb0:
+  %cond = "foo"() : () -> i1
+  %a = "bar"() : () -> i32
+  %b = "bar"() : () -> i64
+  // CHECK: cond_br %0, bb1(%1 : i32), bb2(%2 : i64)
+  cond_br %cond, bb1(%a : i32), bb2(%b : i64)
+
+bb1(%x : i32):
+  return %x : i32
+
+bb2(%y : i64):
+  %z = "foo"() : () -> i32
+  return %z : i32
+}
+
+// CHECK-LABEL: cfgfunc @condbr_moarargs
+cfgfunc @condbr_moarargs() -> (i32) {
+bb0:
+  %cond = "foo"() : () -> i1
+  %a = "bar"() : () -> i32
+  %b = "bar"() : () -> i64
+  // CHECK: cond_br %0, bb1(%1, %2 : i32, i64), bb2(%2, %1, %1 : i64, i32, i32)
+  cond_br %cond, bb1(%a, %b : i32, i64), bb2(%b, %a, %a : i64, i32, i32)
+
+bb1(%x : i32, %y : i64):
+  return %x : i32
+
+bb2(%x2 : i64, %y2 : i32, %z2 : i32):
+  %z = "foo"() : () -> i32
+  return %z : i32
 }

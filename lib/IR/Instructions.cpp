@@ -55,6 +55,9 @@ void Instruction::destroy() {
   case Kind::Branch:
     delete cast<BranchInst>(this);
     break;
+  case Kind::CondBranch:
+    delete cast<CondBranchInst>(this);
+    break;
   case Kind::Return:
     cast<ReturnInst>(this)->destroy();
     break;
@@ -76,6 +79,8 @@ unsigned Instruction::getNumOperands() const {
     return cast<OperationInst>(this)->getNumOperands();
   case Kind::Branch:
     return cast<BranchInst>(this)->getNumOperands();
+  case Kind::CondBranch:
+    return cast<CondBranchInst>(this)->getNumOperands();
   case Kind::Return:
     return cast<ReturnInst>(this)->getNumOperands();
   }
@@ -87,6 +92,8 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
     return cast<OperationInst>(this)->getInstOperands();
   case Kind::Branch:
     return cast<BranchInst>(this)->getInstOperands();
+  case Kind::CondBranch:
+    return cast<CondBranchInst>(this)->getInstOperands();
   case Kind::Return:
     return cast<ReturnInst>(this)->getInstOperands();
   }
@@ -125,7 +132,7 @@ OperationInst::OperationInst(Identifier name, unsigned numOperands,
                              unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Operation(name, /*isInstruction=*/ true, attributes, context),
+    : Operation(name, /*isInstruction=*/true, attributes, context),
       Instruction(Kind::Operation), numOperands(numOperands),
       numResults(numResults) {}
 
@@ -144,30 +151,30 @@ llvm::ilist_traits<::mlir::OperationInst>::getContainingBlock() {
       size_t(&((BasicBlock *)nullptr->*BasicBlock::getSublistAccess(nullptr))));
   iplist<OperationInst> *Anchor(static_cast<iplist<OperationInst> *>(this));
   return reinterpret_cast<BasicBlock *>(reinterpret_cast<char *>(Anchor) -
-                                           Offset);
+                                        Offset);
 }
 
 /// This is a trait method invoked when an instruction is added to a block.  We
 /// keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::OperationInst>::
-addNodeToList(OperationInst *inst) {
+void llvm::ilist_traits<::mlir::OperationInst>::addNodeToList(
+    OperationInst *inst) {
   assert(!inst->getBlock() && "already in a basic block!");
   inst->block = getContainingBlock();
 }
 
 /// This is a trait method invoked when an instruction is removed from a block.
 /// We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::OperationInst>::
-removeNodeFromList(OperationInst *inst) {
+void llvm::ilist_traits<::mlir::OperationInst>::removeNodeFromList(
+    OperationInst *inst) {
   assert(inst->block && "not already in a basic block!");
   inst->block = nullptr;
 }
 
 /// This is a trait method invoked when an instruction is moved from one block
 /// to another.  We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::OperationInst>::
-transferNodesFromList(ilist_traits<OperationInst> &otherList,
-                      instr_iterator first, instr_iterator last) {
+void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
+    ilist_traits<OperationInst> &otherList, instr_iterator first,
+    instr_iterator last) {
   // If we are transferring instructions within the same basic block, the block
   // pointer doesn't need to be updated.
   BasicBlock *curParent = getContainingBlock();
@@ -240,4 +247,31 @@ void BranchInst::addOperands(ArrayRef<CFGValue *> values) {
   operands.reserve(operands.size() + values.size());
   for (auto *value : values)
     addOperand(value);
+}
+
+/// Add one value to the true operand list.
+void CondBranchInst::addTrueOperand(CFGValue *value) {
+  assert(getNumFalseOperands() == 0 &&
+         "Must insert all true operands before false operands!");
+  operands.emplace_back(InstOperand(this, value));
+  ++numTrueOperands;
+}
+
+/// Add a list of values to the true operand list.
+void CondBranchInst::addTrueOperands(ArrayRef<CFGValue *> values) {
+  operands.reserve(operands.size() + values.size());
+  for (auto *value : values)
+    addTrueOperand(value);
+}
+
+/// Add one value to the false operand list.
+void CondBranchInst::addFalseOperand(CFGValue *value) {
+  operands.emplace_back(InstOperand(this, value));
+}
+
+/// Add a list of values to the false operand list.
+void CondBranchInst::addFalseOperands(ArrayRef<CFGValue *> values) {
+  operands.reserve(operands.size() + values.size());
+  for (auto *value : values)
+    addFalseOperand(value);
 }

@@ -1632,6 +1632,8 @@ private:
   ParseResult
   parseOptionalBasicBlockArgList(SmallVectorImpl<BBArgument *> &results,
                                  BasicBlock *owner);
+  ParseResult parseBranchBlockAndUseList(BasicBlock *&block,
+                                         SmallVectorImpl<CFGValue *> &values);
 
   ParseResult parseBasicBlock();
   OperationInst *parseCFGOperation();
@@ -1738,7 +1740,7 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   };
 
   // Parse the list of operations that make up the body of the block.
-  while (getToken().isNot(Token::kw_return, Token::kw_br)) {
+  while (getToken().isNot(Token::kw_return, Token::kw_br, Token::kw_cond_br)) {
     if (parseOperation(createOpFunc))
       return ParseFailure;
   }
@@ -1746,6 +1748,20 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   if (!parseTerminator())
     return ParseFailure;
 
+  return ParseSuccess;
+}
+
+ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
+    BasicBlock *&block, SmallVectorImpl<CFGValue *> &values) {
+  block = getBlockNamed(getTokenSpelling(), getToken().getLoc());
+  if (parseToken(Token::bare_identifier, "expected basic block name"))
+    return ParseFailure;
+
+  if (!consumeIf(Token::l_paren))
+    return ParseSuccess;
+  if (parseOptionalSSAUseAndTypeList(values, /*isParenthesized*/ false) ||
+      parseToken(Token::r_paren, "expected ')' to close argument list"))
+    return ParseFailure;
   return ParseSuccess;
 }
 
@@ -1774,19 +1790,45 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
 
   case Token::kw_br: {
     consumeToken(Token::kw_br);
-    auto destBB = getBlockNamed(getTokenSpelling(), getToken().getLoc());
-    if (parseToken(Token::bare_identifier, "expected basic block name"))
+    BasicBlock *destBB;
+    SmallVector<CFGValue *, 4> values;
+    if (parseBranchBlockAndUseList(destBB, values))
       return nullptr;
-
     auto branch = builder.createBranchInst(destBB);
-
-    SmallVector<CFGValue *, 8> operands;
-    if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized*/ true))
-      return nullptr;
-    branch->addOperands(operands);
+    branch->addOperands(values);
     return branch;
   }
-    // TODO: cond_br.
+
+  case Token::kw_cond_br: {
+    consumeToken(Token::kw_cond_br);
+    SSAUseInfo ssaUse;
+    if (parseSSAUse(ssaUse))
+      return nullptr;
+    auto *cond = resolveSSAUse(ssaUse, builder.getIntegerType(1));
+    if (!cond)
+      return (emitError("expected type was boolean (i1)"), nullptr);
+    if (parseToken(Token::comma, "expected ',' in conditional branch"))
+      return nullptr;
+
+    BasicBlock *trueBlock;
+    SmallVector<CFGValue *, 4> trueOperands;
+    if (parseBranchBlockAndUseList(trueBlock, trueOperands))
+      return nullptr;
+
+    if (parseToken(Token::comma, "expected ',' in conditional branch"))
+      return nullptr;
+
+    BasicBlock *falseBlock;
+    SmallVector<CFGValue *, 4> falseOperands;
+    if (parseBranchBlockAndUseList(falseBlock, falseOperands))
+      return nullptr;
+
+    auto branch = builder.createCondBranchInst(cast<CFGValue>(cond), trueBlock,
+                                               falseBlock);
+    branch->addTrueOperands(trueOperands);
+    branch->addFalseOperands(falseOperands);
+    return branch;
+  }
   }
 }
 
