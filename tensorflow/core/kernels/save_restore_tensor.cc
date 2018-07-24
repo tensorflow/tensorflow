@@ -251,21 +251,34 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   // within a fixed memory budget.
   TensorShape restored_full_shape;
   DataType original_dtype;
+  std::vector<string> mismatched_errors;
+  for (auto i : sorted_name_idx) {
+    const string& tensor_name = tensor_names_flat(i);
+    TF_RETURN_IF_ERROR(
+        reader.LookupDtypeAndShape(tensor_name,
+                                   &original_dtype, &restored_full_shape));
+    if (dtypes[i] != original_dtype) {
+      string error_msg = string("tensor_name = ") + tensor_name +
+                         "; expected dtype " + DataTypeString(dtypes[i]) +
+                         " does not equal original dtype " +
+                         DataTypeString(original_dtype) + '\n';
+      mismatched_errors.emplace_back(error_msg);
+    }
+  }
+  if (!mismatched_errors.empty()) {
+    string error_msg = std::accumulate(mismatched_errors.begin(),
+                                       mismatched_errors.end(),
+                                       string());
+    return errors::InvalidArgument(error_msg);
+  }
+
   Tensor* restored_tensor = nullptr;
   for (auto i : sorted_name_idx) {
     const string& tensor_name = tensor_names_flat(i);
     const string& shape_and_slice = shape_and_slices_flat(i);
 
     TF_RETURN_IF_ERROR(
-        reader.LookupDtypeAndShape(tensor_name,
-                                   &original_dtype, &restored_full_shape));
-
-    if (dtypes[i] != original_dtype) {
-      return errors::InvalidArgument(
-          "tensor_name = ", tensor_name, "; expected dtype ",
-          DataTypeString(dtypes[i]), " does not equal original dtype ",
-          DataTypeString(original_dtype));
-    }
+        reader.LookupTensorShape(tensor_name, &restored_full_shape));
 
     if (shape_and_slice.empty()) {
       // Lookup the full tensor.
