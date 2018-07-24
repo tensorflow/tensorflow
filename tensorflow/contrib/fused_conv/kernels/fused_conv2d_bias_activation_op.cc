@@ -443,6 +443,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                          : dnn::DataLayout::kBatchDepthYX;
   constexpr auto filter_layout = is_int8x4 ? dnn::FilterLayout::kOutputInputYX4
                                            : dnn::FilterLayout::kOutputInputYX;
+  constexpr auto compute_data_format =
+      is_int8x4 ? FORMAT_NCHW_VECT_C : FORMAT_NCHW;
 
   dnn::BatchDescriptor conv_input_desc;
   conv_input_desc.set_count(batch_size)
@@ -529,6 +531,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
       batch_size,
       conv_input_depth,
       {{conv_input_rows, conv_input_cols}},
+      compute_data_format,
       output_depth,
       {{filter_rows, filter_cols}},
       // TODO(yangzihao): Add support for arbitrary dilations for fused conv.
