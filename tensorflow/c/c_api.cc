@@ -2732,6 +2732,10 @@ TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
 
   TF_Buffer* ret = TF_NewBuffer();
   status->status = MessageToBuffer(*api_def, ret);
+  if (!status->status.ok()) {
+    TF_DeleteBuffer(ret);
+    return nullptr;
+  }
   return ret;
 #endif  // __ANDROID__
 }
