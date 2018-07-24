@@ -37,8 +37,10 @@ struct CastFunctor<GPUDevice, O, I> {
 #define DEFINE_ALL_FROM(in_type)        \
   DEFINE(in_type, bool);                \
   DEFINE(in_type, uint8);               \
-  DEFINE(in_type, int8);                \
   DEFINE(in_type, uint16);              \
+  DEFINE(in_type, uint32);              \
+  DEFINE(in_type, uint64);              \
+  DEFINE(in_type, int8);                \
   DEFINE(in_type, int16);               \
   DEFINE(in_type, int32);               \
   DEFINE(in_type, int64);               \
@@ -50,8 +52,10 @@ struct CastFunctor<GPUDevice, O, I> {
 
 DEFINE_ALL_FROM(bool);
 DEFINE_ALL_FROM(uint8);
-DEFINE_ALL_FROM(int8);
 DEFINE_ALL_FROM(uint16);
+DEFINE_ALL_FROM(uint32);
+DEFINE_ALL_FROM(uint64);
+DEFINE_ALL_FROM(int8);
 DEFINE_ALL_FROM(int16);
 DEFINE_ALL_FROM(int32);
 DEFINE_ALL_FROM(int64);

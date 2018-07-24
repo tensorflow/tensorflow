@@ -488,6 +488,9 @@ class LayoutAssignment : public HloPassInterface {
     }
   }
 
+  // Adds constraints related to host Send/Recv instructions.
+  Status BuildHostChannelConstraints(HloComputation* computation);
+
   // Map containing the layouts of all computations assigned so
   // far. Computations are handled in a topological sort where computations are
   // handled before their caller instructions so the layouts of caller
@@ -506,6 +509,10 @@ class LayoutAssignment : public HloPassInterface {
   // case we have to undo operations due to the multiple passes over the
   // computations/instructions.
   ChannelLayoutConstraints channel_constraints_;
+
+  // Layout constraints for send/recv instructions which communicate with the
+  // host.
+  ChannelLayoutConstraints host_channel_constraints_;
 
   // The set of HLO instructions which lacked any layout constraint, thus
   // receiving propagated default layouts.

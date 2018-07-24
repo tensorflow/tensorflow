@@ -146,24 +146,7 @@ class TPUContext(object):
     # Note that: For the non-model parallelism, the mapping could be
     # a random permutation. The order should not matter in most cases
     # as far as model is replicated to all cores in the system.
-
-    # If the precise replica_id to device mapping is required, please
-    # set the num_cores_per_replica to 1 in TPUConfig to enable the
-    # model parallelism.
-    if self._internal_ctx.model_parallelism_enabled:
-      return RuntimeError(
-          'device_for_replica is not yet implemented for model parallelism. '
-          'b/79689078.')
-
-    master = self._internal_ctx.master_job
-    job_device = '' if master is None else ('/job:%s' % master)
-
-    num_of_replicas_per_host = self._internal_ctx.num_of_replicas_per_host
-    host_id = replica_id / num_of_replicas_per_host
-    ordinal_id = replica_id % num_of_replicas_per_host
-
-    host_device = '%s/task:%d/device:CPU:0' % (job_device, host_id)
-    return (host_device, ordinal_id)
+    return self._internal_ctx.device_for_replica(replica_id)
 
 
 class _InternalTPUContext(object):
@@ -234,7 +217,7 @@ class _InternalTPUContext(object):
   def mode(self):
     return self._assert_mode()
 
-  def master_address(self):
+  def _get_master_address(self):
     mode = self._assert_mode()
     config = self._config
     master = (
@@ -244,7 +227,7 @@ class _InternalTPUContext(object):
 
   def _get_tpu_system_metadata(self):
     """Gets the (maybe cached) TPU system metadata."""
-    master = self.master_address()
+    master = self._get_master_address()
     tpu_system_metadata = self._lazy_tpu_system_metadata_dict.get(master)
     if tpu_system_metadata is not None:
       return tpu_system_metadata
@@ -261,7 +244,7 @@ class _InternalTPUContext(object):
 
   def _get_device_assignment(self):
     """Gets the (maybe cached) TPU device assignment."""
-    master = self.master_address()
+    master = self._get_master_address()
     device_assignment = self._lazy_device_assignment_dict.get(master)
     if device_assignment is not None:
       return device_assignment
@@ -589,13 +572,14 @@ class _InternalTPUContext(object):
             'model-parallelism, the total number of TPU cores should be '
             'num_cores_per_replica * num_replicas. Please set it '
             'accordingly or leave it as `None`'.format(
-                self.master_address(), num_replicas,
+                self._get_master_address(), num_replicas,
                 user_provided_num_replicas))
 
         raise ValueError(message)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
-      if self._train_batch_size % num_replicas != 0:
+      if (self._train_batch_size % num_replicas != 0 and
+          not self.is_input_broadcast_with_iterators()):
         raise ValueError(
             'train batch size {} must be divisible by number of replicas {}'
             .format(self._train_batch_size, num_replicas))
@@ -605,7 +589,8 @@ class _InternalTPUContext(object):
         raise ValueError(
             'eval_batch_size in TPUEstimator constructor cannot be `None`'
             'if .evaluate is running on TPU.')
-      if self._eval_batch_size % num_replicas != 0:
+      if (self._eval_batch_size % num_replicas != 0 and
+          not self.is_input_broadcast_with_iterators()):
         raise ValueError(
             'eval batch size {} must be divisible by number of replicas {}'
             .format(self._eval_batch_size, num_replicas))
@@ -619,7 +604,8 @@ class _InternalTPUContext(object):
         raise ValueError(
             'predict_batch_size in TPUEstimator constructor should not be '
             '`None` if .predict is running on TPU.')
-      if self._predict_batch_size % num_replicas != 0:
+      if (self._predict_batch_size % num_replicas != 0 and
+          not self.is_input_broadcast_with_iterators()):
         raise ValueError(
             'predict batch size {} must be divisible by number of replicas {}'
             .format(self._predict_batch_size, num_replicas))
@@ -630,6 +616,33 @@ class _InternalTPUContext(object):
 
     # Record the state "validated" into lazy dictionary.
     self._lazy_validation_dict[mode] = True
+
+  def device_for_replica(self, replica_id):
+    """Returns the tuple of (CPU device and device ordinal) for replica.
+
+    This should be used for full replicate for non-model-parallelism.
+
+    Args:
+       replica_id: Int, the replica index.
+
+    Returns:
+       A tuple of device spec for CPU device and int device ordinal.
+    """
+    master = self.master_job
+
+    if self.model_parallelism_enabled:
+      return (self.device_assignment.host_device(
+          replica=replica_id, job=master),
+              self.device_assignment.tpu_ordinal(replica=replica_id))
+
+    job_device = '' if master is None else ('/job:%s' % master)
+
+    num_of_replicas_per_host = self.num_of_replicas_per_host
+    host_id = replica_id / num_of_replicas_per_host
+    ordinal_id = replica_id % num_of_replicas_per_host
+
+    host_device = '%s/task:%d/device:CPU:0' % (job_device, host_id)
+    return (host_device, ordinal_id)
 
 
 class _OneCoreTPUContext(_InternalTPUContext):
@@ -644,7 +657,7 @@ class _OneCoreTPUContext(_InternalTPUContext):
 
   def _get_tpu_system_metadata(self):
     """Gets the (maybe cached) TPU system metadata."""
-    master = self.master_address()
+    master = self._get_master_address()
     tpu_system_metadata = self._lazy_tpu_system_metadata_dict.get(master)
     if tpu_system_metadata is not None:
       return tpu_system_metadata

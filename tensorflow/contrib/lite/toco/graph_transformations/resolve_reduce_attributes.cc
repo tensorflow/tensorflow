@@ -24,11 +24,8 @@ limitations under the License.
 
 namespace toco {
 
-bool ResolveMeanAttributes::Run(Model* model, std::size_t op_index) {
-  auto* mean_op = model->operators[op_index].get();
-  if (mean_op->type != OperatorType::kMean) return false;
-  auto* op = static_cast<MeanOperator*>(mean_op);
-
+template <typename T>
+bool ResolveAttributes(Model* model, T* op) {
   if (!op->axis.empty()) {
     // Attributes already resolved
     return false;
@@ -36,10 +33,28 @@ bool ResolveMeanAttributes::Run(Model* model, std::size_t op_index) {
   if (op->inputs.size() != 2) return false;
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;
 
-  const auto& indices_array = model->GetArray(op->inputs[1]);
+  const Array& indices_array = model->GetArray(op->inputs[1]);
   if (!indices_array.has_shape()) return false;
   op->axis = indices_array.GetBuffer<ArrayDataType::kInt32>().data;
   return true;
+}
+
+bool ResolveReduceAttributes::Run(Model* model, std::size_t op_index) {
+  Operator* op = model->operators[op_index].get();
+  switch (op->type) {
+    case OperatorType::kMean:
+      return ResolveAttributes(model, static_cast<MeanOperator*>(op));
+    case OperatorType::kSum:
+      return ResolveAttributes(model, static_cast<TensorFlowSumOperator*>(op));
+    case OperatorType::kReduceProd:
+      return ResolveAttributes(model, static_cast<TensorFlowProdOperator*>(op));
+    case OperatorType::kReduceMin:
+      return ResolveAttributes(model, static_cast<TensorFlowMinOperator*>(op));
+    case OperatorType::kReduceMax:
+      return ResolveAttributes(model, static_cast<TensorFlowMaxOperator*>(op));
+    default:
+      return false;
+  }
 }
 
 }  // namespace toco

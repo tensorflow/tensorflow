@@ -113,3 +113,39 @@ py_binary(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+py_binary(
+    name = "main_estimator",
+    srcs = ["main_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "main_estimator_lib",
+    srcs = ["main_estimator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "main_estimator_tpu_lib",
+    srcs = ["main_estimator_tpu.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cifar_input",
+        ":main",
+        ":revnet",
+        "//tensorflow:tensorflow_py",
+    ],
+)

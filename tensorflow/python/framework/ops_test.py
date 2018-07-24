@@ -2554,6 +2554,14 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       c.op.get_attr("_class")
 
+    # Roughly test that stack information is being saved correctly for the op.
+    locations_dict = b.op._colocation_dict
+    self.assertIn("a", locations_dict)
+    metadata = locations_dict["a"]
+    self.assertIsNone(metadata.obj)
+    basename = metadata.filename.split("/")[-1]
+    self.assertEqual("ops_test.py", basename)
+
   def testColocationDeviceInteraction(self):
     with ops.device("/cpu:0"):
       with ops.device("/device:GPU:0"):

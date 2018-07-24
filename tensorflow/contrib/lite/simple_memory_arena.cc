@@ -34,7 +34,7 @@ namespace tflite {
 TfLiteStatus SimpleMemoryArena::Allocate(TfLiteContext* context,
                                          size_t alignment, size_t size,
                                          ArenaAlloc* new_alloc) {
-  TF_LITE_ENSURE(context, alignment < arena_alignment_);
+  TF_LITE_ENSURE(context, alignment <= arena_alignment_);
 
   if (size == 0) {
     new_alloc->offset = 0;

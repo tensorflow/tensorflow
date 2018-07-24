@@ -47,7 +47,9 @@ class HloAliasAnalysisTest : public HloTestBase {
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
     hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
-    analysis_ = HloAliasAnalysis::Run(module_.get()).ConsumeValueOrDie();
+    analysis_ = HloAliasAnalysis::Run(module_.get(),
+                                      /*fusion_can_share_buffer=*/nullptr)
+                    .ConsumeValueOrDie();
     return *analysis_;
   }
 

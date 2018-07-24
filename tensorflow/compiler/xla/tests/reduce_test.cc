@@ -125,10 +125,10 @@ class ReduceTest : public ClientLibraryTestBase {
     XlaComputation reduce;
     if (and_reduce) {
       init_value = ConstantR0<bool>(&builder, true);
-      reduce = CreateScalarAndComputation(&builder);
+      reduce = CreateScalarAndComputation(PRED, &builder);
     } else {
       init_value = ConstantR0<bool>(&builder, false);
-      reduce = CreateScalarOrComputation(&builder);
+      reduce = CreateScalarOrComputation(PRED, &builder);
     }
     Reduce(pred_values, init_value, reduce,
            /*dimensions_to_reduce=*/{0});
@@ -163,10 +163,10 @@ class ReduceTest : public ClientLibraryTestBase {
     XlaComputation reduce_op;
     if (and_reduce) {
       init_value = ConstantR0<bool>(&builder, true);
-      reduce_op = CreateScalarAndComputation(&builder);
+      reduce_op = CreateScalarAndComputation(PRED, &builder);
     } else {
       init_value = ConstantR0<bool>(&builder, false);
-      reduce_op = CreateScalarOrComputation(&builder);
+      reduce_op = CreateScalarOrComputation(PRED, &builder);
     }
 
     Reduce(input_pred, init_value, reduce_op,
@@ -798,13 +798,17 @@ XLA_TEST_F(ReduceTest, VectorizedReduce_Min) {
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanAnd) {
   RunVectorizedReduceTestForType<bool>(
-      static_cast<FuncGenerator>(CreateScalarAndComputation),
+      static_cast<FuncGenerator>([](XlaBuilder* builder) {
+        return CreateScalarAndComputation(PRED, builder);
+      }),
       [](bool a, bool b) { return a && b; }, true);
 }
 
 XLA_TEST_F(ReduceTest, VectorizedReduce_BooleanOr) {
   RunVectorizedReduceTestForType<bool>(
-      static_cast<FuncGenerator>(CreateScalarOrComputation),
+      static_cast<FuncGenerator>([](XlaBuilder* builder) {
+        return CreateScalarOrComputation(PRED, builder);
+      }),
       [](bool a, bool b) { return a || b; }, false);
 }
 
@@ -961,6 +965,33 @@ XLA_TEST_F(ReduceTest, ReduceIdentity) {
   ComputeAndCompareR0<float>(
       &builder, expected, {input_global_data.get(), input_global_data2.get()},
       ErrorSpec(0.0001));
+}
+
+XLA_TEST_F(ReduceTest, AndReduceU64) {
+  XlaBuilder builder(TestName());
+  Array2D<uint64> initializer = {{0x123456789ABCDEF0LL, 0x3BCDEF12A4567890LL},
+                                 {0XFFFFFFFFFFFFFFD6LL, 101},
+                                 {1, 0XFFFFFFFFFFFFFFFFLL}};
+  auto reducer = CreateScalarAndComputation(U64, &builder);
+  auto m = ConstantR2FromArray2D(&builder, initializer);
+  Reduce(m, ConstantR0<uint64>(&builder, 0xFFFFFFFFFFFFFFFFLL), reducer, {1});
+
+  std::vector<uint64> expected = {0x1204461080145890LL, 68, 1};
+  ComputeAndCompareR1<uint64>(&builder, expected, {});
+}
+
+XLA_TEST_F(ReduceTest, OrReduceU64) {
+  XlaBuilder builder(TestName());
+  Array2D<uint64> initializer = {{0x123456789ABCDEF0LL, 0x3BCDEF12A4567890LL},
+                                 {0xFFFFFFFFFFFFFFD6LL, 101},
+                                 {1, 0xCAFEBEEFABABABABLL}};
+  auto reducer = CreateScalarOrComputation(U64, &builder);
+  auto m = ConstantR2FromArray2D(&builder, initializer);
+  Reduce(m, ConstantR0<uint64>(&builder, 0), reducer, {1});
+
+  std::vector<uint64> expected = {0X3BFDFF7ABEFEFEF0LL, 0XFFFFFFFFFFFFFFF7LL,
+                                  0xCAFEBEEFABABABABLL};
+  ComputeAndCompareR1<uint64>(&builder, expected, {});
 }
 
 }  // namespace

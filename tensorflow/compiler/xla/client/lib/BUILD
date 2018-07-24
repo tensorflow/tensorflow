@@ -97,9 +97,12 @@ cc_library(
     srcs = ["numeric.cc"],
     hdrs = ["numeric.h"],
     deps = [
+        ":arithmetic",
+        ":constants",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:lib",
     ],
 )
 

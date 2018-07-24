@@ -199,7 +199,7 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override;
 
-  void *GPUContextHack() override;
+  void *GpuContextHack() override;
 
   int device_ordinal() const { return device_ordinal_; }
   

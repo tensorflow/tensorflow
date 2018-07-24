@@ -146,18 +146,15 @@ class DirectSessionFactory : public SessionFactory {
     return options.target.empty();
   }
 
-  Session* NewSession(const SessionOptions& options) override {
+  Status NewSession(const SessionOptions& options,
+                    Session** out_session) override {
     // Must do this before the CPU allocator is created.
     if (options.config.graph_options().build_cost_model() > 0) {
       EnableCPUAllocatorFullStats(true);
     }
     std::vector<Device*> devices;
-    const Status s = DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices);
-    if (!s.ok()) {
-      LOG(ERROR) << s;
-      return nullptr;
-    }
+    TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     DirectSession* session =
         new DirectSession(options, new DeviceMgr(devices), this);
@@ -165,7 +162,8 @@ class DirectSessionFactory : public SessionFactory {
       mutex_lock l(sessions_lock_);
       sessions_.push_back(session);
     }
-    return session;
+    *out_session = session;
+    return Status::OK();
   }
 
   Status Reset(const SessionOptions& options,

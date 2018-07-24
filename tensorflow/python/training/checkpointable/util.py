@@ -747,7 +747,7 @@ def capture_dependencies(template):
           initial_value=initializer,
           name=name,
           **inner_kwargs)
-    if name.startswith(name_prefix):
+    if name is not None and name.startswith(name_prefix):
       scope_stripped_name = name[len(name_prefix) + 1:]
       if not checkpointable_parent:
         return template._add_variable_with_custom_getter(  # pylint: disable=protected-access

@@ -480,6 +480,11 @@ class _CopyToDeviceDataset(dataset_ops.Dataset):
 
     self._finalize_func = _remote_finalize_func
     self._finalize_captured_args = _remote_finalize_func.captured_inputs
+
+    g = ops.get_default_graph()
+    _remote_init_func.add_to_graph(g)
+    _remote_next_func.add_to_graph(g)
+    _remote_finalize_func.add_to_graph(g)
     # pylint: enable=protected-scope
 
   # The one_shot_iterator implementation needs a 0 arg _make_dataset function

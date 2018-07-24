@@ -48,8 +48,10 @@ struct CastFunctor<Eigen::SyclDevice, O, I> {
 #define CURRY_TYPES3_NO_HALF(FN, arg0, arg1) \
   FN(arg0, arg1, bool);                      \
   FN(arg0, arg1, uint8);                     \
-  FN(arg0, arg1, int8);                      \
   FN(arg0, arg1, uint16);                    \
+  FN(arg0, arg1, uint32);                    \
+  FN(arg0, arg1, uint64);                    \
+  FN(arg0, arg1, int8);                      \
   FN(arg0, arg1, int16);                     \
   FN(arg0, arg1, int32);                     \
   FN(arg0, arg1, int64);                     \
@@ -82,10 +84,16 @@ std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetCpuCastFromUint8(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetCpuCastFromInt8(DataType dst_dtype);
+GetCpuCastFromUint16(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetCpuCastFromUint16(DataType dst_dtype);
+GetCpuCastFromUint32(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetCpuCastFromUint64(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetCpuCastFromInt8(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetCpuCastFromInt16(DataType dst_dtype);
@@ -123,10 +131,16 @@ std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromUint8(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetGpuCastFromInt8(DataType dst_dtype);
+GetGpuCastFromUint16(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetGpuCastFromUint16(DataType dst_dtype);
+GetGpuCastFromUint32(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetGpuCastFromUint64(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetGpuCastFromInt8(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetGpuCastFromInt16(DataType dst_dtype);
@@ -166,6 +180,12 @@ GetSyclCastFromUint8(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetSyclCastFromUint16(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromUint32(DataType dst_dtype);
+
+std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
+GetSyclCastFromUint64(DataType dst_dtype);
 
 std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 GetSyclCastFromInt16(DataType dst_dtype);

@@ -616,6 +616,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_MEAN:
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_PROD:
     case BuiltinOperator_SUM: {
       auto* params = MallocPOD<TfLiteReducerParams>();
       if (auto* schema_params = op->builtin_options_as_ReducerOptions()) {
@@ -762,6 +764,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
     case BuiltinOperator_POW:
+    case BuiltinOperator_PACK:
       break;
   }
   return kTfLiteOk;

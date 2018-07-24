@@ -53,6 +53,7 @@ typedef enum {
 ```
 
 Failures can be easily verified with:
+
 ```c++
 if (status != kTfLiteOk) {
   // ... error handling here ...

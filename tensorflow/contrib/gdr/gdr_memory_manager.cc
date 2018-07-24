@@ -33,10 +33,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/common_runtime/process_state.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -182,28 +183,25 @@ class GdrMemoryManager : public RemoteMemoryManager {
   TF_DISALLOW_COPY_AND_ASSIGN(GdrMemoryManager);
 };
 
-// TODO(byronyi): remove this class duplicated from the one in
-// common/runtime/gpu/pool_allocator.h when it is available in common_runtime
-class BasicCPUAllocator : public SubAllocator {
- public:
-  ~BasicCPUAllocator() override {}
-
-  void* Alloc(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
-  }
-  void Free(void* ptr, size_t) override { port::AlignedFree(ptr); }
-};
-
 // TODO(byronyi): remove this class and its registration when the default
-// cpu_allocator() returns visitable allocator
+// cpu_allocator() returns visitable allocator, or cpu_allocator() is no
+// longer in use.
 class BFCRdmaAllocator : public BFCAllocator {
  public:
   BFCRdmaAllocator()
-      : BFCAllocator(new BasicCPUAllocator(), 1LL << 36, true, "cpu_rdma_bfc") {
+      : BFCAllocator(new BasicCPUAllocator(port::kNUMANoAffinity), 1LL << 36,
+                     true, "cpu_rdma_bfc") {}
+};
+class BFCRdmaAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() override { return new BFCRdmaAllocator; }
+
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new BasicCPUAllocator(numa_node);
   }
 };
 
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocator);
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
 
 GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
     : host_(host),
@@ -276,8 +274,8 @@ Status GdrMemoryManager::Init() {
   Allocator* allocators[] = {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     GPUProcessState::singleton()->GetGPUHostAllocator(0),
-    ProcessState::singleton()->GetCPUAllocator(0),
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    ProcessState::singleton()->GetCPUAllocator(0),
     cpu_allocator(),
   };
 

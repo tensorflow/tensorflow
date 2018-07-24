@@ -6854,6 +6854,11 @@ class CountTest(test.TestCase):
         array_ops.ones([4, 3]), updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  def testReturnType(self):
+    c, op = metrics.count(array_ops.ones([4, 3]))
+    self.assertTrue(isinstance(c, ops.Tensor))
+    self.assertTrue(isinstance(op, ops.Operation) or isinstance(op, ops.Tensor))
+
   def testBasic(self):
     with self.test_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(

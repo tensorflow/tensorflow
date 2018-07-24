@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -150,40 +151,38 @@ xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
         int64 k = std::min(block_size, n - i);
 
         // output[..., :, i:i+k] = triangular_solve(
-        //     a[..., i:i+k, i:i+k], b[..., :, i:i+k], ..., block_size=1)
+        //     a[..., i:i+k, i:i+k],
+        //     b[..., :, i:i+k] - np.matmul(output[..., :, :i],
+        //                                  a[..., :i, i:i+k]),
+        //     ..., block_size=1)
         auto a_slice = SliceInMinorDims(a, {i, i}, {i + k, i + k});
         auto b_slice = SliceInMinorDims(b, {0, i}, {m, i + k});
+
+        // Note that we multiply with the full output, since this is faster
+        // than slicing, and output[..., :, i:] = 0
+        xla::XlaOp a_prev;
+        if (lower) {
+          a_prev = SliceInMinorDims(a, {i, 0}, {i + k, n});
+        } else {
+          a_prev = SliceInMinorDims(a, {0, i}, {n, i + k});
+        }
+        auto prev_contribution = BatchDot(output, a_prev,
+                                          /*transpose_x=*/false,
+                                          /*transpose_y=*/transpose_a,
+                                          /*conjugate_x=*/false,
+                                          /*conjugate_y=*/conjugate_a);
+        auto to_solve = b_slice - prev_contribution;
+
         xla::XlaOp update;
         if (k > 1) {
           TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                               get_base_triangular_solve(k));
-          update = xla::Call(builder, *solve, {a_slice, b_slice});
+          update = xla::Call(builder, *solve, {a_slice, to_solve});
         } else {
           auto a_slice_conj = MaybeConjugate(a_slice, conjugate_a);
-          update = b_slice / a_slice_conj;
+          update = to_solve / a_slice_conj;
         }
         output = UpdateSliceInMinorDims(output, update, {0, i});
-
-        // if i + k < a.shape[-1]:
-        //   a_slice_2 = a[..., i+k:, i:i+k] if lower else a[..., i:i+k, i+k:]
-        //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
-        //   b[..., :, i+k:] -= np.matmul(output[..., :, i:i+k], a_slice_2)
-        if (i + k < n) {
-          xla::XlaOp a_slice_2;
-          if (lower) {
-            a_slice_2 = SliceInMinorDims(a, {i + k, i}, {n, i + k});
-          } else {
-            a_slice_2 = SliceInMinorDims(a, {i, i + k}, {i + k, n});
-          }
-
-          auto b_update = BatchDot(update, a_slice_2,
-                                   /*transpose_x=*/false,
-                                   /*transpose_y=*/transpose_a,
-                                   /*conjugate_x=*/false,
-                                   /*conjugate_y=*/conjugate_a);
-          auto b_slice_2 = SliceInMinorDims(b, {0, i + k}, {m, n});
-          b = UpdateSliceInMinorDims(b, b_slice_2 - b_update, {0, i + k});
-        }
       }
 
     } else if (left_side && lower != transpose_a) {
@@ -192,40 +191,36 @@ xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
         int64 k = std::min(block_size, m - i);
 
         // output[..., i:i+k, :] = triangular_solve(
-        //     a[..., i:i+k, i:i+k], b[..., i:i+k, :], ..., block_size=1)
+        //     a[..., i:i+k, i:i+k],
+        //     b[..., i:i+k, :] - np.matmul(a[..., i:i+k, :i],
+        //                                  output[..., :i, :]),
+        //     ..., block_size=1)
         auto a_slice = SliceInMinorDims(a, {i, i}, {i + k, i + k});
         auto b_slice = SliceInMinorDims(b, {i, 0}, {i + k, n});
+
+        xla::XlaOp a_prev;
+        if (lower) {
+          a_prev = SliceInMinorDims(a, {i, 0}, {i + k, m});
+        } else {
+          a_prev = SliceInMinorDims(a, {0, i}, {m, i + k});
+        }
+        auto prev_contribution = BatchDot(a_prev, output,
+                                          /*transpose_x=*/transpose_a,
+                                          /*transpose_y=*/false,
+                                          /*conjugate_x=*/conjugate_a,
+                                          /*conjugate_y=*/false);
+        auto to_solve = b_slice - prev_contribution;
+
         xla::XlaOp update;
         if (k > 1) {
           TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                               get_base_triangular_solve(k));
-          update = xla::Call(builder, *solve, {a_slice, b_slice});
+          update = xla::Call(builder, *solve, {a_slice, to_solve});
         } else {
           auto a_slice_conj = MaybeConjugate(a_slice, conjugate_a);
-          update = b_slice / a_slice_conj;
+          update = to_solve / a_slice_conj;
         }
         output = UpdateSliceInMinorDims(output, update, {i, 0});
-
-        // if i + k < a.shape[-1]:
-        //   a_slice_2 = a[..., i+k:, i:i+k] if lower else a[..., i:i+k, i+k:]
-        //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
-        //   b[..., i+k:, :] -= np.matmul(a_slice_2, output[..., i:i+k, :])
-        if (i + k < m) {
-          xla::XlaOp a_slice_2;
-          if (lower) {
-            a_slice_2 = SliceInMinorDims(a, {i + k, i}, {m, i + k});
-          } else {
-            a_slice_2 = SliceInMinorDims(a, {i, i + k}, {i + k, m});
-          }
-
-          auto b_update = BatchDot(a_slice_2, update,
-                                   /*transpose_x=*/transpose_a,
-                                   /*transpose_y=*/false,
-                                   /*conjugate_x=*/conjugate_a,
-                                   /*conjugate_y=*/false);
-          auto b_slice_2 = SliceInMinorDims(b, {i + k, 0}, {m, n});
-          b = UpdateSliceInMinorDims(b, b_slice_2 - b_update, {i + k, 0});
-        }
       }
     } else if (!left_side && lower != transpose_a) {
       // for i in reversed(range(0, a.shape[-1], block_size)):
@@ -234,41 +229,37 @@ xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
       for (int64 i = last_blk_ix; i >= 0; i -= block_size) {
         int64 k = std::min(block_size, n - i);
 
-        // output[..., :, i:i+k] triangular_solve(
-        //     a[..., i:i+k, i:i+k], b[..., :, i:i+k], ..., block_size=1)
+        // output[..., :, i:i+k] = triangular_solve(
+        //     a[..., i:i+k, i:i+k],
+        //     b[..., :, i:i+k] - np.matmul(output[..., :, :i],
+        //                                  a[..., :i, i:i+k]),\
+        //     ..., block_size=1)
         auto a_slice = SliceInMinorDims(a, {i, i}, {i + k, i + k});
         auto b_slice = SliceInMinorDims(b, {0, i}, {m, i + k});
+
+        xla::XlaOp a_prev;
+        if (lower) {
+          a_prev = SliceInMinorDims(a, {0, i}, {n, i + k});
+        } else {
+          a_prev = SliceInMinorDims(a, {i, 0}, {i + k, n});
+        }
+        auto prev_contribution = BatchDot(output, a_prev,
+                                          /*transpose_x=*/false,
+                                          /*transpose_y=*/transpose_a,
+                                          /*conjugate_x=*/false,
+                                          /*conjugate_y=*/conjugate_a);
+        auto to_solve = b_slice - prev_contribution;
+
         xla::XlaOp update;
         if (k > 1) {
           TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                               get_base_triangular_solve(k));
-          update = xla::Call(builder, *solve, {a_slice, b_slice});
+          update = xla::Call(builder, *solve, {a_slice, to_solve});
         } else {
           auto a_slice_conj = MaybeConjugate(a_slice, conjugate_a);
-          update = b_slice / a_slice_conj;
+          update = to_solve / a_slice_conj;
         }
         output = UpdateSliceInMinorDims(output, update, {0, i});
-
-        // if i - k >= 0:
-        //   a_slice_2 = a[..., i:i+k, :i] if lower else a[..., :i, i:i+k]
-        //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
-        //   b[..., :, :i] -= np.matmul(out[..., :, i:i+k], a_slice_2)
-        if (i - k >= 0) {
-          xla::XlaOp a_slice_2;
-          if (lower) {
-            a_slice_2 = SliceInMinorDims(a, {i, 0}, {i + k, i});
-          } else {
-            a_slice_2 = SliceInMinorDims(a, {0, i}, {i, i + k});
-          }
-
-          auto b_update = BatchDot(update, a_slice_2,
-                                   /*transpose_x=*/false,
-                                   /*transpose_y=*/transpose_a,
-                                   /*conjugate_x=*/false,
-                                   /*conjugate_y=*/conjugate_a);
-          auto b_slice_2 = SliceInMinorDims(b, {0, 0}, {m, i});
-          b = UpdateSliceInMinorDims(b, b_slice_2 - b_update, {0, 0});
-        }
       }
     } else {  // left_side && lower == transpose_a
       // for i in reversed(range(0, a.shape[-1], block_size)):
@@ -277,41 +268,37 @@ xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
       for (int64 i = last_blk_ix; i >= 0; i -= block_size) {
         int64 k = std::min(block_size, m - i);
 
-        // output[..., i:i+k, :] triangular_solve(
-        //     a[..., i:i+k, i:i+k], b[..., i:i+k, :], ..., block_size=1)
+        // output[..., i:i+k, :] = triangular_solve(
+        //     a[..., i:i+k, i:i+k],
+        //     b[..., i:i+k, :] - np.matmul(a[..., i:i+k, :i],
+        //                                  output[..., :i, :]),
+        //     ..., block_size=1)
         auto a_slice = SliceInMinorDims(a, {i, i}, {i + k, i + k});
         auto b_slice = SliceInMinorDims(b, {i, 0}, {i + k, n});
+
+        xla::XlaOp a_prev;
+        if (lower) {
+          a_prev = SliceInMinorDims(a, {0, i}, {m, i + k});
+        } else {
+          a_prev = SliceInMinorDims(a, {i, 0}, {i + k, m});
+        }
+        auto prev_contribution = BatchDot(a_prev, output,
+                                          /*transpose_x=*/transpose_a,
+                                          /*transpose_y=*/false,
+                                          /*conjugate_x=*/conjugate_a,
+                                          /*conjugate_y=*/false);
+        auto to_solve = b_slice - prev_contribution;
+
         xla::XlaOp update;
         if (k > 1) {
           TF_ASSIGN_OR_RETURN(xla::XlaComputation * solve,
                               get_base_triangular_solve(k));
-          update = xla::Call(builder, *solve, {a_slice, b_slice});
+          update = xla::Call(builder, *solve, {a_slice, to_solve});
         } else {
           auto a_slice_conj = MaybeConjugate(a_slice, conjugate_a);
-          update = b_slice / a_slice_conj;
+          update = to_solve / a_slice_conj;
         }
         output = UpdateSliceInMinorDims(output, update, {i, 0});
-
-        // if i - k >= 0:
-        //   a_slice_2 = a[..., i:i+k, :i] if lower else a[..., :i, i:i+k]
-        //   a_slice_2 = T(a_slice_2) if transpose_a else a_slice_2
-        //   b[..., :i, :] -= np.matmul(a_slice_2, out[..., i:i+k, :])
-        if (i - k >= 0) {
-          xla::XlaOp a_slice_2;
-          if (lower) {
-            a_slice_2 = SliceInMinorDims(a, {i, 0}, {i + k, i});
-          } else {
-            a_slice_2 = SliceInMinorDims(a, {0, i}, {i, i + k});
-          }
-
-          auto b_update = BatchDot(a_slice_2, update,
-                                   /*transpose_x=*/transpose_a,
-                                   /*transpose_y=*/false,
-                                   /*conjugate_x=*/conjugate_a,
-                                   /*conjugate_y=*/false);
-          auto b_slice_2 = SliceInMinorDims(b, {0, 0}, {i, n});
-          b = UpdateSliceInMinorDims(b, b_slice_2 - b_update, {0, 0});
-        }
       }
     }
 
@@ -330,9 +317,24 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
     const int64 ndims = xla::ShapeUtil::Rank(a_shape);
 
     std::vector<int64> batch_dimensions;
+    int64 num_batches = 1;
     for (int i = 0; i < ndims - 2; ++i) {
       int64 a_size = a_shape.dimensions(i);
       batch_dimensions.push_back(a_size);
+      num_batches = num_batches * a_size;
+    }
+
+    // Rescale the input to be unit triangular
+    auto diag = xla::GetMatrixDiagonal(a);
+    xla::XlaOp scaled_a;
+    std::vector<int64> broadcast_dimensions(ndims - 1);
+    std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(), 0);
+    if (transpose_a) {
+      scaled_a = Div(a, diag, broadcast_dimensions);
+    } else {
+      // Broadcast over the rows
+      broadcast_dimensions[ndims - 2] = ndims - 1;
+      scaled_a = Div(a, diag, broadcast_dimensions);
     }
 
     // The main computation is performed in a While loop.
@@ -346,7 +348,7 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
     xla::XlaOp output = xla::ZerosLike(b);
     {
       auto i = transpose_a ? m - 1 : 0;
-      auto a_slice = SliceInMinorDims(a, {i, i}, {i + 1, i + 1});
+      auto a_slice = SliceInMinorDims(scaled_a, {i, i}, {i + 1, i + 1});
       auto b_slice = SliceInMinorDims(b, {i, 0}, {i + 1, n});
       auto a_slice_conj = MaybeConjugate(a_slice, conjugate_a);
       auto update = b_slice / a_slice_conj;
@@ -369,7 +371,7 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
         b_shape};
     xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(tuple_shapes);
     auto init_i = xla::ConstantR0<int32>(builder, transpose_a ? m - 2 : 1);
-    auto init = xla::Tuple(builder, {init_i, output, a, b});
+    auto init = xla::Tuple(builder, {init_i, output, scaled_a, b});
 
     // Construct the loop condition function,
     // def cond_fun(loop_carry):
@@ -445,11 +447,8 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
           DynamicSliceInMinorDims(body_b, {i, zero}, {1, n});
       auto result_row = result_row_slice - b_update;
 
-      // body_out[..., i:i+1, :] = result_row / a[..., i:i+1, i:i+1]
-      auto a_elt = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
-      auto a_elt_conj = MaybeConjugate(a_elt, conjugate_a);
-      auto div_result = xla::Div(result_row, a_elt_conj);
-      body_out = DynamicUpdateSliceInMinorDims(body_out, div_result, {i, zero});
+      // body_out[..., i:i+1, :] = result_row
+      body_out = DynamicUpdateSliceInMinorDims(body_out, result_row, {i, zero});
 
       // if transpose_a:
       //   return (i - 1, body_out, a, b)
@@ -464,7 +463,11 @@ xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
     // Construct the While loop and return the result,
     // return while_loop(cond_fun, body_fun, init)[1]
     auto triangular_solve_left_looking_while = xla::While(cond, body, init);
-    return xla::GetTupleElement(triangular_solve_left_looking_while, 1);
+    output = xla::GetTupleElement(triangular_solve_left_looking_while, 1);
+    auto scaling = MaybeConjugate(diag, conjugate_a);
+    // Broadcast over the columns
+    broadcast_dimensions[ndims - 2] = ndims - 2;
+    return Div(output, scaling, broadcast_dimensions);
   });
 }
 
@@ -479,9 +482,24 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
     const int64 ndims = xla::ShapeUtil::Rank(a_shape);
 
     std::vector<int64> batch_dimensions;
+    int64 num_batches = 1;
     for (int i = 0; i < ndims - 2; ++i) {
       int64 a_size = a_shape.dimensions(i);
       batch_dimensions.push_back(a_size);
+      num_batches = num_batches * a_size;
+    }
+
+    // Rescale the input to be unit triangular
+    auto diag = xla::GetMatrixDiagonal(a);
+    xla::XlaOp scaled_a;
+    std::vector<int64> broadcast_dimensions(ndims - 1);
+    std::iota(broadcast_dimensions.begin(), broadcast_dimensions.end(), 0);
+    if (transpose_a) {
+      // Broadcast over the rows
+      broadcast_dimensions[ndims - 2] = ndims - 1;
+      scaled_a = Div(a, diag, broadcast_dimensions);
+    } else {
+      scaled_a = Div(a, diag, broadcast_dimensions);
     }
 
     // The main computation is performed in a While loop.
@@ -503,7 +521,7 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
         b_shape};
     xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(tuple_shapes);
     auto init_i = xla::ConstantR0<int32>(builder, transpose_a ? 0 : n - 1);
-    auto init = xla::Tuple(builder, {init_i, output, a, b});
+    auto init = xla::Tuple(builder, {init_i, output, scaled_a, b});
 
     // Construct the loop condition function,
     // def cond_fun(loop_carry):
@@ -568,11 +586,8 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
                                               /*conjugate_x=*/false,
                                               /*conjugate_y=*/conjugate_a);
 
-      // body_out[..., :, i:i+1] = b_update / a[..., i:i+1, i:i+1]
-      auto a_ii = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
-      auto a_ii_conj = MaybeConjugate(a_ii, conjugate_a);
-      body_out = DynamicUpdateSliceInMinorDims(body_out, b_update / a_ii_conj,
-                                               {zero, i});
+      // body_out[..., :, i:i+1] = b_update
+      body_out = DynamicUpdateSliceInMinorDims(body_out, b_update, {zero, i});
 
       // if transpose_a:
       //   return (i + 1, body_out, a, b)
@@ -587,7 +602,11 @@ xla::XlaOp TriangularSolveRightLooking(xla::XlaOp a, xla::XlaOp b,
     // Construct the While loop and return the result,
     // return while_loop(cond_fun, body_fun, init)[1]
     auto triangular_solve_left_looking_while = xla::While(cond, body, init);
-    return xla::GetTupleElement(triangular_solve_left_looking_while, 1);
+    output = xla::GetTupleElement(triangular_solve_left_looking_while, 1);
+    auto scaling = MaybeConjugate(diag, conjugate_a);
+    // Broadcast over the rows
+    broadcast_dimensions[ndims - 2] = ndims - 1;
+    return Div(output, scaling, broadcast_dimensions);
   });
 }
 

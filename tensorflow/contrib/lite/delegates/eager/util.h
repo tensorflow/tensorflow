@@ -15,11 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
 #define TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_
 
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
+namespace eager {
 
 // Converts a tensorflow:Status into a TfLiteStatus. If the original status
 // represented an error, reports it using the given 'context'.
@@ -30,6 +32,11 @@ TfLiteStatus ConvertStatus(TfLiteContext* context,
 // error and returns kTfLiteError if the shape can't be converted.
 TfLiteStatus CopyShape(TfLiteContext* context, const tensorflow::Tensor& src,
                        TfLiteTensor* tensor);
+
+// Returns the TF C API Data type that corresponds to the given TfLiteType.
+TF_DataType GetTensorFlowDataType(TfLiteType type);
+
+}  // namespace eager
 }  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_DELEGATES_EAGER_UTIL_H_

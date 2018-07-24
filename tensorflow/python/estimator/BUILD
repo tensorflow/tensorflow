@@ -40,9 +40,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":gc",
+        ":metric_keys",
+        ":util",
         "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/estimator:metric_keys",
-        "//tensorflow/python/estimator:util",
     ],
 )
 
@@ -683,9 +683,9 @@ py_test(
     ],
     deps = [
         ":keras",
+        ":numpy_io",
+        ":run_config",
         "//tensorflow:tensorflow_py_no_contrib",
-        "//tensorflow/python/estimator:numpy_io",
-        "//tensorflow/python/estimator:run_config",
         "//third_party/py/numpy",
     ],
 )

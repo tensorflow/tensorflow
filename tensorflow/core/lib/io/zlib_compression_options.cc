@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,19 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// GENERATED FILE. To update, edit tftypes.pl instead.
 
-package org.tensorflow.types;
+#include "tensorflow/core/lib/io/zlib_compression_options.h"
 
-import org.tensorflow.DataType;
+#include <zlib.h>
 
-/** Represents a 32-bit signed integer. */
-public class TFInt32 implements TFType {
-  private TFInt32() {}
-  static {
-    Types.typeCodes.put(TFInt32.class, DataType.INT32);
-  }
-  static {
-    Types.scalars.put(TFInt32.class, 0);
-  }
+namespace tensorflow {
+namespace io {
+
+ZlibCompressionOptions::ZlibCompressionOptions() {
+  flush_mode = Z_NO_FLUSH;
+  window_bits = MAX_WBITS;
+  compression_level = Z_DEFAULT_COMPRESSION;
+  compression_method = Z_DEFLATED;
+  compression_strategy = Z_DEFAULT_STRATEGY;
 }
+
+}  // namespace io
+}  // namespace tensorflow

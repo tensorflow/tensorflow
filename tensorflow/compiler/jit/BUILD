@@ -314,11 +314,13 @@ cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_launch_ops_pass.cc",
+        "deadness_analysis.cc",
         "encapsulate_subgraphs_pass.cc",
         "mark_for_compilation_pass.cc",
     ],
     hdrs = [
         "build_xla_launch_ops_pass.h",
+        "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "mark_for_compilation_pass.h",
     ],
@@ -335,6 +337,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -387,6 +390,7 @@ tf_cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [
+        "deadness_analysis_test.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "mark_for_compilation_pass_test.cc",
     ],
@@ -397,6 +401,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -468,6 +473,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":common",
+        ":compilation_passes",
         ":union_find",
         ":xla_cluster_util",
         "//tensorflow/compiler/jit/graphcycles",

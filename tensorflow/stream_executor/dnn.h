@@ -1565,7 +1565,7 @@ class DnnSupport {
                              const DeviceMemory<float>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<float>* output_data,
-                             ScratchAllocator* workspace_allocator = nullptr) = 0;
+                             ScratchAllocator* workspace_allocator) = 0;
 
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
@@ -1573,7 +1573,7 @@ class DnnSupport {
                              const DeviceMemory<double>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<double>* output_data,
-                             ScratchAllocator* workspace_allocator = nullptr) {
+                             ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for double.";
     return false;
   }
@@ -1584,7 +1584,7 @@ class DnnSupport {
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemory<Eigen::half>* output_data,
-                             ScratchAllocator* workspace_allocator = nullptr) {
+                             ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolForward not implemented for float16.";
     return false;
   }
@@ -1598,7 +1598,7 @@ class DnnSupport {
                               const DeviceMemory<double>& output_data,
                               const DeviceMemory<double>& input_diff_data,
                               DeviceMemory<double>* output_diff_data,
-                              ScratchAllocator* workspace_allocator = nullptr) {
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1611,7 +1611,7 @@ class DnnSupport {
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
                               DeviceMemory<float>* output_diff_data,
-                              ScratchAllocator* workspace_allocator = nullptr) {
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1624,7 +1624,7 @@ class DnnSupport {
                               const DeviceMemory<Eigen::half>& output_data,
                               const DeviceMemory<Eigen::half>& input_diff_data,
                               DeviceMemory<Eigen::half>* output_diff_data,
-                              ScratchAllocator* workspace_allocator = nullptr) {
+                              ScratchAllocator* workspace_allocator) {
     LOG(FATAL) << "DoPoolBackward not implemented.";
     return false;
   }
@@ -1672,7 +1672,7 @@ class DnnSupport {
       const DeviceMemory<float>& normalized_data,
       const DeviceMemory<float>& normalized_variable_gradient,
       DeviceMemory<float>* raw_variable_gradient,
-      ScratchAllocator *workspace_allocator = nullptr) {
+      ScratchAllocator* workspace_allocator) {
     return false;
   }
 

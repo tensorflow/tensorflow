@@ -52,7 +52,7 @@ def dynamic_len(list_or_tensor):
   """Implementation of len using dynamic dispatch."""
   if tensor_util.is_tensor(list_or_tensor):
     shape = list_or_tensor.shape
-    if not shape:
+    if not shape.ndims:
       raise ValueError(
           'len requires non-zero rank for tensor "%s"' % list_or_tensor)
     return array_ops.shape(list_or_tensor)[0]

@@ -210,6 +210,12 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
   return CheckShape(constant, constant->literal().shape());
 }
 
+Status ShapeVerifier::HandleIota(HloInstruction* iota) {
+  return ShapeUtil::Rank(iota->shape()) == 1
+             ? Status::OK()
+             : InternalError("Iota only supports arrays of rank 1.");
+}
+
 Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return CheckShape(get_tuple_element,
                     ShapeInference::InferGetTupleElementShape(
@@ -382,11 +388,6 @@ Status ShapeVerifier::HandlePad(HloInstruction* pad) {
 }
 
 Status ShapeVerifier::HandleSend(HloInstruction* send) {
-  TF_RET_CHECK(send->users().size() == 1);
-  const HloInstruction* send_done = send->users().front();
-  TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
-  TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
-  TF_RETURN_IF_ERROR(CheckIsTokenOperand(send, 1));
   return CheckShape(send,
                     ShapeUtil::MakeTupleShape({send->operand(0)->shape(),
                                                ShapeUtil::MakeShape(U32, {}),
@@ -394,34 +395,22 @@ Status ShapeVerifier::HandleSend(HloInstruction* send) {
 }
 
 Status ShapeVerifier::HandleSendDone(HloInstruction* send_done) {
-  TF_RET_CHECK(send_done->operands().size() == 1);
-  const HloInstruction* send = send_done->operand(0);
-  TF_RET_CHECK(send->opcode() == HloOpcode::kSend);
-  TF_RETURN_IF_ERROR(CheckSameChannel(send, send_done));
-
   return CheckShape(send_done, ShapeUtil::MakeTokenShape());
 }
 
 Status ShapeVerifier::HandleRecv(HloInstruction* recv) {
-  TF_RET_CHECK(recv->users().size() == 1);
-  const HloInstruction* recv_done = recv->users().front();
-  TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
-  TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
-  TF_RETURN_IF_ERROR(CheckIsTokenOperand(recv, 0));
   return CheckShape(
       recv, ShapeUtil::MakeTupleShape(
-                {ShapeUtil::GetTupleElementShape(recv_done->shape(), 0),
+                {ShapeUtil::GetTupleElementShape(recv->shape(), 0),
                  ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleRecvDone(HloInstruction* recv_done) {
-  TF_RET_CHECK(recv_done->operands().size() == 1);
-  const HloInstruction* recv = recv_done->operand(0);
-  TF_RET_CHECK(recv->opcode() == HloOpcode::kRecv);
-  TF_RETURN_IF_ERROR(CheckSameChannel(recv, recv_done));
-  return CheckShape(recv_done,
-                    ShapeUtil::MakeTupleShape({recv->shape().tuple_shapes(0),
-                                               ShapeUtil::MakeTokenShape()}));
+  return CheckShape(
+      recv_done,
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::GetTupleElementShape(recv_done->operand(0)->shape(), 0),
+           ShapeUtil::MakeTokenShape()}));
 }
 
 Status ShapeVerifier::HandleBatchNormTraining(
@@ -625,19 +614,6 @@ Status ShapeVerifier::CheckVariadicShape(const HloInstruction* instruction) {
   return CheckShape(instruction,
                     ShapeInference::InferVariadicOpShape(
                         instruction->opcode(), instruction->operands()));
-}
-
-// Checks if the given two instructions shares the same channel id.
-Status ShapeVerifier::CheckSameChannel(const HloInstruction* instr1,
-                                       const HloInstruction* instr2) {
-  if (instr1->channel_id() != instr2->channel_id()) {
-    return InternalError(
-        "Expected to have the same channel id, actual channel ids are: %s "
-        "(%lld), %s (%lld)",
-        instr1->ToString().c_str(), instr1->channel_id(),
-        instr2->ToString().c_str(), instr2->channel_id());
-  }
-  return Status::OK();
 }
 
 string ComputationsToString(
@@ -908,10 +884,105 @@ Status VerifyEntryAndExitShapes(const HloModule& module) {
   return Status::OK();
 }
 
+// Checks if the given two instructions share the same channel id.
+Status CheckSameChannel(const HloInstruction* instr1,
+                        const HloInstruction* instr2) {
+  if (instr1->channel_id() != instr2->channel_id()) {
+    return InternalError(
+        "Expected to have the same channel id, actual channel ids are: %s "
+        "(%lld), %s (%lld)",
+        instr1->ToString().c_str(), instr1->channel_id(),
+        instr2->ToString().c_str(), instr2->channel_id());
+  }
+  return Status::OK();
+}
+
+// Checks if the given two instructions have the same is_host_transfer attribute
+// value. Intsructions must be send/recv instructions or their 'done' variant.
+Status CheckSameIsHostTransfer(const HloInstruction* instr1,
+                               const HloInstruction* instr2) {
+  const HloSendRecvInstruction* send_recv1 =
+      DynCast<const HloSendRecvInstruction>(instr1);
+  const HloSendRecvInstruction* send_recv2 =
+      DynCast<const HloSendRecvInstruction>(instr2);
+  TF_RET_CHECK(send_recv1 != nullptr);
+  TF_RET_CHECK(send_recv2 != nullptr);
+  if (send_recv1->is_host_transfer() != send_recv2->is_host_transfer()) {
+    return InternalError(
+        "Expected instructions to have the same is-host-transfer property: %s, "
+        "%s ",
+        instr1->ToString().c_str(), instr2->ToString().c_str());
+  }
+  return Status::OK();
+}
+
+// Checks various invariants of send and recv instructions.
+Status VerifySendsAndRecvs(const HloModule& module) {
+  tensorflow::gtl::FlatMap<int64, const HloInstruction*> host_channels;
+  // Host send/recv instructions must have their own unique channel.
+  auto check_unique_host_channel = [&](const HloInstruction* instruction) {
+    const HloSendRecvInstruction* sendrecv =
+        DynCast<const HloSendRecvInstruction>(instruction);
+    if (sendrecv->is_host_transfer()) {
+      auto it_inserted =
+          host_channels.insert({sendrecv->channel_id(), sendrecv});
+      if (!it_inserted.second) {
+        return FailedPrecondition(
+            "Channel %lld is used for multiple host send/recv instructions: %s "
+            "and "
+            "%s",
+            sendrecv->channel_id(), sendrecv->ToString().c_str(),
+            it_inserted.first->second->ToString().c_str());
+      }
+    }
+
+    return Status::OK();
+  };
+
+  // Send/Recv instruction must have a single user: the corresponding
+  // SendDone/RecvDone. with matching channel.
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      switch (instruction->opcode()) {
+        case HloOpcode::kSend: {
+          TF_RETURN_IF_ERROR(check_unique_host_channel(instruction));
+          TF_RET_CHECK(instruction->users().size() == 1);
+          const HloInstruction* send_done = instruction->users().front();
+          TF_RET_CHECK(send_done->opcode() == HloOpcode::kSendDone);
+          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
+          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
+          break;
+        }
+        case HloOpcode::kRecv: {
+          TF_RETURN_IF_ERROR(check_unique_host_channel(instruction));
+          TF_RET_CHECK(instruction->users().size() == 1);
+          const HloInstruction* recv_done = instruction->users().front();
+          TF_RET_CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
+          TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
+          TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
+          break;
+        }
+        case HloOpcode::kSendDone:
+          TF_RET_CHECK(instruction->operands().size() == 1);
+          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kSend);
+          break;
+        case HloOpcode::kRecvDone:
+          TF_RET_CHECK(instruction->operands().size() == 1);
+          TF_RET_CHECK(instruction->operand(0)->opcode() == HloOpcode::kRecv);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<bool> HloVerifier::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(VerifyHloStructure(module));
+  TF_RETURN_IF_ERROR(VerifySendsAndRecvs(*module));
 
   tensorflow::gtl::FlatMap<string, const HloInstruction*> instructions;
 

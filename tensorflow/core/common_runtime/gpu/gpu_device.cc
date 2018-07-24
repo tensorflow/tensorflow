@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -260,6 +261,7 @@ class BaseGPUDevice::StreamGroupFactory {
 
       int num_d2d_streams =
           options.experimental().num_dev_to_dev_copy_streams();
+      if (num_d2d_streams == 0) num_d2d_streams = 1;
       if (num_d2d_streams < 1 || num_d2d_streams > 4) {
         LOG(ERROR)
             << "Illegal GPUOptions.experimental.num_dev_to_dev_copy_streams="
@@ -895,7 +897,7 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
   const gpuStream_t* gpu_stream = reinterpret_cast<const gpuStream_t*>(
-      streams_[stream_id]->compute->implementation()->GPUStreamMemberHack());
+      streams_[stream_id]->compute->implementation()->GpuStreamMemberHack());
   concrete_device->Reinitialize(context, gpu_stream, tf_gpu_id_, allocator,
                                 scratch_[stream_id]);
 }

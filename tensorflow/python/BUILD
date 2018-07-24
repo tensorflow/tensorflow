@@ -705,7 +705,9 @@ py_library(
         "framework/error_interpolation.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        ":util",
+    ],
 )
 
 py_library(
@@ -743,8 +745,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":framework_ops",
         ":function",
-        ":op_def_registry",
         ":tensor_shape",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -760,8 +762,10 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":constant_op",
         ":dtypes",
         ":framework_ops",
+        ":function",
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
@@ -1040,7 +1044,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":error_interpolation",
+        ":traceable_stack",
     ],
 )
 
@@ -2133,8 +2139,8 @@ py_library(
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
-        ":nn_ops",
         ":random_ops",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -3043,6 +3049,20 @@ gpu_py_test(
 )
 
 gpu_py_test(
+    name = "init_ops_test",
+    size = "small",
+    srcs = ["ops/init_ops_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":init_ops",
+        ":framework_ops",
+        ":resource_variable_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+gpu_py_test(
     name = "math_grad_test",
     size = "small",
     srcs = ["ops/math_grad_test.py"],
@@ -3334,6 +3354,9 @@ py_library(
         ],
     ),
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",

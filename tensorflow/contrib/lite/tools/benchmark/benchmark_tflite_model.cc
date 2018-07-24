@@ -198,8 +198,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   return flags;
 }
 
-void BenchmarkTfLiteModel::LogFlags() {
-  BenchmarkModel::LogFlags();
+void BenchmarkTfLiteModel::LogParams() {
+  BenchmarkModel::LogParams();
   TFLITE_LOG(INFO) << "Graph: [" << params_.Get<std::string>("graph") << "]";
   TFLITE_LOG(INFO) << "Input layers: ["
                    << params_.Get<std::string>("input_layer") << "]";
@@ -208,7 +208,7 @@ void BenchmarkTfLiteModel::LogFlags() {
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
 }
 
-bool BenchmarkTfLiteModel::ValidateFlags() {
+bool BenchmarkTfLiteModel::ValidateParams() {
   if (params_.Get<std::string>("graph").empty()) {
     TFLITE_LOG(ERROR)
         << "Please specify the name of your TF Lite input file with --graph";

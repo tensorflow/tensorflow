@@ -144,6 +144,14 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+# Config setting selector used when building for products
+# which requires restricted licenses to be avoided.
+def if_not_lgpl_restricted(a):
+  _ = (a,)
+  return select({
+      "//conditions:default": [],
+  })
+
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
@@ -1394,7 +1402,7 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
       name=name,
       srcs=srcs,
       deps=deps + if_cuda_is_configured(cuda_deps) + if_rocm_is_configured(rocm_deps),
-      data=[name + "_check_deps"],
+      data=if_static([name + "_check_deps"]),
       copts=tf_copts(is_external=True),
       features = ["windows_export_all_symbols"],
       linkopts=linkopts + select({

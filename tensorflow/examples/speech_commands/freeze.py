@@ -130,7 +130,7 @@ def main(_):
       FLAGS.clip_stride_ms, FLAGS.window_size_ms, FLAGS.window_stride_ms,
       FLAGS.feature_bin_count, FLAGS.model_architecture, FLAGS.preprocess)
   if FLAGS.quantize:
-    tf.contrib.quantize.create_training_graph(quant_delay=0)
+    tf.contrib.quantize.create_eval_graph()
   models.load_variables_from_checkpoint(sess, FLAGS.start_checkpoint)
 
   # Turn all the variables into inline constants inside the graph and save it.

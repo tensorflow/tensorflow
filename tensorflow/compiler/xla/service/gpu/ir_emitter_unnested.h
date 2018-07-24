@@ -77,6 +77,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random) override;
   Status HandleSelect(HloInstruction* select) override;
+  Status HandleSort(HloInstruction* sort) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* gen_token) override;

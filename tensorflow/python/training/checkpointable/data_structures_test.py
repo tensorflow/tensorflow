@@ -19,6 +19,7 @@ from __future__ import print_function
 import os
 
 import numpy
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -72,11 +73,14 @@ class ListTests(test.TestCase):
     model = HasList()
     output = model(array_ops.ones([32, 2]))
     self.assertAllEqual([32, 12], output.shape)
-    self.assertEqual(2, len(model.layers))
-    self.assertIs(model.layer_list, model.layers[0])
-    self.assertEqual(10, len(model.layers[0].layers))
+    self.assertEqual(11, len(model.layers))
+    self.assertEqual(10, len(model.layer_list.layers))
+    six.assertCountEqual(
+        self,
+        model.layers,
+        model.layer_list.layers + model.layers_with_updates)
     for index in range(10):
-      self.assertEqual(3 + index, model.layers[0].layers[index].units)
+      self.assertEqual(3 + index, model.layer_list.layers[index].units)
     self.assertEqual(2, len(model._checkpoint_dependencies))
     self.assertIs(model.layer_list, model._checkpoint_dependencies[0].ref)
     self.assertIs(model.layers_with_updates,
@@ -123,9 +127,11 @@ class ListTests(test.TestCase):
         self.l2 = []
 
     model = HasEqualContainers()
-    model.l1.append(HasEqualContainers())
-    model.l2.append(HasEqualContainers())
-    self.assertEqual([model.l1, model.l2], model.layers)
+    first_layer = HasEqualContainers()
+    model.l1.append(first_layer)
+    second_layer = HasEqualContainers()
+    model.l2.append(second_layer)
+    self.assertEqual([first_layer, second_layer], model.layers)
 
   def testNotCheckpointable(self):
     class NotCheckpointable(object):
@@ -260,9 +266,8 @@ class MappingTests(test.TestCase):
     model = HasMapping()
     output = model(array_ops.ones([32, 2]))
     self.assertAllEqual([32, 7], output.shape)
-    self.assertEqual(1, len(model.layers))
-    self.assertIs(model.layer_dict, model.layers[0])
-    self.assertEqual(3, len(model.layers[0].layers))
+    self.assertEqual(5, len(model.layers))
+    six.assertCountEqual(self, model.layers, model.layer_dict.layers)
     self.assertEqual(1, len(model._checkpoint_dependencies))
     self.assertIs(model.layer_dict, model._checkpoint_dependencies[0].ref)
     self.evaluate([v.initializer for v in model.variables])

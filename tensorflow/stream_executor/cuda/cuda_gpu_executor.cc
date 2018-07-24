@@ -844,7 +844,7 @@ CUDAExecutor::GetTimerImplementation() {
   return std::unique_ptr<internal::TimerInterface>(new CUDATimer(this));
 }
 
-void *CUDAExecutor::GPUContextHack() { return context_; }
+void *CUDAExecutor::GpuContextHack() { return context_; }
 
 CudaContext* CUDAExecutor::cuda_context() { return context_; }
 

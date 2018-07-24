@@ -202,7 +202,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::TimerInterface>(new HostTimer());
   }
 
-  void *GPUContextHack() override { return nullptr; }
+  void *GpuContextHack() override { return nullptr; }
 
  private:
   const PluginConfig plugin_config_;

@@ -47,10 +47,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
-from tensorflow.python.util import tf_stack
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
+from tensorflow.python.util import tf_stack
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
@@ -1712,10 +1712,14 @@ class Operation(object):
     # This will be set by self.inputs.
     self._inputs_val = None
 
-    self._id_value = self._graph._next_id()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    self._id_value = self._graph._next_id()
     self._original_op = original_op
     self._traceback = tf_stack.extract_stack()
-    self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
+    # List of traceable_stack.TraceableObjects for colocation context managers.
+    self._colocation_code_locations = None
+    self._control_flow_context = self.graph._get_control_flow_context()
+    # pylint: enable=protected-access
 
     # Initialize self._c_op.
     if c_op:
@@ -1852,6 +1856,42 @@ class Operation(object):
       device.
     """
     return c_api.TF_OperationDevice(self._c_op)
+
+  @property
+  def _colocation_dict(self):
+    """Code locations for colocation context managers active at op creation.
+
+    This property will return a dictionary for which the keys are nodes with
+    which this Operation is colocated, and for which the values are
+    traceable_stack.TraceableObject instances.  The TraceableObject instances
+    record the location of the relevant colocation context manager but have the
+    "obj" field set to None to prevent leaking private data.
+
+    For example, suppose file_a contained these lines:
+
+      file_a.py:
+        14: node_a = tf.constant(3, name='NODE_A')
+        15: with tf.colocate_with(node_a):
+        16:   node_b = tf.constant(4, name='NODE_B')
+
+    Then a TraceableObject t_obj representing the colocation context manager
+    would have these member values:
+
+      t_obj.obj -> None
+      t_obj.name = 'NODE_A'
+      t_obj.filename = 'file_a.py'
+      t_obj.lineno = 15
+
+    and node_b.op._colocation_code_locations would return the dictionary
+
+      { 'NODE_A': t_obj }
+
+    Returns:
+      {str: traceable_stack.TraceableObject} as per this method's description,
+      above.
+    """
+    locations_dict = self._colocation_code_locations or {}
+    return locations_dict.copy()
 
   @property
   def _output_types(self):
@@ -2772,23 +2812,23 @@ class Graph(object):
     # This step makes a copy of the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
     old = list(self._variable_creator_stack)
-    self._thread_local._variable_creator_stack.append(creator)
+    self._thread_local._variable_creator_stack.append(creator)  # pylint: disable=protected-access
     try:
       yield
     finally:
-      self._thread_local._variable_creator_stack = old
+      self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
   @property
   def _variable_creator_stack(self):
     if not hasattr(self._thread_local, "_variable_creator_stack"):
-      self._thread_local._variable_creator_stack = []
-    return list(self._thread_local._variable_creator_stack)
+      self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
+    return list(self._thread_local._variable_creator_stack)  # pylint: disable=protected-access
 
   @_variable_creator_stack.setter
   def _variable_creator_stack(self, variable_creator_stack):
-    self._thread_local._variable_creator_stack = variable_creator_stack
+    self._thread_local._variable_creator_stack = variable_creator_stack  # pylint: disable=protected-access
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -3249,6 +3289,7 @@ class Graph(object):
       # pylint: disable=protected-access
       op._set_attr("_class", attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
+      op._colocation_code_locations = self._snapshot_colocation_stack_metadata()
       # pylint: enable=protected-access
 
     # Sets "container" attribute if
@@ -3558,9 +3599,13 @@ class Graph(object):
     This method should be used if you want to create multiple graphs
     in the same process. For convenience, a global default graph is
     provided, and all ops will be added to this graph if you do not
-    create a new graph explicitly. Use this method with the `with` keyword
-    to specify that ops created within the scope of a block should be
-    added to this graph.
+    create a new graph explicitly.
+
+    Use this method with the `with` keyword to specify that ops created within
+    the scope of a block should be added to this graph. In this case, once
+    the scope of the `with` is exited, the previous default graph is set again
+    as default. There is a stack, so it's ok to have multiple nested levels
+    of `as_default` calls.
 
     The default graph is a property of the current thread. If you
     create a new thread, and wish to use the default graph in that
@@ -4006,7 +4051,10 @@ class Graph(object):
       self._colocation_stack = traceable_stack.TraceableStack()
 
     if op is not None:
-      self._colocation_stack.push_obj(op, name=op.name, offset=1)
+      # offset refers to the stack frame used for storing code location.
+      # We use 4, the sum of 1 to use our caller's stack frame and 3
+      # to jump over layers of context managers above us.
+      self._colocation_stack.push_obj(op, offset=4)
 
     try:
       yield
@@ -4653,6 +4701,11 @@ class Graph(object):
       return self._thread_local._colocation_stack
     else:
       return self._graph_colocation_stack
+
+  def _snapshot_colocation_stack_metadata(self):
+    """Return colocation stack metadata as a dictionary."""
+    traceable_objects = self._colocation_stack.peek_traceable_objs()
+    return {obj.obj.name: obj.copy_metadata() for obj in traceable_objects}
 
   @_colocation_stack.setter
   def _colocation_stack(self, colocation_stack):

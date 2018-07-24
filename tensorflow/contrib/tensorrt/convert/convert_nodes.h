@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
+#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_allocator.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_int8_calibrator.h"
 #include "tensorflow/core/framework/graph.pb.h"
