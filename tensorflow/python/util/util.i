@@ -31,6 +31,9 @@ limitations under the License.
 %unignore tensorflow::swig::RegisterSequenceClass;
 %noexception tensorflow::swig::RegisterSequenceClass;
 
+%unignore tensorflow::swig::RegisterMappingClass;
+%noexception tensorflow::swig::RegisterMappingClass;
+
 %unignore tensorflow::swig::RegisterSparseTensorValueClass;
 %noexception tensorflow::swig::RegisterSparseTensorValueClass;
 
