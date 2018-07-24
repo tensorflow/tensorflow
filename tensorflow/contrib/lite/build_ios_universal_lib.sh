@@ -24,8 +24,7 @@ make_library() {
     for arch in x86_64 armv7 armv7s arm64
     do
         make -f tensorflow/contrib/lite/Makefile TARGET=ios TARGET_ARCH=${arch} \
-        -j 8 \
-        $SCRIPT_DIR/gen/ios_${arch}/lib/${1}
+        -j 8
     done
     lipo \
     tensorflow/contrib/lite/gen/lib/ios_x86_64/${1} \
