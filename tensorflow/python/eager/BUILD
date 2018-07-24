@@ -405,6 +405,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
     ],
     tags = [
         "optonly",  # The test is too slow in non-opt mode
