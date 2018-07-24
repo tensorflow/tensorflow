@@ -101,7 +101,7 @@ class ErrorRendezvous(object):
     except Exception as e:  # pylint: disable=broad-except
       self.record_error(source, e, session)
 
-  def raise_errors(self, timeout_sec=5):
+  def raise_errors(self, timeout_sec=0):
     """Wait for up to `timeout` seconds for all error sources to finish.
 
     Preferentially raise "interesting" errors (errors not in the
