@@ -26,11 +26,12 @@ make_library() {
         make -f tensorflow/contrib/lite/Makefile CROSS=ios TARGET_ARCH=${arch} \
         -j 8
     done
+    mkdir tensorflow/contrib/lite/gen/lib
     lipo \
-    tensorflow/contrib/lite/gen/lib/ios_x86_64/${1} \
-    tensorflow/contrib/lite/gen/lib/ios_armv7/${1} \
-    tensorflow/contrib/lite/gen/lib/ios_armv7s/${1} \
-    tensorflow/contrib/lite/gen/lib/ios_arm64/${1} \
+    tensorflow/contrib/lite/gen/ios_x86_64/lib/${1} \
+    tensorflow/contrib/lite/gen/ios_armv7/lib/${1} \
+    tensorflow/contrib/lite/ios_armv7s/gen/lib/${1} \
+    tensorflow/contrib/lite/gen/ios_arm64/lib/${1} \
     -create \
     -output tensorflow/contrib/lite/gen/lib/${1}
 }
