@@ -9,10 +9,10 @@ bb0(%a : f32):
   // CHECK: %1 = "getTensor"() : () -> tensor<4x4x?xf32>
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
-  // CHECK: dim xxx, 2 : sometype
+  // CHECK: %2 = dim %1, 2 : tensor<4x4x?xf32>
   %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
-  // CHECK: addf xx, yy : sometype
+  // CHECK: %3 = addf %0, %0 : f32
   %x = "addf"(%a, %a) : (f32,f32) -> (f32)
 
   // CHECK:   return
@@ -25,15 +25,16 @@ bb42:       // CHECK: bb0:
   // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
   %42 = "getTensor"() : () -> tensor<4x4x?xf32>
 
-  // CHECK: dim xxx, 2 : sometype
+  // CHECK: dim %0, 2 : tensor<4x4x?xf32>
   %a = "dim"(%42){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
+  // FIXME: Add support for fp attributes so this can use 'constant'.
   %f = "FIXMEConst"(){value: 1} : () -> f32
 
-  // CHECK: addf xx, yy : sometype
+  // CHECK: %3 = addf %2, %2 : f32
   "addf"(%f, %f) : (f32,f32) -> f32
 
-  // TODO:   CHECK: FIXME: IMPLEMENT DEFAULT PRINTER
+  // CHECK: %4 = "constant"(){value: 42} : () -> i32
   %x = "constant"(){value: 42} : () -> i32
   return
 }

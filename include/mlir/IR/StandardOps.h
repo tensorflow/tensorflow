@@ -24,7 +24,7 @@
 #define MLIR_IR_STANDARDOPS_H
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/OperationImpl.h"
+#include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
 class OperationSet;
@@ -43,7 +43,7 @@ public:
   static StringRef getOperationName() { return "addf"; }
 
   const char *verify() const;
-  void print(raw_ostream &os) const;
+  void print(OpAsmPrinter *p) const;
 
 private:
   friend class Operation;
@@ -109,7 +109,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
-  void print(raw_ostream &os) const;
+  void print(OpAsmPrinter *p) const;
 
 private:
   friend class Operation;
@@ -139,7 +139,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
-  void print(raw_ostream &os) const;
+  void print(OpAsmPrinter *p) const;
 
 private:
   friend class Operation;

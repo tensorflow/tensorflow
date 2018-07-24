@@ -27,6 +27,7 @@
 
 namespace mlir {
 class Operation;
+class OpAsmPrinter;
 class MLIRContextImpl;
 class MLIRContext;
 
@@ -49,7 +50,7 @@ public:
   bool (&isClassFor)(const Operation *op);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(const Operation *op, raw_ostream &os);
+  void (&printAssembly)(const Operation *op, OpAsmPrinter *p);
 
   /// This hook implements the verifier for this operation.  It should return
   /// an error message if a problem is detected or return null on success.
@@ -59,7 +60,7 @@ public:
 
 private:
   AbstractOperation(StringRef name, bool (&isClassFor)(const Operation *op),
-                    void (&printAssembly)(const Operation *op, raw_ostream &os),
+                    void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
                     const char *(&verifyInvariants)(const Operation *op))
       : name(name), isClassFor(isClassFor), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants) {}

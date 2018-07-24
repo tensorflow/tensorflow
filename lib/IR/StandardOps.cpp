@@ -17,14 +17,16 @@
 
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
-void AddFOp::print(raw_ostream &os) const {
-  os << "addf xx, yy : sometype";
+void AddFOp::print(OpAsmPrinter *p) const {
+  *p << "addf " << *getOperand(0) << ", " << *getOperand(1) << " : "
+     << *getType();
 }
 
 // Return an error message on failure.
@@ -62,8 +64,9 @@ bool ConstantIntOp::isClassFor(const Operation *op) {
          isa<IntegerType>(op->getResult(0)->getType());
 }
 
-void DimOp::print(raw_ostream &os) const {
-  os << "dim xxx, " << getIndex() << " : sometype";
+void DimOp::print(OpAsmPrinter *p) const {
+  *p << "dim " << *getOperand() << ", " << getIndex() << " : "
+     << *getOperand()->getType();
 }
 
 const char *DimOp::verify() const {
@@ -90,9 +93,9 @@ const char *DimOp::verify() const {
   return nullptr;
 }
 
-void AffineApplyOp::print(raw_ostream &os) const {
-  os << "affine_apply map: ";
-  getAffineMap()->print(os);
+void AffineApplyOp::print(OpAsmPrinter *p) const {
+  // TODO: Print operands etc.
+  *p << "affine_apply map: " << *getAffineMap();
 }
 
 const char *AffineApplyOp::verify() const {

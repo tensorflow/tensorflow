@@ -1,4 +1,4 @@
-//===- OperationImpl.h - Implementation details of *Op classes --*- C++ -*-===//
+//===- OpDefinition.h - Classes for defining concrete Op types --*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,22 +15,23 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements helper classes for working with the "Op", most of which
-// go into the mlir::OpImpl namespace since they are only used by code that is
-// defining the op implementations, not by clients.
+// This file implements helper classes for implementing the "Op" types.  Most of
+// this goes into the mlir::OpImpl namespace since they are only used by code
+// that is defining the op implementations, not by clients.
 //
 // The purpose of these types are to allow light-weight implementation of
 // concrete ops (like DimOp) with very little boilerplate.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_OPERATIONIMPL_H
-#define MLIR_IR_OPERATIONIMPL_H
+#ifndef MLIR_IR_OPDEFINITION_H
+#define MLIR_IR_OPDEFINITION_H
 
 #include "mlir/IR/Operation.h"
 
 namespace mlir {
 class Type;
+class OpAsmPrinter;
 
 /// This pointer represents a notional "Operation*" but where the actual
 /// storage of the pointer is maintained in the templated "OpType" class.
@@ -108,7 +109,7 @@ protected:
   const char *verify() const { return nullptr; }
 
   // The fallback for the printer is to print it the longhand form.
-  void print(raw_ostream &os) const;
+  void print(OpAsmPrinter *p) const;
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -139,8 +140,8 @@ public:
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
-  static void printAssembly(const Operation *op, raw_ostream &os) {
-    op->getAs<ConcreteType>()->print(os);
+  static void printAssembly(const Operation *op, OpAsmPrinter *p) {
+    op->getAs<ConcreteType>()->print(p);
   }
 
   /// This is the hook used by the Verifier to check out this instruction.  It
