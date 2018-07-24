@@ -293,6 +293,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   const bool retry = ExecuteTrtEngine(ctx, num_batch, trt_engine_ptr.get(),
                                       engine_ctx_pair.second.get());
   if (retry) {
+    LOG(WARNING) << "Failed to execute engine, retrying with native segment";
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -310,15 +311,15 @@ bool TRTEngineOp::ExecuteTrtEngine(
     const size_t binding_index =
         trt_engine_ptr->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
-      LOG(WARNING) << "Iutput node not found, at " << input_name;
+      LOG(ERROR) << "Input node not found, at " << input_name;
       return kRetry;
     }
 
     const Tensor& input_tensor = ctx->input(i);
     const TensorShape& input_shape = input_tensor.shape();
     if (num_batch != input_shape.dim_size(0)) {
-      LOG(WARNING) << "Input data has inconsistent batch size: " << num_batch
-                   << " vs " << input_shape.dim_size(0);
+      LOG(ERROR) << "Input data has inconsistent batch size: " << num_batch
+                 << " vs " << input_shape.dim_size(0);
       return kRetry;
     }
     auto dtype = trt_engine_ptr->getBindingDataType(binding_index);
@@ -327,10 +328,10 @@ bool TRTEngineOp::ExecuteTrtEngine(
         buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(WARNING) << "FP16 inputs are not supported yet!";
+        LOG(ERROR) << "FP16 inputs are not supported yet!";
         return kRetry;
       case nvinfer1::DataType::kINT8:
-        LOG(WARNING) << "INT8 inputs are not supported yet!";
+        LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
 #if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
@@ -338,7 +339,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
         break;
 #endif
       default:
-        LOG(WARNING) << "Unknown TRT data type: " << int(dtype);
+        LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         return kRetry;
     }
   }
@@ -359,16 +360,16 @@ bool TRTEngineOp::ExecuteTrtEngine(
       auto status = TensorShapeUtils::MakeShape(
           trt_shape.data(), trt_shape.size(), &output_shape);
       if (!status.ok()) {
-        LOG(WARNING) << "Failed to get output shape: " << status;
+        LOG(ERROR) << "Failed to get output shape: " << status;
         return kRetry;
       }
     } else {
-      LOG(WARNING) << "Output node not found, at " << output_name;
+      LOG(ERROR) << "Output node not found, at " << output_name;
       return kRetry;
     }
     auto status = ctx->allocate_output(i, output_shape, &output_tensor);
     if (!status.ok()) {
-      LOG(WARNING) << "Allocating output failed with " << status;
+      LOG(ERROR) << "Allocating output failed with " << status;
       ctx->SetStatus(status);
       // Do not retry since we cannot allocate the same output twice.
       // TODO(aaroey): ideally we should retry, fix this.
@@ -457,7 +458,9 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
 #if NV_TENSORRT_MAJOR > 3
     auto allocator = GetAllocator(ctx);
-    if (allocator == nullptr) return null_pair;
+    if (allocator == nullptr) {
+      return null_pair;
+    }
     infer->setGpuAllocator(allocator);
 #endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
@@ -472,7 +475,9 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
             raw_static_engine->createExecutionContext())};
     // Runtime is safe to delete after engine creation
     serialized_segment_.clear();
-    if (max_batch_size < batch_size) return null_pair;
+    if (max_batch_size < batch_size) {
+      return null_pair;
+    }
     return engine_map_.at(max_batch_size);
   }  // static_engine_
 
@@ -483,7 +488,9 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     nvinfer1::IGpuAllocator* allocator = nullptr;
 #if NV_TENSORRT_MAJOR > 3
     allocator = GetAllocator(ctx);
-    if (allocator == nullptr) return null_pair;
+    if (allocator == nullptr) {
+      return null_pair;
+    }
 #endif
     std::vector<tensorflow::PartialTensorShape> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
