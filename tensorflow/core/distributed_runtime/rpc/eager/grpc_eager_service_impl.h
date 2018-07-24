@@ -62,6 +62,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   HANDLER(KeepAlive);
   HANDLER(CloseContext);
   HANDLER(RegisterFunction);
+  HANDLER(SendTensor);
 #undef HANDLER
 
   const WorkerEnv* const env_;  // Not owned.
