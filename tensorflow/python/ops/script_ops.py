@@ -175,7 +175,11 @@ class PythonFunc(object):
           self._convert(x, dtype=dtype.as_numpy_dtype)
           for (x, dtype) in zip(ret, self._out_dtypes)
       ]
-    return self._convert(ret)  # TODO: pass self._out_dtypes?
+
+    dtype = None
+    if isinstance(self._out_dtypes, (tuple, list)) and self._out_dtypes:
+      dtype = self._out_dtypes[0].as_numpy_dtype
+    return self._convert(ret, dtype)
 
 
 class FuncRegistry(object):
