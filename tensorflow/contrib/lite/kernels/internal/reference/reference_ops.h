@@ -1860,6 +1860,26 @@ void Concatenation(int concat_dim, const Scalar* const* input_data,
   }
 }
 
+template <typename Scalar>
+void Pack(int dim, const Scalar* const* input_data,
+          const Dims<4>* const* input_dims, int inputs_count,
+          Scalar* output_data, const Dims<4>& output_dims) {
+  TFLITE_DCHECK(IsPackedWithoutStrides(output_dims));
+  int outer_size = 1;
+  for (int i = dim + 1; i < 4; i++) {
+    outer_size *= output_dims.sizes[i];
+  }
+  Scalar* output_ptr = output_data;
+  const int copy_size = FlatSize(**input_dims) / outer_size;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < inputs_count; ++i) {
+      memcpy(output_ptr, input_data[i] + k * copy_size,
+             copy_size * sizeof(Scalar));
+      output_ptr += copy_size;
+    }
+  }
+}
+
 // TODO(prabhumk): This is the same as the optimized implementation.
 // TODO(prabhumk): The quantized implementation of concatentation isn't fully
 // quantized as it takes scale as a floating point value. This should be fixed

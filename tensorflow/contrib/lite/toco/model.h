@@ -1164,6 +1164,7 @@ struct TensorFlowRsqrtOperator : Operator {
 // TensorFlow equivalent: Pack
 struct PackOperator : Operator {
   PackOperator() : Operator(OperatorType::kPack) {}
+  int values_count;
   int axis = 0;
   ArrayDataType dtype = ArrayDataType::kNone;
 };

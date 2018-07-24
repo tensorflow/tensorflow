@@ -193,6 +193,14 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kPack: {
+      const ArrayDataType data_type = model->GetArray(op->inputs[0]).data_type;
+      for (const auto& input : op->inputs) {
+        CHECK(data_type == model->GetArray(input).data_type);
+      }
+      SetDataTypeForAllOutputs(model, op, data_type);
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);
