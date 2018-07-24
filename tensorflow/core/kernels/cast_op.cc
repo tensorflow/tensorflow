@@ -55,8 +55,39 @@ typedef Eigen::SyclDevice SYCLDevice;
   FN(arg0, std::complex<double>)
 
 CastOpBase::CastOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &src_dtype_));
-  OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &dst_dtype_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &external_src_dtype_));
+
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &external_dst_dtype_));
+
+  // Quantized data types use the same underlying format as their non quantized
+  // version so we use the non quantized implementation for casting.
+  if (external_dst_dtype_ == DT_QUINT8) {
+    dst_dtype_ = DT_UINT8;
+  } else if (external_dst_dtype_ == DT_QINT8) {
+    dst_dtype_ = DT_INT8;
+  } else if (external_dst_dtype_ == DT_QINT32) {
+    dst_dtype_ = DT_INT32;
+  } else if (external_dst_dtype_ == DT_QINT16) {
+    dst_dtype_ = DT_INT16;
+  } else if (external_dst_dtype_ == DT_QUINT16) {
+    dst_dtype_ = DT_UINT16;
+  } else {
+    dst_dtype_ = external_dst_dtype_;
+  }
+
+  if (external_src_dtype_ == DT_QUINT8) {
+    src_dtype_ = DT_UINT8;
+  } else if (external_src_dtype_ == DT_QINT8) {
+    src_dtype_ = DT_INT8;
+  } else if (external_src_dtype_ == DT_QINT32) {
+    src_dtype_ = DT_INT32;
+  } else if (external_src_dtype_ == DT_QINT16) {
+    src_dtype_ = DT_INT16;
+  } else if (external_src_dtype_ == DT_QUINT16) {
+    src_dtype_ = DT_UINT16;
+  } else {
+    src_dtype_ = external_src_dtype_;
+  }
 }
 
 void CastOpBase::Compute(OpKernelContext* ctx) {
@@ -64,15 +95,20 @@ void CastOpBase::Compute(OpKernelContext* ctx) {
   if (work_ == nullptr) {
     ctx->set_output(0, inp);
   } else {
+    Tensor in;
+    in.UnsafeCopyFromInternal(inp, src_dtype_, inp.shape());
     Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
-    work_(ctx, inp, out);
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, in.shape(), &out));
+    out->set_dtype(dst_dtype_);
+    work_(ctx, in, out);
+    out->set_dtype(external_dst_dtype_);
   }
 }
 
 Status CastOpBase::Unimplemented() {
-  return errors::Unimplemented("Cast ", DataTypeString(src_dtype_), " to ",
-                               DataTypeString(dst_dtype_), " is not supported");
+  return errors::Unimplemented("Cast ", DataTypeString(external_src_dtype_),
+                               " to ", DataTypeString(external_dst_dtype_),
+                               " is not supported");
 }
 
 CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
@@ -80,7 +116,7 @@ CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
 }
 
 Status CpuCastOp::Prepare() {
-  if (src_dtype_ == dst_dtype_) {
+  if (external_src_dtype_ == external_dst_dtype_) {
     work_ = nullptr;  // Identity
     return Status::OK();
   }
@@ -133,7 +169,7 @@ class GpuCastOp : public CastOpBase {
 
  private:
   Status Prepare() {
-    if (src_dtype_ == dst_dtype_) {
+    if (external_src_dtype_ == external_dst_dtype_) {
       work_ = nullptr;  // Identity
       return Status::OK();
     }
@@ -215,7 +251,7 @@ class SyclCastOp : public CastOpBase {
 
  private:
   Status Prepare() {
-    if (src_dtype_ == dst_dtype_) {
+    if (external_src_dtype_ == external_dst_dtype_) {
       work_ = nullptr;  // Identity
       return Status::OK();
     }
