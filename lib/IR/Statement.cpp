@@ -30,16 +30,16 @@ Statement::~Statement() {
 }
 
 /// Destroy this statement or one of its subclasses.
-void Statement::destroy(Statement *stmt) {
-  switch (stmt->getKind()) {
+void Statement::destroy() {
+  switch (this->getKind()) {
   case Kind::Operation:
-    delete cast<OperationStmt>(stmt);
+    delete cast<OperationStmt>(this);
     break;
   case Kind::For:
-    delete cast<ForStmt>(stmt);
+    delete cast<ForStmt>(this);
     break;
   case Kind::If:
-    delete cast<IfStmt>(stmt);
+    delete cast<IfStmt>(this);
     break;
   }
 }
@@ -102,7 +102,6 @@ void Statement::eraseFromBlock() {
 //===----------------------------------------------------------------------===//
 
 IfStmt::~IfStmt() {
-  // TODO: correctly delete StmtBlocks under then and else clauses
   delete thenClause;
   if (elseClause != nullptr)
     delete elseClause;

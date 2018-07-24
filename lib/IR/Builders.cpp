@@ -141,7 +141,19 @@ AffineExpr *Builder::getCeilDivExpr(AffineExpr *lhs, AffineExpr *rhs) {
 }
 
 //===----------------------------------------------------------------------===//
-// Statements
+// CFG function elements.
+//===----------------------------------------------------------------------===//
+
+// Basic block.
+BasicBlock *CFGFuncBuilder::createBlock() {
+  BasicBlock *b = new BasicBlock();
+  function->push_back(b);
+  setInsertionPoint(b);
+  return b;
+}
+
+//===----------------------------------------------------------------------===//
+// Statements.
 //===----------------------------------------------------------------------===//
 
 ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
@@ -149,7 +161,7 @@ ForStmt *MLFuncBuilder::createFor(AffineConstantExpr *lowerBound,
                                   AffineConstantExpr *step) {
   if (!step)
     step = getConstantExpr(1);
-  auto stmt = new ForStmt(lowerBound, upperBound, step);
+  auto *stmt = new ForStmt(lowerBound, upperBound, step);
   block->getStatements().push_back(stmt);
   return stmt;
 }

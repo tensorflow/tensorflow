@@ -123,6 +123,10 @@ public:
     insertPoint = block->end();
   }
 
+  // Add new basic block and set the insertion point to the end of it.
+  BasicBlock *createBlock();
+
+  // Instructions.
   OperationInst *createOperation(Identifier name, ArrayRef<CFGValue *> operands,
                                  ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {

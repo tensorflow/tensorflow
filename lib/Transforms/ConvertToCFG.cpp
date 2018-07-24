@@ -1,0 +1,166 @@
+//===- ConvertToCFG.cpp - ML function to CFG function converstion ---------===//
+//
+// Copyright 2019 The MLIR Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+//
+// This file implements APIs to convert ML functions into CFG functions.
+//
+//===----------------------------------------------------------------------===//
+
+#include "mlir/Transforms/ConvertToCFG.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Module.h"
+#include "llvm/ADT/DenseSet.h"
+using namespace mlir;
+
+//===----------------------------------------------------------------------===//
+// ML function converter
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Generates CFG function equivalent to the given ML function.
+class FunctionConverter {
+public:
+  FunctionConverter(CFGFunction *cfgFunc)
+      : cfgFunc(cfgFunc), builder(cfgFunc) {}
+  CFGFunction *convert(const MLFunction *mlFunc);
+
+private:
+  CFGFunction *cfgFunc;
+  CFGFuncBuilder builder;
+};
+} // namespace
+
+CFGFunction *FunctionConverter::convert(const MLFunction *mlFunc) {
+  builder.createBlock();
+
+  // Creates return instruction with no operands.
+  // TODO: convert return operands.
+  builder.createReturnInst({});
+
+  // TODO: convert ML function body.
+
+  return cfgFunc;
+}
+
+//===----------------------------------------------------------------------===//
+// Module converter
+//===----------------------------------------------------------------------===//
+namespace {
+// ModuleConverter class does CFG conversion for the whole module.
+class ModuleConverter {
+public:
+  explicit ModuleConverter(Module *module) : module(module) {}
+  void run();
+
+private:
+  // Generates CFG functions for all ML functions in the module.
+  void convertMLFunctions();
+  // Generates CFG function for the given ML function.
+  CFGFunction *convert(const MLFunction *mlFunc);
+  // Replaces all ML function references in the module
+  // with references to the generated CFG functions.
+  void replaceReferences();
+  // Replaces function references in the given function.
+  void replaceReferences(CFGFunction *cfgFunc);
+  void replaceReferences(MLFunction *mlFunc);
+  // Removes all ML funtions from the module.
+  void removeMLFunctions();
+
+  // Map from ML functions to generated CFG functions.
+  llvm::DenseMap<const MLFunction *, CFGFunction *> generatedFuncs;
+  Module *module;
+};
+} // end anonymous namespace
+
+// Iterates over all functions in the module generating CFG functions
+// equivalent to ML functions and replacing references to ML functions
+// with references to the generated ML functions.
+void ModuleConverter::run() {
+  convertMLFunctions();
+  replaceReferences();
+}
+
+void ModuleConverter::convertMLFunctions() {
+  for (Function *fn : module->functionList) {
+    if (auto mlFunc = dyn_cast<MLFunction>(fn))
+      generatedFuncs[mlFunc] = convert(mlFunc);
+  }
+}
+
+// Creates CFG function equivalent to the given ML function.
+CFGFunction *ModuleConverter::convert(const MLFunction *mlFunc) {
+  // TODO: ensure that CFG function name is unique.
+  CFGFunction *cfgFunc =
+      new CFGFunction(mlFunc->getName() + "_cfg", mlFunc->getType());
+  module->functionList.push_back(cfgFunc);
+
+  // Generates the body of the CFG function.
+  return FunctionConverter(cfgFunc).convert(mlFunc);
+}
+
+void ModuleConverter::replaceReferences() {
+  for (Function *fn : module->functionList) {
+    switch (fn->getKind()) {
+    case Function::Kind::CFGFunc:
+      replaceReferences(cast<CFGFunction>(fn));
+      break;
+    case Function::Kind::MLFunc:
+      replaceReferences(cast<MLFunction>(fn));
+      break;
+    case Function::Kind::ExtFunc:
+      // nothing to do for external functions
+      break;
+    }
+  }
+}
+
+void ModuleConverter::replaceReferences(CFGFunction *func) {
+  // TODO: NOP for now since function attributes are not yet implemented.
+}
+
+void ModuleConverter::replaceReferences(MLFunction *func) {
+  // TODO: NOP for now since function attributes are not yet implemented.
+}
+
+// Removes all ML functions from the module.
+void ModuleConverter::removeMLFunctions() {
+  std::vector<Function *> &fnList = module->functionList;
+
+  // Delete ML functions and its data.
+  for (auto &fn : fnList) {
+    if (auto mlFunc = dyn_cast<MLFunction>(fn)) {
+      delete mlFunc;
+      fn = nullptr;
+    }
+  }
+
+  // Remove ML functions from the function list.
+  fnList.erase(std::remove_if(fnList.begin(), fnList.end(),
+                              [](Function *fn) { return !fn; }),
+               fnList.end());
+}
+
+//===----------------------------------------------------------------------===//
+// Entry point method
+//===----------------------------------------------------------------------===//
+
+void mlir::convertToCFG(Module *module) {
+  ModuleConverter moduleConverter(module);
+  moduleConverter.run();
+  module->verify();
+}

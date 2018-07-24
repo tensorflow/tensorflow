@@ -32,6 +32,7 @@ namespace mlir {
 class MLFunction : public Function, public StmtBlock {
 public:
   MLFunction(StringRef name, FunctionType *type);
+  ~MLFunction();
 
   // TODO: add function arguments and return values once
   // SSA values are implemented

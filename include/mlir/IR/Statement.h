@@ -51,8 +51,8 @@ public:
   /// Returns the function that this statement is part of.
   MLFunction *getFunction() const;
 
-  /// Destroys the argument statement or one of its subclasses
-  static void destroy(Statement *stmt);
+  /// Destroys this statement and its subclass data.
+  void destroy();
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -90,9 +90,7 @@ struct ilist_traits<::mlir::Statement> {
   using Statement = ::mlir::Statement;
   using stmt_iterator = simple_ilist<Statement>::iterator;
 
-  static void deleteNode(Statement *stmt) {
-    Statement::destroy(stmt);
-  }
+  static void deleteNode(Statement *stmt) { stmt->destroy(); }
 
   void addNodeToList(Statement *stmt);
   void removeNodeFromList(Statement *stmt);

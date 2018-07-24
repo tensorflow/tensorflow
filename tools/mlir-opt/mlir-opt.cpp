@@ -24,6 +24,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
+#include "mlir/Transforms/ConvertToCFG.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
@@ -44,6 +45,10 @@ static cl::opt<bool>
 checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
                   cl::init(false));
 
+static cl::opt<bool> convertToCFGOpt(
+    "convert-to-cfg",
+    cl::desc("Convert all ML functions in the module to CFG ones"));
+
 enum OptResult { OptSuccess, OptFailure };
 
 /// Open the specified output file and return it, exiting if there is any I/O or
@@ -61,7 +66,8 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
 }
 
 /// Parses the memory buffer and, if successfully parsed, prints the parsed
-/// output.
+/// output. Optionally, convert ML functions into CFG functions.
+/// TODO: pull parsing and printing into separate functions.
 OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   // Tell sourceMgr about this buffer, which is what the parser will pick up.
   SourceMgr sourceMgr;
@@ -72,6 +78,10 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
   if (!module)
     return OptFailure;
+
+  // Convert ML functions into CFG functions
+  if (convertToCFGOpt)
+    convertToCFG(module.get());
 
   // Print the output.
   auto output = getOutputStream();

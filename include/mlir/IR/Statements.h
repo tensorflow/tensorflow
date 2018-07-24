@@ -58,7 +58,7 @@ public:
       : Statement(Kind::For), StmtBlock(StmtBlockKind::For),
         lowerBound(lowerBound), upperBound(upperBound), step(step) {}
 
-  //TODO: delete nested statements or assert that they are gone.
+  // Loop bounds and step are immortal objects and don't need to be deleted.
   ~ForStmt() {}
 
   // TODO: represent induction variable
@@ -95,7 +95,6 @@ public:
     return block->getStmtBlockKind() == StmtBlockKind::IfClause;
   }
 
-  //TODO: delete nested statements or assert that they are gone.
   ~IfClause() {}
 
   /// Returns the if statement that contains this clause.
