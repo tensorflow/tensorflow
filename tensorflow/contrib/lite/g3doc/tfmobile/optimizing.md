@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Optimizing for mobile
 
 There are some special issues that you have to deal with when you’re trying to
@@ -77,7 +80,7 @@ out of a mobile device's memory faster.
 
 To understand how large your network will be on disk, start by looking at the
 size on disk of your `GraphDef` file after you’ve run `freeze_graph` and
-`strip_unused_nodes` on it (see @{$mobile/prepare_models$Preparing models} for
+`strip_unused_nodes` on it (see <a href="./prepare_models.md">Preparing models</a> for
 more details on these tools), since then it should only contain
 inference-related nodes. To double-check that your results are as expected, run
 the `summarize_graph` tool to see how many parameters are in constants:
@@ -103,7 +106,8 @@ you multiply the number of const parameters by four, you should get something
 that’s close to the size of the file on disk. You can often get away with only
 eight-bits per parameter with very little loss of accuracy in the final result,
 so if your file size is too large you can try using
-@{$performance/quantization$quantize_weights} to transform the parameters down.
+<a href="https://www.tensorflow.org/performance/quantization">quantize_weights</a>
+to transform the parameters down.
 
     bazel build tensorflow/tools/graph_transforms:transform_graph && \
     bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
@@ -292,7 +296,8 @@ run it on a 64-bit ARM device:
 
 You can interpret the results in exactly the same way as the desktop version
 above. If you have any trouble figuring out what the right input and output
-names and types are, take a look at the @{$mobile/prepare_models$Preparing models}
+names and types are, take a look at the
+<a href="./prepare_models">Preparing models</a>
 page for details about detecting these for your model, and look at the
 `summarize_graph` tool which may give you
 helpful information.

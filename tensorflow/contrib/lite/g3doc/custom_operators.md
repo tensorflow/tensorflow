@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # How to use custom operators
 
 TensorFlow Lite currently supports a subset of TensorFlow operators. However, it
