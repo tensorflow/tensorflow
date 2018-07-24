@@ -2778,7 +2778,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
 Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  CHECK(Thunk::Kind::kKernel == LastThunk()->kind());
+  CHECK_EQ(Thunk::Kind::kKernel, LastThunk()->kind());
   return EmitTargetElementLoopInThunk(hlo, element_generator,
                                       static_cast<KernelThunk*>(LastThunk()));
 }
