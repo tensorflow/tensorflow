@@ -250,13 +250,15 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   // TODO(zongheng): consider measuring speed and issuing concurrent lookups
   // within a fixed memory budget.
   TensorShape restored_full_shape;
+  DataType restored_dtype;
   Tensor* restored_tensor = nullptr;
   for (auto i : sorted_name_idx) {
     const string& tensor_name = tensor_names_flat(i);
     const string& shape_and_slice = shape_and_slices_flat(i);
 
     TF_RETURN_IF_ERROR(
-        reader.LookupTensorShape(tensor_name, &restored_full_shape));
+        reader.LookupDtypeAndShape(tensor_name,
+                                   &restored_dtype, &restored_full_shape));
 
     if (shape_and_slice.empty()) {
       // Lookup the full tensor.
@@ -285,10 +287,10 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
       TF_RETURN_IF_ERROR(
           reader.LookupSlice(tensor_name, parsed_slice, restored_tensor));
     }
-    if (dtypes[i] != restored_tensor->dtype()) {
+    if (restored_dtype != restored_tensor->dtype()) {
       return errors::InvalidArgument(
           "tensor_name = ", tensor_name, "; expected dtype ",
-          DataTypeString(dtypes[i]), " does not equal restored dtype ",
+          DataTypeString(restored_dtype), " does not equal restored dtype ",
           DataTypeString(restored_tensor->dtype()));
     }
   }
