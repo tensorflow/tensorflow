@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
 #include <poplar/Device.hpp>
+#include <poplar/Graph.hpp>
 
 namespace se = ::stream_executor;
 
@@ -39,6 +40,8 @@ namespace poplarplugin {
 
 PoplarPlatform::PoplarPlatform() : name_("Poplar") {
   num_devices_ = 1;
+
+  VLOG(1) << "Poplar version: " << poplar::versionString();
 }
 
 PoplarPlatform::~PoplarPlatform() {}

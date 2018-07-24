@@ -241,7 +241,7 @@ se::DeviceDescription* PoplarExecutor::PopulateDeviceDescription() const {
   se::internal::DeviceDescriptionBuilder builder;
 
   builder.set_name("Poplar");
-  builder.set_platform_version("1.0");
+  builder.set_platform_version(poplar::versionString());
 
   auto built = builder.Build();
   return built.release();
@@ -274,7 +274,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       num_ipus = 1;
     }
 
-    static auto device_list =
+    auto device_list =
         device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
 
     if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
@@ -294,10 +294,14 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     bool opened = false;
     switch (type) {
       case tensorflow::IPUOptions::DeviceConfig::IPU: {
-        for (auto d : device_list) {
+        for (auto& d : device_list) {
           if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
             if (d.attach()) {
-              poplar_device_ = d;
+              poplar_device_ = std::move(d);
+
+              unsigned mj, mn, pt;
+              poplar_device_.getDriverVersion(mj, mn, pt);
+              VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
 
               if (tiles_per_ipu > 0) {
                 poplar_device_ =
