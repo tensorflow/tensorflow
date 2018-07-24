@@ -1764,7 +1764,8 @@ class TPUEstimator(estimator_lib.Estimator):
   Current limitations:
   --------------------
 
-  1. TPU evaluation only works on a single host (one TPU worker).
+  1. TPU evaluation only works on a single host (one TPU worker) except
+     BROADCAST mode.
 
   2. `input_fn` for evaluation should **NOT** raise an end-of-input exception
      (`OutOfRangeError` or `StopIteration`). And all evaluation steps and all
