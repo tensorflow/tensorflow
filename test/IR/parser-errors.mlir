@@ -175,14 +175,6 @@ mlfunc @non_statement() {
 
 // -----
 
-cfgfunc @malformed_dim() {
-bb42:
-  "dim"(){index: "xyz"} : ()->i32 // expected-error {{'dim' op requires an integer attribute named 'index'}}
-  return
-}
-
-// -----
-
 #map = (d0) -> (%  // expected-error {{invalid SSA name}}
 
 // -----
@@ -197,8 +189,8 @@ bb40:
 
 cfgfunc @redef() {
 bb42:
-  %x = "dim"(){index: 0} : ()->i32 // expected-error {{previously defined here}}
-  %x = "dim"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
+  %x = "xxx"(){index: 0} : ()->i32 // expected-error {{previously defined here}}
+  %x = "xxx"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
   return
 }
 

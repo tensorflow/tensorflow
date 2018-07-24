@@ -148,7 +148,7 @@ public:
   /// a null OpPointer on failure.
   template <typename OpClass>
   OpPointer<OpClass> getAs() {
-    bool isMatch = getName().is(OpClass::getOperationName());
+    bool isMatch = OpClass::isClassFor(this);
     return OpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
   }
 
@@ -157,7 +157,7 @@ public:
   /// a null ConstOpPointer on failure.
   template <typename OpClass>
   ConstOpPointer<OpClass> getAs() const {
-    bool isMatch = getName().is(OpClass::getOperationName());
+    bool isMatch = OpClass::isClassFor(this);
     return ConstOpPointer<OpClass>(OpClass(isMatch ? this : nullptr));
   }
 

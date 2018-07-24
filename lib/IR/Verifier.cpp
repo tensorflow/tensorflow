@@ -216,7 +216,8 @@ bool CFGFuncVerifier::verifyOperation(const OperationInst &inst) {
   // See if we can get operation info for this.
   if (auto *opInfo = inst.getAbstractOperation(fn.getContext())) {
     if (auto errorMessage = opInfo->verifyInvariants(&inst))
-      return failure(errorMessage, inst);
+      return failure(Twine("'") + inst.getName().str() + "' op " + errorMessage,
+                     inst);
   }
 
   return false;

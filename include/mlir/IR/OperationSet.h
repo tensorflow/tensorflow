@@ -38,12 +38,15 @@ class AbstractOperation {
 public:
   template <typename T>
   static AbstractOperation get() {
-    return AbstractOperation(T::getOperationName(), T::printAssembly,
-                             T::verifyInvariants);
+    return AbstractOperation(T::getOperationName(), T::isClassFor,
+                             T::printAssembly, T::verifyInvariants);
   }
 
   /// This is the name of the operation.
   const StringRef name;
+
+  /// Return true if this "op class" can match against the specified operation.
+  bool (&isClassFor)(const Operation *op);
 
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(const Operation *op, raw_ostream &os);
@@ -55,10 +58,10 @@ public:
   // TODO: Parsing hook.
 
 private:
-  AbstractOperation(StringRef name,
+  AbstractOperation(StringRef name, bool (&isClassFor)(const Operation *op),
                     void (&printAssembly)(const Operation *op, raw_ostream &os),
                     const char *(&verifyInvariants)(const Operation *op))
-      : name(name), printAssembly(printAssembly),
+      : name(name), isClassFor(isClassFor), printAssembly(printAssembly),
         verifyInvariants(verifyInvariants) {}
 };
 

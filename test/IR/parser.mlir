@@ -112,17 +112,17 @@ mlfunc @mlfunc_with_args(%a : f16) {
   return  %a  // CHECK: return
 }
 
-// CHECK-LABEL: cfgfunc @cfgfunc_with_ops() {
-cfgfunc @cfgfunc_with_ops() {
-bb0:
-  // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
+// CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
+cfgfunc @cfgfunc_with_ops(f32) {
+bb0(%a : f32):
+  // CHECK: %1 = "getTensor"() : () -> tensor<4x4x?xf32>
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
   // CHECK: dim xxx, 2 : sometype
-  %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
+  %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
   // CHECK: addf xx, yy : sometype
-  "addf"() : () -> ()
+  %x = "addf"(%a, %a) : (f32,f32) -> (f32)
 
   // CHECK:   return
   return
@@ -187,6 +187,9 @@ bb42:       // CHECK: bb0:
   %f = "Const"(){value: 1} : () -> f32
   // CHECK: addf xx, yy : sometype
   "addf"(%f, %f) : (f32,f32) -> f32
+
+  // TODO:   CHECK: FIXME: IMPLEMENT DEFAULT PRINTER
+  %x = "constant"(){value: 42} : () -> i32
   return
 }
 

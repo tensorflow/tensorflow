@@ -50,14 +50,54 @@ private:
   explicit AddFOp(const Operation *state) : Base(state) {}
 };
 
-/// The "dim" builtin takes a memref or tensor operand and returns an
+/// The "constant" operation requires a single attribute named "value".
+/// It returns its value as an SSA value.  For example:
+///
+///   %1 = "constant"(){value: 42} : i32
+///   %2 = "constant"(){value: @foo} : (f32)->f32
+///
+class ConstantOp
+    : public OpImpl::Base<ConstantOp, OpImpl::ZeroOperands, OpImpl::OneResult> {
+public:
+  Attribute *getValue() const { return getAttr("value"); }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static StringRef getOperationName() { return "constant"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+
+protected:
+  friend class Operation;
+  explicit ConstantOp(const Operation *state) : Base(state) {}
+};
+
+/// This is a refinement of the "constant" op for the case where it is
+/// returning an integer value.
+///
+///   %1 = "constant"(){value: 42}
+///
+class ConstantIntOp : public ConstantOp {
+public:
+  int64_t getValue() const {
+    return getAttrOfType<IntegerAttr>("value")->getValue();
+  }
+
+  static bool isClassFor(const Operation *op);
+
+private:
+  friend class Operation;
+  explicit ConstantIntOp(const Operation *state) : ConstantOp(state) {}
+};
+
+/// The "dim" operation takes a memref or tensor operand and returns an
 /// "affineint".  It requires a single integer attribute named "index".  It
 /// returns the size of the specified dimension.  For example:
 ///
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>
 ///
 class DimOp
-    : public OpImpl::Base<DimOp, OpImpl::OneOperand<DimOp>, OpImpl::OneResult> {
+    : public OpImpl::Base<DimOp, OpImpl::OneOperand, OpImpl::OneResult> {
 public:
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {

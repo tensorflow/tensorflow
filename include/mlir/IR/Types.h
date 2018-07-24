@@ -294,6 +294,8 @@ public:
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
 
+  unsigned getRank() const { return getShape().size(); }
+
   /// Returns the elemental type for this memref shape.
   Type *getElementType() const { return elementType; }
 

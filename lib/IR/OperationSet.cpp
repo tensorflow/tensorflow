@@ -16,10 +16,16 @@
 // =============================================================================
 
 #include "mlir/IR/OperationSet.h"
+#include "mlir/IR/OperationImpl.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 using llvm::StringMap;
+
+// The fallback for the printer is to print it the longhand form.
+void OpImpl::BaseState::print(raw_ostream &os) const {
+  os << "FIXME: IMPLEMENT DEFAULT PRINTER";
+}
 
 static StringMap<AbstractOperation> &getImpl(void *pImpl) {
   return *static_cast<StringMap<AbstractOperation> *>(pImpl);

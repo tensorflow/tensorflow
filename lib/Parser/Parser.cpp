@@ -1576,7 +1576,7 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   // source location.
   if (auto *opInfo = op->getAbstractOperation(builder.getContext())) {
     if (auto error = opInfo->verifyInvariants(op))
-      return emitError(loc, error);
+      return emitError(loc, Twine("'") + op->getName().str() + "' op " + error);
   }
 
   // If the instruction had a name, register it.
