@@ -48,9 +48,6 @@ CC_PREFIX :=
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
-$(warning foo)
-$(warning $(wildcard $(MAKEFILE_DIR)/target_makefiles/*_makefile.inc))
-$(warning bar)
 include $(wildcard $(MAKEFILE_DIR)/target_makefiles/*_makefile.inc)
 
 # Where compiled objects are stored.

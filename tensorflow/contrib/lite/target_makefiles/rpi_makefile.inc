@@ -1,12 +1,9 @@
 # Settings for Raspberry Pi.
-$(warning $(CROSS))
 ifeq ($(CROSS),rpi)
   # Default to the architecture used on the Pi Two/Three (ArmV7), but override this
   # with TARGET_ARCH=armv6 to build for the Pi Zero or One.
   TARGET_ARCH := armv7l
   TARGET_TOOLCHAIN_PREFIX := arm-linux-gnueabihf-
-  $(warning $(TARGET_ARCH))
-  $(warning $(TARGET_TOOLCHAIN_PREFIX))
 
   ifeq ($(TARGET_ARCH), armv7)
     CXXFLAGS += \
