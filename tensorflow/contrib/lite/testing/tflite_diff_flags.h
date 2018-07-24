@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DIFF_FLAGS_H_
 #define TENSORFLOW_CONTRIB_LITE_TESTING_TFLITE_DIFF_FLAGS_H_
 
+#include <cstring>
+
 #include "tensorflow/contrib/lite/testing/split.h"
 #include "tensorflow/contrib/lite/testing/tflite_diff_util.h"
 #include "tensorflow/core/util/command_line_flags.h"
