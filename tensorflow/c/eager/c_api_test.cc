@@ -55,12 +55,12 @@ void BM_InitOp(int iters) {
 }
 BENCHMARK(BM_InitOp);
 
-void BM_Execute(int iters, int async) {
+void BM_Execute(int iters, int is_async) {
   tensorflow::testing::StopTiming();
-  tensorflow::testing::SetLabel(async ? "ExecuteAsync" : "Execute");
+  tensorflow::testing::SetLabel(is_async ? "ExecuteAsync" : "Execute");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -74,7 +74,7 @@ void BM_Execute(int iters, int async) {
     TFE_Execute(matmul, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
-  if (async) {
+  if (is_async) {
     TFE_ContextAsyncWait(ctx, status);
   }
   tensorflow::testing::StopTiming();
@@ -124,7 +124,7 @@ tensorflow::ServerDef GetServerDef(int num_tasks) {
   return server_def;
 }
 
-void TestRemoteExecute(bool async) {
+void TestRemoteExecute(bool is_async) {
   tensorflow::ServerDef server_def = GetServerDef(2);
 
   // This server def has the task index set to 0.
@@ -143,7 +143,7 @@ void TestRemoteExecute(bool async) {
   TFE_ContextOptionsSetServerDef(opts, serialized.data(), serialized.size(),
                                  status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_ContextOptionsSetDevicePlacementPolicy(opts,
                                              TFE_DEVICE_PLACEMENT_EXPLICIT);
   TFE_Context* ctx = TFE_NewContext(opts, status);
@@ -207,7 +207,7 @@ void TestRemoteExecute(bool async) {
 TEST(CAPI, RemoteExecute) { TestRemoteExecute(false); }
 TEST(CAPI, RemoteExecuteAsync) { TestRemoteExecute(true); }
 
-void TestRemoteExecuteSilentCopies(bool async) {
+void TestRemoteExecuteSilentCopies(bool is_async) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -232,7 +232,7 @@ void TestRemoteExecuteSilentCopies(bool async) {
   TFE_ContextOptionsSetServerDef(opts, serialized.data(), serialized.size(),
                                  status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
   TFE_Context* ctx = TFE_NewContext(opts, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -314,11 +314,11 @@ TEST(CAPI, TensorHandle) {
   TFE_DeleteTensorHandle(h);
 }
 
-void TensorHandleCopyBetweenDevices(bool async) {
+void TensorHandleCopyBetweenDevices(bool is_async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
   TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -392,11 +392,11 @@ TEST(CAPI, TensorHandleCopyBetweenDevicesAsync) {
   TensorHandleCopyBetweenDevices(true);
 }
 
-void TensorHandleCopyBetweenDevicesError(bool async) {
+void TensorHandleCopyBetweenDevicesError(bool is_async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
   TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -429,11 +429,11 @@ TEST(CAPI, TensorHandleCopyBetweenDevicesErrorAsync) {
   TensorHandleCopyBetweenDevicesError(true);
 }
 
-void TensorHandleCopyBetweenTwoGPUDevices(bool async) {
+void TensorHandleCopyBetweenTwoGPUDevices(bool is_async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
   TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -496,12 +496,12 @@ TEST(CAPI, TensorHandleCopyBetweenTwoGPUDevicesAsync) {
   TensorHandleCopyBetweenTwoGPUDevices(true);
 }
 
-void TensorHandleSilentCopy(bool async) {
+void TensorHandleSilentCopy(bool is_async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
   TFE_DeleteContextOptions(opts);
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -540,11 +540,11 @@ void TensorHandleSilentCopy(bool async) {
 TEST(CAPI, TensorHandleSilentCopy) { TensorHandleSilentCopy(false); }
 TEST(CAPI, TensorHandleSilentCopyAsync) { TensorHandleSilentCopy(true); }
 
-void TensorHandleSilentCopyLocal(bool async) {
+void TensorHandleSilentCopyLocal(bool is_async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_ContextOptionsSetDevicePlacementPolicy(opts,
                                              TFE_DEVICE_PLACEMENT_EXPLICIT);
   TFE_Context* ctx = TFE_NewContext(opts, status.get());
@@ -588,7 +588,7 @@ TEST(CAPI, TensorHandleSilentCopyLocalAsync) {
   TensorHandleSilentCopyLocal(true);
 }
 
-void SetAndGetOpDevices(bool async) {
+void SetAndGetOpDevices(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_Context* ctx = TFE_NewContext(opts, status);
@@ -619,10 +619,10 @@ void SetAndGetOpDevices(bool async) {
   TF_DeleteStatus(status);
 }
 
-void Execute_MatMul_CPU(bool async) {
+void Execute_MatMul_CPU(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -655,10 +655,10 @@ void Execute_MatMul_CPU(bool async) {
 TEST(CAPI, Execute_MatMul_CPU) { Execute_MatMul_CPU(false); }
 TEST(CAPI, Execute_MatMul_CPUAsync) { Execute_MatMul_CPU(true); }
 
-void Execute_MatMul_CPU_Runtime_Error(bool async) {
+void Execute_MatMul_CPU_Runtime_Error(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -677,7 +677,7 @@ void Execute_MatMul_CPU_Runtime_Error(bool async) {
   int num_retvals = 1;
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);
   TFE_DeleteOp(matmul);
-  if (!async) {
+  if (!is_async) {
     EXPECT_NE(TF_OK, TF_GetCode(status));
   } else {
     TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
@@ -722,10 +722,10 @@ TEST(CAPI, Execute_MatMul_CPU_Runtime_ErrorAsync) {
   Execute_MatMul_CPU_Runtime_Error(true);
 }
 
-void Execute_MatMul_CPU_Type_Error(bool async) {
+void Execute_MatMul_CPU_Type_Error(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -787,10 +787,10 @@ TEST(CAPI, Execute_Min_CPU) {
 }
 
 #ifdef TENSORFLOW_EAGER_USE_XLA
-void Execute_MatMul_XLA_CPU(bool async) {
+void Execute_MatMul_XLA_CPU(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -829,10 +829,10 @@ void Execute_MatMul_XLA_CPU(bool async) {
 TEST(CAPI, Execute_MatMul_XLA_CPU) { Execute_MatMul_XLA_CPU(false); }
 TEST(CAPI, Execute_MatMul_XLA_CPUAsync) { Execute_MatMul_XLA_CPU(true); }
 
-void Execute_Min_XLA_CPU(bool async) {
+void Execute_Min_XLA_CPU(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -869,10 +869,10 @@ TEST(CAPI, Execute_Min_XLA_CPU) { Execute_Min_XLA_CPU(false); }
 TEST(CAPI, Execute_Min_XLA_CPUAsync) { Execute_Min_XLA_CPU(true); }
 #endif  // TENSORFLOW_EAGER_USE_XLA
 
-void ExecuteWithTracing(bool async) {
+void ExecuteWithTracing(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   TFE_ContextEnableRunMetadata(ctx);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -943,8 +943,8 @@ TEST(CAPI, Function_ident_CPU) {
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
   TF_DeleteFunction(fn);
 
-  for (bool async : {false, true, false}) {
-    TFE_ContextSetAsyncForThread(ctx, static_cast<unsigned char>(async),
+  for (bool is_async : {false, true, false}) {
+    TFE_ContextSetAsyncForThread(ctx, static_cast<unsigned char>(is_async),
                                  status);
     ASSERT_TRUE(TF_GetCode(status) == TF_OK);
     TF_Tensor* t =
@@ -1010,8 +1010,8 @@ TEST(CAPI, Function_ident_XLA_CPU) {
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
   TF_DeleteFunction(fn);
 
-  for (bool async : {false, true, false}) {
-    TFE_ContextSetAsyncForThread(ctx, static_cast<unsigned char>(async),
+  for (bool is_async : {false, true, false}) {
+    TFE_ContextSetAsyncForThread(ctx, static_cast<unsigned char>(is_async),
                                  status);
     ASSERT_TRUE(TF_GetCode(status) == TF_OK);
     TF_Tensor* t =
@@ -1084,10 +1084,10 @@ string MatMulFunction() {
   return def.SerializeAsString();
 }
 
-void FunctionDefAndExecute(bool async) {
+void FunctionDefAndExecute(bool is_async) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1127,13 +1127,13 @@ void FunctionDefAndExecute(bool async) {
 TEST(CAPI, FunctionDefAndExecute) { FunctionDefAndExecute(false); }
 TEST(CAPI, FunctionDefAndExecuteAsync) { FunctionDefAndExecute(true); }
 
-void BM_ExecuteFunction(int iters, int async) {
+void BM_ExecuteFunction(int iters, int is_async) {
   tensorflow::testing::StopTiming();
-  tensorflow::testing::SetLabel(async ? "ExecuteFunctionAsync"
+  tensorflow::testing::SetLabel(is_async ? "ExecuteFunctionAsync"
                                       : "ExecuteFunction");
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(is_async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1155,7 +1155,7 @@ void BM_ExecuteFunction(int iters, int async) {
     TFE_Execute(matmul, &retval[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
-  if (async) {
+  if (is_async) {
     TFE_ContextAsyncWait(ctx, status);
   }
   tensorflow::testing::StopTiming();

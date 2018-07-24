@@ -1729,8 +1729,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
 
       if (item.kernel_is_async) {
         // Asynchronous computes.
-        AsyncOpKernel* async = item.kernel->AsAsync();
-        DCHECK(async != nullptr);
+        AsyncOpKernel* is_async = item.kernel->AsAsync();
+        DCHECK(is_async != nullptr);
         launched_asynchronously = true;
         AsyncState* state =
             new AsyncState(params, tagged_node, &item, first_input, stats);
@@ -1781,7 +1781,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
           if (completed) Finish();
         };
         nodestats::SetOpStart(stats);
-        device->ComputeAsync(async, &state->ctx, done);
+        device->ComputeAsync(is_async, &state->ctx, done);
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);

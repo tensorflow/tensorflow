@@ -76,7 +76,7 @@ typedef enum TFE_ContextDevicePlacementPolicy {
 // Sets the default execution mode (sync/async). Note that this can be
 // overridden per thread using TFE_ContextSetAsyncForThread.
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
-                                                      unsigned char async);
+                                                      unsigned char is_async);
 
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
@@ -125,7 +125,7 @@ TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
 
 // Overrides the execution mode (sync/async) for the current thread.
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
-                                                        unsigned char async,
+                                                        unsigned char is_async,
                                                         TF_Status* status);
 
 // Causes the calling thread to block till all ops dispatched in async mode
@@ -184,7 +184,7 @@ TF_CAPI_EXPORT extern TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h,
 // that shares the underlying buffer. Otherwise, it currently requires at least
 // one of the source or destination devices to be CPU (i.e., for the source or
 // destination tensor to be placed in host memory).
-// If async execution is enabled, the copy may be enqueued and the call will
+// If asynchronous execution is enabled, the copy may be enqueued and the call will
 // return "non-ready" handle. Else, this function returns after the copy has
 // been done.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopyToDevice(
@@ -341,7 +341,7 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
 // the size of 'retvals' is less than the number of outputs. This call sets
 // *num_retvals to the number of outputs.
 //
-// If async execution is enabled, the call may simply enqueue the execution
+// If asynchronous execution is enabled, the call may simply enqueue the execution
 // and return "non-ready" handles in `retvals`. Note that any handles contained
 // in 'op' should not be mutated till the kernel execution actually finishes.
 //
@@ -374,7 +374,7 @@ TF_CAPI_EXPORT extern void TFE_ContextDisableRunMetadata(TFE_Context* ctx);
 // Populates the passed-in buffer with a serialized RunMetadata protocol buffer
 // containing any run metadata information accumulated so far and clears this
 // information.
-// If async mode is enabled, this call blocks till all currently pending ops are
+// If asynchronous mode is enabled, this call blocks till all currently pending ops are
 // done.
 TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
                                                         TF_Buffer* buf,

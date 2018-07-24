@@ -56,8 +56,7 @@ limitations under the License.
 
 struct TFE_ContextOptions {
   TF_SessionOptions session_options;
-  // true if async execution is enabled.
-  bool async = false;
+  bool is_async = false;
   TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_SILENT};
   tensorflow::ServerDef server_def;
 };
@@ -65,17 +64,17 @@ struct TFE_ContextOptions {
 struct TFE_Context {
   explicit TFE_Context(const tensorflow::SessionOptions& opts,
                        TFE_ContextDevicePlacementPolicy default_policy,
-                       bool async,
+                       bool is_async,
                        std::unique_ptr<tensorflow::DeviceMgr> device_mgr,
                        tensorflow::Rendezvous* rendezvous)
       : context(opts,
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
-                async, std::move(device_mgr), rendezvous) {}
+                is_async, std::move(device_mgr), rendezvous) {}
 
   explicit TFE_Context(
       const tensorflow::SessionOptions& opts,
-      TFE_ContextDevicePlacementPolicy default_policy, bool async,
+      TFE_ContextDevicePlacementPolicy default_policy, bool is_async,
       tensorflow::DeviceMgr* local_device_mgr,
       tensorflow::Rendezvous* rendezvous,
       std::unique_ptr<tensorflow::ServerInterface> server,
@@ -86,7 +85,7 @@ struct TFE_Context {
       : context(opts,
                 static_cast<tensorflow::ContextDevicePlacementPolicy>(
                     default_policy),
-                async, local_device_mgr, rendezvous, std::move(server),
+                is_async, local_device_mgr, rendezvous, std::move(server),
                 std::move(remote_eager_workers), std::move(remote_device_mgr),
                 remote_contexts) {}
 

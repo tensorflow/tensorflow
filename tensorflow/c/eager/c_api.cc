@@ -111,7 +111,7 @@ tensorflow::Status GetAllRemoteDevices(
 tensorflow::Status CreateRemoteContexts(
     const std::vector<string>& remote_workers, int64 rendezvous_id,
     const tensorflow::ServerDef& server_def,
-    tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    tensorflow::eager::EagerClientCache* remote_eager_workers, bool is_async,
     tensorflow::gtl::FlatMap<string, tensorflow::uint64>* remote_contexts) {
   for (int i = 0; i < remote_workers.size(); i++) {
     const string& remote_worker = remote_workers[i];
@@ -128,7 +128,7 @@ tensorflow::Status CreateRemoteContexts(
     *request.mutable_server_def() = server_def;
     request.mutable_server_def()->set_job_name(parsed_name.job);
     request.mutable_server_def()->set_task_index(parsed_name.task);
-    request.set_async(async);
+    request.set_async(is_async);
     auto* eager_client = remote_eager_workers->GetClient(remote_worker);
     if (eager_client == nullptr) {
       return tensorflow::errors::Internal(
@@ -203,7 +203,7 @@ tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
   tensorflow::gtl::FlatMap<string, tensorflow::uint64> remote_contexts;
   LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
       remote_workers, rendezvous_id, opts->server_def,
-      remote_eager_workers.get(), opts->async, &remote_contexts));
+      remote_eager_workers.get(), opts->is_async, &remote_contexts));
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(rendezvous_id);
@@ -222,7 +222,7 @@ tensorflow::Status NewRemoteAwareTFE_Context(const TFE_ContextOptions* opts,
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
   *ctx = new TFE_Context(opts->session_options.options, opts->policy,
-                         opts->async, device_mgr, r, std::move(server),
+                         opts->is_async, device_mgr, r, std::move(server),
                          std::move(remote_eager_workers),
                          std::move(remote_device_mgr), remote_contexts);
 
@@ -241,8 +241,8 @@ void TFE_ContextOptionsSetConfig(TFE_ContextOptions* options, const void* proto,
 }
 
 void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
-                                unsigned char async) {
-  options->async = async;
+                                unsigned char is_async) {
+  options->is_async = is_async;
 }
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
@@ -259,9 +259,9 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetServerDef(
 }
 
 TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
-                                                        unsigned char async,
+                                                        unsigned char is_async,
                                                         TF_Status* status) {
-  status->status = ctx->context.SetAsyncForThread(async);
+  status->status = ctx->context.SetAsyncForThread(is_async);
 }
 
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
@@ -285,7 +285,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       new tensorflow::IntraProcessRendezvous(device_mgr.get());
 
   return new TFE_Context(opts->session_options.options, opts->policy,
-                         opts->async, std::move(device_mgr), r);
+                         opts->is_async, std::move(device_mgr), r);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) { delete ctx; }
@@ -308,7 +308,7 @@ void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 }
 
 // Note: this function looks up a thread local policy. So it should be called in
-// the appropriate client thread. In particular, in async mode, it may not be
+// the appropriate client thread. In particular, in asynchronous mode, it may not be
 // safe to call this function from the async EagerExecutor threads.
 extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
     TFE_Context* ctx) {
