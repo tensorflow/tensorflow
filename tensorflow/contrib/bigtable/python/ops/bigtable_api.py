@@ -331,7 +331,7 @@ class BigtableTable(object):
     """Retrieves row (including values) from the Bigtable service at high speed.
 
     Rows with row-key prefixed by `prefix` will be retrieved. This method is
-    similar to `scan_prefix`, but by constrast performs multiple sub-scans in
+    similar to `scan_prefix`, but by contrast performs multiple sub-scans in
     parallel in order to achieve higher performance.
 
     Note: The dataset produced by this method is not deterministic!
@@ -390,7 +390,7 @@ class BigtableTable(object):
     """Retrieves rows (including values) from the Bigtable service.
 
     Rows with row-keys between `start` and `end` will be retrieved. This method
-    is similar to `scan_range`, but by constrast performs multiple sub-scans in
+    is similar to `scan_range`, but by contrast performs multiple sub-scans in
     parallel in order to achieve higher performance.
 
     Note: The dataset produced by this method is not deterministic!

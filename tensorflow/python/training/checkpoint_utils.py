@@ -316,7 +316,7 @@ def _set_checkpoint_initializer(variable,
 
     # pylint:disable=protected-access
     # We need special handling for `DistributedVariable`s as they contain
-    # mutliple actual variables. `assign` on a `DistributedVariable` returns a
+    # multiple actual variables. `assign` on a `DistributedVariable` returns a
     # combined `init_op` which contains initializers for all the contained
     # variables. We then set each underlying variable's `_initializer_op` using
     # the corresponding `init_op`.
