@@ -88,9 +88,9 @@ def extract_all_strings_from_event_trace(events):
              time.strftime('%F %T %z', time.localtime(evt.timestamp)) + ": "
 
     if evt.type == IpuTraceEvent.COMPILE_BEGIN:
-      evt_str = "Compile begin: " + evt.module_name + "\n"
+      evt_str = "Compile begin: " + evt.module_name.decode('utf-8') + "\n"
     elif evt.type == IpuTraceEvent.COMPILE_END:
-      evt_str = "Compile end: " + evt.module_name + "\n" + \
+      evt_str = "Compile end: " + evt.module_name.decode('utf-8') + "\n" + \
                 "Duration: " + str(evt.data_int) + " us\n" + \
                 evt.data_str.decode('utf-8')
     elif evt.type == IpuTraceEvent.HOST_TO_DEVICE_TRANSFER:
@@ -100,7 +100,7 @@ def extract_all_strings_from_event_trace(events):
       evt_str = "Device->Host\nHandle = " + evt.data_str.decode('utf-8') + "\n"
                 #"Bytes = " + str(evt.data_int)
     elif evt.type == IpuTraceEvent.LOAD_ENGINE:
-      evt_str = "Load engine: " + evt.module_name + "\n"
+      evt_str = "Load engine: " + evt.module_name.decode('utf-8') + "\n"
     elif evt.type == IpuTraceEvent.EXECUTE:
       evt_str = "Execute\n" + evt.data_str.decode('utf-8')
     else:
