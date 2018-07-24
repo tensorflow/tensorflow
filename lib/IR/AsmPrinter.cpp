@@ -63,14 +63,13 @@ public:
     return it->second;
   }
 
-  const DenseMap<const AffineMap *, int> &getAffineMapIds() const {
-    return affineMapIds;
-  }
+  ArrayRef<const AffineMap *> getAffineMapIds() const { return affineMapsById; }
 
 private:
   void recordAffineMapReference(const AffineMap *affineMap) {
     if (affineMapIds.count(affineMap) == 0) {
-      affineMapIds[affineMap] = nextAffineMapId++;
+      affineMapIds[affineMap] = affineMapsById.size();
+      affineMapsById.push_back(affineMap);
     }
   }
 
@@ -84,7 +83,7 @@ private:
   void visitOperation(const Operation *op);
 
   DenseMap<const AffineMap *, int> affineMapIds;
-  int nextAffineMapId = 0;
+  std::vector<const AffineMap *> affineMapsById;
 };
 } // end anonymous namespace
 
@@ -228,10 +227,10 @@ void ModulePrinter::printAffineMapReference(const AffineMap *affineMap) const {
 }
 
 void ModulePrinter::print(const Module *module) {
-  for (const auto &mapAndId : state.getAffineMapIds()) {
-    printAffineMapId(mapAndId.second);
+  for (const auto &map : state.getAffineMapIds()) {
+    printAffineMapId(state.getAffineMapId(map));
     os << " = ";
-    mapAndId.first->print(os);
+    map->print(os);
     os << '\n';
   }
   for (auto *fn : module->functionList)

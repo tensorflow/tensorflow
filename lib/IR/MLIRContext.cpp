@@ -669,11 +669,11 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
 
   // Check if we already have this affine expression.
   auto keyValue = std::make_tuple((unsigned)kind, lhs, rhs);
-  auto *&result = impl.affineExprs[keyValue];
+  auto **result = &impl.affineExprs[keyValue];
 
   // If we already have it, return that value.
-  if (result)
-    return result;
+  if (*result)
+    return *result;
 
   // Simplify the expression if possible.
   AffineExpr *simplified;
@@ -697,6 +697,9 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
     llvm_unreachable("unexpected binary affine expr");
   }
 
+  // The recursive calls above may have invalidated the 'result' pointer.
+  result = &impl.affineExprs[keyValue];
+
   // If simplified to a non-binary affine op expr, don't store it.
   if (simplified && !isa<AffineBinaryOpExpr>(simplified)) {
     // 'affineExprs' only contains uniqued AffineBinaryOpExpr's.
@@ -705,13 +708,13 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
 
   if (simplified)
     // We know that it's a binary op expression.
-    return result = simplified;
+    return *result = simplified;
 
   // On the first use, we allocate them into the bump pointer.
-  result = impl.allocator.Allocate<AffineBinaryOpExpr>();
+  *result = impl.allocator.Allocate<AffineBinaryOpExpr>();
   // Initialize the memory using placement new.
-  new (result) AffineBinaryOpExpr(kind, lhs, rhs);
-  return result;
+  new (*result) AffineBinaryOpExpr(kind, lhs, rhs);
+  return *result;
 }
 
 AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
