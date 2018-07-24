@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.contrib.autograph.converters import lists
 from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.contrib.autograph.lang import directives
+from tensorflow.contrib.autograph.lang import special_functions
 from tensorflow.contrib.autograph.pyct import anno
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.python.framework import dtypes
@@ -52,20 +53,18 @@ class ListTest(converter_testing.TestCase):
       return [1, 2, 3]
 
     with self.converted(test_fn, lists, {}) as result:
-      with self.test_session() as sess:
-        tl = result.test_fn()
-        r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(sess.run(r), [1, 2, 3])
+      self.assertAllEqual(result.test_fn(), [1, 2, 3])
 
   def test_list_append(self):
 
     def test_fn():
-      l = [1]
+      l = special_functions.tensor_list([1])
       l.append(2)
       l.append(3)
       return l
 
-    with self.converted(test_fn, lists, {}) as result:
+    ns = {'special_functions': special_functions}
+    with self.converted(test_fn, lists, ns) as result:
       with self.test_session() as sess:
         tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
@@ -74,11 +73,12 @@ class ListTest(converter_testing.TestCase):
   def test_list_pop(self):
 
     def test_fn():
-      l = [1, 2, 3]
+      l = special_functions.tensor_list([1, 2, 3])
       s = l.pop()
       return s, l
 
-    node, ctx = self.prepare(test_fn, {})
+    ns = {'special_functions': special_functions}
+    node, ctx = self.prepare(test_fn, ns)
     def_, = anno.getanno(node.body[0].body[0].targets[0],
                          anno.Static.ORIG_DEFINITIONS)
     def_.directives[directives.set_element_type] = {
@@ -87,7 +87,7 @@ class ListTest(converter_testing.TestCase):
     }
     node = lists.transform(node, ctx)
 
-    with self.compiled(node, {}, dtypes.int32) as result:
+    with self.compiled(node, ns, dtypes.int32) as result:
       with self.test_session() as sess:
         ts, tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
