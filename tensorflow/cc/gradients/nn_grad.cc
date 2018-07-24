@@ -47,6 +47,81 @@ Status SoftmaxGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Softmax", SoftmaxGrad);
 
+bool IsZero(const Scope& scope, Output grad) {
+  std::array<std::string, 2> zero_op_type_names{{"ZerosLike", "Zeros"}};
+  string op_type_name = grad.op().node()->type_string();
+  for (auto& zero_op_type_name: zero_op_type_names) {
+    if (op_type_name == zero_op_type_name) {
+      return true;
+    }
+  }
+  // the Operation we were provided is not named something obvious
+  // we need to actually look at its contents.
+  // the original python code did this by calling a utility function called
+  // tensor_util.constant_value. When you dig into tensor_tuil.constant_value
+  // it is a large number of 'if' statements that measure certain edge cases
+  // where it is possible to get the value of the tensor without actually
+  // evaluating it. There are many kinds of tensors that can not have this
+  // done.
+  // There is no C++ equivalent to tensor_util.constant_value so we do nothing
+  // for the moment.
+  return false;
+}
+
+Output BroadcastMul(const Scope& scope, Output vec, Output mat) {
+  /* Multiply after broadcasting vec to match dimensions of mat.
+     Args:
+       vec: A 1-D tensor of dimension [D0]
+       mat: A 2-D tensor of dimesnion [D0, D1]
+
+    Returns:
+      A tensor of dimension [D0, D1], the result fo vec * mat
+      we use an element for element multiply here.
+  */
+  auto reshaped = ExpandDims(scope, vec, -1);
+  return Multiply(scope, reshaped, mat);
+}
+
+Status SoftmaxCrossEntropyWithLogitsGrad(const Scope& scope,
+                                         const Operation& op,
+                                         const std::vector<Output>& grad_inputs,
+                                         std::vector<Output>* grad_outputs) {
+  // Softmax gradient with cross entropy logits function
+  // We multiply the backprop for cost with the gradients - op.output[1]
+  // There is no gradient for labels
+  auto logits =
+      op.input(0);  // the outputs of the network are at
+                    // input index 0. The "truth" labels are at index 1.
+  auto softmax_grad = op.output(1);
+
+  // The documentation for ops::SoftmaxCrossEntropyWithLogits says
+  // loss is the output at index 0, and backprop is the output at index 1
+  auto grad_loss = grad_inputs[0];
+  auto grad_grad = grad_inputs[1];
+
+  auto grad = BroadcastMul(scope, grad_loss, softmax_grad);
+  if (!IsZero(scope, grad_grad)) {
+    std::vector<int> axis;
+    auto logitsSoftmax = Softmax(scope, logits);
+
+    auto grad_gradExpand = ExpandDims(scope, grad_grad, 1);
+    auto logitsSoftMaxExpand = ExpandDims(scope, logitsSoftmax, 2);
+    auto matMulResult =
+        BatchMatMul(scope, grad_gradExpand, logitsSoftMaxExpand);
+    axis.push_back(1);
+    auto squeezeResult = Squeeze(scope, matMulResult, Squeeze::Axis(axis));
+    auto subtractionResult = Subtract(scope, grad_grad, squeezeResult);
+    auto multiplyResult = Multiply(scope, subtractionResult, logitsSoftmax);
+    grad = Add(scope, grad, multiplyResult);
+  }
+  auto minusLogSoftmax = Multiply(scope, LogSoftmax(scope, logits), -1.0f);
+  grad_outputs->push_back(grad);
+  grad_outputs->push_back(BroadcastMul(scope, grad_loss, minusLogSoftmax));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("SoftmaxCrossEntropyWithLogits",
+                     SoftmaxCrossEntropyWithLogitsGrad);
+
 Status LogSoftmaxGrad(const Scope& scope, const Operation& op,
                       const std::vector<Output>& grad_inputs,
                       std::vector<Output>* grad_outputs) {
@@ -195,9 +270,9 @@ Status MaxPool3DGradHelper(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   MaxPool3DGrad::Attrs grad_attrs;
-  auto dx = MaxPool3DGrad(scope, op.input(0), op.output(0), grad_inputs[0],
-                          ksize, strides, padding,
-                          grad_attrs.DataFormat(data_format));
+  auto dx =
+      MaxPool3DGrad(scope, op.input(0), op.output(0), grad_inputs[0], ksize,
+                    strides, padding, grad_attrs.DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -216,10 +291,9 @@ Status AvgPoolGradHelper(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   internal::AvgPoolGrad::Attrs grad_attrs;
-  auto dx =
-      internal::AvgPoolGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
-                            ksize, strides, padding,
-                            grad_attrs.DataFormat(data_format));
+  auto dx = internal::AvgPoolGrad(scope, Shape(scope, op.input(0)),
+                                  grad_inputs[0], ksize, strides, padding,
+                                  grad_attrs.DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }
@@ -238,9 +312,9 @@ Status AvgPool3DGradHelper(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
   AvgPool3DGrad::Attrs grad_attrs;
-  auto dx = AvgPool3DGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
-                          ksize, strides, padding,
-                          grad_attrs.DataFormat(data_format));
+  auto dx =
+      AvgPool3DGrad(scope, Shape(scope, op.input(0)), grad_inputs[0], ksize,
+                    strides, padding, grad_attrs.DataFormat(data_format));
   grad_outputs->push_back(dx);
   return scope.status();
 }
