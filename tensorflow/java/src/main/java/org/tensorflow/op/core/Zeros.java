@@ -28,7 +28,7 @@ public class Zeros<T> implements Op, Operand<T> {
    * @throws IllegalArgumentException if the tensor type or shape cannot be initialized with zeros.
    */
   public static <T> Zeros<T> create(Scope scope, Class<T> type, Shape shape) {
-    int numElements = (int) shape.numElements();
+    int numElements = shape.numElements();
     if (numElements < 0) {
       throw new IllegalArgumentException("Only shapes with known dimension sizes can be used with zeroed constants");
     }
