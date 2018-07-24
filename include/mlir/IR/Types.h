@@ -64,9 +64,13 @@ public:
   /// Return the LLVMContext in which this type was uniqued.
   MLIRContext *getContext() const { return context; }
 
-  /// Print the current type.
-  void print(raw_ostream &os) const;
-  void dump() const;
+  // Convenience predicates.  This is only for primitive types, derived types
+  // should use isa/dyn_cast.
+  bool isAffineInt() const { return getKind() == Kind::AffineInt; }
+  bool isBF16() const { return getKind() == Kind::BF16; }
+  bool isF16() const { return getKind() == Kind::F16; }
+  bool isF32() const { return getKind() == Kind::F32; }
+  bool isF64() const { return getKind() == Kind::F64; }
 
   // Convenience factories.
   static IntegerType *getInteger(unsigned width, MLIRContext *ctx);
@@ -75,6 +79,10 @@ public:
   static PrimitiveType *getF16(MLIRContext *ctx);
   static PrimitiveType *getF32(MLIRContext *ctx);
   static PrimitiveType *getF64(MLIRContext *ctx);
+
+  /// Print the current type.
+  void print(raw_ostream &os) const;
+  void dump() const;
 
 protected:
   explicit Type(Kind kind, MLIRContext *context)

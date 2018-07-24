@@ -28,7 +28,8 @@ bb42:       // CHECK: bb0:
   // CHECK: dim xxx, 2 : sometype
   %a = "dim"(%42){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
-  %f = "Const"(){value: 1} : () -> f32
+  %f = "FIXMEConst"(){value: 1} : () -> f32
+
   // CHECK: addf xx, yy : sometype
   "addf"(%f, %f) : (f32,f32) -> f32
 
@@ -40,9 +41,8 @@ bb42:       // CHECK: bb0:
 // CHECK-LABEL: cfgfunc @affine_apply() {
 cfgfunc @affine_apply() {
 bb0:
-  // TODO: Make constant work with affineint.
-  %i = "const"() {value: 0} : () -> affineint
-  %j = "const"() {value: 1} : () -> affineint
+  %i = "constant"() {value: 0} : () -> affineint
+  %j = "constant"() {value: 1} : () -> affineint
 
   // CHECK: affine_apply map: (d0) -> ((d0 + 1))
   %x = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :

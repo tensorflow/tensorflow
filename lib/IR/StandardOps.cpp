@@ -43,7 +43,7 @@ const char *ConstantOp::verify() const {
     return "requires a 'value' attribute";
 
   auto *type = this->getType();
-  if (isa<IntegerType>(type)) {
+  if (isa<IntegerType>(type) || type->isAffineInt()) {
     if (!isa<IntegerAttr>(value))
       return "requires 'value' to be an integer for an integer result type";
     return nullptr;
