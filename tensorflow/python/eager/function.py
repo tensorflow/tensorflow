@@ -470,37 +470,39 @@ class GraphModeFunction(object):
 
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
-    with self._graph.as_default():
-      c_known_ops = set()
-      c_captured_tensors = set()
-
-      existing_op_len = len(self._graph.get_operations())
-      filtered_outputs = [x for x in self._python_returns if x is not None]
+    filtered_outputs = [x for x in self._python_returns if x is not None]
+    captures = {}
+    backwards_graph = CapturingGraph(captures)
+    backwards_graph._graph_key = self._graph._graph_key  # pylint: disable=protected-access
+    for collection in self._graph.collections:
+      backwards_graph.get_collection_ref(
+          collection)[:] = self._graph.get_collection(collection)
+    backwards_graph.seed = self._graph.seed
+    with backwards_graph.as_default():
       self._out_grad_placeholders = [
           graph_placeholder(x.dtype, x.shape) for x in filtered_outputs]
-      in_gradients = gradients_impl.gradients(
+      in_gradients = gradients_impl._GradientsHelper(  # pylint: disable=protected-access
           filtered_outputs,
           self._input_placeholders,
-          grad_ys=self._out_grad_placeholders)
-      for op in self._graph.get_operations()[existing_op_len:]:
-        if op.type in ["Variable", "VariableV2", "VarHandleOp"]:
-          raise ValueError("defun cannot capture variables created without "
-                           "using tf.get_variable. Op: %s" % op)
-        c_known_ops.add(op)
-        for i in op.inputs:
-          if i.op not in c_known_ops:
-            c_captured_tensors.add(i)
+          grad_ys=self._out_grad_placeholders,
+          src_graph=self._graph)
 
     backward_outputs = tuple(
         grad for grad in _flatten(in_gradients) if grad is not None)
     output_shapes = tuple(grad.shape for grad in backward_outputs)
 
-    captures = list(sorted(c_captured_tensors, key=lambda x: x.name))
+    ids = list(sorted(captures.keys()))
+    if ids:
+      extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])
+    else:
+      extra_inputs = []
+      extra_placeholders = []
+
     forward_name = _forward_name(self._func_name)
     self._forward_fdef = _EagerDefinedFunction(
         forward_name, self._graph, self._ops, self._input_placeholders,
-        filtered_outputs + captures, self._attrs)
-    all_inputs = self._out_grad_placeholders + captures
+        filtered_outputs + list(extra_inputs), self._attrs)
+    all_inputs = self._out_grad_placeholders + list(extra_placeholders)
     # Excluding input ops from the body as we do not intend to execute these
     # operations when the function is executed.
     all_ignored_ops = frozenset(x.op for x in all_inputs)
@@ -508,11 +510,12 @@ class GraphModeFunction(object):
     # means rerunning the function-defining code will always define the same
     # function, which is useful if we serialize this etc.
     function_def_ops = tuple(x
-                             for x in sorted(c_known_ops, key=lambda x: x.name)
+                             for x in sorted(backwards_graph.get_operations(),
+                                             key=lambda x: x.name)
                              if x not in all_ignored_ops)
     bname = _backward_name(self._func_name)
     self._backward_function = GraphModeFunction(
-        bname, all_inputs, [], self._graph, function_def_ops,
+        bname, all_inputs, [], backwards_graph, function_def_ops,
         backward_outputs, in_gradients, output_shapes, attrs=self._attrs)
 
   def _backprop_call(self, args):
