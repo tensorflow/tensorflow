@@ -116,6 +116,36 @@ private:
   explicit DimOp(const Operation *state) : Base(state) {}
 };
 
+// The "affine_apply" operation applies an affine map to a list of operands,
+// yielding a list of results. The operand and result list sizes must be the
+// same. All operands and results are of type 'AffineInt'. This operation
+// requires a single affine map attribute named "map".
+// For example:
+//
+//   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
+//          (affineint) -> (affineint)
+//
+// TODO Add VariadicOperands/VariadicResults trait, and use them here
+// for getOperand/getResult accessors.
+class AffineApplyOp : public OpImpl::Base<AffineApplyOp> {
+public:
+  // Returns the affine map to be applied by this operation.
+  AffineMap *getAffineMap() const {
+    return getAttrOfType<AffineMapAttr>("map")->getValue();
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static StringRef getOperationName() { return "affine_apply"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+  void print(raw_ostream &os) const;
+
+private:
+  friend class Operation;
+  explicit AffineApplyOp(const Operation *state) : Base(state) {}
+};
+
 /// Install the standard operations in the specified operation set.
 void registerStandardOperations(OperationSet &opSet);
 

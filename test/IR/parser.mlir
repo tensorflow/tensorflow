@@ -112,22 +112,6 @@ mlfunc @mlfunc_with_args(%a : f16) {
   return  %a  // CHECK: return
 }
 
-// CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
-cfgfunc @cfgfunc_with_ops(f32) {
-bb0(%a : f32):
-  // CHECK: %1 = "getTensor"() : () -> tensor<4x4x?xf32>
-  %t = "getTensor"() : () -> tensor<4x4x?xf32>
-
-  // CHECK: dim xxx, 2 : sometype
-  %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
-
-  // CHECK: addf xx, yy : sometype
-  %x = "addf"(%a, %a) : (f32,f32) -> (f32)
-
-  // CHECK:   return
-  return
-}
-
 // CHECK-LABEL: mlfunc @loops() {
 mlfunc @loops() {
   // CHECK: for x = 1 to 100 step 2 {
@@ -172,24 +156,6 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"(){cfgfunc: [], i123: 7, if: "foo"} : () -> ()
   "foo"(){if: "foo", cfgfunc: [], i123: 7} : () -> ()
 
-  return
-}
-
-// CHECK-LABEL: cfgfunc @standard_instrs() {
-cfgfunc @standard_instrs() {
-bb42:       // CHECK: bb0:
-  // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
-  %42 = "getTensor"() : () -> tensor<4x4x?xf32>
-
-  // CHECK: dim xxx, 2 : sometype
-  %a = "dim"(%42){index: 2} : (tensor<4x4x?xf32>) -> affineint
-
-  %f = "Const"(){value: 1} : () -> f32
-  // CHECK: addf xx, yy : sometype
-  "addf"(%f, %f) : (f32,f32) -> f32
-
-  // TODO:   CHECK: FIXME: IMPLEMENT DEFAULT PRINTER
-  %x = "constant"(){value: 42} : () -> i32
   return
 }
 

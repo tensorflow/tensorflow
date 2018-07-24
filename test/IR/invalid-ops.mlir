@@ -33,3 +33,12 @@ bb:
   return
 }
 
+// -----
+
+cfgfunc @affine_apply_no_map() {
+bb0:
+  // TODO Make constant work with affineint.
+  %i = "const"() {value: 0} : () -> affineint
+  %x = "affine_apply" (%i) { } : (affineint) -> (affineint) //  expected-error {{'affine_apply' op requires an affine map.}}
+  return
+}

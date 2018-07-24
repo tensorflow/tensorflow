@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/StandardOps.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
@@ -89,7 +90,23 @@ const char *DimOp::verify() const {
   return nullptr;
 }
 
+void AffineApplyOp::print(raw_ostream &os) const {
+  os << "affine_apply map: ";
+  getAffineMap()->print(os);
+}
+
+const char *AffineApplyOp::verify() const {
+  // TODO: Check input and output dimensions match.
+
+  // Check that affine map attribute was specified
+  auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
+  if (!affineMapAttr)
+    return "requires an affine map.";
+
+  return nullptr;
+}
+
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
-  opSet.addOperations<AddFOp, ConstantOp, DimOp>(/*prefix=*/"");
+  opSet.addOperations<AddFOp, ConstantOp, DimOp, AffineApplyOp>(/*prefix=*/"");
 }
