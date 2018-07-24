@@ -735,6 +735,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
     ProfileResult best_result;
+    int64 best_result_scratch_size = 0;
     ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
@@ -753,6 +754,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
           if (profile_result.elapsed_time_in_ms() <
               best_result.elapsed_time_in_ms()) {
             best_result = profile_result;
+            best_result_scratch_size = scratch_allocator.TotalByteSize();
           }
           if (scratch_allocator.TotalByteSize() == 0 &&
               profile_result.elapsed_time_in_ms() <
@@ -769,6 +771,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                 errors::NotFound("No algorithm worked!"));
     if (best_result.is_valid()) {
       algorithm_config.set_algorithm(best_result.algorithm());
+      algorithm_config.set_algorithm_scratch_size(best_result_scratch_size);
     }
     if (best_result_no_scratch.is_valid()) {
       algorithm_config.set_algorithm_no_scratch(
@@ -792,6 +795,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                 errors::NotFound("Failed to find conv algorithm!"));
 
     algorithm_config.set_algorithm(profile_result.algorithm());
+    algorithm_config.set_algorithm_scratch_size(
+        scratch_allocator.TotalByteSize());
     // TODO - Add support for no-scratch algorithm
     algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
 #endif
