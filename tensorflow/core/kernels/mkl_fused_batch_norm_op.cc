@@ -715,15 +715,15 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   // BatchNormalization forward execute
   //   src_data:     input data buffer of src
   //   weights_data: input data buffer of weights
-  //   dst_data:    output data buffer of dst
-  //   mean_data:     input data buffer of means
-  //   variance_data: input data buffer of variances
-  void Execute(const T* src_data, const T* weights_data, const T* dst_data,
-      const T* mean_data, const T* variance_data) {
+  //   dst_data:     output data buffer of dst
+  //   mean_data:     output data buffer of means
+  //   variance_data: output data buffer of variances
+  void Execute(const T* src_data, const T* weights_data, T* dst_data,
+      T* mean_data, T* variance_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(dst_data)));
+        static_cast<void*>(dst_data));
 
     if (context_.flags & use_scale_shift)
       context_.weights_mem->set_data_handle(
@@ -732,9 +732,9 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     if ((context_.pkind == prop_kind::forward_training) ||
       (context_.flags & use_global_stats)) {
       context_.mean_mem->set_data_handle(
-          static_cast<void*>(const_cast<T*>(mean_data)));
+          static_cast<void*>(mean_data));
       context_.variance_mem->set_data_handle(
-          static_cast<void*>(const_cast<T*>(variance_data)));
+          static_cast<void*>(variance_data));
     }
 
     // execution
@@ -962,7 +962,7 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
   //   diff_weights_data:  output data buffer of diff_weights
   void Execute(const T* src_data, const T* mean_data, const T* variance_data,
       const T* diff_dst_data, const T* weights_data,
-      const T* diff_src_data, const T* diff_weights_data) {
+      T* diff_src_data, T* diff_weights_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.mean_mem->set_data_handle(
@@ -976,11 +976,11 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
       context_.weights_mem->set_data_handle(
           static_cast<void*>(const_cast<T*>(weights_data)));
       context_.diff_weights_mem->set_data_handle(
-          static_cast<void*>(const_cast<T*>(diff_weights_data)));
+          static_cast<void*>(diff_weights_data));
     }
 
     context_.diff_src_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(diff_src_data)));
+        static_cast<void*>(diff_src_data));
 
     // execution
     context_.bwd_stream->submit(context_.bwd_primitives);
@@ -1273,10 +1273,8 @@ class MklFusedBatchNormOp : public OpKernel {
       // <scale>...<scale><shift>...<shift>
       weights.AllocateBuffer(2 * depth_ * sizeof (T));
       T* weights_data =  reinterpret_cast<T*>(weights.GetAllocatedBuffer());
-      T* scale_tf =
-          reinterpret_cast<T*>(const_cast<T*>(scale_tensor.flat<T>().data()));
-      T* shift_tf =
-          reinterpret_cast<T*>(const_cast<T*>(shift_tensor.flat<T>().data()));
+      const T* scale_tf = scale_tensor.flat<T>().data();
+      const T* shift_tf = shift_tensor.flat<T>().data();
 
       std::memcpy(weights_data, scale_tf, depth_ * sizeof(T));
       std::memcpy(weights_data + depth_, shift_tf, depth_ * sizeof(T));
@@ -1297,16 +1295,14 @@ class MklFusedBatchNormOp : public OpKernel {
           MklFusedBatchNormFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // check if reorder is needed for src, weights, mean, variance
-      T* src_data = nullptr;
+      const T* src_data = src_tensor.flat<T>().data();
       if (src_md.data.format != bn_fwd->GetSrcFmt()) {
          src.SetUsrMem(src_md, &src_tensor);
          auto src_target = memory::primitive_desc({{src_dims}, MklDnnType<T>(),
               static_cast<memory::format>(bn_fwd->GetSrcFmt())}, cpu_engine);
          src.CheckReorderToOpMem(src_target);
-         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
-      } else {
-        src_data = static_cast<T*>(
-            const_cast<T*>(src_tensor.flat<T>().data()));
+         src_data = const_cast<T*>(
+             reinterpret_cast<T*>(src.GetOpMem().get_data_handle()));
       }
 
       // allocate output (dst) tensor; always set it as MKL-DNN layout
@@ -1325,19 +1321,16 @@ class MklFusedBatchNormOp : public OpKernel {
                                 tf_shape_dst, dnn_shape_dst);
 
       T* weights_op_data = weights_data;
-      T* mean_op_data = reinterpret_cast<T*>(
-          saved_mean_tensor->flat<T>().data());
-      T* variance_op_data = reinterpret_cast<T*>(
-          saved_variance_tensor->flat<T>().data());
-      T* dst_data = static_cast<T*>(dst_tensor->flat<T>().data());
+      T* mean_op_data = saved_mean_tensor->flat<T>().data();
+      T* variance_op_data = saved_variance_tensor->flat<T>().data();
+      T* dst_data = dst_tensor->flat<T>().data();
 
       // execution
       bn_fwd->Execute(src_data, weights_op_data, dst_data,
                       mean_op_data, variance_op_data);
 
       // copy batch_mean data
-      T* batch_mean_data_tf =
-          reinterpret_cast<T*>(batch_mean_tensor->flat<T>().data());
+      T* batch_mean_data_tf = batch_mean_tensor->flat<T>().data();
       std::memcpy(reinterpret_cast<char*>(batch_mean_data_tf),
                   reinterpret_cast<char*>(saved_mean_data_tf),
                   depth_ * sizeof(T));
@@ -1602,8 +1595,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
       // of scale, ..., scale, shift, ...., shift
       weights.AllocateBuffer(2 * depth_ * sizeof(T));
       T* weights_data_tf = reinterpret_cast<T*>(weights.GetAllocatedBuffer());
-      T* scale_tf =
-          reinterpret_cast<T*>(const_cast<T*>(scale_tensor.flat<T>().data()));
+      const T* scale_tf = scale_tensor.flat<T>().data();
       for (int k = 0; k < depth_; k++) {
         weights_data_tf[k] = scale_tf[k];
         weights_data_tf[k + depth_] = 0;
@@ -1617,36 +1609,31 @@ class MklFusedBatchNormGradOp : public OpKernel {
           MklFusedBatchNormBwdPrimitiveFactory<T>::Get(bwdParams);
 
       // check if src/diff_dst need to be reordered
-      T* src_data = nullptr;
+      const T* src_data = src_tensor.flat<T>().data();
       if (src_md.data.format != bn_bwd->GetSrcFmt()) {
         src.SetUsrMem(src_md, &src_tensor);
         auto src_target = memory::primitive_desc({{src_dims}, MklDnnType<T>(),
             static_cast<memory::format>(bn_bwd->GetSrcFmt())}, cpu_engine);
         src.CheckReorderToOpMem(src_target);
-        src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
-      } else {
-        src_data = static_cast<T*>(const_cast<T*>(
-                    src_tensor.flat<T>().data()));
+        src_data = const_cast<T*>(
+            reinterpret_cast<T*>(src.GetOpMem().get_data_handle()));
       }
 
-      T* diff_dst_data = nullptr;
+      const T* diff_dst_data = diff_dst_tensor.flat<T>().data();
       if (diff_dst_md.data.format != bn_bwd->GetDiffDstFmt()) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
         auto diff_dst_target = memory::primitive_desc({{diff_dst_dims},
             MklDnnType<T>(), static_cast<memory::format>(
             bn_bwd->GetDiffDstFmt())}, cpu_engine);
         diff_dst.CheckReorderToOpMem(diff_dst_target);
-        diff_dst_data = static_cast<T*>(
-                diff_dst.GetOpMem().get_data_handle());
-      } else {
-        diff_dst_data = static_cast<T*>(const_cast<T*>(
-                diff_dst_tensor.flat<T>().data()));
+        diff_dst_data = const_cast<T*>(
+            reinterpret_cast<T*>(diff_dst.GetOpMem().get_data_handle()));
       }
 
       // Indices of output tensors
       const size_t kDiffSrcIndex = 0;  // index of diff_src tensor
 
-      // allocate diff_src tensor, always set as MKL-DNN layout
+      // allocate output tensor: diff_src, always set as MKL-DNN layout
       MklDnnShape dnn_shape_diff_src;
       TensorShape tf_shape_diff_src;
       dnn_shape_diff_src.SetMklTensor(true);
@@ -1660,21 +1647,20 @@ class MklFusedBatchNormGradOp : public OpKernel {
       AllocateOutputSetMklShape(context, kDiffSrcIndex, &diff_src_tensor,
                                 tf_shape_diff_src, dnn_shape_diff_src);
 
-
       T* mean_data = static_cast<T*>(const_cast<T*>(
                          saved_mean_tensor.flat<T>().data()));
       T* variance_data = static_cast<T*>(const_cast<T*>(
                          saved_variance_tensor.flat<T>().data()));
       T* weights_data = weights_data_tf;
       T* diff_src_data = static_cast<T*>(
-                                      diff_src_tensor->flat<T>().data());
+                             diff_src_tensor->flat<T>().data());
       T* diff_weights_data = static_cast<T*>(
-                                diff_weights.GetAllocatedBuffer());
+                             diff_weights.GetAllocatedBuffer());
       // Execute
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
           weights_data, diff_src_data, diff_weights_data);
 
-      // allocate 4 output TF tensors
+      // allocate output TF tensors: diff_scale and diff_shift
       Tensor* diff_scale_tensor = nullptr;
       Tensor* diff_shift_tensor = nullptr;
       AllocateTFOutputs(context, scale_tensor.shape(), &diff_scale_tensor,
