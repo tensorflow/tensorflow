@@ -1506,17 +1506,13 @@ class _OutfeedHostCall(object):
     _OutfeedHostCall.validate(host_calls)
     ret = {}
     for name, host_call in host_calls.items():
-      # Isolate host call summary ops from main graph.
-      summary_collector = contrib_summary._SummaryOpsCollector()  # pylint: disable=protected-access
       host_fn, tensors = host_call
       if isinstance(tensors, (tuple, list)):
-        with summary_collector.capture():
-          ret[name] = host_fn(*tensors)
+        ret[name] = host_fn(*tensors)
       else:
         # Must be dict.
         try:
-          with summary_collector.capture():
-            ret[name] = host_fn(**tensors)
+          ret[name] = host_fn(**tensors)
         except TypeError as e:
           logging.warning(
               'Exception while calling %s: %s. It is likely the tensors '
@@ -1631,14 +1627,11 @@ class _OutfeedHostCall(object):
           # dimension.
           dequeue_ops[i] = array_ops.concat(dequeue_ops[i], axis=0)
 
-        # Isolate host call summary ops from main graph.
-        summary_collector = contrib_summary._SummaryOpsCollector()  # pylint: disable=protected-access
         if self._tensor_keys[name] is not None:
           # The user-provided eval_metrics[1] is a dict.
           dequeue_ops = dict(zip(self._tensor_keys[name], dequeue_ops))
           try:
-            with summary_collector.capture():
-              ret[name] = self._host_fns[name](**dequeue_ops)
+            ret[name] = self._host_fns[name](**dequeue_ops)
           except TypeError as e:
             logging.warning(
                 'Exception while calling %s: %s. It is likely the tensors '
@@ -1646,8 +1639,8 @@ class _OutfeedHostCall(object):
                 'function\'s arguments', name, e, name)
             raise e
         else:
-          with summary_collector.capture():
-            ret[name] = self._host_fns[name](*dequeue_ops)
+          ret[name] = self._host_fns[name](*dequeue_ops)
+
     return ret
 
 

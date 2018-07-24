@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for writer.py."""
+"""Tests for training_coordinator.py."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -573,58 +573,6 @@ class SessionBasedFileWriterTestCase(FileWriterTestCase):
 
     # No more files
     self.assertRaises(StopIteration, lambda: next(event_paths))
-
-  def testSesssionArgument_callableProvider(self):
-    logdir = self.get_temp_dir()
-    setup_writer = summary_ops_v2.create_file_writer(logdir=logdir)
-    with summary_ops_v2.always_record_summaries(), setup_writer.as_default():
-      summary1 = summary_ops_v2.scalar("one", 0.0, step=0)
-      summary2 = summary_ops_v2.scalar("two", 0.0, step=0)
-    sess1 = session.Session()
-    sess1.run(setup_writer.init())
-    sess1.run(summary1)
-    sess1.run(setup_writer.flush())
-    time.sleep(1.1)  # Ensure filename has a different timestamp
-    sess2 = session.Session()
-    sess2.run(setup_writer.init())
-    sess2.run(summary2)
-    sess2.run(setup_writer.flush())
-
-    # Using get_default_session as session provider should make this FileWriter
-    # send its summaries to the current default session's shared summary writer
-    # resource (initializing it as needed).
-    test_writer = writer.FileWriter(
-        session=ops.get_default_session, logdir=logdir)
-    with sess1.as_default():
-      test_writer.add_summary(self._createTaggedSummary("won"), 1)
-      test_writer.flush()
-    with sess2.as_default():
-      test_writer.add_summary(self._createTaggedSummary("too"), 1)
-      test_writer.flush()
-
-    event_paths = iter(sorted(glob.glob(os.path.join(logdir, "event*"))))
-
-    # First file should have tags "one", "won"
-    events = summary_iterator.summary_iterator(next(event_paths))
-    self.assertEqual("brain.Event:2", next(events).file_version)
-    self.assertEqual("one", next(events).summary.value[0].tag)
-    self.assertEqual("won", next(events).summary.value[0].tag)
-    self.assertRaises(StopIteration, lambda: next(events))
-
-    # Second file should have tags "two", "too"
-    events = summary_iterator.summary_iterator(next(event_paths))
-    self.assertEqual("brain.Event:2", next(events).file_version)
-    self.assertEqual("two", next(events).summary.value[0].tag)
-    self.assertEqual("too", next(events).summary.value[0].tag)
-    self.assertRaises(StopIteration, lambda: next(events))
-
-    # No more files
-    self.assertRaises(StopIteration, lambda: next(event_paths))
-
-  def testSessionArgument_notSessionOrCallable(self):
-    logdir = self.get_temp_dir()
-    self.assertRaises(
-        ValueError, lambda: writer.FileWriter(session=[], logdir=logdir))
 
 
 class FileWriterCacheTest(test.TestCase):

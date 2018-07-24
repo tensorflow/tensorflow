@@ -31,13 +31,12 @@ from tensorflow.python.client import timeline
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary.writer import writer
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.session_run_hook import SessionRunArgs
+from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -423,9 +422,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._steps_per_run = steps_per_run
 
   def begin(self):
-    self._summary_writer = writer.FileWriter(
-        self._checkpoint_dir, session=ops.get_default_session,
-        filename_suffix="")
+    self._summary_writer = SummaryWriterCache.get(self._checkpoint_dir)
     self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
     if self._global_step_tensor is None:
       raise RuntimeError(
@@ -434,12 +431,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       l.begin()
 
   def after_create_session(self, session, coord):
-    del coord
-    # Ensure summary writer resource has been initialized.
-    session.run(summary_ops_v2.summary_writer_initializer_op())
     global_step = session.run(self._global_step_tensor)
-    # Write graph and saver_def once graph is finalized, which isn't true yet
-    # in begin() since later hooks can still change the graph.
+    # We do write graph and saver_def at the first call of before_run.
+    # We cannot do this in begin, since we let other hooks to change graph and
+    # add variables in begin. Graph is finalized after all begin calls.
     training_util.write_graph(
         ops.get_default_graph().as_graph_def(add_shapes=True),
         self._checkpoint_dir,
@@ -449,9 +444,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     meta_graph_def = meta_graph.create_meta_graph_def(
         graph_def=graph.as_graph_def(add_shapes=True),
         saver_def=saver_def)
-    with ops.default_session(session):
-      self._summary_writer.add_graph(graph)
-      self._summary_writer.add_meta_graph(meta_graph_def)
+    self._summary_writer.add_graph(graph)
+    self._summary_writer.add_meta_graph(meta_graph_def)
     # The checkpoint saved here is the state at step "global_step".
     self._save(session, global_step)
     self._timer.update_last_triggered_step(global_step)
@@ -476,8 +470,6 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       self._save(session, last_step)
     for l in self._listeners:
       l.end(session, last_step)
-    with ops.default_session(session):
-      self._summary_writer.flush()
 
   def _save(self, session, step):
     """Saves the latest checkpoint, returns should_stop."""
@@ -487,12 +479,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       l.before_save(session, step)
 
     self._get_saver().save(session, self._save_path, global_step=step)
-    with ops.default_session(session):
-      self._summary_writer.add_session_log(
-          SessionLog(
-              status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
-          step)
-      self._summary_writer.flush()
+    self._summary_writer.add_session_log(
+        SessionLog(
+            status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
+        step)
 
     should_stop = False
     for l in self._listeners:
@@ -553,22 +543,12 @@ class StepCounterHook(session_run_hook.SessionRunHook):
 
   def begin(self):
     if self._summary_writer is None and self._output_dir:
-      self._summary_writer = writer.FileWriter(
-          self._output_dir, session=ops.get_default_session,
-          filename_suffix="")
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
     self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use StepCounterHook.")
     self._summary_tag = training_util.get_global_step().op.name + "/sec"
-
-  def after_create_session(self, session, coord):
-    del coord
-    # Reset any stale state in case we're recovering from a previous error.
-    session.run(summary_ops_v2.summary_writer_initializer_op())
-    self._last_global_step = None
-    self._global_step_check_count = 0
-    self._timer.reset()
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
@@ -582,6 +562,8 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     logging.info("%s: %g", self._summary_tag, steps_per_sec)
 
   def after_run(self, run_context, run_values):
+    _ = run_context
+
     stale_global_step = run_values.results
     if self._timer.should_trigger_for_step(
         stale_global_step + self._steps_per_run):
@@ -591,8 +573,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
         elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
             global_step)
         if elapsed_time is not None:
-          with ops.default_session(run_context.session):
-            self._log_and_record(elapsed_steps, elapsed_time, global_step)
+          self._log_and_record(elapsed_steps, elapsed_time, global_step)
 
     # Check whether the global step has been increased. Here, we do not use the
     # timer.last_triggered_step as the timer might record a different global
@@ -617,11 +598,6 @@ class StepCounterHook(session_run_hook.SessionRunHook):
       self._global_step_check_count = 0
 
     self._last_global_step = stale_global_step
-
-  def end(self, session):
-    if self._summary_writer is not None:
-      with ops.default_session(session):
-        self._summary_writer.flush()
 
 
 @tf_export("train.NanLossDuringTrainingError")
@@ -667,25 +643,6 @@ class NanTensorHook(session_run_hook.SessionRunHook):
 class SummarySaverHook(session_run_hook.SessionRunHook):
   """Saves summaries every N steps."""
 
-  _SUMMARY_PLACEHOLDER_COLLECTION = "_SUMMARY_SAVER_PLACEHOLDER"
-
-  @classmethod
-  def _set_placeholder(cls, placeholder):
-    """Sets a `tf.placeholder` to be fed by the first SummarySaverHook.
-
-    If a placeholder is provided, the first instance of SummarySaverHook in use
-    will feed it a boolean indicating whether summaries should be written,
-    according to the `save_steps` and `save_secs` parameters of that hook. This
-    makes the placeholder usable with `tf.contrib.summary.record_summaries_if`
-    to control `tf.contrib.summary` summary writing using the same schedule as
-    the `tf.summary` summary writing (which the hook controls directly).
-
-    Args:
-      placeholder: `tf.placeholder` for the first SummarySaverHook to feed
-    """
-    collection = ops.get_collection_ref(cls._SUMMARY_PLACEHOLDER_COLLECTION)
-    collection[:] = [placeholder]
-
   def __init__(self,
                save_steps=None,
                save_secs=None,
@@ -723,82 +680,53 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     self._scaffold = scaffold
     self._timer = SecondOrStepTimer(every_secs=save_secs,
                                     every_steps=save_steps)
-    self._placeholder = None
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
   def begin(self):
     if self._summary_writer is None and self._output_dir:
-      self._summary_writer = writer.FileWriter(
-          self._output_dir, filename_suffix="", session=ops.get_default_session)
-      # Designate the first SummarySaverHook to call begin() as the "primary"
-      # hook; it will control writing of v2 summaries via a placeholder bool.
-      collection = ops.get_collection_ref(self._SUMMARY_PLACEHOLDER_COLLECTION)
-      if collection:
-        self._placeholder = collection[0]
-        collection[:] = []
-    self._current_step = None
-    self._global_step_tensor = training_util.get_or_create_global_step()
+      self._summary_writer = SummaryWriterCache.get(self._output_dir)
+    self._next_step = None
+    self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
     if self._global_step_tensor is None:
       raise RuntimeError(
           "Global step should be created to use SummarySaverHook.")
 
-  def after_create_session(self, session, coord):
-    del coord
-    # Reset any stale state in case we're recovering from a previous error.
-    session.run(summary_ops_v2.summary_writer_initializer_op())
-    self._current_step = None
-    self._timer.reset()
-
-  def before_run(self, run_context):
-    # For the first run, record a SessionLog.START at the pre-run global step.
-    if self._current_step is None:
-      self._current_step = run_context.session.run(self._global_step_tensor)
-      with ops.default_session(run_context.session):
-        self._summary_writer.add_session_log(
-            SessionLog(status=SessionLog.START), self._current_step)
+  def before_run(self, run_context):  # pylint: disable=unused-argument
+    self._request_summary = (
+        self._next_step is None or
+        self._timer.should_trigger_for_step(self._next_step))
     requests = {"global_step": self._global_step_tensor}
-    self._request_summary = self._timer.should_trigger_for_step(
-        self._current_step)
     if self._request_summary:
-      self._timer.update_last_triggered_step(self._current_step)
       if self._get_summary_op() is not None:
         requests["summary"] = self._get_summary_op()
-    feeds = {}
-    if self._placeholder is not None and self._request_summary:
-      feeds[self._placeholder] = self._request_summary
-    args = SessionRunArgs(fetches=requests, feed_dict=feeds)
-    return args
+
+    return SessionRunArgs(requests)
 
   def after_run(self, run_context, run_values):
-    # Collect any legacy v1 summaries to emit.
-    summaries_to_emit = []
-    if self._summary_writer and self._request_summary:
-      for summary in run_values.results.get("summary", []):
-        # Skip None results corresponding to V2 summary operations.
-        if summary is not None:
-          summaries_to_emit.append(summary)
-    # Heuristically estimate current step as possibly-stale value plus one.
+    _ = run_context
+    if not self._summary_writer:
+      return
+
     stale_global_step = run_values.results["global_step"]
-    self._current_step = stale_global_step + 1
-    # Read the actual post-run global step if we need better accuracy because
-    # 1) we will request summaries on the next run (based on estimate now) and
-    #    must ensure we record an accurate "last triggered step" value, or
-    # 2) we have legacy v1 summaries to emit using the post-run step value.
-    # Note: we could have dealt with (1) separately in before_run() but by doing
-    # it here we can consolidate the reads in case both (1) and (2) apply.
-    near_next_trigger = self._timer.should_trigger_for_step(self._current_step)
-    if near_next_trigger or summaries_to_emit:
-      self._current_step = run_context.session.run(self._global_step_tensor)
-    # Emit any legacy v1 summaries.
-    if summaries_to_emit:
-      with ops.default_session(run_context.session):
-        for summary in summaries_to_emit:
-          self._summary_writer.add_summary(summary, self._current_step)
+    global_step = stale_global_step + 1
+    if self._next_step is None or self._request_summary:
+      global_step = run_context.session.run(self._global_step_tensor)
+
+    if self._next_step is None:
+      self._summary_writer.add_session_log(
+          SessionLog(status=SessionLog.START), global_step)
+
+    if self._request_summary:
+      self._timer.update_last_triggered_step(global_step)
+      if "summary" in run_values.results:
+        for summary in run_values.results["summary"]:
+          self._summary_writer.add_summary(summary, global_step)
+
+    self._next_step = global_step + 1
 
   def end(self, session=None):
-    if self._summary_writer and session:
-      with ops.default_session(session):
-        self._summary_writer.flush()
+    if self._summary_writer:
+      self._summary_writer.flush()
 
   def _get_summary_op(self):
     """Fetches the summary op either from self._summary_op or self._scaffold.
@@ -965,26 +893,18 @@ class ProfilerHook(session_run_hook.SessionRunHook):
       show_memory: `bool`, if True, add object snapshot events to the trace
           showing the sizes and lifetimes of tensors.
     """
-    self._output_dir = output_dir
     self._output_file = os.path.join(output_dir, "timeline-{}.json")
+    self._file_writer = SummaryWriterCache.get(output_dir)
     self._show_dataflow = show_dataflow
     self._show_memory = show_memory
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
 
   def begin(self):
-    self._file_writer = writer.FileWriter(
-        self._output_dir, filename_suffix="", session=ops.get_default_session)
     self._next_step = None
     self._global_step_tensor = training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
     if self._global_step_tensor is None:
       raise RuntimeError("Global step should be created to use ProfilerHook.")
-
-  def after_create_session(self, session, coord):
-    del coord
-    # Reset any stale state in case we're recovering from a previous error.
-    session.run(summary_ops_v2.summary_writer_initializer_op())
-    self._timer.reset()
 
   def before_run(self, run_context):
     self._request_summary = (
@@ -1005,10 +925,8 @@ class ProfilerHook(session_run_hook.SessionRunHook):
       self._save(global_step,
                  self._output_file.format(global_step),
                  run_values.run_metadata.step_stats)
-      with ops.default_session(run_context.session):
-        self._file_writer.add_run_metadata(run_values.run_metadata,
-                                           "step_%d" % global_step,
-                                           global_step=global_step)
+      self._file_writer.add_run_metadata(run_values.run_metadata,
+                                         "step_%d" % global_step)
 
     self._next_step = global_step + 1
 
@@ -1019,10 +937,6 @@ class ProfilerHook(session_run_hook.SessionRunHook):
       f.write(
           trace.generate_chrome_trace_format(
               show_dataflow=self._show_dataflow, show_memory=self._show_memory))
-
-  def end(self, session):
-    with ops.default_session(session):
-      self._file_writer.flush()
 
 
 def _as_graph_element(obj):
