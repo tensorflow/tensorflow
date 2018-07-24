@@ -287,6 +287,8 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
       TF_RETURN_IF_ERROR(
           reader.LookupSlice(tensor_name, parsed_slice, restored_tensor));
     }
+    // `restored_tensor` is allocated with output_type, which is the same with `dtypes`.
+    // Hence we validate the dtype of `restored_tensor` with `restored_dtype` here.
     if (restored_dtype != restored_tensor->dtype()) {
       return errors::InvalidArgument(
           "tensor_name = ", tensor_name, "; expected dtype ",
