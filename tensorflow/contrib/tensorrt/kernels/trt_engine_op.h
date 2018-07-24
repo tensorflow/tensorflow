@@ -60,6 +60,12 @@ class TRTEngineOp : public AsyncOpKernel {
   // Execute replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
 
+  // Execute the tensorrt engine. Returns whether we need to retry by running
+  // the native segment.
+  bool ExecuteTrtEngine(OpKernelContext* ctx, const int num_batch,
+                        nvinfer1::ICudaEngine* trt_engine_ptr,
+                        nvinfer1::IExecutionContext* trt_execution_context_ptr);
+
   // Allocate necessary resources for calibration
   Status AllocateCalibrationResources(OpKernelContext* ctx,
                                       TRTCalibrationResource** cr);
