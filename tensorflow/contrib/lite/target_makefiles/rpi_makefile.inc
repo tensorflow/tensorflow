@@ -1,5 +1,5 @@
 # Settings for Raspberry Pi.
-ifeq ($(CROSS),rpi)
+ifeq ($(TARGET),rpi)
   # Default to the architecture used on the Pi Two/Three (ArmV7), but override this
   # with TARGET_ARCH=armv6 to build for the Pi Zero or One.
   TARGET_ARCH := armv7l

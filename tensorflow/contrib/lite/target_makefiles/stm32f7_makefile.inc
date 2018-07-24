@@ -1,5 +1,5 @@
 # Settings for STM32F7 platforms.
-ifeq ($(CROSS), stm32f7)
+ifeq ($(TARGET), stm32f7)
   TARGET_ARCH := armf7
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 

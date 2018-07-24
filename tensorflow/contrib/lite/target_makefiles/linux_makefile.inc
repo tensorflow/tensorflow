@@ -1,5 +1,5 @@
 # Settings for Linux.
-ifeq ($(CROSS), linux)
+ifeq ($(TARGET), linux)
   CXXFLAGS += \
     -fPIC \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \

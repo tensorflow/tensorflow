@@ -1,5 +1,5 @@
 # Settings for iOS.
-ifeq ($(CROSS), ios)
+ifeq ($(TARGET), ios)
   BUILD_FOR_IOS_SIMULATOR := false
 	ifeq ($(TARGET_ARCH), x86_64)
 	  BUILD_FOR_IOS_SIMULATOR := true

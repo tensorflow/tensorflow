@@ -20,8 +20,8 @@ endif
 HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
 
 # Override these on the make command line to target a specific architecture. For example:
-# make -f tensorflow/contrib/lite/Makefile CROSS=rpi TARGET_ARCH=armv7l
-CROSS := $(HOST_OS)
+# make -f tensorflow/contrib/lite/Makefile TARGET=rpi TARGET_ARCH=armv7l
+TARGET := $(HOST_OS)
 TARGET_ARCH := $(HOST_ARCH)
 
 # These are the default libraries needed, but they can be added to or
@@ -51,7 +51,7 @@ CC_PREFIX :=
 include $(wildcard $(MAKEFILE_DIR)/target_makefiles/*_makefile.inc)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(CROSS)_$(TARGET_ARCH)/
+GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
