@@ -105,7 +105,7 @@ public final class Shape {
    * Returns the shape as an array.
    * 
    * <p>Each element represent the size of the dimension at the given index. For example,
-   * {@code shape.asArray()[4]} is equal to the size of the fourth dimension in this shape.
+   * {@code shape.asArray()[2]} is equal to the size of the third dimension of this shape.
    */
   public long[] asArray() {
     return shape;
