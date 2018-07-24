@@ -30,7 +30,7 @@ make_library() {
     lipo \
     tensorflow/contrib/lite/gen/ios_x86_64/lib/${1} \
     tensorflow/contrib/lite/gen/ios_armv7/lib/${1} \
-    tensorflow/contrib/lite/ios_armv7s/gen/lib/${1} \
+    tensorflow/contrib/lite/gen/ios_armv7s/lib/${1} \
     tensorflow/contrib/lite/gen/ios_arm64/lib/${1} \
     -create \
     -output tensorflow/contrib/lite/gen/lib/${1}
