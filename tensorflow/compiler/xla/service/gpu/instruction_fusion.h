@@ -36,6 +36,10 @@ class GpuInstructionFusion : public InstructionFusion {
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
+
+  // Maximum number of operands allowed on a single fusion node.  Exposed
+  // publicly mainly for tests.
+  static constexpr int64 kMaxOperandsPerFusion = 64;
 };
 
 }  // namespace gpu
