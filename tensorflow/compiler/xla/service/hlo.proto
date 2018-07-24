@@ -246,6 +246,7 @@ message BufferAllocationProto {
   bool is_thread_local = 3;
   bool is_tuple = 11;
   bool is_entry_computation_parameter = 5;
+  bool is_constant = 12;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
   bool maybe_live_out = 7;
