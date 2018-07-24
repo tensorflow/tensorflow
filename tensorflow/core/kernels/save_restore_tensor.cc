@@ -250,7 +250,7 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   // TODO(zongheng): consider measuring speed and issuing concurrent lookups
   // within a fixed memory budget.
   TensorShape restored_full_shape;
-  DataType restored_dtype;
+  DataType original_dtype;
   Tensor* restored_tensor = nullptr;
   for (auto i : sorted_name_idx) {
     const string& tensor_name = tensor_names_flat(i);
@@ -258,7 +258,15 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
 
     TF_RETURN_IF_ERROR(
         reader.LookupDtypeAndShape(tensor_name,
-                                   &restored_dtype, &restored_full_shape));
+                                   &original_dtype, &restored_full_shape));
+
+    // Precheck dtype.
+    if (dtypes[i] != original_dtype) {
+      return errors::InvalidArgument(
+          "tensor_name = ", tensor_name, "; expected dtype ",
+          DataTypeString(dtypes[i]), " does not equal original dtype ",
+          DataTypeString(original_dtype));
+    }
 
     if (shape_and_slice.empty()) {
       // Lookup the full tensor.
@@ -287,12 +295,10 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
       TF_RETURN_IF_ERROR(
           reader.LookupSlice(tensor_name, parsed_slice, restored_tensor));
     }
-    // `restored_tensor` is allocated with output_type, which is the same with `dtypes`.
-    // Hence we validate the dtype of `restored_tensor` with `restored_dtype` here.
-    if (restored_dtype != restored_tensor->dtype()) {
+    if (dtypes[i] != restored_tensor->dtype()) {
       return errors::InvalidArgument(
           "tensor_name = ", tensor_name, "; expected dtype ",
-          DataTypeString(restored_dtype), " does not equal restored dtype ",
+          DataTypeString(dtypes[i]), " does not equal restored dtype ",
           DataTypeString(restored_tensor->dtype()));
     }
   }
