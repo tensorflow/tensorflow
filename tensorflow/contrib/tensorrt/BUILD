@@ -390,6 +390,7 @@ cuda_py_tests(
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
         "test/unary_test.py",
+        # "test/rank_two_test.py",
         # "test/vgg_block_nchw_test.py",
         # "test/vgg_block_test.py",
     ],
