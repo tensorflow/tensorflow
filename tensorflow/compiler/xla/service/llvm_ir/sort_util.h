@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_SORT_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_SORT_UTIL_H_
 
+#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -23,10 +25,14 @@ limitations under the License.
 
 namespace xla {
 namespace llvm_ir {
-// Emits llvm IR to sort the 'dimension_to_sort' dimension of 'keys_array' into
-// ascending order.
+// Emits llvm IR to do pairwise comparisons/swaps in the 'dimension_to_sort'
+// dimension of 'keys_array'. All other dimensions are kept as-is. This
+// implements the inner loop of BitonicSort. If 'launch_dimensions' is nullptr,
+// the inner compare loop will not be parallelized.
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
-                       tensorflow::StringPiece name, llvm::IRBuilder<>* b);
+                       tensorflow::StringPiece name, llvm::Value* xor_mask,
+                       llvm::IRBuilder<>* b,
+                       const gpu::LaunchDimensions* launch_dimensions);
 }  // namespace llvm_ir
 }  // namespace xla
 
