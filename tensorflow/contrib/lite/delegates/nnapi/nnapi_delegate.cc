@@ -452,6 +452,18 @@ class NNAPIDelegateKernel {
         } else {
           return nullptr;
         }
+      case kTfLiteBuiltinL2Normalization: {
+        auto builtin =
+            reinterpret_cast<TfLiteL2NormParams*>(node->builtin_data);
+        if (builtin->activation != kTfLiteActNone) {
+          // NNAPI does not support activations
+          return nullptr;
+        }
+        return [](TfLiteContext* context, NNAPIOpBuilder* builder,
+                  TfLiteNode* node) -> ANeuralNetworksOperationType {
+          return ANEURALNETWORKS_L2_NORMALIZATION;
+        };
+      }
       case kTfLiteBuiltinTranspose:
         // Transpose requires NNAPI1.1. Also note that the permutation input
         // tensor value dictates the output dimensions.

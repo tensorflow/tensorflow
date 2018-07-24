@@ -278,25 +278,6 @@ def get_sync_optimizer():
       replicas_to_aggregate=1)
 
 
-def get_tensor_pool_fn(pool_size):
-
-  def tensor_pool_fn_impl(input_values):
-    return random_tensor_pool.tensor_pool(input_values, pool_size=pool_size)
-
-  return tensor_pool_fn_impl
-
-
-def get_tensor_pool_fn_for_infogan(pool_size):
-
-  def tensor_pool_fn_impl(input_values):
-    generated_data, generator_inputs = input_values
-    output_values = random_tensor_pool.tensor_pool(
-        [generated_data] + generator_inputs, pool_size=pool_size)
-    return output_values[0], output_values[1:]
-
-  return tensor_pool_fn_impl
-
-
 class GANModelTest(test.TestCase, parameterized.TestCase):
   """Tests for `gan_model`."""
 
@@ -344,7 +325,6 @@ class StarGANModelTest(test.TestCase):
 
   @staticmethod
   def create_input_and_label_tensor(batch_size, img_size, c_size, num_domains):
-
     input_tensor_list = []
     label_tensor_list = []
     for _ in range(num_domains):
@@ -356,7 +336,6 @@ class StarGANModelTest(test.TestCase):
     return input_tensor_list, label_tensor_list
 
   def test_generate_stargan_random_domain_target(self):
-
     batch_size = 8
     domain_numbers = 3
 
@@ -371,7 +350,6 @@ class StarGANModelTest(test.TestCase):
         self.assertEqual(1, np.max(target))
 
   def test_stargan_model_output_type(self):
-
     batch_size = 2
     img_size = 16
     c_size = 3
@@ -395,7 +373,6 @@ class StarGANModelTest(test.TestCase):
     self.assertTrue(callable(model.generator_fn))
 
   def test_stargan_model_generator_output(self):
-
     batch_size = 2
     img_size = 16
     c_size = 3
@@ -426,7 +403,6 @@ class StarGANModelTest(test.TestCase):
           reconstructed_data.shape)
 
   def test_stargan_model_discriminator_output(self):
-
     batch_size = 2
     img_size = 16
     c_size = 3
@@ -643,10 +619,7 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
   def test_tensor_pool(self, create_gan_model_fn):
     """Test tensor pool option."""
     model = create_gan_model_fn()
-    if isinstance(model, namedtuples.InfoGANModel):
-      tensor_pool_fn = get_tensor_pool_fn_for_infogan(pool_size=5)
-    else:
-      tensor_pool_fn = get_tensor_pool_fn(pool_size=5)
+    tensor_pool_fn = lambda x: random_tensor_pool.tensor_pool(x, pool_size=5)
     loss = train.gan_loss(model, tensor_pool_fn=tensor_pool_fn)
     self.assertIsInstance(loss, namedtuples.GANLoss)
 
@@ -655,6 +628,25 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
       variables.global_variables_initializer().run()
       for _ in range(10):
         sess.run([loss.generator_loss, loss.discriminator_loss])
+
+  def test_discriminator_only_sees_pool(self):
+    """Checks that discriminator only sees pooled values."""
+    def checker_gen_fn(_):
+      return constant_op.constant(0.0)
+    model = train.gan_model(
+        checker_gen_fn,
+        discriminator_model,
+        real_data=array_ops.zeros([]),
+        generator_inputs=random_ops.random_normal([]))
+    def tensor_pool_fn(_):
+      return (random_ops.random_uniform([]), random_ops.random_uniform([]))
+    def checker_dis_fn(inputs, _):
+      """Discriminator that checks that it only sees pooled Tensors."""
+      self.assertFalse(constant_op.is_constant(inputs))
+      return inputs
+    model = model._replace(
+        discriminator_fn=checker_dis_fn)
+    train.gan_loss(model, tensor_pool_fn=tensor_pool_fn)
 
   def test_doesnt_crash_when_in_nested_scope(self):
     with variable_scope.variable_scope('outer_scope'):
@@ -673,8 +665,8 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
 
 class TensorPoolAdjusteModelTest(test.TestCase):
 
-  def _check_tensor_pool_adjusted_model_outputs(self, tensor1, tensor2,
-                                                pool_size):
+  def _check_tensor_pool_adjusted_model_outputs(
+      self, tensor1, tensor2, pool_size):
     history_values = []
     with self.test_session(use_gpu=True) as sess:
       variables.global_variables_initializer().run()
@@ -691,25 +683,15 @@ class TensorPoolAdjusteModelTest(test.TestCase):
           # pool).
           self.assertTrue(any([(v == t2).all() for v in history_values]))
 
-  def _make_new_model_and_check(self, model, pool_size,
-                                pool_fn=get_tensor_pool_fn):
-    new_model = train._tensor_pool_adjusted_model(
-        model, pool_fn(pool_size=pool_size))
+  def _make_new_model_and_check(self, model, pool_size):
+    pool_fn = lambda x: random_tensor_pool.tensor_pool(x, pool_size=pool_size)
+    new_model = train._tensor_pool_adjusted_model(model, pool_fn)
     # 'Generator/dummy_g:0' and 'Discriminator/dummy_d:0'
     self.assertEqual(2, len(ops.get_collection(ops.GraphKeys.VARIABLES)))
     self.assertIsNot(new_model.discriminator_gen_outputs,
                      model.discriminator_gen_outputs)
 
     return new_model
-
-  def test_tensor_pool_adjusted_model_no_pool(self):
-    """Test `_tensor_pool_adjusted_model` for no pool size."""
-    model = create_gan_model()
-    new_model = train._tensor_pool_adjusted_model(model, None)
-
-    # Check values.
-    self.assertIs(new_model.discriminator_gen_outputs,
-                  model.discriminator_gen_outputs)
 
   def test_tensor_pool_adjusted_model_gan(self):
     """Test `_tensor_pool_adjusted_model` for gan model."""
@@ -726,8 +708,7 @@ class TensorPoolAdjusteModelTest(test.TestCase):
     """Test _tensor_pool_adjusted_model for infogan model."""
     pool_size = 5
     model = create_infogan_model()
-    new_model = self._make_new_model_and_check(
-        model, pool_size, pool_fn=get_tensor_pool_fn_for_infogan)
+    new_model = self._make_new_model_and_check(model, pool_size)
 
     # Check values.
     self.assertIsNot(new_model.predicted_distributions,

@@ -1304,6 +1304,13 @@ void LogAllRegisteredKernels();
 // Gets a list of all registered kernels.
 KernelList GetAllRegisteredKernels();
 
+// Gets a list of all registered kernels for which predicate returns true
+KernelList GetFilteredRegisteredKernels(
+    const std::function<bool(const KernelDef&)>& predicate);
+
+// Gets a list of all registered kernels for a given op
+KernelList GetRegisteredKernelsForOp(StringPiece op_name);
+
 namespace kernel_factory {
 
 class OpKernelRegistrar {

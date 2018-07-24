@@ -46,6 +46,9 @@ def main(_):
   checkpointer = tf.train.Checkpoint(
       optimizer=optimizer, model=model, optimizer_step=global_step)
 
+  if FLAGS.use_defun:
+    model.call = tfe.defun(model.call)
+
   if FLAGS.train_dir:
     summary_writer = tf.contrib.summary.create_file_writer(FLAGS.train_dir)
     if FLAGS.restore:
@@ -69,7 +72,7 @@ def main(_):
         acc_validation, loss_validation = evaluate(model, it_validation)
         print("Iter {}, "
               "training set accuracy {:.4f}, loss {:.4f}; "
-              "validation set accuracy {:.4f}, loss {:4.f}"
+              "validation set accuracy {:.4f}, loss {:.4f}; "
               "test accuracy {:.4f}, loss {:.4f}".format(
                   global_step.numpy(), acc_train, loss_train, acc_validation,
                   loss_validation, acc_test, loss_test))
@@ -81,11 +84,11 @@ def main(_):
       if FLAGS.train_dir:
         with summary_writer.as_default():
           with tf.contrib.summary.always_record_summaries():
-            tf.contrib.summary.scalar("Training accuracy", acc_train)
             tf.contrib.summary.scalar("Test accuracy", acc_test)
-            tf.contrib.summary.scalar("Training loss", loss_train)
             tf.contrib.summary.scalar("Test loss", loss_test)
             if FLAGS.validate:
+              tf.contrib.summary.scalar("Training accuracy", acc_train)
+              tf.contrib.summary.scalar("Training loss", loss_train)
               tf.contrib.summary.scalar("Validation accuracy", acc_validation)
               tf.contrib.summary.scalar("Validation loss", loss_validation)
 
@@ -240,5 +243,9 @@ if __name__ == "__main__":
       default="revnet-38",
       help="[Optional] Architecture of network. "
       "Other options include `revnet-110` and `revnet-164`")
+  flags.DEFINE_boolean(
+      "use_defun",
+      default=False,
+      help="[Optional] Use `tfe.defun` to boost performance.")
   FLAGS = flags.FLAGS
   tf.app.run(main)

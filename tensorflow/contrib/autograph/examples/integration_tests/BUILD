@@ -22,7 +22,17 @@ py_test(
         "keras_test.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "list_literals_test",
+    srcs = [
+        "list_literals_test.py",
+    ],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
     ],

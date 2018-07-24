@@ -176,6 +176,7 @@ cc_library(
         "mfcc.cc",
         "mul.cc",
         "neg.cc",
+        "pack.cc",
         "pad.cc",
         "pooling.cc",
         "pow.cc",
@@ -1147,6 +1148,20 @@ tf_cc_test(
         "no_oss",
         "tflite_not_portable_ios",
     ],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pack_test",
+    size = "small",
+    srcs = ["pack_test.cc"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:builtin_op_data",

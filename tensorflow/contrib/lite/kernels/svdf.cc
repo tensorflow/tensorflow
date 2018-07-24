@@ -16,7 +16,6 @@ limitations under the License.
 // SVDF op that compresses a fully connected op via low-rank matrix
 // factorization. See https://research.google.com/pubs/archive/43813.pdf for
 // details.
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
