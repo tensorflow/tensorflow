@@ -37,6 +37,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_summary_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
@@ -66,41 +67,39 @@ def should_record_summaries():
   return should_record_collection[0]
 
 
+@tf_contextlib.contextmanager
+def always_record_summaries():
+  """Sets the should_record_summaries Tensor to always true."""
+  with record_summaries_if(True):
+    yield
+
+
+@tf_contextlib.contextmanager
+def never_record_summaries():
+  """Sets the should_record_summaries Tensor to always false."""
+  with record_summaries_if(False):
+    yield
+
+
 # TODO(apassos) consider how to handle local step here.
 @tf_contextlib.contextmanager
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   if global_step is None:
     global_step = training_util.get_or_create_global_step()
-  collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  old = collection_ref[:]
-  try:
-    with ops.device("cpu:0"):
-      collection_ref[:] = [math_ops.equal(global_step % n, 0)]
+  with ops.device("cpu:0"):
+    on_nth_global_step = math_ops.equal(global_step % n, 0)
+  with record_summaries_if(on_nth_global_step):
     yield
-  finally:
-    collection_ref[:] = old
 
 
 @tf_contextlib.contextmanager
-def always_record_summaries():
-  """Sets the should_record_summaries Tensor to always true."""
+def record_summaries_if(bool_value):
+  """Sets the should_record_summaries Tensor to the given boolean value."""
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
   try:
-    collection_ref[:] = [True]
-    yield
-  finally:
-    collection_ref[:] = old
-
-
-@tf_contextlib.contextmanager
-def never_record_summaries():
-  """Sets the should_record_summaries Tensor to always false."""
-  collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
-  old = collection_ref[:]
-  try:
-    collection_ref[:] = [False]
+    collection_ref[:] = [bool_value]
     yield
   finally:
     collection_ref[:] = old
@@ -142,7 +141,6 @@ class SummaryWriter(object):
           gen_summary_ops.flush_summary_writer(self._resource)
       finally:
         context.context().summary_writer_resource = old
-
 
   def init(self):
     """Operation to initialize the summary writer resource."""
@@ -311,6 +309,9 @@ def _make_summary_writer(name, factory, **kwargs):
     # TODO(apassos): Consider doing this instead.
     #   ops.get_default_session().run(init_op)
     ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, init_op)
+    # TODO(nickfelt): expose an actual op for this
+    is_initialized_op = constant_op.constant(True)
+    resources.register_resource(resource, init_op, is_initialized_op)
   return SummaryWriter(resource, init_op_fn)
 
 
@@ -323,6 +324,27 @@ def _cleanse_string(name, pattern, value):
 def _nothing():
   """Convenient else branch for when summaries do not record."""
   return constant_op.constant(False)
+
+
+class _SummaryOpsCollector(object):
+  """Defines a context manager for isolating out a subset of summary ops.
+
+  Summary ops defined within this context will be accumulated within this
+  collector instead of being added to the graph-wide summary ops collection that
+  is returned by {@tf.contrib.summary.all_summary_ops}.
+  """
+
+  def __init__(self):
+    self.collected_ops = []
+
+  @tf_contextlib.contextmanager
+  def capture(self):
+    collection_ref = ops.get_collection_ref(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
+    original_ops = collection_ref[:]
+    collection_ref[:] = []
+    yield
+    self.collected_ops = collection_ref[:]
+    collection_ref[:] = original_ops
 
 
 def all_summary_ops():

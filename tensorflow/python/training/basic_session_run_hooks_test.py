@@ -19,8 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import os.path
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -28,6 +30,9 @@ import time
 from tensorflow.contrib.framework.python.framework import checkpoint_utils
 from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.testing.python.framework import fake_summary_writer
+from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -35,9 +40,12 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -45,11 +53,25 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.summary import summary as summary_lib
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session
+from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
+
+
+def load_eventfile_contents(directory_path):
+  """Returns the contents of the singular event file in the given directory."""
+  writer_cache.FileWriterCache.clear()
+
+  # Get last Event written.
+  event_paths = glob.glob(os.path.join(directory_path, '*tfevent*'))
+  if len(event_paths) != 1:
+    raise AssertionError('Expected one eventfile, got %s' % str(event_paths))
+  result = list(summary_iterator.summary_iterator(event_paths[0]))
+  return result
 
 
 class MockCheckpointSaverListener(
@@ -717,11 +739,12 @@ class CheckpointSaverHookTest(test.TestCase):
                          checkpoint_utils.load_variable(self.model_dir,
                                                         self.global_step.name))
 
-  def test_summary_writer_defs(self):
-    fake_summary_writer.FakeSummaryWriter.install()
-    writer_cache.FileWriterCache.clear()
-    summary_writer = writer_cache.FileWriterCache.get(self.model_dir)
+  def _assertCheckpointEvent(self, event, step, checkpoint_path):
+    self.assertEqual(step, event.step)
+    self.assertEqual(SessionLog.CHECKPOINT, event.session_log.status)
+    self.assertEqual(checkpoint_path, event.session_log.checkpoint_path)
 
+  def test_summary_writer_defs(self):
     with self.graph.as_default():
       hook = basic_session_run_hooks.CheckpointSaverHook(
           self.model_dir, save_steps=2, scaffold=self.scaffold)
@@ -730,18 +753,40 @@ class CheckpointSaverHookTest(test.TestCase):
       with session_lib.Session() as sess:
         sess.run(self.scaffold.init_op)
         mon_sess = monitored_session._HookedSession(sess, [hook])
-        hook.after_create_session(sess, None)
-        mon_sess.run(self.train_op)
-      summary_writer.assert_summaries(
-          test_case=self,
-          expected_logdir=self.model_dir,
-          expected_added_meta_graphs=[
-              meta_graph.create_meta_graph_def(
-                  graph_def=self.graph.as_graph_def(add_shapes=True),
-                  saver_def=self.scaffold.saver.saver_def)
-          ])
+        hook.after_create_session(sess, None)  # Checkpoint saved at step 0.
+        expected_graph_def = self.graph.as_graph_def(add_shapes=True)
+        expected_meta_graph_def = meta_graph.create_meta_graph_def(
+            graph_def=expected_graph_def,
+            saver_def=self.scaffold.saver.saver_def)
+        mon_sess.run(self.train_op)  # No checkpoint saved at step 1.
+        mon_sess.run(self.train_op)  # Checkpoint saved at step 2.
+        mon_sess.run(self.train_op)  # No checkpoint saved at step 3.
+        hook.end(sess)    # Checkpoint saved at the last step (3)
+    events = iter(load_eventfile_contents(self.model_dir))
+    next(events)  # Skip version event that's always there.
 
-    fake_summary_writer.FakeSummaryWriter.uninstall()
+    # Graph.
+    event = next(events)
+    self.assertEqual(0, event.step)
+    actual_graph_def = graph_pb2.GraphDef()
+    actual_graph_def.ParseFromString(event.graph_def)
+    test_util.assert_equal_graph_def(actual_graph_def, expected_graph_def)
+
+    # Metagraph.
+    event = next(events)
+    self.assertEqual(0, event.step)
+    actual_meta_graph_def = meta_graph_pb2.MetaGraphDef()
+    actual_meta_graph_def.ParseFromString(event.meta_graph_def)
+    test_util.assert_meta_graph_protos_equal(
+        self, expected_meta_graph_def, actual_meta_graph_def)
+
+    # Checkpoints.
+    # Strip the "-step#" suffix off the latest checkpoint to get base path.
+    checkpoint_path = saver.latest_checkpoint(self.model_dir).rsplit('-', 1)[0]
+    self._assertCheckpointEvent(next(events), 0, checkpoint_path)
+    self._assertCheckpointEvent(next(events), 2, checkpoint_path)
+    self._assertCheckpointEvent(next(events), 3, checkpoint_path)
+    self.assertRaises(StopIteration, lambda: next(events))  # No more events.
 
   def test_save_checkpoint_before_first_train_step(self):
     with self.graph.as_default():
@@ -1102,167 +1147,305 @@ class StepCounterHookTest(test.TestCase):
         self.assertEqual('global_step/sec', summary_value.tag)
         self.assertGreater(summary_value.simple_value, 0)
 
+  def test_summary_writer(self):
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      variables.get_or_create_global_step()
+      train_op = training_util._increment_global_step(1)
+      hook = basic_session_run_hooks.StepCounterHook(
+          output_dir=self.log_dir, every_n_steps=10)
+      hook.begin()
+      sess.run(variables_lib.global_variables_initializer())
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      for _ in range(30):
+        mon_sess.run(train_op)
+      hook.end(sess)
+    events = iter(load_eventfile_contents(self.log_dir))
+    next(events)  # Skip version event that's always there.
+
+    event = next(events)
+    self.assertEqual(11, event.step)
+    self.assertEqual('global_step/sec', event.summary.value[0].tag)
+    self.assertLess(0, event.summary.value[0].simple_value)
+
+    event = next(events)
+    self.assertEqual(21, event.step)
+    self.assertEqual('global_step/sec', event.summary.value[0].tag)
+    self.assertLess(0, event.summary.value[0].simple_value)
+
+    self.assertRaises(StopIteration, lambda: next(events))  # No more events.
+
 
 class SummarySaverHookTest(test.TestCase):
 
   def setUp(self):
     test.TestCase.setUp(self)
+    self.logdir = self.get_temp_dir()
+    self._create_stable_global_step()
 
-    self.log_dir = 'log/dir'
-    self.summary_writer = fake_summary_writer.FakeSummaryWriter(self.log_dir)
-
-    var = variables_lib.Variable(0.0)
-    tensor = state_ops.assign_add(var, 1.0)
-    tensor2 = tensor * 2
-    self.summary_op = summary_lib.scalar('my_summary', tensor)
-    self.summary_op2 = summary_lib.scalar('my_summary2', tensor2)
-
-    variables.get_or_create_global_step()
-    self.train_op = training_util._increment_global_step(1)
+  def _create_stable_global_step(self):
+    """Returns a new ResourceVariable global_step for deterministic tests."""
+    # TODO(nickfelt): remove after standard global_step is a ResourceVariable.
+    with ops.get_default_graph().name_scope(None):
+      return variable_scope.get_variable(
+          ops.GraphKeys.GLOBAL_STEP,
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          collections=[
+              ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP
+          ],
+          # Use a ResourceVariable and set caching_device to make the read
+          # behavior deterministic and well-defined.
+          caching_device='cpu:0',
+          use_resource=True)
 
   def test_raise_when_scaffold_and_summary_op_both_missing(self):
     with self.assertRaises(ValueError):
       basic_session_run_hooks.SummarySaverHook()
 
   def test_raise_when_scaffold_and_summary_op_both_present(self):
+    summary_op = summary_lib.merge_all()
     with self.assertRaises(ValueError):
       basic_session_run_hooks.SummarySaverHook(
-          scaffold=monitored_session.Scaffold(), summary_op=self.summary_op)
+          scaffold=monitored_session.Scaffold(), summary_op=summary_op)
 
-  def test_raise_in_both_secs_and_steps(self):
+  def test_raise_when_secs_and_steps_both_missing(self):
     with self.assertRaises(ValueError):
       basic_session_run_hooks.SummarySaverHook(
-          save_secs=10, save_steps=20, summary_writer=self.summary_writer)
+          save_secs=None, save_steps=None, output_dir=self.logdir)
 
-  def test_raise_in_none_secs_and_steps(self):
+  def test_raise_when_secs_and_steps_both_present(self):
     with self.assertRaises(ValueError):
       basic_session_run_hooks.SummarySaverHook(
-          save_secs=None, save_steps=None, summary_writer=self.summary_writer)
+          save_secs=10, save_steps=20, output_dir=self.logdir)
 
-  def test_save_steps(self):
-    hook = basic_session_run_hooks.SummarySaverHook(
-        save_steps=8,
-        summary_writer=self.summary_writer,
-        summary_op=self.summary_op)
+  def _makeHook(self, **kwargs):
+    kwargs['output_dir'] = self.logdir
+    kwargs['scaffold'] = monitored_session.Scaffold()
+    return basic_session_run_hooks.SummarySaverHook(**kwargs)
 
+  def _runForSteps(self, hook, steps, loop_body_fn=None):
+    train_op = training_util.get_global_step().assign_add(1)
     with self.test_session() as sess:
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
+      scaffold = hook._scaffold  # pylint: disable=protected-access
+      if scaffold is not None:
+        scaffold.finalize()
+        sess.run(scaffold.init_op)
       mon_sess = monitored_session._HookedSession(sess, [hook])
-      for _ in range(30):
-        mon_sess.run(self.train_op)
+      for _ in range(steps):
+        mon_sess.run(train_op)
+        if loop_body_fn is not None:
+          loop_body_fn()
       hook.end(sess)
 
-    self.summary_writer.assert_summaries(
-        test_case=self,
-        expected_logdir=self.log_dir,
-        expected_summaries={
-            1: {
-                'my_summary': 1.0
-            },
-            9: {
-                'my_summary': 2.0
-            },
-            17: {
-                'my_summary': 3.0
-            },
-            25: {
-                'my_summary': 4.0
-            },
-        })
+  def _assertSessionEvent(self, event, step, session_status):
+    self.assertEqual(step, event.step)
+    self.assertEqual(session_status, event.session_log.status)
+
+  def _assertSummaryEvent(self, event, step, tag_value_list):
+    self.assertEqual(step, event.step)
+    tag_value_actual_list = [
+        (value.tag, value.simple_value) for value in event.summary.value
+    ]
+    self.assertItemsEqual(tag_value_list, tag_value_actual_list)
+
+  def test_no_summaries(self):
+    hook = self._makeHook(save_steps=1)
+    self._runForSteps(hook, 3)
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+    self.assertRaises(StopIteration, lambda: next(events))
+
+  def test_basic_summaries(self):
+    summary_lib.scalar('foo-v1', 1.0)
+    with summary_ops_v2.create_file_writer(self.logdir).as_default():
+      with summary_ops_v2.always_record_summaries():
+        summary_ops_v2.scalar('foo-v2', 2.0)
+    hook = self._makeHook(save_steps=1)
+    self._runForSteps(hook, 3)
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 1, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 1, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 2, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 2, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 3, [('foo-v1', 1.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
 
   def test_multiple_summaries(self):
-    hook = basic_session_run_hooks.SummarySaverHook(
-        save_steps=8,
-        summary_writer=self.summary_writer,
-        summary_op=[self.summary_op, self.summary_op2])
+    summary_lib.scalar('foo-v1', 1.0)
+    summary_lib.scalar('bar-v1', 10.0)
+    with summary_ops_v2.create_file_writer(self.logdir).as_default():
+      with summary_ops_v2.always_record_summaries():
+        foo = summary_ops_v2.scalar('foo-v2', 2.0)
+        # Ensure deterministic write order
+        with ops.control_dependencies([foo]):
+          summary_ops_v2.scalar('bar-v2', 20.0)
+    hook = self._makeHook(save_steps=1)
+    self._runForSteps(hook, 1)
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 0, [('bar-v2', 20.0)])
+    self._assertSummaryEvent(
+        next(events), 1, [('foo-v1', 1.0), ('bar-v1', 10.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
 
+  def test_v2_summaries_only(self):
+    with summary_ops_v2.create_file_writer(self.logdir).as_default():
+      with summary_ops_v2.always_record_summaries():
+        summary_ops_v2.scalar('foo-v2', 2.0)
+    hook = self._makeHook(save_steps=1)
+    self._runForSteps(hook, 1)
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
+
+  def test_v2_summaries_custom_file_writer(self):
+    other_dir = os.path.join(self.logdir, 'other')
+    other_writer = summary_ops_v2.create_file_writer(other_dir)
+    # SummarySaverHook only flushes the writer for logdir; this one needs to be
+    # manually flushed.
+    flush_op = other_writer.flush()
+    with summary_ops_v2.always_record_summaries():
+      with summary_ops_v2.create_file_writer(self.logdir).as_default():
+        summary_ops_v2.scalar('foo-v2', 2.0)
+      with other_writer.as_default():
+        summary_ops_v2.scalar('other-v2', 3.0)
+    hook = self._makeHook(save_steps=1)
+    self._runForSteps(hook, 1)
     with self.test_session() as sess:
-      hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
-      mon_sess = monitored_session._HookedSession(sess, [hook])
-      for _ in range(10):
-        mon_sess.run(self.train_op)
-      hook.end(sess)
+      sess.run(flush_op)
 
-    self.summary_writer.assert_summaries(
-        test_case=self,
-        expected_logdir=self.log_dir,
-        expected_summaries={
-            1: {
-                'my_summary': 1.0,
-                'my_summary2': 2.0
-            },
-            9: {
-                'my_summary': 2.0,
-                'my_summary2': 4.0
-            },
-        })
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
 
-  def test_save_secs_saving_once_every_step(self):
-    hook = basic_session_run_hooks.SummarySaverHook(
-        save_secs=0.5,
-        summary_writer=self.summary_writer,
-        summary_op=self.summary_op)
+    events = iter(load_eventfile_contents(other_dir))
+    next(events)  # Skip version event that's always there.
+    self._assertSummaryEvent(next(events), 0, [('other-v2', 3.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
 
-    with self.test_session() as sess:
-      hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
-      mon_sess = monitored_session._HookedSession(sess, [hook])
-      for _ in range(4):
-        mon_sess.run(self.train_op)
-        time.sleep(0.5)
-      hook.end(sess)
+  def test_save_steps(self):
+    summary_lib.scalar('foo-v1', 1.0)
+    placeholder = array_ops.placeholder_with_default(False, shape=[])
+    with summary_ops_v2.create_file_writer(self.logdir).as_default():
+      with summary_ops_v2.record_summaries_if(placeholder):
+        summary_ops_v2.scalar('foo-v2', 2.0)
 
-    self.summary_writer.assert_summaries(
-        test_case=self,
-        expected_logdir=self.log_dir,
-        expected_summaries={
-            1: {
-                'my_summary': 1.0
-            },
-            2: {
-                'my_summary': 2.0
-            },
-            3: {
-                'my_summary': 3.0
-            },
-            4: {
-                'my_summary': 4.0
-            },
-        })
+    basic_session_run_hooks.SummarySaverHook._set_placeholder(placeholder)
+    hook = self._makeHook(save_steps=8)
+    self._runForSteps(hook, 30)
+
+    events = load_eventfile_contents(self.logdir)
+    print('TEST SAVE STEPS EVENTS', str(events), file=sys.stderr)
+    events = iter(events)
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 1, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 8, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 9, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 16, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 17, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 24, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 25, [('foo-v1', 1.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
+
+  @test.mock.patch.object(time, 'time')
+  def test_save_secs_saving_once_every_step(self, mock_time):
+    mock_time.return_value = 1000.0
+    summary_lib.scalar('foo-v1', 1.0)
+    placeholder = array_ops.placeholder_with_default(False, shape=[])
+    with summary_ops_v2.create_file_writer(self.logdir).as_default():
+      with summary_ops_v2.record_summaries_if(placeholder):
+        summary_ops_v2.scalar('foo-v2', 2.0)
+
+    basic_session_run_hooks.SummarySaverHook._set_placeholder(placeholder)
+    hook = self._makeHook(save_secs=0.5)
+    def fake_sleep():
+      mock_time.return_value += 0.5
+    self._runForSteps(hook, 4, fake_sleep)
+
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
+
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 1, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 1, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 2, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 2, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 3, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 3, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 4, [('foo-v1', 1.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
 
   @test.mock.patch.object(time, 'time')
   def test_save_secs_saving_once_every_three_steps(self, mock_time):
-    mock_time.return_value = 1484695987.209386
-    hook = basic_session_run_hooks.SummarySaverHook(
-        save_secs=9.,
-        summary_writer=self.summary_writer,
-        summary_op=self.summary_op)
+    mock_time.return_value = 1000.0
+    summary_lib.scalar('foo-v1', 1.0)
+    placeholder = array_ops.placeholder_with_default(False, shape=[])
+    with summary_ops_v2.create_file_writer(self.logdir).as_default():
+      with summary_ops_v2.record_summaries_if(placeholder):
+        summary_ops_v2.scalar('foo-v2', 2.0)
 
-    with self.test_session() as sess:
-      hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
-      mon_sess = monitored_session._HookedSession(sess, [hook])
-      for _ in range(8):
-        mon_sess.run(self.train_op)
-        mock_time.return_value += 3.1
-      hook.end(sess)
+    basic_session_run_hooks.SummarySaverHook._set_placeholder(placeholder)
+    hook = self._makeHook(save_secs=9)
+    def fake_sleep():
+      mock_time.return_value += 3.1
+    self._runForSteps(hook, 8, fake_sleep)
+
+    events = iter(load_eventfile_contents(self.logdir))
+    next(events)  # Skip version event that's always there.
+    self._assertSessionEvent(next(events), 0, SessionLog.START)
 
     # 24.8 seconds passed (3.1*8), it saves every 9 seconds starting from first:
-    self.summary_writer.assert_summaries(
+    self._assertSummaryEvent(next(events), 0, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 1, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 3, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 4, [('foo-v1', 1.0)])
+
+    self._assertSummaryEvent(next(events), 6, [('foo-v2', 2.0)])
+    self._assertSummaryEvent(next(events), 7, [('foo-v1', 1.0)])
+    self.assertRaises(StopIteration, lambda: next(events))
+
+  def test_explicit_summary_writer_and_op(self):
+    summary_writer = fake_summary_writer.FakeSummaryWriter(self.logdir)
+    hook = basic_session_run_hooks.SummarySaverHook(
+        save_steps=1,
+        summary_writer=summary_writer,
+        summary_op=summary_lib.scalar('foo-v1', 1.0))
+    self._runForSteps(hook, 3)
+    summary_writer.assert_summaries(
         test_case=self,
-        expected_logdir=self.log_dir,
+        expected_logdir=self.logdir,
         expected_summaries={
-            1: {
-                'my_summary': 1.0
-            },
-            4: {
-                'my_summary': 2.0
-            },
-            7: {
-                'my_summary': 3.0
-            },
+            1: {'foo-v1': 1.0},
+            2: {'foo-v1': 1.0},
+            3: {'foo-v1': 1.0},
         })
 
 
@@ -1518,18 +1701,23 @@ class ProfilerHookTest(test.TestCase):
         sess.run(self.train_op)  # Saved.
         self.assertEqual(3, self._count_timeline_files())
 
-  def test_run_metadata_saves_in_first_step(self):
-    writer_cache.FileWriterCache.clear()
-    fake_summary_writer.FakeSummaryWriter.install()
-    fake_writer = writer_cache.FileWriterCache.get(self.output_dir)
+  def test_run_metadata_summary_saving(self):
     with self.graph.as_default():
       hook = basic_session_run_hooks.ProfilerHook(
-          save_secs=2, output_dir=self.output_dir)
+          save_steps=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
         sess.run(self.train_op)  # Saved.
-        self.assertEqual(
-            list(fake_writer._added_run_metadata.keys()), ['step_1'])
-    fake_summary_writer.FakeSummaryWriter.uninstall()
+        sess.run(self.train_op)  # Not saved.
+        sess.run(self.train_op)  # Saved.
+    events = iter(load_eventfile_contents(self.output_dir))
+    next(events)  # Skip version event that's always there.
+    event = next(events)
+    self.assertEqual(1, event.step)
+    self.assertEqual('step_1', event.tagged_run_metadata.tag)
+    event = next(events)
+    self.assertEqual(3, event.step)
+    self.assertEqual('step_3', event.tagged_run_metadata.tag)
+    self.assertRaises(StopIteration, lambda: next(events))  # No more events.
 
 
 if __name__ == '__main__':
