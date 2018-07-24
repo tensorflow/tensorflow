@@ -169,7 +169,7 @@ public class ConstantTest {
   @Test
   public void createStringBuffer() throws IOException {
     byte[] data = {(byte) 1, (byte) 2, (byte) 3, (byte) 4};
-    Shape shape = Shape.unknown();
+    Shape shape = Shape.scalar();
 
     // byte arrays (DataType.STRING in Tensorflow) are encoded as an offset in the data buffer,
     // followed by a varint encoded size, followed by the data.
