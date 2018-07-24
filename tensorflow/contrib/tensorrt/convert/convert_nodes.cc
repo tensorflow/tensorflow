@@ -2693,8 +2693,13 @@ tensorflow::Status ConvertGraphDefToEngine(
     VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
     if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
         (node_def.op() == "Placeholder")) {
-      nvinfer1::DimsCHW input_dim_pseudo_chw;
-      for (int i = 0; i < 8; i++) input_dim_pseudo_chw.d[i] = 0;
+      nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
+      auto type_status =
+          ConvertDType(node_def.attr().at("dtype").type(), &dtype);
+      if (type_status != tensorflow::Status::OK()) {
+        LOG(WARNING) << "Type conversion failed for " << node_name;
+        return type_status;
+      }
       int32 slot_number = -1;
       if (!tensorflow::strings::safe_strto32(
               node_name.c_str() + strlen(kInputPHName), &slot_number)) {
@@ -2721,13 +2726,27 @@ tensorflow::Status ConvertGraphDefToEngine(
         StrAppend(&dim_str, " ]");
         VLOG(1) << dim_str;
       }
+
+#if NV_TENSORRT_MAJOR == 3
+      nvinfer1::DimsCHW input_dim;
+      // TRT 3.x only support 4 dimensional input tensor.
+      if (shape.dims() != 4) {
+        string err_str = "Require 4 dimensional input.";
+        StrAppend(&err_str, " Got ", shape.dims(), " ",
+                  node_name);
+        return tensorflow::errors::Unimplemented(err_str);
+      }
+#elif NV_TENSORRT_MAJOR > 3
+      nvinfer1::Dims input_dim;
+#endif
+
       for (int i = 1; i < shape.dims(); i++) {
-        input_dim_pseudo_chw.d[i - 1] = shape.dim_size(i);
+        input_dim.d[i - 1] = shape.dim_size(i);
       }
 
-      input_dim_pseudo_chw.nbDims = shape.dims() - 1;
+      input_dim.nbDims = shape.dims() - 1;
       nvinfer1::ITensor* input_tensor = converter.network()->addInput(
-          node_name.c_str(), dtype, input_dim_pseudo_chw);
+          node_name.c_str(), dtype, input_dim);
       if (!input_tensor) {
         return tensorflow::errors::InvalidArgument(
             "Failed to create Input layer tensor ", node_name,
