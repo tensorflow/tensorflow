@@ -244,7 +244,7 @@ message BufferAllocationProto {
   int64 index = 1;
   int64 size = 2;
   bool is_thread_local = 3;
-  bool is_reusable = 4;
+  bool is_tuple = 11;
   bool is_entry_computation_parameter = 5;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
