@@ -260,7 +260,6 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
         reader.LookupDtypeAndShape(tensor_name,
                                    &original_dtype, &restored_full_shape));
 
-    // Precheck dtype.
     if (dtypes[i] != original_dtype) {
       return errors::InvalidArgument(
           "tensor_name = ", tensor_name, "; expected dtype ",
