@@ -332,11 +332,8 @@ class FileWriter(SummaryToEventTransformer):
     the same shared resource name (which by default scoped to the logdir). If
     no such resource exists, one will be created using the remaining arguments
     to this constructor, but if one already exists those arguments are ignored.
-    In either case, ops will be added to the default graph to control the
+    In either case, ops will be added to `session.graph` to control the
     underlying file writer resource. See `tf.contrib.summary` for more details.
-    Instead of an actual `tf.Session`, this argument may also be a callable that
-    provides a `tf.Session` when invoked (e.g. `tf.get_default_session`), which
-    will be called on-demand when a session is needed.
 
     Args:
       logdir: A string. Directory where event file will be written.
@@ -347,8 +344,7 @@ class FileWriter(SummaryToEventTransformer):
       graph_def: DEPRECATED: Use the `graph` argument instead.
       filename_suffix: A string. Every event file's name is suffixed with
         `suffix`.
-      session: A `tf.Session` object or a callable that provides `tf.Session`
-        objects. See details above.
+      session: A `tf.Session` object. See details above.
 
     Raises:
       RuntimeError: If called with eager execution enabled.

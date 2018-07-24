@@ -506,9 +506,12 @@ bool AssertSameStructureHelper(PyObject* o1, PyObject* o2, bool check_types,
       }
     } else if (type1 != type2
                /* If both sequences are list types, don't complain. This allows
-               one to be a list subclass (e.g. _ListWrapper used for automatic
-               dependency tracking.) */
-               && !(PyList_Check(o1) && PyList_Check(o2))) {
+                  one to be a list subclass (e.g. _ListWrapper used for
+                  automatic dependency tracking.) */
+               && !(PyList_Check(o1) && PyList_Check(o2))
+               /* Two mapping types will also compare equal, making _DictWrapper
+                  and dict compare equal. */
+               && !(IsMappingHelper(o1) && IsMappingHelper(o2))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "

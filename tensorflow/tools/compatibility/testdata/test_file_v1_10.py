@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,28 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Tests for tf upgrader."""
 
-# This script is to be used to install bzel on non x86_64 systems
-# It will compile bazel from source and install it in /usr/local/bin
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+import tensorflow as tf
+from tensorflow.python.framework import test_util
+from tensorflow.python.platform import test as test_lib
 
-# Select bazel version.
-BAZEL_VERSION="0.15.0"
 
-set +e
-local_bazel_ver=$(bazel version 2>&1 | grep -i label | awk '{print $3}')
+class TestUpgrade(test_util.TensorFlowTestCase):
+  """Test various APIs that have been changed in 2.0."""
 
-if [[ "$local_bazel_ver" == "$BAZEL_VERSION" ]]; then
-  exit 0
-fi
+  def testRenames(self):
+    with self.test_session():
+      self.assertAllClose(1.04719755, tf.acos(0.5).eval())
+      self.assertAllClose(0.5, tf.rsqrt(4.0).eval())
 
-set -e
-
-# Compile bazel from source
-mkdir -p /bazel
-cd /bazel
-
-curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-dist.zip
-unzip bazel-$BAZEL_VERSION-dist.zip
-bash ./compile.sh
-cp output/bazel /usr/local/bin/
-rm -rf /bazel
+if __name__ == "__main__":
+  test_lib.main()
