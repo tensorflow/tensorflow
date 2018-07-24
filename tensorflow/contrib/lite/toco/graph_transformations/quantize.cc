@@ -50,6 +50,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kPadV2 || type == OperatorType::kReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
+         type == OperatorType::kBatchToSpaceND ||
          type == OperatorType::kSpaceToBatchND ||
          type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kStridedSlice ||
