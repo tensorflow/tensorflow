@@ -789,7 +789,8 @@ class SaverTest(test.TestCase):
         # Restore the saved value with different dtype
         # in the parameter nodes.
         save = saver_module.Saver({"v0": v0_wrong_dtype})
-        with self.assertRaises(errors.InvalidArgumentError):
+        with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                     "original dtype"):
           save.restore(sess, save_path)
 
 
