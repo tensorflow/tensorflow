@@ -1920,7 +1920,8 @@ class MklPrimitiveFactory {
 
   void SetOp(const std::string& key, MklPrimitive* op) {
     auto &map = MklPrimitiveFactory<T>::GetHashMap();
-    CHECK(map.emplace(key, op).second);
+    auto stream_iter = map.find(key);
+    CHECK(stream_iter == map.end());
     map[key] = op;
   }
 
