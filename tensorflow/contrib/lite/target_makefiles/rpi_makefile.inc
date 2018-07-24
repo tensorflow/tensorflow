@@ -5,7 +5,7 @@ ifeq ($(TARGET),rpi)
   TARGET_ARCH := armv7l
   TARGET_TOOLCHAIN_PREFIX := arm-linux-gnueabihf-
 
-  ifeq ($(TARGET_ARCH), armv7)
+  ifeq ($(TARGET_ARCH), armv7l)
     CXXFLAGS += \
 			-march=armv7-a \
       -mfpu=neon-vfpv4 \
