@@ -113,6 +113,11 @@ ArgVector FindInstructionInputs(const TensorMap& map,
  */
 OutVector FindInstructionOutputs(const TensorMap& map,
                                  const HloInstruction* inst);
+/* This prints a JSON to VLOG lvl 2 which contains information about tile
+ * mapping for all tensors in tensor_map
+ */
+void PrintTensorMapping(const poplar::Graph& graph,
+                        const TensorMap& tensor_map);
 
 /* Ops */
 

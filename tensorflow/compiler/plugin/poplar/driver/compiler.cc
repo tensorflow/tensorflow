@@ -120,8 +120,7 @@ static bool OkToStream(const Shape& shape) {
   return true;
 }
 
-static bool GetConstantOutput(const HloInstruction* root,
-                              const Shape& layout,
+static bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
                               std::vector<std::unique_ptr<Literal>>& result) {
   if (root->opcode() == HloOpcode::kConstant) {
     auto literal = root->literal().Relayout(layout);
@@ -235,9 +234,10 @@ class EntryVisitor : public FullVisitor {
       }
     }
 
-    all_outputs_are_parameters &= (non_standard_parameter_layout.size() == 0);
-
+    PrintTensorMapping(graph_, tensor_map);
     tensor_map.clear();
+
+    all_outputs_are_parameters &= (non_standard_parameter_layout.size() == 0);
 
     return Status::OK();
   }
@@ -459,7 +459,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         auto opts = poplarExecutor->GetOptionsFlags();
         engine.reset(new poplar::Engine(graph, progs, opts));
       } catch (std::logic_error e) {
-        return tensorflow::errors::Unknown(StrCat("[Poplar Engine] ", e.what()));
+        return tensorflow::errors::Unknown(
+            StrCat("[Poplar Engine] ", e.what()));
       }
     }
   } else {

@@ -120,5 +120,48 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
   return Status::OK();
 }
 
+void PrintTensorMapping(const poplar::Graph& graph,
+                        const TensorMap& tensor_map) {
+  std::stringstream ss;
+  VLOG(2) << "[Poplar] Dumping tensor mapping";
+  // Printed in JSON format where
+  // {"mapping": [
+  //  {
+  //    "inst_name": "name",
+  //    "output_index": output_index,
+  //    "tiles": [ {"tile_id": tile_id, "num_intervals": num_intervals}, ...]
+  //  } ...
+  //
+  //  ]
+  // }
+  ss << "\n{\"mapping\": [\n";
+  bool first_tensor = true;
+  for (auto pair : tensor_map) {
+    if (!first_tensor) ss << "\n,";
+    const auto inst_name = pair.first.first;
+    const auto output_index = pair.first.second;
+    const auto tensor = pair.second;
+    ss << " {\n"
+       << "  \"inst_name\": \"" << inst_name << "\",\n"
+       << "  \"output_index\": " << output_index << ",\n"
+       << "  \"tiles\": [\n   ";
+    const auto mapping = graph.getTileMapping(tensor);
+    bool first_tile = true;
+    for (size_t tileIdx = 0; tileIdx < mapping.size(); tileIdx++) {
+      const auto& tile = mapping[tileIdx];
+      if (tile.size() != 0) {
+        if (!first_tile) ss << ", ";
+        ss << "{\"tile_id\": " << tileIdx << ", "
+           << "\"num_intervals\": " << tile.size() << "}";
+        first_tile = false;
+      }
+    }
+    ss << "]\n }";
+    first_tensor = false;
+  }
+  ss << " ]\n}\n";
+  VLOG(2) << ss.str();
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
