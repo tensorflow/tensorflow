@@ -97,7 +97,7 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
                                         **kwargs_):
 
   def Test(self):
-    # rocBLAS on ROCm stack does not support TRSM yet
+    # rocBLAS on ROCm stack causes accuracy failure
     if test_lib.is_built_with_rocm():
       use_gpu = False
     else:
