@@ -86,7 +86,7 @@ class FtrlOptimizer(optimizer.Optimizer):
 
     if initial_accumulator_value < 0.0:
       raise ValueError(
-          "initial_accumulator_value %f needs to be be positive or zero" %
+          "initial_accumulator_value %f needs to be positive or zero" %
           initial_accumulator_value)
     if learning_rate_power > 0.0:
       raise ValueError("learning_rate_power %f needs to be negative or zero" %

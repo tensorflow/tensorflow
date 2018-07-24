@@ -134,7 +134,7 @@ def auto_correlation(
     x_len = util.prefer_static_shape(x_rotated)[-1]
 
     # TODO(langmore) Investigate whether this zero padding helps or hurts.  At
-    # the moment is is necessary so that all FFT implementations work.
+    # the moment is necessary so that all FFT implementations work.
     # Zero pad to the next power of 2 greater than 2 * x_len, which equals
     # 2**(ceil(Log_2(2 * x_len))).  Note: Log_2(X) = Log_e(X) / Log_e(2).
     x_len_float64 = math_ops.cast(x_len, np.float64)
@@ -198,7 +198,7 @@ def auto_correlation(
     # Recall R[m] is a sum of N / 2 - m nonzero terms x[n] Conj(x[n - m]).  The
     # other terms were zeros arising only due to zero padding.
     # `denominator = (N / 2 - m)` (defined below) is the proper term to
-    # divide by by to make this an unbiased estimate of the expectation
+    # divide by to make this an unbiased estimate of the expectation
     # E[X[n] Conj(X[n - m])].
     x_len = math_ops.cast(x_len, dtype.real_dtype)
     max_lags = math_ops.cast(max_lags, dtype.real_dtype)

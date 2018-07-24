@@ -141,7 +141,7 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
         while_body,
         init_state=(epoch_number, iterate) + init_state,
         extra_deps=())
-  # Dropping the epoch number and iterate because they are not not syntactically
+  # Dropping the epoch number and iterate because they are not syntactically
   # visible.
   results = results[2:]
 

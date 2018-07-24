@@ -75,7 +75,7 @@ class QuantOpsTest(googletest.TestCase):
       self.assertGreater(max_value, 0.0)
       self.assertLess(max_value, 1.0)
 
-  def testVariablesNotParitioned_LastValue(self):
+  def testVariablesNotPartitioned_LastValue(self):
     # Variables added should not use a default partiioner since they are
     # scalar. There would be a tensorflow error thrown if the partitioner was
     # respected by the rewrite.
@@ -90,7 +90,7 @@ class QuantOpsTest(googletest.TestCase):
             is_training=True,
             vars_collection=_MIN_MAX_VARS)
 
-  def testVariablesNotParitioned_MovingAvg(self):
+  def testVariablesNotPartitioned_MovingAvg(self):
     # Variables added should not use a default partiioner since they are
     # scalar. There would be a tensorflow error thrown if the partitioner was
     # respected by the rewrite.

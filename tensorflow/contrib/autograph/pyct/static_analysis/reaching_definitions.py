@@ -39,7 +39,7 @@ from tensorflow.contrib.autograph.pyct.static_analysis import annos
 class Definition(object):
   """Definition objects describe a unique definition of a variable.
 
-  Subclasses of this may be used by passing an appropriate factory fuction to
+  Subclasses of this may be used by passing an appropriate factory function to
   resolve.
 
   Attributes:

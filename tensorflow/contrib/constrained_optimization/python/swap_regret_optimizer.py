@@ -150,7 +150,7 @@ def _project_stochastic_matrix_wrt_euclidean_norm(matrix):
         "matrix must be two dimensional (instead is %d-dimensional)" %
         matrix_shape.ndims)
   if matrix_shape[0] != matrix_shape[1]:
-    raise ValueError("matrix must be be square (instead has shape (%d,%d))" %
+    raise ValueError("matrix must be square (instead has shape (%d,%d))" %
                      (matrix_shape[0], matrix_shape[1]))
   dimension = matrix_shape[0].value
   if dimension is None:

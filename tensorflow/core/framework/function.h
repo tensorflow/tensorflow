@@ -456,7 +456,7 @@ class FunctionLibraryRuntime {
 
     // This interface is EXPERIMENTAL and subject to change.
     //
-    // Instatiates the function using an executor of the given type. If empty,
+    // Instantiates the function using an executor of the given type. If empty,
     // the default TensorFlow executor will be used.
     string executor_type;
   };
