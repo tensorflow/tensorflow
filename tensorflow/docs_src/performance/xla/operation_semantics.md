@@ -1334,7 +1334,7 @@ See also
 | Arguments         | Type                   | Semantics                      |
 | ----------------- | ---------------------- | ------------------------------ |
 | `operands`        | sequence of N `XlaOp`s | N arrays of types T_0..T_{N-1} |
-| `computation`     | `XlaComputation`        | computation of type `T_0, T_1, |
+| `computation`     | `XlaComputation`       | computation of type `T_0, T_1, |
 :                   :                        : ..., T_{N + M -1} -> S` with N :
 :                   :                        : parameters of type T and M of  :
 :                   :                        : arbitrary type                 :
