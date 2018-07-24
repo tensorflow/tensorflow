@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Introduction to TensorFlow Lite
 
 TensorFlow Lite is TensorFlow’s lightweight solution for mobile and embedded

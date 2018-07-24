@@ -96,6 +96,7 @@ py_library(
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":kernels",
         ":layers",
         ":lib",
         ":list_ops",
@@ -790,6 +791,19 @@ py_library(
 )
 
 py_library(
+    name = "kernels",
+    srcs = [
+        "framework/kernels.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
     name = "op_def_library",
     srcs = ["framework/op_def_library.py"],
     srcs_version = "PY2AND3",
@@ -1477,6 +1491,20 @@ py_test(
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+    ],
+)
+
+py_test(
+    name = "framework_kernels_test",
+    size = "small",
+    srcs = ["framework/kernels_test.py"],
+    main = "framework/kernels_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":kernels",
         ":platform_test",
         ":test_ops",
     ],
@@ -2794,6 +2822,7 @@ py_library(
         ":framework_ops",
         ":math_ops",
         ":resource_variable_ops",
+        ":resources",
         ":smart_cond",
         ":summary_op_util",
         ":summary_ops_gen",
@@ -3379,6 +3408,7 @@ py_test(
         ":math_ops",
         ":util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

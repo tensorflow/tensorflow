@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Android Demo App
 
 An example Android application using TensorFLow Lite is available

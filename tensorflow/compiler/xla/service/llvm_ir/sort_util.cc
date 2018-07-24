@@ -19,12 +19,15 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
@@ -73,7 +76,9 @@ void EmitCompareLoop(int64 dimension_to_sort,
 }  // namespace
 
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
-                       tensorflow::StringPiece name, llvm::IRBuilder<>* b) {
+                       tensorflow::StringPiece name, llvm::Value* xor_mask,
+                       llvm::IRBuilder<>* b,
+                       const gpu::LaunchDimensions* launch_dimensions) {
   const Shape& keys_shape = keys_array.GetShape();
 
   // TODO(b/26783907): This case can probably be avoided with the Algebraic
@@ -83,11 +88,13 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
   }
 
   // Create loop nests which loop through the operand dimensions. The sort
-  // dimension is handled in three separate innermost loops which perform the
-  // sorting.
+  // dimension is handled in the innermost loop which performs the sorting.
   ForLoopNest loop_nest(name, b);
   IrArray::Index keys_index =
       loop_nest.EmitOperandArrayLoopNest(keys_array, dimension_to_sort, "keys");
+  if (loop_nest.GetInnerLoopBodyBasicBlock() != nullptr) {
+    SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(), b);
+  }
 
   // 'compare_keys_index' is the index of the element that 'keys_index' should
   // be compared to.
@@ -100,89 +107,42 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
     }
   }
 
-  // Create the sorting loops which do the sorting.
-  int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
-  std::unique_ptr<ForLoop> stages_loop = loop_nest.AddLoop(
-      /*start_index=*/0,
-      /*end_index=*/
-      tensorflow::Log2Ceiling64(dimension_to_sort_bound),
-      /*suffix=*/"sort_stages");
-  std::unique_ptr<ForLoop> mask_loop = loop_nest.AddLoop(
-      /*suffix=*/"mask",
-      /*start_index=*/keys_index.GetConstantWithIndexType(0),
-      /*end_index=*/stages_loop->GetIndVarValue());
-  std::unique_ptr<ForLoop> compare_loop = loop_nest.AddLoop(
-      /*start_index=*/0,
-      /*end_index=*/dimension_to_sort_bound,
-      /*suffix=*/"compare");
-
-  // Naive C++ code for the inner loops (without parallelization):
+  // Naive C++ code for the inner compare loop:
   //
-  // for (int64 stage = 0; stage < Log2Ceiling(dimension_to_sort_bound);
-  //     ++stage) {
-  //   int64 first_xor_mask = (1LL << (stage + 1)) - 1;
-  //   for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
-  //     int64 j = i ^ first_xor_mask;
-  //     if (i < j && j < dimension_to_sort_bound) {
-  //       int64 min_key = std::min(keys[i], keys[j]);
-  //       keys[j] = std::max(keys[i], keys[j]);
-  //       keys[i] = min_key;
-  //     }
-  //   }
-  //   for (int64 mask = 0; mask < stage; ++mask) {
-  //     int64 later_xor_mask = (1LL << (stage - (mask + 1));
-  //     for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
-  //       int64 j = i ^ later_xor_mask;
-  //       if (i < j && j < dimension_to_sort_bound) {
-  //         int64 min_key = std::min(keys[i], keys[j]);
-  //         keys[j] = std::max(keys[i], keys[j]);
-  //         keys[i] = min_key;
-  //       }
-  //     }
+  // for (int64 i = 0; i < dimension_to_sort_bound; ++i) {
+  //   int64 j = i ^ xor_mask;
+  //   if (i < j && j < dimension_to_sort_bound) {
+  //     int64 min_key = std::min(keys[i], keys[j]);
+  //     keys[j] = std::max(keys[i], keys[j]);
+  //     keys[i] = min_key;
   //   }
   // }
   //
   // This follows the algorithm described on Wikipedia:
   // https://en.wikipedia.org/wiki/Bitonic_sorter
 
-  SetToFirstInsertPoint(stages_loop->GetBodyBasicBlock(), b);
-  // The first xor mask of a stage is 2^(stage + 1) - 1.
-  auto first_xor_mask = b->CreateSub(
-      b->CreateShl(keys_index.GetConstantWithIndexType(1),
-                   b->CreateAdd(stages_loop->GetIndVarValue(),
-                                keys_index.GetConstantWithIndexType(1))),
-      keys_index.GetConstantWithIndexType(1));
-  std::unique_ptr<ForLoop> first_compare_loop = ForLoop::EmitForLoop(
-      /*prefix=*/"first_compare",
-      /*start_index=*/keys_index.GetConstantWithIndexType(0),
-      /*end_index=*/
-      keys_index.GetConstantWithIndexType(dimension_to_sort_bound),
-      /*step=*/keys_index.GetConstantWithIndexType(1),
-      /*b=*/b);
-
-  SetToFirstInsertPoint(first_compare_loop->GetBodyBasicBlock(), b);
-  // 'first_compare_loop' iterates through the 'dimension_to_sort'.
-  keys_index[dimension_to_sort] = first_compare_loop->GetIndVarValue();
-  compare_keys_index[dimension_to_sort] =
-      b->CreateXor(first_compare_loop->GetIndVarValue(), first_xor_mask);
-  EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index, keys_array,
-                  b);
-
-  SetToFirstInsertPoint(compare_loop->GetPreheaderBasicBlock(), b);
-  // The later masks of a stage are 2^(stage - (mask_loop_ind_var + 1)).
-  auto later_xor_mask = b->CreateShl(
-      keys_index.GetConstantWithIndexType(1),
-      b->CreateSub(stages_loop->GetIndVarValue(),
-                   b->CreateAdd(mask_loop->GetIndVarValue(),
-                                keys_index.GetConstantWithIndexType(1))));
-
-  SetToFirstInsertPoint(compare_loop->GetBodyBasicBlock(), b);
-  // 'compare_loop' iterates through the 'dimension_to_sort'.
-  keys_index[dimension_to_sort] = compare_loop->GetIndVarValue();
-  compare_keys_index[dimension_to_sort] =
-      b->CreateXor(compare_loop->GetIndVarValue(), later_xor_mask);
-  EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index, keys_array,
-                  b);
+  int64 dimension_to_sort_bound =
+      keys_array.GetShape().dimensions(dimension_to_sort);
+  Shape compare_shape = ShapeUtil::MakeShape(keys_shape.element_type(),
+                                             {dimension_to_sort_bound});
+  auto compare_loop_body_emitter =
+      [&](const IrArray::Index& compare_index) -> Status {
+    keys_index[dimension_to_sort] = compare_index[0];
+    compare_keys_index[dimension_to_sort] =
+        b->CreateXor(compare_index[0], xor_mask);
+    EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index,
+                    keys_array, b);
+    return Status::OK();
+  };
+  if (launch_dimensions != nullptr) {
+    TF_RETURN_IF_ERROR(gpu::ParallelLoopEmitter(compare_loop_body_emitter,
+                                                compare_shape,
+                                                *launch_dimensions, b)
+                           .EmitLoop(name));
+  } else {
+    TF_RETURN_IF_ERROR(LoopEmitter(compare_loop_body_emitter, compare_shape, b)
+                           .EmitLoop(name));
+  }
 
   // Set the IR builder insert point to the exit basic block of the outer most
   // loop. This ensures later instructions are inserted after this loop nest.

@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Building TensorFlow on Android
 
 To get you started working with TensorFlow on Android, we'll walk through two
@@ -91,7 +94,8 @@ using [ADB](https://developer.android.com/studio/command-line/adb.html). This
 requires some knowledge of build systems and Android developer tools, but we'll
 guide you through the basics here.
 
-- First, follow our instructions for @{$install/install_sources$installing from sources}.
+- First, follow our instructions for
+  <a href="http://www.tensorflow.org/install/install_sources">installing from sources</a>.
   This will also guide you through installing Bazel and cloning the
   TensorFlow code.
 

@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Performance
 
 This document lists TensorFlow Lite performance benchmarks when running well

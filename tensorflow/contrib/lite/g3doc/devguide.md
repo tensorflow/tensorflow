@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Developer Guide
 
 Using a TensorFlow Lite model in your mobile app requires multiple
@@ -56,7 +59,7 @@ both floating point and quantized inference.
 A developer may choose to train a custom model using Tensorflow (see the
 [TensorFlow tutorials](../../tutorials/) for examples of building and training
 models). If you have already written a model, the first step is to export this
-to a @{tf.GraphDef} file. This is required because some formats do not store the
+to a `tf.GraphDef` file. This is required because some formats do not store the
 model structure outside the code, and we must communicate with other parts of the
 framework. See
 [Exporting the Inference Graph](https://github.com/tensorflow/models/blob/master/research/slim/README.md)
@@ -71,12 +74,12 @@ grow in future Tensorflow Lite releases.
 ## 2. Convert the model format
 
 The model generated (or downloaded) in the previous step is a *standard*
-Tensorflow model and you should now have a .pb or .pbtxt @{tf.GraphDef} file.
+Tensorflow model and you should now have a .pb or .pbtxt `tf.GraphDef` file.
 Models generated with transfer learning (re-training) or custom models must be
 converted—but, we must first freeze the graph to convert the model to the
 Tensorflow Lite format. This process uses several model formats:
 
-* @{tf.GraphDef} (.pb) —A protobuf that represents the TensorFlow training or
+* `tf.GraphDef` (.pb) —A protobuf that represents the TensorFlow training or
   computation graph. It contains operators, tensors, and variables definitions.
 * *CheckPoint* (.ckpt) —Serialized variables from a TensorFlow graph. Since this
   does not contain a graph structure, it cannot be interpreted by itself.
@@ -143,11 +146,11 @@ containing the model architecture. The [frozen_graph.pb](https://storage.googlea
 file used here is available for download. `output_file` is where the TensorFlow
 Lite model will get generated. The `input_type` and `inference_type`
 arguments should be set to `FLOAT`, unless converting a
-@{$performance/quantization$quantized model}. Setting the `input_array`,
-`output_array`, and `input_shape` arguments are not as straightforward. The
-easiest way to find these values is to explore the graph using Tensorboard. Reuse
-the arguments for specifying the output nodes for inference in the
-`freeze_graph` step.
+<a href="https://www.tensorflow.org/performance/quantization">quantized model</a>.
+Setting the `input_array`, `output_array`, and `input_shape` arguments are not as
+straightforward. The easiest way to find these values is to explore the graph
+using Tensorboard. Reuse the arguments for specifying the output nodes for
+inference in the `freeze_graph` step.
 
 It is also possible to use the Tensorflow Optimizing Converter with protobufs
 from either Python or from the command line (see the 
@@ -204,16 +207,16 @@ The open source Android demo app uses the JNI interface and is available
 [on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app).
 You can also download a
 [prebuilt APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
-See the @{$tflite/demo_android} guide for details.
+See the <a href="../demo_android.md">Android demo</a> guide for details.
 
-The @{$mobile/android_build} guide has instructions for installing TensorFlow on
-Android and setting up `bazel` and Android Studio.
+The <a href="./android_build.md">Android mobile</a> guide has instructions for
+installing TensorFlow on Android and setting up `bazel` and Android Studio.
 
 ### iOS
 
 To integrate a TensorFlow model in an iOS app, see the
 [TensorFlow Lite for iOS](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/ios.md)
-guide and @{$tflite/demo_ios} guide.
+guide and <a href="../demo_ios.md">iOS demo</a> guide.
 
 #### Core ML support
 

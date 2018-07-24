@@ -1426,6 +1426,29 @@ TEST(CAPI, SavedModelNullArgsAreValid) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, DeletingNullPointerIsSafe) {
+  TF_Status* status = TF_NewStatus();
+
+  TF_DeleteStatus(nullptr);
+  TF_DeleteBuffer(nullptr);
+  TF_DeleteTensor(nullptr);
+  TF_DeleteSessionOptions(nullptr);
+  TF_DeleteGraph(nullptr);
+  TF_DeleteImportGraphDefOptions(nullptr);
+  TF_DeleteImportGraphDefResults(nullptr);
+  TF_DeleteFunction(nullptr);
+  TF_DeleteSession(nullptr, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeletePRunHandle(nullptr);
+  TF_DeleteDeprecatedSession(nullptr, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteDeviceList(nullptr);
+  TF_DeleteLibraryHandle(nullptr);
+  TF_DeleteApiDefMap(nullptr);
+
+  TF_DeleteStatus(status);
+}
+
 REGISTER_OP("TestOpWithNoGradient")
     .Input("x: T")
     .Output("y: T")

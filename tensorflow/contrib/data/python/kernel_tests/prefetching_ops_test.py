@@ -31,6 +31,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
@@ -905,6 +906,156 @@ class CopyToDeviceTest(test.TestCase):
         self.assertEqual(i, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
+
+
+class MultiDeviceIteratorTest(test.TestCase):
+
+  def testBasic(self):
+    dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2"])
+    elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      sess.run(multi_device_iterator.initializer)
+      for i in range(0, 10, 2):
+        self.assertEqual(i, sess.run(elem_on_1))
+        self.assertEqual(i + 1, sess.run(elem_on_2))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elem_on_1)
+        sess.run(elem_on_2)
+
+  def testOneOnSameDevice(self):
+    with ops.device("/cpu:0"):
+      dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:0", "/cpu:1"])
+    elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 2})
+    with self.test_session(config=config) as sess:
+      sess.run(multi_device_iterator.initializer)
+      for i in range(0, 10, 2):
+        self.assertEqual(i, sess.run(elem_on_1))
+        self.assertEqual(i + 1, sess.run(elem_on_2))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elem_on_1)
+        sess.run(elem_on_2)
+
+  def testRepeatDevices(self):
+    with ops.device("/cpu:0"):
+      dataset = dataset_ops.Dataset.range(20)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2", "/cpu:1", "/cpu:2"])
+    elements = multi_device_iterator.get_next()
+    elem_on_1, elem_on_2, elem_on_3, elem_on_4 = elements
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      sess.run(multi_device_iterator.initializer)
+      for i in range(0, 20, 4):
+        self.assertEqual(i, sess.run(elem_on_1))
+        self.assertEqual(i + 1, sess.run(elem_on_2))
+        self.assertEqual(i + 2, sess.run(elem_on_3))
+        self.assertEqual(i + 3, sess.run(elem_on_4))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elem_on_1)
+        sess.run(elem_on_2)
+        sess.run(elem_on_3)
+        sess.run(elem_on_4)
+
+  def testNotFullyDivisible(self):
+    dataset = dataset_ops.Dataset.range(9)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2"])
+    elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      sess.run(multi_device_iterator.initializer)
+      for i in range(0, 8, 2):
+        self.assertEqual(i, sess.run(elem_on_1))
+        self.assertEqual(i + 1, sess.run(elem_on_2))
+      self.assertEqual(8, sess.run(elem_on_1))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elem_on_1)
+        sess.run(elem_on_2)
+
+  def testUneven(self):
+    dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2"])
+    elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      sess.run(multi_device_iterator.initializer)
+      for i in range(0, 10, 2):
+        self.assertEqual(i, sess.run(elem_on_1))
+      for i in range(0, 10, 2):
+        self.assertEqual(i + 1, sess.run(elem_on_2))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(elem_on_1)
+        sess.run(elem_on_2)
+
+  def testMultipleInitializations(self):
+    with ops.device("/cpu:0"):
+      epoch = array_ops.placeholder(dtypes.int64, shape=[])
+      dataset1 = dataset_ops.Dataset.from_tensors(epoch).repeat(1000)
+      dataset2 = dataset_ops.Dataset.range(1000)
+      dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
+    multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2"], prefetch_buffer_size=4)
+    elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+    init_op = multi_device_iterator.initializer
+
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+    with self.test_session(config=config) as sess:
+      for i in range(1000):
+        sess.run(init_op, feed_dict={epoch: i})
+        self.assertEqual([(i, 0), (i, 1)], sess.run([elem_on_1, elem_on_2]))
+
+  def testBasicGpu(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with compat.forward_compatibility_horizon(2018, 8, 4):
+      dataset = dataset_ops.Dataset.range(10)
+      multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+          dataset, ["/cpu:1", "/gpu:0"])
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+
+      config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
+      with self.test_session(config=config) as sess:
+        sess.run(multi_device_iterator.initializer)
+        for i in range(0, 10, 2):
+          self.assertEqual(i, sess.run(elem_on_1))
+          self.assertEqual(i + 1, sess.run(elem_on_2))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(elem_on_1)
+          sess.run(elem_on_2)
+
+  def testUnevenGpu(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    with compat.forward_compatibility_horizon(2018, 8, 4):
+      dataset = dataset_ops.Dataset.range(10)
+      multi_device_iterator = prefetching_ops.MultiDeviceIterator(
+          dataset, ["/cpu:1", "/gpu:0"])
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+
+      config = config_pb2.ConfigProto(device_count={"CPU": 2, "GPU": 1})
+      with self.test_session(config=config) as sess:
+        sess.run(multi_device_iterator.initializer)
+        for i in range(0, 10, 2):
+          self.assertEqual(i, sess.run(elem_on_1))
+        for i in range(0, 10, 2):
+          self.assertEqual(i + 1, sess.run(elem_on_2))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(elem_on_1)
+          sess.run(elem_on_2)
 
 
 if __name__ == "__main__":
