@@ -53,7 +53,6 @@ class CreateSummaryFileWriterOp : public OpKernel {
                                   max_queue, flush_millis, logdir,
                                   filename_suffix, ctx->env(), s);
                             }));
-    core::ScopedUnref unref(s);
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryFileWriter").Device(DEVICE_CPU),
@@ -90,7 +89,6 @@ class CreateSummaryDbWriterOp : public OpKernel {
                   db, experiment_name, run_name, user_name, ctx->env(), s));
               return Status::OK();
             }));
-    core::ScopedUnref unref(s);
   }
 };
 REGISTER_KERNEL_BUILDER(Name("CreateSummaryDbWriter").Device(DEVICE_CPU),

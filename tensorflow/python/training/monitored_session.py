@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
@@ -205,17 +204,13 @@ class Scaffold(object):
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
           Scaffold.default_local_init_op)
     if self._summary_op is None:
-      def default_summary_op():
-        v1_op = summary.merge_all()
-        v2_ops = summary_ops_v2.all_summary_ops() or []
-        if v1_op is not None:
-          return control_flow_ops.with_dependencies(v2_ops, v1_op)
-        return control_flow_ops.group(v2_ops) if v2_ops else None
       self._summary_op = Scaffold.get_or_default('summary_op',
                                                  ops.GraphKeys.SUMMARY_OP,
-                                                 default_summary_op)
+                                                 summary.merge_all)
+    # pylint: disable=g-long-lambda
     if self._saver is None:
       self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
+    # pylint: enable=g-long-lambda
     self._saver.build()
 
     ops.get_default_graph().finalize()

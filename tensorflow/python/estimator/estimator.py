@@ -46,7 +46,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import resources
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -66,7 +65,6 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import estimator_export
 
 
@@ -1158,8 +1156,7 @@ class Estimator(object):
       Loss from training
     """
     worker_hooks = []
-    with ops.Graph().as_default() as g, g.device(
-        self._device_fn), self._summary_writing_context():
+    with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
       training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
@@ -1193,7 +1190,7 @@ class Estimator(object):
     is_tpu_strategy = self._distribution.__class__.__name__ == 'TPUStrategy'
 
     worker_hooks = []
-    with ops.Graph().as_default() as g, self._summary_writing_context():
+    with ops.Graph().as_default() as g:
       with self._distribution.scope():
         random_seed.set_random_seed(self._config.tf_random_seed)
 
@@ -1521,23 +1518,6 @@ class Estimator(object):
       logging.info('Warm-starting with WarmStartSettings: %s' %
                    (self._warm_start_settings,))
       warm_starting_util.warm_start(*self._warm_start_settings)
-
-  @tf_contextlib.contextmanager
-  def _summary_writing_context(self):
-    """Context manager for enabling V2 summary writing."""
-    # Avoid creating a file writer at all if no summary writing was requested.
-    if self._config.save_summary_steps <= 0:
-      yield
-      return
-    file_writer = summary_ops_v2.create_file_writer(
-        logdir=self._model_dir, filename_suffix='')
-    with file_writer.as_default():
-      # Create a boolean placeholder, default False, that SummarySaverHook can
-      # use to enable/disable V2 summary writing according to its own logic.
-      placeholder = array_ops.placeholder_with_default(False, shape=[])
-      training.SummarySaverHook._set_placeholder(placeholder)  # pylint: disable=protected-access
-      with summary_ops_v2.record_summaries_if(placeholder):
-        yield
 
 
 def create_per_tower_ready_op(scaffold):
