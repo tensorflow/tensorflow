@@ -195,11 +195,11 @@ Status IrEmitter::EmitCallToNestedComputation(
   // addrspace 5 to addrspace 0
   std::vector<llvm::Value*> arguments;
   for (auto& arg : operands) {
-    llvm::Value* casted_arg = MayAddrSpaceCastArg(arg, ir_builder_);
+    llvm::Value* casted_arg = MayAddrSpaceCastArg(arg, b_);
     arguments.push_back(casted_arg);
   }
 
-  llvm::Value* casted_output = MayAddrSpaceCastArg(output, ir_builder_);
+  llvm::Value* casted_output = MayAddrSpaceCastArg(output, b_);
   arguments.push_back(casted_output);
 
   // temp buffer base is always in addrspace 0 so it's not required to

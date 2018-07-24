@@ -29,7 +29,7 @@ gpu_py_test(
     ],
 )
 
-cuda_py_test(
+gpu_py_test(
     name = "densenet_graph_test",
     size = "large",
     srcs = ["densenet_graph_test.py"],
