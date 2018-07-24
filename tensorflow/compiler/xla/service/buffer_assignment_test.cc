@@ -89,7 +89,20 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
-               [alignment](LogicalBuffer::Color) { return alignment; })
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true)
+        .ConsumeValueOrDie();
+  }
+
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
+      HloModule* module, int64 alignment = 1) {
+    return BufferAssigner::Run(
+               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/false)
         .ConsumeValueOrDie();
   }
 
@@ -98,8 +111,9 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
-               [alignment](LogicalBuffer::Color) { return alignment; }, false,
-               std::move(colorer))
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true, std::move(colorer))
         .ConsumeValueOrDie();
   }
 
@@ -115,7 +129,9 @@ class BufferAssignmentTest : public HloTestBase {
                module,
                xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
                backend().compiler()->BufferSizeBytesFunction(),
-               [alignment](LogicalBuffer::Color) { return alignment; })
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true)
         .ConsumeValueOrDie();
   }
 
@@ -294,9 +310,15 @@ TEST_F(BufferAssignmentTest, ScalarConstant) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module.get());
-  // Check that the constant does not have a buffer assigned.
-  EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
+  {
+    auto buffers = RunBufferAssignment(module.get());
+    EXPECT_TRUE(buffers->HasTopLevelAllocation(const0));
+  }
+
+  {
+    auto buffers = RunBufferAssignmentNoBuffersForConstants(module.get());
+    EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
+  }
 }
 
 TEST_F(BufferAssignmentTest, BufferForConst) {
@@ -312,12 +334,18 @@ TEST_F(BufferAssignmentTest, BufferForConst) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module.get());
-  // The two constant nodes have no buffers assigned.
-  EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
-  EXPECT_FALSE(buffers->HasTopLevelAllocation(const1));
-  // The add node has an output buffer.
-  GetAssignedOutputAllocation(*buffers, add);
+  {
+    auto buffers = RunBufferAssignment(module.get());
+    EXPECT_TRUE(buffers->HasTopLevelAllocation(const0));
+    EXPECT_TRUE(buffers->HasTopLevelAllocation(const1));
+    GetAssignedOutputAllocation(*buffers, add);
+  }
+  {
+    auto buffers = RunBufferAssignmentNoBuffersForConstants(module.get());
+    EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
+    EXPECT_FALSE(buffers->HasTopLevelAllocation(const1));
+    GetAssignedOutputAllocation(*buffers, add);
+  }
 }
 
 TEST_F(BufferAssignmentTest, HasAllocationAt) {
@@ -1196,7 +1224,7 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
 
 // TODO(b/32248867): Enable when buffer assignment gives allocations to
 // constants.
-TEST_F(BufferAssignmentTest, DISABLED_TupleConstantAsOutput) {
+TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
@@ -1644,6 +1672,66 @@ TEST_F(BufferAssignmentTest, PeakBuffersWhile) {
       nonbcast_buffer->instruction() == condition->parameter_instruction(0));
 }
 
+TEST_F(BufferAssignmentTest, ConstantBuffersAreNotReused) {
+  const char* hlo_text = R"(
+HloModule Module
+
+True {
+  ROOT x.0.1 = f32[] parameter(0)
+}
+
+False {
+  x.0.0 = f32[] parameter(0)
+  ROOT copy.1 = f32[] copy(x.0.0)
+}
+
+ENTRY main {
+  pred.1.0 = pred[] parameter(0)
+  constant.1.1 = f32[] constant(56)
+  copy.2 = f32[] copy(constant.1.1)
+  constant.1.2 = f32[] constant(12)
+  ROOT conditional.1.3 = f32[] conditional(pred.1.0, copy.2, constant.1.2),
+      true_computation=True, false_computation=False
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  HloInstruction* constant_1 =
+      module->entry_computation()->GetInstructionWithName("constant.1.1");
+  HloInstruction* constant_2 =
+      module->entry_computation()->GetInstructionWithName("constant.1.2");
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  {
+    const BufferAllocation& allocation_for_const_1 =
+        GetTopLevelAllocation(*buffers, constant_1);
+    EXPECT_TRUE(allocation_for_const_1.is_constant());
+    for (const auto& buffer_offset_pair :
+         allocation_for_const_1.assigned_buffers()) {
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kCopy);
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kConditional);
+    }
+  }
+
+  {
+    const BufferAllocation& allocation_for_const_2 =
+        GetTopLevelAllocation(*buffers, constant_2);
+    EXPECT_TRUE(allocation_for_const_2.is_constant());
+    for (const auto& buffer_offset_pair :
+         allocation_for_const_2.assigned_buffers()) {
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kCopy);
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kConditional);
+    }
+  }
+}
+
 class WhileBufferAssignmentTest : public HloTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
@@ -1683,7 +1771,9 @@ class WhileBufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
-               [alignment](LogicalBuffer::Color) { return alignment; })
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true)
         .ConsumeValueOrDie();
   }
 
@@ -1927,7 +2017,9 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
           backend().compiler()->BufferSizeBytesFunction(),
-          [](LogicalBuffer::Color) { return 1; }));
+          [](LogicalBuffer::Color) { return 1; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
 
   // The result tuple elements must be assigned with different buffers.
   TF_ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
@@ -2181,7 +2273,9 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
-          ByteSizeOf, [](LogicalBuffer::Color) { return 1; })
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true)
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
