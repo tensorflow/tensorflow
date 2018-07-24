@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// ROCM-specific support for FFT functionality -- this wraps the hipFFT library
+// ROCM-specific support for FFT functionality -- this wraps the rocFFT library
 // capabilities, and is only included into ROCM implementation code -- it will
 // not introduce rocm headers into other code.
 
@@ -86,7 +86,7 @@ class ROCMFftPlan : public fft::Plan {
   bool is_initialized_;
 };
 
-// FFT support for ROCM platform via hipFFT library.
+// FFT support for ROCM platform via rocFFT library.
 //
 // This satisfies the platform-agnostic FftSupport interface.
 //
