@@ -52,6 +52,7 @@ def tflite_linkopts_unstripped():
           "-Wl,--gc-sections", # Eliminate unused code and data.
           "-Wl,--as-needed", # Don't link unused libs.
       ],
+      "//tensorflow:darwin": [],
       "//tensorflow/contrib/lite:mips": [],
       "//tensorflow/contrib/lite:mips64": [],
       "//conditions:default": [
