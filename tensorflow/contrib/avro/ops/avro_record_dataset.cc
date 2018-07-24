@@ -324,7 +324,7 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
           options_(AvroReaderOptions::CreateAvroReaderOptions(schema,
                                                               buffer_size)) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(const string& prefix) const
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(const string& prefix) const
         override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::AvroRecord")}));
@@ -341,7 +341,7 @@ class AvroRecordDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override { return "AvroRecordDatasetOp::Dataset"; }
+    string DebugString() const override { return "AvroRecordDatasetOp::Dataset"; }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
