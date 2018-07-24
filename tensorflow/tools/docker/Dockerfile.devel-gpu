@@ -79,7 +79,7 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.14.1
+ENV BAZEL_VERSION 0.15.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \

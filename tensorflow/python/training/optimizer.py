@@ -611,8 +611,10 @@ class Optimizer(
             if isinstance(global_step, resource_variable_ops.ResourceVariable):
               # TODO(apassos): the implicit read in assign_add is slow; consider
               # making it less so.
-              apply_updates = global_step.assign_add(
-                  1, name=name, read_value=False)
+              apply_updates = resource_variable_ops.assign_add_variable_op(
+                  global_step.handle,
+                  ops.convert_to_tensor(1, dtype=global_step.dtype),
+                  name=name)
             else:
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
 

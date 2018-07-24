@@ -5237,7 +5237,10 @@ def enable_eager_execution(config=None,
      to this function.
   """
   return enable_eager_execution_internal(
-      config, device_policy, execution_mode, None)
+      config=config,
+      device_policy=device_policy,
+      execution_mode=execution_mode,
+      server_def=None)
 
 
 def enable_eager_execution_internal(config=None,
