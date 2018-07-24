@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 
-//This header file is part of MKL ML, need equivalent file in MKL DNN
 #ifndef DO_NOT_USE_ML
 #include "mkl_cblas.h"
 #else
