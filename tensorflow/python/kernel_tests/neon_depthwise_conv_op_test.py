@@ -82,7 +82,7 @@ def CheckGradConfigsToTest():
 class DepthwiseConv2DTest(test.TestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
-  # produce the same results.  It also tests that NCHW and NWHC
+  # produce the same results.  It also tests that NCHW and NHWC
   # formats agree, by comparing the depthwise_conv2d_native with
   # 'NCHW' format (with transposition) matches the 'NHWC' format using
   # the higher level interface.
@@ -123,7 +123,7 @@ class DepthwiseConv2DTest(test.TestCase):
       native_t1 = t1
       strides = [1, stride, stride, 1]
       if data_format == "NCHW":
-        # Transpose from NWHC input to NCHW
+        # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         native_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
         strides = [1, 1, stride, stride]
