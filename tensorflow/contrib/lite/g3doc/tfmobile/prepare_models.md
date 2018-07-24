@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Preparing models for mobile deployment
 
 The requirements for storing model information during training are very
@@ -255,8 +258,8 @@ The criteria for including ops and types fall into several categories:
 These ops are trimmed by default to optimize for inference on mobile, but it is
 possible to alter some build files to change the default.  After alternating the
 build files, you will need to recompile TensorFlow.  See below for more details
-on how to do this, and also see @{$mobile/optimizing#binary_size$Optimizing} for
-more on reducing your binary size.
+on how to do this, and also see <a href="./optimizing.md">optimizing binary size</a>
+for more on reducing your binary size.
 
 ### Locate the implementation
 

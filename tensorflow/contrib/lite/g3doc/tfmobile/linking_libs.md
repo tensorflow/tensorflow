@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # Integrating TensorFlow libraries
 
 Once you have made some progress on a model that addresses the problem you’re
@@ -14,11 +17,11 @@ TensorFlow mobile demo apps.
 
 After you've managed to build the examples, you'll probably want to call
 TensorFlow from one of your existing applications. The very easiest way to do
-this is to use the Pod installation steps described
-@{$mobile/ios_build#using_cocoapods$here}, but if you want to build TensorFlow
-from source (for example to customize which operators are included) you'll need
-to break out TensorFlow as a framework, include the right header files, and link
-against the built libraries and dependencies.
+this is to use the Pod installation steps described in
+<a href="./ios_build.md">Building TensorFlow on iOS</a>, but if you want to build
+TensorFlow from source (for example to customize which operators are included)
+you'll need to break out TensorFlow as a framework, include the right header
+files, and link against the built libraries and dependencies.
 
 ### Android
 
@@ -82,10 +85,12 @@ recompile of the core.
 To achieve this capability, TensorFlow uses a registration pattern in a lot of
 places. In the code, it looks like this:
 
-    class MulKernel : OpKernel {
-      Status Compute(OpKernelContext* context) { … }
-    };
-    REGISTER_KERNEL(MulKernel, “Mul”);
+```
+class MulKernel : OpKernel {
+	Status Compute(OpKernelContext* context) { … }
+};
+REGISTER_KERNEL(MulKernel, “Mul”);
+```
 
 This would be in a standalone `.cc` file linked into your application, either
 as part of the main set of kernels or as a separate custom library. The magic
@@ -101,15 +106,17 @@ doesn’t offer a good mechanism for doing this sort of registration, so we have
 to resort to some tricky code. Under the hood, the macro is implemented so that
 it produces something like this:
 
-    class RegisterMul {
-     public:
-      RegisterMul() {
-        global_kernel_registry()->Register(“Mul”, [](){
-          return new MulKernel()
-        });
-      }
-    };
-    RegisterMul g_register_mul;
+```
+class RegisterMul {
+	public:
+		RegisterMul() {
+			global_kernel_registry()->Register(“Mul”, [](){
+				return new MulKernel()
+			});
+	}
+};
+RegisterMul g_register_mul;
+```
 
 This sets up a class `RegisterMul` with a constructor that tells the global
 kernel registry what function to call when somebody asks it how to create a
@@ -176,8 +183,10 @@ have an experimental script at [rename_protobuf.sh](https://github.com/tensorflo
 You need to run this as part of the makefile build, after you’ve downloaded all
 the dependencies:
 
-    tensorflow/contrib/makefile/download_dependencies.sh
-    tensorflow/contrib/makefile/rename_protobuf.sh
+```
+tensorflow/contrib/makefile/download_dependencies.sh
+tensorflow/contrib/makefile/rename_protobuf.sh
+```
 
 ## Calling the TensorFlow API
 
@@ -193,18 +202,20 @@ use case, while on iOS and Raspberry Pi you call directly into the C++ API.
 
 Here’s what a typical Inference Library sequence looks like on Android:
 
-    // Load the model from disk.
-    TensorFlowInferenceInterface inferenceInterface =
-    new TensorFlowInferenceInterface(assetManager, modelFilename);
+```
+// Load the model from disk.
+TensorFlowInferenceInterface inferenceInterface =
+new TensorFlowInferenceInterface(assetManager, modelFilename);
 
-    // Copy the input data into TensorFlow.
-    inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
+// Copy the input data into TensorFlow.
+inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
 
-    // Run the inference call.
-    inferenceInterface.run(outputNames, logStats);
+// Run the inference call.
+inferenceInterface.run(outputNames, logStats);
 
-    // Copy the output Tensor back into the output array.
-    inferenceInterface.fetch(outputName, outputs);
+// Copy the output Tensor back into the output array.
+inferenceInterface.fetch(outputName, outputs);
+```
 
 You can find the source of this code in the [Android examples](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java#L107).
 
@@ -212,27 +223,29 @@ You can find the source of this code in the [Android examples](https://github.co
 
 Here’s the equivalent code for iOS and Raspberry Pi:
 
-    // Load the model.
-    PortableReadFileToProto(file_path, &tensorflow_graph);
+```
+// Load the model.
+PortableReadFileToProto(file_path, &tensorflow_graph);
 
-    // Create a session from the model.
-    tensorflow::Status s = session->Create(tensorflow_graph);
-    if (!s.ok()) {
-      LOG(FATAL) << "Could not create TensorFlow Graph: " << s;
-    }
+// Create a session from the model.
+tensorflow::Status s = session->Create(tensorflow_graph);
+if (!s.ok()) {
+    LOG(FATAL) << "Could not create TensorFlow Graph: " << s;
+}
 
-    // Run the model.
-    std::string input_layer = "input";
-    std::string output_layer = "output";
-    std::vector<tensorflow::Tensor> outputs;
-    tensorflow::Status run_status = session->Run({{input_layer, image_tensor}},
+// Run the model.
+std::string input_layer = "input";
+std::string output_layer = "output";
+std::vector<tensorflow::Tensor> outputs;
+tensorflow::Status run_status = session->Run({\{input_layer, image_tensor}},
                                {output_layer}, {}, &outputs);
-    if (!run_status.ok()) {
-      LOG(FATAL) << "Running model failed: " << run_status;
-    }
+if (!run_status.ok()) {
+    LOG(FATAL) << "Running model failed: " << run_status;
+}
 
-    // Access the output data.
-    tensorflow::Tensor* output = &outputs[0];
+// Access the output data.
+tensorflow::Tensor* output = &outputs[0];
+```
 
 This is all based on the
 [iOS sample code](https://www.tensorflow.org/code/tensorflow/examples/ios/simple/RunModelViewController.mm),
