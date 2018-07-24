@@ -29,12 +29,14 @@ class IgniteDataset(Dataset):
   """An Ignite Dataset.
 
   This dataset reads data from specified cache from Apache Ignite.
-  This implementation uses 'fat' client (see https://apacheignite-cpp.readme.io/docs).
+  This implementation uses 'fat' client
+  (see https://apacheignite-cpp.readme.io/docs).
   For now (as long as connection is made with 'fat' client) only caches
   with integer keys and string values are supported.
   To configure 'fat' client some environment variables should be set:
-  LD_LIBRARY_PATH should be set in such a way that it contains libjvm.so, for example
-  export LD_LIBRARY_PATH=/usr/lib/jvm/java-8-oracle/jre/lib/amd64/server/
+  LD_LIBRARY_PATH should be set in such a way that it contains libjvm.so,
+  for example export
+  LD_LIBRARY_PATH=/usr/lib/jvm/java-8-oracle/jre/lib/amd64/server/
   IGNITE_HOME should point to Apache Ignite installation directory, for example
   export IGNITE_HOME=~/apache-ignite-fabric-2.4.0-bin
   TF_IGNITE_CLIENT_CONFIG should point to client ignite node config, for example

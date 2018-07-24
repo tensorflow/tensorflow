@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from functools import reduce
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.contrib.ignite.python.ops import ignite_dataset_ops
@@ -44,21 +43,25 @@ class IgniteDatasetTest(test.TestCase):
     pass
 
   def test_ignite_dataset(self):
-    expected_caches = self.collect_values(["node1_entries/entries.txt", "node2_entries/entries.txt"])
+    expected_caches = self.collect_values(
+        ["node1_entries/entries.txt", "node2_entries/entries.txt"]
+    )
     for cache in expected_caches:
       self.tst_cache(expected_caches[cache], cache)
 
   def tst_cache(self, expected_values, cache_name):
     values = {}
 
-    size = reduce(lambda x, value: x + value, expected_values.values(), 0)
+    size = 0
+    for v in expected_values.values():
+      size += v
 
     ds = ignite_dataset_ops.IgniteDataset(cache_name)
 
     with self.test_session() as sess:
       it = ds.make_one_shot_iterator()
       next_element = it.get_next()
-      for i in range(size):
+      for _ in range(size):
         val = sess.run(next_element)
         if val not in values:
           values[val] = 0
@@ -77,7 +80,8 @@ class IgniteDatasetTest(test.TestCase):
         new_res_cache = new_res[new_res_cache_name]
         for key in new_res_cache:
           if new_res_cache_name in res and key in res[new_res_cache_name]:
-            res[new_res_cache_name][key] = res[new_res_cache_name][key] + new_res_cache[key]
+            res[new_res_cache_name][key] = res[new_res_cache_name][key] \
+               + new_res_cache[key]
           else:
             if new_res_cache_name not in res:
               res[new_res_cache_name] = {}
