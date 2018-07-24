@@ -203,8 +203,7 @@ class GatherNdTest(test.TestCase):
       indices = [[[0], [7]]]  # Make this one higher rank
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
-          r"flat indices\[1, :\] = \[7\] does not index into param "
-          r"\(shape: \[3\]\)"):
+          r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
         gather_nd.eval()
 
   def _disabledTestBadIndicesGPU(self):
@@ -217,8 +216,7 @@ class GatherNdTest(test.TestCase):
       indices = [[[0], [7]]]  # Make this one higher rank
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
-          r"flat indices\[1, :\] = \[7\] does not index into param "
-          r"\(shape: \[3\]\)"):
+          r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
         gather_nd.eval()
 
   def testBadIndicesWithSlicesCPU(self):
@@ -227,8 +225,7 @@ class GatherNdTest(test.TestCase):
       indices = [[[0], [0], [1]]]  # Make this one higher rank
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
-          r"flat indices\[2, :\] = \[1\] does not index into param "
-          r"\(shape: \[1,3\]\)"):
+          r"indices\[0,2\] = \[1\] does not index into param shape \[1,3\]"):
         gather_nd.eval()
 
   def _disabledTestBadIndicesWithSlicesGPU(self):
@@ -241,8 +238,7 @@ class GatherNdTest(test.TestCase):
       indices = [[[0], [0], [1]]]  # Make this one higher rank
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
-          r"flat indices\[2, :\] = \[1\] does not index into param "
-          r"\(shape: \[1,3\]\)"):
+          r"indices\[0,2\] = \[1\] does not index into param shape \[1,3\]"):
         gather_nd.eval()
 
   def testGradientsRank2Elements(self):

@@ -59,7 +59,7 @@ namespace tensorflow {
 // blocking is used.
 xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
                            bool lower, bool transpose_a, bool conjugate_a,
-                           int64 block_size = 256);
+                           int64 block_size = 128);
 
 xla::XlaOp TriangularSolveLeftLooking(xla::XlaOp a, xla::XlaOp b,
                                       bool transpose_a, bool conjugate_a);

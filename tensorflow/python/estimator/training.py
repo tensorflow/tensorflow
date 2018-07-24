@@ -732,7 +732,8 @@ class _TrainingExecutor(object):
         job_name=config.task_type,
         task_index=config.task_id,
         config=session_config,
-        start=False)
+        start=False,
+        protocol=config.protocol)
     server.start()
     return server
 

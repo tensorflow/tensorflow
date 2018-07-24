@@ -299,6 +299,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building while loop";
 }
 
+REGISTER_XLA_OP(Name("While").AllowResourceTypes(), XlaWhileOp);
 REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes(), XlaWhileOp);
 
 }  // namespace tensorflow

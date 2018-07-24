@@ -181,7 +181,8 @@ def shape_safe_assign_variable_handle(handle, shape, value, name=None):
                                                       name=name)
 
 
-class ResourceVariable(variables.Variable):
+# TODO(apassos) make this be variables.Variable
+class ResourceVariable(variables.RefVariable):
   """Variable based on resource handles.
 
   See the @{$variables$Variables How To} for a high level overview.
@@ -741,8 +742,14 @@ class ResourceVariable(variables.Variable):
   def _read_variable_op(self):
     if self.trainable:
       tape.watch_variable(self)
-    return gen_resource_variable_ops.read_variable_op(self._handle,
-                                                      self._dtype)
+    result = gen_resource_variable_ops.read_variable_op(self._handle,
+                                                        self._dtype)
+    if not context.executing_eagerly():
+      # Note that if a control flow context is active the input of the read op
+      # might not actually be the handle. This line bypasses it.
+      tape.record_operation(
+          "ReadVariableOp", [result], [self._handle], lambda x: [x])
+    return result
 
   def read_value(self):
     """Constructs an op which reads the value of this variable.

@@ -71,7 +71,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
   gemm_support::IncrementUsageCounter(context);
-  auto* op_data = new OpData;
+  auto* op_data = new OpData();
   context->AddTensors(context, 1, &op_data->input_quantized_index);
   return op_data;
 }

@@ -246,6 +246,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building If";
 }
 
+REGISTER_XLA_OP(Name("If").AllowResourceTypes(), XlaIfOp);
 REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
 
 }  // namespace tensorflow

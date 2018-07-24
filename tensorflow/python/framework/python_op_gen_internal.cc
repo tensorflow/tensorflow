@@ -588,10 +588,12 @@ void GenPythonOp::AddExport() {
     return;
   }
 
+  // Add @tf_export decorator.
   strings::StrAppend(&result_, "@tf_export(");
 
   // Add all endpoint names to tf_export.
   bool first_endpoint = true;
+  std::vector<string> deprecated_endpoints;
   for (const auto& endpoint : api_def_.endpoint()) {
     if (!first_endpoint) {
       strings::StrAppend(&result_, ", ");
@@ -601,9 +603,32 @@ void GenPythonOp::AddExport() {
     string endpoint_name;
     python_op_gen_internal::GenerateLowerCaseOpName(endpoint.name(),
                                                     &endpoint_name);
+    if (endpoint.deprecated()) {
+      deprecated_endpoints.push_back(endpoint_name);
+    }
     strings::StrAppend(&result_, "'", endpoint_name, "'");
   }
   strings::StrAppend(&result_, ")\n");
+
+  // If all endpoints are deprecated, add @deprecated decorator.
+  if (!api_def_.deprecation_message().empty()) {
+    const string instructions = api_def_.deprecation_message();
+    strings::StrAppend(&result_, "@deprecated(None, '", instructions, "')\n");
+  }
+  // Add @deprecated_endpoints decorator.
+  if (!deprecated_endpoints.empty()) {
+    strings::StrAppend(&result_, "@deprecated_endpoints(");
+    bool first_endpoint = true;
+    for (auto& endpoint_name : deprecated_endpoints) {
+      if (first_endpoint) {
+        first_endpoint = false;
+      } else {
+        strings::StrAppend(&result_, ", ");
+      }
+      strings::StrAppend(&result_, "'", endpoint_name, "'");
+    }
+    strings::StrAppend(&result_, ")\n");
+  }
 }
 
 void GenPythonOp::AddDefLine(const string& function_name,

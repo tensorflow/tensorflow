@@ -65,7 +65,7 @@ class IncPluginTRT : public OpKernel {
         reinterpret_cast<const cudaStream_t*>(context->op_device_context()
                                                   ->stream()
                                                   ->implementation()
-                                                  ->CudaStreamMemberHack()));
+                                                  ->GpuStreamMemberHack()));
     IncrementKernel(input_tensor.flat<float>().data(), inc_,
                     output_tensor->flat<float>().data(),
                     input_shape.num_elements(), *stream);

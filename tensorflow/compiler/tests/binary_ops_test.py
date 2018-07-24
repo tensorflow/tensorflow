@@ -691,11 +691,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
           expected=np.array([[False], [False], [True]], dtype=np.bool))
-      self._testBinary(
-          less_op,
-          np.array([[10], [7], [2], [-1]], dtype=np.int64),
-          np.int64(7),
-          expected=np.array([[False], [False], [True], [True]], dtype=np.bool))
+      if np.int64 in self.numeric_types:
+        self._testBinary(
+            less_op,
+            np.array([[10], [7], [2], [-1]], dtype=np.int64),
+            np.int64(7),
+            expected=np.array(
+                [[False], [False], [True], [True]], dtype=np.bool))
 
     for less_equal_op in [math_ops.less_equal, (lambda x, y: x <= y)]:
       self._testBinary(

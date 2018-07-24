@@ -1377,16 +1377,16 @@ Stream &Stream::ThenPoolForward(
     const dnn::BatchDescriptor &input_dimensions,
     const DeviceMemory<double> &input_data,
     const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<double> *output_data,
-    ScratchAllocator *workspace_allocator) {
+    DeviceMemory<double> *output_data, ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
-            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
-                                    input_data, output_dimensions,
-                                    output_data, workspace_allocator));
+                                    input_data, output_dimensions, output_data,
+                                    workspace_allocator));
     } else {
       SetError();
       LOG(WARNING)
@@ -1402,16 +1402,16 @@ Stream &Stream::ThenPoolForward(
     const dnn::BatchDescriptor &input_dimensions,
     const DeviceMemory<float> &input_data,
     const dnn::BatchDescriptor &output_dimensions,
-    DeviceMemory<float> *output_data,
-    ScratchAllocator *workspace_allocator) {
+    DeviceMemory<float> *output_data, ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
-            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
-                                    input_data, output_dimensions,
-                                    output_data, workspace_allocator));
+                                    input_data, output_dimensions, output_data,
+                                    workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1427,13 +1427,14 @@ Stream &Stream::ThenPoolForward(
     DeviceMemory<Eigen::half> *output_data,
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
-            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data));
+            PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       CheckError(dnn->DoPoolForward(this, pooling_dimensions, input_dimensions,
-                                    input_data, output_dimensions,
-                                    output_data, workspace_allocator));
+                                    input_data, output_dimensions, output_data,
+                                    workspace_allocator));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -1452,7 +1453,8 @@ Stream &Stream::ThenPoolBackward(
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
-            PARAM(input_diff_data), PARAM(output_diff_data));
+            PARAM(input_diff_data), PARAM(output_diff_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -1481,7 +1483,8 @@ Stream &Stream::ThenPoolBackward(
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
-            PARAM(input_diff_data), PARAM(output_diff_data));
+            PARAM(input_diff_data), PARAM(output_diff_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -1507,7 +1510,8 @@ Stream &Stream::ThenPoolBackward(
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(pooling_dimensions), PARAM(input_dimensions),
             PARAM(input_data), PARAM(output_dimensions), PARAM(output_data),
-            PARAM(input_diff_data), PARAM(output_diff_data));
+            PARAM(input_diff_data), PARAM(output_diff_data),
+            PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
@@ -1565,7 +1569,7 @@ Stream &Stream::ThenNormalizeBackwardWithDimensions(
     ScratchAllocator *workspace_allocator) {
   VLOG_CALL(PARAM(normalize_descriptor), PARAM(dimensions), PARAM(raw_data),
             PARAM(normalized_data), PARAM(normalized_variable_gradient),
-            PARAM(raw_variable_gradient));
+            PARAM(raw_variable_gradient), PARAM(workspace_allocator));
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {

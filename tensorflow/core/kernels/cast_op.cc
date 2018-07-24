@@ -41,8 +41,10 @@ typedef Eigen::SyclDevice SYCLDevice;
 #define CURRY_TYPES2(FN, arg0)   \
   FN(arg0, bool);                \
   FN(arg0, uint8);               \
-  FN(arg0, int8);                \
   FN(arg0, uint16);              \
+  FN(arg0, uint32);              \
+  FN(arg0, uint64);              \
+  FN(arg0, int8);                \
   FN(arg0, int16);               \
   FN(arg0, int32);               \
   FN(arg0, int64);               \
@@ -86,10 +88,14 @@ Status CpuCastOp::Prepare() {
     work_ = GetCpuCastFromBool(dst_dtype_);
   } else if (src_dtype_ == DT_UINT8) {
     work_ = GetCpuCastFromUint8(dst_dtype_);
-  } else if (src_dtype_ == DT_INT8) {
-    work_ = GetCpuCastFromInt8(dst_dtype_);
   } else if (src_dtype_ == DT_UINT16) {
     work_ = GetCpuCastFromUint16(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT32) {
+    work_ = GetCpuCastFromUint32(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT64) {
+    work_ = GetCpuCastFromUint64(dst_dtype_);
+  } else if (src_dtype_ == DT_INT8) {
+    work_ = GetCpuCastFromInt8(dst_dtype_);
   } else if (src_dtype_ == DT_INT16) {
     work_ = GetCpuCastFromInt16(dst_dtype_);
   } else if (src_dtype_ == DT_INT32) {
@@ -135,10 +141,14 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromBool(dst_dtype_);
     } else if (src_dtype_ == DT_UINT8) {
       work_ = GetGpuCastFromUint8(dst_dtype_);
-    } else if (src_dtype_ == DT_INT8) {
-      work_ = GetGpuCastFromInt8(dst_dtype_);
     } else if (src_dtype_ == DT_UINT16) {
       work_ = GetGpuCastFromUint16(dst_dtype_);
+    } else if (src_dtype_ == DT_UINT32) {
+      work_ = GetGpuCastFromUint32(dst_dtype_);
+    } else if (src_dtype_ == DT_UINT64) {
+      work_ = GetGpuCastFromUint64(dst_dtype_);
+    } else if (src_dtype_ == DT_INT8) {
+      work_ = GetGpuCastFromInt8(dst_dtype_);
     } else if (src_dtype_ == DT_INT16) {
       work_ = GetGpuCastFromInt16(dst_dtype_);
     } else if (src_dtype_ == DT_INT32) {
@@ -178,8 +188,10 @@ REGISTER_KERNEL_BUILDER(Name("Cast").Device(DEVICE_CPU), CpuCastOp);
 
 CURRY_TYPES2(REGISTER_CAST_GPU, bool);
 CURRY_TYPES2(REGISTER_CAST_GPU, uint8);
-CURRY_TYPES2(REGISTER_CAST_GPU, int8);
 CURRY_TYPES2(REGISTER_CAST_GPU, uint16);
+CURRY_TYPES2(REGISTER_CAST_GPU, uint32);
+CURRY_TYPES2(REGISTER_CAST_GPU, uint64);
+CURRY_TYPES2(REGISTER_CAST_GPU, int8);
 CURRY_TYPES2(REGISTER_CAST_GPU, int16);
 CURRY_TYPES2(REGISTER_CAST_GPU, int32);
 CURRY_TYPES2(REGISTER_CAST_GPU, int64);

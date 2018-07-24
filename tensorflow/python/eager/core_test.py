@@ -610,6 +610,14 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertEquals(typ, dtypes.float32)
       self.assertIsInstance(t, ops.EagerTensor)
 
+  def testConvertMixedEagerTensorsWithVariables(self):
+    var = resource_variable_ops.ResourceVariable(1.0)
+    types, tensors = execute_lib.convert_to_mixed_eager_tensors(
+        ['foo', var], context.context())
+    self.assertAllEqual([dtypes.string, dtypes.float32], types)
+    for t in tensors:
+      self.assertIsInstance(t, ops.EagerTensor)
+
 
 class SendRecvTest(test_util.TensorFlowTestCase):
 

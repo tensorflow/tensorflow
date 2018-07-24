@@ -2060,3 +2060,23 @@ xla_test(
         "//tensorflow/core:test",
     ],
 )
+
+xla_test(
+    name = "iota_test",
+    srcs = ["iota_test.cc"],
+    blacklisted_backends = [
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",
+        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)

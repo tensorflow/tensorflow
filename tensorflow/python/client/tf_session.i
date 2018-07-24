@@ -138,6 +138,11 @@ tensorflow::ImportNumpy();
   $result = PyLong_FromLongLong($1);
 }
 
+// Convert TF_DeviceListIncarnation uint64_t output to Python integer
+%typemap(out) uint64_t {
+  $result = PyLong_FromUnsignedLongLong($1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;

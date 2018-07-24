@@ -44,7 +44,7 @@ class BigtableOpsTest(test.TestCase):
   def setUp(self):
     self._client = gen_bigtable_test_ops.bigtable_test_client()
     table = gen_bigtable_ops.bigtable_table(self._client, "testtable")
-    self._table = bigtable.BigTable("testtable", None, table)
+    self._table = bigtable.BigtableTable("testtable", None, table)
 
   def _makeSimpleDataset(self):
     output_rows = dataset_ops.Dataset.from_tensor_slices(self.COMMON_ROW_KEYS)

@@ -43,7 +43,7 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
       const HloComputation&, tensorflow::gtl::ArraySlice<llvm::Value*>)>;
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
-                        llvm::Module* module, llvm::IRBuilder<>* ir_builder,
+                        llvm::Module* module, llvm::IRBuilder<>* b,
                         NestedComputer compute_nested);
 
   llvm_ir::ElementGenerator MakeElementGenerator(

@@ -36,6 +36,13 @@ EagerContext::EagerContext(const SessionOptions& opts,
       log_device_placement_(opts.config.log_device_placement()),
       async_default_(async) {
   InitDeviceMapAndAsync();
+  if (opts.config.inter_op_parallelism_threads() > 0) {
+    runner_ = [this](std::function<void()> closure) {
+      this->thread_pool_->Schedule(closure);
+    };
+  } else {
+    runner_ = [](std::function<void()> closure) { closure(); };
+  }
 }
 
 #ifndef __ANDROID__

@@ -720,7 +720,7 @@ ROCMExecutor::GetTimerImplementation() {
   return std::unique_ptr<internal::TimerInterface>(new ROCMTimer(this));
 }
 
-void *ROCMExecutor::GPUContextHack() { return nullptr; }
+void *ROCMExecutor::GpuContextHack() { return nullptr; }
 
 // Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.

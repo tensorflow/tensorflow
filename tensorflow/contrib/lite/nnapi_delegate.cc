@@ -607,11 +607,14 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_EQUAL:
       case tflite::BuiltinOperator_NOT_EQUAL:
       case tflite::BuiltinOperator_SUM:
+      case tflite::BuiltinOperator_REDUCE_MAX:
+      case tflite::BuiltinOperator_REDUCE_PROD:
       case tflite::BuiltinOperator_SQRT:
       case tflite::BuiltinOperator_RSQRT:
       case tflite::BuiltinOperator_SHAPE:
       case tflite::BuiltinOperator_POW:
       case tflite::BuiltinOperator_FAKE_QUANT:
+      case tflite::BuiltinOperator_PACK:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;

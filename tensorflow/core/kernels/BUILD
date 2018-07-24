@@ -558,6 +558,12 @@ cc_header_only_library(
     deps = [":image_resizer_state"],
 )
 
+cc_library(
+    name = "crop_resize_bilinear_core",
+    hdrs = ["crop_resize_bilinear_core.h"],
+    visibility = ["//visibility:private"],
+)
+
 # OpKernel libraries ----------------------------------------------------------
 
 ARRAY_DEPS = [
@@ -1090,6 +1096,29 @@ tf_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
+    deps = [
+        ":conv_ops",
+        ":image",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_gpu_cc_test(
+    name = "depthwise_conv_ops_test",
+    size = "small",
+    srcs = ["depthwise_conv_ops_test.cc"],
+    tags = ["requires-gpu-sm35"],
     deps = [
         ":conv_ops",
         ":image",
@@ -2133,7 +2162,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -2199,7 +2228,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_bilinear_op",
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":crop_resize_bilinear_core"],
 )
 
 tf_kernel_library(
@@ -4840,6 +4869,8 @@ filegroup(
         "cast_op_impl_int64.cc",
         "cast_op_impl_int8.cc",
         "cast_op_impl_uint16.cc",
+        "cast_op_impl_uint32.cc",
+        "cast_op_impl_uint64.cc",
         "cast_op_impl_uint8.cc",
         "concat_lib.h",
         "concat_lib_cpu.cc",
@@ -4847,6 +4878,7 @@ filegroup(
         "concat_op.cc",
         "constant_op.cc",
         "constant_op.h",
+        "crop_resize_bilinear_core.h",
         "cwise_ops.h",
         "cwise_ops_common.cc",
         "cwise_ops_common.h",
@@ -6302,6 +6334,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:decode",
         "//tensorflow/core/util/proto:descriptors",
+        "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
     ],
 )
@@ -6314,6 +6347,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:descriptors",
+        "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
     ],
 )

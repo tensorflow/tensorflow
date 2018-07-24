@@ -126,7 +126,12 @@ class BaseSaverBuilder(object):
           def f():
             with ops.device(v.device):
               x = v.read_value()
-            with ops.device("/device:CPU:0"):
+            # To allow variables placed on non-CPU devices to be checkpointed,
+            # we copy them to CPU on the same machine first.
+            device_spec = pydev.DeviceSpec().parse_from_string(v.device)
+            device_spec.merge_from(
+                pydev.DeviceSpec().parse_from_string("/device:CPU:0"))
+            with ops.device(device_spec.to_string()):
               return array_ops.identity(x)
           return f
 

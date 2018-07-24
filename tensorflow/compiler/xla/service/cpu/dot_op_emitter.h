@@ -61,7 +61,7 @@ class DotOpEmitter {
       const HloInstruction& dot, const llvm_ir::IrArray& target_array,
       const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
       const llvm_ir::IrArray* addend_array,
-      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
       const HloModuleConfig& hlo_module_config,
       const TargetMachineFeatures& target_machine_features);
 
@@ -70,8 +70,7 @@ class DotOpEmitter {
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
                const llvm_ir::IrArray* addend_array,
-               llvm::Value* executable_run_options_value,
-               llvm::IRBuilder<>* ir_builder,
+               llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
                const HloModuleConfig& hlo_module_config,
                const TargetMachineFeatures& target_machine_features);
 
@@ -171,7 +170,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& rhs_array_;
   const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   const HloModuleConfig& hlo_module_config_;
   const TargetMachineFeatures& target_machine_features_;
 };

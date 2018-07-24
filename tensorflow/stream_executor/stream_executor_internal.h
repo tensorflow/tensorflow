@@ -107,13 +107,13 @@ class StreamInterface {
   // causing a fatal error if it is not. This hack is made available solely for
   // use from distbelief code, which temporarily has strong ties to CUDA or
   // ROCm as a platform.
-  virtual void *GPUStreamHack() { return nullptr; }
+  virtual void *GpuStreamHack() { return nullptr; }
 
-  // See the above comment on GPUStreamHack -- this further breaks abstraction
+  // See the above comment on GpuStreamHack -- this further breaks abstraction
   // for Eigen within distbelief, which has strong ties to CUDA or ROCm as a
   // platform, and a historical attachment to a programming model which takes a
   // stream-slot rather than a stream-value.
-  virtual void **GPUStreamMemberHack() { return nullptr; }
+  virtual void **GpuStreamMemberHack() { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
@@ -332,7 +332,7 @@ class StreamExecutorInterface {
   // causing a fatal error if it is not. This hack is made available solely for
   // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
   // as a platform.
-  virtual void *GPUContextHack() { return nullptr; }
+  virtual void *GpuContextHack() { return nullptr; }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);

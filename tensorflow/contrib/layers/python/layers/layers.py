@@ -1702,19 +1702,22 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
-def _model_variable_getter(getter,
-                           name,
-                           shape=None,
-                           dtype=None,
-                           initializer=None,
-                           regularizer=None,
-                           trainable=True,
-                           collections=None,
-                           caching_device=None,
-                           partitioner=None,
-                           rename=None,
-                           use_resource=None,
-                           **_):
+def _model_variable_getter(
+    getter,
+    name,
+    shape=None,
+    dtype=None,
+    initializer=None,
+    regularizer=None,
+    trainable=True,
+    collections=None,
+    caching_device=None,
+    partitioner=None,
+    rename=None,
+    use_resource=None,
+    synchronization=tf_variables.VariableSynchronization.AUTO,
+    aggregation=tf_variables.VariableAggregation.NONE,
+    **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1732,7 +1735,9 @@ def _model_variable_getter(getter,
       caching_device=caching_device,
       partitioner=partitioner,
       custom_getter=getter,
-      use_resource=use_resource)
+      use_resource=use_resource,
+      synchronization=synchronization,
+      aggregation=aggregation)
 
 
 def _build_variable_getter(rename=None):

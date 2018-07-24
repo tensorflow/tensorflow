@@ -54,7 +54,7 @@ class Dynamics(tf.keras.Model):
     self.position_fn = neural_nets.GenericNet(x_dim, factor=2.)
     self.momentum_fn = neural_nets.GenericNet(x_dim, factor=1.)
 
-    self.eps = tfe.Variable(
+    self.eps = tf.Variable(
         initial_value=eps, name="eps", dtype=tf.float32, trainable=True)
 
   def apply_transition(self, position):

@@ -3095,7 +3095,7 @@ tf_py_test(
 
 tf_py_test(
     name = "cond_v2_test",
-    size = "small",
+    size = "medium",
     srcs = ["cond_v2_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
@@ -3110,4 +3110,5 @@ tf_py_test(
         "//tensorflow/python:training",
     ],
     grpc_enabled = True,
+    tags = ["no_gpu"],  # TODO(b/111656070)
 )
