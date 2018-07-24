@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
+
 #include "tensorflow/contrib/lite/testing/generate_testspec.h"
 #include "tensorflow/contrib/lite/testing/join.h"
 #include "tensorflow/contrib/lite/testing/split.h"
@@ -88,13 +90,13 @@ bool GenerateTestSpecFromTensorflowModel(
   TfDriver runner(input_layer, input_layer_type, input_layer_shape,
                   output_layer);
   if (!runner.IsValid()) {
-    cerr << runner.GetErrorMessage() << endl;
+    std::cerr << runner.GetErrorMessage() << std::endl;
     return false;
   }
 
   runner.LoadModel(tensorflow_model_path);
   if (!runner.IsValid()) {
-    cerr << runner.GetErrorMessage() << endl;
+    std::cerr << runner.GetErrorMessage() << std::endl;
     return false;
   }
 
@@ -118,14 +120,14 @@ bool GenerateTestSpecFromTensorflowModel(
     for (int j = 0; j < input_values.size(); j++) {
       runner.SetInput(j, input_values[j]);
       if (!runner.IsValid()) {
-        cerr << runner.GetErrorMessage() << endl;
+        std::cerr << runner.GetErrorMessage() << std::endl;
         return false;
       }
     }
 
     runner.Invoke();
     if (!runner.IsValid()) {
-      cerr << runner.GetErrorMessage() << endl;
+      std::cerr << runner.GetErrorMessage() << std::endl;
       return false;
     }
 
@@ -137,7 +139,7 @@ bool GenerateTestSpecFromTensorflowModel(
     for (int j = 0; j < output_layer.size(); j++) {
       stream << "  output: \"" << runner.ReadOutput(j) << "\"\n";
       if (!runner.IsValid()) {
-        cerr << runner.GetErrorMessage() << endl;
+        std::cerr << runner.GetErrorMessage() << std::endl;
         return false;
       }
     }
