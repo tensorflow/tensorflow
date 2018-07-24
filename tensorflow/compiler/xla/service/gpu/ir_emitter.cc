@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -121,17 +120,6 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           // based on the real element type.
           /*alignment=*/1, GetBasePointer(*operand), &b_, module_));
   return Status::OK();
-}
-
-Status IrEmitter::HandleSort(HloInstruction* sort) {
-  auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
-  if (values != nullptr) {
-    // TODO(b/26783907): Also sort the values by their corresponding key.
-    return Unimplemented("Key/Value Sort is not implemented on GPU");
-  }
-  int dimension_to_sort = sort->dimensions(0);
-  return llvm_ir::EmitSortInPlace(dimension_to_sort, GetIrArray(*sort, *sort),
-                                  IrName(sort), &b_);
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
