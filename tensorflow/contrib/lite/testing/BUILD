@@ -210,6 +210,10 @@ cc_library(
 cc_library(
     name = "util",
     hdrs = ["util.h"],
+    deps = [
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string",
+    ],
 )
 
 cc_test(
