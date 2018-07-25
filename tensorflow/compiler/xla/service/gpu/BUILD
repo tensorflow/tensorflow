@@ -217,6 +217,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
+        "//tensorflow/compiler/xla/service/llvm_ir:math_ops",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",

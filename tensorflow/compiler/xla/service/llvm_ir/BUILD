@@ -223,3 +223,13 @@ cc_library(
         "@llvm//:core",
     ],
 )
+
+cc_library(
+    name = "math_ops",
+    srcs = ["math_ops.cc"],
+    hdrs = ["math_ops.h"],
+    deps = [
+        ":llvm_util",
+        "@llvm//:core",
+    ],
+)
