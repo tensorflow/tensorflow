@@ -17,7 +17,8 @@ RUN /install/install_deb_packages.sh
 
 # Install NCCL
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libnccl2=2.2.13-1+cuda9.0
+        libnccl2=2.2.13-1+cuda9.0 \
+        libnccl-dev=2.2.13-1+cuda9.0
 
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel.sh
