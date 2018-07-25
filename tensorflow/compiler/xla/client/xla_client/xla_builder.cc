@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
