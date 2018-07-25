@@ -1517,10 +1517,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     start_index_value = b_->CreateSExtOrTrunc(start_index_value, index_type);
     int64 largest_valid_start_index =
         input_hlo->shape().dimensions(i) - hlo->shape().dimensions(i);
@@ -1671,10 +1667,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     start_index_value = b_->CreateSExtOrTrunc(start_index_value, index_type);
     llvm::Value* update_dim_size =
         index_typed_const(update_hlo->shape().dimensions(i));
