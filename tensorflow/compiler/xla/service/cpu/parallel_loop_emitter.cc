@@ -25,19 +25,21 @@ namespace cpu {
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
-    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilder<>* ir_builder)
-    : LoopEmitter(target_element_generator, target_array, ir_builder),
+    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilder<>* b)
+    : LoopEmitter(target_element_generator, target_array, b),
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 
 std::vector<llvm_ir::IrArray::Index>
 ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name) {
+    tensorflow::StringPiece loop_name, llvm::Type* index_type) {
+  CHECK_NE(index_type, nullptr);
+
   CHECK(!ShapeUtil::IsTuple(shape_));
   CHECK(!ShapeUtil::IsScalar(shape_));
 
-  llvm_ir::ForLoopNest loop_nest(loop_name, ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(loop_name, b_);
   const int64 num_dims = shape_.dimensions_size();
-  llvm_ir::IrArray::Index array_index(num_dims);
+  llvm_ir::IrArray::Index array_index(index_type, num_dims);
 
   // Add loops from outer-most to inner-most dimensions.
   for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
@@ -63,8 +65,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
     }
   }
   // Point IR builder at inner loop BB.
-  llvm_ir::SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(),
-                                 ir_builder_);
+  llvm_ir::SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(), b_);
 
   // Set exit_bb_ to the exit block of the loop nest.
   exit_bb_ = loop_nest.GetOuterLoopExitBasicBlock();

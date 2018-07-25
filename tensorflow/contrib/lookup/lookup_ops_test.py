@@ -280,6 +280,21 @@ class HashTableOpTest(test.TestCase):
       table.init.run()
       self.assertAllEqual(3, table.size().eval())
 
+  def testHashTableInt32String(self):
+    with self.test_session():
+      default_val = "n/a"
+      keys = constant_op.constant([0, 1, 2], dtypes.int32)
+      values = constant_op.constant(["brain", "salad", "surgery"])
+      table = lookup.HashTable(
+          lookup.KeyValueTensorInitializer(keys, values), default_val)
+      table.init.run()
+
+      input_tensor = constant_op.constant([0, 1, -1])
+      output = table.lookup(input_tensor)
+
+      result = output.eval()
+      self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
+
 
 class MutableHashTableOpTest(test.TestCase):
 
@@ -1397,7 +1412,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
 
 class IndexTableFromTensor(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_index_table_from_tensor_with_tensor_init(self):
     table = lookup.index_table_from_tensor(
         mapping=("brain", "salad", "surgery"), num_oov_buckets=1)
@@ -1670,7 +1685,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInitializeStringTable(self):
     vocabulary_file = self._createVocabFile("one_column_1.txt")
     default_value = -1

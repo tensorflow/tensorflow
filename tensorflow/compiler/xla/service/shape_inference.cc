@@ -69,11 +69,11 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   }
 
   const Shape& accumulator_shape = reducer_shape.result();
-  if (ShapeUtil::Rank(accumulator_shape) != 0) {
+  if (!ShapeUtil::IsArray(accumulator_shape) ||
+      ShapeUtil::Rank(accumulator_shape) != 0) {
     return InvalidArgument(
-        "Reduction function must have rank 0 (rank %lld reduction function "
-        "given).",
-        ShapeUtil::Rank(accumulator_shape));
+        "Reduction function must produce a scalar but has shape: %s",
+        ShapeUtil::HumanString(accumulator_shape).c_str());
   }
 
   // Check that the accumulator can be passed in as the first argument.
@@ -222,13 +222,16 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       return shape;
     case HloOpcode::kReal:
     case HloOpcode::kImag:
-      if (!ShapeUtil::ElementIsComplex(shape)) {
+      if (ShapeUtil::ElementIsComplex(shape)) {
+        return ShapeUtil::ComplexComponentShape(shape);
+      } else if (ShapeUtil::ElementIsFloating(shape)) {
+        return shape;
+      } else {
         return InvalidArgument(
-            "Expected element type in shape to be complex for real/imag "
-            "operation; got %s.",
+            "Expected element type in shape to be floating or complex for "
+            "real/imag operation; got %s.",
             PrimitiveType_Name(shape.element_type()).c_str());
       }
-      return ShapeUtil::ChangeElementType(shape, F32);
     case HloOpcode::kAbs:
       if (ShapeUtil::ElementIsComplex(shape)) {
         return ShapeUtil::ChangeElementType(
@@ -239,7 +242,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kNegate:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSign:
-    case HloOpcode::kSort:
       return shape;
 
     case HloOpcode::kNot:
@@ -329,7 +331,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::MakeShape(element_type, new_dimensions);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferGenerateTokenShape(
+/* static */ StatusOr<Shape> ShapeInference::InferAfterAllShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes) {
   for (const Shape* arg_shape : arg_shapes) {
     if (arg_shape->element_type() != TOKEN) {
@@ -885,6 +887,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
     case HloOpcode::kAnd:
     case HloOpcode::kOr:
+    case HloOpcode::kXor:
       if (lhs.element_type() != PRED &&
           !primitive_util::IsIntegralType(lhs.element_type())) {
         return InvalidArgument(
@@ -929,6 +932,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       return InferClampShape(lhs, rhs, ehs);
     case HloOpcode::kSelect:
       return InferSelectShape(lhs, rhs, ehs);
+    case HloOpcode::kTupleSelect:
+      return InferTupleSelectShape(lhs, rhs, ehs);
     default:
       return InvalidArgument("Unknown operation %s.",
                              HloOpcodeString(opcode).c_str());
@@ -939,6 +944,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     HloOpcode opcode,
     tensorflow::gtl::ArraySlice<const HloInstruction*> operands) {
   std::vector<const Shape*> operand_shapes;
+  operand_shapes.reserve(operands.size());
   for (const HloInstruction* operand : operands) {
     operand_shapes.push_back(&operand->shape());
   }
@@ -954,10 +960,28 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kTuple: {
       Shape result = ShapeUtil::MakeTupleShape({});
+      result.mutable_tuple_shapes()->Reserve(operand_shapes.size());
       for (const Shape* shape : operand_shapes) {
         ShapeUtil::AppendShapeToTuple(*shape, &result);
       }
       return result;
+    }
+    case HloOpcode::kSort: {
+      if (operand_shapes.size() == 1) {
+        return *operand_shapes[0];
+      } else if (operand_shapes.size() == 2) {
+        if (!ShapeUtil::SameDimensions(*operand_shapes[0],
+                                       *operand_shapes[1])) {
+          return InvalidArgument(
+              "Sort keys and values dimensions must match. "
+              "Keys shape is: %s\n, Values shape is: %s",
+              ShapeUtil::HumanString(*operand_shapes[0]).c_str(),
+              ShapeUtil::HumanString(*operand_shapes[1]).c_str());
+        }
+        return ShapeUtil::MakeTupleShape(
+            {*operand_shapes[0], *operand_shapes[1]});
+      }
+      return InvalidArgument("Unexpected number of operands for sort");
     }
     default:
       return InvalidArgument("Unknown operation %s.",
@@ -2256,15 +2280,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 // broadcast from all operands, not just the predicate.
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
-  bool compatible;
-  if (ShapeUtil::IsTuple(on_true)) {
-    // Select only defines the top-level buffer, so if it's a tuple, the two
-    // input must match exactly.
-    compatible = ShapeUtil::Compatible(on_true, on_false);
-  } else {
-    compatible = ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false);
-  }
-  if (!compatible) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false)) {
     return InvalidArgument(
         "Operands to select must be the same shape; got %s and %s.",
         ShapeUtil::HumanString(on_true).c_str(),
@@ -2276,7 +2292,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(pred).c_str());
   }
   if (ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
-      ShapeUtil::Rank(pred) == 0) {
+      ShapeUtil::IsScalar(pred)) {
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.
@@ -2288,6 +2304,29 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         " different from the other operands: %s.",
         ShapeUtil::HumanString(pred).c_str());
   }
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferTupleSelectShape(
+    const Shape& pred, const Shape& on_true, const Shape& on_false) {
+  // Select only defines the top-level buffer, so if it's a tuple, the two
+  // input must match exactly.
+  if (!ShapeUtil::Compatible(on_true, on_false)) {
+    return InvalidArgument(
+        "Operands to tuple-select must be the same shape; got %s and %s.",
+        ShapeUtil::HumanString(on_true).c_str(),
+        ShapeUtil::HumanString(on_false).c_str());
+  }
+  if (pred.element_type() != PRED) {
+    return InvalidArgument(
+        "TupleSelect's pred operand must have PRED element type; got %s.",
+        ShapeUtil::HumanString(pred).c_str());
+  }
+  if (!ShapeUtil::IsScalar(pred)) {
+    return InvalidArgument(
+        "TupleSelect operation with non-scalar predicate: %s.",
+        ShapeUtil::HumanString(pred).c_str());
+  }
+  return on_true;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCallShape(

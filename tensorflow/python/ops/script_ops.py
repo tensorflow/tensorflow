@@ -34,6 +34,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
@@ -96,28 +97,27 @@ class EagerFunc(object):
       return constant_op.constant(0.0, dtype=dtype)
     return ops.convert_to_tensor(value, dtype=dtype)
 
-  def __call__(self, on_gpu, token, args):
+  def __call__(self, device, token, args):
     """Passes `args` to `self._func`, which is executed eagerly."""
 
-    with context.eager_mode():
-      with backprop.GradientTape() as tape:
-        for tensor in args:
-          tape.watch(tensor)
-        ret = self._func(*args)
-        # NB: The tape needs to watch copies across devices.
-        maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
+    with context.eager_mode(), backprop.GradientTape() as tape:
+      for tensor in args:
+        tape.watch(tensor)
+      ret = self._func(*args)
+      # Use tf.identity to copy the returned tensors to device if neccesary.
+      with ops.device(device):
         if isinstance(ret, (tuple, list)):
           outputs = [
-              maybe_copy_to_gpu(self._convert(x, dtype=dtype))
+              array_ops.identity(self._convert(x, dtype=dtype))
               for (x, dtype) in zip(ret, self._out_dtypes)
           ]
         elif ret is None:
           outputs = None
         else:
-          outputs = maybe_copy_to_gpu(
+          outputs = array_ops.identity(
               self._convert(ret, dtype=self._out_dtypes[0]))
-      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
-      return outputs
+    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    return outputs
 
 
 class FuncRegistry(object):
@@ -130,7 +130,7 @@ class FuncRegistry(object):
   def __init__(self):
     self._lock = threading.Lock()
     self._unique_id = 0  # GUARDED_BY(self._lock)
-    # Only store weakrefs to the funtions. The strong reference is stored in
+    # Only store weakrefs to the functions. The strong reference is stored in
     # the graph.
     self._funcs = weakref.WeakValueDictionary()
 
@@ -174,14 +174,14 @@ class FuncRegistry(object):
     else:
       return result
 
-  def __call__(self, token, on_gpu, args):
+  def __call__(self, token, device, args):
     """Calls the registered function for `token` with args.
 
     Args:
       token: A key into this `FuncRegistry` identifying which function to call.
-      on_gpu: A boolean indicating whether or not `token`'s corresponding
-        operation was placed on GPU; only used if the function registered for
-        `token` is an `EagerPyFunc`.
+      device: Name of the device on which outputs of `token`'s corresponding
+        operation should be placed. Used iff the function registered for `token`
+        is an EagerPyFunc.
       args: The arguments to pass to the function registered for `token`.
 
     Returns:
@@ -201,7 +201,7 @@ class FuncRegistry(object):
       # or if the graph is being driven by concurrent session.run() calls.
       #
       # TODO(akshayka): Key the tape cache in a thread-safe way.
-      return func(on_gpu, token, args)
+      return func(device, token, args)
     else:
       ret = func(*args)
       # Strings seem to lead to a memory leak here if they're not wrapped in a
@@ -232,8 +232,13 @@ _py_funcs = FuncRegistry()
 pywrap_tensorflow.InitializePyTrampoline(_py_funcs)
 
 
-def _internal_py_func(func, inp, Tout, stateful=None, eager=False,
-                      is_grad_func=False, name=None):
+def _internal_py_func(func,
+                      inp,
+                      Tout,
+                      stateful=None,
+                      eager=False,
+                      is_grad_func=False,
+                      name=None):
   """See documentation for py_func and eager_py_func."""
 
   is_list_or_tuple = False
@@ -296,7 +301,8 @@ def _EagerPyFuncGrad(op, dy):
         func=eagerly_executed_grad,
         inp=[dy] if isinstance(dy, ops.Tensor) else dy,
         Tout=[tensor.dtype for tensor in op.inputs],
-        eager=True, is_grad_func=True)
+        eager=True,
+        is_grad_func=True)
 
 
 def eager_py_func(func, inp, Tout, name=None):
@@ -337,7 +343,7 @@ def eager_py_func(func, inp, Tout, name=None):
   or print statements as desired, and wrap those functions in
   `tf.contrib.eager.py_func`.
 
-  For more information on eager execution, see @{$programmers_guide/eager}.
+  For more information on eager execution, see @{$guide/eager}.
 
   `tf.contrib.eager.py_func` is similar in spirit to @{tf.py_func}, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped

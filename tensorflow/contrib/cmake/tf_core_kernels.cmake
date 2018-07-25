@@ -68,6 +68,7 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops_util.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/ops/coder_ops.cc"
+      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/assert_next_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/csv_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/directed_interleave_dataset_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/ignore_errors_dataset_op.cc"
@@ -134,14 +135,13 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)
 
-if(NOT tensorflow_ENABLE_SSL_SUPPORT)
-  # Cloud libraries require boringssl.
-  file(GLOB tf_core_kernels_cloud_srcs
-      "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.h"
-      "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.cc"
-  )
+# Cloud libraries require curl and boringssl.
+# Curl is not supported yet anyway so we remove for now.
+file(GLOB tf_core_kernels_cloud_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.h"
+    "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.cc"
+)
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_cloud_srcs})
-endif()
 
 file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.h"

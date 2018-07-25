@@ -35,7 +35,9 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
   Status HandleClamp(HloInstruction* clamp) override;
   Status HandleSelect(HloInstruction* select) override;
+  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleConcatenate(HloInstruction* concatenate) override;
+  Status HandleIota(HloInstruction* iota) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -81,7 +83,7 @@ class ShapeVerifier : public DfsHloVisitor {
       HloInstruction* batch_norm_inference) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
   Status HandleGather(HloInstruction* gather) override;
-  Status HandleGenerateToken(HloInstruction* token) override;
+  Status HandleAfterAll(HloInstruction* token) override;
 
   Status FinishVisit(HloInstruction*) override { return Status::OK(); }
 
@@ -100,10 +102,6 @@ class ShapeVerifier : public DfsHloVisitor {
   Status CheckBinaryShape(const HloInstruction* instruction);
   Status CheckTernaryShape(const HloInstruction* instruction);
   Status CheckVariadicShape(const HloInstruction* instruction);
-
-  // Checks if the given two instructions share the same channel id.
-  Status CheckSameChannel(const HloInstruction* instr1,
-                          const HloInstruction* instr2);
 
  private:
   // Whether the inputs and output of an instruction can contain both F32s and
@@ -144,6 +142,8 @@ class HloVerifier : public HloPassInterface {
   Status CheckFusionInstruction(HloInstruction* fusion) const;
 
   Status CheckWhileInstruction(HloInstruction* instruction);
+
+  Status CheckConditionalInstruction(HloInstruction* instruction);
 
   // Checks that the non-scalar operand shapes are compatible to the output
   // shape, i.e., that there are no implicit broadcasts of size-one dimensions.

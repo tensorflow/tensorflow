@@ -135,6 +135,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = [
+        "noguitar",  # b/110489471
+        "notap",  # b/110489471
+    ],
 )
 
 cuda_py_test(

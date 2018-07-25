@@ -215,7 +215,8 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
           options=None,
           run_metadata=None,
           callable_runner=None,
-          callable_runner_args=None):
+          callable_runner_args=None,
+          callable_options=None):
     if self._send_traceback_and_source_code:
       self._sent_graph_version = publish_traceback(
           self._grpc_debug_server_urls, self.graph, feed_dict, fetches,
@@ -226,4 +227,5 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
         options=options,
         run_metadata=run_metadata,
         callable_runner=callable_runner,
-        callable_runner_args=callable_runner_args)
+        callable_runner_args=callable_runner_args,
+        callable_options=callable_options)

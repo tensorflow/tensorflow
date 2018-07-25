@@ -30,7 +30,7 @@ namespace {
 
 bool IsReshapeTrivial(const Model& model, const Operator& op,
                       RemoveTrivialReshape* transformation) {
-  CHECK(op.type == OperatorType::kTensorFlowReshape);
+  CHECK(op.type == OperatorType::kReshape);
 
   // One way in which a reshape can be trivial is if its
   // output shape is == its input shape
@@ -58,7 +58,16 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
   // is only consumed by another reshape.
   if (CountOpsWithInput(model, op.outputs[0]) == 1) {
     const auto* next_op = GetOpWithInput(model, op.outputs[0]);
-    if (next_op->type == OperatorType::kTensorFlowReshape) {
+    if (next_op->type == OperatorType::kReshape) {
+      if (!IsDiscardableArray(model, next_op->outputs[0])) {
+        // If the |next_op| output is used as a model output we need to preserve
+        // its shape.
+        transformation->AddMessageF(
+            "%s cannot be merged into following reshape %s as it is "
+            "non-discardable and must keep the specified shape",
+            LogName(op), LogName(*next_op));
+        return false;
+      }
       transformation->AddMessageF(
           "%s is trivial because its output is only consumed by another "
           "Reshape op %s",
@@ -75,7 +84,7 @@ bool IsReshapeTrivial(const Model& model, const Operator& op,
 bool RemoveTrivialReshape::Run(Model* model, std::size_t op_index) {
   const auto reshape_it = model->operators.begin() + op_index;
   auto* reshape_op = reshape_it->get();
-  if (reshape_op->type != OperatorType::kTensorFlowReshape) {
+  if (reshape_op->type != OperatorType::kReshape) {
     return false;
   }
 

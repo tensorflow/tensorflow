@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import collections
 import hashlib
+import sys
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
@@ -33,12 +34,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+# This is to avoid a circular dependency with cond_v2_impl.
+cond_v2_impl._function = sys.modules[__name__]  # pylint: disable=protected-access
 
 
 class Defun(object):

@@ -35,6 +35,7 @@ enum TensorType : byte {
   STRING = 5,
   BOOL = 6,
   INT16 = 7,
+  COMPLEX64 = 8,
 }
 
 // Parameters for converting a quantized tensor back to float. Given a
@@ -43,7 +44,7 @@ enum TensorType : byte {
 table QuantizationParameters {
   min:[float];  // For importing back into tensorflow.
   max:[float];  // For importing back into tensorflow.
-  scale:[float];
+  scale:[float];  // For dequantizing the tensor's values.
   zero_point:[long];
 }
 
@@ -154,6 +155,17 @@ enum BuiltinOperator : byte {
   EQUAL = 71,
   NOT_EQUAL = 72,
   LOG = 73,
+  SUM = 74,
+  SQRT = 75,
+  RSQRT = 76,
+  SHAPE = 77,
+  POW = 78,
+  ARG_MIN = 79,
+  FAKE_QUANT = 80,
+  REDUCE_PROD = 81,
+  REDUCE_MAX = 82,
+  PACK = 83,
+  LOGICAL_OR = 84,
 }
 
 // Options for the builtin operators.
@@ -184,7 +196,7 @@ union BuiltinOptions {
   BatchToSpaceNDOptions,
   SpaceToBatchNDOptions,
   TransposeOptions,
-  MeanOptions,
+  ReducerOptions,
   SubOptions,
   DivOptions,
   SqueezeOptions,
@@ -212,6 +224,12 @@ union BuiltinOptions {
   ExpandDimsOptions,
   EqualOptions,
   NotEqualOptions,
+  ShapeOptions,
+  PowOptions,
+  ArgMinOptions,
+  FakeQuantOptions,
+  PackOptions,
+  LogicalOrOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -289,9 +307,18 @@ table BidirectionalSequenceRNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+enum FullyConnectedOptionsWeightsFormat: byte {
+  DEFAULT = 0,
+  SHUFFLED4x16INT8 = 1,
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
+  // Parameters for FullyConnected version 1 or above.
   fused_activation_function:ActivationFunctionType;
+
+  // Parameters for FullyConnected version 2 or above.
+  weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
 }
 
 table SoftmaxOptions {
@@ -411,7 +438,7 @@ table TransposeOptions {
 table ExpOptions {
 }
 
-table MeanOptions {
+table ReducerOptions {
   keep_dims: bool;
 }
 
@@ -449,6 +476,10 @@ table TileOptions {
 }
 
 table ArgMaxOptions {
+  output_type : TensorType;
+}
+
+table ArgMinOptions {
   output_type : TensorType;
 }
 
@@ -490,6 +521,32 @@ table EqualOptions {
 }
 
 table NotEqualOptions {
+}
+
+table ShapeOptions {
+  // Optional output type of the operation (int32 or int64). Defaults to int32.
+  out_type : TensorType;
+}
+
+table PowOptions {
+}
+
+table FakeQuantOptions {
+  // Parameters supported by version 1:
+  min:float;
+  max:float;
+  num_bits:int;
+
+  // Parameters supported by version 2:
+  narrow_range:bool;
+}
+
+table PackOptions {
+  values_count:int;
+  axis:int;
+}
+
+table LogicalOrOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

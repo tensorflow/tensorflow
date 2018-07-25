@@ -58,9 +58,9 @@ END
   summary: "Sparse update entries in \'*var\' and \'*accum\' according to FOBOS algorithm."
   description: <<END
 That is for rows we have grad for, we update var and accum as follows:
-accum += grad * grad
-prox_v = var
-prox_v -= lr * grad * (1 / sqrt(accum))
-var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
+$$accum += grad * grad$$
+$$prox_v = var$$
+$$prox_v -= lr * grad * (1 / sqrt(accum))$$
+$$var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}$$
 END
 }

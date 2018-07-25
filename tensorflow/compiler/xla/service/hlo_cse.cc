@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -143,10 +143,8 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
       if (instruction->operand_count() == 0) {
         continue;
       }
-      // Skip instructions which have side effects or are a domain (which must
-      // not be CSE-ed).
-      if (instruction->HasSideEffect() ||
-          instruction->opcode() == HloOpcode::kDomain) {
+      // Skip instructions which have side effects.
+      if (instruction->HasSideEffect()) {
         continue;
       }
 

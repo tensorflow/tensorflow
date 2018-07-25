@@ -587,7 +587,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "noguitar",
+        "no_windows_gpu",
         "notsan",
     ],
 )
@@ -604,6 +604,43 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:test",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "warm_starting_util_test",
+    size = "medium",
+    srcs = ["warm_starting_util_test.py"],
+    additional_deps = [
+        ":combinations",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "checkpoint_utils_test",
+    size = "medium",
+    srcs = ["checkpoint_utils_test.py"],
+    additional_deps = [
+        ":combinations",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:checkpoint_utils_test",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
     tags = [
         "multi_and_single_gpu",

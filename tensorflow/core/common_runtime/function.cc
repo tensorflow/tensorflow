@@ -399,12 +399,11 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // types.
   MemoryTypeVector input_memory_types;
   for (const auto& t : fbody->arg_types) {
-    input_memory_types.push_back(
-        (t == DT_INT32 || t == DT_RESOURCE) ? HOST_MEMORY : DEVICE_MEMORY);
+    input_memory_types.push_back(MTypeFromDType(t));
   }
   MemoryTypeVector output_memory_types;
   for (const auto& t : fbody->ret_types) {
-    output_memory_types.push_back(t == DT_INT32 ? HOST_MEMORY : DEVICE_MEMORY);
+    output_memory_types.push_back(MTypeFromDType(t));
   }
 
   // Constructs a CallOp kernel for running the instantiated function.
@@ -728,6 +727,27 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
     return;
   }
 
+  std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
+  args_alloc_attrs.reserve(fbody->arg_types.size());
+  rets_alloc_attrs.reserve(fbody->ret_types.size());
+  // Note: Functions assume that int32's are always on host memory.
+  for (const auto& arg_type : fbody->arg_types) {
+    AllocatorAttributes arg_alloc_attrs;
+    if (MTypeFromDType(arg_type) == HOST_MEMORY) {
+      arg_alloc_attrs.set_on_host(true);
+    }
+    args_alloc_attrs.push_back(arg_alloc_attrs);
+  }
+  for (const auto& ret_type : fbody->ret_types) {
+    AllocatorAttributes ret_alloc_attrs;
+    if (MTypeFromDType(ret_type) == HOST_MEMORY) {
+      ret_alloc_attrs.set_on_host(true);
+    }
+    rets_alloc_attrs.push_back(ret_alloc_attrs);
+  }
+
+  bool allow_dead_tensors = opts.allow_dead_tensors;
+
   // The ProcFLR sends the arguments to the function from the source_device to
   // the target_device. So here we receive those arguments. Similarly, when the
   // computation is done and stored in *rets, we send the return values back
@@ -735,10 +755,10 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   std::vector<Tensor>* remote_args = new std::vector<Tensor>;
   ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
       source_device, target_device, "arg_", src_incarnation, args.size(),
-      device_context, {}, rendezvous, remote_args,
+      device_context, args_alloc_attrs, rendezvous, remote_args,
       [frame, remote_args, item, source_device, target_device,
-       target_incarnation, rendezvous, device_context, rets, done,
-       exec_args](const Status& status) {
+       target_incarnation, rendezvous, device_context, rets, done, exec_args,
+       rets_alloc_attrs, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
           s = frame->SetArgs(*remote_args);
@@ -753,10 +773,11 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
         item->exec->RunAsync(
             *exec_args, [frame, rets, done, source_device, target_device,
                          target_incarnation, rendezvous, device_context,
-                         remote_args, exec_args](const Status& status) {
+                         remote_args, exec_args, rets_alloc_attrs,
+                         allow_dead_tensors](const Status& status) {
               Status s = status;
               if (s.ok()) {
-                s = frame->ConsumeRetvals(rets);
+                s = frame->ConsumeRetvals(rets, allow_dead_tensors);
               }
               delete frame;
               if (!s.ok()) {
@@ -767,7 +788,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
               }
               s = ProcessFunctionLibraryRuntime::SendTensors(
                   target_device, source_device, "ret_", target_incarnation,
-                  *rets, device_context, {}, rendezvous);
+                  *rets, device_context, rets_alloc_attrs, rendezvous);
               delete remote_args;
               delete exec_args;
               done(s);
@@ -840,14 +861,15 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  bool allow_dead_tensors = opts.allow_dead_tensors;
   item->exec->RunAsync(
       // Executor args
       *exec_args,
       // Done callback.
-      [frame, rets, done, exec_args](const Status& status) {
+      [frame, rets, done, exec_args, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
-          s = frame->ConsumeRetvals(rets);
+          s = frame->ConsumeRetvals(rets, allow_dead_tensors);
         }
         delete frame;
         delete exec_args;
@@ -1188,11 +1210,13 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
   return true;
 }
 
-// Given a "caller" in "graph", which is a function call of a function
+// Given a "caller" in graph "g", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
-// edges properly.
+// edges properly. "override_device" specifies whether inlining should replace
+// explicitly specified devices inside fbody with the callee's device.
 void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                        Node* caller, const FunctionBody* fbody) {
+                        Node* caller, const FunctionBody* fbody,
+                        bool override_device) {
   if (!ValidateInlining(caller, fbody)) {
     LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
                  << DebugString(fbody->graph);
@@ -1227,7 +1251,9 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    ndef.set_device(caller->def().device());
+    if (override_device || ndef.device().empty()) {
+      ndef.set_device(caller->def().device());
+    }
     Node* clone = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
     node_map[n->id()] = clone;
@@ -1581,6 +1607,12 @@ FunctionBody* SymbolicGradientHelper::Compute() {
     g->RemoveNode(n);
   }
   gbody_->ret_types = fbody_->arg_types;
+  // TODO(apassos): use the right dtype for gradients of  resource variables
+  for (int i = 0; i < gbody_->ret_types.size(); ++i) {
+    if (gbody_->ret_types[i] == DT_RESOURCE) {
+      gbody_->ret_types[i] = DT_FLOAT;
+    }
+  }
   gbody_->ret_nodes.clear();
   // Add new return nodes to the function gradient body for each node
   // in 'x_grad_nodes'.

@@ -39,7 +39,10 @@ class HloAliasAnalysis {
  public:
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
-  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(HloModule* module);
+  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
+      HloModule* module,
+      const HloDataflowAnalysis::FusionCanShareBufferFunction&
+          fusion_can_share_buffer);
 
   string ToString() const;
 

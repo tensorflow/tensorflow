@@ -17,16 +17,26 @@
 
 set -e
 
+function is_absolute {
+  [[ "$1" = /* ]] || [[ "$1" =~ ^[a-zA-Z]:[/\\].* ]]
+}
+
 function real_path() {
-  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+  is_absolute "$1" && echo "$1" || echo "$PWD/${1#./}"
 }
 
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
-  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*local_config_tensorrt*' ! -name '*org_tensorflow*'`; do
-    cp -R "$f" "$dest_dir"
+
+  pushd .
+  cd "$src_dir"
+  for f in `find . ! -type d ! -name '*.py' ! -path '*local_config_cuda*' ! -path '*local_config_tensorrt*' ! -path '*local_config_syslibs*' ! -path '*org_tensorflow*'`; do
+    mkdir -p "${dest_dir}/$(dirname ${f})"
+    cp "${f}" "${dest_dir}/$(dirname ${f})/"
   done
+  popd
+
   mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
   cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
@@ -49,6 +59,8 @@ function prepare_src() {
 
   TMPDIR="$1"
   mkdir -p "$TMPDIR"
+  EXTERNAL_INCLUDES="${TMPDIR}/tensorflow/include/external"
+
   echo $(date) : "=== Preparing sources in dir: ${TMPDIR}"
 
   if [ ! -d bazel-bin/tensorflow ]; then
@@ -66,10 +78,9 @@ function prepare_src() {
     cp -R \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
-    mkdir "${TMPDIR}/external"
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
-      "${TMPDIR}/external"
+      "${EXTERNAL_INCLUDES}/"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
@@ -78,10 +89,9 @@ function prepare_src() {
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
-      mkdir "${TMPDIR}/external"
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
-        "${TMPDIR}/external"
+        "${EXTERNAL_INCLUDES}"
       # Copy MKL libs over so they can be loaded at runtime
       so_lib_dir=$(ls $RUNFILES | grep solib) || true
       if [ -n "${so_lib_dir}" ]; then
@@ -96,10 +106,9 @@ function prepare_src() {
       cp -R \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
-      mkdir "${TMPDIR}/external"
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
-        "${TMPDIR}/external"
+        "${EXTERNAL_INCLUDES}"
       # Copy MKL libs over so they can be loaded at runtime
       so_lib_dir=$(ls $RUNFILES | grep solib) || true
       if [ -n "${so_lib_dir}" ]; then

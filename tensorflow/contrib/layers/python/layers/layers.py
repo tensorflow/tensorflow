@@ -1702,19 +1702,22 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
-def _model_variable_getter(getter,
-                           name,
-                           shape=None,
-                           dtype=None,
-                           initializer=None,
-                           regularizer=None,
-                           trainable=True,
-                           collections=None,
-                           caching_device=None,
-                           partitioner=None,
-                           rename=None,
-                           use_resource=None,
-                           **_):
+def _model_variable_getter(
+    getter,
+    name,
+    shape=None,
+    dtype=None,
+    initializer=None,
+    regularizer=None,
+    trainable=True,
+    collections=None,
+    caching_device=None,
+    partitioner=None,
+    rename=None,
+    use_resource=None,
+    synchronization=tf_variables.VariableSynchronization.AUTO,
+    aggregation=tf_variables.VariableAggregation.NONE,
+    **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1732,7 +1735,9 @@ def _model_variable_getter(getter,
       caching_device=caching_device,
       partitioner=partitioner,
       custom_getter=getter,
-      use_resource=use_resource)
+      use_resource=use_resource,
+      synchronization=synchronization,
+      aggregation=aggregation)
 
 
 def _build_variable_getter(rename=None):
@@ -2664,6 +2669,7 @@ def separable_convolution2d(
     normalizer_fn=None,
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
+    pointwise_initializer=None,
     weights_regularizer=None,
     biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
@@ -2705,7 +2711,9 @@ def separable_convolution2d(
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
     normalizer_params: Normalization function parameters.
-    weights_initializer: An initializer for the weights.
+    weights_initializer: An initializer for the depthwise weights.
+    pointwise_initializer: An initializer for the pointwise weights.
+      default set to None, means use weights_initializer.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
@@ -2737,6 +2745,9 @@ def separable_convolution2d(
       custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
+    if pointwise_initializer is None:
+      pointwise_initializer = weights_initializer
+
     df = ('channels_first'
           if data_format and data_format.startswith('NC') else 'channels_last')
     if num_outputs is not None:
@@ -2752,7 +2763,7 @@ def separable_convolution2d(
           depth_multiplier=depth_multiplier,
           use_bias=not normalizer_fn and biases_initializer,
           depthwise_initializer=weights_initializer,
-          pointwise_initializer=weights_initializer,
+          pointwise_initializer=pointwise_initializer,
           bias_initializer=biases_initializer,
           depthwise_regularizer=weights_regularizer,
           pointwise_regularizer=weights_regularizer,

@@ -51,5 +51,6 @@ cuda_py_test(
         "noasan",
         "nomsan",
         "notsan",
+        "optonly",
     ],
 )

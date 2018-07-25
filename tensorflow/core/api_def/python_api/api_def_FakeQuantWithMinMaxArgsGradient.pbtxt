@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "FakeQuantWithMinMaxArgsGradient"
+  endpoint {
+    name: "quantization.fake_quant_with_min_max_args_gradient"
+  }
+  endpoint {
+    name: "fake_quant_with_min_max_args_gradient"
+    deprecated: true
+  }
+}

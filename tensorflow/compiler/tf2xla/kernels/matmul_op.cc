@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -53,10 +54,14 @@ class MatMulOp : public XlaOpKernel {
     const TensorShape b_shape = ctx->InputShape(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_shape),
-                errors::InvalidArgument("In[0] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b_shape),
-                errors::InvalidArgument("In[1] is not a matrix"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(a_shape),
+        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
+                                a_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(b_shape),
+        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
+                                b_shape.DebugString()));
     int first_index = transpose_a_ ? 0 : 1;
     int second_index = transpose_b_ ? 1 : 0;
 
@@ -70,15 +75,15 @@ class MatMulOp : public XlaOpKernel {
     xla::XlaOp b = ctx->Input(1);
     if (is_sparse_) {
       if (a_type_ == DT_BFLOAT16) {
-        a = ctx->builder()->ConvertElementType(a, xla::F32);
+        a = xla::ConvertElementType(a, xla::F32);
       }
       if (b_type_ == DT_BFLOAT16) {
-        b = ctx->builder()->ConvertElementType(b, xla::F32);
+        b = xla::ConvertElementType(b, xla::F32);
       }
     }
-    auto lhs = (transpose_a_) ? ctx->builder()->Transpose(a, {1, 0}) : a;
-    auto rhs = (transpose_b_) ? ctx->builder()->Transpose(b, {1, 0}) : b;
-    ctx->SetOutput(0, ctx->builder()->Dot(lhs, rhs));
+    auto lhs = (transpose_a_) ? xla::Transpose(a, {1, 0}) : a;
+    auto rhs = (transpose_b_) ? xla::Transpose(b, {1, 0}) : b;
+    ctx->SetOutput(0, xla::Dot(lhs, rhs));
   }
 
  private:

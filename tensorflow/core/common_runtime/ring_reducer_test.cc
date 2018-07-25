@@ -68,11 +68,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality,
+                    int dev_to_dev_stream_index,
                     const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, done);
+        to_alloc_attr, to_tensor, client_locality, dev_to_dev_stream_index,
+        done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,

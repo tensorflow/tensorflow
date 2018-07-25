@@ -57,23 +57,9 @@ namespace tensorflow {
 //
 // Uses a blocked algorithm if `block_size` is > 1; if block_size == 1 then no
 // blocking is used.
-xla::StatusOr<xla::XlaOp> TriangularSolve(xla::XlaBuilder* builder,
-                                          const xla::XlaOp& a, xla::XlaOp b,
-                                          bool left_side, bool lower,
-                                          bool transpose_a, bool conjugate_a,
-                                          int64 block_size = 256);
-
-xla::StatusOr<xla::XlaOp> TriangularSolveLeftLooking(xla::XlaBuilder* builder,
-                                                     const xla::XlaOp& a,
-                                                     const xla::XlaOp& b,
-                                                     bool transpose_a,
-                                                     bool conjugate_a);
-
-xla::StatusOr<xla::XlaOp> TriangularSolveRightLooking(xla::XlaBuilder* builder,
-                                                      const xla::XlaOp& a,
-                                                      const xla::XlaOp& b,
-                                                      bool transpose_a,
-                                                      bool conjugate_a);
+xla::XlaOp TriangularSolve(xla::XlaOp a, xla::XlaOp b, bool left_side,
+                           bool lower, bool transpose_a, bool conjugate_a,
+                           int64 block_size = 128);
 
 }  // namespace tensorflow
 

@@ -171,6 +171,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:grappler_test",
     ],
@@ -679,6 +680,7 @@ cc_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:grappler_item",
@@ -792,9 +794,6 @@ tf_cc_test(
     name = "scoped_allocator_optimizer_test",
     size = "small",
     srcs = ["scoped_allocator_optimizer_test.cc"],
-    tags = [
-        "nomsan",
-    ],
     deps = [
         ":scoped_allocator_optimizer",
         "//tensorflow/cc:cc_ops",

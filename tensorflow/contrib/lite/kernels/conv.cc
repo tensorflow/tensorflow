@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -179,9 +178,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
-  bool hasBias = node->inputs->size == 3;
+  bool has_bias = node->inputs->size == 3;
   // Check number of inputs/outputs
-  TF_LITE_ENSURE(context, hasBias || node->inputs->size == 2);
+  TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
@@ -204,9 +203,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): At this point the optimized versions require 'bias'. We can
   // either change that or document that convolution requires it.
-  TF_LITE_ENSURE(context, hasBias);
+  TF_LITE_ENSURE(context, has_bias);
 
-  if (hasBias) {
+  if (has_bias) {
     bias = &context->tensors[node->inputs->data[2]];
     if (data_type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
@@ -226,29 +225,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Matching GetWindowedOutputSize in TensorFlow.
   auto padding = params->padding;
-  auto computeOutSize = [padding](int imageSize, int filterSize, int stride,
-                                  int dilationRate) -> int {
-    int effectiveFilterSize = (filterSize - 1) * dilationRate + 1;
+  auto compute_out_size = [padding](int image_size, int filter_size, int stride,
+                                    int dilation_rate) -> int {
+    int effective_filter_size = (filter_size - 1) * dilation_rate + 1;
     return padding == kTfLitePaddingSame
-               ? (imageSize + stride - 1) / stride
+               ? (image_size + stride - 1) / stride
                : padding == kTfLitePaddingValid
-                     ? (imageSize - effectiveFilterSize + stride) / stride
+                     ? (image_size - effective_filter_size + stride) / stride
                      : 0;
   };
 
-  int outWidth = computeOutSize(width, filter_width, params->stride_width,
-                                params->dilation_width_factor);
-  int outHeight = computeOutSize(height, filter_height, params->stride_height,
-                                 params->dilation_height_factor);
+  int out_width = compute_out_size(width, filter_width, params->stride_width,
+                                   params->dilation_width_factor);
+  int out_height =
+      compute_out_size(height, filter_height, params->stride_height,
+                       params->dilation_height_factor);
 
   data->padding.height =
       ComputePadding(params->stride_height, params->dilation_height_factor,
-                     height, filter_height, outHeight);
+                     height, filter_height, out_height);
   data->padding.width =
       ComputePadding(params->stride_width, params->dilation_width_factor, width,
-                     filter_width, outWidth);
+                     filter_width, out_width);
 
-  TF_LITE_ENSURE(context, hasBias);
+  TF_LITE_ENSURE(context, has_bias);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -267,8 +267,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = batches;
-  output_size->data[1] = outHeight;
-  output_size->data[2] = outWidth;
+  output_size->data[1] = out_height;
+  output_size->data[2] = out_width;
   output_size->data[3] = channels_out;
   auto output_status = context->ResizeTensor(context, output, output_size);
 
@@ -308,18 +308,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteTensor* hwcn_weights =
         &context->tensors[node->temporaries->data[data->hwcn_weights_index]];
     hwcn_weights->type = data_type;
-    hwcn_weights->allocation_type = kTfLiteDynamic;
-    // Make sure we release any previous allocations before we reallocate.
-    // TODO(petewarden): Persistent arenas would be a better fit for this, but
-    // they aren't fully implemented yet.
-    if (hwcn_weights->data.raw) {
-      free(hwcn_weights->data.raw);
-      hwcn_weights->data.raw = nullptr;
-    }
+    hwcn_weights->allocation_type = kTfLiteArenaRwPersistent;
 
-    // Note that hwcn_weights_status is a kTfLiteDynamic tensor, and
-    // ResizeTensor will actually allocate space for it. The would be more
-    // efficient if we placed hwcn_weights_status in the persistent arena.
     auto hwcn_weights_status =
         context->ResizeTensor(context, hwcn_weights, hwcn_weights_size);
     if (hwcn_weights_status != kTfLiteOk) return hwcn_weights_status;
@@ -381,8 +371,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
                TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
   KernelType effective_kernel_type;
   if (((kernel_type == kMultithreadOptimized) ||
        (kernel_type == kCblasOptimized)) &&
@@ -427,6 +417,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         filter_data = GetTensorData<float>(filter);
       }
       multithreaded_ops::Conv(
+          *eigen_support::GetThreadPoolDevice(context),
           GetTensorData<float>(input), GetTensorDims(input), filter_data,
           GetTensorDims(filter), GetTensorData<float>(bias),
           GetTensorDims(bias), params->stride_width, params->stride_height,
@@ -458,9 +449,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
   TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
-  bool hasBias = node->inputs->size == 3;
+  bool has_bias = node->inputs->size == 3;
   TfLiteTensor* bias =
-      hasBias ? &context->tensors[node->inputs->data[2]] : nullptr;
+      has_bias ? &context->tensors[node->inputs->data[2]] : nullptr;
   TfLiteTensor* im2col =
       data->need_im2col
           ? &context->tensors[node->temporaries->data[data->im2col_index]]

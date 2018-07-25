@@ -2127,6 +2127,44 @@ class StreamingDynamicAUCTest(test.TestCase):
       sess.run(update_op)
       self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-5)
 
+  def testWithWeights(self):
+    batch_size = 10
+    num_batches = 100
+    labels = np.array([])
+    predictions = np.array([])
+    weights = np.array([])
+    tf_labels = variables.Variable(
+        array_ops.ones(batch_size, dtypes_lib.int32),
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=dtypes_lib.int32)
+    tf_predictions = variables.Variable(
+        array_ops.ones(batch_size),
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=dtypes_lib.float32)
+    tf_weights = variables.Variable(
+        array_ops.ones(batch_size),
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=dtypes_lib.float32)
+    auc, update_op = metrics.streaming_dynamic_auc(tf_labels,
+                                                   tf_predictions,
+                                                   weights=tf_weights)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      for _ in xrange(num_batches):
+        new_labels = np.random.randint(0, 2, size=batch_size)
+        noise = np.random.uniform(-0.2, 0.2, size=batch_size)
+        new_predictions = 0.4 + 0.2 * new_labels + noise
+        new_weights = np.random.uniform(0.0, 3.0, size=batch_size)
+        labels = np.concatenate([labels, new_labels])
+        predictions = np.concatenate([predictions, new_predictions])
+        weights = np.concatenate([weights, new_weights])
+        sess.run([tf_labels.assign(new_labels),
+                  tf_predictions.assign(new_predictions),
+                  tf_weights.assign(new_weights)])
+        sess.run(update_op)
+        expected_auc = _np_auc(predictions, labels, weights)
+        self.assertAlmostEqual(expected_auc, auc.eval())
+
 
 class AucWithConfidenceIntervalsTest(test.TestCase):
 
@@ -6815,6 +6853,11 @@ class CountTest(test.TestCase):
     _, update_op = metrics.count(
         array_ops.ones([4, 3]), updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testReturnType(self):
+    c, op = metrics.count(array_ops.ones([4, 3]))
+    self.assertTrue(isinstance(c, ops.Tensor))
+    self.assertTrue(isinstance(op, ops.Operation) or isinstance(op, ops.Tensor))
 
   def testBasic(self):
     with self.test_session() as sess:

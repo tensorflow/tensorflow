@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -124,6 +125,18 @@ void NudgeQuantizationRange(const float min, const float max,
   }
   *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
   *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
+}
+
+bool CheckedLog2(const float x, int* log2_result) {
+  // Using TfLiteRound instead of std::round and std::log instead of
+  // std::log2 to work around these fuctions being missing in a toolchain
+  // used in some TensorFlow tests as of May 2018.
+  const float x_log2 = std::log(x) * (1.0f / std::log(2.0f));
+  const float x_log2_rounded = TfLiteRound(x_log2);
+  const float x_log2_fracpart = x_log2 - x_log2_rounded;
+
+  *log2_result = static_cast<int>(x_log2_rounded);
+  return std::abs(x_log2_fracpart) < 1e-3;
 }
 
 }  // namespace tflite

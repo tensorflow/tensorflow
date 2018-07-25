@@ -22,9 +22,9 @@ Status KernelSupportLibrary::For(
     tensorflow::StringPiece name, llvm::Value* start, llvm::Value* end,
     llvm::Value* step,
     const std::function<Status(llvm::Value*, bool)>& for_body_generator) {
-  return If(ir_builder_->CreateICmpSLT(start, end), [&]() -> Status {
+  return If(b_->CreateICmpSLT(start, end), [&]() -> Status {
     TF_RETURN_IF_ERROR(for_body_generator(start, /*is_first_iteration=*/true));
-    return For(name, ir_builder_->CreateAdd(start, step), end, step,
+    return For(name, b_->CreateAdd(start, step), end, step,
                [&](llvm::Value* iv) { return for_body_generator(iv, false); });
   });
 }
@@ -37,44 +37,44 @@ Status KernelSupportLibrary::For(
   if (peel_first_iteration) {
     return For(name, start, end, step, true,
                [&](llvm::Value* indvar, bool is_first_iteration) -> Status {
-                 return for_body_generator(
-                     indvar, ir_builder_->getInt1(is_first_iteration));
+                 return for_body_generator(indvar,
+                                           b_->getInt1(is_first_iteration));
                });
   } else {
     std::unique_ptr<llvm_ir::ForLoop> loop = llvm_ir::ForLoop::EmitForLoop(
-        name, start, end, step, ir_builder_,
+        name, start, end, step, b_,
         /*unroll_mode=*/unroll_mode_,
         /*prevent_vectorization=*/prevent_vectorization_);
-    ir_builder_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
+    b_->SetInsertPoint(&loop->GetBodyBasicBlock()->back());
     TF_RETURN_IF_ERROR(
         for_body_generator(loop->GetIndVarValue(),
-                           /*is_first_iteration=*/ir_builder_->CreateICmpEQ(
+                           /*is_first_iteration=*/b_->CreateICmpEQ(
                                loop->GetIndVarValue(), start)));
-    llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), ir_builder_);
+    llvm_ir::SetToLastInsertPoint(loop->GetExitBasicBlock(), b_);
     return Status::OK();
   }
 }
 
 Status KernelSupportLibrary::If(
-    llvm::Value* condition, const std::function<Status()>& true_block_generator,
+    tensorflow::StringPiece name, llvm::Value* condition,
+    const std::function<Status()>& true_block_generator,
     const std::function<Status()>& false_block_generator) {
-  llvm_ir::LlvmIfData if_data =
-      llvm_ir::EmitIfThenElse(condition, "", ir_builder_);
-  ir_builder_->SetInsertPoint(&if_data.true_block->back());
+  llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(condition, name, b_);
+  b_->SetInsertPoint(&if_data.true_block->back());
   TF_RETURN_IF_ERROR(true_block_generator());
-  ir_builder_->SetInsertPoint(&if_data.false_block->back());
+  b_->SetInsertPoint(&if_data.false_block->back());
   TF_RETURN_IF_ERROR(false_block_generator());
-  llvm_ir::SetToLastInsertPoint(if_data.after_block, ir_builder_);
+  llvm_ir::SetToLastInsertPoint(if_data.after_block, b_);
   return Status::OK();
 }
 
 void KernelSupportLibrary::EmitAndCallOutlinedKernel(
-    bool enable_fast_math, bool optimize_for_size,
-    llvm::IRBuilder<>* ir_builder, tensorflow::StringPiece kernel_name,
+    bool enable_fast_math, bool optimize_for_size, llvm::IRBuilder<>* b,
+    tensorflow::StringPiece kernel_name,
     KernelSupportLibrary::ArgumentVector arguments,
     const std::function<void(KernelSupportLibrary::ArgumentVector)>&
         kernel_body_generator) {
-  llvm::Module* module = ir_builder->GetInsertBlock()->getModule();
+  llvm::Module* module = b->GetInsertBlock()->getModule();
   llvm::Function* function =
       module->getFunction(llvm_ir::AsStringRef(kernel_name));
 
@@ -97,22 +97,22 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
                    std::back_inserter(arg_types),
                    [](llvm::Value* arg) { return arg->getType(); });
 
-    auto* function_type = llvm::FunctionType::get(
-        ir_builder->getVoidTy(), arg_types, /*isVarArg=*/false);
+    auto* function_type =
+        llvm::FunctionType::get(b->getVoidTy(), arg_types, /*isVarArg=*/false);
 
     function = llvm_ir::CreateFunction(
         function_type, llvm::GlobalValue::InternalLinkage,
         /*enable_fast_math=*/enable_fast_math,
         /*optimize_for_size=*/optimize_for_size, kernel_name, module);
 
-    llvm::IRBuilder<>::InsertPointGuard guard(*ir_builder);
+    llvm::IRBuilder<>::InsertPointGuard guard(*b);
 
     auto* entry_bb =
-        llvm::BasicBlock::Create(ir_builder->getContext(), "entry", function);
-    auto* return_inst = llvm::ReturnInst::Create(ir_builder->getContext(),
+        llvm::BasicBlock::Create(b->getContext(), "entry", function);
+    auto* return_inst = llvm::ReturnInst::Create(b->getContext(),
                                                  /*retVal=*/nullptr, entry_bb);
     // Set the insert point to before return_inst.
-    ir_builder->SetInsertPoint(return_inst);
+    b->SetInsertPoint(return_inst);
 
     std::vector<llvm::Value*> arg_values;
     /*
@@ -132,7 +132,7 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
     VLOG(3) << "Re-using kernel for " << kernel_name;
   }
 
-  ir_builder->CreateCall(function, llvm_ir::AsArrayRef(sanitized_args));
+  b->CreateCall(function, llvm_ir::AsArrayRef(sanitized_args));
 }
 
 }  // namespace xla

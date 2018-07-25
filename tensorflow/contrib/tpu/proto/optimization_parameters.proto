@@ -1,0 +1,162 @@
+syntax = "proto2";
+
+package tensorflow.tpu;
+
+message ClippingLimits {
+  optional float lower = 1 [default = -inf];
+  optional float upper = 2 [default = inf];
+}
+
+// Get the learning rate from a <yet to be determined> source that can change
+// dynamically.
+message DynamicLearningRate {
+}
+
+// Source of learning rate to use.
+message LearningRate {
+  oneof learning_rate {
+    float constant = 1;
+    DynamicLearningRate dynamic = 2;
+  }
+}
+
+message AdagradParameters {
+  optional float initial_accumulator = 1 [default = 0.];
+}
+
+message StochasticGradientDescentParameters {
+}
+
+message FtrlParameters {
+  optional float l1 = 1 [default = 0.];
+  optional float l2 = 2 [default = 0.];
+  optional float lr_power = 3 [default = 0.];
+  optional float initial_accum = 4 [default = 0.];
+  optional float initial_linear = 5 [default = 0.];
+}
+
+// The Adam optimizer does not implement hyper-parameter update; use the dynamic
+// learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+// https://github.com/tensorflow/tensorflow/blob/ab51450c817674c8ff08a7ae4f8ac50cdc4bed8b/tensorflow/python/training/adam.py#L54
+message AdamParameters {
+  optional float beta1 = 3 [default = 0.];
+  optional float beta2 = 4 [default = 0.];
+  optional float epsilon = 5 [default = 0.];
+  optional float initial_m = 6 [default = 0.];
+  optional float initial_v = 7 [default = 0.];
+}
+
+message MomentumParameters {
+  optional float momentum = 1 [default = 0.];
+  optional bool use_nesterov = 2 [default = false];
+  optional float initial_accum = 3 [default = 0.];
+}
+
+message RmsPropParameters {
+  optional float rho = 1 [default = 0.];
+  optional float momentum = 2 [default = 0.];
+  optional float epsilon = 3 [default = 0.];
+  optional float initial_ms = 4 [default = 0.];
+  optional float initial_mom = 5 [default = 0.];
+}
+
+message CenteredRmsPropParameters {
+  optional float rho = 1 [default = 0.];
+  optional float momentum = 2 [default = 0.];
+  optional float epsilon = 3 [default = 0.];
+  optional float initial_ms = 4 [default = 0.];
+  optional float initial_mom = 5 [default = 0.];
+  optional float initial_mg = 6 [default = 0.];
+}
+
+message MdlAdagradLightParameters {
+  optional float l2 = 1;
+  optional float lr_power = 2;
+  optional float min_servable_mdl_benefit = 3;
+  optional float mdl_mix_in_margin = 4;
+  optional float mdl_benefit_rampup_coeff = 5;
+  optional float mdl_min_weight = 6;
+  optional float benefit_revisit_scale = 7;
+  optional float max_event_benefit = 8;
+  optional float max_total_benefit = 9;
+  optional float mdl_hard_limit = 10;
+  optional bool hard_limit_min_benefit = 11;
+  optional bool mdl_regularize = 12;
+  optional float initial_accumulator = 13;
+  optional float initial_weight = 14;
+  optional float initial_benefit = 15;
+}
+
+message AdadeltaParameters {
+  optional float rho = 1;
+  optional float epsilon = 2;
+  optional float initial_accumulator = 3 [default = 0.];
+  optional float initial_update = 4 [default = 0.];
+}
+
+message ProximalAdagradParameters {
+  optional float l1 = 1;
+  optional float l2 = 2;
+  optional float initial_accumulator = 3;
+}
+
+message OptimizationParameters {
+  // Learning rate used for updating the embedding layer parameters.
+  optional LearningRate learning_rate = 13;
+  reserved 1;  // Old learning rate tag.
+
+  // Limits to which to clip the weight values after the backward pass; not
+  // present means no limits are applied.
+  optional ClippingLimits clipping_limits = 2;
+
+  // Limits to which to clip the backward pass gradient before using it for
+  // updates; not present means no limits are applied.
+  optional ClippingLimits gradient_clipping_limits = 7;
+
+  // Whether to use gradient accumulation (do two passes over the input
+  // gradients: one to accumulate them into a temporary array and another to
+  // apply them using the actual optimization algorithm).
+  optional bool use_gradient_accumulation = 15 [default = false];
+
+  // Optimization algorithm parameters; which field is selected determines which
+  // algorithm to use.
+  oneof parameters {
+    AdagradParameters adagrad = 3;
+    StochasticGradientDescentParameters stochastic_gradient_descent = 4;
+    FtrlParameters ftrl = 5;
+    AdamParameters adam = 6;
+    MomentumParameters momentum = 8;
+    RmsPropParameters rms_prop = 9;
+    CenteredRmsPropParameters centered_rms_prop = 10;
+    MdlAdagradLightParameters mdl_adagrad_light = 11;
+    AdadeltaParameters adadelta = 12;
+    ProximalAdagradParameters proximal_adagrad = 14;
+  }
+}
+
+// Specification of an optimization algorithm's state variables (both the main
+// value vector and any extra accumulators, etc.).
+message StateVariableSpecification {
+  // Parameter name for the state variable.
+  optional string name = 1;
+
+  // A normal state variable that should be saved and restored in checkpoints
+  // and used as an input or output to non-debug TensorFlow ops.
+  message UserDefined {
+  }
+
+  // A state variable that should be filled with a constant and normally hidden
+  // from users (used for intermediate gradients being accumulated, for
+  // example).
+  message FillWithConstant {
+    optional double initial_value = 1;
+  }
+
+  // Usage type of this state variable.
+  oneof usage {
+    UserDefined user_defined = 2;
+    FillWithConstant fill_with_constant = 3;
+  }
+}
