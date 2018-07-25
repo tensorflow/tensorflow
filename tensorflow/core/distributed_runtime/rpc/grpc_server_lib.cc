@@ -244,6 +244,7 @@ Status GrpcServer::Init(
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
+  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   master_env_.master_session_factory =
       [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
