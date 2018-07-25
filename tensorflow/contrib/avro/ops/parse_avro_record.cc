@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <avro.h>
+#include <regex>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <iterator>
+
+#include <avro.h>
+
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -1428,7 +1431,18 @@ class ParseAvroRecordOp : public OpKernel {
     // Split into tokens using the separator
     std::vector<AvroField*>& avro_fields = *avro_fields_ptr;
 
-    std::vector<string> tokens = str_util::Split(str, ".");
+    std::vector<string> incomplete_tokens = str_util::Split(str, ".");
+    std::vector<string> tokens;
+    std::regex re(R"(([A-Za-z_][A-Za-z0-9_]*)(\[\S+\]))");
+    for(const string& token: incomplete_tokens) {
+      std::smatch index_match;
+      if (std::regex_search(token, index_match, re)) {
+        tokens.push_back(index_match[1]);
+        tokens.push_back(index_match[2]);
+      } else {
+        tokens.push_back(token);
+      }
+    }
     avro_fields.resize(tokens.size());
 
     // Go through all tokens and get their type depending on the surrounding

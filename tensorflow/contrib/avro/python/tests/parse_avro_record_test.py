@@ -530,9 +530,9 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             parsing_ops.FixedLenFeature([], tf_types.int32),
             'nested_record.nested_float_list':
             parsing_ops.FixedLenFeature([2], tf_types.float32),
-            'list_of_records.[0].first_name':
+            'list_of_records[0].first_name':
             parsing_ops.FixedLenFeature([1], tf_types.string),
-            "map_of_records.['second'].age":
+            "map_of_records['second'].age":
             parsing_ops.FixedLenFeature([1], tf_types.int32)
         }
 
@@ -541,9 +541,9 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             np.asarray([0, 5, 7]),
             'nested_record.nested_float_list':
             np.asarray([[0.0, 10.0], [-2.0, 7.0], [3.0, 4.0]]),
-            'list_of_records.[0].first_name':
+            'list_of_records[0].first_name':
             np.asarray([["Herbert"], ["Doug"], ["Karl"]]),
-            "map_of_records.['second'].age":
+            "map_of_records['second'].age":
             np.asarray([[30], [66], [21]])
         }
 
@@ -601,16 +601,16 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
         }]
 
         features = {
-            'sparse_type.[*].index': parsing_ops.VarLenFeature(tf_types.int64),
-            'sparse_type.[*].value': parsing_ops.VarLenFeature(tf_types.float32)
+            'sparse_type[*].index': parsing_ops.VarLenFeature(tf_types.int64),
+            'sparse_type[*].value': parsing_ops.VarLenFeature(tf_types.float32)
         }
 
         tensors_expected = {
-            'sparse_type.[*].index':
+            'sparse_type[*].index':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
                 np.asarray([0, 5, 3, 0, 9]), np.asarray([2, 3])),
-            'sparse_type.[*].value':
+            'sparse_type[*].value':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1]]),
                 np.asarray([5.0, 7.0, 1.0, 2.0, 1.0]), np.asarray([2, 3]))
@@ -943,7 +943,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'list_of_records.[2].name':
+            'list_of_records[2].name':
             parsing_ops.FixedLenFeature([], tf_types.string)
         }
         self._parse_must_fail(
@@ -995,17 +995,17 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[gender=male].name':
+            'guests[gender=male].name':
             parsing_ops.VarLenFeature(tf_types.string),
-            'guests.[gender=female].name':
+            'guests[gender=female].name':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
-            'guests.[gender=male].name':
+            'guests[gender=male].name':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0], [1, 0], [1, 1]]),
                 np.asarray(["Hans", "Joel", "Marc"]), np.asarray([2, 1])),
-            'guests.[gender=female].name':
+            'guests[gender=female].name':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0], [0, 1], [1, 0]]),
                 np.asarray(["Mary", "July", "JoAn"]), np.asarray([2, 1]))
@@ -1059,15 +1059,15 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[gender=male].name':
+            'guests[gender=male].name':
             parsing_ops.FixedLenFeature([1], tf_types.string),
-            'guests.[gender=female].name':
+            'guests[gender=female].name':
             parsing_ops.FixedLenFeature([2], tf_types.string)
         }
         tensors_expected = {
-            'guests.[gender=male].name':
+            'guests[gender=male].name':
             np.asarray([["Hans"], ["Joel"]]),
-            'guests.[gender=female].name':
+            'guests[gender=female].name':
             np.asarray([["Mary", "July"], ["JoAn", "Kloy"]])
         }
         self._compare_all_tensors(
@@ -1107,11 +1107,11 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[gender=wrong_value].name':
+            'guests[gender=wrong_value].name':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
-            'guests.[gender=wrong_value].name':
+            'guests[gender=wrong_value].name':
             sparse_tensor.SparseTensorValue(
                 np.empty(shape=[0, 2], dtype=np.int64),
                 np.empty(shape=[0], dtype=np.str), np.asarray([2, 0]))
@@ -1150,7 +1150,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[wrong_key=female].name':
+            'guests[wrong_key=female].name':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         self._parse_must_fail(
@@ -1187,7 +1187,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[forgot_the_separator].name':
+            'guests[forgot_the_separator].name':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         self._parse_must_fail(
@@ -1224,7 +1224,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[used=too=many=separators].name':
+            'guests[used=too=many=separators].name':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         self._parse_must_fail(
@@ -1283,11 +1283,11 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[gender=female].address.street':
+            'guests[gender=female].address.street':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
-            'guests.[gender=female].address.street':
+            'guests[gender=female].address.street':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0]]), np.asarray(["Ellis St"]),
                 np.asarray([2, 1]))
@@ -1341,17 +1341,17 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[gender=male].name':
+            'guests[gender=male].name':
             parsing_ops.VarLenFeature(tf_types.string),
-            'guests.[gender=female].name':
+            'guests[gender=female].name':
             parsing_ops.VarLenFeature(tf_types.string)
         }
         tensors_expected = {
-            'guests.[gender=male].name':
+            'guests[gender=male].name':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0], [1, 0], [1, 1]]),
                 np.asarray(["Hans", "Joel", "Marc"]), np.asarray([2, 1])),
-            'guests.[gender=female].name':
+            'guests[gender=female].name':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 0], [0, 1], [1, 0]]),
                 np.asarray(["Mary", "July", "JoAn"]), np.asarray([2, 1]))
@@ -1426,7 +1426,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'guests.[gender=female].address':
+            'guests[gender=female].address':
             parsing_ops.SparseFeature(
                 index_key="zip",
                 value_key="street_no",
@@ -1434,7 +1434,7 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
                 size=94040)
         }
         tensors_expected = {
-            'guests.[gender=female].address':
+            'guests[gender=female].address':
             sparse_tensor.SparseTensorValue(
                 np.asarray([[0, 29040]]), np.asarray([3]),
                 np.asarray([1, 94040]))
@@ -1514,13 +1514,13 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }
         }]
         features = {
-            "array_type.[0]": parsing_ops.FixedLenFeature([], tf_types.float32),
-            "map_type.['one']": parsing_ops.FixedLenFeature([],
+            "array_type[0]": parsing_ops.FixedLenFeature([], tf_types.float32),
+            "map_type['one']": parsing_ops.FixedLenFeature([],
                                                             tf_types.float64)
         }
         tensors_expected = {
-            "array_type.[0]": np.asarray([1.0]),
-            "map_type.['one']": np.asarray([1.0])
+            "array_type[0]": np.asarray([1.0]),
+            "map_type['one']": np.asarray([1.0])
         }
         self._compare_all_tensors(
             schema,
@@ -1581,17 +1581,17 @@ class ParseAvroRecordTest(test_util.TensorFlowTestCase):
             }]
         }]
         features = {
-            'features.[name=First].value':
+            'features[name=First].value':
             parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0),
-            'features.[name=Second].value':
+            'features[name=Second].value':
             parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0),
-            'features.[name=Third].value':
+            'features[name=Third].value':
             parsing_ops.FixedLenFeature([], tf_types.float32, default_value=0)
         }
         tensors_expected = {
-            'features.[name=First].value': np.asarray([1.0, 1.0]),
-            'features.[name=Second].value': np.asarray([2.0, 2.0]),
-            'features.[name=Third].value': np.asarray([3.0, 3.0])
+            'features[name=First].value': np.asarray([1.0, 1.0]),
+            'features[name=Second].value': np.asarray([2.0, 2.0]),
+            'features[name=Third].value': np.asarray([3.0, 3.0])
         }
         self._compare_all_tensors(
             schema,
