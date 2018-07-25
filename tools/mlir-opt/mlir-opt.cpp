@@ -21,10 +21,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
+#include "mlir/Pass.h"
 #include "mlir/Transforms/ConvertToCFG.h"
+#include "mlir/Transforms/Loop.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
@@ -48,6 +51,10 @@ checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
 static cl::opt<bool> convertToCFGOpt(
     "convert-to-cfg",
     cl::desc("Convert all ML functions in the module to CFG ones"));
+
+static cl::opt<bool> unrollInnermostLoops("unroll-innermost-loops",
+                                          cl::desc("Unroll innermost loops"),
+                                          cl::init(false));
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -82,6 +89,11 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   // Convert ML functions into CFG functions
   if (convertToCFGOpt)
     convertToCFG(module.get());
+
+  if (unrollInnermostLoops) {
+    MLFunctionPass *loopUnroll = createLoopUnrollPass();
+    loopUnroll->runOnModule(module.get());
+  }
 
   // Print the output.
   auto output = getOutputStream();

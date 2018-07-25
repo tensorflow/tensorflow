@@ -17,6 +17,7 @@
 
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/IR/StmtVisitor.h"
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -46,6 +47,18 @@ void Statement::destroy() {
 
 MLFunction *Statement::getFunction() const {
   return this->getBlock()->getFunction();
+}
+
+unsigned Statement::getNumNestedLoops() const {
+  struct NestedLoopCounter : public StmtVisitor<NestedLoopCounter> {
+    unsigned numNestedLoops;
+    NestedLoopCounter() : numNestedLoops(0) {}
+    void visitForStmt(const ForStmt *fs) { numNestedLoops++; }
+  };
+
+  NestedLoopCounter nlc;
+  nlc.visit(const_cast<Statement *>(this));
+  return nlc.numNestedLoops;
 }
 
 //===----------------------------------------------------------------------===//
@@ -91,7 +104,9 @@ void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
     first->block = curParent;
 }
 
-/// Remove this statement from its StmtBlock and delete it.
+/// Remove this statement (and its descendants) from its StmtBlock and delete
+/// all of them.
+/// TODO: erase all descendents for ForStmt/IfStmt.
 void Statement::eraseFromBlock() {
   assert(getBlock() && "Statement has no block");
   getBlock()->getStatements().erase(this);

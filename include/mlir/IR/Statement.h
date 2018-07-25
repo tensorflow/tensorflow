@@ -27,15 +27,15 @@
 #include "llvm/ADT/ilist_node.h"
 
 namespace mlir {
-  class MLFunction;
-  class StmtBlock;
+class MLFunction;
+class StmtBlock;
+class ForStmt;
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
 /// forming a tree. Statements are organized into statement blocks
 /// represented by StmtBlock class.
-class Statement
-  : public llvm::ilist_node_with_parent<Statement, StmtBlock> {
+class Statement : public llvm::ilist_node_with_parent<Statement, StmtBlock> {
 public:
   enum class Kind {
     Operation,
@@ -45,11 +45,18 @@ public:
 
   Kind getKind() const { return kind; }
 
+  /// Remove this statement from its block and delete it.
+  void eraseFromBlock();
+
   /// Returns the statement block that contains this statement.
   StmtBlock *getBlock() const { return block; }
 
   /// Returns the function that this statement is part of.
   MLFunction *getFunction() const;
+
+  /// Returns the number of nested loops starting from (i.e., inclusive of) this
+  /// statement.
+  unsigned getNumNestedLoops() const;
 
   /// Destroys this statement and its subclass data.
   void destroy();
@@ -63,8 +70,6 @@ protected:
   // does not have a virtual destructor.
   ~Statement();
 
-  /// Remove this statement from its block and delete it.
-  void eraseFromBlock();
 private:
   Kind kind;
   StmtBlock *block = nullptr;
