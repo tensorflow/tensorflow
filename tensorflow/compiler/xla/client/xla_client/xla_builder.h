@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/client/padding.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"

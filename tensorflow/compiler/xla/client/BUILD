@@ -1,6 +1,8 @@
 # Description:
 #   XLA client libraries.
 
+load("//tools/build_defs:cc_public_library.bzl", "cc_public_library")
+
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = [":friends"])
@@ -64,6 +66,7 @@ cc_library(
     hdrs = ["client.h"],
     deps = [
         ":global_data",
+        ":xla_computation",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:service_interface",
@@ -73,7 +76,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:lib",
@@ -100,12 +102,12 @@ cc_library(
     deps = [
         ":client",
         ":executable_build_options",
+        ":xla_computation",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
@@ -126,11 +128,11 @@ cc_library(
     hdrs = ["compile_only_client.h"],
     deps = [
         ":client",
+        ":xla_computation",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/compiler/xla/service:compile_only_service",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -172,5 +174,17 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+    ],
+)
+
+cc_public_library(
+    name = "xla_computation",
+    srcs = ["xla_computation.cc"],
+    hdrs = ["xla_computation.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
     ],
 )
