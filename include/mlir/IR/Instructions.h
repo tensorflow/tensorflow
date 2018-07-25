@@ -314,50 +314,8 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
-  const CFGValue *getOperand(unsigned idx) const {
-    return getInstOperand(idx).get();
-  }
-  void setOperand(unsigned idx, CFGValue *value) {
-    return getInstOperand(idx).set(value);
-  }
-
-  // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<BranchInst, CFGValue>;
-
-  operand_iterator operand_begin() { return operand_iterator(this, 0); }
-
-  operand_iterator operand_end() {
-    return operand_iterator(this, getNumOperands());
-  }
-
-  llvm::iterator_range<operand_iterator> getOperands() {
-    return {operand_begin(), operand_end()};
-  }
-
-  // Support const operand iteration.
-  typedef OperandIterator<const BranchInst, const CFGValue>
-      const_operand_iterator;
-
-  const_operand_iterator operand_begin() const {
-    return const_operand_iterator(this, 0);
-  }
-
-  const_operand_iterator operand_end() const {
-    return const_operand_iterator(this, getNumOperands());
-  }
-
-  llvm::iterator_range<const_operand_iterator> getOperands() const {
-    return {operand_begin(), operand_end()};
-  }
-
   ArrayRef<InstOperand> getInstOperands() const { return operands; }
   MutableArrayRef<InstOperand> getInstOperands() { return operands; }
-
-  InstOperand &getInstOperand(unsigned idx) { return operands[idx]; }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return operands[idx];
-  }
 
   /// Add one value to the operand list.
   void addOperand(CFGValue *value);
@@ -408,44 +366,9 @@ public:
   typedef OperandIterator<const CondBranchInst, const CFGValue>
       const_operand_iterator;
 
-  //
-  // Accessors for the entire operand list. This includes operands to both true
-  // and false blocks.
-  //
-
-  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
-  const CFGValue *getOperand(unsigned idx) const {
-    return getInstOperand(idx).get();
-  }
-  void setOperand(unsigned idx, CFGValue *value) {
-    return getInstOperand(idx).set(value);
-  }
-
-  operand_iterator operand_begin() { return operand_iterator(this, 0); }
-  operand_iterator operand_end() {
-    return operand_iterator(this, getNumOperands());
-  }
-  llvm::iterator_range<operand_iterator> getOperands() {
-    return {operand_begin(), operand_end()};
-  }
-
-  const_operand_iterator operand_begin() const {
-    return const_operand_iterator(this, 0);
-  }
-  const_operand_iterator operand_end() const {
-    return const_operand_iterator(this, getNumOperands());
-  }
-  llvm::iterator_range<const_operand_iterator> getOperands() const {
-    return {operand_begin(), operand_end()};
-  }
-
   ArrayRef<InstOperand> getInstOperands() const { return operands; }
   MutableArrayRef<InstOperand> getInstOperands() { return operands; }
 
-  InstOperand &getInstOperand(unsigned idx) { return operands[idx]; }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return operands[idx];
-  }
   unsigned getNumOperands() const { return operands.size(); }
 
   //
