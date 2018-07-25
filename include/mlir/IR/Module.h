@@ -23,6 +23,7 @@
 #define MLIR_IR_MODULE_H
 
 #include "mlir/IR/Function.h"
+#include "llvm/ADT/ilist.h"
 #include <vector>
 
 namespace mlir {
@@ -35,11 +36,27 @@ public:
 
   MLIRContext *getContext() const { return context; }
 
-  // FIXME: wrong representation and API.
-  // TODO(someone): This should switch to llvm::iplist<Function>.
-  // TODO(someone): we also need a symbol table for function names +
-  // autorenaming like LLVM does.
-  std::vector<Function*> functionList;
+  // TODO: We should have a symbol table for function names.
+
+  /// This is the list of functions in the module.
+  typedef llvm::iplist<Function> FunctionListType;
+  FunctionListType &getFunctions() { return functions; }
+  const FunctionListType &getFunctions() const { return functions; }
+
+  // Iteration over the functions in the module.
+  using iterator = FunctionListType::iterator;
+  using const_iterator = FunctionListType::const_iterator;
+  using reverse_iterator = FunctionListType::reverse_iterator;
+  using const_reverse_iterator = FunctionListType::const_reverse_iterator;
+
+  iterator begin() { return functions.begin(); }
+  iterator end() { return functions.end(); }
+  const_iterator begin() const { return functions.begin(); }
+  const_iterator end() const { return functions.end(); }
+  reverse_iterator rbegin() { return functions.rbegin(); }
+  reverse_iterator rend() { return functions.rend(); }
+  const_reverse_iterator rbegin() const { return functions.rbegin(); }
+  const_reverse_iterator rend() const { return functions.rend(); }
 
   /// Perform (potentially expensive) checks of invariants, used to detect
   /// compiler bugs.  On error, this fills in the string and return true,
@@ -49,8 +66,14 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
+  /// getSublistAccess() - Returns pointer to member of function list
+  static FunctionListType Module::*getSublistAccess(Function *) {
+    return &Module::functions;
+  }
+
 private:
   MLIRContext *context;
+  FunctionListType functions;
 };
 } // end namespace mlir
 

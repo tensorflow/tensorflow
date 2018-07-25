@@ -157,8 +157,8 @@ void ModuleState::visitFunction(const Function *fn) {
 
 // Initializes module state, populating affine map state.
 void ModuleState::initialize(const Module *module) {
-  for (auto fn : module->functionList) {
-    visitFunction(fn);
+  for (auto &fn : *module) {
+    visitFunction(&fn);
   }
 }
 
@@ -236,8 +236,8 @@ void ModulePrinter::print(const Module *module) {
     map->print(os);
     os << '\n';
   }
-  for (auto *fn : module->functionList)
-    print(fn);
+  for (auto const &fn : *module)
+    print(&fn);
 }
 
 void ModulePrinter::printAttribute(const Attribute *attr) {

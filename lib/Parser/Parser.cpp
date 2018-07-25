@@ -917,11 +917,10 @@ AffineExpr *AffineMapParser::parseBareIdExpr() {
 
   StringRef sRef = getTokenSpelling();
   for (auto entry : dimsAndSymbols) {
-    if (entry.first != sRef)
-      continue;
-
-    consumeToken(Token::bare_identifier);
-    return entry.second;
+    if (entry.first == sRef) {
+      consumeToken(Token::bare_identifier);
+      return entry.second;
+    }
   }
 
   return (emitError("use of undeclared identifier"), nullptr);
@@ -1861,7 +1860,7 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
                            "'");
   }
 
-  getModule()->functionList.push_back(function);
+  getModule()->getFunctions().push_back(function);
 
   return finalizeFunction(function, braceLoc);
 }
@@ -2053,7 +2052,7 @@ ParseResult MLFunctionParser::parseFunctionBody() {
       parseToken(Token::r_brace, "expected '}' to end mlfunc"))
     return ParseFailure;
 
-  getModule()->functionList.push_back(function);
+  getModule()->getFunctions().push_back(function);
 
   return finalizeFunction(function, braceLoc);
 }
@@ -2356,7 +2355,7 @@ ParseResult ModuleParser::parseExtFunc() {
     return ParseFailure;
 
   // Okay, the external function definition was parsed correctly.
-  getModule()->functionList.push_back(new ExtFunction(name, type));
+  getModule()->getFunctions().push_back(new ExtFunction(name, type));
   return ParseSuccess;
 }
 

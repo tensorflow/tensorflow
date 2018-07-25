@@ -28,6 +28,7 @@ namespace mlir {
 class CFGFunction : public Function {
 public:
   CFGFunction(StringRef name, FunctionType *type);
+  ~CFGFunction();
 
   //===--------------------------------------------------------------------===//
   // BasicBlock list management
@@ -67,14 +68,14 @@ public:
     return const_cast<CFGFunction*>(this)->front();
   }
 
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
+
   /// getSublistAccess() - Returns pointer to member of block list
   static BasicBlockListType CFGFunction::*getSublistAccess(BasicBlock*) {
     return &CFGFunction::blocks;
   }
-
-  //===--------------------------------------------------------------------===//
-  // Other
-  //===--------------------------------------------------------------------===//
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Function *func) {

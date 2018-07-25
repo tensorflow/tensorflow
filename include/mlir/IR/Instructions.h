@@ -27,7 +27,6 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
-#include "llvm/ADT/ilist_node.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
@@ -107,6 +106,11 @@ public:
   const InstOperand &getInstOperand(unsigned idx) const {
     return getInstOperands()[idx];
   }
+
+  /// This drops all operand uses from this instruction, which is an essential
+  /// step in breaking cyclic dependences between references when they are to
+  /// be deleted.
+  void dropAllReferences();
 
 protected:
   Instruction(Kind kind) : kind(kind) {}

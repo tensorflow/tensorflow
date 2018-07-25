@@ -330,8 +330,8 @@ bool Function::verify(std::string *errorResult) const {
 bool Module::verify(std::string *errorResult) const {
 
   /// Check that each function is correct.
-  for (auto fn : functionList) {
-    if (fn->verify(errorResult))
+  for (auto &fn : *this) {
+    if (fn.verify(errorResult))
       return true;
   }
 

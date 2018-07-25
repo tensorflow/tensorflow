@@ -44,8 +44,8 @@ MLFunctionPass *mlir::createLoopUnrollPass() { return new LoopUnroll(); }
 /// Unrolls all the innermost loops of this Module.
 bool MLFunctionPass::runOnModule(Module *m) {
   bool changed = false;
-  for (auto fn : m->functionList) {
-    if (auto *mlFunc = dyn_cast<MLFunction>(fn))
+  for (auto &fn : *m) {
+    if (auto *mlFunc = dyn_cast<MLFunction>(&fn))
       changed |= runOnMLFunction(mlFunc);
   }
   return changed;

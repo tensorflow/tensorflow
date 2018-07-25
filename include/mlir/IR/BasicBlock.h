@@ -146,7 +146,7 @@ private:
 } // end namespace mlir
 
 //===----------------------------------------------------------------------===//
-// ilist_traits for OperationInst
+// ilist_traits for BasicBlock
 //===----------------------------------------------------------------------===//
 
 namespace llvm {

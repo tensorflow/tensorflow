@@ -99,6 +99,14 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
   }
 }
 
+/// This drops all operand uses from this instruction, which is an essential
+/// step in breaking cyclic dependences between references when they are to
+/// be deleted.
+void Instruction::dropAllReferences() {
+  for (auto &op : getInstOperands())
+    op.drop();
+}
+
 //===----------------------------------------------------------------------===//
 // OperationInst
 //===----------------------------------------------------------------------===//

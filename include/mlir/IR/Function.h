@@ -25,13 +25,15 @@
 #define MLIR_IR_FUNCTION_H
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/ilist.h"
 
 namespace mlir {
 class FunctionType;
 class MLIRContext;
+class Module;
 
 /// This is the base class for all of the MLIR function types.
-class Function {
+class Function : public llvm::ilist_node_with_parent<Function, Module> {
 public:
   enum class Kind { ExtFunc, CFGFunc, MLFunc };
 
@@ -44,6 +46,14 @@ public:
   FunctionType *getType() const { return type; }
 
   MLIRContext *getContext() const;
+  Module *getModule() { return module; }
+  const Module *getModule() const { return module; }
+
+  /// Unlink this instruction from its module and delete it.
+  void eraseFromModule();
+
+  /// Delete this object.
+  void destroy();
 
   /// Perform (potentially expensive) checks of invariants, used to detect
   /// compiler bugs.  On error, this fills in the string and return true,
@@ -59,10 +69,12 @@ protected:
 
 private:
   Kind kind;
+  Module *module = nullptr;
   std::string name;
   FunctionType *const type;
 
   void operator=(const Function &) = delete;
+  friend struct llvm::ilist_traits<Function>;
 };
 
 /// An extfunc declaration is a declaration of a function signature that is
@@ -77,7 +89,30 @@ public:
   }
 };
 
-
 } // end namespace mlir
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for Function
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <>
+struct ilist_traits<::mlir::Function>
+    : public ilist_alloc_traits<::mlir::Function> {
+  using Function = ::mlir::Function;
+  using function_iterator = simple_ilist<Function>::iterator;
+
+  static void deleteNode(Function *inst) { inst->destroy(); }
+
+  void addNodeToList(Function *function);
+  void removeNodeFromList(Function *function);
+  void transferNodesFromList(ilist_traits<Function> &otherList,
+                             function_iterator first, function_iterator last);
+
+private:
+  mlir::Module *getContainingModule();
+};
+} // end namespace llvm
 
 #endif  // MLIR_IR_FUNCTION_H

@@ -96,8 +96,8 @@ void ModuleConverter::run() {
 }
 
 void ModuleConverter::convertMLFunctions() {
-  for (Function *fn : module->functionList) {
-    if (auto mlFunc = dyn_cast<MLFunction>(fn))
+  for (Function &fn : *module) {
+    if (auto *mlFunc = dyn_cast<MLFunction>(&fn))
       generatedFuncs[mlFunc] = convert(mlFunc);
   }
 }
@@ -105,22 +105,22 @@ void ModuleConverter::convertMLFunctions() {
 // Creates CFG function equivalent to the given ML function.
 CFGFunction *ModuleConverter::convert(const MLFunction *mlFunc) {
   // TODO: ensure that CFG function name is unique.
-  CFGFunction *cfgFunc =
+  auto *cfgFunc =
       new CFGFunction(mlFunc->getName() + "_cfg", mlFunc->getType());
-  module->functionList.push_back(cfgFunc);
+  module->getFunctions().push_back(cfgFunc);
 
   // Generates the body of the CFG function.
   return FunctionConverter(cfgFunc).convert(mlFunc);
 }
 
 void ModuleConverter::replaceReferences() {
-  for (Function *fn : module->functionList) {
-    switch (fn->getKind()) {
+  for (Function &fn : *module) {
+    switch (fn.getKind()) {
     case Function::Kind::CFGFunc:
-      replaceReferences(cast<CFGFunction>(fn));
+      replaceReferences(&cast<CFGFunction>(fn));
       break;
     case Function::Kind::MLFunc:
-      replaceReferences(cast<MLFunction>(fn));
+      replaceReferences(&cast<MLFunction>(fn));
       break;
     case Function::Kind::ExtFunc:
       // nothing to do for external functions
@@ -139,20 +139,14 @@ void ModuleConverter::replaceReferences(MLFunction *func) {
 
 // Removes all ML functions from the module.
 void ModuleConverter::removeMLFunctions() {
-  std::vector<Function *> &fnList = module->functionList;
-
-  // Delete ML functions and its data.
-  for (auto &fn : fnList) {
-    if (auto mlFunc = dyn_cast<MLFunction>(fn)) {
-      delete mlFunc;
-      fn = nullptr;
-    }
+  // Delete ML functions from the module.
+  for (auto it = module->begin(), e = module->end(); it != e;) {
+    // Manipulate iterator carefully to avoid deleting a function we're pointing
+    // at.
+    Function &fn = *it++;
+    if (auto mlFunc = dyn_cast<MLFunction>(&fn))
+      mlFunc->eraseFromModule();
   }
-
-  // Remove ML functions from the function list.
-  fnList.erase(std::remove_if(fnList.begin(), fnList.end(),
-                              [](Function *fn) { return !fn; }),
-               fnList.end());
 }
 
 //===----------------------------------------------------------------------===//
