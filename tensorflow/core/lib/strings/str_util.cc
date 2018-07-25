@@ -18,6 +18,7 @@ limitations under the License.
 #include <ctype.h>
 #include <algorithm>
 #include <vector>
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -432,6 +433,101 @@ bool ConsumeNonWhitespace(StringPiece* s, StringPiece* val) {
     *val = StringPiece();
     return false;
   }
+}
+
+Status SplitUTF8(StringPiece text, const string& delim, const bool skip_empty,
+                 std::vector<string>* result) {
+  // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
+  //   1     0xxxxxxx
+  //   2     110xxxxx  10xxxxxx
+  //   3     1110xxxx  10xxxxxx  10xxxxxx
+  //   4     11110xxx  10xxxxxx  10xxxxxx  10xxxxxx
+  result->clear();
+  size_t char_start = 0, char_len = 0;
+  bool last_char_was_a_delimiter = true;
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (char_start == i) {
+      if (!UTF8CharNumBytes(text, &char_len)) {
+        result->clear();
+        return errors::InvalidArgument("Invalid UTF8 encoding at byte ", i);
+      }
+    }
+    // Validate all intermediate bytes are valid UTF-8
+    if (TF_PREDICT_FALSE((char_start != i) && (text[i] & 0xC0) != 0x80)) {
+      return errors::InvalidArgument("Invalid UTF8 encoding at byte ", i);
+    }
+    // Reached the end of a character
+    if (char_start + char_len == i + 1) {
+      const StringPiece entry = text.substr(char_start, char_len).ToString();
+      if (delim == "") {
+        result->emplace_back(entry.ToString());
+      } else if (delim == entry) {
+        if (last_char_was_a_delimiter && !skip_empty) {
+          result->emplace_back("");
+        }
+        last_char_was_a_delimiter = true;
+      } else if (last_char_was_a_delimiter) {
+        last_char_was_a_delimiter = false;
+        result->emplace_back(entry.ToString());
+      } else if (result->size() == 0) {
+        result->emplace_back(entry.ToString());
+      } else {
+        result->back() = result->back() + entry.ToString();
+      }
+      char_start += char_len;
+    }
+  }
+  if (last_char_was_a_delimiter && !skip_empty && delim != "" &&
+      !text.empty()) {
+    // If this is the last we always add an empty one
+    // to handle split(",",",") -> ["", ""]
+    result->emplace_back("");
+  }
+  if (TF_PREDICT_FALSE(char_start < text.size())) {
+    return errors::InvalidArgument(
+        "Invalid UTF8 encoding, incomplete last character");
+  }
+  return Status::OK();
+}
+
+bool UTF8CharNumBytes(StringPiece text, size_t* num_bytes) {
+  if ((text[0] & 0x80) == 0x00) {
+    *num_bytes = 1;
+  } else if ((text[0] & 0xE0) == 0xC0) {
+    *num_bytes = 2;
+  } else if ((text[0] & 0xF0) == 0xE0) {
+    *num_bytes = 3;
+  } else if ((text[0] & 0xF8) == 0xF0) {
+    *num_bytes = 4;
+  } else {
+    return false;
+  }
+  return true;
+}
+
+Status ValidUTF8Character(StringPiece text) {
+  // Bytes    Byte 1    Byte 2    Byte 3    Byte 4
+  //   1     0xxxxxxx
+  //   2     110xxxxx  10xxxxxx
+  //   3     1110xxxx  10xxxxxx  10xxxxxx
+  //   4     11110xxx  10xxxxxx  10xxxxxx  10xxxxxx
+  if (text.size() == 0) {
+    return Status::OK();
+  }
+  size_t len = 0;
+  if (!UTF8CharNumBytes(text, &len)) {
+    return errors::InvalidArgument("Invalid UTF8 encoding");
+  }
+  if (text.size() != len) {
+    return errors::InvalidArgument("Not enough characters for UTF8 encoding");
+  }
+  for (size_t i = 1; i < len; i++) {
+    if (TF_PREDICT_FALSE((text[i] & 0xC0) != 0x80)) {
+      return errors::InvalidArgument("Invalid UTF8 encoding at position of ",
+                                     i);
+    }
+  }
+  return Status::OK();
 }
 
 bool SplitAndParseAsInts(StringPiece text, char delim,

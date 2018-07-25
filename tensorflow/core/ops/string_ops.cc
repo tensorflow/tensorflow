@@ -157,6 +157,24 @@ REGISTER_OP("StringStrip")
     .Output("output: string")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("StringSplitUTF8")
+    .Input("input: string")
+    .Input("delimiter: string")
+    .Output("indices: int64")
+    .Output("values: string")
+    .Output("shape: int64")
+    .Attr("skip_empty: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &unused));
+
+      c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    });
+
 REGISTER_OP("EncodeBase64")
     .Input("input: string")
     .Output("output: string")

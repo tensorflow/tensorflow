@@ -438,4 +438,80 @@ TEST(Strnlen, Basic) {
   EXPECT_EQ(4, str_util::Strnlen("a \t\n", 10));
 }
 
+TEST(SplitUTF8, Basic) {
+  std::vector<string> result;
+  // UTF8 \xE6\x82\xA8 \xE5\xA5\xBD \xE6\x82\xA8 \xE5\xA5\xBD
+  EXPECT_EQ(
+      Status::OK(),
+      str_util::SplitUTF8("\xE6\x82\xA8\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C",
+                          "", false, &result));
+  ASSERT_EQ(result.size(), 4);
+
+  // UTF8 \xE6\x82\xA8 \xE5\xA5\xBD \xE4\xB8\x96 \xE7\x95\x8C
+  EXPECT_EQ(
+      Status::OK(),
+      str_util::SplitUTF8("\xE6\x82\xA8\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C",
+                          "\xE5\xA5\xBD", false, &result));
+  ASSERT_EQ(result.size(), 2);
+
+  EXPECT_EQ(errors::InvalidArgument("Invalid UTF8 encoding at byte 1"),
+            str_util::SplitUTF8("\xE2\x28\xA1", "", false, &result));
+
+  EXPECT_EQ(errors::InvalidArgument(
+                "Invalid UTF8 encoding, incomplete last character"),
+            str_util::SplitUTF8("\xE6\x82", "", false, &result));
+
+  // split("###a#", "#") -> { "", "", "", "a", ""}
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("###a#", "#", false, &result));
+  ASSERT_EQ(result.size(), 5);
+  EXPECT_EQ(result[0], "");
+  EXPECT_EQ(result[1], "");
+  EXPECT_EQ(result[2], "");
+  EXPECT_EQ(result[3], "a");
+  EXPECT_EQ(result[4], "");
+
+  // split("##a##b##c##", "#") -> {"", "", "a", "", "b", "", "c", "", ""}
+  EXPECT_EQ(Status::OK(),
+            str_util::SplitUTF8("##a##b##c##", "#", false, &result));
+  ASSERT_EQ(result.size(), 9);
+  EXPECT_EQ(result[0], "");
+  EXPECT_EQ(result[1], "");
+  EXPECT_EQ(result[2], "a");
+  EXPECT_EQ(result[3], "");
+  EXPECT_EQ(result[4], "b");
+  EXPECT_EQ(result[5], "");
+  EXPECT_EQ(result[6], "c");
+  EXPECT_EQ(result[7], "");
+  EXPECT_EQ(result[8], "");
+
+  // ASCII should work as well
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("", ",", true, &result));
+  ASSERT_EQ(result.size(), 0);
+
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("", ",", false, &result));
+  ASSERT_EQ(result.size(), 0);
+
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("a", ",", false, &result));
+  EXPECT_EQ(str_util::Join(result, "|"), "a");
+
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8(",", ",", false, &result));
+  EXPECT_EQ(str_util::Join(result, "|"), "|");
+
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("a,b,c", ",", false, &result));
+  EXPECT_EQ(str_util::Join(result, "|"), "a|b|c");
+
+  EXPECT_EQ(Status::OK(),
+            str_util::SplitUTF8("a,,,b,,c,", ",", false, &result));
+  EXPECT_EQ(str_util::Join(result, "|"), "a|||b||c|");
+
+  EXPECT_EQ(Status::OK(), str_util::SplitUTF8("a,,,b,,c", ",", true, &result));
+  EXPECT_EQ(str_util::Join(result, "|"), "a|b|c");
+}
+
+TEST(ValidUTF8Character, Basic) {
+  EXPECT_EQ(Status::OK(), str_util::ValidUTF8Character("\xE6\x82\xA8"));
+  EXPECT_EQ(errors::InvalidArgument("Not enough characters for UTF8 encoding"),
+            str_util::ValidUTF8Character("\xE6"));
+}
+
 }  // namespace tensorflow

@@ -29,8 +29,8 @@ namespace tensorflow {
 
 namespace {
 
-std::vector<string> Split(const string& str, const string& delimiter,
-                          const bool skipEmpty) {
+std::vector<string> SplitString(const string& str, const string& delimiter,
+                                const bool skipEmpty) {
   if (!delimiter.empty()) {
     if (skipEmpty) {
       return str_util::Split(str, delimiter, str_util::SkipEmpty());
@@ -103,17 +103,14 @@ std::vector<string> SplitV2(const string& str, StringPiece sep, int maxsplit) {
 
 }  // namespace
 
-class StringSplitOp : public OpKernel {
+class StringSplitOpBase : public OpKernel {
  public:
-  explicit StringSplitOp(OpKernelConstruction* context)
-      : OpKernel(context), skip_empty_(true) {
-    bool skip_empty;
-    // By default skip_empty_ is true. We only get the value from attr if it is
-    // available, so that it is backward compatible.
-    if (context->GetAttr("skip_empty", &skip_empty).ok()) {
-      skip_empty_ = skip_empty;
-    }
-  }
+  explicit StringSplitOpBase(OpKernelConstruction* c) : OpKernel(c) {}
+
+  virtual Status ValidateDelimiter(const string& delimiter) = 0;
+
+  virtual Status Split(const string& input, const string& delimiter,
+                       std::vector<string>* parts) = 0;
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_tensor;
@@ -133,6 +130,7 @@ class StringSplitOp : public OpKernel {
                                 delimiter_tensor->shape().DebugString()));
     const auto delimiter_vec = delimiter_tensor->flat<string>();
     const string& delimiter = delimiter_vec(0);
+    OP_REQUIRES_OK(ctx, ValidateDelimiter(delimiter));
     // Empty delimiter means split the input character by character.
     std::vector<string> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
@@ -143,7 +141,8 @@ class StringSplitOp : public OpKernel {
     int64 max_num_entries = 0;
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<string> parts = Split(input_vec(i), delimiter, skip_empty_);
+      std::vector<string> parts;
+      OP_REQUIRES_OK(ctx, Split(input_vec(i), delimiter, &parts));
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
@@ -174,6 +173,49 @@ class StringSplitOp : public OpKernel {
         ++c;
       }
     }
+  }
+};
+
+class StringSplitOp : public StringSplitOpBase {
+ public:
+  explicit StringSplitOp(OpKernelConstruction* context)
+      : StringSplitOpBase(context) {
+    skip_empty_ = true;
+    // By default skip_empty_ is true. We only get the value from attr if it is
+    // available, so that it is backward compatible.
+    bool skip_empty;
+    if (context->GetAttr("skip_empty", &skip_empty).ok()) {
+      skip_empty_ = skip_empty;
+    }
+  }
+
+  Status ValidateDelimiter(const string& delimiter) { return Status::OK(); }
+
+  Status Split(const string& input, const string& delimiter,
+               std::vector<string>* parts) {
+    *parts = SplitString(input, delimiter, skip_empty_);
+    return Status::OK();
+  }
+
+ private:
+  bool skip_empty_;
+};
+
+class StringSplitUTF8Op : public StringSplitOpBase {
+ public:
+  explicit StringSplitUTF8Op(OpKernelConstruction* context)
+      : StringSplitOpBase(context) {
+    // The skip_empty is not optional (unlike StringSplitOp)
+    OP_REQUIRES_OK(context, context->GetAttr("skip_empty", &skip_empty_));
+  }
+
+  Status ValidateDelimiter(const string& delimiter) {
+    return str_util::ValidUTF8Character(delimiter);
+  }
+
+  Status Split(const string& input, const string& delimiter,
+               std::vector<string>* parts) {
+    return str_util::SplitUTF8(input, delimiter, skip_empty_, parts);
   }
 
  private:
@@ -253,5 +295,8 @@ class StringSplitV2Op : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);
 REGISTER_KERNEL_BUILDER(Name("StringSplitV2").Device(DEVICE_CPU),
                         StringSplitV2Op);
+
+REGISTER_KERNEL_BUILDER(Name("StringSplitUTF8").Device(DEVICE_CPU),
+                        StringSplitUTF8Op);
 
 }  // namespace tensorflow

@@ -145,6 +145,120 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(indices, [[0, 0], [1, 0], [2, 0]])
       self.assertAllEqual(shape, [3, 1])
 
+  def testStringSplitWithUtf8AndSkipEmpty(self):
+    # utf8 \xE5\xA5\xBD \xE6\x82\xA8, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE5\xA5\xBD\xE6\x82\xA8", b"\xE6\x82\xA8\xE7\x95\x8C"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, delimiter=b"\xE6\x82\xA8",
+                                            skip_empty=True)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [1, 0]])
+      self.assertAllEqual(values, [b"\xE5\xA5\xBD", b"\xE7\x95\x8C"])
+      self.assertAllEqual(shape, [2, 1])
+
+  def testStringSplitWithUtf8AndNonSkipEmpty(self):
+    # utf8 \xE5\xA5\xBD \xE6\x82\xA8, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE5\xA5\xBD\xE6\x82\xA8", b"\xE6\x82\xA8\xE7\x95\x8C"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, delimiter=b"\xE6\x82\xA8",
+                                            skip_empty=False)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"\xE5\xA5\xBD", b"",
+                                   b"", b"\xE7\x95\x8C"])
+      self.assertAllEqual(shape, [2, 2])
+
+    # Non UTF8 should fit into UTF8 as well
+    strings = ["#a", "b#", "#c#"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, "#", skip_empty=False)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1],
+                                    [1, 0], [1, 1],
+                                    [2, 0], [2, 1], [2, 2]])
+      self.assertAllEqual(values, [b"", b"a", b"b", b"", b"", b"c", b""])
+      self.assertAllEqual(shape, [3, 3])
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, "#")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(values, [b"a", b"b", b"c"])
+      self.assertAllEqual(indices, [[0, 0], [1, 0], [2, 0]])
+      self.assertAllEqual(shape, [3, 1])
+
+    strings = ["##a##b##c##"]
+    # Follow python result: ['', '', 'a', '', 'b', '', 'c', '', '']
+    expected = strings[0].split("#")
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, "#", skip_empty=False)
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(values,
+                          [x.encode('utf-8') for x in expected])
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4],
+                                    [0, 5], [0, 6], [0, 7], [0, 8]])
+      self.assertAllEqual(shape, [1, 9])
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, "#")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(values,
+                          [x.encode('utf-8') for x in expected if x])
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2]])
+      self.assertAllEqual(shape, [1, 3])
+
+  def testStringSplitWithUtf8AndEmptyDelimiter(self):
+    # utf8 \xE6\x82\xA8 \xE5\xA5\xBD, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE6\x82\xA8\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, delimiter="")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values, [b"\xE6\x82\xA8", b"\xE5\xA5\xBD",
+                                   b"\xE4\xB8\x96", b"\xE7\x95\x8C"])
+      self.assertAllEqual(shape, [2, 2])
+
+  def testStringSplitWithUtf8AndUtf8MultiBytesDelimiter(self):
+    # utf8 \xE6\x82\xA8 \xE5\xA5\xBD, \xE6\x82\xA8 \xE5\xA5\xBD
+    strings = [b"\xE5\xA5\xBD\xE6\x82\xA8\xE4\xB8\x96\xE7\x95\x8C",
+               b"\xE4\xB8\x96\xE7\x95\x8C\xE6\x82\xA8\xE5\xA5\xBD"]
+
+    with self.test_session() as sess:
+      tokens = string_ops.string_split_utf8(strings, delimiter=b"\xE6\x82\xA8")
+      indices, values, shape = sess.run(tokens)
+      self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
+      self.assertAllEqual(values,
+                          [b"\xE5\xA5\xBD", b"\xE4\xB8\x96\xE7\x95\x8C",
+                           b"\xE4\xB8\x96\xE7\x95\x8C", b"\xE5\xA5\xBD"])
+      self.assertAllEqual(shape, [2, 2])
+
+  def testStringSplitWithInvalidUtf8(self):
+   # Invalid char
+    strings1 = [b"\xE2\x28\xA1"]
+    tokens1 = string_ops.string_split_utf8(strings1, delimiter="")
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "Invalid UTF8 encoding at byte 1"):
+      with self.test_session() as sess:
+        indices, values, shape = sess.run(tokens1)
+
+    # Not enough char
+    strings2 = [b"\xE6\x82"]
+    tokens2 = string_ops.string_split_utf8(strings2, delimiter="")
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "Invalid UTF8 encoding, incomplete"):
+      with self.test_session() as sess:
+        indices, values, shape = sess.run(tokens2)
+
+    # Invalid delimiter
+    strings3 = [b"\xE6\x82\xA8\xE5\xA5\xBD"]
+    tokens3 = string_ops.string_split_utf8(strings3, delimiter=b"\xE6")
+    with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                 "Not enough characters for UTF8 encoding"):
+      with self.test_session() as sess:
+        indices, values, shape = sess.run(tokens3)
 
 class StringSplitV2OpTest(test.TestCase):
 
