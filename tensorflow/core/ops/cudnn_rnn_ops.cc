@@ -52,6 +52,12 @@ REGISTER_OP("CudnnRNNParamsSize")
     .Attr("seed2: int = 0")
     .Output("params_size: S")
     .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      // num_layers, num_units, and input_size should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+
       c->set_output(0, c->Vector(1));
       return Status::OK();
     });
