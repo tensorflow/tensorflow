@@ -36,12 +36,14 @@ class SliceTransformer(converter.Base):
   def _process_single_assignment(self, target, value):
     if not isinstance(target, gast.Subscript):
       return None
+    if not isinstance(target.slice, gast.Index):
+      return None
 
     template = """
       target = ag__.set_item(target, key, item)
     """
     return templates.replace(
-        template, target=target.value, key=target.slice, item=value)
+        template, target=target.value, key=target.slice.value, item=value)
 
   def visit_Assign(self, node):
     node = self.generic_visit(node)
@@ -76,7 +78,7 @@ class SliceTransformer(converter.Base):
           opts=ag__.GetItemOpts(element_dtype=dtype))
     """
     return templates.replace_as_expression(
-        template, target=node.value, key=node.slice, dtype=dtype)
+        template, target=node.value, key=node.slice.value, dtype=dtype)
 
 
 def transform(node, ctx):
