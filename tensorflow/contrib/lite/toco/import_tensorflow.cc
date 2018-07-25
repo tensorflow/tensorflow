@@ -1045,6 +1045,11 @@ tensorflow::Status ConvertSimpleOperator(
 tensorflow::Status ConvertUnsupportedOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
+  // Names of special attributes in TF graph that are used by Toco.
+  static constexpr char kAttrOutputQuantized[] = "_output_quantized";
+  static constexpr char kAttrOutputTypes[] = "_output_types";
+  static constexpr char kAttrOutputShapes[] = "_output_shapes";
+
   LOG(INFO) << "Converting unsupported operation: " << node.op();
   auto* op = new TensorFlowUnsupportedOperator;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
@@ -1055,17 +1060,30 @@ tensorflow::Status ConvertUnsupportedOperator(
   op->tensorflow_op = node.op();
   node.SerializeToString(&op->tensorflow_node_def);
   model->operators.emplace_back(op);
-  if (HasAttr(node, "_output_quantized")) {
-    op->quantized = GetBoolAttr(node, "_output_quantized");
+  if (HasAttr(node, kAttrOutputQuantized)) {
+    op->quantized = GetBoolAttr(node, kAttrOutputQuantized);
   }
-  if (HasAttr(node, "_output_types")) {
-    const auto& output_types = GetListAttr(node, "_output_types");
+  if (HasAttr(node, kAttrOutputTypes)) {
+    const auto& output_types = GetListAttr(node, kAttrOutputTypes);
     for (int i = 0; i < output_types.type_size(); ++i) {
       op->output_data_types.push_back(ConvertDataType(output_types.type(i)));
     }
   } else if (HasAttr(node, "Tout")) {
     const auto& output_type = GetDataTypeAttr(node, "Tout");
     op->output_data_types.push_back(ConvertDataType(output_type));
+  }
+  if (HasAttr(node, kAttrOutputShapes)) {
+    const auto& output_shapes = GetListAttr(node, kAttrOutputShapes);
+    Shape output_shape;
+    for (int i = 0; i < output_shapes.shape_size(); ++i) {
+      const auto status =
+          ImportShape(output_shapes.shape(i).dim(), /*input_flat_size=*/nullptr,
+                      &output_shape);
+      if (!status.ok()) {
+        return status;
+      }
+      op->output_shapes.push_back(output_shape);
+    }
   }
   return tensorflow::Status::OK();
 }

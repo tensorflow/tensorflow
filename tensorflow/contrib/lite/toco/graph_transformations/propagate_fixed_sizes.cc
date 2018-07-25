@@ -1786,8 +1786,19 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
       ProcessArgMinMaxOperator<ArgMinOperator>(
           model, static_cast<ArgMinOperator*>(op));
       break;
-    case OperatorType::kUnsupported:
+    case OperatorType::kUnsupported: {
+      const auto* unsupported_op =
+          static_cast<TensorFlowUnsupportedOperator*>(op);
+      // Attribute can be not specified, ignore it.
+      if (unsupported_op->output_shapes.size() < op->outputs.size()) {
+        return false;
+      }
+      for (int i = 0; i < op->outputs.size(); ++i) {
+        const string& output = op->outputs[i];
+        model->GetArray(output).copy_shape(unsupported_op->output_shapes.at(i));
+      }
       break;
+    }
     case OperatorType::kSvdf:
       ProcessSvdfOperator(model, static_cast<SvdfOperator*>(op));
       break;
