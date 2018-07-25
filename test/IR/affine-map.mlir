@@ -9,14 +9,20 @@
 // CHECK: #map{{[0-9]+}} = () -> (0)
 #map2 = () -> (0)
 
+// All three maps are unique'd as one map and so there
+// should be only one output.
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> ((d0 + 1), d1)
-#map3 = (i, j) -> (i+1, j)
+#map3  = (i, j) -> (i+1, j)
+// CHECK-EMPTY
+#map3a = (i, j) -> (1+i, j)
+// CHECK-EMPTY
+#map3b = (i, j) -> (2+3-2*2+i, j)
+
+// CHECK: #map{{[0-9]+}} = (d0, d1) -> ((d0 + 2), d1)
+#map4  = (i, j) -> (3+3-2*2+i, j)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) [s0] -> ((d0 + s0), d1)
-#map4 = (i, j) [s0] -> (i + s0, j)
-
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> ((d0 + 1), d1)
-#map5 = (i, j) -> (1+i, j)
+#map5 = (i, j) [s0] -> (i + s0, j)
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) [s0] -> ((d0 + s0), (d1 + 5))
 #map6 = (i, j) [s0] -> (i + s0, j + 5)

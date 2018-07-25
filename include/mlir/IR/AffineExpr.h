@@ -72,6 +72,7 @@ public:
 
 protected:
   explicit AffineExpr(Kind kind) : kind(kind) {}
+  ~AffineExpr() {}
 
 private:
   AffineExpr(const AffineExpr&) = delete;
@@ -112,6 +113,7 @@ protected:
   AffineExpr *const rhs;
 
 private:
+  ~AffineBinaryOpExpr() = delete;
   // Simplification prior to construction of binary affine op expressions.
   static AffineExpr *simplifyAdd(AffineExpr *lhs, AffineExpr *rhs,
                                  MLIRContext *context);
@@ -143,6 +145,7 @@ public:
   }
 
 private:
+  ~AffineDimExpr() = delete;
   explicit AffineDimExpr(unsigned position)
       : AffineExpr(Kind::DimId), position(position) {}
 
@@ -167,6 +170,7 @@ public:
   }
 
 private:
+  ~AffineSymbolExpr() = delete;
   explicit AffineSymbolExpr(unsigned position)
       : AffineExpr(Kind::SymbolId), position(position) {}
 
@@ -187,6 +191,7 @@ public:
   }
 
 private:
+  ~AffineConstantExpr() = delete;
   explicit AffineConstantExpr(int64_t constant)
       : AffineExpr(Kind::Constant), constant(constant) {}
 

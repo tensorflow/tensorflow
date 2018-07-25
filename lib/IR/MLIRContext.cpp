@@ -200,6 +200,13 @@ public:
   DenseMap<std::tuple<unsigned, AffineExpr *, AffineExpr *>, AffineExpr *>
       affineExprs;
 
+  // Uniqui'ing of AffineDimExpr, AffineSymbolExpr's by their position.
+  std::vector<AffineDimExpr *> dimExprs;
+  std::vector<AffineSymbolExpr *> symbolExprs;
+
+  // Uniqui'ing of AffineConstantExpr using constant value as key.
+  DenseMap<int64_t, AffineConstantExpr *> constExprs;
+
   /// Integer type uniquing.
   DenseMap<unsigned, IntegerType *> integers;
 
@@ -718,21 +725,50 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
 }
 
 AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
-  // TODO(bondhugula): complete this
-  // FIXME: this should be POD
-  return new AffineDimExpr(position);
+  auto &impl = context->getImpl();
+
+  // Check if we need to resize.
+  if (position >= impl.dimExprs.size())
+    impl.dimExprs.resize(position + 1, nullptr);
+
+  auto *&result = impl.dimExprs[position];
+  if (result)
+    return result;
+
+  result = impl.allocator.Allocate<AffineDimExpr>();
+  // Initialize the memory using placement new.
+  new (result) AffineDimExpr(position);
+  return result;
 }
 
 AffineSymbolExpr *AffineSymbolExpr::get(unsigned position,
                                         MLIRContext *context) {
-  // TODO(bondhugula): complete this
-  // FIXME: this should be POD
-  return new AffineSymbolExpr(position);
+  auto &impl = context->getImpl();
+
+  // Check if we need to resize.
+  if (position >= impl.symbolExprs.size())
+    impl.symbolExprs.resize(position + 1, nullptr);
+
+  auto *&result = impl.symbolExprs[position];
+  if (result)
+    return result;
+
+  result = impl.allocator.Allocate<AffineSymbolExpr>();
+  // Initialize the memory using placement new.
+  new (result) AffineSymbolExpr(position);
+  return result;
 }
 
 AffineConstantExpr *AffineConstantExpr::get(int64_t constant,
                                             MLIRContext *context) {
-  // TODO(bondhugula): complete this
-  // FIXME: this should be POD
-  return new AffineConstantExpr(constant);
+  auto &impl = context->getImpl();
+  auto *&result = impl.constExprs[constant];
+
+  if (result)
+    return result;
+
+  result = impl.allocator.Allocate<AffineConstantExpr>();
+  // Initialize the memory using placement new.
+  new (result) AffineConstantExpr(constant);
+  return result;
 }
