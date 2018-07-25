@@ -339,6 +339,7 @@ tf_cc_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # needs test data
         "tflite_not_portable",
     ],
     deps = [
