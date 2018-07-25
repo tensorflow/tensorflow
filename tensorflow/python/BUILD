@@ -44,6 +44,7 @@ load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_gdr_deps")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
+load("//third_party/ngraph:build_defs.bzl","if_ngraph")
 
 py_library(
     name = "python",
@@ -3669,7 +3670,8 @@ tf_py_wrap_cc(
          tf_additional_plugin_deps() +
          tf_additional_verbs_deps() +
          tf_additional_mpi_deps() +
-         tf_additional_gdr_deps()),
+         tf_additional_gdr_deps())+ 
+         if_ngraph(["@ngraph_tf//:ngraph_tf"])
 )
 
 # ** Targets for Windows build (start) **

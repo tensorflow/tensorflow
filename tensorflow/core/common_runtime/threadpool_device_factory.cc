@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {

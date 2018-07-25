@@ -24,6 +24,8 @@ load(
     "gen_api_init_files",  # @unused
 )
 
+load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -408,6 +410,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag is set from the configure step when the user selects with nGraph option.
+# By default it should be false
+config_setting(
+    name = "with_ngraph_support",
+    values = {"define": "with_ngraph_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
@@ -540,7 +550,7 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
-    ],
+    ] 
 )
 
 tf_cc_shared_object(
@@ -568,7 +578,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:scope",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + if_ngraph(["@ngraph_tf//:ngraph_tf"])
 )
 
 exports_files(

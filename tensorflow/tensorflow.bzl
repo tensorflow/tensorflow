@@ -24,6 +24,10 @@ load(
     "if_mkl",
     "if_mkl_lnx_x64"
 )
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
 
 def register_extension_info(**kwargs):
     pass
@@ -214,6 +218,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
       + if_cuda(["-DGOOGLE_CUDA=1"])
       + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"])
+      + if_ngraph(["-DINTEL_NGRAPH=1"])
       + if_mkl_lnx_x64(["-fopenmp"])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
