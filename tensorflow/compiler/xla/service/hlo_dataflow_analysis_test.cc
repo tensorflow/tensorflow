@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -101,9 +101,9 @@ TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
   // Test the dataflow for a simple binary operation (Add).
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape_, HloOpcode::kAdd, constant1, constant2));
   module_->AddEntryComputation(builder.Build());
@@ -198,9 +198,9 @@ TEST_P(HloDataflowAnalysisTest, NestedTuple) {
   // Verify the dataflow through a nested tuple.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto nested_tuple = builder.AddInstruction(
@@ -259,9 +259,9 @@ TEST_P(HloDataflowAnalysisTest, SingleCall) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto call = builder.AddInstruction(HloInstruction::CreateCall(
       scalar_shape_, {constant1, constant2}, called_computation));
   module_->AddEntryComputation(builder.Build());
@@ -308,9 +308,9 @@ TEST_P(HloDataflowAnalysisTest, ComputationCalledTwiceWithSameArguments) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto call1 = builder.AddInstruction(HloInstruction::CreateCall(
       scalar_shape_, {constant1, constant2}, called_computation));
   auto call2 = builder.AddInstruction(HloInstruction::CreateCall(
@@ -362,9 +362,9 @@ TEST_P(HloDataflowAnalysisTest, ComputationCalledTwiceWithDifferentArguments) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto call1 = builder.AddInstruction(HloInstruction::CreateCall(
       scalar_shape_, {constant1, constant2}, called_computation));
   auto call2 = builder.AddInstruction(HloInstruction::CreateCall(
@@ -426,9 +426,9 @@ TEST_P(HloDataflowAnalysisTest, NestedCalls) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto call = builder.AddInstruction(HloInstruction::CreateCall(
       scalar_shape_, {constant1, constant2}, outer_computation));
   module_->AddEntryComputation(builder.Build());
@@ -493,15 +493,15 @@ TEST_P(HloDataflowAnalysisTest, SingleWhile) {
   auto cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "param"));
   auto cond_constant = cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto xla_while = builder.AddInstruction(
@@ -594,15 +594,15 @@ TEST_P(HloDataflowAnalysisTest, SequentialWhiles) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto xla_while0 = builder.AddInstruction(
@@ -653,7 +653,7 @@ TEST_P(HloDataflowAnalysisTest, NestedWhiles) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
@@ -691,9 +691,9 @@ TEST_P(HloDataflowAnalysisTest, NestedWhiles) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto entry_while = builder.AddInstruction(
@@ -780,15 +780,15 @@ TEST_P(HloDataflowAnalysisTest, SwizzlingWhile) {
   auto cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto xla_while = builder.AddInstruction(
@@ -840,11 +840,11 @@ TEST_P(HloDataflowAnalysisTest, ArraySelect) {
   // Test a kSelect of an array value.
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       scalar_shape_, HloOpcode::kSelect, pred, constant1, constant2));
 
@@ -860,19 +860,18 @@ TEST_P(HloDataflowAnalysisTest, ArraySelect) {
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelect) {
-  // Test a kSelect of a tuple value. Non-top-level element flow through the
-  // instruction.
+  // Test a kTupleSelect. Non-top-level element flow through the instruction.
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
   auto constant4 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(4.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(4.0)));
   auto tuple1 =
       builder.AddInstruction(HloInstruction::CreateTuple({constant1}));
   auto tuple2 =
@@ -883,20 +882,20 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
       builder.AddInstruction(HloInstruction::CreateTuple({constant4}));
   const Shape tuple_shape = tuple1->shape();
   auto select11 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple1));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple1));
   auto select12 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   auto select34 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, tuple3, tuple4));
+      tuple_shape, HloOpcode::kTupleSelect, pred, tuple3, tuple4));
   auto select1234 = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple_shape, HloOpcode::kSelect, pred, select12, select34));
+      tuple_shape, HloOpcode::kTupleSelect, pred, select12, select34));
 
   module_->AddEntryComputation(builder.Build());
 
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  // Top-level value is always defined by a kSelect.
+  // Top-level value is always defined by a kTupleSelect.
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select11));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select12));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select34));
@@ -937,20 +936,20 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
 }
 
 TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
-  // Test kSelect of a nested tuple.
+  // Test kTupleSelect of a nested tuple.
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
   auto constant4 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(4.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(4.0)));
   auto constant5 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(5.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0)));
   auto inner_tuple1 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant2, constant3}));
   auto tuple1 = builder.AddInstruction(
@@ -960,7 +959,7 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
   auto tuple2 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant4, inner_tuple2}));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -983,7 +982,7 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
-  // Test a tuple-shaped kSelect feeding a kWhile instruction. HLO:
+  // Test a tuple-shaped kTupleSelect feeding a kWhile instruction. HLO:
   //
   // body((F32[], F32[]) %tuple_param):
   //   %add = Add(%tuple_param{0}, %tuple_param{1})
@@ -1026,24 +1025,24 @@ TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
   auto tuple1 =
       builder.AddInstruction(HloInstruction::CreateTuple({constant1}));
   auto tuple2 =
       builder.AddInstruction(HloInstruction::CreateTuple({constant2}));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
-      tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
+      tuple1->shape(), HloOpcode::kTupleSelect, pred, tuple1, tuple2));
   auto gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(scalar_shape_, select, 0));
   auto tuple =
@@ -1089,7 +1088,7 @@ TEST_P(HloDataflowAnalysisTest, BitcastDefinesValue) {
   // Test the bitcast_defines_value flag to the dataflow analysis.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       scalar_shape_, HloOpcode::kBitcast, constant));
 
@@ -1158,44 +1157,50 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param0"));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto send = builder.AddInstruction(
-      HloInstruction::CreateSend(param, /*channel_id=*/0));
+      HloInstruction::CreateSend(param, token, /*channel_id=*/0));
   auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
   module_->AddEntryComputation(builder.Build());
 
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  EXPECT_EQ(analysis.values().size(), 4);
+  EXPECT_EQ(analysis.values().size(), 6);
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{}));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(send, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(send, /*index=*/{2}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(send_done));
   EXPECT_THAT(HloValuesAt(send, /*index=*/{0}),
               UnorderedElementsAre(analysis.GetValueDefinedAt(param)));
 }
 
 TEST_P(HloDataflowAnalysisTest, RecvAndRecvDone) {
-  // Test that a RecvDone forwards its operand tuple element at {0} to the
-  // output.
+  // Test that a RecvDone forwards its operand tuple element at {0} to element
+  // {0} of the output.
   auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
   auto recv = builder.AddInstruction(
-      HloInstruction::CreateRecv(scalar_shape_, /*channel_id=*/0));
+      HloInstruction::CreateRecv(scalar_shape_, token, /*channel_id=*/0));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
   module_->AddEntryComputation(builder.Build());
 
   bool ssa_form = GetParam();
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
-  EXPECT_EQ(analysis.values().size(), 3);
+  EXPECT_EQ(analysis.values().size(), 7);
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{0}));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{1}));
-  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done));
-  EXPECT_THAT(HloValuesAt(recv_done),
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv, /*index=*/{2}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{0}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(recv_done, /*index=*/{1}));
+  EXPECT_THAT(HloValuesAt(recv_done, /*index=*/{0}),
               UnorderedElementsAre(analysis.GetValueDefinedAt(recv, {0})));
   EXPECT_TRUE(
       analysis.GetValueDefinedAt(recv, /*index=*/{0}).live_out_of_module());
@@ -1304,13 +1309,13 @@ TEST_P(HloDataflowAnalysisTest, WhileParameters_Sequential) {
   auto body_param = body_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "body_param"));
   auto constant = body_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto exp = body_builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape_, HloOpcode::kExp, constant));
   auto add = body_builder.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape_, HloOpcode::kAdd, exp, body_param));
   auto dead_constant = body_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto dead_negate = body_builder.AddInstruction(HloInstruction::CreateUnary(
       scalar_shape_, HloOpcode::kNegate, dead_constant));
   HloComputation* body = module_->AddEmbeddedComputation(
@@ -1320,7 +1325,7 @@ TEST_P(HloDataflowAnalysisTest, WhileParameters_Sequential) {
   auto cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "cond_param"));
   auto cond_constant = cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* condition =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
@@ -1571,11 +1576,11 @@ TEST_P(HloDataflowAnalysisTest, ConditionalWithIdentity) {
 
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
   auto conditional = builder.AddInstruction(HloInstruction::CreateConditional(
       scalar_shape_, pred, constant1, true_computation, constant2,
       false_computation));
@@ -1662,11 +1667,11 @@ TEST_P(HloDataflowAnalysisTest, ConditionalTakingTupleOperand) {
 
   auto builder = HloComputation::Builder(TestName());
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
   auto tuple_operand = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto conditional = builder.AddInstruction(HloInstruction::CreateConditional(
@@ -1792,15 +1797,15 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
   // Build entry computation.
   auto builder = HloComputation::Builder(TestName());
   auto pred1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   auto pred2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.1f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.2f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.2f)));
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.3f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.3f)));
   auto tuple_operand = builder.AddInstruction(
       HloInstruction::CreateTuple({pred2, constant1, constant2}));
   auto conditional = builder.AddInstruction(HloInstruction::CreateConditional(
@@ -1880,9 +1885,14 @@ class HloDataflowAnalysisTestBase : public HloTestBase {
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
-  void RunAnalysis() {
+  void RunAnalysis(const HloDataflowAnalysis::FusionCanShareBufferFunction&
+                       fusion_can_share_buffer = nullptr) {
     CHECK_NOTNULL(module_.get());
-    dataflow_analysis_ = HloDataflowAnalysis::Run(*module_).ConsumeValueOrDie();
+    dataflow_analysis_ =
+        HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
+                                 /*bitcast_defines_value=*/false,
+                                 fusion_can_share_buffer)
+            .ConsumeValueOrDie();
   }
 
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
@@ -1933,9 +1943,9 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({2.f, 2.f, 2.f})));
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           data_shape, gte1, update, starts));
@@ -1998,7 +2008,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
-       MultiOutputFusionCantAliasOperandBuffer) {
+       MultiOutputFusionCanAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
@@ -2022,14 +2032,14 @@ TEST_F(CanShareOperandBufferWithUserTest,
       {tuple, copy1, copy0}, HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
-                                                                 fusion, {0}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
-                                                                 fusion, {1}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
-                                                                 fusion, {0}));
-  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
-                                                                 fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param0, {},
+                                                                fusion, {1}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {0}));
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(param1, {},
+                                                                fusion, {1}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
@@ -2038,7 +2048,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto operand = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape, one, {1}));
 
@@ -2055,6 +2065,31 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
                                                                 fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       CanShareOperandWhenDynamicUpdateSliceIsFedByDynamicSliceWithSameIndex) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {1, 2});
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "param0"));
+  auto index = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int64>({0, 0})));
+  auto ds = builder.AddInstruction(
+      HloInstruction::CreateDynamicSlice(slice_shape, param, index, {1, 2, 2}));
+
+  auto dus = builder.AddInstruction(
+      HloInstruction::CreateDynamicUpdateSlice(data_shape, param, ds, index));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dus, ds, index}, HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
@@ -2109,9 +2144,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({2.f, 2.f, 2.f})));
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           data_shape, gte1, update, starts));
@@ -2132,7 +2167,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 }
 
 TEST_F(CanShareOperandBufferWithUserTest,
-       FusedDynamicUpdateSliceWithConvertCantShare) {
+       FusedDynamicUpdateSliceWithConvertCanShare) {
   auto builder = HloComputation::Builder(TestName());
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
@@ -2149,9 +2184,9 @@ TEST_F(CanShareOperandBufferWithUserTest,
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({2.f, 2.f, 2.f})));
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           data_shape_bf16, convert1, update, starts));
@@ -2166,8 +2201,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
       HloInstruction::FusionKind::kLoop);
   RunAnalysis();
 
-  // The fusion instruction can't share with tuple element 1.
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       dataflow_analysis_->CanShareOperandBufferWithUser(gte1, {}, fusion, {}));
 }
 
@@ -2203,9 +2237,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto a = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+      LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
   auto b = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
 
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
@@ -2214,7 +2248,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
       HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
 
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape, one, {1}));
 
@@ -2236,7 +2270,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto operand = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape, one, {1}));
 
@@ -2244,7 +2278,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
       HloInstruction::CreateReverse(data_shape, operand, {0, 1}));
 
   auto two = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
 
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, reverse, two));
@@ -2255,6 +2289,33 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   RunAnalysis();
 
   // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
+                                                                 fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kMultiply, operand, operand));
+  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, mul, two));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, two, mul}, HloInstruction::FusionKind::kInput);
+  RunAnalysis(/*fusion_can_share_buffer=*/[](const HloInstruction* fusion,
+                                             const HloInstruction*) {
+    return fusion->fusion_kind() == HloInstruction::FusionKind::kLoop;
+  });
+
   EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
                                                                  fusion, {}));
 }
@@ -2309,7 +2370,7 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
   auto sub_param = sub_builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "sub_param"));
   auto one = sub_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto ones = sub_builder.AddInstruction(
       HloInstruction::CreateBroadcast(shape, one, {1}));
   auto add = sub_builder.AddInstruction(

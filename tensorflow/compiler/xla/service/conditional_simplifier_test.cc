@@ -55,7 +55,7 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
         true_computation_builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(S32, {}), "param"));
     auto one = true_computation_builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
     true_computation_builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(S32, {}), HloOpcode::kAdd, param, one));
@@ -73,7 +73,7 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
         HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(S32, {}),
                                         "param"));
     auto forty_two = false_computation_builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<int32>(42)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
 
     false_computation_builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(S32, {}), HloOpcode::kAdd, param, forty_two));
@@ -82,11 +82,11 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
   }
 
   auto false_instrn = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   auto false_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(S32, {}), "false_param"));
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
 
   builder.AddInstruction(HloInstruction::CreateConditional(
       ShapeUtil::MakeShape(S32, {}), false_instrn, one, true_computation,
@@ -106,7 +106,7 @@ TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {
   HloComputation* computation = MakeConditional(&module());
 
   auto* true_op = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   TF_ASSERT_OK(
       true_op->AddControlDependencyTo(computation->root_instruction()));
 
@@ -119,10 +119,11 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsSend) {
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
 
   auto* true_computation = conditional->true_computation();
+  auto* token = true_computation->AddInstruction(HloInstruction::CreateToken());
   auto* send = true_computation->AddInstruction(HloInstruction::CreateSend(
       true_computation->AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<bool>(true))),
-      /*channel_id=*/0));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true))),
+      token, /*channel_id=*/0));
   true_computation->AddInstruction(HloInstruction::CreateSendDone(send));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
@@ -133,8 +134,9 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsRecv) {
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
 
   auto* true_computation = conditional->true_computation();
+  auto* token = true_computation->AddInstruction(HloInstruction::CreateToken());
   auto* recv = true_computation->AddInstruction(HloInstruction::CreateRecv(
-      ShapeUtil::MakeShape(F32, {1}), /*channel_id=*/0));
+      ShapeUtil::MakeShape(F32, {1}), token, /*channel_id=*/0));
   true_computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
@@ -144,8 +146,9 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
   auto* conditional = computation->root_instruction();
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
   auto* false_computation = conditional->false_computation();
-  false_computation->AddInstruction(
-      HloInstruction::CreateInfeed(ShapeUtil::MakeShape(F32, {1}), "config"));
+  auto token = false_computation->AddInstruction(HloInstruction::CreateToken());
+  false_computation->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
 }
 

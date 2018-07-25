@@ -33,7 +33,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndOperandElementReusingConsumerNotFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* broadcast2 =
@@ -53,7 +53,7 @@ TEST_F(InstructionFusionTest,
        NonCostlyProducerAndOperandElementReusingConsumerFused) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* negate1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, const0));
   HloInstruction* broadcast2 =
@@ -73,7 +73,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* reshape2 = builder.AddInstruction(
@@ -92,7 +92,7 @@ TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
   HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0(5)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5)));
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {}), HloOpcode::kExp, const0));
   HloInstruction* transpose2 = builder.AddInstruction(
@@ -604,6 +604,36 @@ TEST_F(InstructionFusionTest, FuseScalarConstant) {
   EXPECT_THAT(root->fused_expression_root(),
               op::Add(op::Broadcast(op::Add(op::Parameter(), op::Constant())),
                       op::Parameter()));
+}
+
+// Check that we limit the number of operands to fusions we create.
+TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
+  constexpr int64 kNumParams = 200;
+  ASSERT_GT(kNumParams, GpuInstructionFusion::kMaxOperandsPerFusion);
+
+  // Compute p0 + p1 + ... + pN.
+  HloComputation::Builder b(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+  auto param0 =
+      b.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
+  auto sum = param0;
+  for (int64 i = 1; i < kNumParams; ++i) {
+    auto param =
+        b.AddInstruction(HloInstruction::CreateParameter(i, shape, "p"));
+    sum = b.AddInstruction(
+        HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sum, param));
+  }
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(b.Build());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+  SCOPED_TRACE(module->ToString());
+  for (const HloInstruction* instr : computation->instructions()) {
+    EXPECT_LE(instr->operand_count(),
+              GpuInstructionFusion::kMaxOperandsPerFusion)
+        << instr->ToString();
+  }
 }
 
 }  // namespace gpu

@@ -1,4 +1,4 @@
-# Installing TensorFlow on Raspbian
+# Install TensorFlow on Raspbian
 
 This guide explains how to install TensorFlow on a Raspberry Pi running
 Raspbian. Although these instructions might also work on other Pi variants, we
@@ -230,11 +230,7 @@ problems, despite the log message.
 If the system outputs an error message instead of a greeting, see [Common
 installation problems](#common_installation_problems).
 
-If you are new to machine learning, we recommend the [Machine Learning Crash
-Course](https://developers.google.com/machine-learning/crash-course).
-
-If you are experienced with machine learning but new to TensorFlow, see
-@{$get_started/eager}.
+To learn more, see the [TensorFlow tutorials](../tutorials/).
 
 ## Common installation problems
 

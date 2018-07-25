@@ -647,7 +647,7 @@ class LossWeightingTest(test.TestCase):
 
 class CorrectnessTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_loss_correctness(self):
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
@@ -668,7 +668,7 @@ class CorrectnessTest(test.TestCase):
     self.assertEqual(
         np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness(self):
     model = keras.Sequential()
     model.add(keras.layers.Dense(3,
@@ -689,7 +689,7 @@ class CorrectnessTest(test.TestCase):
     outs = model.evaluate(x, y)
     self.assertEqual(outs[1], 0.)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_loss_correctness_with_iterator(self):
     # Test that training loss is the same in eager and graph
     # (by comparing it to a reference value in a deterministic case)
@@ -712,7 +712,7 @@ class CorrectnessTest(test.TestCase):
     history = model.fit(iterator, epochs=1, steps_per_epoch=10)
     self.assertEqual(np.around(history.history['loss'][-1], decimals=4), 0.6173)
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_metrics_correctness_with_iterator(self):
     model = keras.Sequential()
     model.add(

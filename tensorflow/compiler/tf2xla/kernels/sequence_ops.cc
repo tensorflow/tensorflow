@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,9 +55,10 @@ Status GetIntValue(int index, XlaOpKernelContext* ctx, int64* value) {
 
 // The type-specific part of the implementation of Range.
 template <typename T>
-Status CreateRangeTensor(const xla::Literal& start_literal,
-                         const xla::Literal& limit_literal,
-                         const xla::Literal& delta_literal, Tensor* output) {
+Status CreateRangeTensor(const xla::LiteralSlice& start_literal,
+                         const xla::LiteralSlice& limit_literal,
+                         const xla::LiteralSlice& delta_literal,
+                         Tensor* output) {
   T start = start_literal.Get<T>({});
   T limit = limit_literal.Get<T>({});
   T delta = delta_literal.Get<T>({});
@@ -67,13 +68,13 @@ Status CreateRangeTensor(const xla::Literal& start_literal,
   }
   if (delta > 0) {
     if (start > limit) {
-      return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
-                                     start, "/", limit);
+      return errors::InvalidArgument(
+          "Requires start <= limit when delta > 0: ", start, "/", limit);
     }
   } else {
     if (start < limit) {
-      return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
-                                     start, "/", limit);
+      return errors::InvalidArgument(
+          "Requires start >= limit when delta < 0: ", start, "/", limit);
     }
   }
   int64 size =

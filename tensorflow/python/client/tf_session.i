@@ -135,7 +135,12 @@ tensorflow::ImportNumpy();
 
 // Convert TF_DeviceListMemoryBytes and TF_Dim int64_t output to Python integers
 %typemap(out) int64_t {
-  $result = PyInt_FromLong($1);
+  $result = PyLong_FromLongLong($1);
+}
+
+// Convert TF_DeviceListIncarnation uint64_t output to Python integer
+%typemap(out) uint64_t {
+  $result = PyLong_FromUnsignedLongLong($1);
 }
 
 // We use TF_OperationGetControlInputs_wrapper instead of
@@ -610,7 +615,7 @@ def TF_Reset(target, containers=None, config=None):
   }
 
   for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
+    PyList_SET_ITEM($result, i, PyLong_FromLongLong($1[i]));
   }
 }
 
@@ -673,7 +678,7 @@ def TF_Reset(target, containers=None, config=None):
   }
 
   for (size_t i = 0; i < $1.size(); ++i) {
-    PyList_SET_ITEM($result, i, PyInt_FromLong($1[i]));
+    PyList_SET_ITEM($result, i, PyLong_FromLongLong($1[i]));
   }
 }
 

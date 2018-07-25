@@ -1044,7 +1044,6 @@ class OpKernelContext {
   // For control flow.
   FrameAndIter frame_iter() const { return params_->frame_iter; }
   bool is_input_dead() const { return params_->is_input_dead; }
-  bool* is_output_dead() { return &is_output_dead_; }
 
   // May be used, e.g., to get GPU handles, etc.
   // TODO(tucker): Add example usage.
@@ -1142,8 +1141,6 @@ class OpKernelContext {
 
   // Constructed only if <params->record_tensor_accesses>.
   ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
-
-  bool is_output_dead_ = false;
 
   // The following data members are only used when allocation tracking is
   // enabled.
@@ -1304,8 +1301,15 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 // missing kernel errors.
 void LogAllRegisteredKernels();
 
-// Gets a vector of all registered kernels.
-std::vector<KernelDef> GetAllRegisteredKernels();
+// Gets a list of all registered kernels.
+KernelList GetAllRegisteredKernels();
+
+// Gets a list of all registered kernels for which predicate returns true
+KernelList GetFilteredRegisteredKernels(
+    const std::function<bool(const KernelDef&)>& predicate);
+
+// Gets a list of all registered kernels for a given op
+KernelList GetRegisteredKernelsForOp(StringPiece op_name);
 
 namespace kernel_factory {
 

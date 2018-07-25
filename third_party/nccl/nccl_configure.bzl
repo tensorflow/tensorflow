@@ -47,10 +47,10 @@ alias(
 )
 """
 
+# Local build results in dynamic link and the license should not be included.
 _NCCL_LOCAL_BUILD_TEMPLATE = """
 filegroup(
   name = "LICENSE",
-  data = ["nccl/NCCL-SLA.txt"],
   visibility = ["//visibility:public"],
 )
 

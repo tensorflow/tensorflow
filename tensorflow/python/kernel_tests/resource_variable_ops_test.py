@@ -145,7 +145,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertIn("<unprintable>", str(handle))
       self.assertIn("<unprintable>", repr(handle))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDtypeSurvivesIdentity(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
     id_handle = array_ops.identity(handle)
@@ -156,7 +156,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     v = resource_variable_ops.ResourceVariable(1.0)
     self.assertNotEqual(v.name, v.assign_add(1.0).name)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCreateRead(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
     self.evaluate(resource_variable_ops.assign_variable_op(
@@ -165,7 +165,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32))
     self.assertAllEqual(1, value)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testManyAssigns(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
     create = resource_variable_ops.assign_variable_op(
@@ -183,7 +183,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(f, 1)
     self.assertEqual(s, 2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAssignAdd(self):
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
     self.evaluate(resource_variable_ops.assign_variable_op(
@@ -194,7 +194,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32))
     self.assertEqual(read, 2)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterAdd(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -207,7 +207,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[3]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterSub(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -220,7 +220,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[-1]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterMul(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -233,7 +233,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[5]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterDiv(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -246,7 +246,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[2]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  def testUseResource(self):
+    v = variables.Variable(1.0, use_resource=True)
+    self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
+
+  def testEagerNoUseResource(self):
+    with context.eager_mode():
+      v = variables.Variable(1.0)
+      self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
+
+  @test_util.run_in_graph_and_eager_modes
   def testScatterMin(self):
     with ops.device("cpu:0"):
       handle = resource_variable_ops.var_handle_op(
@@ -283,7 +292,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       meta_graph_two = saver.export_meta_graph(graph=graph)
     self.assertEqual(meta_graph_def, meta_graph_two)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterMax(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -296,7 +305,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[6]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterAddScalar(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -309,7 +318,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[3]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterSubScalar(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -322,7 +331,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[-1]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterMulScalar(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -335,7 +344,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[5]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterDivScalar(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -348,7 +357,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[2]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterMinScalar(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -361,7 +370,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[3]])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterMaxScalar(self):
     handle = resource_variable_ops.var_handle_op(
         dtype=dtypes.int32, shape=[1, 1])
@@ -426,7 +435,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       state_ops.scatter_update(ref, indices, updates)
       self.assertAllEqual(ref.read_value(), [True, True, True])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testConstraintArg(self):
     constraint = lambda x: x
     v = resource_variable_ops.ResourceVariable(
@@ -466,32 +475,32 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.OutOfRangeError):
         state_ops.count_up_to(v, 1)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInitFnDtype(self):
     v = resource_variable_ops.ResourceVariable(
         initial_value=lambda: 1, dtype=dtypes.float32, name="var0")
     self.assertEqual(dtypes.float32, v.value().dtype)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInitFnNoDtype(self):
     v = resource_variable_ops.ResourceVariable(initial_value=lambda: 1,
                                                name="var2")
     self.assertEqual(dtypes.int32, v.value().dtype)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testInitializeAllVariables(self):
     v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.float32,
                                                name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(1.0, self.evaluate(v.value()))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testOperatorOverload(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(2.0, self.evaluate(v + v))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAssignMethod(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -509,7 +518,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLoad(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -561,7 +570,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
               variable_def=trainable_variable.to_proto())
           .trainable)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testSparseRead(self):
     with self.test_session():
       init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
@@ -583,7 +592,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEquals(v._handle, w._handle)
       self.assertEquals(v._graph_element, w._graph_element)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAssignAddMethod(self):
     v = resource_variable_ops.ResourceVariable(1.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -601,7 +610,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(assign_without_read)
     self.assertEqual(4.0, self.evaluate(v.value()))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testAssignSubMethod(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -619,7 +628,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(assign_without_read)
     self.assertEqual(0.0, self.evaluate(v.value()))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testDestroyResource(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -708,7 +717,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
       self.assertEqual(300.0, self.evaluate(w_read))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testShape(self):
     v = resource_variable_ops.ResourceVariable(
         name="var4", initial_value=array_ops.ones(shape=[10, 20, 35]))
@@ -842,7 +851,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       state_ops.scatter_update(v, [1], [3])
       self.assertAllEqual([1.0, 3.0], v.numpy())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScatterUpdateInvalidArgs(self):
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3], name="update")
     # The exact error and message differ between graph construction (where the
@@ -850,6 +859,63 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+
+class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_dense_var_to_tensor_read_dtype_same_as_var_dtype(self):
+    # read_dtype is same as dtype
+    v = resource_variable_ops.ResourceVariable(1.0, dtype=dtypes.float32)
+    v = resource_variable_ops._MixedPrecisionVariable(v, dtypes.float32)
+    if not context.executing_eagerly():
+      v.initializer.run()
+
+    # dtype is not read_dtype, return NotImplemented
+    self.assertEqual(
+        NotImplemented, v._dense_var_to_tensor(dtype=dtypes.float16))
+    self.assertEqual(NotImplemented,
+                     v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
+
+    # as_ref is False
+    t = v._dense_var_to_tensor(as_ref=False)
+    self.assertTrue(isinstance(t, ops.Tensor))
+    self.assertEqual(t.dtype, dtypes.float32)
+    self.assertEqual(self.evaluate(t), 1.0)
+
+    t = v._dense_var_to_tensor(dtype=dtypes.float32, as_ref=False)
+    self.assertTrue(isinstance(t, ops.Tensor))
+    self.assertEqual(t.dtype, dtypes.float32)
+    self.assertEqual(self.evaluate(t), 1.0)
+
+    # as_ref is True
+    self.assertEqual(NotImplemented, v._dense_var_to_tensor(as_ref=True))
+    self.assertEqual(NotImplemented,
+                     v._dense_var_to_tensor(dtype=dtypes.float32, as_ref=True))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_dense_var_to_tensor_read_dtype_different_from_var_dtype(self):
+    # read_dtype is different from dtype
+    v = resource_variable_ops.ResourceVariable(1.0, dtype=dtypes.float32)
+    v = resource_variable_ops._MixedPrecisionVariable(v, dtypes.float16)
+    if not context.executing_eagerly():
+      v.initializer.run()
+
+    # as_ref is False
+    t = v._dense_var_to_tensor(as_ref=False)
+    self.assertTrue(isinstance(t, ops.Tensor))
+    self.assertEqual(t.dtype, dtypes.float16)
+    self.assertEqual(self.evaluate(t), 1.0)
+
+    t = v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=False)
+    self.assertTrue(isinstance(t, ops.Tensor))
+    self.assertEqual(t.dtype, dtypes.float16)
+    self.assertEqual(self.evaluate(t), 1.0)
+
+    # as_ref is True
+    self.assertEqual(NotImplemented, v._dense_var_to_tensor(as_ref=True))
+    self.assertEqual(NotImplemented,
+                     v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
 
 
 if __name__ == "__main__":

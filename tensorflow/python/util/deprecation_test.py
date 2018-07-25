@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import tf_inspect
 
 
 class DeprecatedAliasTest(test.TestCase):
@@ -72,6 +73,11 @@ class DeprecatedAliasTest(test.TestCase):
 
     self.assertEqual(["test", "deprecated", "deprecated again"],
                      MyClass.init_args)
+
+    # Check __init__ signature matches for doc generation.
+    self.assertEqual(
+        tf_inspect.getfullargspec(MyClass.__init__),
+        tf_inspect.getfullargspec(deprecated_cls.__init__))
 
 
 class DeprecationTest(test.TestCase):
@@ -927,6 +933,28 @@ class DeprecationArgumentsTest(test.TestCase):
       right: second arg
     """
     self.assertEqual(new_docs, new_docs_ref)
+
+
+class DeprecatedEndpointsTest(test.TestCase):
+
+  def testSingleDeprecatedEndpoint(self):
+    @deprecation.deprecated_endpoints("foo1")
+    def foo():
+      pass
+    self.assertEqual(("foo1",), foo._tf_deprecated_api_names)
+
+  def testMultipleDeprecatedEndpoint(self):
+    @deprecation.deprecated_endpoints("foo1", "foo2")
+    def foo():
+      pass
+    self.assertEqual(("foo1", "foo2"), foo._tf_deprecated_api_names)
+
+  def testCannotSetDeprecatedEndpointsTwice(self):
+    with self.assertRaises(deprecation.DeprecatedNamesAlreadySet):
+      @deprecation.deprecated_endpoints("foo1")
+      @deprecation.deprecated_endpoints("foo2")
+      def foo():  # pylint: disable=unused-variable
+        pass
 
 
 if __name__ == "__main__":

@@ -60,11 +60,32 @@ HloSharding HloSharding::Tuple(
     const Shape& tuple_shape,
     tensorflow::gtl::ArraySlice<HloSharding> shardings) {
   CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  for (auto& sharding : shardings) {
+    CHECK(!sharding.IsTuple()) << sharding.ToString();
+  }
   std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
   CHECK_EQ(flattened_list.size(), RequiredLeaves(tuple_shape))
       << "Flat list has " << flattened_list.size() << ", required "
       << RequiredLeaves(tuple_shape);
   return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
+                                     const HloSharding& sharding) {
+  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  CHECK(!sharding.IsTuple()) << sharding.ToString();
+  int64 leaf_count = ShapeUtil::GetLeafCount(tuple_shape);
+  std::vector<HloSharding> flattened_list;
+  flattened_list.reserve(leaf_count);
+  for (int64 i = 0; i < leaf_count; ++i) {
+    flattened_list.push_back(sharding);
+  }
+  return HloSharding(flattened_list);
+}
+
+HloSharding HloSharding::Single(const Shape& shape,
+                                const HloSharding& sharding) {
+  return ShapeUtil::IsTuple(shape) ? SingleTuple(shape, sharding) : sharding;
 }
 
 string HloSharding::ToString() const {
@@ -98,6 +119,29 @@ bool HloSharding::UsesDevice(int64 device) const {
   const auto& devices = tile_assignment_;
   return replicated_ ||
          std::find(devices.begin(), devices.end(), device) != devices.end();
+}
+
+std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {
+  int64 element_count = 1;
+  std::map<int64, int64> device_map;
+  if (IsTuple()) {
+    for (auto& tuple_element_sharding : tuple_elements()) {
+      auto unique_device = tuple_element_sharding.UniqueDevice();
+      if (unique_device.ok()) {
+        device_map[unique_device.ValueOrDie()] += 1;
+      }
+    }
+    element_count = tuple_elements().size();
+  } else {
+    auto unique_device = UniqueDevice();
+    if (unique_device.ok()) {
+      device_map[unique_device.ValueOrDie()] += 1;
+    }
+  }
+  if (count != nullptr) {
+    *count = element_count;
+  }
+  return device_map;
 }
 
 std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
@@ -437,6 +481,27 @@ tensorflow::gtl::optional<HloSharding> HloSharding::ExtractSingleSharding()
     }
   }
   return tuple_elements_.front();
+}
+
+size_t HloSharding::Hash() const {
+  if (!tuple_) {
+    size_t h = 0;
+    for (const auto& element : tuple_elements_) {
+      h = tensorflow::Hash64Combine(h, element.Hash());
+    }
+    return h;
+  }
+  if (replicated_) {
+    return 0;
+  }
+  size_t h = 0;
+  for (uint32 v : tile_assignment_) {
+    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
+  }
+  for (uint32 v : tile_shape_.dimensions()) {
+    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
+  }
+  return h;
 }
 
 std::ostream& operator<<(std::ostream& out, const HloSharding& sharding) {

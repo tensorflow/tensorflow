@@ -52,9 +52,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleElementwiseUnary(const HloInstruction* hlo) override;
   Status HandleElementwiseBinary(const HloInstruction* hlo) override;
   Status HandleConstant(const HloInstruction* constant) override;
+  Status HandleIota(const HloInstruction* iota) override;
   Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
-  Status HandleSelect(const HloInstruction* select) override;
+  Status HandleSelect(const HloInstruction* hlo) override;
+  Status HandleTupleSelect(const HloInstruction* hlo) override;
   Status HandleCompare(const HloInstruction* compare) override;
   Status HandleClamp(const HloInstruction* clamp) override;
   Status HandleReducePrecision(const HloInstruction* hlo) override;
@@ -97,7 +99,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleBroadcast(const HloInstruction* broadcast) override;
   Status HandlePad(const HloInstruction* pad) override;
   Status HandleReshape(const HloInstruction* reshape) override;
-  Status HandleGenerateToken(const HloInstruction* token) override;
+  Status HandleAfterAll(const HloInstruction* token) override;
   Status HandleTranspose(const HloInstruction* transpose) override;
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;

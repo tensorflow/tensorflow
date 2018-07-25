@@ -140,6 +140,7 @@ cc_test(
 cc_library(
     name = "join",
     hdrs = ["join.h"],
+    deps = ["//tensorflow/contrib/lite:string"],
 )
 
 cc_test(
@@ -172,6 +173,7 @@ cc_test(
     data = ["//tensorflow/contrib/lite:testdata/multi_add.bin"],
     tags = [
         "tflite_not_portable_android",
+        "tflite_not_portable_ios",
     ],
     deps = [
         ":tflite_driver",
@@ -267,6 +269,7 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/core:framework",
     ],
 )
@@ -332,7 +335,6 @@ tf_cc_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [

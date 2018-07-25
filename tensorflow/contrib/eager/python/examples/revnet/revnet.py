@@ -24,17 +24,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-import operator
-
+import six
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
 
 
-# Global Conventions:
-# 1) Default data format is NCWH, targeting GPU
-# 2) Each block has attribute axis, inferred from data_format
-# 3) Default training option to True for batch normalization
 class RevNet(tf.keras.Model):
   """RevNet that depends on all the blocks."""
 
@@ -48,65 +42,9 @@ class RevNet(tf.keras.Model):
     self.axis = 1 if config.data_format == "channels_first" else 3
     self.config = config
 
-    self._init_block = self._construct_init_block()
+    self._init_block = blocks.InitBlock(config=self.config)
+    self._final_block = blocks.FinalBlock(config=self.config)
     self._block_list = self._construct_intermediate_blocks()
-    self._final_block = self._construct_final_block()
-
-  def _construct_init_block(self):
-    init_block = tf.keras.Sequential(
-        [
-            tf.keras.layers.Conv2D(
-                filters=self.config.init_filters,
-                kernel_size=self.config.init_kernel,
-                strides=(self.config.init_stride, self.config.init_stride),
-                data_format=self.config.data_format,
-                use_bias=False,
-                padding="SAME",
-                input_shape=self.config.input_shape),
-            tf.keras.layers.BatchNormalization(
-                axis=self.axis, fused=self.config.fused),
-            tf.keras.layers.LeakyReLU(alpha=0.)
-        ],
-        name="init")
-    if self.config.init_max_pool:
-      init_block.add(
-          tf.keras.layers.MaxPooling2D(
-              pool_size=(3, 3),
-              strides=(2, 2),
-              padding="SAME",
-              data_format=self.config.data_format))
-    return init_block
-
-  def _construct_final_block(self):
-    f = self.config.filters[-1]  # Number of filters
-    r = functools.reduce(operator.mul, self.config.strides, 1)  # Reduce ratio
-    r *= self.config.init_stride
-    if self.config.init_max_pool:
-      r *= 2
-
-    if self.config.data_format == "channels_first":
-      w, h = self.config.input_shape[1], self.config.input_shape[2]
-      input_shape = (f, w // r, h // r)
-    elif self.config.data_format == "channels_last":
-      w, h = self.config.input_shape[0], self.config.input_shape[1]
-      input_shape = (w // r, h // r, f)
-    else:
-      raise ValueError("Data format should be either `channels_first`"
-                       " or `channels_last`")
-
-    final_block = tf.keras.Sequential(
-        [
-            tf.keras.layers.BatchNormalization(
-                axis=self.axis,
-                input_shape=input_shape,
-                fused=self.config.fused),
-            tf.keras.layers.LeakyReLU(alpha=0.),  # Vanilla ReLU
-            tf.keras.layers.GlobalAveragePooling2D(
-                data_format=self.config.data_format),
-            tf.keras.layers.Dense(self.config.n_classes)
-        ],
-        name="final")
-    return final_block
 
   def _construct_intermediate_blocks(self):
     # Precompute input shape after initial block
@@ -141,7 +79,8 @@ class RevNet(tf.keras.Model):
           batch_norm_first=(i != 0),  # Only skip on first block
           data_format=self.config.data_format,
           bottleneck=self.config.bottleneck,
-          fused=self.config.fused)
+          fused=self.config.fused,
+          dtype=self.config.dtype)
       block_list.append(rev_block)
 
       # Precompute input shape for the next block
@@ -157,7 +96,6 @@ class RevNet(tf.keras.Model):
   def call(self, inputs, training=True):
     """Forward pass."""
 
-    # Only store hidden states during training
     if training:
       saved_hidden = [inputs]
 
@@ -177,25 +115,46 @@ class RevNet(tf.keras.Model):
   def compute_loss(self, logits, labels):
     """Compute cross entropy loss."""
 
-    cross_ent = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        logits=logits, labels=labels)
+    if self.config.dtype == tf.float32 or self.config.dtype == tf.float16:
+      cross_ent = tf.nn.sparse_softmax_cross_entropy_with_logits(
+          logits=logits, labels=labels)
+    else:
+      # `sparse_softmax_cross_entropy_with_logits` does not have a GPU kernel
+      # for float64, int32 pairs
+      labels = tf.one_hot(
+          labels, depth=self.config.n_classes, axis=1, dtype=self.config.dtype)
+      cross_ent = tf.nn.softmax_cross_entropy_with_logits(
+          logits=logits, labels=labels)
 
     return tf.reduce_mean(cross_ent)
 
-  def compute_gradients(self, inputs, labels, training=True):
+  def compute_gradients(self, inputs, labels, training=True, l2_reg=True):
     """Manually computes gradients.
+
+    When eager execution is enabled, this method also SILENTLY updates the
+    running averages of batch normalization when `training` is set to True.
 
     Args:
       inputs: Image tensor, either NHWC or NCHW, conforming to `data_format`
       labels: One-hot labels for classification
-      training: for batch normalization
+      training: Use the mini-batch stats in batch norm if set to True
+      l2_reg: Apply l2 regularization
 
     Returns:
-      list of tuple each being (grad, var) for optimizer use
+      A tuple with the first entry being a list of all gradients, the second
+      entry being a list of respective variables, the third being the logits,
+      and the forth being the loss
     """
 
-    # Forward pass record hidden states before downsampling
-    _, saved_hidden = self.call(inputs, training=training)
+    # Run forward pass to record hidden states
+    vars_and_vals = self.get_moving_stats()
+    _, saved_hidden = self(inputs, training=training)  # pylint:disable=not-callable
+    if tf.executing_eagerly():
+      # Restore moving averages when executing eagerly to avoid updating twice
+      self.restore_moving_stats(vars_and_vals)
+    else:
+      # Fetch batch norm updates in graph mode
+      updates = self.get_updates_for(inputs)
 
     grads_all = []
     vars_all = []
@@ -204,18 +163,21 @@ class RevNet(tf.keras.Model):
     x = saved_hidden[-1]
     with tf.GradientTape() as tape:
       tape.watch(x)
+      # Running stats updated here
       logits = self._final_block(x, training=training)
-      cost = self.compute_loss(logits, labels)
+      loss = self.compute_loss(logits, labels)
 
-    grads_combined = tape.gradient(cost, [x] + self._final_block.variables)
+    grads_combined = tape.gradient(loss,
+                                   [x] + self._final_block.trainable_variables)
     dy, grads_ = grads_combined[0], grads_combined[1:]
     grads_all += grads_
-    vars_all += self._final_block.variables
+    vars_all += self._final_block.trainable_variables
 
     # Manually backprop through intermediate blocks
     for block in reversed(self._block_list):
       y = saved_hidden.pop()
       x = saved_hidden[-1]
+      # Running stats updated here
       dy, grads, vars_ = block.backward_grads_and_vars(
           x, y, dy, training=training)
       grads_all += grads
@@ -227,37 +189,65 @@ class RevNet(tf.keras.Model):
     assert not saved_hidden  # Cleared after backprop
 
     with tf.GradientTape() as tape:
-      y = self._init_block(x, training=training)  # Recomputing
+      # Running stats updated here
+      y = self._init_block(x, training=training)
 
     grads_all += tape.gradient(
-        y, self._init_block.variables, output_gradients=[dy])
-    vars_all += self._init_block.variables
+        y, self._init_block.trainable_variables, output_gradients=dy)
+    vars_all += self._init_block.trainable_variables
 
-    return grads_all, vars_all
+    # Apply weight decay
+    if l2_reg:
+      grads_all = self._apply_weight_decay(grads_all, vars_all)
 
-  def train_step(self,
-                 inputs,
-                 labels,
-                 optimizer,
-                 global_step=None,
-                 report=False):
-    """Train for one iteration."""
+    if not tf.executing_eagerly():
+      # Force updates to be executed before gradient computation in graph mode
+      # This does nothing when the function is wrapped in defun
+      with tf.control_dependencies(updates):
+        grads_all[0] = tf.identity(grads_all[0])
 
-    grads_all, vars_all = self.compute_gradients(inputs, labels, training=True)
-    optimizer.apply_gradients(zip(grads_all, vars_all), global_step=global_step)
+    return grads_all, vars_all, logits, loss
 
-    if report:
-      logits, _ = self.call(inputs, training=True)
-      loss = self.compute_loss(logits, labels)
+  def _apply_weight_decay(self, grads, vars_):
+    """Update gradients to reflect weight decay."""
+    # Don't decay bias
+    return [
+        g + self.config.weight_decay * v if v.name.endswith("kernel:0") else g
+        for g, v in zip(grads, vars_)
+    ]
 
-      return loss
+  def get_moving_stats(self):
+    """Get moving averages of batch normalization.
 
-  def eval_step(self, inputs, labels):
-    """Evaluate."""
+    This is needed to avoid updating the running average twice in one iteration.
 
-    logits, _ = self.call(inputs, training=False)
-    preds = tf.cast(tf.argmax(logits, axis=1), tf.int32)
-    corrects = tf.cast(tf.equal(preds, labels), tf.float32)
-    accuracy = tf.reduce_mean(corrects)
+    Returns:
+      A dictionary mapping variables for batch normalization moving averages
+      to their current values.
+    """
+    vars_and_vals = {}
 
-    return accuracy
+    def _is_moving_var(v):
+      n = v.name
+      return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
+
+    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
+    with tf.device(device):
+      for v in filter(_is_moving_var, self.variables):
+        vars_and_vals[v] = v.read_value()
+
+    return vars_and_vals
+
+  def restore_moving_stats(self, vars_and_vals):
+    """Restore moving averages of batch normalization.
+
+    This is needed to avoid updating the running average twice in one iteration.
+
+    Args:
+      vars_and_vals: The dictionary mapping variables to their previous values.
+    """
+    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
+    with tf.device(device):
+      for var_, val in six.iteritems(vars_and_vals):
+        # `assign` causes a copy to GPU (if variable is already on GPU)
+        var_.assign(val)

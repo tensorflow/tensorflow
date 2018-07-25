@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -173,8 +172,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                const TfLiteTensor* input, const TfLiteTensor* filter,
                const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
-  CalculateActivationRangeFloat(params->activation, &output_activation_min,
-                                &output_activation_max);
+  CalculateActivationRange(params->activation, &output_activation_min,
+                           &output_activation_max);
 
   void (*depthwise_conv)(const float*, const Dims<4>&, const float*,
                          const Dims<4>&, const float*, const Dims<4>&, int, int,

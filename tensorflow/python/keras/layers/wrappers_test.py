@@ -23,8 +23,10 @@ import copy
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
+from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
@@ -69,7 +71,7 @@ class _RNNCellWithConstants(keras.layers.Layer):
 
 class TimeDistributedTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes()
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_timedistributed_dense(self):
     model = keras.models.Sequential()
     model.add(
@@ -85,6 +87,12 @@ class TimeDistributedTest(test.TestCase):
     # test config
     model.get_config()
 
+    # check whether the model variables are present in the
+    # checkpointable list of objects
+    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    for v in model.variables:
+      self.assertIn(v, checkpointed_objects)
+
   def test_timedistributed_static_batch_size(self):
     model = keras.models.Sequential()
     model.add(
@@ -96,6 +104,13 @@ class TimeDistributedTest(test.TestCase):
         np.random.random((10, 3, 2)),
         epochs=1,
         batch_size=10)
+
+  def test_timedistributed_invalid_init(self):
+    x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please initialize `TimeDistributed` layer with a `Layer` instance.'):
+      keras.layers.TimeDistributed(x)
 
   def test_timedistributed_conv2d(self):
     with self.test_session():
@@ -177,14 +192,70 @@ class TimeDistributedTest(test.TestCase):
     x = keras.layers.Input(shape=(3, 2))
     layer = keras.layers.TimeDistributed(keras.layers.BatchNormalization())
     _ = layer(x)
-    assert len(layer.updates) == 2
-    assert len(layer.trainable_weights) == 2
+    self.assertEquals(len(layer.updates), 2)
+    self.assertEquals(len(layer.trainable_weights), 2)
     layer.trainable = False
     assert not layer.updates
     assert not layer.trainable_weights
     layer.trainable = True
     assert len(layer.updates) == 2
     assert len(layer.trainable_weights) == 2
+
+  def test_TimeDistributed_with_masked_embedding_and_unspecified_shape(self):
+    with self.test_session():
+      # test with unspecified shape and Embeddings with mask_zero
+      model = keras.models.Sequential()
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.Embedding(5, 6, mask_zero=True),
+          input_shape=(None, None)))  # N by t_1 by t_2 by 6
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.SimpleRNN(7, return_sequences=True)))
+      model.add(keras.layers.TimeDistributed(
+          keras.layers.SimpleRNN(8, return_sequences=False)))
+      model.add(keras.layers.SimpleRNN(1, return_sequences=False))
+      model.compile(optimizer='rmsprop', loss='mse')
+      model_input = np.random.randint(low=1, high=5, size=(10, 3, 4),
+                                      dtype='int32')
+      for i in range(4):
+        model_input[i, i:, i:] = 0
+      model.fit(model_input,
+                np.random.random((10, 1)), epochs=1, batch_size=10)
+      mask_outputs = [model.layers[0].compute_mask(model.input)]
+      for layer in model.layers[1:]:
+        mask_outputs.append(layer.compute_mask(layer.input, mask_outputs[-1]))
+      func = keras.backend.function([model.input], mask_outputs[:-1])
+      mask_outputs_val = func([model_input])
+      ref_mask_val_0 = model_input > 0         # embedding layer
+      ref_mask_val_1 = ref_mask_val_0          # first RNN layer
+      ref_mask_val_2 = np.any(ref_mask_val_1, axis=-1)     # second RNN layer
+      ref_mask_val = [ref_mask_val_0, ref_mask_val_1, ref_mask_val_2]
+      for i in range(3):
+        self.assertAllEqual(mask_outputs_val[i], ref_mask_val[i])
+      self.assertIs(mask_outputs[-1], None)  # final layer
+
+  def test_TimeDistributed_with_masking_layer(self):
+    with self.test_session():
+      # test with Masking layer
+      model = keras.models.Sequential()
+      model.add(keras.layers.TimeDistributed(keras.layers.Masking(
+          mask_value=0.,), input_shape=(None, 4)))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(5)))
+      model.compile(optimizer='rmsprop', loss='mse')
+      model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
+      for i in range(4):
+        model_input[i, i:, :] = 0.
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.fit(model_input,
+                np.random.random((10, 3, 5)), epochs=1, batch_size=6)
+      mask_outputs = [model.layers[0].compute_mask(model.input)]
+      mask_outputs += [model.layers[1].compute_mask(model.layers[1].input,
+                                                    mask_outputs[-1])]
+      func = keras.backend.function([model.input], mask_outputs)
+      mask_outputs_val = func([model_input])
+      self.assertEqual((mask_outputs_val[0]).all(),
+                       model_input.all())
+      self.assertEqual((mask_outputs_val[1]).all(),
+                       model_input.all())
 
 
 class BidirectionalTest(test.TestCase):
@@ -209,6 +280,12 @@ class BidirectionalTest(test.TestCase):
         model.compile(optimizer=RMSPropOptimizer(0.01), loss='mse')
         model.fit(x, y, epochs=1, batch_size=1)
 
+        # check whether the model variables are present in the
+        # checkpointable list of objects
+        checkpointed_objects = set(checkpointable_util.list_objects(model))
+        for v in model.variables:
+          self.assertIn(v, checkpointed_objects)
+
         # test compute output shape
         ref_shape = model.layers[-1].output.get_shape()
         shape = model.layers[-1].compute_output_shape(
@@ -219,6 +296,13 @@ class BidirectionalTest(test.TestCase):
         model.get_config()
         model = keras.models.model_from_json(model.to_json())
         model.summary()
+
+  def test_bidirectional_invalid_init(self):
+    x = constant_op.constant(np.zeros((1, 1)).astype('float32'))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please initialize `Bidirectional` layer with a `Layer` instance.'):
+      keras.layers.Bidirectional(x)
 
   def test_bidirectional_weight_loading(self):
     rnn = keras.layers.SimpleRNN
@@ -423,6 +507,42 @@ class BidirectionalTest(test.TestCase):
       assert not layer.trainable_weights
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
+
+  def test_Bidirectional_updates(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      x_reachable_update = x * x
+      layer = keras.layers.Bidirectional(keras.layers.SimpleRNN(3))
+      _ = layer(x)
+      assert not layer.updates
+      assert not layer.get_updates_for(None)
+      assert not layer.get_updates_for(x)
+      layer.forward_layer.add_update(x_reachable_update, inputs=x)
+      layer.forward_layer.add_update(1, inputs=None)
+      layer.backward_layer.add_update(x_reachable_update, inputs=x)
+      layer.backward_layer.add_update(1, inputs=None)
+      assert len(layer.updates) == 4
+      assert len(layer.get_updates_for(None)) == 2
+      assert len(layer.get_updates_for(x)) == 2
+
+  def test_Bidirectional_losses(self):
+    with self.test_session():
+      x = keras.layers.Input(shape=(3, 2))
+      x_reachable_loss = x * x
+      layer = keras.layers.Bidirectional(
+          keras.layers.SimpleRNN(
+              3, kernel_regularizer='l1', bias_regularizer='l1'))
+      _ = layer(x)
+      assert len(layer.losses) == 4
+      assert len(layer.get_losses_for(None)) == 4
+      assert not layer.get_losses_for(x)
+      layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
+      layer.forward_layer.add_loss(1, inputs=None)
+      layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
+      layer.backward_layer.add_loss(1, inputs=None)
+      assert len(layer.losses) == 8
+      assert len(layer.get_losses_for(None)) == 6
+      assert len(layer.get_losses_for(x)) == 2
 
   def test_Bidirectional_with_constants(self):
     with self.test_session():

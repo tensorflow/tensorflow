@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
@@ -73,7 +74,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"));
 
@@ -94,7 +95,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
   array(1, 1) = 4.0f;
 
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2FromArray2D(array)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(array)));
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R2F32ReduceSum"));
 
@@ -110,7 +111,7 @@ XLA_TEST_F(CustomCallTest,
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2FromArray2D(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
   auto incremented = b.AddInstruction(HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 2, 2}), {input}, "Add1ToValues"));
@@ -135,8 +136,8 @@ class CustomCallClientAPITest : public ClientLibraryTestBase {};
 // are reserved for internal use.
 XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   XlaBuilder builder(TestName());
-  builder.CustomCall("$illegal", /*operands=*/{},
-                     ShapeUtil::MakeShape(F32, {1}));
+  CustomCall(&builder, "$illegal", /*operands=*/{},
+             ShapeUtil::MakeShape(F32, {1}));
 
   StatusOr<std::unique_ptr<GlobalData>> result =
       Execute(&builder, /*arguments=*/{});

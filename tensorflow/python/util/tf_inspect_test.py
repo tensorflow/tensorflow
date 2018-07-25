@@ -326,6 +326,18 @@ def test_decorated_function_with_defaults(a, b=2, c='Hello'):
     self.assertEqual(
         expected, tf_inspect.getsource(test_decorated_function_with_defaults))
 
+  def testGetSourceFile(self):
+    self.assertEqual(
+        __file__,
+        tf_inspect.getsourcefile(test_decorated_function_with_defaults))
+
+  def testGetSourceLines(self):
+    expected = inspect.getsourcelines(
+        test_decorated_function_with_defaults.decorated_target)
+    self.assertEqual(
+        expected,
+        tf_inspect.getsourcelines(test_decorated_function_with_defaults))
+
   def testIsBuiltin(self):
     self.assertEqual(
         tf_inspect.isbuiltin(TestDecoratedClass),

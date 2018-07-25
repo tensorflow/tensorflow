@@ -278,7 +278,7 @@ class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
     with self.assertRaisesRegexp(
         TypeError,
-        r"tensors argument must be a list or a tuple. Got \"EagerTensor\""):
+        r"tensors argument must be a list or a tuple. Got.*EagerTensor"):
       pywrap_tensorflow.TFE_Py_TensorShapeSlice(t1, -2)
 
   def testNegativeSliceDim(self):

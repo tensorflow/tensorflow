@@ -1,31 +1,55 @@
 # Release 1.9.0
 
 ## Major Features And Improvements
-* Update tf.keras to the Keras 2.1.6 API.
-* `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
-* Adding support of core feature columns and losses to gradient boosted trees estimators.
-* The distributions.Bijector API supports broadcasting for Bijectors with new API changes. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/distributions/bijectors/Bijector) for more details.
-* Layered variable names have changed in the following conditions:
-  * Using `tf.keras.layers` with custom variable scopes.
-  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
-
-## Breaking Chances
-  * If you're opening empty variable scopes; replace `variable_scope`('', ...) by `variable_scope`(`tf.get_variable_scope()`, ...).
+* Updated docs for `tf.keras`: New Keras-based [get started](http://tensorflow.org/versions/r1.9/get_started),
+  and [programmers guide page](http://tensorflow.org/versions/r1.9/programmers_guide/keras).
+* Update `tf.keras` to the Keras 2.1.6 API.
+* Added [`tf.keras.layers.CuDNNGRU`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNGRU) and [`tf.keras.layers.CuDNNLSTM`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNLSTM) layers. [Try it](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb?linkId=53292082).
+* Adding support of core [feature columns](https://www.tensorflow.org/get_started/feature_columns) and [losses](https://www.tensorflow.org/api_docs/python/tf/losses) to [gradient boosted trees estimators](https://github.com/tensorflow/models/tree/master/official/boosted_trees).
+* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/lite)
+  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/toco/README.md)
+  has been expanded, and the command line interface (AKA: `toco`, `tflite_convert`) is once again
+  included in the standard `pip` installation.
+* Improved data-loading and text processing with:
+    * [`tf.decode_compressed`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/decode_compressed)
+    * [`tf.string_strip`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/string_strip)
+    * [`tf.strings.regex_full_match`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/strings/regex_full_match)
+* Added experimental support for new pre-made Estimators:
+  * [`tf.contrib.estimator.BaselineEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/BaselineEstimator)
+  * [`tf.contrib.estimator.RNNClassifier`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNEstimator)
+  * [`tf.contrib.estimator.RNNEstimator`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/estimator/RNNClassifier)
+* The [distributions.Bijector](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/distributions/bijectors/Bijector)
+  API supports broadcasting for Bijectors with new API changes.
+  
+## Breaking Changes
+  * If you're opening empty variable scopes; replace `variable_scope('', ...)` by
+    `variable_scope(tf.get_variable_scope(), ...)`.
+  * Headers used for building custom ops have been moved from site-packages/external into site-packages/tensorflow/include/external.
 
 ## Bug Fixes and Other Changes
+
+* `tfe.Network` is deprecated. Please inherit from `tf.keras.Model`.
+* Layered variable names have changed in the following conditions:
+  * Using `tf.keras.layers` with custom variable scopes.
+  * Using `tf.layers` in  a subclassed `tf.keras.Model` class. See
+    [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
 * `tf.data`:
-  * The `DatasetBase::DebugString()` method is now `const`.
-  * Added the `tf.contrib.data.sample_from_datasets()` API for randomly sampling from multiple datasets.
+  * `Dataset.from_generator()` now accepts an `args` list, in order to create nested generators.
+  * `Dataset.list_files()` now produces determinstic results when `shuffle=False` or a `seed` is passed.
+  * `tf.contrib.data.sample_from_datasets()` and `tf.contrib.data.choose_from_datasets()` make it easier to sample or deterministically choose elements from multiple datasets.
+  * `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted strings, and two infrequently used arguments removed.
+  * (C++) `DatasetBase::DebugString()` is now `const`.
+  * (C++) `DatasetBase::MakeIterator()` has been renamed to `DatasetBase::MakeIteratorInternal()`.
+  * (C++) `IteratorBase::Initialize()` method was added to support raising errors during iterator construction.
 * Eager Execution:
+  * Added the ability to pause recording operations for gradient computation via `tf.GradientTape.stop_recording`.
+  * Updated documentation, introductory notebooks.
 * `tf.keras`:
   * Move Keras code out of _impl folder and remove API files.
   * `tf.keras.Model.save_weights` now saves in TensorFlow format by default.
   * Enable dataset iterators to be passed to `tf.keras.Model` training/eval methods.
-* Accelerated Linear Algebra (XLA):
-* TensorFlow Debugger (tfdbg): fix an issue in which the TensorBoard Debugger Plugin could not handle total source file size exceeding gRPC message size limit (4 MB).
+* TensorFlow Debugger (tfdbg) CLI: fix an issue in which the TensorBoard Debugger Plugin could not handle total source file size exceeding gRPC message size limit (4 MB).
 * `tf.contrib`:
-  * Add `tf.contrib.data.choose_from_datasets()`.
-  * `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted strings. Two arguments were removed from `make_csv_dataset`.
   * `tf.contrib.framework.zero_initializer` supports ResourceVariable.
   * Adding "constrained_optimization" to tensorflow/contrib.
 * Other:
@@ -35,7 +59,6 @@
   * More consistent GcsFileSystem behavior for certain reads past EOF.
   * Update benchmark for tf.scan to match ranges across eager and graph modes.
   * Fixed bug in `tf.reduce_prod gradient` for complex dtypes.
-  * Add optional `args` argument to `Dataset.from_generator()`.
   * Allow the use of '.' in variables (e.g. "hparams.parse('a.b=1.0')"), which would previously raise an error. This will correspond to an attribute name with an embedded '.' symbol (e.g. 'a.b'), which can only be accessed indirectly (e.g. through getattr and setattr).  To set this up the user will first need to explicitly add the variable to the hparam object (e.g. "hparams.add_hparam(name='a.b', value=0.0)").
   * Benchmark for tf.scan in graph and eager modes.
   * Added complex128 support to FFT, FFT2D, FFT3D, IFFT, IFFT2D, and IFFT3D.
@@ -45,7 +68,6 @@
   * LinearOperator[1D,2D,3D]Circulant added to `tensorflow.linalg`.
   * Conv3D, Conv3DBackpropInput, Conv3DBackpropFilter now supports arbitrary.
   * Added `tf.train.Checkpoint` for reading/writing object-based checkpoints.
-  * `Dataset.list_files()` now produces determinstic results when `shuffle=False` or a `seed` is passed.
   * Added LinearOperatorKronecker, a dense-free implementation of the Kronecker Product.
   * Allow LinearOperator to broadcast.
   * SavedModelBuilder will now deduplicate asset names that point to files with the same basename and the same contents. Note that this may result in new asset files included in SavedModels in cases where assets with the same name but different contents were previously overwriting each other.
@@ -465,7 +487,7 @@ answered questions, and were part of inspiring discussions.
 
 ## Major Features And Improvements
 * `tf.keras` is now part of the core TensorFlow API.
-* [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
+* [`tf.data`](http://tensorflow.org/guide/datasets) is now part of
   the core TensorFlow API.
   * The API is now subject to backwards compatibility guarantees.
   * For a guide to migrating from the `tf.contrib.data` API, see the
@@ -485,7 +507,7 @@ answered questions, and were part of inspiring discussions.
 * TensorFlow Debugger (tfdbg):
   * Add `eval` command to allow evaluation of arbitrary Python/numpy expressions
     in tfdbg command-line interface. See
-    [Debugging TensorFlow Programs](https://www.tensorflow.org/programmers_guide/debugger)
+    [Debugging TensorFlow Programs](https://www.tensorflow.org/guide/debugger)
     for more details.
   * Usability improvement: The frequently used tensor filter `has_inf_or_nan` is
     now added to `Session` wrappers and hooks by default. So there is no need
@@ -772,7 +794,7 @@ answered questions, and were part of inspiring discussions.
 * Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
 * TensorFlow C library now available for Windows.
 * We released a new open-source version of TensorBoard.
-* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
+* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
 * Android releases of TensorFlow are now pushed to jcenter for easier
   integration into apps. See
   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md

@@ -21,6 +21,7 @@ from __future__ import print_function
 import argparse
 import fnmatch
 import os
+import shutil
 
 import six
 
@@ -54,7 +55,8 @@ def write_docs(output_dir,
                parser_config,
                yaml_toc,
                root_title='TensorFlow',
-               search_hints=True):
+               search_hints=True,
+               site_api_path=None):
   """Write previously extracted docs to disk.
 
   Write a docs page for each symbol included in the indices of parser_config to
@@ -72,6 +74,8 @@ def write_docs(output_dir,
     root_title: The title name for the root level index.md.
     search_hints: (bool) include meta-data search hints at the top of each
       output file.
+    site_api_path: Used to write the api-duplicates _redirects.yaml file. if
+      None (the default) the file is not generated.
 
   Raises:
     ValueError: if `output_dir` is not an absolute path
@@ -81,12 +85,8 @@ def write_docs(output_dir,
     raise ValueError("'output_dir' must be an absolute path.\n"
                      "    output_dir='%s'" % output_dir)
 
-  try:
-    if not os.path.exists(output_dir):
-      os.makedirs(output_dir)
-  except OSError as e:
-    print('Creating output dir "%s" failed: %s' % (output_dir, e))
-    raise
+  if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
   # These dictionaries are used for table-of-contents generation below
   # They will contain, after the for-loop below::
@@ -94,6 +94,9 @@ def write_docs(output_dir,
   module_children = {}
   #  - symbol name(string):pathname (string)
   symbol_to_file = {}
+
+  # Collect redirects for an api _redirects.yaml file.
+  redirects = ['redirects:\n']
 
   # Parse and write Markdown pages, resolving cross-links (@{symbol}).
   for full_name, py_object in six.iteritems(parser_config.index):
@@ -129,8 +132,6 @@ def write_docs(output_dir,
           module_children.setdefault(subname, []).append(full_name)
           break
 
-    print('Writing docs for %s (%r).' % (full_name, py_object))
-
     # Generate docs for `py_object`, resolving references.
     page_info = parser.docs_for_object(full_name, py_object, parser_config)
 
@@ -151,10 +152,28 @@ def write_docs(output_dir,
         text = text.encode('utf-8')
       with open(path, 'wb') as f:
         f.write(text)
-    except OSError as e:
-      print('Cannot write documentation for %s to %s: %s' % (full_name,
-                                                             directory, e))
-      raise
+    except OSError:
+      raise OSError(
+          'Cannot write documentation for %s to %s' % (full_name, directory))
+
+    if site_api_path:
+      duplicates = parser_config.duplicates.get(full_name, [])
+      if not duplicates:
+        continue
+
+      duplicates = [item for item in duplicates if item != full_name]
+      template = ('- from: /{}\n'
+                  '  to: /{}\n')
+      for dup in duplicates:
+        from_path = os.path.join(site_api_path, dup.replace('.', '/'))
+        to_path = os.path.join(site_api_path, full_name.replace('.', '/'))
+        redirects.append(
+            template.format(from_path, to_path))
+
+  if site_api_path:
+    api_redirects_path = os.path.join(output_dir, '_redirects.yaml')
+    with open(api_redirects_path, 'w') as redirect_file:
+      redirect_file.write(''.join(redirects))
 
   if yaml_toc:
     # Generate table of contents
@@ -394,16 +413,40 @@ def _build_guide_index(guide_src_dir):
 
 
 class _UpdateTags(py_guide_parser.PyGuideParser):
-  """Rewrites a Python guide so that each section has an explicit tag."""
+  """Rewrites a Python guide so that each section has an explicit id tag.
+
+  "section" here refers to blocks delimited by second level headings.
+  """
 
   def process_section(self, line_number, section_title, tag):
     self.replace_line(line_number, '<h2 id="%s">%s</h2>' % (tag, section_title))
 
 
+def update_id_tags_inplace(src_dir):
+  """Set explicit ids on all second-level headings to ensure back-links work.
+
+  Args:
+    src_dir: The directory of md-files to convert (inplace).
+  """
+  tag_updater = _UpdateTags()
+
+  for dirpath, _, filenames in os.walk(src_dir):
+    for base_name in filenames:
+      if not base_name.endswith('.md'):
+        continue
+      full_path = os.path.join(src_dir, dirpath, base_name)
+
+      # Tag updater loads the file, makes the replacements, and returns the
+      # modified file contents
+      content = tag_updater.process(full_path)
+      with open(full_path, 'w') as f:
+        f.write(content)
+
+
 EXCLUDED = set(['__init__.py', 'OWNERS', 'README.txt'])
 
 
-def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
+def replace_refs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
   """Fix @{} references in all files under `src_dir` matching `file_pattern`.
 
   A matching directory structure, with the modified files is
@@ -424,7 +467,6 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
       using fnmatch. Non-matching files are copied unchanged.
   """
   # Iterate through all the source files and process them.
-  tag_updater = _UpdateTags()
   for dirpath, _, filenames in os.walk(src_dir):
     # How to get from `dirpath` to api_docs/python/
     relative_path_to_root = os.path.relpath(
@@ -433,40 +475,31 @@ def _other_docs(src_dir, output_dir, reference_resolver, file_pattern='*.md'):
     # Make the directory under output_dir.
     new_dir = os.path.join(output_dir,
                            os.path.relpath(path=dirpath, start=src_dir))
-    try:
-      if not os.path.exists(new_dir):
-        os.makedirs(new_dir)
-    except OSError as e:
-      print('Creating output dir "%s" failed: %s' % (new_dir, e))
-      raise
+    if not os.path.exists(new_dir):
+      os.makedirs(new_dir)
 
     for base_name in filenames:
       if base_name in EXCLUDED:
-        print('Skipping excluded file %s...' % base_name)
         continue
       full_in_path = os.path.join(dirpath, base_name)
 
+      # Set the `current_doc_full_name` so bad files can be reported on errors.
       reference_resolver.current_doc_full_name = full_in_path
 
       suffix = os.path.relpath(path=full_in_path, start=src_dir)
       full_out_path = os.path.join(output_dir, suffix)
+      # Copy files that do not match the file_pattern, unmodified.
       if not fnmatch.fnmatch(base_name, file_pattern):
-        print('Copying un-matched file %s...' % suffix)
-        open(full_out_path, 'wb').write(open(full_in_path, 'rb').read())
+        shutil.copyfile(full_in_path, full_out_path)
         continue
-      if dirpath.endswith('/api_guides/python'):
-        print('Processing Python guide %s...' % base_name)
-        content = tag_updater.process(full_in_path)
-      else:
-        print('Processing doc %s...' % suffix)
-        content = open(full_in_path, 'rb').read().decode('utf-8')
+
+      with open(full_in_path, 'rb') as f:
+        content = f.read().decode('utf-8')
 
       content = reference_resolver.replace_references(content,
                                                       relative_path_to_root)
       with open(full_out_path, 'wb') as f:
         f.write(content.encode('utf-8'))
-
-  print('Done.')
 
 
 class DocGenerator(object):
@@ -554,15 +587,43 @@ class DocGenerator(object):
                    self._do_not_descend_map)
 
   def build(self, flags):
-    """Actually build the docs."""
+    """Build all the docs.
+
+    This produces two outputs
+
+    python api docs:
+
+      * generated from modules set with `set_py_modules`.
+      * written to '{FLAGS.output_dir}/api_docs/python/'
+
+    non-api docs:
+
+      * Everything in '{FLAGS.src_dir}' is copied to '{FLAGS.output_dir}'.
+      * '@{}' references in '.md' files are replaced with links.
+      * '.md' files under 'api_guides/python' have explicit ids set for their
+        second level headings.
+
+    Args:
+      flags:
+        * src_dir: Where to fetch the non-api-docs.
+        * base_dir: Base of the docs directory (Used to build correct
+          relative links).
+        * output_dir: Where to write the resulting docs.
+
+    Returns:
+      The number of errors encountered while processing.
+    """
+    # Extract the python api from the _py_modules
     doc_index = build_doc_index(flags.src_dir)
     visitor = self.run_extraction()
     reference_resolver = self.make_reference_resolver(visitor, doc_index)
 
+    # Build the guide_index for the api_docs back links.
     root_title = getattr(flags, 'root_title', 'TensorFlow')
     guide_index = _build_guide_index(
         os.path.join(flags.src_dir, 'api_guides/python'))
 
+    # Write the api docs.
     parser_config = self.make_parser_config(visitor, reference_resolver,
                                             guide_index, flags.base_dir)
     output_dir = os.path.join(flags.output_dir, 'api_docs/python')
@@ -572,9 +633,18 @@ class DocGenerator(object):
         parser_config,
         yaml_toc=self.yaml_toc,
         root_title=root_title,
-        search_hints=getattr(flags, 'search_hints', True))
-    _other_docs(flags.src_dir, flags.output_dir, reference_resolver)
+        search_hints=getattr(flags, 'search_hints', True),
+        site_api_path=getattr(flags, 'site_api_path', None))
 
+    # Replace all the @{} references in files under `FLAGS.src_dir`
+    replace_refs(flags.src_dir, flags.output_dir, reference_resolver, '*.md')
+    # Fix the tags in the guide dir.
+    guide_dir = os.path.join(flags.output_dir, 'api_guides/python')
+    if os.path.exists(guide_dir):
+      update_id_tags_inplace(guide_dir)
+
+    # Report all errors found by the reference resolver, and return the error
+    # code.
     parser_config.reference_resolver.log_errors()
 
     return parser_config.reference_resolver.num_errors()

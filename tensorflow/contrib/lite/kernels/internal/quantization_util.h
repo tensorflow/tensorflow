@@ -28,8 +28,9 @@ namespace tflite {
 // Given the min and max values of a float array, return
 // reasonable quantization parameters to use for this array.
 template <typename T>
-QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
-  const T qmin = std::numeric_limits<T>::min();
+QuantizationParams ChooseQuantizationParams(double rmin, double rmax,
+                                            bool narrow_range) {
+  const T qmin = std::numeric_limits<T>::min() + (narrow_range ? 1 : 0);
   const T qmax = std::numeric_limits<T>::max();
   const double qmin_double = qmin;
   const double qmax_double = qmax;
@@ -95,6 +96,11 @@ QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
   quantization_params.zero_point = nudged_zero_point;
   quantization_params.scale = scale;
   return quantization_params;
+}
+
+template <typename T>
+QuantizationParams ChooseQuantizationParams(double rmin, double rmax) {
+  return ChooseQuantizationParams<T>(rmin, rmax, false);
 }
 
 // Converts a floating-point number to an integer. For all inputs x where
@@ -217,6 +223,11 @@ int CalculateInputRadius(int input_integer_bits, int input_left_shift);
 void NudgeQuantizationRange(const float min, const float max,
                             const int quant_min, const int quant_max,
                             float* nudged_min, float* nudged_max, float* scale);
+
+// If x is approximately a power of two (with any positive or negative
+// exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
+// returns false.
+bool CheckedLog2(const float x, int* log2_result);
 
 }  // namespace tflite
 

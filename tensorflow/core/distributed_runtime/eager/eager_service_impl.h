@@ -62,6 +62,9 @@ class EagerServiceImpl {
   Status RegisterFunction(const RegisterFunctionRequest* request,
                           RegisterFunctionResponse* response);
 
+  Status SendTensor(const SendTensorRequest* request,
+                    SendTensorResponse* response);
+
  protected:
   // This is the server-side execution context. All state regarding execution of
   // a client's ops is held in this server-side context (all generated tensors,
@@ -135,7 +138,8 @@ class EagerServiceImpl {
   tensorflow::Status GetServerContext(uint64, ServerContext**);
 
  private:
-  Status ExecuteOp(const Operation& operation, ServerContext* server_context);
+  Status ExecuteOp(const Operation& operation, ServerContext* server_context,
+                   QueueResponse* queue_response);
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;

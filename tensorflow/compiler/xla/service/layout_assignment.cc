@@ -30,10 +30,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -58,7 +60,6 @@ namespace xla {
 // For now moving only one API here, but we should have a single top level
 // anonymous namespace, instead of three or four spread all over this file.
 namespace {
-
 
 }  // namespace
 
@@ -113,14 +114,18 @@ LayoutConstraints::LayoutConstraints(
     HloComputation* computation)
     : points_to_analysis_(points_to_analysis), computation_(computation) {
   // Gather all array-shaped logical buffers into unconstrained_buffer_ids.
-  for (LogicalBuffer::Id id = 0; id < points_to_analysis_.num_logical_buffers();
-       id++) {
-    auto& buffer = points_to_analysis_.logical_buffer(id);
-    // The points to analysis is computed per module, restrict constraints to
-    // array buffers in this computation.
-    if (buffer.IsArray() && buffer.instruction()->parent() == computation) {
-      unconstrained_buffer_ids_.insert(buffer.id());
-    }
+  for (HloInstruction* inst : computation_->instructions()) {
+    points_to_analysis_.GetPointsToSet(inst).ForEachElement(
+        [&](const ShapeIndex&, const PointsToSet::BufferList& buffers) {
+          for (const LogicalBuffer* buffer : buffers) {
+            // The points to analysis is computed per module, restrict
+            // constraints to array buffers in this computation.
+            if (buffer->IsArray() &&
+                buffer->instruction()->parent() == computation) {
+              unconstrained_buffer_ids_.insert(buffer->id());
+            }
+          }
+        });
   }
 }
 
@@ -175,41 +180,32 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
   TF_RETURN_IF_ERROR(
       LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
-  const BufferLayoutConstraint* curr_constraint =
-      GetBufferLayoutConstraint(buffer);
-  if (curr_constraint != nullptr) {
-    if (LayoutUtil::Equal(curr_constraint->layout(), layout)) {
+  auto iter = buffer_constraints_.find(&buffer);
+  if (iter != buffer_constraints_.end()) {
+    const BufferLayoutConstraint& curr_constraint = iter->second;
+    if (LayoutUtil::Equal(curr_constraint.layout(), layout)) {
       // New constraint matches existing constraint. Nothing to do.
       return Status::OK();
     }
-    if (curr_constraint->mandatory()) {
+    if (curr_constraint.mandatory()) {
       return FailedPrecondition(
           "Buffer %s already has the layout constraint %s, cannot add "
           "incompatible constraint %s",
           buffer.ToString().c_str(),
-          LayoutUtil::HumanString(curr_constraint->layout()).c_str(),
+          LayoutUtil::HumanString(curr_constraint.layout()).c_str(),
           LayoutUtil::HumanString(layout).c_str());
     }
-  }
-
-  auto iter = buffer_constraints_.find(&buffer);
-  bool overwrite = iter != buffer_constraints_.end();
-  if (!overwrite) {
+    iter->second = BufferLayoutConstraint(layout, buffer, mandatory, dfs);
+  } else {
+    TF_RET_CHECK(unconstrained_buffer_ids_.erase(buffer.id()) == 1)
+        << buffer.ToString();
     iter = buffer_constraints_
                .insert(std::make_pair(
                    &buffer,
                    BufferLayoutConstraint(layout, buffer, mandatory, dfs)))
                .first;
-  } else {
-    iter->second = BufferLayoutConstraint(layout, buffer, mandatory, dfs);
   }
   added_constraints_.push_back(&iter->second);
-
-  // Remove buffer from the set of unconstrained buffers.
-  TF_RET_CHECK(unconstrained_buffer_ids_.count(buffer.id()) ==
-               static_cast<int>(!overwrite));
-  unconstrained_buffer_ids_.erase(buffer.id());
-
   return Status::OK();
 }
 
@@ -401,12 +397,54 @@ string LayoutConstraints::ToString() const {
   return output;
 }
 
+namespace {
+
+bool IsHostSendRecv(const HloInstruction* instruction) {
+  const HloSendRecvInstruction* send_recv_instr =
+      DynCast<HloSendRecvInstruction>(instruction);
+  return send_recv_instr != nullptr && send_recv_instr->is_host_transfer();
+}
+
+}  // namespace
+
+Status LayoutAssignment::BuildHostChannelConstraints(
+    HloComputation* computation) {
+  for (auto* instruction : computation->instructions()) {
+    const HloSendRecvInstruction* send_recv_instr =
+        DynCast<HloSendRecvInstruction>(instruction);
+    if (send_recv_instr == nullptr || !send_recv_instr->is_host_transfer()) {
+      continue;
+    }
+
+    // For host transfers the Send and Recv instruction carry the layout.
+    if (instruction->opcode() == HloOpcode::kSend ||
+        instruction->opcode() == HloOpcode::kRecv) {
+      const Shape& data_shape =
+          ShapeUtil::GetTupleElementShape(send_recv_instr->shape(), 0);
+      TF_RET_CHECK(ShapeUtil::IsArray(data_shape));
+      TF_RET_CHECK(LayoutUtil::HasLayout(data_shape));
+      const Layout* prev_layout = host_channel_constraints_.ConstrainChannel(
+          send_recv_instr->channel_id(), data_shape.layout());
+      TF_RET_CHECK(prev_layout == nullptr)
+          << "Cannot constrain host transfer layout as it was set to "
+          << LayoutUtil::HumanString(*prev_layout) << ": "
+          << send_recv_instr->ToString();
+    }
+  }
+  return Status::OK();
+}
+
 Status LayoutAssignment::AddMandatoryConstraints(
     const ComputationLayout* computation_layout,
     ChannelLayoutConstraints* channel_constraints, HloComputation* computation,
     LayoutConstraints* constraints) {
   VLOG(3) << "Adding mandatory layout constraints to computation "
           << computation->name();
+
+  auto get_channel_constraints = [&](const HloInstruction* instruction) {
+    return IsHostSendRecv(instruction) ? &host_channel_constraints_
+                                       : channel_constraints;
+  };
 
   // Constrain layouts of instructions which define values with pre-existing
   // layouts.
@@ -444,18 +482,21 @@ Status LayoutAssignment::AddMandatoryConstraints(
 
     if (instruction->opcode() == HloOpcode::kSend ||
         instruction->opcode() == HloOpcode::kRecv) {
-      CHECK(channel_constraints)
+      CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
       int64 channel_id = instruction->channel_id();
-      if (!channel_constraints->IsChannelConstrained(channel_id)) {
+      if (!get_channel_constraints(instruction)
+               ->IsChannelConstrained(channel_id)) {
         continue;
       }
       if (instruction->opcode() == HloOpcode::kSend) {
         // TODO(b/68493863): Change to use SetOperandLayout().
         const Shape send_buffer_shape = instruction->operand(0)->shape();
         TF_RET_CHECK(ShapeUtil::IsArray(send_buffer_shape));
-        Shape new_buffer_shape = channel_constraints->LayoutShapeForChannel(
-            send_buffer_shape, instruction->channel_id());
+        Shape new_buffer_shape =
+            get_channel_constraints(instruction)
+                ->LayoutShapeForChannel(send_buffer_shape,
+                                        instruction->channel_id());
         TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
             new_buffer_shape, instruction->operand(0)));
       } else {
@@ -466,8 +507,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
             const LogicalBuffer* buffer,
             constraints->points_to_analysis().GetBufferDefinedAt(instruction,
                                                                  {0}));
-        Shape new_shape = channel_constraints->LayoutShapeForChannel(
-            recv_buffer_shape, instruction->channel_id());
+        Shape new_shape = get_channel_constraints(instruction)
+                              ->LayoutShapeForChannel(
+                                  recv_buffer_shape, instruction->channel_id());
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
@@ -716,7 +758,8 @@ Status CheckParameterLayout(HloInstruction* parameter,
                             const ComputationLayout& computation_layout) {
   const ShapeLayout& parameter_layout =
       computation_layout.parameter_layout(parameter->parameter_number());
-  if (!parameter_layout.MatchesLayoutInShape(parameter->shape())) {
+  if (parameter_layout.LayoutIsSet() &&
+      !parameter_layout.MatchesLayoutInShape(parameter->shape())) {
     return InternalError(
         "parameter instruction %s does not match layout of computation "
         "shape: %s",
@@ -936,6 +979,7 @@ LayoutAssignment::LayoutAssignment(
     ComputationLayout* entry_computation_layout,
     ChannelLayoutConstraints* channel_constraints)
     : entry_computation_layout_(entry_computation_layout),
+      saved_entry_computation_layout_(*entry_computation_layout),
       channel_layout_constraints_(channel_constraints) {
   if (channel_layout_constraints_ != nullptr) {
     // Save a copy of the input ChannelLayoutConstraints so that we can reset it
@@ -944,11 +988,6 @@ LayoutAssignment::LayoutAssignment(
   }
   VLOG(1) << "Entry computation layout given to layout assignment: "
           << entry_computation_layout_->ToString();
-  // Layouts of all parameter instructions must be set.
-  for (const ShapeLayout& parameter_layout :
-       entry_computation_layout_->parameter_layouts()) {
-    CHECK(parameter_layout.LayoutIsSet());
-  }
 }
 
 std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
@@ -1547,6 +1586,10 @@ Status LayoutAssignment::RunOnComputation(
     ChannelLayoutConstraints* channel_constraints) {
   VLOG(2) << "LayoutAssignment::RunOnComputation(" << computation->name()
           << ")";
+
+  // Must be run before clearing layouts.
+  TF_RETURN_IF_ERROR(BuildHostChannelConstraints(computation));
+
   TF_RETURN_IF_ERROR(ClearComputationLayouts(computation));
   if (computation_layout != nullptr) {
     auto it = computation_layouts_.find(computation);
@@ -1576,6 +1619,13 @@ Status LayoutAssignment::RunOnComputation(
 
   // Propagates layouts from mandatory and backend constraints.
   TF_RETURN_IF_ERROR(PropagateConstraints(&constraints));
+
+  // Prior to applying default layouts, we take note of all HLO instructions
+  // which lack a layout constraint.
+  for (LogicalBuffer::Id buffer_id : constraints.unconstrained_buffer_ids()) {
+    unconstrained_layout_instructions_.insert(
+        points_to_analysis.GetBuffer(buffer_id).instruction());
+  }
 
   // While any unconstrained buffers remain, pick an arbitrary buffer, give it a
   // layout and propagate the change.
@@ -1629,13 +1679,20 @@ Status LayoutAssignment::RunOnComputation(
 Status LayoutAssignment::ConstrainChannelLayouts(
     HloComputation* computation,
     ChannelLayoutConstraints* channel_constraints) {
+  auto get_channel_constraints = [&](const HloInstruction* instruction) {
+    return IsHostSendRecv(instruction) ? &host_channel_constraints_
+                                       : channel_constraints;
+  };
   // We go through the kRecvDone before. These must either impose their layout,
-  // of find a matching one already existing (ConstrainChannel() returns
+  // or find a matching one already existing (ConstrainChannel() returns
   // nullptr).
   for (HloInstruction* instruction : computation->instructions()) {
     if (instruction->opcode() == HloOpcode::kRecvDone) {
-      const Layout* layout = channel_constraints->ConstrainChannel(
-          instruction->channel_id(), instruction->shape().layout());
+      const Layout* layout =
+          get_channel_constraints(instruction)
+              ->ConstrainChannel(
+                  instruction->channel_id(),
+                  ShapeUtil::GetSubshape(instruction->shape(), {0}).layout());
       TF_RET_CHECK(layout == nullptr)
           << instruction->ToString()
           << " cannot constrain layout as it was set to "
@@ -1648,11 +1705,12 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kSend) {
       HloInstruction* operand = instruction->mutable_operand(0);
-      const Layout* layout = channel_constraints->ConstrainChannel(
-          instruction->channel_id(), operand->shape().layout());
+      const Layout* layout = get_channel_constraints(instruction)
+                                 ->ConstrainChannel(instruction->channel_id(),
+                                                    operand->shape().layout());
       if (layout != nullptr) {
         // We found an already constrained layout which does not match the one
-        // the kSend wants to impose. Eitehr add a new kCopy, or use the
+        // the kSend wants to impose. Either add a new kCopy, or use the
         // existing one to marshal the correct shape.
         Shape shape = operand->shape();
         *shape.mutable_layout() = *layout;
@@ -1721,13 +1779,14 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   // when seen from an outer instruction, which has across-computation
   // constraints to impose.
   // For example, the kWhile instruction needs to enforce the same layouts for
-  // the parameters and root of the bosy, as well as the condition parameters.
+  // the parameters and root of the body, as well as the condition parameters.
   // Similarly, the kConditional instruction needs to enforce the same layouts
   // for the root of the true and false computations.
   // So in the first pass, while allowing the layouts to flow to parameters and
   // root, we also fix up the eventually inconsistent ComputationLayout, which
   // will be then made mandatory by the second pass.
   for (int64 i = 0; i < 2; ++i) {
+    VLOG(5) << "Running " << (i == 0 ? "un" : "") << "constrained pass";
     TF_RETURN_IF_ERROR(ClearPreviousPassSideEffects(module));
     TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                         TuplePointsToAnalysis::Run(module));
@@ -1765,10 +1824,12 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
 
 Status LayoutAssignment::Init() {
   computation_layouts_.clear();
+  *entry_computation_layout_ = saved_entry_computation_layout_;
   return Status::OK();
 }
 
 Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
+  VLOG(5) << "Clearing previous side effects";
   // Clear all the copies which have been added, and all the related
   // instructions (like GTE and tuples).
   int64 removed_copies = 0;
@@ -1786,6 +1847,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     }
   }
   added_copies_.clear();
+  unconstrained_layout_instructions_.clear();
   if (removed_copies > 0) {
     TupleSimplifier tuple_simplifier;
     HloDCE dce;

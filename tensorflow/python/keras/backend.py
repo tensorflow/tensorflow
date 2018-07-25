@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import itertools
 import json
 import os
 import weakref
@@ -962,13 +963,14 @@ def zeros(shape, dtype=None, name=None):
              [ 0.,  0.,  0.,  0.]], dtype=float32)
   ```
   """
-  if dtype is None:
-    dtype = floatx()
-  tf_dtype = dtypes_module.as_dtype(dtype)
-  v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
-  if py_all(v.get_shape().as_list()):
-    return variable(v, dtype=dtype, name=name)
-  return v
+  with ops.init_scope():
+    if dtype is None:
+      dtype = floatx()
+    tf_dtype = dtypes_module.as_dtype(dtype)
+    v = array_ops.zeros(shape=shape, dtype=tf_dtype, name=name)
+    if py_all(v.get_shape().as_list()):
+      return variable(v, dtype=dtype, name=name)
+    return v
 
 
 @tf_export('keras.backend.ones')
@@ -995,13 +997,14 @@ def ones(shape, dtype=None, name=None):
              [ 1.,  1.,  1.,  1.]], dtype=float32)
   ```
   """
-  if dtype is None:
-    dtype = floatx()
-  tf_dtype = dtypes_module.as_dtype(dtype)
-  v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
-  if py_all(v.get_shape().as_list()):
-    return variable(v, dtype=dtype, name=name)
-  return v
+  with ops.init_scope():
+    if dtype is None:
+      dtype = floatx()
+    tf_dtype = dtypes_module.as_dtype(dtype)
+    v = array_ops.ones(shape=shape, dtype=tf_dtype, name=name)
+    if py_all(v.get_shape().as_list()):
+      return variable(v, dtype=dtype, name=name)
+    return v
 
 
 @tf_export('keras.backend.eye')
@@ -2794,10 +2797,15 @@ class Function(object):
     if not isinstance(self.fetches, list):
       self.fetches = [self.fetches]
     # The main use case of `fetches` being passed to a model is the ability
-    # to run custom updates (since the outputs of fetches are never returned).
+    # to run custom updates
     # This requires us to wrap fetches in `identity` ops.
     self.fetches = [array_ops.identity(x) for x in self.fetches]
     self.session_kwargs = session_kwargs
+    # This mapping keeps track of the function that should receive the
+    # output from a fetch in `fetches`: { fetch: function(fetch_output) }
+    # A Callback can use this to register a function with access to the
+    # output values for a fetch it added.
+    self.fetch_callbacks = dict()
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
@@ -2807,6 +2815,7 @@ class Function(object):
     self._feed_arrays = None
     self._feed_symbols = None
     self._symbol_vals = None
+    self._fetches = None
     self._session = None
 
   def _make_callable(self, feed_arrays, feed_symbols, symbol_vals, session):
@@ -2852,7 +2861,13 @@ class Function(object):
     self._feed_arrays = feed_arrays
     self._feed_symbols = feed_symbols
     self._symbol_vals = symbol_vals
+    self._fetches = list(self.fetches)
     self._session = session
+
+  def _call_fetch_callbacks(self, fetches_output):
+    for fetch, output in zip(self._fetches, fetches_output):
+      if fetch in self.fetch_callbacks:
+        self.fetch_callbacks[fetch](output)
 
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
@@ -2880,21 +2895,24 @@ class Function(object):
         feed_arrays.append(tensor)
         # We need to do array conversion and type casting at this level, since
         # `callable_fn` only supports exact matches.
-        array_vals.append(np.asarray(value, dtype=tensor.dtype.base_dtype.name))
+        tensor_type = dtypes_module.as_dtype(tensor.dtype)
+        array_vals.append(np.asarray(value,
+                                     dtype=tensor_type.as_numpy_dtype))
+
     if self.feed_dict:
       for key in sorted(self.feed_dict.keys()):
         array_vals.append(
             np.asarray(self.feed_dict[key], dtype=key.dtype.base_dtype.name))
 
     # Refresh callable if anything has changed.
-    if (self._callable_fn is None or
-        feed_arrays != self._feed_arrays or
+    if (self._callable_fn is None or feed_arrays != self._feed_arrays or
         symbol_vals != self._symbol_vals or
-        feed_symbols != self._feed_symbols or
+        feed_symbols != self._feed_symbols or self.fetches != self._fetches or
         session != self._session):
       self._make_callable(feed_arrays, feed_symbols, symbol_vals, session)
 
     fetched = self._callable_fn(*array_vals)
+    self._call_fetch_callbacks(fetched[-len(self._fetches):])
     return fetched[:len(self.outputs)]
 
 
@@ -3157,10 +3175,16 @@ def rnn(step_function,
                                       array_ops.stack(
                                           [1, array_ops.shape(output)[1]]))
         output = array_ops.where(tiled_mask_t, output, states[0])
-        new_states = [
-            array_ops.where(tiled_mask_t, new_states[i], states[i])
-            for i in range(len(states))
-        ]
+
+        masked_states = []
+        for i in range(len(states)):
+          states_dim = array_ops.shape(new_states[i])[1]
+          stacked_states_dim = array_ops.stack([1, states_dim])
+          tiled_mask = array_ops.tile(mask_t, stacked_states_dim)
+          masked_state = array_ops.where(tiled_mask, new_states[i], states[i])
+          masked_states.append(masked_state)
+        new_states = masked_states
+
         output_ta_t = output_ta_t.write(time, output)
         return (time + 1, output_ta_t) + tuple(new_states)
     else:
@@ -3348,26 +3372,48 @@ def in_test_phase(x, alt, training=None):
 
 
 @tf_export('keras.backend.relu')
-def relu(x, alpha=0., max_value=None):
+def relu(x, alpha=0., max_value=None, threshold=0):
   """Rectified linear unit.
 
   With default values, it returns element-wise `max(x, 0)`.
 
+  Otherwise, it follows:
+  `f(x) = max_value` for `x >= max_value`,
+  `f(x) = x` for `threshold <= x < max_value`,
+  `f(x) = alpha * (x - threshold)` otherwise.
+
   Arguments:
       x: A tensor or variable.
       alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: Saturation threshold.
+      max_value: float. Saturation threshold.
+      threshold: float. Threshold value for thresholded activation.
 
   Returns:
       A tensor.
   """
+  clip_max = max_value is not None
+
   if alpha != 0.:
-    negative_part = nn.relu(-x)
-  x = nn.relu(x)
-  if max_value is not None:
+    if threshold != 0:
+      negative_part = nn.relu(-x + threshold)
+    else:
+      negative_part = nn.relu(-x)
+
+  if threshold != 0:
+    # computes x for x > threshold else 0
+    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+  elif max_value == 6:
+    # if no threshold, then can use nn.relu6 native TF op for performance
+    x = nn.relu6(x)
+    clip_max = False
+  else:
+    x = nn.relu(x)
+
+  if clip_max:
     max_value = _to_tensor(max_value, x.dtype.base_dtype)
     zero = _to_tensor(0., x.dtype.base_dtype)
     x = clip_ops.clip_by_value(x, zero, max_value)
+
   if alpha != 0.:
     alpha = _to_tensor(alpha, x.dtype.base_dtype)
     x -= alpha * negative_part
@@ -3434,7 +3480,7 @@ def softsign(x):
 
 
 @tf_export('keras.backend.categorical_crossentropy')
-def categorical_crossentropy(target, output, from_logits=False):
+def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy between an output tensor and a target tensor.
 
   Arguments:
@@ -3444,28 +3490,33 @@ def categorical_crossentropy(target, output, from_logits=False):
           case `output` is expected to be the logits).
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
+      axis: Int specifying the channels axis. `axis=-1` corresponds to data
+          format `channels_last', and `axis=1` corresponds to data format
+          `channels_first`.
 
   Returns:
       Output tensor.
+
+  Raises:
+      ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  rank = len(output.get_shape())
+  axis = axis % rank
   # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
-    output = output / math_ops.reduce_sum(  # pylint: disable=g-no-augmented-assignment
-        output, len(output.get_shape()) - 1, True)
+    output = output / math_ops.reduce_sum(output, axis, True)
     # manual computation of crossentropy
     epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
-    return -math_ops.reduce_sum(
-        target * math_ops.log(output),
-        axis=len(output.get_shape()) - 1)
+    return -math_ops.reduce_sum(target * math_ops.log(output), axis)
   else:
     return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
 
 
 @tf_export('keras.backend.sparse_categorical_crossentropy')
-def sparse_categorical_crossentropy(target, output, from_logits=False):
+def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy with integer targets.
 
   Arguments:
@@ -3475,10 +3526,22 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
           case `output` is expected to be the logits).
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
+      axis: Int specifying the channels axis. `axis=-1` corresponds to data
+          format `channels_last', and `axis=1` corresponds to data format
+          `channels_first`.
 
   Returns:
       Output tensor.
+
+  Raises:
+      ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  rank = len(output.get_shape())
+  axis = axis % rank
+  if axis != rank - 1:
+    permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
+    output = array_ops.transpose(output, perm=permutation)
+
   # Note: nn.sparse_softmax_cross_entropy_with_logits
   # expects logits, Keras expects probabilities.
   if not from_logits:
@@ -4242,58 +4305,115 @@ def pool3d(x,
   return x
 
 
-def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
-  """Apply 1D conv with un-shared weights.
+def local_conv(inputs,
+               kernel,
+               kernel_size,
+               strides,
+               output_shape,
+               data_format=None):
+  """Apply N-D convolution with un-shared weights.
 
   Arguments:
-      inputs: 3D tensor with shape:
-              (batch_size, steps, input_dim)
-              if data_format is "channels_last" or
-              (batch_size, input_dim, steps)
-              if data_format is "channels_first".
-      kernel: the unshared weight for convolution,
-              with shape (output_length, feature_dim, filters)
-      kernel_size: a tuple of a single integer,
-                   specifying the length of the 1D convolution window
-      strides: a tuple of a single integer,
-               specifying the stride length of the convolution
-      data_format: the data format, channels_first or channels_last
+      inputs: (N+2)-D tensor with shape
+          (batch_size, channels_in, d_in1, ..., d_inN)
+          if data_format='channels_first', or
+          (batch_size, d_in1, ..., d_inN, channels_in)
+          if data_format='channels_last'.
+      kernel: the unshared weight for N-D convolution,
+          with shape (output_items, feature_dim, channels_out), where
+          feature_dim = np.prod(kernel_size) * channels_in,
+          output_items = np.prod(output_shape).
+      kernel_size: a tuple of N integers, specifying the
+          spatial dimensions of the N-D convolution window.
+      strides: a tuple of N integers, specifying the strides
+          of the convolution along the spatial dimensions.
+      output_shape: a tuple of (d_out1, ..., d_outN) specifying the spatial
+          dimensionality of the output.
+      data_format: string, "channels_first" or "channels_last".
 
   Returns:
-      the tensor after 1d conv with un-shared weights, with shape (batch_size,
-      output_length, filters)
+      An (N+2)-D tensor with shape:
+      (batch_size, channels_out) + output_shape
+      if data_format='channels_first', or:
+      (batch_size,) + output_shape + (channels_out,)
+      if data_format='channels_last'.
 
   Raises:
-      ValueError: if `data_format` is neither `channels_last` or
-      `channels_first`.
+      ValueError: if `data_format` is neither
+      `channels_last` nor `channels_first`.
   """
   if data_format is None:
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
 
-  stride = strides[0]
   kernel_shape = int_shape(kernel)
-  output_length = kernel_shape[0]
   feature_dim = kernel_shape[1]
+  channels_out = kernel_shape[-1]
+  ndims = len(output_shape)
+  spatial_dimensions = list(range(ndims))
 
   xs = []
-  for i in range(output_length):
-    slice_length = slice(i * stride, i * stride + kernel_size[0])
+  output_axes_ticks = [range(axis_max) for axis_max in output_shape]
+  for position in itertools.product(*output_axes_ticks):
+    slices = [slice(None)]
+
     if data_format == 'channels_first':
-      xs.append(reshape(inputs[:, :, slice_length], (1, -1, feature_dim)))
-    else:
-      xs.append(reshape(inputs[:, slice_length, :], (1, -1, feature_dim)))
+      slices.append(slice(None))
+
+    slices.extend([slice(position[d] * strides[d],
+                         position[d] * strides[d] + kernel_size[d])
+                   for d in spatial_dimensions])
+
+    if data_format == 'channels_last':
+      slices.append(slice(None))
+
+    xs.append(reshape(inputs[slices], (1, -1, feature_dim)))
 
   x_aggregate = concatenate(xs, axis=0)
-  # Shape: `(output_length, batch_size, filters)`.
   output = batch_dot(x_aggregate, kernel)
+  output = reshape(output, output_shape + (-1, channels_out))
 
   if data_format == 'channels_first':
-    output = permute_dimensions(output, (1, 2, 0))
+    permutation = [ndims, ndims + 1] + spatial_dimensions
   else:
-    output = permute_dimensions(output, (1, 0, 2))
-  return output
+    permutation = [ndims] + spatial_dimensions + [ndims + 1]
+
+  return permute_dimensions(output, permutation)
+
+
+def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
+  """Apply 1D conv with un-shared weights.
+
+  Arguments:
+      inputs: 3D tensor with shape:
+          (batch_size, steps, input_dim)
+          if data_format is "channels_last" or
+          (batch_size, input_dim, steps)
+          if data_format is "channels_first".
+      kernel: the unshared weight for convolution,
+          with shape (output_length, feature_dim, filters).
+      kernel_size: a tuple of a single integer,
+          specifying the length of the 1D convolution window.
+      strides: a tuple of a single integer,
+          specifying the stride length of the convolution.
+      data_format: the data format, channels_first or channels_last.
+
+  Returns:
+      A 3d tensor with shape:
+      (batch_size, output_length, filters)
+      if data_format='channels_first'
+      or 3D tensor with shape:
+      (batch_size, filters, output_length)
+      if data_format='channels_last'.
+  """
+  output_shape = (kernel.shape[0],)
+  return local_conv(inputs,
+                    kernel,
+                    kernel_size,
+                    strides,
+                    output_shape,
+                    data_format)
 
 
 def local_conv2d(inputs,
@@ -4306,64 +4426,34 @@ def local_conv2d(inputs,
 
   Arguments:
       inputs: 4D tensor with shape:
-              (batch_size, filters, new_rows, new_cols)
-              if data_format='channels_first'
-              or 4D tensor with shape:
-              (batch_size, new_rows, new_cols, filters)
-              if data_format='channels_last'.
+          (batch_size, filters, new_rows, new_cols)
+          if data_format='channels_first'
+          or 4D tensor with shape:
+          (batch_size, new_rows, new_cols, filters)
+          if data_format='channels_last'.
       kernel: the unshared weight for convolution,
-              with shape (output_items, feature_dim, filters)
+          with shape (output_items, feature_dim, filters).
       kernel_size: a tuple of 2 integers, specifying the
-                   width and height of the 2D convolution window.
+          width and height of the 2D convolution window.
       strides: a tuple of 2 integers, specifying the strides
-               of the convolution along the width and height.
-      output_shape: a tuple with (output_row, output_col)
-      data_format: the data format, channels_first or channels_last
+          of the convolution along the width and height.
+      output_shape: a tuple with (output_row, output_col).
+      data_format: the data format, channels_first or channels_last.
 
   Returns:
-      A 4d tensor with shape:
+      A 4D tensor with shape:
       (batch_size, filters, new_rows, new_cols)
       if data_format='channels_first'
       or 4D tensor with shape:
       (batch_size, new_rows, new_cols, filters)
       if data_format='channels_last'.
-
-  Raises:
-      ValueError: if `data_format` is neither
-                  `channels_last` or `channels_first`.
   """
-  if data_format is None:
-    data_format = image_data_format()
-  if data_format not in {'channels_first', 'channels_last'}:
-    raise ValueError('Unknown data_format: ' + str(data_format))
-
-  stride_row, stride_col = strides
-  output_row, output_col = output_shape
-  kernel_shape = int_shape(kernel)
-  feature_dim = kernel_shape[1]
-  filters = kernel_shape[2]
-
-  xs = []
-  for i in range(output_row):
-    for j in range(output_col):
-      slice_row = slice(i * stride_row, i * stride_row + kernel_size[0])
-      slice_col = slice(j * stride_col, j * stride_col + kernel_size[1])
-      if data_format == 'channels_first':
-        xs.append(
-            reshape(inputs[:, :, slice_row, slice_col], (1, -1, feature_dim)))
-      else:
-        xs.append(
-            reshape(inputs[:, slice_row, slice_col, :], (1, -1, feature_dim)))
-
-  x_aggregate = concatenate(xs, axis=0)
-  output = batch_dot(x_aggregate, kernel)
-  output = reshape(output, (output_row, output_col, -1, filters))
-
-  if data_format == 'channels_first':
-    output = permute_dimensions(output, (2, 3, 0, 1))
-  else:
-    output = permute_dimensions(output, (2, 0, 1, 3))
-  return output
+  return local_conv(inputs,
+                    kernel,
+                    kernel_size,
+                    strides,
+                    output_shape,
+                    data_format)
 
 
 @tf_export('keras.backend.bias_add')

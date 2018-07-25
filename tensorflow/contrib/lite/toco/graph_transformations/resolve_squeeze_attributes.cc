@@ -36,7 +36,7 @@ bool ResolveSqueezeAttributes::Run(Model* model, std::size_t op_index) {
   // If the output is consumed by a reshape op, it's a trivial squeeze.
   if (CountOpsWithInput(*model, squeeze_op->outputs[0]) == 1) {
     const auto* next_op = GetOpWithInput(*model, squeeze_op->outputs[0]);
-    if (next_op->type == OperatorType::kTensorFlowReshape) {
+    if (next_op->type == OperatorType::kReshape) {
       AddMessageF(
           "%s is trivial because its output is only consumed by a "
           "Reshape op",

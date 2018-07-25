@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
 #define TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
 
+#include <complex>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -39,6 +40,10 @@ constexpr TfLiteType typeToTfLiteType<int>() {
   return kTfLiteInt32;
 }
 template <>
+constexpr TfLiteType typeToTfLiteType<int16_t>() {
+  return kTfLiteInt16;
+}
+template <>
 constexpr TfLiteType typeToTfLiteType<int64_t>() {
   return kTfLiteInt64;
 }
@@ -53,6 +58,14 @@ constexpr TfLiteType typeToTfLiteType<unsigned char>() {
 template <>
 constexpr TfLiteType typeToTfLiteType<bool>() {
   return kTfLiteBool;
+}
+template <>
+constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
+  return kTfLiteComplex64;
+}
+template <>
+constexpr TfLiteType typeToTfLiteType<string>() {
+  return kTfLiteString;
 }
 
 // Forward declare since NNAPIDelegate uses Interpreter.
@@ -393,7 +406,16 @@ class Interpreter {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensorsToZero();
 
+  // Retrieve an operator's description of its work, for profiling purposes.
+  const char* OpProfilingString(const TfLiteRegistration& op_reg,
+                                const TfLiteNode* node) const {
+    if (op_reg.profiling_string == nullptr) return nullptr;
+    return op_reg.profiling_string(&context_, node);
+  }
+
  private:
+  friend class InterpreterTest;
+
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
   void* OpInit(const TfLiteRegistration& op_reg, const char* buffer,
@@ -506,6 +528,18 @@ class Interpreter {
   static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
                                        TfLiteIntArray** execution_plan);
 
+  // Retrieve an existing external context by type.
+  TfLiteExternalContext* GetExternalContext(TfLiteExternalContextType type);
+  static TfLiteExternalContext* GetExternalContext(
+      struct TfLiteContext* context, TfLiteExternalContextType type);
+
+  // Set the value of an external context.
+  void SetExternalContext(TfLiteExternalContextType type,
+                          TfLiteExternalContext* ctx);
+  static void SetExternalContext(struct TfLiteContext* context,
+                                 TfLiteExternalContextType type,
+                                 TfLiteExternalContext* ctx);
+
   // Ensures that `tensors_` has at least `kTensorsCapacityHeadroom` extra
   // capacity. Calling this function may invalidate existing pointers to
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
@@ -589,8 +623,16 @@ class Interpreter {
 
   bool allow_buffer_handle_output_ = false;
 
+  // Tracking bit for whether a tensor was resized in the course of an op
+  // invocation. This is a useful hint to ensure that dynamic tensor outputs
+  // trigger downstream reallocation after op invocation.
+  bool tensor_resized_since_op_invoke_ = false;
+
   // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_;
+  profiling::Profiler* profiler_ = nullptr;
+
+  // List of active external contexts.
+  TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
 };
 
 }  // namespace tflite

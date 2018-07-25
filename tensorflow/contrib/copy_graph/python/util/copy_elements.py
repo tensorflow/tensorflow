@@ -18,7 +18,7 @@ These functions allow for recursive copying of elements (ops and variables)
 from one graph to another. The copied elements are initialized inside a
 user-specified scope in the other graph. There are separate functions to
 copy ops and variables.
-There is also a function to retrive the copied version of an op from the
+There is also a function to retrieve the copied version of an op from the
 first graph inside a scope in the second graph.
 
 @@copy_op_to_graph
@@ -77,7 +77,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=''):
       else:
         collections.append(scope + '/' + name)
 
-  #See if its trainable.
+  #See if it's trainable.
   trainable = (
       org_instance in org_instance.graph.get_collection(
           ops.GraphKeys.TRAINABLE_VARIABLES))
@@ -162,7 +162,7 @@ def copy_op_to_graph(org_instance, to_graph, variables, scope=''):
 
   if isinstance(org_instance, ops.Tensor):
 
-    #If its a Tensor, it is one of the outputs of the underlying
+    #If it's a Tensor, it is one of the outputs of the underlying
     #op. Therefore, copy the op itself and return the appropriate
     #output.
     op = org_instance.op

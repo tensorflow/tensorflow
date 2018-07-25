@@ -18,10 +18,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -29,14 +27,12 @@ namespace eager {
 
 GrpcEagerServiceImpl::GrpcEagerServiceImpl(
     const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
-    : local_impl_(env) {
-  request_handler_threadpool_ =
-      MakeUnique<thread::ThreadPool>(env->env, "EagerServiceRequestHandler", 4);
+    : env_(env), local_impl_(env) {
   server_builder->RegisterService(&service_);
   cq_ = server_builder->AddCompletionQueue();
 }
 
-void GrpcEagerServiceImpl::DriveCQ() {
+void GrpcEagerServiceImpl::HandleRPCsLoop() {
 #define ENQUEUE_REQUEST(method)                                                \
   do {                                                                         \
     Call<GrpcEagerServiceImpl,                                                 \
@@ -52,6 +48,7 @@ void GrpcEagerServiceImpl::DriveCQ() {
   ENQUEUE_REQUEST(KeepAlive);
   ENQUEUE_REQUEST(CloseContext);
   ENQUEUE_REQUEST(RegisterFunction);
+  ENQUEUE_REQUEST(SendTensor);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.
@@ -74,12 +71,7 @@ void GrpcEagerServiceImpl::DriveCQ() {
   }
 }
 
-void GrpcEagerServiceImpl::Start() {
-  // TODO(nareshmodi) separate thread for driving CQ
-  request_handler_threadpool_->Schedule([this]() { DriveCQ(); });
-}
-
-void GrpcEagerServiceImpl::Stop() {
+void GrpcEagerServiceImpl::Shutdown() {
   // This enqueues a special event (with a null tag)
   // that causes the completion queue to be shut down on the
   // polling thread.
