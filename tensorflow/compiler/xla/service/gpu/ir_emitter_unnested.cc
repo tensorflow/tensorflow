@@ -2753,13 +2753,13 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
   HloComputation* condition = hlo->while_condition();
   IrEmitterUnnested ir_emitter_condition(hlo_module_config_, condition,
                                          ir_emitter_context_);
-  TF_CHECK_OK(condition->root_instruction()->Accept(&ir_emitter_condition));
+  TF_CHECK_OK(condition->Accept(&ir_emitter_condition));
 
   // Generate thunk sequence for while 'body'.
   HloComputation* body = hlo->while_body();
   IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
                                     ir_emitter_context_);
-  TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
+  TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return MakeUnique<WhileThunk>(
       GetAllocationSlice(*condition->root_instruction()),  // cond result
@@ -2777,7 +2777,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
   HloComputation* body = hlo->while_body();
   IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
                                     ir_emitter_context_);
-  TF_CHECK_OK(body->root_instruction()->Accept(&ir_emitter_body));
+  TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return MakeUnique<ForThunk>(loop_limit,
                               ir_emitter_body.ConsumeThunkSequence(), hlo);
@@ -2793,12 +2793,12 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
   HloComputation* true_computation = hlo->true_computation();
   IrEmitterUnnested ir_emitter_true(hlo_module_config_, true_computation,
                                     ir_emitter_context_);
-  TF_CHECK_OK(true_computation->root_instruction()->Accept(&ir_emitter_true));
+  TF_CHECK_OK(true_computation->Accept(&ir_emitter_true));
 
   HloComputation* false_computation = hlo->false_computation();
   IrEmitterUnnested ir_emitter_false(hlo_module_config_, false_computation,
                                      ir_emitter_context_);
-  TF_CHECK_OK(false_computation->root_instruction()->Accept(&ir_emitter_false));
+  TF_CHECK_OK(false_computation->Accept(&ir_emitter_false));
 
   return MakeUnique<ConditionalThunk>(
       GetAllocationSlice(*hlo->operand(0)),
