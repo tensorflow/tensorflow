@@ -97,6 +97,19 @@ class TemplatesTest(test.TestCase):
     with self.assertRaises(ValueError):
       templates.replace(template, foo=1)
 
+  def test_replace_attribute_context(self):
+    template = """
+      def test_fn(foo):
+        foo = 0
+    """
+
+    node = templates.replace(
+        template,
+        foo=parser.parse_expression('a.b.c'))[0]
+    self.assertIsInstance(node.body[0].targets[0].ctx, gast.Store)
+    self.assertIsInstance(node.body[0].targets[0].value.ctx, gast.Load)
+    self.assertIsInstance(node.body[0].targets[0].value.value.ctx, gast.Load)
+
   def test_replace_call_keyword(self):
     template = """
       def test_fn():
@@ -151,17 +164,13 @@ class TemplatesTest(test.TestCase):
     self.assertEqual(node.func.id, 'bar')
     self.assertEqual(node.func.args[0].id, 'baz')
 
-  def replace_as_expression_restrictions(self):
+  def test_replace_as_expression_restrictions(self):
     template = """
       foo(a)
       bar(b)
     """
     with self.assertRaises(ValueError):
       templates.replace_as_expression(template)
-    with self.assertRaises(ValueError):
-      templates.replace('')
-    with self.assertRaises(ValueError):
-      templates.replace('a = b')
 
 
 if __name__ == '__main__':

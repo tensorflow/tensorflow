@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "sin"
-    deprecation_message: "tf.sin is deprecated, please use tf.math.sin instead."
+    deprecated: true
   }
 }

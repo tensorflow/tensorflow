@@ -21,11 +21,13 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.pyct import cfg
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
 from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.static_analysis import activity
 from tensorflow.contrib.autograph.pyct.static_analysis import live_values
+from tensorflow.contrib.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.contrib.autograph.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
@@ -48,7 +50,10 @@ class LiveValuesResolverTest(test.TestCase):
         arg_types=arg_types,
         owner_type=None)
     node = qual_names.resolve(node)
+    graphs = cfg.build(node)
     node = activity.resolve(node, entity_info)
+    node = reaching_definitions.resolve(node, entity_info, graphs,
+                                        reaching_definitions.Definition)
     node = live_values.resolve(node, entity_info, literals)
     node = type_info.resolve(node, entity_info)
     node = live_values.resolve(node, entity_info, literals)

@@ -58,13 +58,8 @@ class BufferAllocation {
   // contiguously and can be used as array indexes.
   using Index = int64;
 
-  BufferAllocation(Index index, int64 size, bool is_thread_local,
-                   bool is_reusable, LogicalBuffer::Color color)
-      : index_(index),
-        size_(size),
-        is_thread_local_(is_thread_local),
-        is_reusable_(is_reusable),
-        color_(color) {}
+  BufferAllocation(Index index, int64 size, LogicalBuffer::Color color)
+      : index_(index), size_(size), color_(color) {}
   ~BufferAllocation() {}
 
   // Returns the index of this allocation.
@@ -74,9 +69,28 @@ class BufferAllocation {
   // inside of a map or reduce computation. Such allocations need to be thread
   // local.
   bool is_thread_local() const { return is_thread_local_; }
+  void set_is_thread_local(bool is_thread_local) {
+    is_thread_local_ = is_thread_local;
+  }
 
   // Whether this allocation can be used by more than one logical buffer.
-  bool is_reusable() const { return is_reusable_; }
+  bool is_reusable() const {
+    // We do not reuse thread-local buffers for now, because they are
+    // dynamically allocated and their lifetimes are hard to compute.
+    //
+    // TODO(b/34669761): Don't reuse tuple buffers because the GPU backend
+    // assumes longer buffer liveness than indicated by the analysis.
+    return !is_thread_local() && !is_tuple();
+  }
+
+  // Whether this allocation is readonly i.e. backed by memory we cannot write
+  // to.
+  bool is_readonly() const {
+    return is_entry_computation_parameter() || is_constant();
+  }
+
+  bool is_tuple() const { return is_tuple_; }
+  void set_is_tuple(bool is_tuple) { is_tuple_ = is_tuple; }
 
   // Whether this allocation holds a LogicalBuffer from a parameter of the entry
   // computation. These buffers have lifetimes which may be longer than the
@@ -84,6 +98,13 @@ class BufferAllocation {
   bool is_entry_computation_parameter() const {
     return is_entry_computation_parameter_;
   }
+
+  // Whether this allocation holds a constant.  On the CPU and GPU backends
+  // constant allocations are not allocated dynamically, instead we resolve
+  // references to these buffer allocations to a global in the readonly section
+  // of the binary.
+  bool is_constant() const { return is_constant_; }
+
   // If this allocation holds a Buffer from a parameter of the entry
   // computation, this methods returns the parameter number. CHECKs otherwise.
   int64 parameter_number() const {
@@ -189,7 +210,9 @@ class BufferAllocation {
            // of the computation.
            !maybe_live_out() &&
            // Thread-local buffers are allocated using `alloca`s.
-           !is_thread_local();
+           !is_thread_local() &&
+           // Constant buffers are allocated as global values.
+           !is_constant();
   }
 
   // Add a heap trace which was used to assign slices to logical buffers in this
@@ -245,6 +268,8 @@ class BufferAllocation {
     parameter_number_ = parameter_number;
     param_shape_index_ = std::move(param_shape_index);
   }
+
+  void set_constant(bool is_constant) { is_constant_ = is_constant; }
   void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
   void set_index(Index index) { index_ = index; }
   void set_size(int64 size) { size_ = size; }
@@ -256,10 +281,10 @@ class BufferAllocation {
   int64 size_;
 
   // Whether this buffer needs to be thread-local.
-  bool is_thread_local_;
+  bool is_thread_local_ = false;
 
-  // Whether this buffer is usable by more than one logical buffer.
-  bool is_reusable_;
+  // Whether this buffer holds a tuple.
+  bool is_tuple_ = false;
 
   // Color of the allocation.
   LogicalBuffer::Color color_;
@@ -282,6 +307,9 @@ class BufferAllocation {
   // TuplePointsToAnalysis.  That is, an allocation marked `maybe_live_out_`
   // might not actually escape.
   bool maybe_live_out_ = false;
+
+  // See comment on the is_constant() accessor.
+  bool is_constant_ = false;
 
   // Mapping from the set of buffers assigned to this allocation to their
   // logical offsets and sizes.
@@ -398,6 +426,8 @@ class BufferAssignment {
   struct Stats {
     int64 parameter_allocation_count = 0;
     int64 parameter_allocation_bytes = 0;
+    int64 constant_allocation_count = 0;
+    int64 constant_allocation_bytes = 0;
     int64 maybe_live_out_allocation_count = 0;
     int64 maybe_live_out_allocation_bytes = 0;
     int64 preallocated_temp_allocation_count = 0;
@@ -426,14 +456,11 @@ class BufferAssignment {
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
-  BufferAllocation* NewEmptyAllocation(int64 size, bool is_thread_local,
-                                       bool is_reusable,
-                                       LogicalBuffer::Color color);
+  BufferAllocation* NewEmptyAllocation(int64 size, LogicalBuffer::Color color);
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
-  BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size,
-                                  bool is_thread_local, bool is_reusable);
+  BufferAllocation* NewAllocation(const LogicalBuffer& buffer, int64 size);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
   void AddAssignment(BufferAllocation* allocation, const LogicalBuffer& buffer,
@@ -493,12 +520,15 @@ class BufferAssigner {
       LogicalBuffer::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allow_input_output_aliasing = false,
+      bool allocate_buffers_for_constants = false,
       BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer());
 
  private:
   BufferAssigner(bool allow_input_output_aliasing,
+                 bool allocate_buffers_for_constants,
                  BufferLiveness::Colorer colorer)
       : allow_input_output_aliasing_(allow_input_output_aliasing),
+        allocate_buffers_for_constants_(allocate_buffers_for_constants),
         colorer_(colorer) {}
   virtual ~BufferAssigner() = default;
 
@@ -594,6 +624,9 @@ class BufferAssigner {
   // If true, buffer assignments assumes that input parameter buffers and output
   // buffers can be shared if their sizes match.
   bool allow_input_output_aliasing_;
+
+  // If true, allocate buffers for constant instructions.
+  bool allocate_buffers_for_constants_;
 
   // Functor used to assign colors to newly allocated logical buffers.
   BufferLiveness::Colorer colorer_;

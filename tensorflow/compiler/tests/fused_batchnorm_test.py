@@ -22,7 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
@@ -30,7 +30,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
 
-class FusedBatchNormTest(XLATestCase, parameterized.TestCase):
+class FusedBatchNormTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _reference_training(self, x, scale, offset, epsilon, data_format):
     if data_format != "NHWC":

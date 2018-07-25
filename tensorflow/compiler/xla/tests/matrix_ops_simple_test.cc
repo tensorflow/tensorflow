@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -63,8 +63,8 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   Exp(data);
 
   std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
-                                       {0.36788f, 1.64872f}});  // row 1
+      LiteralUtil::CreateR2FromArray2D<T>({{2.71828f, 1.00000f},    // row 0
+                                           {0.36788f, 1.64872f}});  // row 1
 
   this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
@@ -92,8 +92,8 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   Map(&builder, {data}, add_half, {0, 1});
 
   std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
-                                       {-0.5f, 1.0f}});  // row 1
+      LiteralUtil::CreateR2FromArray2D<T>({{1.5f, 0.5f},     // row 0
+                                           {-0.5f, 1.0f}});  // row 1
   this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
@@ -111,8 +111,8 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   Max(lhs, rhs);
 
   std::unique_ptr<Literal> expected =
-      Literal::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
-                                       {3.0f, -4.0f}});  // row 1
+      LiteralUtil::CreateR2FromArray2D<T>({{7.0f, 6.0f},     // row 0
+                                           {3.0f, -4.0f}});  // row 1
   this->ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6));
 }
 
@@ -200,12 +200,14 @@ class MatOpsDotAddTest
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto lhs_handle,
-        client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<T>(
-            lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+        client_->TransferToServer(
+            *LiteralUtil::CreateR2FromArray2DWithLayout<T>(
+                lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
     TF_ASSERT_OK_AND_ASSIGN(
         auto rhs_handle,
-        client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<T>(
-            rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+        client_->TransferToServer(
+            *LiteralUtil::CreateR2FromArray2DWithLayout<T>(
+                rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
 
     XlaBuilder builder(TestName());
     auto lhs_arg = Parameter(&builder, 0, lhs_shape, "lhs");

@@ -82,6 +82,7 @@ TfLiteRegistration* Register_PRELU();
 TfLiteRegistration* Register_MAXIMUM();
 TfLiteRegistration* Register_MINIMUM();
 TfLiteRegistration* Register_ARG_MAX();
+TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_GREATER();
 TfLiteRegistration* Register_GREATER_EQUAL();
 TfLiteRegistration* Register_LESS();
@@ -90,6 +91,8 @@ TfLiteRegistration* Register_FLOOR();
 TfLiteRegistration* Register_TILE();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_SUM();
+TfLiteRegistration* Register_REDUCE_PROD();
+TfLiteRegistration* Register_REDUCE_MAX();
 TfLiteRegistration* Register_SELECT();
 TfLiteRegistration* Register_SLICE();
 TfLiteRegistration* Register_SIN();
@@ -102,6 +105,8 @@ TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
 TfLiteRegistration* Register_POW();
+TfLiteRegistration* Register_FAKE_QUANT();
+TfLiteRegistration* Register_PACK();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -167,6 +172,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM());
   AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM());
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX());
+  AddBuiltin(BuiltinOperator_ARG_MIN, Register_ARG_MIN());
   AddBuiltin(BuiltinOperator_GREATER, Register_GREATER());
   AddBuiltin(BuiltinOperator_GREATER_EQUAL, Register_GREATER_EQUAL());
   AddBuiltin(BuiltinOperator_LESS, Register_LESS());
@@ -179,6 +185,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV());
   AddBuiltin(BuiltinOperator_TILE, Register_TILE());
   AddBuiltin(BuiltinOperator_SUM, Register_SUM());
+  AddBuiltin(BuiltinOperator_REDUCE_PROD, Register_REDUCE_PROD());
+  AddBuiltin(BuiltinOperator_REDUCE_MAX, Register_REDUCE_MAX());
   AddBuiltin(BuiltinOperator_EXPAND_DIMS, Register_EXPAND_DIMS());
   AddBuiltin(BuiltinOperator_SPARSE_TO_DENSE, Register_SPARSE_TO_DENSE());
   AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL());
@@ -187,6 +195,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
+  AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
+  AddBuiltin(BuiltinOperator_PACK, Register_PACK());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

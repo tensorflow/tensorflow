@@ -41,9 +41,11 @@ is `tf.contrib.lite.TocoConverter`. The API for calling the Python intepreter is
 
 `TocoConverter` provides class methods based on the original format of the
 model. `TocoConverter.from_session()` is available for GraphDefs.
-`TocoConverter.from_saved_model()` is available for SavedModels. Example usages
-for simple float-point models are shown in [Basic Examples](#basic). Examples
-usages for more complex models is shown in [Complex Examples](#complex).
+`TocoConverter.from_saved_model()` is available for SavedModels.
+`TocoConverter.from_keras_model_file()` is available for `tf.Keras` files.
+Example usages for simple float-point models are shown in [Basic
+Examples](#basic). Examples usages for more complex models is shown in [Complex
+Examples](#complex).
 
 **NOTE**: Currently, `TocoConverter` will cause a fatal error to the Python
 interpreter when the conversion fails. This will be remedied as soon as
@@ -117,7 +119,7 @@ available by running `help(tf.contrib.lite.TocoConverter)`.
 
 ### Exporting a tf.keras File <a name="basic-keras-file"></a>
 
-The following example shows how to convert a tf.keras model into a TensorFlow
+The following example shows how to convert a `tf.keras` model into a TensorFlow
 Lite FlatBuffer.
 
 ```python
@@ -128,7 +130,7 @@ tflite_model = converter.convert()
 open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
-The tf.keras file must contain both the model and the weights. A comprehensive
+The `tf.keras` file must contain both the model and the weights. A comprehensive
 example including model construction can be seen below.
 
 ```python

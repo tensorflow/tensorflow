@@ -48,7 +48,8 @@ _DEFAULT_REPLACEABLE_LIST = [
     'keep_checkpoint_every_n_hours',
     'log_step_count_steps',
     'train_distribute',
-    'device_fn'
+    'device_fn',
+    'protocol'
 ]
 
 _SAVE_CKPT_ERR = (
@@ -288,6 +289,21 @@ def _validate_properties(run_config):
             message='device_fn must be callable with exactly'
                     ' one argument "op".')
 
+  _validate('protocol',
+            lambda protocol: protocol in (None, "grpc", "grpc+verbs"),
+            message='protocol should be grpc or grpc+verbs')
+
+
+def get_default_session_config():
+  """Returns tf.ConfigProto instance."""
+
+  rewrite_opts = rewriter_config_pb2.RewriterConfig(
+      meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE)
+  graph_opts = config_pb2.GraphOptions(rewrite_options=rewrite_opts)
+
+  return config_pb2.ConfigProto(allow_soft_placement=True,
+                                graph_options=graph_opts)
+
 
 class TaskType(object):
   MASTER = 'master'
@@ -312,7 +328,8 @@ class RunConfig(object):
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
                train_distribute=None,
-               device_fn=None):
+               device_fn=None,
+               protocol=None):
     """Constructs a RunConfig.
 
     All distributed training related properties `cluster_spec`, `is_chief`,
@@ -436,7 +453,7 @@ class RunConfig(object):
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
         global step/sec and the loss will be logged during training.
-      train_distribute: an optional instance of
+      train_distribute: An optional instance of
         `tf.contrib.distribute.DistributionStrategy`. If specified,
         then Estimator will distribute the user's model during training,
         according to the policy specified by that strategy.
@@ -444,6 +461,8 @@ class RunConfig(object):
         `Operation` and returns the device string. If `None`, defaults to
         the device function returned by `tf.train.replica_device_setter`
         with round-robin strategy.
+      protocol: An optional argument which specifies the protocol used when
+        starting server. None means default to grpc.
 
     Raises:
       ValueError: If both `save_checkpoints_steps` and `save_checkpoints_secs`
@@ -481,18 +500,28 @@ class RunConfig(object):
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps,
         train_distribute=train_distribute,
-        device_fn=device_fn)
+        device_fn=device_fn,
+        protocol=protocol)
 
     self._init_distributed_setting_from_environment_var(tf_config)
 
-    # Get session_config only for distributed mode (cluster_spec is present).
+    self._maybe_overwrite_session_config_for_distributed_training()
+
+  def _maybe_overwrite_session_config_for_distributed_training(self):
+    """Overwrites the session_config for distributed training.
+
+    The default overwrite is optimized for between-graph training. Subclass
+    should override this method if necessary.
+    """
+    # Get session_config only for between-graph distributed mode (cluster_spec
+    # is present).
     if not self._session_config and self._cluster_spec:
       RunConfig._replace(
           self,
           allowed_properties_list=_DEFAULT_REPLACEABLE_LIST,
-          session_config=self._get_default_session_config())
+          session_config=self._get_default_session_config_distributed())
 
-  def _get_default_session_config(self):
+  def _get_default_session_config_distributed(self):
     """Returns None or tf.ConfigProto instance with default device_filters set.
 
     Device filters are set such that chief/master and worker communicates with
@@ -745,6 +774,11 @@ class RunConfig(object):
     """
     return self._train_distribute
 
+  @property
+  def protocol(self):
+    """Returns the optional protocol value."""
+    return self._protocol
+
   def replace(self, **kwargs):
     """Returns a new instance of `RunConfig` replacing specified properties.
 
@@ -760,7 +794,8 @@ class RunConfig(object):
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
       - `train_distribute`,
-      - `device_fn`.
+      - `device_fn`,
+      - `protocol`.
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).

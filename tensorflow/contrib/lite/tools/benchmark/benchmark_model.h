@@ -137,19 +137,21 @@ class BenchmarkModel {
   BenchmarkModel();
   BenchmarkModel(BenchmarkParams params) : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
-  bool ParseFlags(int argc, char** argv);
   virtual void Init() = 0;
   void Run(int argc, char** argv);
+  virtual void Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
 
  protected:
-  virtual void LogFlags();
-  virtual bool ValidateFlags() { return true; }
+  virtual void LogParams();
+  virtual bool ValidateParams();
+  bool ParseFlags(int argc, char** argv);
   virtual std::vector<Flag> GetFlags();
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int num_times, RunType run_type);
+  virtual void PrepareInputsAndOutputs();
   virtual void RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;

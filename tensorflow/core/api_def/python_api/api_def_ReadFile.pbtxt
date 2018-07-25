@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "read_file"
-    deprecation_message: "tf.read_file is deprecated, please use tf.io.read_file instead."
+    deprecated: true
   }
 }

@@ -31,7 +31,7 @@ namespace llvm_ir {
 
 void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
-                                 llvm::IRBuilder<>* ir_builder) const {
+                                 llvm::IRBuilder<>* b) const {
   int64 divisor = 1;
   const Layout& layout = shape.layout();
   for (int64 i = 0; i < layout.minor_to_major_size(); ++i) {
@@ -48,10 +48,9 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
     // useful because cuda-memcheck can't help us much in XLA: Most of our
     // memory lives in one big allocation, so cuda-memcheck can't detect
     // out-of-bounds accesses.
-    auto* quot =
-        ir_builder->CreateUDiv(linear, GetConstantWithIndexType(divisor));
+    auto* quot = b->CreateUDiv(linear, GetConstantWithIndexType(divisor));
     if (i < layout.minor_to_major_size() - 1) {
-      (*multidim)[dimension] = ir_builder->CreateURem(
+      (*multidim)[dimension] = b->CreateURem(
           quot, GetConstantWithIndexType(size_of_current_dimension));
     } else {
       (*multidim)[dimension] = quot;
@@ -61,7 +60,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
 }
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
-                      llvm::IRBuilder<>* ir_builder)
+                      llvm::IRBuilder<>* b)
     : multidim_(ShapeUtil::Rank(shape)),
       linear_(linear),
       layout_(shape.layout()),
@@ -71,7 +70,7 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
   CHECK(LayoutUtil::HasLayout(shape))
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";
-  Delinearize(&multidim_, linear, shape, ir_builder);
+  Delinearize(&multidim_, linear, shape, b);
 }
 
 IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
@@ -94,7 +93,7 @@ IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
 }
 
 IrArray::Index::Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
-                      const Shape& shape, llvm::IRBuilder<>* ir_builder)
+                      const Shape& shape, llvm::IRBuilder<>* b)
     : multidim_(multidim.begin(), multidim.end()),
       layout_(shape.layout()),
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
@@ -343,7 +342,7 @@ llvm::Value* IrArray::Index::Linearize(
 }
 
 llvm::Value* IrArray::EmitArrayElementAddress(
-    const IrArray::Index& index, llvm::IRBuilder<>* ir_builder,
+    const IrArray::Index& index, llvm::IRBuilder<>* b,
     tensorflow::StringPiece name) const {
   if (ShapeUtil::IsScalar(*shape_)) {
     // Special handling of scalars: a scalar pretends to have the same value for
@@ -354,12 +353,11 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   CHECK_EQ(index.size(), ShapeUtil::Rank(*shape_));
 
   if (index.LinearValidOnShape(*shape_)) {
-    llvm::Module* module =
-        ir_builder->GetInsertBlock()->getParent()->getParent();
-    return ir_builder->CreateInBoundsGEP(
-        ir_builder->CreateBitCast(
-            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), module)
-                           ->getPointerTo()),
+    llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+    return b->CreateInBoundsGEP(
+        b->CreateBitCast(base_ptr_,
+                         PrimitiveTypeToIrType(shape_->element_type(), module)
+                             ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
   }
 
@@ -385,8 +383,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(
     int64 dimension = LayoutUtil::Major(shape_->layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
-  return ir_builder->CreateInBoundsGEP(base_ptr_, gep_indices,
-                                       llvm_ir::AsStringRef(name));
+  return b->CreateInBoundsGEP(base_ptr_, gep_indices,
+                              llvm_ir::AsStringRef(name));
 }
 
 void IrArray::AnnotateLoadStoreInstructionWithMetadata(
@@ -402,37 +400,37 @@ void IrArray::AnnotateLoadStoreInstructionWithMetadata(
 }
 
 llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
-                                           llvm::IRBuilder<>* ir_builder,
+                                           llvm::IRBuilder<>* b,
                                            tensorflow::StringPiece name) const {
-  llvm::Value* element_address =
-      EmitArrayElementAddress(index, ir_builder, name);
-  llvm::LoadInst* load = ir_builder->CreateLoad(element_address);
+  llvm::Value* element_address = EmitArrayElementAddress(index, b, name);
+  llvm::LoadInst* load = b->CreateLoad(element_address);
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
 
 void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                                    llvm::IRBuilder<>* ir_builder) const {
-  llvm::Value* element_address = EmitArrayElementAddress(index, ir_builder);
-  llvm::StoreInst* store = ir_builder->CreateStore(value, element_address);
+                                    llvm::IRBuilder<>* b) const {
+  llvm::Value* element_address = EmitArrayElementAddress(index, b);
+  llvm::StoreInst* store = b->CreateStore(value, element_address);
   AnnotateLoadStoreInstructionWithMetadata(store);
 }
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
-                             llvm::IRBuilder<>* ir_builder) const {
-  llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
+                             llvm::IRBuilder<>* b) const {
+  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
-  return IrArray(
-      ir_builder->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()),
-      new_shape);
+  IrArray new_irarray(
+      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_shape);
+  new_irarray.metadata_ = metadata_;
+  return new_irarray;
 }
 
 /* static */ IrArray::Index IrArray::BumpIndex(const Index& index,
                                                int64 which_dimension,
                                                int64 addend,
-                                               llvm::IRBuilder<>* ir_builder) {
+                                               llvm::IRBuilder<>* b) {
   Index new_index = index;
-  new_index[which_dimension] = ir_builder->CreateAdd(
+  new_index[which_dimension] = b->CreateAdd(
       index[which_dimension],
       llvm::ConstantInt::get(index[which_dimension]->getType(), addend), "",
       /*HasNUW=*/true,

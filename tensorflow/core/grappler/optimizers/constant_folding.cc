@@ -1305,17 +1305,12 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
   }
 
   // Delete the newly created nodes that don't feed anything.
-  int last = output->node_size() - 1;
-  for (int i = output->node_size() - 1; i >= 0; --i) {
-    const NodeDef& node = output->node(i);
-    auto fanout = node_map_->GetOutputs(node.name());
-    if (fanout.empty()) {
-      output->mutable_node()->SwapElements(i, last);
-      last--;
-    }
+  std::vector<int> nodes_to_delete;
+  for (int i = 0; i < output->node_size(); i++) {
+    auto fanout = node_map_->GetOutputs(output->node(i).name());
+    if (fanout.empty()) nodes_to_delete.push_back(i);
   }
-  output->mutable_node()->DeleteSubrange(last + 1,
-                                         output->node_size() - last - 1);
+  EraseNodesFromGraph(std::move(nodes_to_delete), output);
 
   for (const auto& node : graph_->node()) {
     // If no fetch nodes is provided, we conservatively

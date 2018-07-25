@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/test.h"
@@ -31,7 +31,7 @@ XLA_TEST_F(ExecutionProfileTest, ExecuteWithExecutionProfile) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> input,
       client_->TransferToServer(
-          *Literal::CreateR2F32Linspace(1e0, 1e5, 256, 256)));
+          *LiteralUtil::CreateR2F32Linspace(1e0, 1e5, 256, 256)));
 
   XlaBuilder b(TestName() + ".add");
   Dot(Parameter(&b, 0, shape, "param_0"), Parameter(&b, 1, shape, "param_1"));

@@ -28,7 +28,7 @@ namespace tensorflow {
 //
 // The "uniform" parameter must be an array of random numbers distributed in
 // (0,1).
-xla::XlaOp TruncatedNormal(DataType dtype, xla::XlaOp uniform);
+xla::XlaOp TruncatedNormal(xla::XlaOp uniform);
 
 }  // namespace tensorflow
 

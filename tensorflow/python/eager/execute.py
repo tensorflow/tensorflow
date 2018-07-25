@@ -198,11 +198,7 @@ def args_to_matching_eager(l, ctx, default_dtype=None):
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
-  v = [
-      t if isinstance(t, ops.EagerTensor) else ops.EagerTensor(
-          t, context=ctx._handle, device=ctx.device_name)  # pylint: disable=protected-access
-      for t in values
-  ]
+  v = [ops.internal_convert_to_tensor(t, ctx=ctx) for t in values]
   types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 

@@ -110,8 +110,8 @@ TEST_F(ConstantsTest, Small_2x2) {
 
 TEST_F(ConstantsTest, Empty_3x0x2) {
   XlaBuilder builder(TestName());
-  ConstantLiteral(
-      &builder, *Literal::CreateR3FromArray3D<float>(Array3D<float>(3, 0, 2)));
+  ConstantLiteral(&builder, *LiteralUtil::CreateR3FromArray3D<float>(
+                                Array3D<float>(3, 0, 2)));
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 2), {});
 }
@@ -126,7 +126,7 @@ TEST_F(ConstantsTest, Small_2x2x2) {
       {{5.f, 6.f},   // y0
        {7.f, 8.f}},  // y1
   });
-  ConstantLiteral(&builder, *Literal::CreateR3FromArray3D<float>(array3d));
+  ConstantLiteral(&builder, *LiteralUtil::CreateR3FromArray3D<float>(array3d));
 
   ComputeAndCompareR3<float>(&builder, array3d, {});
 }
@@ -141,7 +141,7 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
   });
   input_array.FillWithPZ(pz);
   std::unique_ptr<Literal> input_literal =
-      Literal::CreateR4FromArray4D(input_array);
+      LiteralUtil::CreateR4FromArray4D(input_array);
 
   {
     XlaBuilder builder(TestName());
@@ -159,22 +159,23 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
 // TODO(b/29263943): Support tuple constants.
 TEST_F(ConstantsTest, DISABLED_TupleConstant) {
   XlaBuilder builder(TestName());
-  ConstantLiteral(&builder, *Literal::MakeTuple(
-                                {Literal::CreateR2<float>({{1.0}, {2.0}}).get(),
-                                 Literal::CreateR1<float>({2.0, 42}).get()}));
+  ConstantLiteral(&builder,
+                  *LiteralUtil::MakeTuple(
+                      {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
+                       LiteralUtil::CreateR1<float>({2.0, 42}).get()}));
 
   std::unique_ptr<Literal> result =
       ExecuteAndTransfer(&builder, {}).ConsumeValueOrDie();
 
-  LiteralTestUtil::ExpectR2Near<float>(
-      {{1.0}, {2.0}}, LiteralSlice(*result, {0}), error_spec_);
-  LiteralTestUtil::ExpectR1Near<float>(
-      {2.0, 42.0}, LiteralSlice(*result, {1}), error_spec_);
+  LiteralTestUtil::ExpectR2Near<float>({{1.0}, {2.0}},
+                                       LiteralSlice(*result, {0}), error_spec_);
+  LiteralTestUtil::ExpectR1Near<float>({2.0, 42.0}, LiteralSlice(*result, {1}),
+                                       error_spec_);
 }
 
 TEST_F(ConstantsTest, Token) {
   XlaBuilder builder(TestName());
-  ConstantLiteral(&builder, *Literal::CreateToken());
+  ConstantLiteral(&builder, *LiteralUtil::CreateToken());
   // TODO(b/80000000): tokens cannot be returned from computations.
   Tuple(&builder, {});
   TF_ASSERT_OK(Execute(&builder, {}).status());

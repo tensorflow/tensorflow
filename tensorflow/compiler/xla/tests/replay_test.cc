@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -91,10 +91,10 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(*Literal::CreateR0<int32>(2))
+      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(2))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(*Literal::CreateR0<int32>(3))
+      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(3))
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> literal =
       client_

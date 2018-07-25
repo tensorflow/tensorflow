@@ -52,6 +52,13 @@ class FloatDivOpModel : public BaseDivOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+class IntegerDivOpModel : public BaseDivOpModel {
+ public:
+  using BaseDivOpModel::BaseDivOpModel;
+
+  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
 TEST(FloatDivOpTest, NoActivation) {
   FloatDivOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
@@ -75,7 +82,7 @@ TEST(FloatDivOpTest, ActivationRELU_N1_TO_1) {
 }
 
 TEST(FloatDivOpTest, VariousInputShapes) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatDivOpModel m({TensorType_FLOAT32, test_shapes[i]},
@@ -92,7 +99,7 @@ TEST(FloatDivOpTest, VariousInputShapes) {
 }
 
 TEST(FloatDivOpTest, WithBroadcast) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatDivOpModel m({TensorType_FLOAT32, test_shapes[i]},
@@ -104,6 +111,56 @@ TEST(FloatDivOpTest, WithBroadcast) {
     EXPECT_THAT(
         m.GetOutput(),
         ElementsAreArray(ArrayFloatNear({-2.0, 2.0, 0.7, 0.8, 1.1, -1.23})))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerDivOpTest, NoActivation) {
+  IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-2, 2, -15, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {5, -2, -3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, -1, 5, 1}));
+}
+
+TEST(IntegerDivOpTest, ActivationRELU_N1_TO_1) {
+  IntegerDivOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<int32_t>(m.input1(), {-2, 2, -12, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, -15, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 0, 1}));
+}
+
+TEST(IntegerDivOpTest, VariousInputShapes) {
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerDivOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 3, 8, 11, -20});
+    m.PopulateTensor<int32_t>(m.input2(), {1, 2, 6, 5, -11, -1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-20, 1, 0, 1, -1, 20}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerDivOpTest, WithBroadcast) {
+  std::vector<std::vector<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerDivOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}},  // always a scalar
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 21, 7, 8, 11, -123});
+    m.PopulateTensor<int32_t>(m.input2(), {3});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-6, 7, 2, 2, 3, -41}))
         << "With shape number " << i;
   }
 }

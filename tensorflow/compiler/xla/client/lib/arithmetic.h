@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -45,30 +45,17 @@ XlaComputation CreateScalarMinComputation(PrimitiveType type,
                                           XlaBuilder* builder);
 
 // Creates a scalar logical AND computation and returns it.
-XlaComputation CreateScalarAndComputation(XlaBuilder* builder);
+XlaComputation CreateScalarAndComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
 
 // Creates a scalar logical OR computation and returns it.
-XlaComputation CreateScalarOrComputation(XlaBuilder* builder);
+XlaComputation CreateScalarOrComputation(PrimitiveType type,
+                                         XlaBuilder* builder);
 
 // Returns whether any predicate in "predicates" is set.
 //
 // Note: if predicates is zero-sized, Any() vacuously returns false.
 XlaOp Any(XlaOp predicates);
-
-// Evaluate the polynomial given coefficients and `x`.
-// N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients,
-                         PrimitiveType data_type);
-
-// Compute an approximation of the error function complement (1 - erf(x)).
-XlaOp Erfc(XlaOp x, PrimitiveType data_type);
-
-// Compute an approximation of the error function.
-XlaOp Erf(XlaOp x, PrimitiveType data_type);
-
-// Compute an approximation of the inverse of the error function.
-XlaOp ErfInv(XlaOp x);
 
 }  // namespace xla
 

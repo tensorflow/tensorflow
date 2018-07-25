@@ -28,10 +28,12 @@ py_library(
     srcs = ["get_single_element.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":grouping",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -115,6 +117,8 @@ py_library(
     srcs = ["batching.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":get_single_element",
+        ":grouping",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -127,6 +131,7 @@ py_library(
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//third_party/py/numpy",
     ],
 )
 

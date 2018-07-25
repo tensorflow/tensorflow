@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -126,13 +125,19 @@ void AverageEvalFloat(TfLiteContext* context, TfLiteNode* node,
   float activation_min, activation_max;
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
-#define TF_LITE_AVERAGE_POOL(type)                                      \
-  type::AveragePool(GetTensorData<float>(input), GetTensorShape(input), \
-                    params->stride_width, params->stride_height,        \
-                    data->padding.width, data->padding.height,          \
-                    params->filter_width, params->filter_height,        \
-                    activation_min, activation_max,                     \
-                    GetTensorData<float>(output), GetTensorShape(output))
+#define TF_LITE_AVERAGE_POOL(type)                                       \
+  tflite::PoolParams op_params;                                          \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
+  op_params.float_activation_min = activation_min;                       \
+  op_params.float_activation_max = activation_max;                       \
+  type::AveragePool(op_params, GetTensorShape(input),                    \
+                    GetTensorData<float>(input), GetTensorShape(output), \
+                    GetTensorData<float>(output))
   if (kernel_type == kReference) {
     TF_LITE_AVERAGE_POOL(reference_ops);
   } else {
@@ -149,13 +154,19 @@ void AverageEvalQuantized(TfLiteContext* context, TfLiteNode* node,
   int32_t activation_max;
   CalculateActivationRangeUint8(params->activation, output, &activation_min,
                                 &activation_max);
-#define TF_LITE_AVERAGE_POOL(type)                                        \
-  type::AveragePool(GetTensorData<uint8_t>(input), GetTensorShape(input), \
-                    params->stride_width, params->stride_height,          \
-                    data->padding.width, data->padding.height,            \
-                    params->filter_width, params->filter_height,          \
-                    activation_min, activation_max,                       \
-                    GetTensorData<uint8_t>(output), GetTensorShape(output))
+#define TF_LITE_AVERAGE_POOL(type)                                         \
+  tflite::PoolParams op_params;                                            \
+  op_params.stride_height = params->stride_height;                         \
+  op_params.stride_width = params->stride_width;                           \
+  op_params.filter_height = params->filter_height;                         \
+  op_params.filter_width = params->filter_width;                           \
+  op_params.padding_values.height = data->padding.height;                  \
+  op_params.padding_values.width = data->padding.width;                    \
+  op_params.quantized_activation_min = activation_min;                     \
+  op_params.quantized_activation_max = activation_max;                     \
+  type::AveragePool(op_params, GetTensorShape(input),                      \
+                    GetTensorData<uint8_t>(input), GetTensorShape(output), \
+                    GetTensorData<uint8_t>(output))
   if (kernel_type == kReference) {
     TF_LITE_AVERAGE_POOL(reference_ops);
   } else {
@@ -171,13 +182,18 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
   float activation_min, activation_max;
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
-#define TF_LITE_MAX_POOL(type)                                               \
-  type::MaxPool(GetTensorData<float>(input), GetTensorShape(input),          \
-                params->stride_width, params->stride_height,                 \
-                data->padding.width, data->padding.height,                   \
-                params->filter_width, params->filter_height, activation_min, \
-                activation_max, GetTensorData<float>(output),                \
-                GetTensorShape(output))
+#define TF_LITE_MAX_POOL(type)                                                 \
+  tflite::PoolParams op_params;                                                \
+  op_params.stride_height = params->stride_height;                             \
+  op_params.stride_width = params->stride_width;                               \
+  op_params.filter_height = params->filter_height;                             \
+  op_params.filter_width = params->filter_width;                               \
+  op_params.padding_values.height = data->padding.height;                      \
+  op_params.padding_values.width = data->padding.width;                        \
+  op_params.float_activation_min = activation_min;                             \
+  op_params.float_activation_max = activation_max;                             \
+  type::MaxPool(op_params, GetTensorShape(input), GetTensorData<float>(input), \
+                GetTensorShape(output), GetTensorData<float>(output))
   if (kernel_type == kReference) {
     TF_LITE_MAX_POOL(reference_ops);
   } else {
@@ -194,13 +210,19 @@ void MaxEvalQuantized(TfLiteContext* context, TfLiteNode* node,
   int32_t activation_max;
   CalculateActivationRangeUint8(params->activation, output, &activation_min,
                                 &activation_max);
-#define TF_LITE_MAX_POOL(type)                                               \
-  type::MaxPool(GetTensorData<uint8_t>(input), GetTensorShape(input),        \
-                params->stride_width, params->stride_height,                 \
-                data->padding.width, data->padding.height,                   \
-                params->filter_width, params->filter_height, activation_min, \
-                activation_max, GetTensorData<uint8_t>(output),              \
-                GetTensorShape(output))
+#define TF_LITE_MAX_POOL(type)                                         \
+  tflite::PoolParams op_params;                                        \
+  op_params.stride_height = params->stride_height;                     \
+  op_params.stride_width = params->stride_width;                       \
+  op_params.filter_height = params->filter_height;                     \
+  op_params.filter_width = params->filter_width;                       \
+  op_params.padding_values.height = data->padding.height;              \
+  op_params.padding_values.width = data->padding.width;                \
+  op_params.quantized_activation_min = activation_min;                 \
+  op_params.quantized_activation_max = activation_max;                 \
+  type::MaxPool(op_params, GetTensorShape(input),                      \
+                GetTensorData<uint8_t>(input), GetTensorShape(output), \
+                GetTensorData<uint8_t>(output))
   if (kernel_type == kReference) {
     TF_LITE_MAX_POOL(reference_ops);
   } else {
@@ -216,13 +238,18 @@ void L2EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float activation_min, activation_max;
   CalculateActivationRange(params->activation, &activation_min,
                            &activation_max);
-#define TF_LITE_L2_POOL(type)                                               \
-  type::L2Pool(GetTensorData<float>(input), GetTensorShape(input),          \
-               params->stride_width, params->stride_height,                 \
-               data->padding.width, data->padding.height,                   \
-               params->filter_width, params->filter_height, activation_min, \
-               activation_max, GetTensorData<float>(output),                \
-               GetTensorShape(output))
+#define TF_LITE_L2_POOL(type)                                                 \
+  tflite::PoolParams op_params;                                               \
+  op_params.stride_height = params->stride_height;                            \
+  op_params.stride_width = params->stride_width;                              \
+  op_params.filter_height = params->filter_height;                            \
+  op_params.filter_width = params->filter_width;                              \
+  op_params.padding_values.height = data->padding.height;                     \
+  op_params.padding_values.width = data->padding.width;                       \
+  op_params.float_activation_min = activation_min;                            \
+  op_params.float_activation_max = activation_max;                            \
+  type::L2Pool(op_params, GetTensorShape(input), GetTensorData<float>(input), \
+               GetTensorShape(output), GetTensorData<float>(output))
   if (kernel_type == kReference) {
     TF_LITE_L2_POOL(reference_ops);
   } else {

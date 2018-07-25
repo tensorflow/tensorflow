@@ -36,14 +36,13 @@ class HloToIrBindings {
  public:
   HloToIrBindings(const HloModule& module,
                   const BufferAssignment* buffer_assignment,
-                  llvm::IRBuilder<>* ir_builder, llvm::Module* llvm_module,
+                  llvm::IRBuilder<>* b, llvm::Module* llvm_module,
                   bool is_nested)
       : buffer_assignment_(buffer_assignment),
         is_nested_(is_nested),
-        ir_builder_(ir_builder),
+        b_(b),
         module_(llvm_module),
-        alias_analysis_(module, *buffer_assignment_,
-                        &ir_builder_->getContext()) {}
+        alias_analysis_(module, *buffer_assignment_, &b_->getContext()) {}
 
   void EmitBasePointersForHlos(
       tensorflow::gtl::ArraySlice<const HloInstruction*> io_hlos,
@@ -104,7 +103,7 @@ class HloToIrBindings {
 
   const bool is_nested_;
 
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Module* module_;
 
   // Stores the underlying llvm::IrArray for each HloInstruction.

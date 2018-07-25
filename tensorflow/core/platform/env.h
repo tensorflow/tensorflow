@@ -450,6 +450,6 @@ struct Register {
           ::tensorflow::register_file_system::Register<factory>(env, scheme)
 
 #define REGISTER_FILE_SYSTEM(scheme, factory) \
-  REGISTER_FILE_SYSTEM_ENV(Env::Default(), scheme, factory);
+  REGISTER_FILE_SYSTEM_ENV(::tensorflow::Env::Default(), scheme, factory);
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ENV_H_

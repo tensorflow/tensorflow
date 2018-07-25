@@ -35,8 +35,8 @@ except ImportError:
 
 _DEFAULT_CUDA_VERSION = '9.0'
 _DEFAULT_CUDNN_VERSION = '7'
-_DEFAULT_NCCL_VERSION = '1.3'
-_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,5.2'
+_DEFAULT_NCCL_VERSION = '2.2'
+_DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
 _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
@@ -680,7 +680,7 @@ def create_android_sdk_rule(environ_cp):
   if is_windows() or is_cygwin():
     default_sdk_path = cygpath('%s/Android/Sdk' % environ_cp['APPDATA'])
   elif is_macos():
-    default_sdk_path = '%s/library/Android/Sdk/ndk-bundle' % environ_cp['HOME']
+    default_sdk_path = '%s/library/Android/Sdk' % environ_cp['HOME']
   else:
     default_sdk_path = '%s/Android/Sdk' % environ_cp['HOME']
 
@@ -835,6 +835,8 @@ def set_tf_cuda_version(environ_cp):
                      '[Default is %s]: ') % (tf_cuda_version, default_cuda_path)
     cuda_toolkit_path = get_from_env_or_user_or_default(
         environ_cp, 'CUDA_TOOLKIT_PATH', ask_cuda_path, default_cuda_path)
+    if is_windows() or is_cygwin():
+      cuda_toolkit_path = cygpath(cuda_toolkit_path)
 
     if is_windows():
       cuda_rt_lib_path = 'lib/x64/cudart.lib'
@@ -880,7 +882,7 @@ def set_tf_cudnn_version(environ_cp):
     default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
     ask_cudnn_path = (r'Please specify the location where cuDNN %s library is '
                       'installed. Refer to README.md for more details. [Default'
-                      ' is %s]:') % (tf_cudnn_version, default_cudnn_path)
+                      ' is %s]: ') % (tf_cudnn_version, default_cudnn_path)
     cudnn_install_path = get_from_env_or_user_or_default(
         environ_cp, 'CUDNN_INSTALL_PATH', ask_cudnn_path, default_cudnn_path)
 
@@ -1095,8 +1097,10 @@ def set_tf_nccl_install_path(environ_cp):
     raise ValueError('Currently NCCL is only supported on Linux platforms.')
 
   ask_nccl_version = (
-      'Please specify the NCCL version you want to use. '
-      '[Leave empty to default to NCCL %s]: ') % _DEFAULT_NCCL_VERSION
+      'Please specify the NCCL version you want to use. If NCCL %s is not '
+      'installed, then you can use version 1.3 that can be fetched '
+      'automatically but it may have worse performance with multiple GPUs. '
+      '[Default is %s]: ') % (_DEFAULT_NCCL_VERSION, _DEFAULT_NCCL_VERSION)
 
   for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
     tf_nccl_version = get_from_env_or_user_or_default(
@@ -1197,7 +1201,7 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]' %
+        'build time and binary size. [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
@@ -1232,28 +1236,13 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
 def set_other_cuda_vars(environ_cp):
   """Set other CUDA related variables."""
-  if is_windows():
-    # The following three variables are needed for MSVC toolchain configuration
-    # in Bazel
-    environ_cp['CUDA_PATH'] = environ_cp.get('CUDA_TOOLKIT_PATH')
-    environ_cp['CUDA_COMPUTE_CAPABILITIES'] = environ_cp.get(
-        'TF_CUDA_COMPUTE_CAPABILITIES')
-    environ_cp['NO_WHOLE_ARCHIVE_OPTION'] = 1
-    write_action_env_to_bazelrc('CUDA_PATH', environ_cp.get('CUDA_PATH'))
-    write_action_env_to_bazelrc('CUDA_COMPUTE_CAPABILITIE',
-                                environ_cp.get('CUDA_COMPUTE_CAPABILITIE'))
-    write_action_env_to_bazelrc('NO_WHOLE_ARCHIVE_OPTION',
-                                environ_cp.get('NO_WHOLE_ARCHIVE_OPTION'))
-    write_to_bazelrc('build --config=win-cuda')
-    write_to_bazelrc('test --config=win-cuda')
+  # If CUDA is enabled, always use GPU during build and test.
+  if environ_cp.get('TF_CUDA_CLANG') == '1':
+    write_to_bazelrc('build --config=cuda_clang')
+    write_to_bazelrc('test --config=cuda_clang')
   else:
-    # If CUDA is enabled, always use GPU during build and test.
-    if environ_cp.get('TF_CUDA_CLANG') == '1':
-      write_to_bazelrc('build --config=cuda_clang')
-      write_to_bazelrc('test --config=cuda_clang')
-    else:
-      write_to_bazelrc('build --config=cuda')
-      write_to_bazelrc('test --config=cuda')
+    write_to_bazelrc('build --config=cuda')
+    write_to_bazelrc('test --config=cuda')
 
 
 def set_host_cxx_compiler(environ_cp):
@@ -1413,14 +1402,36 @@ def set_build_strip_flag():
   write_to_bazelrc('build --strip=always')
 
 
-def set_windows_build_flags():
-  if is_windows():
-    # The non-monolithic build is not supported yet
-    write_to_bazelrc('build --config monolithic')
-    # Suppress warning messages
-    write_to_bazelrc('build --copt=-w --host_copt=-w')
-    # Output more verbose information when something goes wrong
-    write_to_bazelrc('build --verbose_failures')
+def set_windows_build_flags(environ_cp):
+  """Set Windows specific build options."""
+  # The non-monolithic build is not supported yet
+  write_to_bazelrc('build --config monolithic')
+  # Suppress warning messages
+  write_to_bazelrc('build --copt=-w --host_copt=-w')
+  # Output more verbose information when something goes wrong
+  write_to_bazelrc('build --verbose_failures')
+  # The host and target platforms are the same in Windows build. So we don't
+  # have to distinct them. This avoids building the same targets twice.
+  write_to_bazelrc('build --distinct_host_configuration=false')
+  # Enable short object file path to avoid long path issue on Windows.
+  # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
+  # Short object file path will be enabled by default.
+  write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
+
+  if get_var(
+      environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
+      True,
+      ('Would you like to override eigen strong inline for some C++ '
+       'compilation to reduce the compilation time?'),
+      'Eigen strong inline overridden.',
+      'Not overriding eigen strong inline, '
+      'some compilations could take more than 20 mins.'):
+    # Due to a known MSVC compiler issue
+    # https://github.com/tensorflow/tensorflow/issues/10521
+    # Overriding eigen strong inline speeds up the compiling of
+    # conv_grad_ops_3d.cc and conv_ops_3d.cc by 20 minutes,
+    # but this also hurts the performance. Let users decide what they want.
+    write_to_bazelrc('build --define=override_eigen_strong_inline=true')
 
 
 def config_info_line(name, help_text):
@@ -1440,14 +1451,14 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.10.0')
+  check_bazel_version('0.15.0')
 
   reset_tf_configure_bazelrc(args.workspace)
   cleanup_makefile()
   setup_python(environ_cp)
 
   if is_windows():
-    environ_cp['TF_NEED_S3'] = '0'
+    environ_cp['TF_NEED_AWS'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
@@ -1460,10 +1471,22 @@ def main():
     # TODO(ibiryukov): Investigate using clang as a cpu or cuda compiler on
     # Windows.
     environ_cp['TF_DOWNLOAD_CLANG'] = '0'
+    environ_cp['TF_ENABLE_XLA'] = '0'
+    environ_cp['TF_NEED_GDR'] = '0'
+    environ_cp['TF_NEED_VERBS'] = '0'
+    environ_cp['TF_NEED_MPI'] = '0'
+    environ_cp['TF_SET_ANDROID_WORKSPACE'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
     environ_cp['TF_NEED_TENSORRT'] = '0'
+
+  # The numpy package on ppc64le uses OpenBLAS which has multi-threading
+  # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
+  # runtime to allow the Tensorflow testcases which compare numpy
+  # results to Tensorflow results to succeed.
+  if is_ppc64le():
+    write_action_env_to_bazelrc("OMP_NUM_THREADS", 1)
 
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
@@ -1471,8 +1494,8 @@ def main():
                 'with_gcp_support', True, 'gcp')
   set_build_var(environ_cp, 'TF_NEED_HDFS', 'Hadoop File System',
                 'with_hdfs_support', True, 'hdfs')
-  set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
-                'with_s3_support', True, 's3')
+  set_build_var(environ_cp, 'TF_NEED_AWS', 'Amazon AWS Platform',
+                'with_aws_support', True, 'aws')
   set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
                 'with_kafka_support', True, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
@@ -1536,7 +1559,8 @@ def main():
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
   set_build_strip_flag()
-  set_windows_build_flags()
+  if is_windows():
+    set_windows_build_flags(environ_cp)
 
   if get_var(
       environ_cp, 'TF_SET_ANDROID_WORKSPACE', 'android workspace',
@@ -1548,11 +1572,15 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  print('Preconfigured Bazel build configs. You can use any of the below by '
-        'adding "--config=<>" to your build command. See tools/bazel.rc for '
-        'more details.')
-  config_info_line('mkl', 'Build with MKL support.')
-  config_info_line('monolithic', 'Config for mostly static monolithic build.')
+  # On Windows, we don't have MKL support and the build is always monolithic.
+  # So no need to print the following message.
+  # TODO(pcloudy): remove the following if check when they make sense on Windows
+  if not is_windows():
+    print('Preconfigured Bazel build configs. You can use any of the below by '
+          'adding "--config=<>" to your build command. See tools/bazel.rc for '
+          'more details.')
+    config_info_line('mkl', 'Build with MKL support.')
+    config_info_line('monolithic', 'Config for mostly static monolithic build.')
 
 if __name__ == '__main__':
   main()

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 import os
 import unittest
 
@@ -415,6 +416,28 @@ class TrainingTest(test.TestCase):
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
 
+  def test_compile_warning_for_loss_missing_output(self):
+    with self.test_session():
+      inp = keras.layers.Input(shape=(16,), name='input_a')
+      out_1 = keras.layers.Dense(8, name='dense_1')(inp)
+      out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
+      model = keras.models.Model(inputs=[inp], outputs=[out_1, out_2])
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.compile(
+            loss={
+                'dense_2': 'categorical_crossentropy',
+            },
+            optimizer='rmsprop',
+            metrics={
+                'dense_2': 'categorical_accuracy',
+                'dense_1': 'categorical_accuracy',
+            })
+        msg = ('Output "dense_1" missing from loss dictionary. We assume this '
+               'was done on purpose. The fit and evaluate APIs will not be '
+               'expecting any data to be passed to "dense_1".')
+        self.assertRegexpMatches(str(mock_log.call_args), msg)
+
 
 class LossWeightingTest(test.TestCase):
 
@@ -742,6 +765,22 @@ class LossMaskingTest(test.TestCase):
               keras.backend.variable(x),
               keras.backend.variable(y),
               keras.backend.variable(weights), keras.backend.variable(mask)))
+
+
+class LearningPhaseTest(test.TestCase):
+
+  def test_empty_model_no_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      self.assertFalse(model.uses_learning_phase)
+
+  def test_dropout_has_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.add(keras.layers.Dropout(0.5))
+      model.add(keras.layers.Dense(2))
+      self.assertTrue(model.uses_learning_phase)
 
 
 class TestDynamicTrainability(test.TestCase):

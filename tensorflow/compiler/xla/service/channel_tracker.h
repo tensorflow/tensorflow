@@ -48,11 +48,12 @@ class ChannelTracker {
   struct Channel {
     bool has_sender;
     int64 receiver_count;
+    ChannelHandle::ChannelType type;
   };
 
   // Creates a new Channel object and returns the corresponding
   // ChannelHandle for it.
-  ChannelHandle NewChannel();
+  StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
 
   // Informs that the given channel handle is used for a Send operation.
   // Returns an error status if the handle is already used by another Send.
@@ -65,7 +66,8 @@ class ChannelTracker {
  private:
   // Bumps the next_channel_ number and returns the allocated number
   // wrapped in a ChannelHandle.
-  ChannelHandle AllocateHandle() EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+  ChannelHandle AllocateHandle(ChannelHandle::ChannelType type)
+      EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   Status RegisterSendInternal(const ChannelHandle& handle)
       EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);

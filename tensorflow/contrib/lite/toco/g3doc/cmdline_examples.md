@@ -11,8 +11,10 @@ Table of contents:
 
 *   [Command-line tools](#tools)
     *   [Converting models prior to TensorFlow 1.9.](#pre-tensorflow-1.9)
-*   [Convert a TensorFlow GraphDef](#graphdef)
-*   [Convert a TensorFlow SavedModel](#savedmodel)
+*   [Basic examples](#basic)
+    *   [Convert a TensorFlow GraphDef](#graphdef)
+    *   [Convert a TensorFlow SavedModel](#savedmodel)
+    *   [Convert a tf.keras model](#keras)
 *   [Quantization](#quantization)
     *   [Convert a TensorFlow GraphDef for quantized inference](#graphdef-quant)
     *   [Use "dummy-quantization" to try out quantized inference on a float
@@ -34,7 +36,7 @@ There are two approaches to running TOCO via command line.
 *   `tflite_convert`: Starting from TensorFlow 1.9, the command-line tool
     `tflite_convert` will be installed as part of the Python package. All of the
     examples below use `tflite_convert` for simplicity.
-    *   Example: `tflite --output_file=...`
+    *   Example: `tflite_convert --output_file=...`
 *   `bazel`: In order to run the latest version of TOCO, [clone the TensorFlow
     repository](https://www.tensorflow.org/install/install_sources#clone_the_tensorflow_repository)
     and use `bazel`. This is the recommended approach for converting models that
@@ -51,7 +53,12 @@ API](python_api.md#pre-tensorflow-1.9). If a command line tool is desired, the
 Terminal for additional details on the command-line flags available. There were
 no command line tools in TensorFlow 1.8.
 
-## Convert a TensorFlow GraphDef <a name="graphdef"></a>
+## Basic examples <a name="basic"></a>
+
+The following section shows examples of how to convert a basic float-point model
+from each of the supported data formats into a TensorFlow Lite FlatBuffers.
+
+### Convert a TensorFlow GraphDef <a name="graphdef"></a>
 
 The follow example converts a basic TensorFlow GraphDef (frozen by
 [freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py))
@@ -70,7 +77,7 @@ tflite_convert \
 
 The value for `input_shapes` is automatically determined whenever possible.
 
-## Convert a TensorFlow SavedModel <a name="savedmodel"></a>
+### Convert a TensorFlow SavedModel <a name="savedmodel"></a>
 
 The follow example converts a basic TensorFlow SavedModel into a Tensorflow Lite
 FlatBuffer to perform floating-point inference.
@@ -94,6 +101,17 @@ specified by `--saved_model_tag_set`. As with the GraphDef, the value for
 There is currently no support for MetaGraphDefs without a SignatureDef or for
 MetaGraphDefs that use the [`assets/`
 directory](https://www.tensorflow.org/guide/saved_model#structure_of_a_savedmodel_directory).
+
+### Convert a tf.Keras model <a name="keras"></a>
+
+The following example converts a `tf.keras` model into a TensorFlow Lite
+Flatbuffer. The `tf.keras` file must contain both the model and the weights.
+
+```
+tflite_convert \
+  --output_file=/tmp/foo.tflite \
+  --keras_model_file=/tmp/keras_model.h5
+```
 
 ## Quantization
 

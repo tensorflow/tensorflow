@@ -26,6 +26,7 @@ from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.layers import core as core_layers
+from tensorflow.python.layers import normalization
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
@@ -45,7 +46,7 @@ def _add_hidden_layer_summary(value, tag):
 
 
 def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
-                          dropout, input_layer_partitioner):
+                          dropout, input_layer_partitioner, batch_norm):
   """Function builder for a dnn logit_fn.
 
   Args:
@@ -58,6 +59,7 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
     dropout: When not `None`, the probability we will drop out a given
       coordinate.
     input_layer_partitioner: Partitioner for input layer.
+    batch_norm: Whether to use batch normalization after each hidden layer.
 
   Returns:
     A logit_fn (see below).
@@ -83,6 +85,7 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
       A `Tensor` representing the logits, or a list of `Tensor`'s representing
       multiple logits in the MultiHead case.
     """
+    is_training = mode == model_fn.ModeKeys.TRAIN
     with variable_scope.variable_scope(
         'input_from_feature_columns',
         values=tuple(six.itervalues(features)),
@@ -98,8 +101,20 @@ def _dnn_logit_fn_builder(units, hidden_units, feature_columns, activation_fn,
             activation=activation_fn,
             kernel_initializer=init_ops.glorot_uniform_initializer(),
             name=hidden_layer_scope)
-        if dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+        if dropout is not None and is_training:
           net = core_layers.dropout(net, rate=dropout, training=True)
+        if batch_norm:
+          # TODO(hjm): In future, if this becomes popular, we can enable
+          # customization of the batch normalization params by accepting a
+          # list of `BatchNormalization` instances as `batch_norm`.
+          net = normalization.batch_normalization(
+              net,
+              # The default momentum 0.99 actually crashes on certain
+              # problem, so here we use 0.999, which is the default of
+              # tf.contrib.layers.batch_norm.
+              momentum=0.999,
+              training=is_training,
+              name='batchnorm_%d' % layer_id)
       _add_hidden_layer_summary(net, hidden_layer_scope.name)
 
     with variable_scope.variable_scope('logits', values=(net,)) as logits_scope:
@@ -127,7 +142,8 @@ def _dnn_model_fn(features,
                   dropout=None,
                   input_layer_partitioner=None,
                   config=None,
-                  tpu_estimator_spec=False):
+                  tpu_estimator_spec=False,
+                  batch_norm=False):
   """Deep Neural Net model_fn.
 
   Args:
@@ -150,6 +166,7 @@ def _dnn_model_fn(features,
     config: `RunConfig` object to configure the runtime settings.
     tpu_estimator_spec: Whether to return a `_TPUEstimatorSpec` or
       or `model_fn.EstimatorSpec` instance.
+    batch_norm: Whether to use batch normalization after each hidden layer.
 
   Returns:
     An `EstimatorSpec` instance.
@@ -182,7 +199,8 @@ def _dnn_model_fn(features,
         feature_columns=feature_columns,
         activation_fn=activation_fn,
         dropout=dropout,
-        input_layer_partitioner=input_layer_partitioner)
+        input_layer_partitioner=input_layer_partitioner,
+        batch_norm=batch_norm)
     logits = logit_fn(features=features, mode=mode)
 
     if tpu_estimator_spec:
@@ -299,6 +317,7 @@ class DNNClassifier(estimator.Estimator):
       config=None,
       warm_start_from=None,
       loss_reduction=losses.Reduction.SUM,
+      batch_norm=False,
   ):
     """Initializes a `DNNClassifier` instance.
 
@@ -345,6 +364,7 @@ class DNNClassifier(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
+      batch_norm: Whether to use batch normalization after each hidden layer.
     """
     head = head_lib._binary_logistic_or_multi_class_head(  # pylint: disable=protected-access
         n_classes, weight_column, label_vocabulary, loss_reduction)
@@ -361,7 +381,8 @@ class DNNClassifier(estimator.Estimator):
           activation_fn=activation_fn,
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm)
 
     super(DNNClassifier, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
@@ -465,6 +486,7 @@ class DNNRegressor(estimator.Estimator):
       config=None,
       warm_start_from=None,
       loss_reduction=losses.Reduction.SUM,
+      batch_norm=False,
   ):
     """Initializes a `DNNRegressor` instance.
 
@@ -505,6 +527,7 @@ class DNNRegressor(estimator.Estimator):
         names are unchanged.
       loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
         to reduce training loss over batch. Defaults to `SUM`.
+      batch_norm: Whether to use batch normalization after each hidden layer.
     """
 
     def _model_fn(features, labels, mode, config):
@@ -522,7 +545,8 @@ class DNNRegressor(estimator.Estimator):
           activation_fn=activation_fn,
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          batch_norm=batch_norm)
 
     super(DNNRegressor, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,

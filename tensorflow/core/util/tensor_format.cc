@@ -18,7 +18,7 @@ limitations under the License.
 namespace tensorflow {
 
 string GetConvnetDataFormatAttrString() {
-  return "data_format: { 'NHWC', 'NCHW', 'HWNC', 'HWCN' } = 'NHWC' ";
+  return "data_format: { 'NHWC', 'NCHW' } = 'NHWC' ";
 }
 
 string GetConvnet3dDataFormatAttrString() {

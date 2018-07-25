@@ -342,7 +342,7 @@ TEST_F(SVDFOpTest, BlackBoxTestHybridRank1) {
   svdf.ResetState();
   VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
                 &svdf,
-                /*tolerance=*/0.00294435);
+                /*tolerance=*/0.002945);
 }
 
 TEST_F(SVDFOpTest, BlackBoxTestHybridRank2) {
