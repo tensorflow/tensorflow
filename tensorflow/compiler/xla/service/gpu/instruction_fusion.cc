@@ -73,6 +73,67 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   }
 }
 
+// This function limits the maximum number of operands to a fusion.
+//
+// There's a cap on how many parameters we can pass to a CUDA kernel, but
+// exactly what that limit is is hazy, as it depends on (among other things) how
+// much GPU constant memory is in use for other purposes.
+//
+// Moreover, we don't even know at the point that we're running fusion how many
+// arguments the CUDA kernel for a fusion node will have: It depends on buffer
+// assignment, where we will decide which of the fusion's operands live in XLA's
+// big temp buffer versus in other allocations.
+//
+// As a heuristic, we simply cap the number of fusion operands plus outputs at
+// kMaxOperandsAndOutputsPerFusion.  This puts an upper bound on the number of
+// parameters to the kernel, working around the correctness problem.
+//
+// This limit is also often good for performance.  In a fusion with many
+// operands, each GPU thread likely has to do a lot of work, and so possibly
+// uses a lot of registers, thus limiting occupancy.
+/*static*/ bool GpuInstructionFusion::FusionWouldBeTooLarge(
+    const HloInstruction* a, const HloInstruction* b) {
+  // Compute the number of outputs of the (possibly multi-output) fusion node
+  // we're considering creating.
+  //
+  // This isn't precise; we may be off by one if
+  //  - We're creating a multi-output fusion out of two non-MOFs.  Creating a
+  //    MOF adds a new buffer, namely, the tuple buffer.
+  //  - We're merging two MOFs.  In this case, we should count the tuple buffer
+  //    only once.
+  //  - WLOG there's an edge from `a` to `b` and `b` is the only consumer of
+  //    `a`.  In this case the result of `a` is not part of the output of the
+  //    fusion.
+  //
+  // But because this is a heuristic and our limit
+  // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
+  // big difference), we ignore this small inaccuracy in favor of simplicity.
+  int64 num_output_buffers = ShapeUtil::SubshapeCount(a->shape()) +
+                             ShapeUtil::SubshapeCount(b->shape());
+
+  // The new fusion will have no more operands and outputs than
+  //   producer_operands + consumer_operands - 1 + num_output_buffers
+  // (minus one because we may be fusing a producer->consumer edge between `a`
+  // and `b`).
+  //
+  // This fact may be enough to let us avoid having to compute the true total
+  // number of operands, which can be expensive.
+  if (a->operand_count() + b->operand_count() - 1 + num_output_buffers <=
+      kMaxOperandsAndOutputsPerFusion) {
+    return false;
+  }
+
+  // Compute the precise number of operands to the new fusion.
+  tensorflow::gtl::FlatSet<const HloInstruction*> operands(
+      a->operands().begin(), a->operands().end());
+  operands.insert(b->operands().begin(), b->operands().end());
+  // If there's an edge between `a` and `b`, don't count it: We're fusing that
+  // producer -> consumer relationship.
+  operands.erase(a);
+  operands.erase(b);
+  return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
+}
+
 bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
@@ -188,48 +249,8 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Limit the maximum number of operands to a fusion.
-  //
-  // There's a limit to how many parameters we can pass to a CUDA kernel, but
-  // exactly what that limit is is hazy, as it depends on (among other things)
-  // how much GPU constant memory is in use for other purposes.
-  //
-  // Moreover, we don't even know at this point how many arguments the CUDA
-  // kernel for this fusion node will have: It depends on buffer assignment,
-  // where we will decide which of the fusion's operands live in XLA's big temp
-  // buffer versus in other allocations.
-  //
-  // As a heuristic, we simply cap the number of fusion operands at
-  // kMaxOperandsPerFusion.  This puts an upper bound on the number of
-  // parameters to the kernel, working around the correctness problem.
-  //
-  // This limit is also often good for performance.  In a fusion with many
-  // operands, each GPU thread likely has to do a lot of work, and so possibly
-  // uses a lot of registers, thus limiting occupancy.
-  //
-  // We put this check last because it's expensive to compute.
-
-  // The new fusion will have no more operands than
-  //   producer_operands + consumer_operands - 1
-  // (minus one because we're fusing the producer->consumer edge).  This fact
-  // may be enough to let us avoid having to compute the true total number of
-  // operands, taking into account the fact that producer and consumer may share
-  // operands.
-  if (producer->operand_count() + consumer->operand_count() - 1 >
-      kMaxOperandsPerFusion) {
-    tensorflow::gtl::FlatSet<const HloInstruction*> producer_operands(
-        producer->operands().begin(), producer->operands().end());
-    int64 new_num_operands =
-        producer->operand_count() +
-        c_count_if(consumer->operands(), [&](const HloInstruction* operand) {
-          return operand != producer && !producer_operands.count(operand);
-        });
-    if (new_num_operands > kMaxOperandsPerFusion) {
-      return false;
-    }
-  }
-
-  return true;
+  // We put this check last because it's potentially expensive.
+  return !FusionWouldBeTooLarge(consumer, producer);
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,

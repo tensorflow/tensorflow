@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -163,16 +164,22 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   if (!MultiOutputFusion::LegalToFuse(instr1, instr2)) {
     return false;
   }
+
   // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
   // merge into bigger loop fusions and input (reduce) fusions become fusions
   // with multiple reduce outputs. We could fuse reduce and loop fusions
   // together too (the result being an input fusion) if we find cases where this
   // improves things.
   CHECK(instr1->opcode() == HloOpcode::kFusion);
-  if (instr2->opcode() == HloOpcode::kFusion) {
-    return instr1->fusion_kind() == instr2->fusion_kind();
+  if ((instr2->opcode() == HloOpcode::kFusion &&
+       instr1->fusion_kind() != instr2->fusion_kind()) ||
+      (instr2->opcode() != HloOpcode::kFusion &&
+       instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
+    return false;
   }
-  return instr1->fusion_kind() != HloInstruction::FusionKind::kLoop;
+
+  // Do this check last, as it may be expensive.
+  return !GpuInstructionFusion::FusionWouldBeTooLarge(instr1, instr2);
 }
 
 bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
