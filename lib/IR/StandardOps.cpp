@@ -17,6 +17,7 @@
 
 #include "mlir/IR/StandardOps.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/SSAValue.h"
@@ -26,6 +27,18 @@ using namespace mlir;
 
 // TODO: Have verify functions return std::string to enable more descriptive
 // error messages.
+OpAsmParserResult AddFOp::parse(OpAsmParser *parser) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  Type *type;
+  SSAValue *lhs, *rhs;
+  if (parser->parseOperandList(ops, 2) || parser->parseColonType(type) ||
+      parser->resolveOperand(ops[0], type, lhs) ||
+      parser->resolveOperand(ops[1], type, rhs))
+    return {};
+
+  return OpAsmParserResult({lhs, rhs}, type);
+}
+
 void AddFOp::print(OpAsmPrinter *p) const {
   *p << "addf " << *getOperand(0) << ", " << *getOperand(1) << " : "
      << *getType();
@@ -71,6 +84,22 @@ void DimOp::print(OpAsmPrinter *p) const {
      << *getOperand()->getType();
 }
 
+OpAsmParserResult DimOp::parse(OpAsmParser *parser) {
+  OpAsmParser::OperandType operandInfo;
+  IntegerAttr *indexAttr;
+  Type *type;
+  SSAValue *operand;
+  if (parser->parseOperand(operandInfo) || parser->parseComma() ||
+      parser->parseAttribute(indexAttr) || parser->parseColonType(type) ||
+      parser->resolveOperand(operandInfo, type, operand))
+    return {};
+
+  auto &builder = parser->getBuilder();
+  return OpAsmParserResult(
+      operand, builder.getAffineIntType(),
+      NamedAttribute(builder.getIdentifier("index"), indexAttr));
+}
+
 const char *DimOp::verify() const {
   // Check that we have an integer index operand.
   auto indexAttr = getAttrOfType<IntegerAttr>("index");
@@ -92,6 +121,35 @@ const char *DimOp::verify() const {
     return "requires an operand with tensor or memref type";
   }
 
+  return nullptr;
+}
+
+void LoadOp::print(OpAsmPrinter *p) const {
+  *p << "load " << *getMemRef() << '[';
+  p->printOperands(getIndices());
+  *p << "] : " << *getMemRef()->getType();
+}
+
+OpAsmParserResult LoadOp::parse(OpAsmParser *parser) {
+  OpAsmParser::OperandType memrefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  MemRefType *type;
+  SmallVector<SSAValue *, 4> operands;
+
+  auto affineIntTy = parser->getBuilder().getAffineIntType();
+  if (parser->parseOperand(memrefInfo) ||
+      parser->parseOperandList(indexInfo, -1,
+                               OpAsmParser::Delimeter::SquareDelimeter) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperands(memrefInfo, type, operands) ||
+      parser->resolveOperands(indexInfo, affineIntTy, operands))
+    return {};
+
+  return OpAsmParserResult(operands, type->getElementType());
+}
+
+const char *LoadOp::verify() const {
+  // TODO: Check load
   return nullptr;
 }
 
@@ -122,5 +180,6 @@ const char *AffineApplyOp::verify() const {
 
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
-  opSet.addOperations<AddFOp, ConstantOp, DimOp, AffineApplyOp>(/*prefix=*/"");
+  opSet.addOperations<AddFOp, ConstantOp, DimOp, LoadOp, AffineApplyOp>(
+      /*prefix=*/"");
 }

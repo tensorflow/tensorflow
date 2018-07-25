@@ -2,6 +2,7 @@
 
 // CHECK: #map{{[0-9]+}} = (d0, d1) -> ((d0 + 1), (d1 + 2))
 #map5 = (d0, d1) -> (d0 + 1, d1 + 2)
+#id2 = (i,j)->(i,j)
 
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
 cfgfunc @cfgfunc_with_ops(f32) {
@@ -19,22 +20,23 @@ bb0(%a : f32):
   return
 }
 
-// CHECK-LABEL: cfgfunc @standard_instrs() {
-cfgfunc @standard_instrs() {
-bb42:       // CHECK: bb0:
-  // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
-  %42 = "getTensor"() : () -> tensor<4x4x?xf32>
+// CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32) {
+cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32) {
+// CHECK: bb0(%0: tensor<4x4x?xf32>, %1: f32):
+bb42(%t: tensor<4x4x?xf32>, %f: f32):
+  // CHECK: %2 = dim %0, 2 : tensor<4x4x?xf32>
+  %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> affineint
 
-  // CHECK: dim %0, 2 : tensor<4x4x?xf32>
-  %a = "dim"(%42){index: 2} : (tensor<4x4x?xf32>) -> affineint
+  // CHECK: %3 = dim %0, 2 : tensor<4x4x?xf32>
+  %a2 = dim %t, 2 : tensor<4x4x?xf32>
 
-  // FIXME: Add support for fp attributes so this can use 'constant'.
-  %f = "FIXMEConst"(){value: 1} : () -> f32
+  // CHECK: %4 = addf %1, %1 : f32
+  %f2 = "addf"(%f, %f) : (f32,f32) -> f32
 
-  // CHECK: %3 = addf %2, %2 : f32
-  "addf"(%f, %f) : (f32,f32) -> f32
+  // CHECK: %5 = addf %4, %4 : f32
+  %f3 = addf %f2, %f2 : f32
 
-  // CHECK: %4 = "constant"(){value: 42} : () -> i32
+  // CHECK: %6 = "constant"(){value: 42} : () -> i32
   %x = "constant"(){value: 42} : () -> i32
   return
 }
@@ -54,3 +56,17 @@ bb0:
     (affineint, affineint) -> (affineint, affineint)
   return
 }
+
+// CHECK-LABEL: cfgfunc @load_store
+cfgfunc @load_store(memref<4x4xi32, #id2, 0>, affineint) {
+bb0(%0: memref<4x4xi32, #id2, 0>, %1: affineint):
+
+  // CHECK: %2 = load %0[%1, %1] : memref<4x4xi32, #map2, 0>
+  %2 = "load"(%0, %1, %1) : (memref<4x4xi32, #id2, 0>, affineint, affineint)->i32
+
+  // CHECK: %3 = load %0[%1, %1] : memref<4x4xi32, #map2, 0>
+  %3 = load %0[%1, %1] : memref<4x4xi32, #id2, 0>
+
+  return
+}
+

@@ -60,3 +60,11 @@ bb0:
   %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (affineint,affineint) -> (affineint) //  expected-error {{'affine_apply' op result count and affine map result count must match}}
   return
 }
+
+// -----
+
+cfgfunc @unknown_custom_op() {
+bb0:
+  %i = crazyThing() {value: 0} : () -> affineint  // expected-error {{custom op 'crazyThing' is unknown}}
+  return
+}

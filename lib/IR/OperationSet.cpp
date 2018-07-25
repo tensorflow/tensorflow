@@ -19,9 +19,18 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 using llvm::StringMap;
+
+OpAsmParser::~OpAsmParser() {}
+
+// The fallback for the printer is to reject the short form.
+OpAsmParserResult OpImpl::BaseState::parse(OpAsmParser *parser) {
+  parser->emitError(parser->getNameLoc(), "has no concise form");
+  return {};
+}
 
 // The fallback for the printer is to print it the longhand form.
 void OpImpl::BaseState::print(OpAsmPrinter *p) const {

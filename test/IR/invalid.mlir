@@ -85,7 +85,7 @@ cfgfunc @no_terminator() {
 bb40:
   return
 bb41:
-bb42:        // expected-error {{expected operation name}}
+bb42:        // expected-error {{custom op 'bb42' is unknown}}
   return
 }
 
@@ -170,7 +170,7 @@ mlfunc @nonconstant_step(%1 : i32) {
 // -----
 
 mlfunc @non_statement() {
-  asd   // expected-error {{expected operation name in quotes}}
+  asd   // expected-error {{custom op 'asd' is unknown}}
 }
 
 // -----

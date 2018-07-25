@@ -23,10 +23,17 @@
 #define MLIR_IR_OPIMPLEMENTATION_H
 
 #include "mlir/IR/OpDefinition.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/SMLoc.h"
 
 namespace mlir {
 class AffineMap;
 class AffineExpr;
+class Builder;
+
+//===----------------------------------------------------------------------===//
+// OpAsmPrinter
+//===----------------------------------------------------------------------===//
 
 /// This is a pure-virtual base class that exposes the asmprinter hooks
 /// necessary to implement a custom print() method.
@@ -38,6 +45,19 @@ public:
 
   /// Print implementations for various things an operation contains.
   virtual void printOperand(const SSAValue *value) = 0;
+
+  /// Print a comma separated list of operands.
+  template <typename ContainerType>
+  void printOperands(const ContainerType &container) {
+    auto it = container.begin(), end = container.end();
+    if (it == end)
+      return;
+    printOperand(*it);
+    for (++it; it != end; ++it) {
+      getStream() << ", ";
+      printOperand(*it);
+    }
+  }
   virtual void printType(const Type *type) = 0;
   virtual void printAttribute(const Attribute *attr) = 0;
   virtual void printAffineMap(const AffineMap *map) = 0;
@@ -77,6 +97,151 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const T &other) {
   p.getStream() << other;
   return p;
 }
+
+//===----------------------------------------------------------------------===//
+// OpAsmParser
+//===----------------------------------------------------------------------===//
+
+/// The OpAsmParser has methods for interacting with the asm parser: parsing
+/// things from it, emitting errors etc.  It has an intentionally high-level API
+/// that is designed to reduce/constrain syntax innovation in individual
+/// operations.
+///
+/// For example, consider an op like this:
+///
+///    %x = load %p[%1, %2] : memref<...>
+///
+/// The "%x = load" tokens are already parsed and therefore invisible to the
+/// custom op parser.  This can be supported by calling `parseOperandList` to
+/// parse the %p, then calling `parseOperandList` with a `SquareDelimeter` to
+/// parse the indices, then calling `parseColonTypeList` to parse the result
+/// type.
+///
+class OpAsmParser {
+public:
+  virtual ~OpAsmParser();
+
+  //===--------------------------------------------------------------------===//
+  // High level parsing methods.
+  //===--------------------------------------------------------------------===//
+
+  // These return void if they always succeed.  If they can fail, they emit an
+  // error and return "true".  On success, they can optionally provide location
+  // information for clients who want it.
+
+  /// This parses... a comma!
+  virtual bool parseComma(llvm::SMLoc *loc = nullptr) = 0;
+
+  /// Parse a colon followed by a type.
+  virtual bool parseColonType(Type *&result, llvm::SMLoc *loc = nullptr) = 0;
+
+  /// Parse a type of a specific kind, e.g. a FunctionType.
+  template <typename TypeType>
+  bool parseColonType(TypeType *&result, llvm::SMLoc *loc = nullptr) {
+    // Parse any kind of type.
+    Type *type;
+    llvm::SMLoc tmpLoc;
+    if (parseColonType(type, &tmpLoc))
+      return true;
+    if (loc)
+      *loc = tmpLoc;
+
+    // Check for the right kind of attribute.
+    result = dyn_cast<TypeType>(type);
+    if (!result) {
+      emitError(tmpLoc, "invalid kind of type specified");
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Parse a colon followed by a type list, which must have at least one type.
+  virtual bool parseColonTypeList(SmallVectorImpl<Type *> &result,
+                                  llvm::SMLoc *loc = nullptr) = 0;
+
+  /// Parse an attribute.
+  virtual bool parseAttribute(Attribute *&result,
+                              llvm::SMLoc *loc = nullptr) = 0;
+
+  /// Parse an attribute of a specific kind.
+  template <typename AttrType>
+  bool parseAttribute(AttrType *&result, llvm::SMLoc *loc = nullptr) {
+    // Parse any kind of attribute.
+    Attribute *attr;
+    llvm::SMLoc tmpLoc;
+    if (parseAttribute(attr, &tmpLoc))
+      return true;
+    if (loc)
+      *loc = tmpLoc;
+
+    // Check for the right kind of attribute.
+    result = dyn_cast<AttrType>(attr);
+    if (!result) {
+      emitError(tmpLoc, "invalid kind of constant specified");
+      return true;
+    }
+
+    return false;
+  }
+
+  /// This is the representation of an operand reference.
+  struct OperandType {
+    llvm::SMLoc location; // Location of the token.
+    StringRef name;       // Value name, e.g. %42 or %abc
+    unsigned number;      // Number, e.g. 12 for an operand like %xyz#12
+  };
+
+  /// Parse a single operand.
+  virtual bool parseOperand(OperandType &result) = 0;
+
+  /// These are the supported delimeters around operand lists, used by
+  /// parseOperandList.
+  enum Delimeter {
+    NoDelimeter,
+    ParenDelimeter,
+    SquareDelimeter,
+  };
+
+  /// Parse zero or more SSA comma-separated operand references with a specified
+  /// surrounding delimeter, and an optional required operand count.
+  virtual bool
+  parseOperandList(SmallVectorImpl<OperandType> &result,
+                   int requiredOperandCount = -1,
+                   Delimeter delimeter = Delimeter::NoDelimeter) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Methods for interacting with the parser
+  //===--------------------------------------------------------------------===//
+
+  /// Return a builder which provides useful access to MLIRContext, global
+  /// objects like types and attributes.
+  virtual Builder &getBuilder() const = 0;
+
+  /// Return the location of the original name token.
+  virtual llvm::SMLoc getNameLoc() const = 0;
+
+  /// Resolve an operand to an SSA value, emitting an error and returning true
+  /// on failure.
+  virtual bool resolveOperand(OperandType operand, Type *type,
+                              SSAValue *&result) = 0;
+
+  /// Resolve a list of operands to SSA values, emitting an error and returning
+  /// true on failure, or appending the results to the list on success.
+  virtual bool resolveOperands(ArrayRef<OperandType> operand, Type *type,
+                               SmallVectorImpl<SSAValue *> &result) {
+    for (auto elt : operand) {
+      SSAValue *value;
+      if (resolveOperand(elt, type, value))
+        return true;
+      result.push_back(value);
+    }
+    return false;
+  }
+
+  /// Emit a diagnostic at the specified location.
+  virtual void emitError(llvm::SMLoc loc, const Twine &message) = 0;
+};
 
 } // end namespace mlir
 

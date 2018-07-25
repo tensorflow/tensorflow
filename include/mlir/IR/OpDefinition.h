@@ -31,6 +31,7 @@
 
 namespace mlir {
 class Type;
+class OpAsmParser;
 class OpAsmPrinter;
 
 /// This pointer represents a notional "Operation*" but where the actual
@@ -66,6 +67,22 @@ public:
 
 public:
   const OpType value;
+};
+
+/// This is the result type of parsing a custom operation.  If an error is
+/// emitted, it is fine to return this in a partially mutated state.
+struct OpAsmParserResult {
+  SmallVector<SSAValue *, 4> operands;
+  SmallVector<Type *, 4> types;
+  SmallVector<NamedAttribute, 4> attributes;
+
+  /*implicit*/ OpAsmParserResult() {}
+
+  OpAsmParserResult(ArrayRef<SSAValue *> operands, ArrayRef<Type *> types,
+                    ArrayRef<NamedAttribute> attributes = {})
+      : operands(operands.begin(), operands.end()),
+        types(types.begin(), types.end()),
+        attributes(attributes.begin(), attributes.end()) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -108,6 +125,9 @@ protected:
   /// back to this one which accepts everything.
   const char *verify() const { return nullptr; }
 
+  // Unless overridden, the short form of an op is always rejected.
+  static OpAsmParserResult parse(OpAsmParser *parser);
+
   // The fallback for the printer is to print it the longhand form.
   void print(OpAsmPrinter *p) const;
 
@@ -136,6 +156,12 @@ public:
   ///
   static bool isClassFor(const Operation *op) {
     return op->getName().is(ConcreteType::getOperationName());
+  }
+
+  /// This is the hook used by the AsmParser to parse the custom form of this
+  /// op from an .mlir file.  Op implementations should provide a parse method.
+  static OpAsmParserResult parseAssembly(OpAsmParser *parser) {
+    return ConcreteType::parse(parser);
   }
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.

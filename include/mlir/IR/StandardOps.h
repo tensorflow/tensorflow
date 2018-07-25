@@ -43,6 +43,7 @@ public:
   static StringRef getOperationName() { return "addf"; }
 
   const char *verify() const;
+  static OpAsmParserResult parse(OpAsmParser *parser);
   void print(OpAsmPrinter *p) const;
 
 private:
@@ -109,6 +110,7 @@ public:
 
   // Hooks to customize behavior of this op.
   const char *verify() const;
+  static OpAsmParserResult parse(OpAsmParser *parser);
   void print(OpAsmPrinter *p) const;
 
 private:
@@ -116,15 +118,49 @@ private:
   explicit DimOp(const Operation *state) : Base(state) {}
 };
 
-// The "affine_apply" operation applies an affine map to a list of operands,
-// yielding a list of results. The operand and result list sizes must be the
-// same. All operands and results are of type 'AffineInt'. This operation
-// requires a single affine map attribute named "map".
-// For example:
-//
-//   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
-//          (affineint) -> (affineint)
-//
+/// The "load" op reads an element from a memref specified by an index list. The
+/// output of load is a new value with the same type as the elements of the
+/// memref. The arity of indices is the rank of the memref (i.e., if the memref
+/// loaded from is of rank 3, then 3 indices are required for the load following
+/// the memref identifier).  For example:
+///
+///   %3 = load %0[%1, %1] : memref<4x4xi32>
+///
+class LoadOp
+    : public OpImpl::Base<LoadOp, OpImpl::VariadicOperands, OpImpl::OneResult> {
+public:
+  SSAValue *getMemRef() { return getOperand(0); }
+  const SSAValue *getMemRef() const { return getOperand(0); }
+
+  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+  }
+
+  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const {
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
+  }
+
+  static StringRef getOperationName() { return "load"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+  static OpAsmParserResult parse(OpAsmParser *parser);
+  void print(OpAsmPrinter *p) const;
+
+private:
+  friend class Operation;
+  explicit LoadOp(const Operation *state) : Base(state) {}
+};
+
+/// The "affine_apply" operation applies an affine map to a list of operands,
+/// yielding a list of results. The operand and result list sizes must be the
+/// same. All operands and results are of type 'AffineInt'. This operation
+/// requires a single affine map attribute named "map".
+/// For example:
+///
+///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
+///          (affineint) -> (affineint)
+///
 class AffineApplyOp
     : public OpImpl::Base<AffineApplyOp, OpImpl::VariadicOperands,
                           OpImpl::VariadicResults> {

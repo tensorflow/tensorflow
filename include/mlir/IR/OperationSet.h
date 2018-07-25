@@ -27,6 +27,8 @@
 
 namespace mlir {
 class Operation;
+class OpAsmParser;
+class OpAsmParserResult;
 class OpAsmPrinter;
 class MLIRContextImpl;
 class MLIRContext;
@@ -40,7 +42,8 @@ public:
   template <typename T>
   static AbstractOperation get() {
     return AbstractOperation(T::getOperationName(), T::isClassFor,
-                             T::printAssembly, T::verifyInvariants);
+                             T::parseAssembly, T::printAssembly,
+                             T::verifyInvariants);
   }
 
   /// This is the name of the operation.
@@ -48,6 +51,9 @@ public:
 
   /// Return true if this "op class" can match against the specified operation.
   bool (&isClassFor)(const Operation *op);
+
+  /// Use the specified object to parse this ops custom assembly format.
+  OpAsmParserResult (&parseAssembly)(OpAsmParser *parser);
 
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(const Operation *op, OpAsmPrinter *p);
@@ -60,10 +66,11 @@ public:
 
 private:
   AbstractOperation(StringRef name, bool (&isClassFor)(const Operation *op),
+                    OpAsmParserResult (&parseAssembly)(OpAsmParser *parser),
                     void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
                     const char *(&verifyInvariants)(const Operation *op))
-      : name(name), isClassFor(isClassFor), printAssembly(printAssembly),
-        verifyInvariants(verifyInvariants) {}
+      : name(name), isClassFor(isClassFor), parseAssembly(parseAssembly),
+        printAssembly(printAssembly), verifyInvariants(verifyInvariants) {}
 };
 
 /// An instance of OperationSet is owned and maintained by MLIRContext.  It
