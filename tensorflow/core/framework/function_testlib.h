@@ -48,7 +48,7 @@ class Attrs {
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    const string& name, const string& op, gtl::ArraySlice<string> inputs,
+    StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");

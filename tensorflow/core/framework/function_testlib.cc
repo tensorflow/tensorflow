@@ -45,13 +45,12 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 }
 
 // Helper to construct a NodeDef.
-NodeDef NDef(const string& name, const string& op,
-             gtl::ArraySlice<string> inputs,
+NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
              gtl::ArraySlice<std::pair<string, FDH::AttrValueWrapper>> attrs,
              const string& device) {
   NodeDef n;
-  n.set_name(name);
-  n.set_op(op);
+  n.set_name(name.ToString());
+  n.set_op(op.ToString());
   for (const auto& in : inputs) n.add_input(in);
   n.set_device(device);
   for (auto na : attrs) n.mutable_attr()->insert({na.first, na.second.proto});
