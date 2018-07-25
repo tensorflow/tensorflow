@@ -122,45 +122,61 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
 
 void PrintTensorMapping(const poplar::Graph& graph,
                         const TensorMap& tensor_map) {
-  std::stringstream ss;
-  VLOG(2) << "[Poplar] Dumping tensor mapping";
-  // Printed in JSON format where
-  // {"mapping": [
-  //  {
-  //    "inst_name": "name",
-  //    "output_index": output_index,
-  //    "tiles": [ {"tile_id": tile_id, "num_intervals": num_intervals}, ...]
-  //  } ...
-  //
-  //  ]
-  // }
-  ss << "\n{\"mapping\": [\n";
-  bool first_tensor = true;
-  for (auto pair : tensor_map) {
-    if (!first_tensor) ss << "\n,";
-    const auto inst_name = pair.first.first;
-    const auto output_index = pair.first.second;
-    const auto tensor = pair.second;
-    ss << " {\n"
-       << "  \"inst_name\": \"" << inst_name << "\",\n"
-       << "  \"output_index\": " << output_index << ",\n"
-       << "  \"tiles\": [\n   ";
-    const auto mapping = graph.getTileMapping(tensor);
-    bool first_tile = true;
-    for (size_t tileIdx = 0; tileIdx < mapping.size(); tileIdx++) {
-      const auto& tile = mapping[tileIdx];
-      if (tile.size() != 0) {
-        if (!first_tile) ss << ", ";
-        ss << "{\"tile_id\": " << tileIdx << ", "
-           << "\"num_intervals\": " << tile.size() << "}";
-        first_tile = false;
+  if (VLOG_IS_ON(2)) {
+    std::stringstream ss;
+    VLOG(2) << "[Poplar] Dumping tensor mapping";
+    // Printed in JSON format where
+    // {"mapping": [
+    //  {
+    //    "inst_name": "name",
+    //    "output_index": output_index,
+    //    "tiles_used": tiles_used,
+    //    "total_memory_size": total_memory_size,
+    //    "tiles": [ {"tile_id": tile_id, "num_intervals": num_intervals,
+    //    "memory_size": memory_size}, ...]
+    //  } ...
+    //
+    //  ]
+    // }
+    ss << " {\"mapping\": [";
+    bool first_tensor = true;
+    for (auto pair : tensor_map) {
+      if (!first_tensor) ss << ",";
+      const auto inst_name = pair.first.first;
+      const auto output_index = pair.first.second;
+      const auto tensor = pair.second;
+      ss << " { "
+         << "\"inst_name\": \"" << inst_name << "\", "
+         << "\"output_index\": " << output_index << ", "
+         << "\"tiles\": [";
+      const auto mapping = graph.getTileMapping(tensor);
+      bool first_tile = true;
+      unsigned tilesUsed = 0;
+      size_t totalMemory = 0;
+      for (size_t tileIdx = 0; tileIdx < mapping.size(); tileIdx++) {
+        const auto& tile = mapping[tileIdx];
+        if (tile.size() != 0) {
+          if (!first_tile) ss << ", ";
+          tilesUsed++;
+          size_t tileMemSize = 0;
+          for (const auto& interval : tile) {
+            tileMemSize += interval.size();
+          }
+          ss << "{\"tile_id\": " << tileIdx << ", "
+             << "\"num_intervals\": " << tile.size() << ", "
+             << "\"memory_size\": " << tileMemSize << "}";
+          first_tile = false;
+          totalMemory += tileMemSize;
+        }
       }
+      ss << "], "
+         << "\"total_memory_size\": " << totalMemory << ", "
+         << "\"tiles_used\": " << tilesUsed << " }";
+      first_tensor = false;
     }
-    ss << "]\n }";
-    first_tensor = false;
+    ss << "]}";
+    VLOG(2) << ss.str();
   }
-  ss << " ]\n}\n";
-  VLOG(2) << ss.str();
 }
 
 }  // namespace poplarplugin
