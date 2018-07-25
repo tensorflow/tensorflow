@@ -122,6 +122,17 @@ function(AddPythonTests)
   endforeach()
 endfunction(AddPythonTests)
 
+#
+# ensure that every element is an existing file
+#
+function(CheckExists TYPE SOURCES)
+  foreach(source ${SOURCES})
+    if(NOT EXISTS ${source})
+      message(SEND_ERROR "${TYPE} not found: ${source}")
+    endif()
+  endforeach(source)
+endfunction(CheckExists)
+
 if (tensorflow_BUILD_PYTHON_TESTS)
   #
   # python tests. This assumes that the tensorflow wheel is
@@ -329,6 +340,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/io_utils_test.py"  # b/72894325
   )
   endif()
+  CheckExists(${tf_test_src_py_exclude})
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
 
   AddPythonTests(
@@ -480,6 +492,7 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/cc/saved_model/*_test.cc"
   )
 
+  CheckExists(${tf_test_src_simple_exclude})
   list(REMOVE_ITEM tf_test_src_simple
     ${tf_test_src_simple_exclude}
     ${tf_cc_saved_model_test_srcs}
@@ -494,6 +507,7 @@ if (tensorflow_BUILD_CC_TESTS)
     ${tf_core_profiler_test_srcs}
   )
 
+  CheckExists(${tf_src_testlib})
   set(tf_test_lib tf_test_lib)
   add_library(${tf_test_lib} STATIC ${tf_src_testlib})
 
