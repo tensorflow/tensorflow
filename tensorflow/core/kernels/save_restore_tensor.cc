@@ -96,7 +96,7 @@ void SaveTensors(
               return tensor_names_flat(a) < tensor_names_flat(b);
             });
 
-  for (size_t i : sorted_name_idx) {
+  for (const size_t i : sorted_name_idx) {
     const string& name = tensor_names_flat(i);
     const Tensor& input = context->input(i + kFixedInputs);
     TensorShape shape(input.shape());
