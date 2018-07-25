@@ -2506,6 +2506,23 @@ Status IrEmitter::HandleIota(HloInstruction* iota) {
   return Unimplemented("Iota is not implemented on CPU.");
 }
 
+Status IrEmitter::HandleRng(HloInstruction* rng) {
+  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  for (const HloInstruction* operand : rng->operands()) {
+    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
+      return GetIrArrayFor(operand).EmitReadArrayElement(index, &b_);
+    };
+  }
+
+  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
+      rng, elemental_emitter.MakeElementGenerator(rng, operand_to_generator)));
+
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+
+  return Status::OK();
+}
+
 Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding

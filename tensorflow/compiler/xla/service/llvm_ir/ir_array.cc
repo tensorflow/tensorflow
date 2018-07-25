@@ -327,6 +327,7 @@ llvm::Value* IrArray::Index::Linearize(
     llvm::IRBuilder<>* builder) const {
   // Each dimension is multiplied by the product of the sizes of all
   // earlier dimensions and added to the accumulator logical_linear_index.
+  CHECK_EQ(size(), dimensions.size());
   llvm::Value* logical_linear_index = GetConstantWithIndexType(0);
   int64 multiplier = 1;
   for (ssize_t i = size() - 1; i >= 0; --i) {

@@ -2006,10 +2006,44 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleRng(HloInstruction* random) {
-  thunk_sequence_->push_back(
-      BuildKernelThunk(random, /*implements_whole_instruction=*/true));
-  return IrEmitter::HandleRng(random);
+Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
+  // Build the kernel to generate the random numbers.
+  //
+  // Unroll the kernel so that the duplicated computation that calculates the
+  // 128 bit sample can be optimized away by LLVM.
+  thunk_sequence_->emplace_back(
+      BuildKernelThunk(rng, /*implements_whole_instruction=*/false,
+                       ComputeMaxUnrollFactor(rng)));
+  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  for (const HloInstruction* operand : rng->operands()) {
+    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
+      return GetIrArray(*operand, *rng).EmitReadArrayElement(index, &b_);
+    };
+  }
+  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
+      *rng, GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
+                                  GetNestedComputer())
+                .MakeElementGenerator(rng, operand_to_generator)));
+  std::unique_ptr<Thunk> rng_thunk = std::move(thunk_sequence_->back());
+  thunk_sequence_->pop_back();
+
+  // Emit a kernel to increment the global state for Philox RNG algorithm.
+  thunk_sequence_->emplace_back(
+      BuildKernelThunk(rng, /*implements_whole_instruction=*/false));
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+  std::unique_ptr<Thunk> increment_seed_thunk =
+      std::move(thunk_sequence_->back());
+  thunk_sequence_->pop_back();
+
+  // Build the SequentialThunk for the RNG hlo.
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.reserve(2);
+  thunks.push_back(std::move(rng_thunk));
+  thunks.push_back(std::move(increment_seed_thunk));
+  thunk_sequence_->emplace_back(
+      MakeUnique<SequentialThunk>(std::move(thunks), rng));
+
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
