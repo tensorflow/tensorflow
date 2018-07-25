@@ -848,11 +848,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "ngraph_tf",
       urls = [
-          "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc0.tar.gz",
-          "https://github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc0.tar.gz"
+          "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc1.tar.gz",
+          "https://github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc1.tar.gz"
       ],
-      sha256 = "b4f4a530c0eb7a406bf3c9f6965d74e9a371a7635a9e644e190ec54258bb70ac",
-      strip_prefix = "ngraph-tf-0.3.0-rc0",
+      sha256 = "7919332cb15120101c3e05c1b969a5e029a6411581312583c8f80b6aaaa83072",
+      strip_prefix = "ngraph-tf-0.3.0-rc1",
       build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
   )
 
