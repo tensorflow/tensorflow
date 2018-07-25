@@ -58,7 +58,8 @@ class BigtableTableResource : public ResourceBase {
   BigtableTableResource(BigtableClientResource* client, string table_name)
       : client_(client),
         table_name_(std::move(table_name)),
-        table_(client->get_client(), table_name_) {
+        table_(client->get_client(), table_name_,
+               google::cloud::bigtable::AlwaysRetryMutationPolicy()) {
     client_->Ref();
   }
 

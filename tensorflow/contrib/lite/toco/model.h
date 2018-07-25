@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -81,10 +82,11 @@ enum class OperatorType : uint8 {
   kResizeBilinear,
   kSin,
   kSpaceToBatchND,
-  kStack,
+  kPack,
   kBatchToSpaceND,
   kPad,
   kPadV2,
+  kReduceProd,  // Reduction product
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -106,10 +108,10 @@ enum class OperatorType : uint8 {
   kIdentity,
   kLess,
   kLessEqual,
-  kMax,      //  Reduction Max
-  kMaximum,  //  Element-wise Maximum
-  kMin,      //  Reduction Min
-  kMinimum,  //  Element-wise Minimum
+  kReduceMax,  //  Reduction Max
+  kMaximum,    //  Element-wise Maximum
+  kReduceMin,  //  Reduction Min
+  kMinimum,    //  Element-wise Minimum
   kMatMul,
   kMerge,
   kNeg,
@@ -141,6 +143,9 @@ enum class OperatorType : uint8 {
   kNotEqual,
   kPow,
   kArgMin,
+  kAny,
+  kLogicalAnd,
+  kLogicalNot,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -791,6 +796,7 @@ struct FakeQuantOperator : Operator {
   FakeQuantOperator() : Operator(OperatorType::kFakeQuant) {}
   std::unique_ptr<MinMax> minmax;
   int num_bits = 8;
+  bool narrow_range = false;
 };
 
 // Element-wise division operator.
@@ -1155,10 +1161,12 @@ struct TensorFlowRsqrtOperator : Operator {
 // Inputs: this operator accepts any number >= 1 of inputs.
 //   inputs[i]: the i-th array to merge.
 //
-// TensorFlow equivalent: Stack or Pack
-struct StackOperator : Operator {
-  StackOperator() : Operator(OperatorType::kStack) {}
+// TensorFlow equivalent: Pack
+struct PackOperator : Operator {
+  PackOperator() : Operator(OperatorType::kPack) {}
+  int values_count;
   int axis = 0;
+  ArrayDataType dtype = ArrayDataType::kNone;
 };
 
 // Shape operator. Extracts the shape of the tensor.
@@ -1228,6 +1236,19 @@ struct SubOperator : Operator {
 // TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kSum) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
+};
+
+// Prod reduction: computes the product of all of entries across the axes.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Prod
+struct TensorFlowProdOperator : Operator {
+  TensorFlowProdOperator() : Operator(OperatorType::kReduceProd) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1387,29 +1408,27 @@ struct TensorFlowNotEqualOperator : Operator {
   TensorFlowNotEqualOperator() : Operator(OperatorType::kNotEqual) {}
 };
 
-// Global max reduction: computes the max of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Max reduction: computes the max of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Max --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Max
 struct TensorFlowMaxOperator : Operator {
-  TensorFlowMaxOperator() : Operator(OperatorType::kMax) {}
+  TensorFlowMaxOperator() : Operator(OperatorType::kReduceMax) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
-// Global min reduction: computes the min of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Min reduction: computes the min of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Min --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Min
 struct TensorFlowMinOperator : Operator {
-  TensorFlowMinOperator() : Operator(OperatorType::kMin) {}
+  TensorFlowMinOperator() : Operator(OperatorType::kReduceMin) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1510,11 +1529,15 @@ struct FloorOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the params array
 //   inputs[1]: required: the indices to gather
+//   inputs[2]: optional: axis
 //
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int axis = 0;
+  // Axis is populated explicitly or implicitly from the axis input by
+  // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
+  // be resolved.
+  absl::optional<int> axis;
   int input_rank = 0;
 };
 
@@ -1668,6 +1691,39 @@ struct SparseToDenseOperator : Operator {
 // TensorFlow equivalent: Pow.
 struct PowOperator : Operator {
   PowOperator() : Operator(OperatorType::kPow) {}
+};
+
+// Any operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.reduce_any.
+struct AnyOperator : Operator {
+  AnyOperator() : Operator(OperatorType::kAny) {}
+  bool keep_dims = false;
+};
+
+// LogicalAnd operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+// Inputs[1]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_and.
+struct LogicalAndOperator : Operator {
+  LogicalAndOperator() : Operator(OperatorType::kLogicalAnd) {}
+};
+
+// LogicalNot operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_not.
+struct LogicalNotOperator : Operator {
+  LogicalNotOperator() : Operator(OperatorType::kLogicalNot) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
@@ -1854,6 +1910,40 @@ struct Array {
   // If this is non-null, then these quantization parameters are to be used
   // to assign a meaning as real numbers to the elements of this array.
   std::unique_ptr<QuantizationParams> quantization_params;
+  // narrow_range is a detail of how toco handles FakeQuant operators with
+  // narrow_range, see
+  // https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars
+  //
+  // For more context about what that is useful for, see the big comment in
+  // graph_transformations/ensure_uint8_weights_safe_for_fast_int8_kernels.cc
+  //
+  // The narrow_range flag applies only to quantized arrays, and changes
+  // their quantization in the following way when it is set to 'true':
+  // 1. The computation of {zero_point, scale} from {min, max} needs to be
+  //    amended so that the real min value will get quantized to
+  //    (min_quantized_value + 1) instead of just (min_quantized_value).
+  //    E.g. for uint8 quantization, the real min value should get quantized to
+  //    the uint8 value 1, not 0.
+  // 2. Quantized values should get clamped to the interval
+  //    [min_quantized_value + 1, max_value]. Equivalently, the
+  //    min_quantized_value should get nudged to (min_quantized_value + 1).
+  // The reason why 1. does not imply 2. is that real values may not belong to
+  // the stated [min, max] interval. Concretely, weights recorded at the last
+  // learning step may not fall in the [min, max] interval recorded over
+  // previous learning steps, as the values evolve across learning steps.
+  //
+  // Rationale why this is directly a field on Array:
+  // - This can't be just a field on FakeQuantOperator, because
+  //   FakeQuantOperators are gone (DropFakeQuant) before we get to using that
+  //   information (Quantize). We need a place to store that bit in the interim.
+  // - This can't be in QuantizationParams because we need to record this
+  //   ahead of quantization, and QuantizationParams are only created during
+  //   quantization.
+  // - This could be in MinMax, but that would be an abuse of what MinMax is
+  //   about, and would break existing code that assumes that a MinMax is just
+  //   a min and a max. Unlike MinMax which is agnostic as to the quantized
+  //   data type, narrow_range refers to values in the quantized data type.
+  bool narrow_range = false;
 
  private:
   std::unique_ptr<Shape> array_shape;

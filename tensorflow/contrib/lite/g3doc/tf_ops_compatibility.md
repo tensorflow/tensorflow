@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common
@@ -812,6 +815,18 @@ Inputs {
 }
 Outputs {
   0: A tensor of indices of minium values.
+}
+```
+
+**PACK**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: an integer.
+}
+Outputs {
+  0: A tensor of stacked tensors.
 }
 ```
 

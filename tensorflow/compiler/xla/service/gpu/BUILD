@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["gpu_constants.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -162,6 +163,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
@@ -169,7 +171,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
-        "//tensorflow/compiler/xla/service/llvm_ir:ops",
+        "//tensorflow/compiler/xla/service/llvm_ir:sort_util",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -268,6 +270,7 @@ cc_library(
         "memset_thunk.cc",
         "outfeed_thunk.cc",
         "sequential_thunk.cc",
+        "thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
         "while_thunk.cc",
@@ -542,6 +545,7 @@ cc_library(
         ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -560,8 +564,8 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = ["gpu_compiler.cc"],
-    hdrs = ["gpu_compiler.h"],
+    srcs = ["nvptx_compiler.cc"],
+    hdrs = ["nvptx_compiler.h"],
     deps = [
         ":cudnn_convolution_algorithm_picker",
         ":cudnn_convolution_rewriter",
@@ -640,13 +644,20 @@ cc_library(
 )
 
 cc_library(
+    name = "xfeed_queue",
+    hdrs = ["xfeed_queue.h"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+cc_library(
     name = "infeed_manager",
     srcs = ["infeed_manager.cc"],
     hdrs = ["infeed_manager.h"],
     deps = [
+        ":xfeed_queue",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
@@ -656,6 +667,7 @@ cc_library(
     srcs = ["outfeed_manager.cc"],
     hdrs = ["outfeed_manager.h"],
     deps = [
+        ":xfeed_queue",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",

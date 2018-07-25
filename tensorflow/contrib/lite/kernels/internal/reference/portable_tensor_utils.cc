@@ -195,6 +195,13 @@ void PortableZeroVector(float* vector, int v_size) {
   memset(vector, 0, v_size * sizeof(float));
 }
 
+void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
+                                  const float scale, float* result) {
+  for (int v = 0; v < v_size; ++v) {
+    *result++ = scale * *vector++;
+  }
+}
+
 void PortableClipVector(const float* vector, int v_size, float abs_limit,
                         float* result) {
   for (int v = 0; v < v_size; v++) {

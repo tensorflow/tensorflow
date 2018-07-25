@@ -60,7 +60,7 @@ py_test(
 
 py_test(
     name = "csv_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["csv_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
@@ -121,6 +121,7 @@ py_test(
     srcs = ["get_single_element_test.py"],
     deps = [
         "//tensorflow/contrib/data/python/ops:get_single_element",
+        "//tensorflow/contrib/data/python/ops:grouping",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -128,6 +129,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -208,7 +210,6 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/ops:optimization",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -380,6 +381,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

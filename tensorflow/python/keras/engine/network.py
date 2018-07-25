@@ -318,8 +318,8 @@ class Network(base_layer.Layer):
     else:
       self._expects_training_arg = False
     self._call_convention = self._determine_call_convention(call_argspec)
-    self.outputs = None
-    self.inputs = None
+    self.outputs = []
+    self.inputs = []
     self.built = False
 
   def _determine_call_convention(self, call_argspec):

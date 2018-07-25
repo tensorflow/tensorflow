@@ -746,6 +746,8 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
     rets_alloc_attrs.push_back(ret_alloc_attrs);
   }
 
+  bool allow_dead_tensors = opts.allow_dead_tensors;
+
   // The ProcFLR sends the arguments to the function from the source_device to
   // the target_device. So here we receive those arguments. Similarly, when the
   // computation is done and stored in *rets, we send the return values back
@@ -756,7 +758,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
       device_context, args_alloc_attrs, rendezvous, remote_args,
       [frame, remote_args, item, source_device, target_device,
        target_incarnation, rendezvous, device_context, rets, done, exec_args,
-       rets_alloc_attrs](const Status& status) {
+       rets_alloc_attrs, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
           s = frame->SetArgs(*remote_args);
@@ -769,13 +771,13 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           return;
         }
         item->exec->RunAsync(
-            *exec_args,
-            [frame, rets, done, source_device, target_device,
-             target_incarnation, rendezvous, device_context, remote_args,
-             exec_args, rets_alloc_attrs](const Status& status) {
+            *exec_args, [frame, rets, done, source_device, target_device,
+                         target_incarnation, rendezvous, device_context,
+                         remote_args, exec_args, rets_alloc_attrs,
+                         allow_dead_tensors](const Status& status) {
               Status s = status;
               if (s.ok()) {
-                s = frame->ConsumeRetvals(rets);
+                s = frame->ConsumeRetvals(rets, allow_dead_tensors);
               }
               delete frame;
               if (!s.ok()) {
@@ -859,14 +861,15 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     return;
   }
 
+  bool allow_dead_tensors = opts.allow_dead_tensors;
   item->exec->RunAsync(
       // Executor args
       *exec_args,
       // Done callback.
-      [frame, rets, done, exec_args](const Status& status) {
+      [frame, rets, done, exec_args, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
-          s = frame->ConsumeRetvals(rets);
+          s = frame->ConsumeRetvals(rets, allow_dead_tensors);
         }
         delete frame;
         delete exec_args;

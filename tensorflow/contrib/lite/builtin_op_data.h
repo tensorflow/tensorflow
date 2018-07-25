@@ -268,10 +268,19 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+  // Parameters supported by version 1:
   float min;
   float max;
   int num_bits;
+
+  // Parameters supported by version 2:
+  bool narrow_range;
 } TfLiteFakeQuantParams;
+
+typedef struct {
+  int values_count;
+  int axis;
+} TfLitePackParams;
 
 #ifdef __cplusplus
 }  // extern "C"

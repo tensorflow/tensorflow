@@ -52,6 +52,7 @@ See @{$guide/datasets$Importing Data} for an overview.
 @@prefetch_to_device
 @@read_batch_features
 @@rejection_resample
+@@reduce_dataset
 @@sample_from_datasets
 @@scan
 @@shuffle_and_repeat
@@ -77,6 +78,7 @@ from tensorflow.contrib.data.python.ops.counter import Counter
 from tensorflow.contrib.data.python.ops.enumerate_ops import enumerate_dataset
 from tensorflow.contrib.data.python.ops.error_ops import ignore_errors
 from tensorflow.contrib.data.python.ops.get_single_element import get_single_element
+from tensorflow.contrib.data.python.ops.get_single_element import reduce_dataset
 from tensorflow.contrib.data.python.ops.grouping import bucket_by_sequence_length
 from tensorflow.contrib.data.python.ops.grouping import group_by_reducer
 from tensorflow.contrib.data.python.ops.grouping import group_by_window

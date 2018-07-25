@@ -31,6 +31,11 @@ if __name__ == '__main__':
   doc_generator = generate_lib.DocGenerator()
   doc_generator.add_output_dir_argument()
   doc_generator.add_src_dir_argument()
+  doc_generator.argument_parser.add_argument(
+      '--site_api_path',
+      type=str, default='api_docs/python',
+      help='The path from the site-root to api_docs'
+           'directory for this project')
 
   # This doc generator works on the TensorFlow codebase. Since this script lives
   # at tensorflow/tools/docs, and all code is defined somewhere inside

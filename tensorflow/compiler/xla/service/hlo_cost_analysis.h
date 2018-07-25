@@ -52,6 +52,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleElementwiseUnary(const HloInstruction* hlo) override;
   Status HandleElementwiseBinary(const HloInstruction* hlo) override;
   Status HandleConstant(const HloInstruction* constant) override;
+  Status HandleIota(const HloInstruction* iota) override;
   Status HandleGetTupleElement(
       const HloInstruction* get_tuple_element) override;
   Status HandleSelect(const HloInstruction* hlo) override;

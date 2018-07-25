@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -71,7 +70,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
   gemm_support::IncrementUsageCounter(context);
-  auto* op_data = new OpData;
+  auto* op_data = new OpData();
   context->AddTensors(context, 1, &op_data->input_quantized_index);
   return op_data;
 }
@@ -152,10 +151,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  // Resize output to the same as input (except the last dimension which is
-  // determined by the number of units).
-  TfLiteIntArray* output_size_array = TfLiteIntArrayCopy(input->dims);
-  output_size_array->data[input->dims->size - 1] = num_units;
+  // Resize output.
+  TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(2);
+  output_size_array->data[0] = batch_size;
+  output_size_array->data[1] = num_units;
   TF_LITE_ENSURE_OK(context,
                     context->ResizeTensor(context, output, output_size_array));
   return kTfLiteOk;

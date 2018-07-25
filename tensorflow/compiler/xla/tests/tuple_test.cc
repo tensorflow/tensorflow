@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -543,6 +544,52 @@ XLA_TEST_F(TupleHloTest, DISABLED_ON_INTERPRETER(BitcastAfterGTE)) {
   EXPECT_TRUE(LiteralTestUtil::Equal(
       *LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR2<float>({{1, 2, 3}})),
       *result));
+}
+
+// Disabled on interpreter due to lack of outfeed.
+XLA_TEST_F(TupleHloTest,
+           DISABLED_ON_INTERPRETER(NonAmbiguousTopLevelAllocation)) {
+  const char* testcase = R"(
+    HloModule tuple
+
+    ENTRY main {
+      a = f32[2] parameter(0)
+      b = f32[2] parameter(1)
+      c = f32[2] parameter(2)
+      d = f32[2] parameter(3)
+      cond = pred[] parameter(4)
+
+      tup0 = (f32[2],f32[2]) tuple(a, b)
+      tup1 = (f32[2],f32[2]) tuple(c, d)
+
+      s = (f32[2],f32[2]) tuple-select(cond, tup0, tup1)
+      gte = f32[2] get-tuple-element(s), index=0
+      tuple = (f32[2]) tuple(gte)
+      token = token[] after-all()
+      ROOT outfeed = token[] outfeed(tuple, token)
+    }
+  )";
+  auto module =
+      HloRunner::CreateModuleFromString(testcase, GetDebugOptionsForTest())
+          .ValueOrDie();
+  auto param0 = LiteralUtil::CreateR1<float>({1, 2});
+  auto param1 = LiteralUtil::CreateR1<float>({2, 3});
+  auto param4 = LiteralUtil::CreateR0<bool>(false);
+  // Put execution on a separate thread so we can block on outfeed.
+  std::unique_ptr<tensorflow::Thread> thread(
+      tensorflow::Env::Default()->StartThread(
+          tensorflow::ThreadOptions(), "execute_thread", [&] {
+            TF_EXPECT_OK(Execute(std::move(module),
+                                 {param0.get(), param1.get(), param1.get(),
+                                  param0.get(), param4.get()})
+                             .status());
+          }));
+  auto expected =
+      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}));
+  auto literal = MakeUnique<Literal>();
+  TF_EXPECT_OK(backend().transfer_manager()->TransferLiteralFromOutfeed(
+      backend().default_stream_executor(), expected->shape(), literal.get()));
+  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *literal));
 }
 
 }  // namespace

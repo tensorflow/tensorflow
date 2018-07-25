@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -97,7 +96,7 @@ constexpr int kCellStateTensor = 1;
 constexpr int kOutputTensor = 2;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* op_data = new OpData;
+  auto* op_data = new OpData();
   op_data->kernel_type = kTfLiteLSTMFullKernel;
   context->AddTensors(context, /*tensors_to_add=*/7,
                       &op_data->scratch_tensor_index);
@@ -306,7 +305,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  CheckInputTensorDimensions(context, node, n_input, n_output, n_cell);
+  TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(context, node, n_input,
+                                                        n_output, n_cell));
 
   // Get the pointer to output, activation_state and cell_state tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -846,7 +846,7 @@ enum OutputTensor {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* op_data = new OpData;
+  auto* op_data = new OpData();
   op_data->kernel_type = kTfLiteLSTMBasicKernel;
   // `scratch_tensor_index` is unused in this kernel.
   op_data->scratch_tensor_index = -1;

@@ -36,6 +36,8 @@ class CastOpBase : public OpKernel {
  protected:
   DataType src_dtype_;
   DataType dst_dtype_;
+  DataType external_src_dtype_;
+  DataType external_dst_dtype_;
   std::function<void(OpKernelContext*, const Tensor&, Tensor*)> work_ = nullptr;
 
   Status Unimplemented();
