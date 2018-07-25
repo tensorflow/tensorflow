@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
-class TRTInt8Calibrator;
+struct TRTInt8Calibrator;
 class TRTCalibrationResource;
 class AsyncHelper;
 //  TODO(Sami): Remove this file?

@@ -48,7 +48,7 @@ const int INT8MODE = 2;
 struct EngineConnection {
   EngineConnection(const string& outside, int out_id, int out_port,
                    const string& inside, int in_id, int in_port,
-                   bool input_edge, int port)
+                   bool input_edge, int port, bool control_edge = false)
       : outside_node_name(outside),
         outside_id(out_id),
         outside_port(out_port),
@@ -56,6 +56,7 @@ struct EngineConnection {
         inside_id(in_id),
         inside_port(in_port),
         is_input_edge(input_edge),
+        is_control_edge(control_edge),
         port_number(port) {}
 
   const string outside_node_name;
@@ -70,7 +71,7 @@ struct EngineConnection {
 
   tensorflow::DataType connection_type;
   bool is_input_edge;
-
+  bool is_control_edge;
   // The port number of the TRT node connecting to this edge.
   int port_number;
 };
