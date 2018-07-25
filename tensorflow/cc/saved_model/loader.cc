@@ -86,10 +86,11 @@ bool HasMainOp(const MetaGraphDef& meta_graph_def) {
 Status RunMainOp(const RunOptions& run_options, const string& export_dir,
                  const MetaGraphDef& meta_graph_def,
                  const std::vector<AssetFileDef>& asset_file_defs,
-                 Session* session) {
-  LOG(INFO) << "Running MainOp on SavedModel bundle.";
+                 Session* session, const string& main_op_key) {
+  LOG(INFO) << "Running MainOp with key " << main_op_key
+            << " on SavedModel bundle.";
   const auto& collection_def_map = meta_graph_def.collection_def();
-  const auto main_op_it = collection_def_map.find(kSavedModelMainOpKey);
+  const auto main_op_it = collection_def_map.find(main_op_key);
   if (main_op_it != collection_def_map.end()) {
     if (main_op_it->second.node_list().value_size() != 1) {
       return errors::FailedPrecondition(
@@ -141,30 +142,6 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
                       nullptr /* outputs */, &run_metadata);
 }
 
-Status RunLegacyInitOp(const RunOptions& run_options, const string& export_dir,
-                       const MetaGraphDef& meta_graph_def,
-                       const std::vector<AssetFileDef>& asset_file_defs,
-                       Session* session) {
-  LOG(INFO) << "Running LegacyInitOp on SavedModel bundle.";
-  const auto& collection_def_map = meta_graph_def.collection_def();
-  const auto init_op_it = collection_def_map.find(kSavedModelLegacyInitOpKey);
-  if (init_op_it != collection_def_map.end()) {
-    if (init_op_it->second.node_list().value_size() != 1) {
-      return errors::FailedPrecondition(strings::StrCat(
-          "Expected exactly one serving init op in : ", export_dir));
-    }
-    std::vector<std::pair<string, Tensor>> inputs;
-    AddAssetsTensorsToInputs(export_dir, asset_file_defs, &inputs);
-    RunMetadata run_metadata;
-    const StringPiece legacy_init_op_name =
-        init_op_it->second.node_list().value(0);
-    return session->Run(run_options, inputs, {},
-                        {legacy_init_op_name.ToString()}, nullptr /* outputs */,
-                        &run_metadata);
-  }
-  return Status::OK();
-}
-
 Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
                         std::vector<AssetFileDef>* asset_file_defs) {
   const auto& collection_def_map = meta_graph_def.collection_def();
@@ -204,11 +181,11 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   if (HasMainOp(bundle->meta_graph_def)) {
     TF_RETURN_IF_ERROR(RunMainOp(run_options, export_dir,
                                  bundle->meta_graph_def, asset_file_defs,
-                                 bundle->session.get()));
+                                 bundle->session.get(), kSavedModelMainOpKey));
   } else {
-    TF_RETURN_IF_ERROR(RunLegacyInitOp(run_options, export_dir,
-                                       bundle->meta_graph_def, asset_file_defs,
-                                       bundle->session.get()));
+    TF_RETURN_IF_ERROR(RunMainOp(
+        run_options, export_dir, bundle->meta_graph_def, asset_file_defs,
+        bundle->session.get(), kSavedModelLegacyInitOpKey));
   }
   return Status::OK();
 }
