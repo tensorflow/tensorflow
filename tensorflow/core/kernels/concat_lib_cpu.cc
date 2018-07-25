@@ -73,6 +73,7 @@ REGISTER(qint8)
 REGISTER(quint16)
 REGISTER(qint16)
 REGISTER(qint32)
+REGISTER(bfloat16)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
