@@ -22,11 +22,7 @@ py_test(
         "keras_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "no_oss",
-        "notap",
-    ],
+    tags = ["no_windows"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -38,11 +34,7 @@ py_test(
         "list_literals_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "no_oss",
-        "notap",
-    ],
+    tags = ["no_windows"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
