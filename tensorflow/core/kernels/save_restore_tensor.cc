@@ -252,7 +252,7 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   // within a fixed memory budget.
   TensorShape restored_full_shape;
   std::vector<string> mismatched_errors;
-  for (auto i : sorted_name_idx) {
+  for (size_t i : sorted_name_idx) {
     DataType original_dtype;
     const string& tensor_name = tensor_names_flat(i);
     TF_RETURN_IF_ERROR(
