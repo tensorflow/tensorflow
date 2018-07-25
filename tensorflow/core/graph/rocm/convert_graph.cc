@@ -873,8 +873,10 @@ Status ConvertSubgraphToRTG(std::unique_ptr<Graph>* g, Cluster& cluster, T_INPUT
         bool isExit = (id2Mask[node->id()] & (1 << is_exit)) ? true : false;
         fwd_convert.add_instruction(node, isExit);
         cluster_name += node->name();
+        cluster_name += "-";
         device = node->assigned_device_name();
     }
+    std::cout << "---After encode---" << std::endl;
     std::cout << *program << std::endl;
     // call program->optimize()
     Converter bwd_convert(program, nullptr);
@@ -893,10 +895,14 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
     bool use_gpu = false;
     if (env_val != nullptr)
         use_gpu = atoi(env_val);
-    const char* cluster_dbg_env = getenv("TF_MIGRAPH_CLUSTER_DBG_LIMIT");
-    int cluster_dbg_limit = -1;
-    if (cluster_dbg_env != nullptr)
-        cluster_dbg_limit = atoi(cluster_dbg_env);
+    const char* dbg_limit_env = getenv("TF_MIGRAPH_DBG_LIMIT");
+    int dbg_limit = -1;
+    if (dbg_limit_env != nullptr)
+        dbg_limit = atoi(dbg_limit_env);
+    const char* dbg_env = getenv("TF_MIGRAPH_DBG");
+    int dbg = -1;
+    if (dbg_env != nullptr)
+        dbg = atoi(dbg_env);
     CHECK_NOTNULL(g);
     const Graph& graph = **g;
     RTGLIB::dump_graph::DumpGraphToFile("Before convert graph to RTG", graph);
@@ -1022,14 +1028,26 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
                 }
             }
         }
-
+        int RTGOpCnt = 0;
         for (unsigned id = 0; id < maxClusterNum; id++) {
             Cluster& cluster = clusters[id];
             if (cluster.getSize() < MIN_CLUSTER_SIZE)
                 continue;
-            if ((cluster_dbg_limit >= 0) && (id > cluster_dbg_limit))
+            int output_cnt = 0;
+            for (const Edge* edge : cluster.output_edges) {
+                if (edge->IsControlEdge())
+                    continue;
+                output_cnt++;
+            }
+            if (output_cnt > 1)
                 continue;
+            if ((dbg >= 0) && (RTGOpCnt != dbg))
+                continue;
+            if ((dbg_limit >= 0) && (RTGOpCnt >= dbg_limit))
+                continue;
+            std::cout << "RTGOp: " << RTGOpCnt << "\n";
             ConvertSubgraphToRTG(g, cluster, inputs, id2Mask, use_gpu, refiner);
+            RTGOpCnt++;
         }
     }
 

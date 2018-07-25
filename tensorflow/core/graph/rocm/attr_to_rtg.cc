@@ -32,6 +32,7 @@ void GetProgram(const NameAttrList& function, void ** p_program, int &bytes) {
         const NameAttrList& func = value.list().func(i);
         convert.decodeAttr(func);
     }
+    std::cout << "---After decode---" << std::endl;
     std::cout << *program << std::endl;
     bytes = convert.next_offset;
     *p_program = program;
@@ -78,6 +79,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
         params["output"] = {output_shape, output_ptr};
         // params["handle"] = {migraph::shape::any_type, handle.get()};
         program->compile(migraph::miopen::target{});
+        std::cout << "---After compile---" << std::endl;
         std::cout << *program << std::endl;
         arg = program->eval(params);
     }

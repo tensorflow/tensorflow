@@ -114,7 +114,7 @@ void RTGLaunchOp::Compute(OpKernelContext* ctx) {
     MIGraphScratchAllocator scratch_allocator(1LL << 32, ctx);
     void * scratch_mem_ptr = nullptr;
     int scratch_mem_size = 0;
-    if (required_bytes > 0) {
+    if ((required_bytes > 0) && use_gpu) {
         auto allocated = scratch_allocator.AllocateBytes(stream, 1024);
         DeviceMemory<uint8> scratch;
         if (allocated.ok()) {
@@ -167,8 +167,8 @@ RTGLaunchOp::~RTGLaunchOp() {
 }
 
 //TODO: back to GPU
-REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_GPU), RTGLaunchOp);
-// REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_CPU), RTGLaunchOp);    
+//REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_GPU), RTGLaunchOp);
+REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_CPU), RTGLaunchOp);    
 
 }  // namespace tensorflow
 
