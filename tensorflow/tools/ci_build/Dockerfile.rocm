@@ -48,6 +48,8 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   virtualenv \
   python-pip \
   python3-pip \
+  libxml2 \
+  libxml2-dev \
   wget && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
@@ -60,6 +62,11 @@ RUN apt-get update --allow-insecure-repositories && \
     rocm-profiler cxlactivitylogger && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Workaround : build HCC from source using the commit that is known to have fix for issue812
+RUN cd ~ && git clone --recursive https://github.com/RadeonOpenCompute/hcc.git
+RUN cd ~/hcc  && git checkout -b issue812-fix d530be7
+RUN cd ~/hcc && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && make package -j$(nproc) && dpkg -i *.deb
 
 # Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
 RUN cd ~ && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git
