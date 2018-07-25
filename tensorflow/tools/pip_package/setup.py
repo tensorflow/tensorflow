@@ -47,6 +47,13 @@ DOCLINES = __doc__.split('\n')
 # result for pip.
 _VERSION = '1.9.0'
 
+if '--version' in sys.argv:
+  version_idx = sys.argv.index('--version')
+  _VERSION = sys.argv[version_idx + 1]
+  print("version specified is " + _VERSION)
+  sys.argv.remove('--version')
+  sys.argv.pop(version_idx)
+
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
