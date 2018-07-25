@@ -46,7 +46,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
     ] + tf_protos_all(),
@@ -58,8 +58,14 @@ tf_cc_test(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/kernels:cast_op",
     ],
 )
 
@@ -73,7 +79,7 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -107,7 +113,7 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -141,7 +147,7 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",

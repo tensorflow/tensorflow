@@ -35,36 +35,32 @@ std::vector<std::pair<string, AttrValue>> GetCommonAttributes() {
   return commonAttributes;
 }
 
-void MakeUnaryNode(GraphDef *graph, const std::string &node_type, int count,
-                   string input_node, NodeDef **return_node) {
-  NodeDef *node_count;
-  TF_ASSERT_OK(
-      graph_utils::AddScalarConstNode<int64>(count, graph, &node_count));
-  TF_ASSERT_OK(graph_utils::AddNode("", node_type,
-                                    {std::move(input_node), node_count->name()},
-                                    GetCommonAttributes(), graph, return_node));
+NodeDef *MakeUnaryNode(const std::string &node_type, int count,
+                       string input_node, MutableGraphView *graph) {
+  NodeDef *node_count = graph_utils::AddScalarConstNode<int64>(count, graph);
+  return graph_utils::AddNode("", node_type,
+                              {std::move(input_node), node_count->name()},
+                              GetCommonAttributes(), graph);
 }
 
-void MakeCacheNode(GraphDef *graph, string input_node, NodeDef **return_node) {
-  NodeDef *node_filename;
-  TF_ASSERT_OK(
-      graph_utils::AddScalarConstNode<StringPiece>("", graph, &node_filename));
-  TF_ASSERT_OK(graph_utils::AddNode(
-      "", "CacheDataset", {std::move(input_node), node_filename->name()},
-      GetCommonAttributes(), graph, return_node));
+NodeDef *MakeCacheNode(string input_node, MutableGraphView *graph) {
+  NodeDef *node_filename =
+      graph_utils::AddScalarConstNode<StringPiece>("", graph);
+  return graph_utils::AddNode("", "CacheDataset",
+                              {std::move(input_node), node_filename->name()},
+                              GetCommonAttributes(), graph);
 }
 
-void MakeRangeNode(GraphDef *graph, NodeDef **range_node) {
-  NodeDef *start_node, *stop_node, *step_node;
-  TF_ASSERT_OK(graph_utils::AddScalarConstNode<int64>(0, graph, &start_node));
-  TF_ASSERT_OK(graph_utils::AddScalarConstNode<int64>(10, graph, &stop_node));
-  TF_ASSERT_OK(graph_utils::AddScalarConstNode<int64>(1, graph, &step_node));
+NodeDef *MakeRangeNode(MutableGraphView *graph) {
+  auto *start_node = graph_utils::AddScalarConstNode<int64>(0, graph);
+  auto *stop_node = graph_utils::AddScalarConstNode<int64>(10, graph);
+  auto *step_node = graph_utils::AddScalarConstNode<int64>(1, graph);
 
   std::vector<string> range_inputs = {start_node->name(), stop_node->name(),
                                       step_node->name()};
 
-  TF_ASSERT_OK(graph_utils::AddNode("", "RangeDataset", range_inputs,
-                                    GetCommonAttributes(), graph, range_node));
+  return graph_utils::AddNode("", "RangeDataset", range_inputs,
+                              GetCommonAttributes(), graph);
 }
 
 struct NoOpLastEliminationTest
@@ -74,23 +70,22 @@ struct NoOpLastEliminationTest
 // transformations at the end of the pipeline.
 TEST_P(NoOpLastEliminationTest, EliminateLastNoOpNode) {
   GrapplerItem item;
-  GraphDef *graph = &item.graph;
+  MutableGraphView graph(&item.graph);
 
   const std::string &node_type = std::get<0>(GetParam());
   const int node_count = std::get<1>(GetParam());
   const bool should_keep_node = std::get<2>(GetParam());
 
-  NodeDef *range_node;
-  MakeRangeNode(graph, &range_node);
+  NodeDef *range_node = MakeRangeNode(&graph);
 
-  NodeDef *node;
-  MakeUnaryNode(graph, node_type, node_count, range_node->name(), &node);
+  NodeDef *node =
+      MakeUnaryNode(node_type, node_count, range_node->name(), &graph);
 
   NoOpElimination optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(graph_utils::ContainsNodeWithName(node->name(), output),
+  EXPECT_EQ(graph_utils::ContainsGraphNodeWithName(node->name(), output),
             should_keep_node);
 }
 
@@ -113,30 +108,29 @@ struct NoOpMiddleEliminationTest
 // transformations int the middle of the pipeline.
 TEST_P(NoOpMiddleEliminationTest, EliminateMiddleNoOpNode) {
   GrapplerItem item;
-  GraphDef *graph = &item.graph;
+  MutableGraphView graph(&item.graph);
 
   const std::string &node_type = std::get<0>(GetParam());
   const int node_count = std::get<1>(GetParam());
   const bool should_keep_node = std::get<2>(GetParam());
 
-  NodeDef *range_node;
-  MakeRangeNode(graph, &range_node);
+  NodeDef *range_node = MakeRangeNode(&graph);
 
-  NodeDef *node;
-  MakeUnaryNode(graph, node_type, node_count, range_node->name(), &node);
+  NodeDef *node =
+      MakeUnaryNode(node_type, node_count, range_node->name(), &graph);
 
-  NodeDef *cache_node;
-  MakeCacheNode(graph, node->name(), &cache_node);
+  NodeDef *cache_node = MakeCacheNode(node->name(), &graph);
   NoOpElimination optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
-  EXPECT_EQ(graph_utils::ContainsNodeWithName(node->name(), output),
+  EXPECT_EQ(graph_utils::ContainsGraphNodeWithName(node->name(), output),
             should_keep_node);
-  EXPECT_TRUE(graph_utils::ContainsNodeWithName(cache_node->name(), output));
+  EXPECT_TRUE(
+      graph_utils::ContainsGraphNodeWithName(cache_node->name(), output));
 
-  NodeDef cache_node_out =
-      output.node(graph_utils::FindNodeWithName(cache_node->name(), output));
+  NodeDef cache_node_out = output.node(
+      graph_utils::FindGraphNodeWithName(cache_node->name(), output));
 
   EXPECT_EQ(cache_node_out.input_size(), 2);
   auto last_node_input = (should_keep_node ? node : range_node)->name();
@@ -162,41 +156,40 @@ struct NoOpMultipleEliminationTest : ::testing::TestWithParam<NodesTypes> {};
 // multiple noop nodes.
 TEST_P(NoOpMultipleEliminationTest, EliminateMultipleNoOpNode) {
   GrapplerItem item;
-  GraphDef *graph = &item.graph;
+  MutableGraphView graph(&item.graph);
 
   static_assert(std::tuple_size<NodesTypes>::value == 2,
                 "Make sure to include everything in the test");
   const std::vector<std::pair<string, int>> noop_nodes = {
       std::get<0>(GetParam()), std::get<1>(GetParam())};
 
-  NodeDef *range_node;
-  MakeRangeNode(graph, &range_node);
+  NodeDef *range_node = MakeRangeNode(&graph);
 
   NodeDef *previous = range_node;
   std::vector<string> nodes_to_remove;
   nodes_to_remove.reserve(noop_nodes.size());
 
   for (const auto &noop_node : noop_nodes) {
-    NodeDef *node;
-    MakeUnaryNode(graph, noop_node.first, noop_node.second, previous->name(),
-                  &node);
+    NodeDef *node = MakeUnaryNode(noop_node.first, noop_node.second,
+                                  previous->name(), &graph);
     nodes_to_remove.push_back(node->name());
     previous = node;
   }
 
-  NodeDef *cache_node;
-  MakeCacheNode(graph, previous->name(), &cache_node);
+  NodeDef *cache_node = MakeCacheNode(previous->name(), &graph);
   NoOpElimination optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
 
   for (const auto &noop_node_name : nodes_to_remove)
-    EXPECT_FALSE(graph_utils::ContainsNodeWithName(noop_node_name, output));
+    EXPECT_FALSE(
+        graph_utils::ContainsGraphNodeWithName(noop_node_name, output));
 
-  EXPECT_TRUE(graph_utils::ContainsNodeWithName(cache_node->name(), output));
+  EXPECT_TRUE(
+      graph_utils::ContainsGraphNodeWithName(cache_node->name(), output));
 
-  NodeDef cache_node_out =
-      output.node(graph_utils::FindNodeWithName(cache_node->name(), output));
+  NodeDef cache_node_out = output.node(
+      graph_utils::FindGraphNodeWithName(cache_node->name(), output));
 
   EXPECT_EQ(cache_node_out.input_size(), 2);
   EXPECT_EQ(cache_node_out.input(0), range_node->name());
