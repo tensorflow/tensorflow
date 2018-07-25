@@ -274,77 +274,83 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       num_ipus = 1;
     }
 
-    auto device_list =
-        device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
+    try {
+      auto device_list =
+          device_mgr.getDevices(poplar::TargetType::IPU, num_ipus);
 
-    if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
-      if (device_list.size() > 0) {
-        type = tensorflow::IPUOptions::DeviceConfig::IPU;
-      } else {
-        type = tensorflow::IPUOptions::DeviceConfig::CPU;
+      if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
+        if (device_list.size() > 0) {
+          type = tensorflow::IPUOptions::DeviceConfig::IPU;
+        } else {
+          type = tensorflow::IPUOptions::DeviceConfig::CPU;
+        }
       }
-    }
 
-    if (device_open_) {
-      VLOG(1) << "Detaching poplar device type " << GetDeviceTargetName();
-      poplar_device_.detach();
-      device_open_ = false;
-    }
+      if (device_open_) {
+        VLOG(1) << "Detaching poplar device type " << GetDeviceTargetName();
+        poplar_device_.detach();
+        device_open_ = false;
+      }
 
-    bool opened = false;
-    switch (type) {
-      case tensorflow::IPUOptions::DeviceConfig::IPU: {
-        for (auto& d : device_list) {
-          if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
-            if (d.attach()) {
-              poplar_device_ = std::move(d);
+      bool opened = false;
+      switch (type) {
+        case tensorflow::IPUOptions::DeviceConfig::IPU: {
+          for (auto& d : device_list) {
+            if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
+              if (d.attach()) {
+                poplar_device_ = std::move(d);
 
-              unsigned mj, mn, pt;
-              poplar_device_.getDriverVersion(mj, mn, pt);
-              VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
+                unsigned mj, mn, pt;
+                poplar_device_.getDriverVersion(mj, mn, pt);
+                VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
 
-              if (tiles_per_ipu > 0) {
-                poplar_device_ =
-                    poplar_device_.createVirtualDevice(tiles_per_ipu);
+                if (tiles_per_ipu > 0) {
+                  poplar_device_ =
+                      poplar_device_.createVirtualDevice(tiles_per_ipu);
+                }
+
+                opened = true;
+                break;
               }
-
-              opened = true;
-              break;
             }
           }
+          break;
         }
-        break;
+        case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
+          poplar::IPUModel model;
+          if (num_ipus != 0) {
+            model.numIPUs = num_ipus;
+          }
+          if (tiles_per_ipu != 0) {
+            model.tilesPerIPU = tiles_per_ipu;
+          }
+          poplar_device_ = model.createDevice();
+          if (poplar_device_.attach()) {
+            opened = true;
+          }
+          break;
+        }
+        case tensorflow::IPUOptions::DeviceConfig::CPU: {
+          poplar_device_ = poplar::Device::createCPUDevice();
+          if (poplar_device_.attach()) {
+            opened = true;
+          }
+          break;
+        }
+        default:
+          return xla::InternalError(
+              "Unrecognized poplar device type for ordinal %d: %d", ordinal_,
+              type);
       }
-      case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL: {
-        poplar::IPUModel model;
-        if (num_ipus != 0) {
-          model.numIPUs = num_ipus;
-        }
-        if (tiles_per_ipu != 0) {
-          model.tilesPerIPU = tiles_per_ipu;
-        }
-        poplar_device_ = model.createDevice();
-        if (poplar_device_.attach()) {
-          opened = true;
-        }
-        break;
-      }
-      case tensorflow::IPUOptions::DeviceConfig::CPU: {
-        poplar_device_ = poplar::Device::createCPUDevice();
-        if (poplar_device_.attach()) {
-          opened = true;
-        }
-        break;
-      }
-      default:
-        return xla::InternalError(
-            "Unrecognized poplar device type for ordinal %d: %d", ordinal_,
-            type);
-    }
 
-    if (!opened) {
-      return xla::ResourceExhausted(
-          "Unable to acquire poplar device type for ordinal %d", ordinal_);
+      if (!opened) {
+        return xla::ResourceExhausted(
+            "Unable to acquire poplar device type for ordinal %d", ordinal_);
+      }
+    } catch (poplar::poplar_error e) {
+      return xla::InternalError(
+          "Unable to open poplar device for ordinal %d: %s", ordinal_,
+          e.what());
     }
 
     VLOG(1) << "Attached poplar device type " << GetDeviceTargetName();
