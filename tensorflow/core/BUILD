@@ -2325,6 +2325,7 @@ tf_generate_proto_text_sources(
         ":lib_internal",
         ":protos_all_proto_cc",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -2435,6 +2436,7 @@ cc_header_only_library(
     deps = [
         ":core_cpu_lib",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_cuda_library(
@@ -2502,7 +2504,7 @@ tf_cuda_library(
             "//third_party/mkl:intel_binary_blob",
             "@mkl_dnn",
         ],
-    ),
+    ) , 
     alwayslink = 1,
 )
 
@@ -2560,6 +2562,7 @@ tf_cuda_library(
 cc_library(
     name = "protos_cc",
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
+    visibility = ["//visibility:public"],
 )
 
 # Library containing all of the graph construction code that is
