@@ -19,7 +19,6 @@ limitations under the License.
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
@@ -616,6 +615,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_MEAN:
+    case BuiltinOperator_REDUCE_MAX:
+    case BuiltinOperator_REDUCE_PROD:
     case BuiltinOperator_SUM: {
       auto* params = MallocPOD<TfLiteReducerParams>();
       if (auto* schema_params = op->builtin_options_as_ReducerOptions()) {
@@ -704,6 +705,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = static_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_PACK: {
+      TfLitePackParams* params = MallocPOD<TfLitePackParams>();
+      if (auto* pack_params = op->builtin_options_as_PackOptions()) {
+        params->values_count = pack_params->values_count();
+        params->axis = pack_params->axis();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
       error_reporter->Report("DELEGATE op shouldn't exist in model.");
@@ -762,6 +772,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
     case BuiltinOperator_POW:
+    case BuiltinOperator_LOGICAL_OR:
       break;
   }
   return kTfLiteOk;

@@ -664,17 +664,17 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     TFE_TensorHandle* h, TF_Status* status) {
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
-  if (!status->status.ok()) return nullptr;
-  if (d != nullptr) {
+  if (!h->handle->OnHostCPU()) {
     status->status = tensorflow::errors::FailedPrecondition(
         "TFE_TensorHandle is placed in device (not host) memory. Cannot return "
         "a tensorflow::Tensor");
     return nullptr;
   }
+  tensorflow::Device* d = nullptr;
+  tensorflow::Device* op_device = nullptr;
+  const tensorflow::Tensor* t = nullptr;
+  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+  if (!status->status.ok()) return nullptr;
   return t;
 }
 

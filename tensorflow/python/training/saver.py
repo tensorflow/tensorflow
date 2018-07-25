@@ -126,8 +126,10 @@ class BaseSaverBuilder(object):
           def f():
             with ops.device(v.device):
               x = v.read_value()
-            with ops.device("/device:CPU:0"):
-              return array_ops.identity(x)
+              # To allow variables placed on non-CPU devices to be checkpointed,
+              # we copy them to CPU on the same machine first.
+              with ops.device("/device:CPU:0"):
+                return array_ops.identity(x)
           return f
 
         self.handle_op = var.handle

@@ -21,6 +21,12 @@ from __future__ import print_function
 import linecache
 import sys
 
+# Names for indices into TF traceback tuples.
+TB_FILENAME = 0
+TB_LINENO = 1
+TB_FUNCNAME = 2
+TB_CODEDICT = 3  # Dictionary of Python interpreter state.
+
 
 def extract_stack(extract_frame_info_fn=None):
   """A lightweight, extensible re-implementation of traceback.extract_stack.

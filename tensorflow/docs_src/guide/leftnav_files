@@ -8,10 +8,10 @@ datasets.md
 ### Estimators
 estimators.md: Introduction to Estimators
 premade_estimators.md
-custom_estimators.md
+checkpoints.md
 feature_columns.md
 datasets_for_estimators.md
-checkpoints.md
+custom_estimators.md
 
 ### Accelerators
 using_gpu.md
@@ -23,6 +23,7 @@ tensors.md
 variables.md
 graphs.md
 saved_model.md
+autograph.md : Control flow
 
 ### ML Concepts
 embedding.md

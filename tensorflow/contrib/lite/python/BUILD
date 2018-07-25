@@ -20,6 +20,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -71,7 +72,10 @@ py_test(
     srcs = ["lite_test.py"],
     data = [":interpreter_test_data"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
     deps = [
         ":lite",
     ],
@@ -163,7 +167,10 @@ py_test(
     name = "convert_saved_model_test",
     srcs = ["convert_saved_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":convert_saved_model",

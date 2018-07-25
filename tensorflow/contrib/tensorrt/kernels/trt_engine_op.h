@@ -81,7 +81,7 @@ class TRTEngineOp : public AsyncOpKernel {
   std::vector<string> output_nodes_;
 
   // keep device allocator for TRT.
-  std::unique_ptr<TRTDeviceAllocator> allocator_;
+  std::unique_ptr<TRTBaseAllocator> allocator_;
 
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;

@@ -31,13 +31,16 @@ import time
 import numpy as np
 import six
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine.training_utils import standardize_input_data
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
+from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -644,35 +647,17 @@ class LearningRateScheduler(Callback):
     self.verbose = verbose
 
   def on_epoch_begin(self, epoch, logs=None):
-    # TODO(yashkatariya): Change the property checking when the learning
-    # rate attribute is unified across all TF Optimizers.
-    if isinstance(self.model.optimizer, optimizers.TFOptimizer):
-      if not hasattr(self.model.optimizer.optimizer, '_lr') and not hasattr(
-          self.model.optimizer.optimizer, '_learning_rate'):
-        raise ValueError(
-            'TF Optimizer must have a "_lr" or "_learning_rate" attribute.')
-      else:
-        opt = self.model.optimizer.optimizer
-        if hasattr(opt, '_lr'):
-          opt_lr = Variable(opt._lr)  # pylint: disable=protected-access
-        elif hasattr(opt, '_learning_rate'):
-          opt_lr = Variable(opt._learning_rate)  # pylint: disable=protected-access
-    else:
-      if not hasattr(self.model.optimizer, 'lr'):
-        raise ValueError('Optimizer must have a "lr" attribute.')
-      else:
-        opt = self.model.optimizer
-        opt_lr = opt.lr
-
+    if not hasattr(self.model.optimizer, 'lr'):
+      raise ValueError('Optimizer must have a "lr" attribute.')
     try:  # new API
-      lr = float(K.get_value(opt_lr))
+      lr = float(K.get_value(self.model.optimizer.lr))
       lr = self.schedule(epoch, lr)
     except TypeError:  # Support for old API for backward compatibility
       lr = self.schedule(epoch)
     if not isinstance(lr, (float, np.float32, np.float64)):
       raise ValueError('The output of the "schedule" function '
                        'should be float.')
-    K.set_value(opt_lr, lr)
+    K.set_value(self.model.optimizer.lr, lr)
     if self.verbose > 0:
       print('\nEpoch %05d: LearningRateScheduler reducing learning '
             'rate to %s.' % (epoch + 1, lr))
@@ -717,7 +702,9 @@ class TensorBoard(Callback):
       write_images: whether to write model weights to visualize as
           image in TensorBoard.
       embeddings_freq: frequency (in epochs) at which selected embedding
-          layers will be saved.
+          layers will be saved. If set to 0, embeddings won't be computed.
+          Data to be visualized in TensorBoard's Embedding tab must be passed
+          as `embeddings_data`.
       embeddings_layer_names: a list of names of layers to keep eye on. If
           None or empty list all the embedding layer will be watched.
       embeddings_metadata: a dictionary which maps layer name to a file name
@@ -725,6 +712,10 @@ class TensorBoard(Callback):
           [details](https://www.tensorflow.org/how_tos/embedding_viz/#metadata_optional)
           about metadata files format. In case if the same metadata file is
           used for all embedding layers, string can be passed.
+      embeddings_data: data to be embedded at layers specified in
+          `embeddings_layer_names`. Numpy array (if the model has a single
+          input) or list of Numpy arrays (if the model has multiple inputs).
+          Learn [more about embeddings](https://www.tensorflow.org/programmers_guide/embedding)
   """
 
   # pylint: enable=line-too-long
@@ -735,7 +726,11 @@ class TensorBoard(Callback):
                batch_size=32,
                write_graph=True,
                write_grads=False,
-               write_images=False):
+               write_images=False,
+               embeddings_freq=0,
+               embeddings_layer_names=None,
+               embeddings_metadata=None,
+               embeddings_data=None):
     super(TensorBoard, self).__init__()
     self.log_dir = log_dir
     self.histogram_freq = histogram_freq
@@ -745,8 +740,13 @@ class TensorBoard(Callback):
     self.write_images = write_images
     self.batch_size = batch_size
     self._current_batch = 0
+    self._total_batches_seen = 0
     # abstracted writer class to be able to stub for testing
     self._writer_class = tf_summary.FileWriter
+    self.embeddings_freq = embeddings_freq
+    self.embeddings_layer_names = embeddings_layer_names
+    self.embeddings_metadata = embeddings_metadata
+    self.embeddings_data = embeddings_data
 
   def set_model(self, model):
     """Sets Keras model and creates summary ops."""
@@ -798,7 +798,11 @@ class TensorBoard(Callback):
             tf_summary.histogram('{}_grad'.format(mapped_weight_name), grads)
 
         if hasattr(layer, 'output'):
-          tf_summary.histogram('{}_out'.format(layer.name), layer.output)
+          if isinstance(layer.output, list):
+            for i, output in enumerate(layer.output):
+              tf_summary.histogram('{}_out_{}'.format(layer.name, i), output)
+          else:
+            tf_summary.histogram('{}_out'.format(layer.name), layer.output)
     self.merged = tf_summary.merge_all()
 
     if self.write_graph:
@@ -806,11 +810,97 @@ class TensorBoard(Callback):
     else:
       self.writer = self._writer_class(self.log_dir)
 
+    # If both embedding_freq and embeddings_data are available, we will
+    # visualize embeddings.
+    if self.embeddings_freq and self.embeddings_data is not None:
+      self.embeddings_data = standardize_input_data(self.embeddings_data,
+                                                    model.input_names)
+
+      # If embedding_layer_names are not provided, get all of the embedding
+      # layers from the model.
+      embeddings_layer_names = self.embeddings_layer_names
+      if not embeddings_layer_names:
+        embeddings_layer_names = [
+            layer.name
+            for layer in self.model.layers
+            if type(layer).__name__ == 'Embedding'
+        ]
+
+      self.assign_embeddings = []
+      embeddings_vars = {}
+
+      self.batch_id = batch_id = array_ops.placeholder(dtypes.int32)
+      self.step = step = array_ops.placeholder(dtypes.int32)
+
+      for layer in self.model.layers:
+        if layer.name in embeddings_layer_names:
+          embedding_input = self.model.get_layer(layer.name).output
+          embedding_size = np.prod(embedding_input.shape[1:])
+          embedding_input = array_ops.reshape(embedding_input,
+                                              (step, int(embedding_size)))
+          shape = (self.embeddings_data[0].shape[0], int(embedding_size))
+          embedding = variables.Variable(
+              array_ops.zeros(shape), name=layer.name + '_embedding')
+          embeddings_vars[layer.name] = embedding
+          batch = state_ops.assign(embedding[batch_id:batch_id + step],
+                                   embedding_input)
+          self.assign_embeddings.append(batch)
+
+      self.saver = saver.Saver(list(embeddings_vars.values()))
+
+      # Create embeddings_metadata dictionary
+      if isinstance(self.embeddings_metadata, str):
+        embeddings_metadata = {
+            layer_name: self.embeddings_metadata
+            for layer_name in embeddings_vars.keys()
+        }
+      else:
+        # If embedding_metadata is already a dictionary
+        embeddings_metadata = self.embeddings_metadata
+
+      try:
+        from tensorboard.plugins import projector
+      except ImportError:
+        raise ImportError('Failed to import TensorBoard. Please make sure that '
+                          'TensorBoard integration is complete."')
+
+      # TODO(psv): Add integration tests to test embedding visualization
+      # with TensorBoard callback. We are unable to write a unit test for this
+      # because TensorBoard dependency assumes TensorFlow package is installed.
+      config = projector.ProjectorConfig()
+      for layer_name, tensor in embeddings_vars.items():
+        embedding = config.embeddings.add()
+        embedding.tensor_name = tensor.name
+
+        if (embeddings_metadata is not None and
+            layer_name in embeddings_metadata):
+          embedding.metadata_path = embeddings_metadata[layer_name]
+
+      projector.visualize_embeddings(self.writer, config)
+
   def _fetch_callback(self, summary):
     self.writer.add_summary(
         summary,
         self._epoch + self._current_val_batch / self._validation_batches)
     self._current_val_batch += 1
+
+  def _write_custom_summaries(self, step, logs=None):
+    """Writes metrics out as custom scalar summaries.
+
+    Arguments:
+        step: the global step to use for Tensorboard.
+        logs: dict. Keys are scalar summary names, values are
+            NumPy scalars.
+
+    """
+    logs = logs or {}
+    for name, value in logs.items():
+      summary = tf_summary.Summary()
+      summary_value = summary.value.add()
+      summary_value.simple_value = value.item()
+      summary_value.tag = name
+      self.writer.add_summary(summary, step)
+    self.writer.flush()
 
   def on_train_begin(self, logs=None):
     """Checks if histogram summaries can be run."""
@@ -828,6 +918,16 @@ class TensorBoard(Callback):
         raise ValueError(
             'If printing histograms, validation data must have length > 0.')
 
+  def on_batch_end(self, batch, logs=None):
+    """Writes scalar summaries for metrics on every training batch."""
+    # Don't output batch_size and batch number as Tensorboard summaries
+    logs = logs or {}
+    batch_logs = {('batch_' + k): v
+                  for k, v in logs.items()
+                  if k not in ['batch', 'size']}
+    self._write_custom_summaries(self._total_batches_seen, batch_logs)
+    self._total_batches_seen += 1
+
   def on_epoch_begin(self, epoch, logs=None):
     """Add histogram op to Model test_function callbacks, reset batch count."""
 
@@ -844,7 +944,12 @@ class TensorBoard(Callback):
   def on_epoch_end(self, epoch, logs=None):
     """Checks if summary ops should run next epoch, logs scalar summaries."""
 
-    logs = logs or {}
+    # don't output batch_size and
+    # batch number as Tensorboard summaries
+    logs = {('epoch_' + k): v
+            for k, v in logs.items()
+            if k not in ['batch', 'size']}
+    self._write_custom_summaries(epoch, logs)
 
     # pop the histogram summary op after each epoch
     if self.histogram_freq:
@@ -853,15 +958,45 @@ class TensorBoard(Callback):
       if self.merged in self.model.test_function.fetch_callbacks:
         self.model.test_function.fetch_callbacks.pop(self.merged)
 
-    for name, value in logs.items():
-      if name in ['batch', 'size']:
-        continue
-      summary = tf_summary.Summary()
-      summary_value = summary.value.add()
-      summary_value.simple_value = value.item()
-      summary_value.tag = name
-      self.writer.add_summary(summary, epoch)
-    self.writer.flush()
+    if self.embeddings_data is None and self.embeddings_freq:
+      raise ValueError('To visualize embeddings, embeddings_data must '
+                       'be provided.')
+
+    if self.embeddings_freq and self.embeddings_data is not None:
+      if epoch % self.embeddings_freq == 0:
+        # We need a second forward-pass here because we're passing
+        # the `embeddings_data` explicitly. This design allows to pass
+        # arbitrary data as `embeddings_data` and results from the fact
+        # that we need to know the size of the `tf.Variable`s which
+        # hold the embeddings in `set_model`. At this point, however,
+        # the `validation_data` is not yet set.
+
+        embeddings_data = self.embeddings_data
+        n_samples = embeddings_data[0].shape[0]
+        i = 0
+        while i < n_samples:
+          step = min(self.batch_size, n_samples - i)
+          batch = slice(i, i + step)
+
+          if isinstance(self.model.input, list):
+            feed_dict = {
+                model_input: embeddings_data[idx][batch]
+                for idx, model_input in enumerate(self.model.input)
+            }
+          else:
+            feed_dict = {self.model.input: embeddings_data[0][batch]}
+
+          feed_dict.update({self.batch_id: i, self.step: step})
+
+          if self.model.uses_learning_phase:
+            feed_dict[K.learning_phase()] = False
+
+          self.sess.run(self.assign_embeddings, feed_dict=feed_dict)
+          self.saver.save(self.sess,
+                          os.path.join(self.log_dir, 'keras_embedding.ckpt'),
+                          epoch)
+
+          i += self.batch_size
 
   def on_train_end(self, logs=None):
     self.writer.close()

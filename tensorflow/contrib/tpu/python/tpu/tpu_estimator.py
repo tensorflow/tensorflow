@@ -22,9 +22,9 @@ import collections
 import copy
 import os
 import signal
+import sys
 import threading
 import time
-import traceback
 
 import numpy as np
 import six
@@ -32,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
@@ -365,16 +366,16 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                ctx,
                enqueue_ops,
                dequeue_ops,
-               run_infeed_loop_on_coordinator=True):
+               run_infeed_loop_on_coordinator=True,
+               rendezvous=None):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
+    self._rendezvous = rendezvous
 
     self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
-
-    self._session_cancel_timer = None
 
     self._feed_error = None
     self._finished = False
@@ -392,62 +393,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     for op in summary_writer_init_ops:
       self._finalize_ops.append(contrib_summary.flush(writer=op.inputs[0]))
 
-  def _log_error(self, session, error):
-    """Log an infeed or outfeed error.
-
-    This logs a short error message immediately, and schedules a timer to
-    emit the full stack trace and error message after a short period of time.
-    If the main session has terminated by the time the timer triggers, we
-    assume the real source of the error was from the main session and avoid
-    emitting a stack trace for the infeed.
-
-    Args:
-      session: `tf.Session`, session to be terminated error: exception that
-        triggered logging.
-      error: the Exception to log.
-    """
-    logging.warning(
-        '\n\n'
-        'Error occurred during infeed/outfeed.  This may be due to a compile '
-        'error in the main session.  Waiting for a short time for the main '
-        'session to come back.\n\n%s', error)
-
-    self._feed_error = traceback.format_exc()
-
-    # If we've already encountered a feed error, don't schedule another
-    # cancellation op.
-    if self._session_cancel_timer:
-      return
-
-    def _cancel_session():
-      """Close the session to avoid the main thread from hanging.
-
-      If input pipeline triggers any error, the infeed thread dies but the main
-      thread for TPU computation waits for the infeed enqueue forever. Close the
-      Session to cancel the main thread Session.run execution.
-
-      We sleep for a few seconds before closing to give some time for the TPU
-      compilation error, if any, propagating, from TPU to CPU host. Compilation
-      errors should be reported by the main thread so that the program can be
-      interrupted and users can take action.  Due to a race condition, the
-      infeed thread might see an error first.  Closing the session here
-      immediately would result in a session cancellation exception in the main
-      thread, instead of the expected compile error.  User code that depends on
-      having the proper exception type will therefore be confused.
-      """
-      time.sleep(5)
-
-      # If the main session is still running, the infeed/outfeed errors are
-      # legitimate, and should be logged.
-      if not self._finished and self._feed_error:
-        logging.error('Feed error: %s', self._feed_error)
-        logging.error('Closing session.  A RuntimeError should follow.')
-        session.close()
-
-    self._session_cancel_timer = threading.Thread(target=_cancel_session)
-    self._session_cancel_timer.daemon = True
-    self._session_cancel_timer.start()
-
   def _run_infeed(self, queue_ctx, session):
     logging.info('Starting infeed thread controller.')
     if self._initial_infeed_sleep_secs:
@@ -456,7 +401,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       time.sleep(self._initial_infeed_sleep_secs)
       logging.info('%s thread starting after sleep', self._name)
 
-    try:
+    with self._rendezvous.catch_errors(source='infeed', session=session):
       if self._run_infeed_loop_on_coordinator:
         for count, steps in enumerate(queue_ctx.read_iteration_counts()):
           for i in xrange(steps):
@@ -466,19 +411,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         for _ in queue_ctx.read_iteration_counts():
           session.run(self._enqueue_ops)
       logging.info('Infeed thread finished, shutting down.')
-    except Exception as e:  # pylint: disable=broad-except
-      self._log_error(session, e)
 
   def _run_outfeed(self, queue_ctx, session):
     logging.info('Starting outfeed thread controller.')
-    try:
+    with self._rendezvous.catch_errors(source='outfeed', session=session):
       for count, steps in enumerate(queue_ctx.read_iteration_counts()):
         for i in xrange(steps):
           logging.debug('Outfeed dequeue for iteration (%d, %d)', count, i)
           session.run(self._dequeue_ops)
       logging.info('Outfeed thread finished, shutting down.')
-    except Exception as e:  # pylint: disable=broad-except
-      self._log_error(session, e)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpQueueContext(name=name, target=target, args=args)
@@ -497,11 +438,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def before_run(self, run_context):
     self._feed_error = None
 
-    # Wait for the cancellation timer to complete before continuing.
-    if self._session_cancel_timer:
-      self._session_cancel_timer.join()
-      self._session_cancel_timer = None
-
     iterations = run_context.session.run(self._iterations_per_loop_var)
 
     logging.info('Enqueue next (%d) batch(es) of data to infeed.', iterations)
@@ -512,16 +448,14 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._outfeed_controller.send_next_batch_signal(iterations)
 
   def end(self, session):
-    if self._session_cancel_timer:
-      logging.warning('Feed error occurred; waiting for message.')
-      self._session_cancel_timer.join()
-
     self._finished = True
     logging.info('Stop infeed thread controller')
     self._infeed_controller.join()
+    self._rendezvous.record_done('infeed')
 
     logging.info('Stop output thread controller')
     self._outfeed_controller.join()
+    self._rendezvous.record_done('outfeed')
 
     logging.info('Shutdown TPU system.')
     session.run(self._finalize_ops)
@@ -529,9 +463,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops):
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
-        ctx, enqueue_ops, dequeue_ops, run_infeed_loop_on_coordinator=False)
+        ctx, enqueue_ops, dequeue_ops, run_infeed_loop_on_coordinator=False,
+        rendezvous=rendezvous)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpSignalOnceQueueContext(name=name, target=target, args=args)
@@ -701,8 +636,6 @@ def generate_per_core_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -837,8 +770,6 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -862,12 +793,13 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
       raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
 
-    hooks.append(inputs.dataset_initializer_hook())
+    if is_dataset:
+      hooks.append(inputs.dataset_initializer_hook())
     num_replicas_per_host = ctx.num_of_replicas_per_host
 
   def tpu_ordinal_function_impl(replica_id):
     if ctx.device_assignment:
-      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+      return ctx.device_assignment.tpu_ordinal(replica=replica_id)
     else:
       return replica_id % num_replicas_per_host
 
@@ -1340,7 +1272,8 @@ class _ModelFnWrapper(object):
       loss = tpu_estimator_spec.loss
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
       to_record = {}
-      to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
+      if tpu_estimator_spec.eval_metrics:
+        to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
       if tpu_estimator_spec.host_call is not None:
         # We assume that evaluate won't update global step, so we don't wrap
         # this host_call.
@@ -1643,7 +1576,7 @@ class _OutfeedHostCall(object):
       RuntimeError: If outfeed tensor is scalar.
     """
     if not self._names:
-      return []
+      return {}
 
     ret = {}
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -1662,11 +1595,13 @@ class _OutfeedHostCall(object):
     # Outfeed ops execute on each replica's first logical core. Note: we must
     # constraint it such that we have at most one outfeed dequeue and enqueue
     # per replica.
-    tpu_device_placement_fn = self._ctx.tpu_device_placement_function
     for i in xrange(self._ctx.num_replicas):
-      with ops.device(tpu_device_placement_fn(i)):
+      host_device, ordinal_id = self._ctx.device_for_replica(i)
+      with ops.device(host_device):
         outfeed_tensors = tpu_ops.outfeed_dequeue_tuple(
-            dtypes=tensor_dtypes, shapes=tensor_shapes)
+            dtypes=tensor_dtypes,
+            shapes=tensor_shapes,
+            device_ordinal=ordinal_id)
         for j, item in enumerate(outfeed_tensors):
           dequeue_ops[j].append(item)
 
@@ -1790,6 +1725,9 @@ class InstallSignalHandlerHook(session_run_hook.SessionRunHook):
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
+  TPUEstimator also supports training on CPU and GPU. You don't need to define
+  a separate `tf.estimator.Estimator`.
+
   TPUEstimator handles many of the details of running on TPU devices, such as
   replicating inputs and models for each core, and returning to host
   periodically to run hooks.
@@ -1827,7 +1765,8 @@ class TPUEstimator(estimator_lib.Estimator):
   Current limitations:
   --------------------
 
-  1. TPU evaluation only works on a single host (one TPU worker).
+  1. TPU evaluation only works on a single host (one TPU worker) except
+     BROADCAST mode.
 
   2. `input_fn` for evaluation should **NOT** raise an end-of-input exception
      (`OutOfRangeError` or `StopIteration`). And all evaluation steps and all
@@ -2113,6 +2052,7 @@ class TPUEstimator(estimator_lib.Estimator):
     self._export_to_tpu = export_to_tpu
 
     self._is_input_fn_invoked = None
+    self._rendezvous = {}
 
   def _add_meta_graph_for_mode(self,
                                builder,
@@ -2356,6 +2296,65 @@ class TPUEstimator(estimator_lib.Estimator):
     """
     pass
 
+  def train(self,
+            input_fn,
+            hooks=None,
+            steps=None,
+            max_steps=None,
+            saving_listeners=None):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.TRAIN] = rendezvous
+    try:
+      return super(TPUEstimator, self).train(
+          input_fn=input_fn, hooks=hooks, steps=steps, max_steps=max_steps,
+          saving_listeners=saving_listeners
+      )
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('training_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('training_loop')
+      rendezvous.raise_errors()
+
+  def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
+               name=None):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.EVAL] = rendezvous
+    try:
+      return super(TPUEstimator, self).evaluate(
+          input_fn, steps=steps, hooks=hooks, checkpoint_path=checkpoint_path,
+          name=name
+      )
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('evaluation_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('evaluation_loop')
+      rendezvous.raise_errors()
+
+  def predict(self,
+              input_fn,
+              predict_keys=None,
+              hooks=None,
+              checkpoint_path=None,
+              yield_single_examples=True):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.PREDICT] = rendezvous
+    try:
+      for result in super(TPUEstimator, self).predict(
+          input_fn=input_fn,
+          predict_keys=predict_keys,
+          hooks=hooks,
+          checkpoint_path=checkpoint_path,
+          yield_single_examples=yield_single_examples):
+        yield result
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('prediction_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('prediction_loop')
+      rendezvous.raise_errors()
+
+    rendezvous.record_done('prediction_loop')
+    rendezvous.raise_errors()
+
   def _augment_model_fn(self, model_fn, batch_axis):
     """Returns a new model_fn, which wraps the TPU support."""
 
@@ -2450,7 +2449,9 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   host_ops,
                   run_infeed_loop_on_coordinator=(
-                      run_infeed_loop_on_coordinator)),
+                      run_infeed_loop_on_coordinator),
+                  rendezvous=self._rendezvous[mode],
+              ),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
@@ -2518,7 +2519,8 @@ class TPUEstimator(estimator_lib.Estimator):
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
-          for k, v in host_call_ret['eval_metrics'].items():
+
+          for k, v in host_call_ret.get('eval_metrics', {}).items():
             eval_metric_ops[k] = (v[0], dummy_update_op)
             eval_update_ops.append(v[1])
 
@@ -2532,7 +2534,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   eval_update_ops + host_ops,
                   run_infeed_loop_on_coordinator=(
-                      run_infeed_loop_on_coordinator)),
+                      run_infeed_loop_on_coordinator),
+                  rendezvous=self._rendezvous[mode]),
           ] + input_hooks
 
           return model_fn_lib.EstimatorSpec(
@@ -2598,8 +2601,8 @@ class TPUEstimator(estimator_lib.Estimator):
 
         hooks = [
             _StoppingPredictHook(scalar_stopping_signal),
-            TPUInfeedOutfeedSessionHookForPrediction(ctx, enqueue_ops,
-                                                     host_ops),
+            TPUInfeedOutfeedSessionHookForPrediction(
+                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode]),
         ] + input_hooks
 
         return model_fn_lib.EstimatorSpec(
@@ -3249,3 +3252,47 @@ def _add_item_to_params(params, key, value):
   else:
     # Now params is Python dict.
     params[key] = value
+
+
+def export_estimator_savedmodel(estimator,
+                                export_dir_base,
+                                serving_input_receiver_fn,
+                                assets_extra=None,
+                                as_text=False,
+                                checkpoint_path=None,
+                                strip_default_attrs=False):
+  """Export `Estimator` trained model for TPU inference.
+
+  Args:
+    estimator: `Estimator` with which model has been trained.
+    export_dir_base: A string containing a directory in which to create
+      timestamped subdirectories containing exported SavedModels.
+    serving_input_receiver_fn: A function that takes no argument and
+      returns a `ServingInputReceiver` or `TensorServingInputReceiver`.
+    assets_extra: A dict specifying how to populate the assets.extra directory
+      within the exported SavedModel, or `None` if no extra assets are needed.
+    as_text: whether to write the SavedModel proto in text format.
+    checkpoint_path: The checkpoint path to export.  If `None` (the default),
+      the most recent checkpoint found within the model directory is chosen.
+    strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+      removed from the NodeDefs.
+
+  Returns:
+    The string path to the exported directory.
+  """
+  # `TPUEstimator` requires `tpu_config.RunConfig`, so we cannot use
+  # `estimator.config`.
+  config = tpu_config.RunConfig(model_dir=estimator.model_dir)
+  est = TPUEstimator(
+      estimator._model_fn,  # pylint: disable=protected-access
+      config=config,
+      params=estimator.params,
+      use_tpu=True,
+      train_batch_size=2048,  # Does not matter.
+      eval_batch_size=2048,  # Does not matter.
+  )
+  return est.export_savedmodel(export_dir_base, serving_input_receiver_fn,
+                               assets_extra,
+                               as_text,
+                               checkpoint_path,
+                               strip_default_attrs)

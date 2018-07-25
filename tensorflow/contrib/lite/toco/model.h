@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/runtime/types.h"
 #include "tensorflow/contrib/lite/toco/toco_port.h"
@@ -81,10 +82,11 @@ enum class OperatorType : uint8 {
   kResizeBilinear,
   kSin,
   kSpaceToBatchND,
-  kStack,
+  kPack,
   kBatchToSpaceND,
   kPad,
   kPadV2,
+  kReduceProd,  // Reduction product
   kStridedSlice,
   kSlice,
   kSqueeze,
@@ -106,10 +108,10 @@ enum class OperatorType : uint8 {
   kIdentity,
   kLess,
   kLessEqual,
-  kMax,      //  Reduction Max
-  kMaximum,  //  Element-wise Maximum
-  kMin,      //  Reduction Min
-  kMinimum,  //  Element-wise Minimum
+  kReduceMax,  //  Reduction Max
+  kMaximum,    //  Element-wise Maximum
+  kReduceMin,  //  Reduction Min
+  kMinimum,    //  Element-wise Minimum
   kMatMul,
   kMerge,
   kNeg,
@@ -141,6 +143,9 @@ enum class OperatorType : uint8 {
   kNotEqual,
   kPow,
   kArgMin,
+  kAny,
+  kLogicalAnd,
+  kLogicalNot,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -285,6 +290,46 @@ struct Buffer : GenericBuffer {
   int Length() const override { return data.size(); }
 
   std::vector<DataType<A>> data;
+};
+
+class Shape {
+ public:
+  // For Shape, we stick to half-way encapsulation for now:
+  // we hide the raw dims_ member, but expose it raw by accessors
+  // because from some brainstorming, it's not at all easy to
+  // anticipate which flavor of more hermetic encapsulation would
+  // actually buy us future-proof-ness without being needlessly
+  // cumbersome.
+  Shape() {}
+  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
+
+  void ReplaceDims(std::initializer_list<int> dim_list) {
+    dims_ = std::vector<int>(dim_list);
+  }
+
+  const std::vector<int>& dims() const { return dims_; }
+  std::vector<int>* mutable_dims() { return &dims_; }
+  const int dimensions_count() const { return dims_.size(); }
+
+  // We still have that one convenience accessor to avoid
+  // the awkward double bracket issue:  shape.dims()[i].
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurrence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
+
+  bool operator==(const Shape& comp) const {
+    return (this->dims_ == comp.dims());
+  }
+
+  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
+
+ private:
+  std::vector<int> dims_;
 };
 
 // Base class for all operator classes.
@@ -1156,10 +1201,12 @@ struct TensorFlowRsqrtOperator : Operator {
 // Inputs: this operator accepts any number >= 1 of inputs.
 //   inputs[i]: the i-th array to merge.
 //
-// TensorFlow equivalent: Stack or Pack
-struct StackOperator : Operator {
-  StackOperator() : Operator(OperatorType::kStack) {}
+// TensorFlow equivalent: Pack
+struct PackOperator : Operator {
+  PackOperator() : Operator(OperatorType::kPack) {}
+  int values_count;
   int axis = 0;
+  ArrayDataType dtype = ArrayDataType::kNone;
 };
 
 // Shape operator. Extracts the shape of the tensor.
@@ -1229,6 +1276,19 @@ struct SubOperator : Operator {
 // TensorFlow equivalent: Sum
 struct TensorFlowSumOperator : Operator {
   TensorFlowSumOperator() : Operator(OperatorType::kSum) {}
+  std::vector<int> axis;
+  bool keep_dims = false;
+};
+
+// Prod reduction: computes the product of all of entries across the axes.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Prod
+struct TensorFlowProdOperator : Operator {
+  TensorFlowProdOperator() : Operator(OperatorType::kReduceProd) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1388,29 +1448,27 @@ struct TensorFlowNotEqualOperator : Operator {
   TensorFlowNotEqualOperator() : Operator(OperatorType::kNotEqual) {}
 };
 
-// Global max reduction: computes the max of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Max reduction: computes the max of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Max --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Max
 struct TensorFlowMaxOperator : Operator {
-  TensorFlowMaxOperator() : Operator(OperatorType::kMax) {}
+  TensorFlowMaxOperator() : Operator(OperatorType::kReduceMax) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
-// Global min reduction: computes the min of all of entries in the input array.
-// Thus the output is "0-dimensional": it consists of a single scalar value.
+// Min reduction: computes the min of all of entries across the axes.
 //
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// TensorFlow equivalent: Min --- except that we only support the special case
-// of global reduction across all dimensions.
+// TensorFlow equivalent: Min
 struct TensorFlowMinOperator : Operator {
-  TensorFlowMinOperator() : Operator(OperatorType::kMin) {}
+  TensorFlowMinOperator() : Operator(OperatorType::kReduceMin) {}
+  std::vector<int> axis;
   bool keep_dims = false;
 };
 
@@ -1451,6 +1509,8 @@ struct TensorFlowUnsupportedOperator : Operator {
   bool quantized = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
+  // Output shapes.
+  std::vector<Shape> output_shapes;
 };
 
 // Softmax activation function.
@@ -1511,11 +1571,15 @@ struct FloorOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the params array
 //   inputs[1]: required: the indices to gather
+//   inputs[2]: optional: axis
 //
 // TensorFlow equivalent: Gather
 struct GatherOperator : Operator {
   GatherOperator() : Operator(OperatorType::kGather) {}
-  int axis = 0;
+  // Axis is populated explicitly or implicitly from the axis input by
+  // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
+  // be resolved.
+  absl::optional<int> axis;
   int input_rank = 0;
 };
 
@@ -1671,6 +1735,39 @@ struct PowOperator : Operator {
   PowOperator() : Operator(OperatorType::kPow) {}
 };
 
+// Any operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean input tensor.
+// Inputs[1]: required: reduction_indices.
+//
+// TensorFlow equivalent: tf.reduce_any.
+struct AnyOperator : Operator {
+  AnyOperator() : Operator(OperatorType::kAny) {}
+  bool keep_dims = false;
+};
+
+// LogicalAnd operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+// Inputs[1]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_and.
+struct LogicalAndOperator : Operator {
+  LogicalAndOperator() : Operator(OperatorType::kLogicalAnd) {}
+};
+
+// LogicalNot operator:
+//
+// Inputs:
+// Inputs[0]: required: A boolean tensor.
+//
+// TensorFlow equivalent: tf.logical_not.
+struct LogicalNotOperator : Operator {
+  LogicalNotOperator() : Operator(OperatorType::kLogicalNot) {}
+};
+
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
 // of the "transient_data" workspace buffer passed to inference functions, is to
 // be used for the transient array at hand. The 'start' and 'end' values are
@@ -1683,46 +1780,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-class Shape {
- public:
-  // For Shape, we stick to half-way encapsulation for now:
-  // we hide the raw dims_ member, but expose it raw by accessors
-  // because from some brainstorming, it's not at all easy to
-  // anticipate which flavor of more hermetic encapsulation would
-  // actually buy us future-proof-ness without being needlessly
-  // cumbersome.
-  Shape() {}
-  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
-
-  void ReplaceDims(std::initializer_list<int> dim_list) {
-    dims_ = std::vector<int>(dim_list);
-  }
-
-  const std::vector<int>& dims() const { return dims_; }
-  std::vector<int>* mutable_dims() { return &dims_; }
-  const int dimensions_count() const { return dims_.size(); }
-
-  // We still have that one convenience accessor to avoid
-  // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const {
-    // Always check for out-of-bounds accesses, even in optimized builds where
-    // standard assertions are disabled. Out-of-bounds access here is a common
-    // occurrence.
-    CHECK_GE(i, 0);
-    CHECK_GT(dims_.size(), i);
-    return dims_[i];
-  }
-
-  bool operator==(const Shape& comp) const {
-    return (this->dims_ == comp.dims());
-  }
-
-  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
-
- private:
-  std::vector<int> dims_;
-};
 
 // Array represents an array (either a constant parameter array or an
 // activations array) in a Model.

@@ -247,9 +247,16 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
     }
   }
 
-  if (processed < input_graph_def.node_size()) {
-    return errors::InvalidArgument(input_graph_def.node_size() - processed,
-                                   " nodes in a cycle");
+  if (processed < num_nodes) {
+    LOG(WARNING) << "IN " << __func__ << (num_nodes - processed)
+                 << " NODES IN A CYCLE";
+    for (int64 i = 0; i < num_nodes; i++) {
+      if (pending_count[i] != 0) {
+        LOG(WARNING) << "PENDING: " << SummarizeNodeDef(input_graph_def.node(i))
+                     << "WITH PENDING COUNT = " << pending_count[i];
+      }
+    }
+    return errors::InvalidArgument(num_nodes - processed, " nodes in a cycle");
   }
   return Status::OK();
 }

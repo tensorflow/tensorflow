@@ -37,6 +37,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -403,6 +404,8 @@ class RNN(Layer):
                        'one integer per RNN state).')
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
+    if isinstance(cell, checkpointable.CheckpointableBase):
+      self._track_checkpointable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state
     self.go_backwards = go_backwards

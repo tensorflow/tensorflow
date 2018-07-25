@@ -181,8 +181,11 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
 
 HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,
                                                const Shape& shape,
-                                               int64 channel_id)
-    : HloInstruction(opcode, shape), channel_id_(channel_id) {}
+                                               int64 channel_id,
+                                               bool is_host_transfer)
+    : HloInstruction(opcode, shape),
+      channel_id_(channel_id),
+      is_host_transfer_(is_host_transfer) {}
 
 HloInstructionProto HloSendRecvInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
@@ -192,7 +195,12 @@ HloInstructionProto HloSendRecvInstruction::ToProto() const {
 
 std::vector<string> HloSendRecvInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("channel_id=", channel_id_)};
+  std::vector<string> attrs;
+  attrs.push_back(StrCat("channel_id=", channel_id_));
+  if (is_host_transfer()) {
+    attrs.push_back("is_host_transfer=true");
+  }
+  return attrs;
 }
 
 bool HloSendRecvInstruction::IdenticalSlowPath(
@@ -205,13 +213,14 @@ bool HloSendRecvInstruction::IdenticalSlowPath(
 
 // Send instruction produces a tuple of {aliased operand, U32 context}.
 HloSendInstruction::HloSendInstruction(HloInstruction* operand,
-                                       HloInstruction* token, int64 channel_id)
+                                       HloInstruction* token, int64 channel_id,
+                                       bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
           ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
                                      ShapeUtil::MakeShape(U32, {}),
                                      ShapeUtil::MakeTokenShape()}),
-          channel_id) {
+          channel_id, is_host_transfer) {
   AppendOperand(operand);
   AppendOperand(token);
 }
@@ -222,12 +231,14 @@ std::unique_ptr<HloInstruction> HloSendInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return MakeUnique<HloSendInstruction>(new_operands[0], new_operands[1],
-                                        channel_id());
+                                        channel_id(), is_host_transfer());
 }
 
-HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand)
+HloSendDoneInstruction::HloSendDoneInstruction(HloSendInstruction* operand,
+                                               bool is_host_transfer)
     : HloSendRecvInstruction(HloOpcode::kSendDone, ShapeUtil::MakeTokenShape(),
-                             CHECK_NOTNULL(operand)->channel_id()) {
+                             CHECK_NOTNULL(operand)->channel_id(),
+                             is_host_transfer) {
   AppendOperand(operand);
 }
 
@@ -238,17 +249,18 @@ HloSendDoneInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloSendDoneInstruction>(
-      Cast<HloSendInstruction>(new_operands[0]));
+      Cast<HloSendInstruction>(new_operands[0]), is_host_transfer());
 }
 
 // Recv instruction produces a tuple of {receive buffer, U32 context}.
 HloRecvInstruction::HloRecvInstruction(const Shape& shape,
-                                       HloInstruction* token, int64 channel_id)
+                                       HloInstruction* token, int64 channel_id,
+                                       bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecv,
           ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {}),
                                      ShapeUtil::MakeTokenShape()}),
-          channel_id) {
+          channel_id, is_host_transfer) {
   AppendOperand(token);
 }
 
@@ -258,16 +270,18 @@ std::unique_ptr<HloInstruction> HloRecvInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloRecvInstruction>(
-      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], channel_id());
+      ShapeUtil::GetTupleElementShape(shape, 0), new_operands[0], channel_id(),
+      is_host_transfer());
 }
 
-HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand)
+HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
+                                               bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
           ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
                ShapeUtil::MakeTokenShape()}),
-          CHECK_NOTNULL(operand)->channel_id()) {
+          CHECK_NOTNULL(operand)->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
 
@@ -278,7 +292,7 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 1);
   return MakeUnique<HloRecvDoneInstruction>(
-      Cast<HloRecvInstruction>(new_operands[0]));
+      Cast<HloRecvInstruction>(new_operands[0]), is_host_transfer());
 }
 
 HloAllReduceInstruction::HloAllReduceInstruction(
@@ -291,8 +305,6 @@ HloAllReduceInstruction::HloAllReduceInstruction(
       replica_group_ids_(replica_group_ids.begin(), replica_group_ids.end()),
       cross_replica_sum_barrier_(barrier.begin(), barrier.end()),
       all_reduce_id_(all_reduce_id) {
-  // TODO(b/79737069): Remove the CHECK when supported.
-  CHECK(!all_reduce_id_);
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -1914,4 +1926,93 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
   return MakeUnique<HloDynamicSliceInstruction>(
       shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);
 }
+
+HloGatherInstruction::HloGatherInstruction(
+    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const GatherDimensionNumbers& gather_dim_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds)
+    : HloInstruction(HloOpcode::kGather, shape) {
+  AppendOperand(operand);
+  AppendOperand(gather_indices);
+  gather_dimension_numbers_ =
+      MakeUnique<GatherDimensionNumbers>(gather_dim_numbers);
+  c_copy(window_bounds, std::back_inserter(gather_window_bounds_));
+}
+
+string HloGatherInstruction::GatherDimensionNumbersToString() const {
+  CHECK(gather_dimension_numbers_ != nullptr);
+  string output_window_dims =
+      StrCat("output_window_dims={",
+             Join(gather_dimension_numbers_->output_window_dims(), ","), "}");
+  string elided_window_dims =
+      StrCat("elided_window_dims={",
+             Join(gather_dimension_numbers_->elided_window_dims(), ","), "}");
+  string gather_dims_to_operand_dims = StrCat(
+      "gather_dims_to_operand_dims={",
+      Join(gather_dimension_numbers_->gather_dims_to_operand_dims(), ","), "}");
+  string index_vector_dim = StrCat(
+      "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
+
+  return Join<std::initializer_list<string>>(
+      {output_window_dims, elided_window_dims, gather_dims_to_operand_dims,
+       index_vector_dim},
+      ", ");
+}
+
+/* static */ GatherDimensionNumbers HloGatherInstruction::MakeGatherDimNumbers(
+    tensorflow::gtl::ArraySlice<int64> output_window_dims,
+    tensorflow::gtl::ArraySlice<int64> elided_window_dims,
+    tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims,
+    int64 index_vector_dim) {
+  GatherDimensionNumbers gather_dim_numbers;
+  for (int64 output_window_dim : output_window_dims) {
+    gather_dim_numbers.add_output_window_dims(output_window_dim);
+  }
+  for (int64 elided_window_dim : elided_window_dims) {
+    gather_dim_numbers.add_elided_window_dims(elided_window_dim);
+  }
+  for (int64 gather_dim_to_input_dim : gather_dims_to_operand_dims) {
+    gather_dim_numbers.add_gather_dims_to_operand_dims(gather_dim_to_input_dim);
+  }
+
+  gather_dim_numbers.set_index_vector_dim(index_vector_dim);
+  return gather_dim_numbers;
+}
+
+HloInstructionProto HloGatherInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_gather_dimension_numbers() = gather_dimension_numbers();
+  for (int64 bound : gather_window_bounds()) {
+    proto.add_gather_window_bounds(bound);
+  }
+  return proto;
+}
+
+std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {GatherDimensionNumbersToString(),
+          StrCat("window_bounds={", Join(gather_window_bounds(), ","), "}")};
+}
+
+bool HloGatherInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloGatherInstruction&>(other);
+  return protobuf_util::ProtobufEquals(
+             gather_dimension_numbers(),
+             casted_other.gather_dimension_numbers()) &&
+         gather_window_bounds() == casted_other.gather_window_bounds();
+}
+
+std::unique_ptr<HloInstruction> HloGatherInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape,
+    tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return MakeUnique<HloGatherInstruction>(
+      shape, new_operands[0], new_operands[1], gather_dimension_numbers(),
+      gather_window_bounds());
+}
+
 }  // namespace xla

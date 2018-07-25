@@ -50,22 +50,22 @@ class PowOpModel : public SingleOpModel {
 };
 
 TEST(PowOpModel, Simple) {
-  PowOpModel<int32> model({TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {}});
-  model.PopulateTensor<int32>(model.input1(), {12, 2, 7, 8});
-  model.PopulateTensor<int32>(model.input2(), {1, 2, 3, 1});
+  PowOpModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                            {TensorType_INT32, {1, 2, 2, 1}},
+                            {TensorType_INT32, {}});
+  model.PopulateTensor<int32_t>(model.input1(), {12, 2, 7, 8});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 1});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(12, 4, 343, 8));
 }
 
 TEST(PowOpModel, NegativeAndZeroValue) {
-  PowOpModel<int32> model({TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {}});
-  model.PopulateTensor<int32>(model.input1(), {0, 2, -7, 8});
-  model.PopulateTensor<int32>(model.input2(), {1, 2, 3, 0});
+  PowOpModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                            {TensorType_INT32, {1, 2, 2, 1}},
+                            {TensorType_INT32, {}});
+  model.PopulateTensor<int32_t>(model.input1(), {0, 2, -7, 8});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 0});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 4, -343, 1));
@@ -98,10 +98,10 @@ TEST(PowOpModel, NegativeFloatTest) {
 }
 
 TEST(PowOpModel, BroadcastTest) {
-  PowOpModel<int32> model({TensorType_INT32, {1, 2, 2, 1}},
-                          {TensorType_INT32, {1}}, {TensorType_INT32, {}});
-  model.PopulateTensor<int32>(model.input1(), {12, 2, 7, 8});
-  model.PopulateTensor<int32>(model.input2(), {4});
+  PowOpModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
+                            {TensorType_INT32, {1}}, {TensorType_INT32, {}});
+  model.PopulateTensor<int32_t>(model.input1(), {12, 2, 7, 8});
+  model.PopulateTensor<int32_t>(model.input2(), {4});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));

@@ -36,6 +36,7 @@ cc_library(
     hdrs = ["gpu_constants.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -162,6 +163,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:elemental_ir_emitter",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
         "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/compiler/xla/service/llvm_ir:ir_array",
         "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
@@ -169,7 +171,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
-        "//tensorflow/compiler/xla/service/llvm_ir:ops",
+        "//tensorflow/compiler/xla/service/llvm_ir:sort_util",
         "//tensorflow/compiler/xla/service/llvm_ir:tuple_ops",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -215,6 +217,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/service/llvm_ir:loop_emitter",
+        "//tensorflow/compiler/xla/service/llvm_ir:math_ops",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
@@ -268,6 +271,7 @@ cc_library(
         "memset_thunk.cc",
         "outfeed_thunk.cc",
         "sequential_thunk.cc",
+        "thunk.cc",
         "thunk_schedule.cc",
         "tuple_thunk.cc",
         "while_thunk.cc",
@@ -448,6 +452,7 @@ cc_library(
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],
     deps = [
+        ":instruction_fusion",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
@@ -460,6 +465,7 @@ tf_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
     deps = [
+        ":instruction_fusion",
         ":multi_output_fusion",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
@@ -561,8 +567,8 @@ cc_library(
 
 cc_library(
     name = "gpu_compiler",
-    srcs = ["gpu_compiler.cc"],
-    hdrs = ["gpu_compiler.h"],
+    srcs = ["nvptx_compiler.cc"],
+    hdrs = ["nvptx_compiler.h"],
     deps = [
         ":cudnn_convolution_algorithm_picker",
         ":cudnn_convolution_rewriter",

@@ -36,7 +36,7 @@ There are two approaches to running TOCO via command line.
 *   `tflite_convert`: Starting from TensorFlow 1.9, the command-line tool
     `tflite_convert` will be installed as part of the Python package. All of the
     examples below use `tflite_convert` for simplicity.
-    *   Example: `tflite --output_file=...`
+    *   Example: `tflite_convert --output_file=...`
 *   `bazel`: In order to run the latest version of TOCO, [clone the TensorFlow
     repository](https://www.tensorflow.org/install/install_sources#clone_the_tensorflow_repository)
     and use `bazel`. This is the recommended approach for converting models that

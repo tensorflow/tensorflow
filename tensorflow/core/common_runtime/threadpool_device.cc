@@ -111,7 +111,21 @@ Status ThreadPoolDevice::MakeTensorFromProto(
 }
 
 #ifdef INTEL_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
+namespace {
+class MklCPUAllocatorFactory : public AllocatorFactory {
+ public:
+  bool NumaEnabled() override { return false; }
+
+  Allocator* CreateAllocator() override { return new MklCPUAllocator; }
+
+  // Note: Ignores numa_node, for now.
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new MklSubAllocator;
+  }
+};
+
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocatorFactory);
+}  // namespace
 #endif
 
 }  // namespace tensorflow

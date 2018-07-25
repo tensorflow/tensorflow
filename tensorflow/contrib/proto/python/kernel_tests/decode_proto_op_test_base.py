@@ -106,34 +106,27 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
           self.assertEqual(v, ev)
         continue
 
-      # This can be a little confusing. For testing we are using TestValue in
-      # two ways: it's the proto that we decode for testing, and it's used in
-      # the expected value as a union type.
-      #
-      # The two cases are slightly different: this is the second case. We may be
-      # fetching the uint64_value from the test proto, but in the expected proto
-      # we store it in the int64_value field because TensorFlow doesn't support
-      # unsigned int64.
       tf_type_to_primitive_value_field = {
+          dtypes.bool:
+              'bool_value',
           dtypes.float32:
               'float_value',
           dtypes.float64:
               'double_value',
-          dtypes.int32:
-              'int32_value',
-          dtypes.uint8:
-              'uint8_value',
           dtypes.int8:
               'int8_value',
-          dtypes.string:
-              'string_value',
+          dtypes.int32:
+              'int32_value',
           dtypes.int64:
               'int64_value',
-          dtypes.bool:
-              'bool_value',
-          # Unhandled TensorFlow types:
-          # DT_INT16 DT_COMPLEX64 DT_QINT8 DT_QUINT8 DT_QINT32
-          # DT_BFLOAT16 DT_QINT16 DT_QUINT16 DT_UINT16
+          dtypes.string:
+              'string_value',
+          dtypes.uint8:
+              'uint8_value',
+          dtypes.uint32:
+              'uint32_value',
+          dtypes.uint64:
+              'uint64_value',
       }
       tf_field_name = tf_type_to_primitive_value_field.get(field.dtype)
       if tf_field_name is None:

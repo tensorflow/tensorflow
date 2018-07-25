@@ -45,6 +45,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.replacements = replacements
     self.in_replacements = False
     self.preserved_annos = {
+        anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
         anno.Static.ORIG_DEFINITIONS,
     }
@@ -139,8 +140,8 @@ class ReplaceTransformer(gast.NodeTransformer):
 
   def _set_inner_child_context(self, node, ctx):
     if isinstance(node, gast.Attribute):
-      self._set_inner_child_context(node.value, ctx)
-      node.ctx = gast.Load()
+      self._set_inner_child_context(node.value, gast.Load())
+      node.ctx = ctx
     elif isinstance(node, gast.Tuple):
       for e in node.elts:
         self._set_inner_child_context(e, ctx)

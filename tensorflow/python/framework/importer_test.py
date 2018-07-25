@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
@@ -418,6 +419,46 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(imported_r.name, "import/" + r.name)
       with self.test_session() as sess:
         self.assertEqual(sess.run(imported_r), 10)
+
+  def testImportWhileLoopInCond(self):
+    # Produce GraphDef containing while loop.
+    graph = ops.Graph()
+    with graph.as_default():
+      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+    graph_def = graph.as_graph_def()
+
+    # Import the GraphDef inside a cond and make sure it runs.
+    with ops.Graph().as_default():
+
+      def ImportFn():
+        return importer.import_graph_def(graph_def, return_elements=[r.name])[0]
+
+      pred = array_ops.placeholder(dtypes.bool)
+      out = control_flow_ops.cond(pred, ImportFn,
+                                  lambda: constant_op.constant(1))
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(out, {pred: True}), 10)
+        self.assertEqual(sess.run(out, {pred: False}), 1)
+
+  def testImportWhileLoopInWhileLoop(self):
+    self.skipTest("b/111757448")
+    # Produce GraphDef containing while loop.
+    graph = ops.Graph()
+    with graph.as_default():
+      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+    graph_def = graph.as_graph_def()
+
+    # Import the GraphDef inside another loop and make sure it runs.
+    with ops.Graph().as_default():
+
+      def ImportFn(_):
+        return importer.import_graph_def(graph_def, return_elements=[r.name])[0]
+
+      out = control_flow_ops.while_loop(
+          lambda i: i < 2, ImportFn, [0],
+          shape_invariants=[tensor_shape.TensorShape(None)])
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(out), 10)
 
   def testTypeMismatchInGraphDef(self):
     # TODO(skyewm): improve error message

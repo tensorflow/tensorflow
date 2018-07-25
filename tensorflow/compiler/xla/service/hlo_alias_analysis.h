@@ -42,7 +42,7 @@ class HloAliasAnalysis {
   static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
       HloModule* module,
       const HloDataflowAnalysis::FusionCanShareBufferFunction&
-          fusion_can_share_buffer = nullptr);
+          fusion_can_share_buffer);
 
   string ToString() const;
 
