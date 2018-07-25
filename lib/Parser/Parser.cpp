@@ -443,12 +443,9 @@ Type *Parser::parseMemRefType() {
   if (!elementType)
     return nullptr;
 
-  if (parseToken(Token::comma, "expected ',' in memref type"))
-    return nullptr;
-
   // Parse semi-affine-map-composition.
   SmallVector<AffineMap *, 2> affineMapComposition;
-  unsigned memorySpace;
+  unsigned memorySpace = 0;
   bool parsedMemorySpace = false;
 
   auto parseElt = [&]() -> ParseResult {
@@ -474,16 +471,17 @@ Type *Parser::parseMemRefType() {
     return ParseSuccess;
   };
 
-  // Parse comma separated list of affine maps, followed by memory space.
-  if (parseCommaSeparatedListUntil(Token::greater, parseElt,
-                                   /*allowEmptyList=*/false)) {
-    return nullptr;
+  // Parse a list of mappings and address space if present.
+  if (consumeIf(Token::comma)) {
+    // Parse comma separated list of affine maps, followed by memory space.
+    if (parseCommaSeparatedListUntil(Token::greater, parseElt,
+                                     /*allowEmptyList=*/false)) {
+      return nullptr;
+    }
+  } else {
+    if (parseToken(Token::greater, "expected ',' or '>' in memref type"))
+      return nullptr;
   }
-  // Check that MemRef type specifies at least one affine map in composition.
-  if (affineMapComposition.empty())
-    return (emitError("expected semi-affine-map in memref type"), nullptr);
-  if (!parsedMemorySpace)
-    return (emitError("expected memory space in memref type"), nullptr);
 
   return MemRefType::get(dimensions, elementType, affineMapComposition,
                          memorySpace);
@@ -710,22 +708,14 @@ public:
   AffineMap *parseAffineMapInline();
 
 private:
-  unsigned getNumDims() const { return dims.size(); }
-  unsigned getNumSymbols() const { return symbols.size(); }
-
-  /// Returns true if the only identifiers the parser accepts in affine
-  /// expressions are symbolic identifiers.
-  bool isPureSymbolic() const { return pureSymbolic; }
-  void setSymbolicParsing(bool val) { pureSymbolic = val; }
-
   // Binary affine op parsing.
   AffineLowPrecOp consumeIfLowPrecOp();
   AffineHighPrecOp consumeIfHighPrecOp();
 
   // Identifier lists for polyhedral structures.
-  ParseResult parseDimIdList();
-  ParseResult parseSymbolIdList();
-  ParseResult parseDimOrSymbolId(bool isDim);
+  ParseResult parseDimIdList(unsigned &numDims);
+  ParseResult parseSymbolIdList(unsigned &numSymbols);
+  ParseResult parseIdentifierDefinition(AffineExpr *idExpr);
 
   AffineExpr *parseAffineExpr();
   AffineExpr *parseParentheticalExpr();
@@ -745,12 +735,7 @@ private:
                                         SMLoc llhsOpLoc);
 
 private:
-  // TODO(bondhugula): could just use an vector/ArrayRef and scan the numbers.
-  llvm::StringMap<unsigned> dims;
-  llvm::StringMap<unsigned> symbols;
-  /// True if the parser should allow only symbolic identifiers in affine
-  /// expressions.
-  bool pureSymbolic = false;
+  SmallVector<std::pair<StringRef, AffineExpr *>, 4> dimsAndSymbols;
 };
 } // end anonymous namespace
 
@@ -931,18 +916,12 @@ AffineExpr *AffineMapParser::parseBareIdExpr() {
     return (emitError("expected bare identifier"), nullptr);
 
   StringRef sRef = getTokenSpelling();
-  // dims, symbols are all pairwise distinct.
-  if (dims.count(sRef)) {
-    if (isPureSymbolic())
-      return (emitError("identifier used is not a symbolic identifier"),
-              nullptr);
-    consumeToken(Token::bare_identifier);
-    return builder.getDimExpr(dims.lookup(sRef));
-  }
+  for (auto entry : dimsAndSymbols) {
+    if (entry.first != sRef)
+      continue;
 
-  if (symbols.count(sRef)) {
     consumeToken(Token::bare_identifier);
-    return builder.getSymbolExpr(symbols.lookup(sRef));
+    return entry.second;
   }
 
   return (emitError("use of undeclared identifier"), nullptr);
@@ -1087,40 +1066,42 @@ AffineExpr *AffineMapParser::parseAffineExpr() {
 
 /// Parse a dim or symbol from the lists appearing before the actual expressions
 /// of the affine map. Update our state to store the dimensional/symbolic
-/// identifier. 'dim': whether it's the dim list or symbol list that is being
-/// parsed.
-ParseResult AffineMapParser::parseDimOrSymbolId(bool isDim) {
+/// identifier.
+ParseResult AffineMapParser::parseIdentifierDefinition(AffineExpr *idExpr) {
   if (getToken().isNot(Token::bare_identifier))
     return emitError("expected bare identifier");
-  auto sRef = getTokenSpelling();
+
+  auto name = getTokenSpelling();
+  for (auto entry : dimsAndSymbols) {
+    if (entry.first == name)
+      return emitError("redefinition of identifier '" + Twine(name) + "'");
+  }
   consumeToken(Token::bare_identifier);
-  if (dims.count(sRef))
-    return emitError("dimensional identifier name reused");
-  if (symbols.count(sRef))
-    return emitError("symbolic identifier name reused");
-  if (isDim)
-    dims.insert({sRef, dims.size()});
-  else
-    symbols.insert({sRef, symbols.size()});
+
+  dimsAndSymbols.push_back({name, idExpr});
   return ParseSuccess;
 }
 
 /// Parse the list of symbolic identifiers to an affine map.
-ParseResult AffineMapParser::parseSymbolIdList() {
-  if (parseToken(Token::l_square, "expected '['"))
-    return ParseFailure;
-
-  auto parseElt = [&]() -> ParseResult { return parseDimOrSymbolId(false); };
+ParseResult AffineMapParser::parseSymbolIdList(unsigned &numSymbols) {
+  consumeToken(Token::l_square);
+  auto parseElt = [&]() -> ParseResult {
+    auto *symbol = AffineSymbolExpr::get(numSymbols++, getContext());
+    return parseIdentifierDefinition(symbol);
+  };
   return parseCommaSeparatedListUntil(Token::r_square, parseElt);
 }
 
 /// Parse the list of dimensional identifiers to an affine map.
-ParseResult AffineMapParser::parseDimIdList() {
+ParseResult AffineMapParser::parseDimIdList(unsigned &numDims) {
   if (parseToken(Token::l_paren,
                  "expected '(' at start of dimensional identifiers list"))
     return ParseFailure;
 
-  auto parseElt = [&]() -> ParseResult { return parseDimOrSymbolId(true); };
+  auto parseElt = [&]() -> ParseResult {
+    auto *dimension = AffineDimExpr::get(numDims++, getContext());
+    return parseIdentifierDefinition(dimension);
+  };
   return parseCommaSeparatedListUntil(Token::r_paren, parseElt);
 }
 
@@ -1132,13 +1113,15 @@ ParseResult AffineMapParser::parseDimIdList() {
 ///
 ///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
 AffineMap *AffineMapParser::parseAffineMapInline() {
+  unsigned numDims = 0, numSymbols = 0;
+
   // List of dimensional identifiers.
-  if (parseDimIdList())
+  if (parseDimIdList(numDims))
     return nullptr;
 
   // Symbols are optional.
   if (getToken().is(Token::l_square)) {
-    if (parseSymbolIdList())
+    if (parseSymbolIdList(numSymbols))
       return nullptr;
   }
 
@@ -1173,13 +1156,19 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
       return nullptr;
 
     auto parseRangeSize = [&]() -> ParseResult {
+      auto loc = getToken().getLoc();
       auto *elt = parseAffineExpr();
-      ParseResult res = elt ? ParseSuccess : ParseFailure;
+      if (!elt)
+        return ParseFailure;
+
+      if (!elt->isSymbolicOrConstant())
+        return emitError(loc,
+                         "size expressions cannot refer to dimension values");
+
       rangeSizes.push_back(elt);
-      return res;
+      return ParseSuccess;
     };
 
-    setSymbolicParsing(true);
     if (parseCommaSeparatedListUntil(Token::r_paren, parseRangeSize, false))
       return nullptr;
     if (exprs.size() > rangeSizes.size())
@@ -1191,7 +1180,7 @@ AffineMap *AffineMapParser::parseAffineMapInline() {
   }
 
   // Parsed a valid affine map.
-  return builder.getAffineMap(dims.size(), symbols.size(), exprs, rangeSizes);
+  return builder.getAffineMap(numDims, numSymbols, exprs, rangeSizes);
 }
 
 AffineMap *Parser::parseAffineMapInline() {
@@ -2448,8 +2437,6 @@ ParseResult ModuleParser::parseModule() {
       if (parseMLFunc())
         return ParseFailure;
       break;
-
-      // TODO: affine entity declarations, etc.
     }
   }
 }

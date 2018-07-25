@@ -36,13 +36,13 @@
 #hello_world = (i, j) [s0] -> (x) // expected-error {{use of undeclared identifier}}
 
 // -----
-#hello_world = (i, j, i) [s0] -> (i) // expected-error {{dimensional identifier name reused}}
+#hello_world = (i, j, i) [s0] -> (i) // expected-error {{redefinition of identifier 'i'}}
 
 // -----
-#hello_world = (i, j) [s0, s1, s0] -> (i) // expected-error {{symbolic identifier name reused}}
+#hello_world = (i, j) [s0, s1, s0] -> (i) // expected-error {{redefinition of identifier 's0'}}
 
 // -----
-#hello_world = (i, j) [i, s0] -> (j) // expected-error {{dimensional identifier name reused}}
+#hello_world = (i, j) [i, s0] -> (j) // expected-error {{redefinition of identifier 'i'}}
 
 // -----
 #hello_world = (i, j) [s0, s1] -> () // expected-error {{expected list element}}
@@ -104,10 +104,10 @@
 #hello_world = (i, j) -> (i, j) size (10, x) // expected-error {{use of undeclared identifier}}
 
 // -----
-#hello_world = (i, j) [M] -> (i, j) size (10, j) // expected-error {{identifier used is not a symbolic identifier}}
+#hello_world = (i, j) [M] -> (i, j) size (10, j) // expected-error {{size expressions cannot refer to dimension values}}
 
 // -----
-#hello_world = (i, j) [M] -> (i, j) size (10, M+i) // expected-error {{identifier used is not a symbolic identifier}}
+#hello_world = (i, j) [M] -> (i, j) size (10, M+i) // expected-error {{size expressions cannot refer to dimension values}}
 
 // -----
 #hello_world = (i, j) -> (i, j) size (10) // expected-error {{fewer range sizes than range expressions}}

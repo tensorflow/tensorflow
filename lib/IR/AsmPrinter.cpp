@@ -295,14 +295,14 @@ void ModulePrinter::printType(const Type *type) {
   case Type::Kind::Function: {
     auto *func = cast<FunctionType>(type);
     os << '(';
-    interleaveComma(func->getInputs(), [&](Type *type) { os << *type; });
+    interleaveComma(func->getInputs(), [&](Type *type) { printType(type); });
     os << ") -> ";
     auto results = func->getResults();
     if (results.size() == 1)
       os << *results[0];
     else {
       os << '(';
-      interleaveComma(results, [&](Type *type) { os << *type; });
+      interleaveComma(results, [&](Type *type) { printType(type); });
       os << ')';
     }
     return;
@@ -330,7 +330,9 @@ void ModulePrinter::printType(const Type *type) {
   }
   case Type::Kind::UnrankedTensor: {
     auto *v = cast<UnrankedTensorType>(type);
-    os << "tensor<??" << *v->getElementType() << '>';
+    os << "tensor<??";
+    printType(v->getElementType());
+    os << '>';
     return;
   }
   case Type::Kind::MemRef: {
@@ -343,12 +345,14 @@ void ModulePrinter::printType(const Type *type) {
         os << dim;
       os << 'x';
     }
-    os << *v->getElementType();
+    printType(v->getElementType());
     for (auto map : v->getAffineMaps()) {
       os << ", ";
       printAffineMapReference(map);
     }
-    os << ", " << v->getMemorySpace();
+    // Only print the memory space if it is the non-default one.
+    if (v->getMemorySpace())
+      os << ", " << v->getMemorySpace();
     os << '>';
     return;
   }

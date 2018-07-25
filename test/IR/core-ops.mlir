@@ -58,14 +58,13 @@ bb0:
 }
 
 // CHECK-LABEL: cfgfunc @load_store
-cfgfunc @load_store(memref<4x4xi32, #id2, 0>, affineint) {
-bb0(%0: memref<4x4xi32, #id2, 0>, %1: affineint):
+cfgfunc @load_store(memref<4x4xi32>, affineint) {
+bb0(%0: memref<4x4xi32>, %1: affineint):
+  // CHECK: %2 = load %0[%1, %1] : memref<4x4xi32>
+  %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, affineint, affineint)->i32
 
-  // CHECK: %2 = load %0[%1, %1] : memref<4x4xi32, #map2, 0>
-  %2 = "load"(%0, %1, %1) : (memref<4x4xi32, #id2, 0>, affineint, affineint)->i32
-
-  // CHECK: %3 = load %0[%1, %1] : memref<4x4xi32, #map2, 0>
-  %3 = load %0[%1, %1] : memref<4x4xi32, #id2, 0>
+  // CHECK: %3 = load %0[%1, %1] : memref<4x4xi32>
+  %3 = load %0[%1, %1] : memref<4x4xi32>
 
   return
 }
