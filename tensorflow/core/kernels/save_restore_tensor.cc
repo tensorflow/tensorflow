@@ -250,9 +250,9 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
   // TODO(zongheng): consider measuring speed and issuing concurrent lookups
   // within a fixed memory budget.
   TensorShape restored_full_shape;
-  DataType original_dtype;
   std::vector<string> mismatched_errors;
   for (auto i : sorted_name_idx) {
+    DataType original_dtype;
     const string& tensor_name = tensor_names_flat(i);
     TF_RETURN_IF_ERROR(
         reader.LookupDtypeAndShape(tensor_name,
