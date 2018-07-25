@@ -22,6 +22,7 @@ import collections
 import copy
 import os
 import signal
+import sys
 import threading
 import time
 
@@ -2308,8 +2309,8 @@ class TPUEstimator(estimator_lib.Estimator):
           input_fn=input_fn, hooks=hooks, steps=steps, max_steps=max_steps,
           saving_listeners=saving_listeners
       )
-    except Exception as e:  # pylint: disable=broad-except
-      rendezvous.record_error('training_loop', e)
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('training_loop', sys.exc_info())
     finally:
       rendezvous.record_done('training_loop')
       rendezvous.raise_errors()
@@ -2323,8 +2324,8 @@ class TPUEstimator(estimator_lib.Estimator):
           input_fn, steps=steps, hooks=hooks, checkpoint_path=checkpoint_path,
           name=name
       )
-    except Exception as e:  # pylint: disable=broad-except
-      rendezvous.record_error('evaluation_loop', e)
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('evaluation_loop', sys.exc_info())
     finally:
       rendezvous.record_done('evaluation_loop')
       rendezvous.raise_errors()
@@ -2345,8 +2346,8 @@ class TPUEstimator(estimator_lib.Estimator):
           checkpoint_path=checkpoint_path,
           yield_single_examples=yield_single_examples):
         yield result
-    except Exception as e:  # pylint: disable=broad-except
-      rendezvous.record_error('prediction_loop', e)
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('prediction_loop', sys.exc_info())
     finally:
       rendezvous.record_done('prediction_loop')
       rendezvous.raise_errors()
