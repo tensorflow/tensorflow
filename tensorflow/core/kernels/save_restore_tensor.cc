@@ -258,10 +258,10 @@ Status RestoreTensorsV2(OpKernelContext* context, const Tensor& prefix,
         reader.LookupDtypeAndShape(tensor_name,
                                    &original_dtype, &restored_full_shape));
     if (dtypes[i] != original_dtype) {
-      string error_msg = string("tensor_name = ") + tensor_name +
-                         "; expected dtype " + DataTypeString(dtypes[i]) +
-                         " does not equal original dtype " +
-                         DataTypeString(original_dtype) + '\n';
+      string error_msg = strings::StrCat(
+          "tensor_name = ", tensor_name,
+          "; expected dtype ", DataTypeString(dtypes[i]),
+          " does not equal original dtype ", DataTypeString(original_dtype));
       mismatched_errors.emplace_back(error_msg);
     }
   }
