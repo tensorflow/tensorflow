@@ -102,6 +102,7 @@ class InMemoryEvaluatorHookTest(test.TestCase):
     self.assertTrue(os.path.isdir(estimator.eval_dir()))
     step_keyword_to_value = summary_step_keyword_to_value_mapping(
         estimator.eval_dir())
+
     # 4.5 = sum(range(10))/10
     # before training
     self.assertEqual(4.5, step_keyword_to_value[0]['mean_of_features'])
@@ -110,6 +111,7 @@ class InMemoryEvaluatorHookTest(test.TestCase):
     self.assertEqual(4.5, step_keyword_to_value[8]['mean_of_features'])
     # end
     self.assertEqual(4.5, step_keyword_to_value[10]['mean_of_features'])
+    self.assertEqual(set([0, 4, 8, 10]), set(step_keyword_to_value.keys()))
 
   def test_uses_latest_variable_value(self):
 

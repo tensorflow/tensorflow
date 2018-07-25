@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "segment_sum"
-    deprecation_message: "tf.segment_sum is deprecated, please use tf.math.segment_sum instead."
+    deprecated: true
   }
 }

@@ -315,6 +315,12 @@ class AdamOptimizerTest(test.TestCase):
 
   def testTwoSessions(self):
     optimizer = adam.AdamOptimizer()
+
+    with context.eager_mode():
+      var0 = variables.Variable(np.array([1.0, 2.0]), name="v0")
+      grads0 = constant_op.constant(np.array([0.1, 0.1]))
+      optimizer.apply_gradients([(grads0, var0)])
+
     g = ops.Graph()
     with g.as_default():
       with session.Session():

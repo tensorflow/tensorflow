@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -38,12 +38,13 @@ int main(int argc, char** argv) {
 
   // Transfer parameters.
   std::unique_ptr<xla::Literal> param0_literal =
-      xla::Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
+      xla::LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<xla::GlobalData> param0_data =
       client->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> param1_literal = xla::Literal::CreateR2<float>(
-      {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
+  std::unique_ptr<xla::Literal> param1_literal =
+      xla::LiteralUtil::CreateR2<float>(
+          {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
   std::unique_ptr<xla::GlobalData> param1_data =
       client->TransferToServer(*param1_literal).ConsumeValueOrDie();
 

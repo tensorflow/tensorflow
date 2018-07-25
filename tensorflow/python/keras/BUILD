@@ -451,6 +451,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
+    tags = ["no_windows_gpu"],
 )
 
 py_test(
@@ -703,6 +704,17 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "training_gpu_test",
+    size = "small",
+    srcs = ["engine/training_gpu_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_test(
     name = "imagenet_utils_test",
     size = "small",
@@ -781,6 +793,19 @@ py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["engine/training_eager_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_utils_test",
+    size = "medium",
+    srcs = ["engine/training_utils_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [

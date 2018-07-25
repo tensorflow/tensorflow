@@ -117,6 +117,8 @@ string FilterLayoutString(FilterLayout layout) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
       return "OutputInputYX";
+    case FilterLayout::kOutputYXInput:
+      return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
     case FilterLayout::kInputYXOutput:

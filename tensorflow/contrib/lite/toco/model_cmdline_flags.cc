@@ -322,6 +322,10 @@ void ReadModelFlagsFromCommandLineFlags(
     for (int i = 0; i < input_shapes.size(); ++i) {
       auto* shape = model_flags->mutable_input_arrays(i)->mutable_shape();
       shape->clear_dims();
+      // Treat an empty input shape as a scalar.
+      if (input_shapes[i].empty()) {
+        continue;
+      }
       for (const auto& dim_str : absl::StrSplit(input_shapes[i], ',')) {
         int size;
         CHECK(absl::SimpleAtoi(dim_str, &size))

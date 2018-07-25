@@ -227,14 +227,16 @@ TEST_F(ShapeTreeTest, NestedTupleShape) {
 
 TEST_F(ShapeTreeTest, InvalidIndexingTuple) {
   ShapeTree<int> shape_tree{tuple_shape_};
-
+#ifndef NDEBUG
   EXPECT_DEATH(shape_tree.element({4}), "");
+#endif
 }
 
 TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
   ShapeTree<int> shape_tree{nested_tuple_shape_};
-
+#ifndef NDEBUG
   EXPECT_DEATH(shape_tree.element({0, 0}), "");
+#endif
 }
 
 TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
@@ -602,12 +604,15 @@ void BM_Iterate(int iters, int depth, int fan_out) {
   }
 }
 
-BENCHMARK(BM_Construct)->ArgPair(2, 8);
-BENCHMARK(BM_ConstructUnowned)->ArgPair(2, 8);
-BENCHMARK(BM_Copy)->ArgPair(2, 8);
-BENCHMARK(BM_Move)->ArgPair(2, 8);
-BENCHMARK(BM_ForEach)->ArgPair(2, 8);
-BENCHMARK(BM_Iterate)->ArgPair(2, 8);
+#define BENCHMARK_WITH_ARGS(name) \
+  BENCHMARK(name)->ArgPair(2, 8)->ArgPair(1, 1000)
+
+BENCHMARK_WITH_ARGS(BM_Construct);
+BENCHMARK_WITH_ARGS(BM_ConstructUnowned);
+BENCHMARK_WITH_ARGS(BM_Copy);
+BENCHMARK_WITH_ARGS(BM_Move);
+BENCHMARK_WITH_ARGS(BM_ForEach);
+BENCHMARK_WITH_ARGS(BM_Iterate);
 
 }  // namespace
 }  // namespace xla

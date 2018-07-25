@@ -168,8 +168,9 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "cond_param"));
-  HloInstruction* zero_vector = cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{0, 0, 0, 0}})));
+  HloInstruction* zero_vector =
+      cond_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
   cond_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
@@ -179,16 +180,18 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
   auto body_builder = HloComputation::Builder("WhileBody");
   HloInstruction* body_param = body_builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "body_param"));
-  HloInstruction* one_vector = body_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1, 1, 1}})));
+  HloInstruction* one_vector =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
   body_builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, body_param, one_vector));
   auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
 
   // transpose(matrix) + bcast(while)
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* while_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1, 1, 1}})));
+  HloInstruction* while_init =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
   // Creates 16 bytes, ignoring subcomputations
   HloInstruction* while_loop =
       builder.AddInstruction(HloInstruction::CreateWhile(
@@ -199,7 +202,7 @@ TEST_F(HloSchedulingTest, ListAccountsForSubcomputations) {
       HloInstruction::CreateBroadcast(r2f32, while_loop, {0}));
 
   HloInstruction* matrix = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>(
           {{1.0, 2.0, 3.0, 4.0}, {1.0, 2.0, 3.0, 4.0}})));
   // Creates 32 bytes
   HloInstruction* transpose = builder.AddInstruction(
@@ -257,7 +260,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   // Wrap lit in abs because constants are considered free by
   // IgnoreInstruction, and it skews the accounting.
   auto lit = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1, 1, 1, 1, 1, 1})));
+      LiteralUtil::CreateR1<float>({1, 1, 1, 1, 1, 1})));
   auto abs_const = builder.AddInstruction(
       HloInstruction::CreateUnary(r1f32, HloOpcode::kAbs, lit));
 
@@ -300,11 +303,11 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   HloComputation::Builder builder(TestName());
 
   auto c1 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1, 1, 1, 1, 1})));
+      LiteralUtil::CreateR1<float>({1, 1, 1, 1, 1})));
   auto c2 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({1, 2, 3, 4, 5})));
+      LiteralUtil::CreateR1<float>({1, 2, 3, 4, 5})));
   auto c3 = builder.AddInstruction(HloInstruction::CreateConstant(
-      Literal::CreateR1<float>({0, 2, 4, 6, 8})));
+      LiteralUtil::CreateR1<float>({0, 2, 4, 6, 8})));
 
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, c1, c2));
@@ -354,8 +357,9 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "cond_param"));
-  HloInstruction* zero_vector = cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{0, 0, 0, 0}})));
+  HloInstruction* zero_vector =
+      cond_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
   cond_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
@@ -365,15 +369,17 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   auto body_builder = HloComputation::Builder("WhileBody");
   HloInstruction* body_param = body_builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1f32, "body_param"));
-  HloInstruction* one_vector = body_builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1, 1, 1}})));
+  HloInstruction* one_vector =
+      body_builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
   body_builder.AddInstruction(HloInstruction::CreateBinary(
       r1f32, HloOpcode::kSubtract, body_param, one_vector));
   auto body_computation = module->AddEmbeddedComputation(body_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* while_init = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR2<float>({{1, 1, 1, 1}})));
+  HloInstruction* while_init =
+      builder.AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR2<float>({{1, 1, 1, 1}})));
   // Creates 16 bytes, ignoring subcomputations
   builder.AddInstruction(HloInstruction::CreateWhile(
       r1f32, cond_computation, body_computation, while_init));

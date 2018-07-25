@@ -18,15 +18,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long,wildcard-import
+import os
+
+# pylint: disable=line-too-long,wildcard-import,g-import-not-at-top
 from tensorflow.contrib.cloud.python.ops.bigquery_reader_ops import *
 from tensorflow.contrib.cloud.python.ops.gcs_config_ops import *
-# pylint: enable=line-too-long,wildcard-import
+
+if os.name != 'nt':
+  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableClient
+  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableTable
+
+del os
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'BigQueryReader',
+    'BigtableClient',
+    'BigtableTable',
     'BlockCacheParams',
     'configure_colab_session',
     'configure_gcs',

@@ -209,6 +209,13 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor);
 
+void EraseNodesFromGraph(const std::set<int>& nodes_to_delete, GraphDef* graph);
+
+void EraseNodesFromGraph(std::vector<int>&& nodes_to_delete, GraphDef* graph);
+
+void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
+                         GraphDef* graph);
+
 class SimpleGraphView {
  public:
   // Build a graph view for the specified graphdef.
@@ -236,6 +243,9 @@ class SimpleGraphView {
     const auto& it = name_to_index_.find(node_name);
     DCHECK(it != name_to_index_.end());
     return it == name_to_index_.end() ? -1 : it->second;
+  }
+  inline const NodeDef& node(int node_idx) const {
+    return graph_->node(node_idx);
   }
   inline const string& node_name(int node_idx) const {
     return index_to_name_[node_idx];

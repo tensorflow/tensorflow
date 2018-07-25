@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -33,7 +33,7 @@ from tensorflow.python.platform import googletest
 
 # Test cloned from
 # tensorflow/python/kernel_tests/conv3d_backprop_filter_v2_grad_test.py
-class Conv3DBackpropFilterV2GradTest(XLATestCase):
+class Conv3DBackpropFilterV2GradTest(xla_test.XLATestCase):
 
   def testGradient(self):
     with self.test_session(), self.test_scope():
@@ -66,7 +66,7 @@ class Conv3DBackpropFilterV2GradTest(XLATestCase):
 
 
 # Test cloned from tensorflow/python/kernel_tests/conv3d_transpose_test.py
-class Conv3DTransposeTest(XLATestCase):
+class Conv3DTransposeTest(xla_test.XLATestCase):
 
   def testConv3DTransposeSingleStride(self):
     with self.test_session(), self.test_scope():

@@ -27,6 +27,10 @@ build --define framework_shared_object=true
 build:mkl --define=using_mkl=true
 build:mkl -c opt
 
+# This config option is used to enable MKL-DNN open source library only,
+# without depending on MKL binary version.
+build:mkl_open_source_only --define=using_mkl_dnn_only=true
+
 build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
 build:download_clang --define=using_clang=true
 

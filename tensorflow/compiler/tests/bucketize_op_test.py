@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
@@ -26,7 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class BucketizationOpTest(XLATestCase):
+class BucketizationOpTest(xla_test.XLATestCase):
 
   def testInt(self):
     with self.test_session() as sess:

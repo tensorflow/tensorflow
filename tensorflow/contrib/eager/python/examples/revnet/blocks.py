@@ -24,7 +24,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
+import functools
+import operator
+
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import ops
 
@@ -44,8 +46,9 @@ class RevBlock(tf.keras.Model):
                batch_norm_first=False,
                data_format="channels_first",
                bottleneck=False,
-               fused=True):
-    """Initialize RevBlock.
+               fused=True,
+               dtype=tf.float32):
+    """Initialization.
 
     Args:
       n_res: number of residual blocks
@@ -56,6 +59,7 @@ class RevBlock(tf.keras.Model):
       data_format: tensor data format, "NCHW"/"NHWC"
       bottleneck: use bottleneck residual if True
       fused: use fused batch normalization if True
+      dtype: float16, float32, or float64
     """
     super(RevBlock, self).__init__()
     self.blocks = tf.contrib.checkpoint.List()
@@ -69,7 +73,8 @@ class RevBlock(tf.keras.Model):
           batch_norm_first=curr_batch_norm_first,
           data_format=data_format,
           bottleneck=bottleneck,
-          fused=fused)
+          fused=fused,
+          dtype=dtype)
       self.blocks.append(block)
 
       if data_format == "channels_first":
@@ -95,19 +100,21 @@ class RevBlock(tf.keras.Model):
     for i in reversed(range(len(self.blocks))):
       block = self.blocks[i]
       if i == 0:
-        y_inv = x
+        # First block usually contains downsampling that can't be reversed
+        with tf.GradientTape() as tape:
+          tape.watch(x)
+          y = block(x, training=training)
+
+        grads_combined = tape.gradient(
+            y, [x] + block.trainable_variables, output_gradients=dy)
+        dy = grads_combined[0]
+        grads_all += grads_combined[1:]
+        vars_all += block.trainable_variables
       else:
-        # Don't update running stats when reconstructing activations
-        vars_and_vals = block.get_moving_stats()
-        y_inv = block.backward(y, training=training)
-        block.restore_moving_stats(vars_and_vals)
-
-      # Update running stats when computing gradients during training
-      dy, grads, vars_ = block.backward_grads_and_vars(
-          y_inv, dy, training=training)
-
-      grads_all += grads
-      vars_all += vars_
+        y, dy, grads, vars_ = block.backward_grads_and_vars(
+            y, dy, training=training)
+        grads_all += grads
+        vars_all += vars_
 
     return dy, grads_all, vars_all
 
@@ -116,15 +123,6 @@ class _Residual(tf.keras.Model):
   """Single residual block contained in a _RevBlock. Each `_Residual` object has
   two _ResidualInner objects, corresponding to the `F` and `G` functions in the
   paper.
-
-  Args:
-    filters: output filter size
-    strides: length 2 list/tuple of integers for height and width strides
-    input_shape: length 3 list/tuple of integers
-    batch_norm_first: whether to apply activation and batch norm before conv
-    data_format: tensor data format, "NCHW"/"NHWC",
-    bottleneck: use bottleneck residual if True
-    fused: use fused batch normalization if True
   """
 
   def __init__(self,
@@ -134,7 +132,20 @@ class _Residual(tf.keras.Model):
                batch_norm_first=True,
                data_format="channels_first",
                bottleneck=False,
-               fused=True):
+               fused=True,
+               dtype=tf.float32):
+    """Initialization.
+
+    Args:
+      filters: output filter size
+      strides: length 2 list/tuple of integers for height and width strides
+      input_shape: length 3 list/tuple of integers
+      batch_norm_first: whether to apply activation and batch norm before conv
+      data_format: tensor data format, "NCHW"/"NHWC",
+      bottleneck: use bottleneck residual if True
+      fused: use fused batch normalization if True
+      dtype: float16, float32, or float64
+    """
     super(_Residual, self).__init__()
 
     self.filters = filters
@@ -156,21 +167,22 @@ class _Residual(tf.keras.Model):
         input_shape=f_input_shape,
         batch_norm_first=batch_norm_first,
         data_format=data_format,
-        fused=fused)
+        fused=fused,
+        dtype=dtype)
     self.g = factory(
         filters=filters // 2,
         strides=(1, 1),
         input_shape=g_input_shape,
         batch_norm_first=batch_norm_first,
         data_format=data_format,
-        fused=fused)
+        fused=fused,
+        dtype=dtype)
 
   def call(self, x, training=True, concat=True):
     """Apply residual block to inputs."""
 
     x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
     f_x2 = self.f(x2, training=training)
-    # TODO(lxuechen): Replace with simpler downsampling
     x1_down = ops.downsample(
         x1, self.filters // 2, self.strides, axis=self.axis)
     x2_down = ops.downsample(
@@ -183,180 +195,283 @@ class _Residual(tf.keras.Model):
 
     return tf.concat([y1, y2], axis=self.axis)
 
-  def backward(self, y, training=True):
-    """Reconstruct inputs from outputs; only valid when stride 1."""
-
-    assert self.strides == (1, 1)
-
-    y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
-    g_y1 = self.g(y1, training=training)
-    x2 = y2 - g_y1
-    f_x2 = self.f(x2, training=training)
-    x1 = y1 - f_x2
-
-    return tf.concat([x1, x2], axis=self.axis)
-
-  def backward_grads_and_vars(self, x, dy, training=True):
+  def backward_grads_and_vars(self, y, dy, training=True):
     """Manually compute backward gradients given input and output grads."""
+    dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=self.axis)
 
     with tf.GradientTape(persistent=True) as tape:
-      x = tf.identity(x)  # TODO(lxuechen): Remove after b/110264016 is fixed
-      x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
-      tape.watch([x1, x2])
-      # Stitch back x for `call` so tape records correct grads
-      x = tf.concat([x1, x2], axis=self.axis)
-      dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=self.axis)
-      y1, y2 = self.call(x, training=training, concat=False)
-      x2_down = ops.downsample(
-          x2, self.filters // 2, self.strides, axis=self.axis)
+      tape.watch(y)
+      y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
+      gy1 = self.g(y1, training=training)
+      x2 = y2 - gy1
+      fx2 = self.f(x2, training=training)
+      x1 = y1 - fx2
 
     grads_combined = tape.gradient(
-        y2, [y1] + self.g.trainable_variables, output_gradients=[dy2])
-    dy2_y1, dg = grads_combined[0], grads_combined[1:]
-    dy1_plus = dy2_y1 + dy1
+        gy1, [y1] + self.g.trainable_variables, output_gradients=dy2)
+    dg = grads_combined[1:]
+    dx1 = dy1 + grads_combined[0]
 
     grads_combined = tape.gradient(
-        y1, [x1, x2] + self.f.trainable_variables, output_gradients=[dy1_plus])
-    dx1, dx2, df = grads_combined[0], grads_combined[1], grads_combined[2:]
-    dx2 += tape.gradient(x2_down, [x2], output_gradients=[dy2])[0]
+        fx2, [x2] + self.f.trainable_variables, output_gradients=dx1)
+    dx2 = dy2 + grads_combined[0]
+    df = grads_combined[1:]
 
     del tape
 
     grads = df + dg
     vars_ = self.f.trainable_variables + self.g.trainable_variables
 
-    return tf.concat([dx1, dx2], axis=self.axis), grads, vars_
+    x = tf.concat([x1, x2], axis=self.axis)
+    dx = tf.concat([dx1, dx2], axis=self.axis)
 
-  def get_moving_stats(self):
-    vars_and_vals = {}
-
-    def _is_moving_var(v):  # pylint: disable=invalid-name
-      n = v.name
-      return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
-
-    for v in filter(_is_moving_var, self.f.variables + self.g.variables):
-      vars_and_vals[v] = v.read_value()
-
-    return vars_and_vals
-
-  def restore_moving_stats(self, vars_and_vals):
-    for var_, val in six.iteritems(vars_and_vals):
-      var_.assign(val)
+    return x, dx, grads, vars_
 
 
-def _BottleneckResidualInner(filters,
-                             strides,
-                             input_shape,
-                             batch_norm_first=True,
-                             data_format="channels_first",
-                             fused=True):
+# Ideally, the following should be wrapped in `tf.keras.Sequential`, however
+# there are subtle issues with its placeholder insertion policy and batch norm
+class _BottleneckResidualInner(tf.keras.Model):
   """Single bottleneck residual inner function contained in _Resdual.
 
   Corresponds to the `F`/`G` functions in the paper.
   Suitable for training on ImageNet dataset.
-
-  Args:
-    filters: output filter size
-    strides: length 2 list/tuple of integers for height and width strides
-    input_shape: length 3 list/tuple of integers
-    batch_norm_first: whether to apply activation and batch norm before conv
-    data_format: tensor data format, "NCHW"/"NHWC"
-    fused: use fused batch normalization if True
-
-  Returns:
-    A keras model
   """
 
-  axis = 1 if data_format == "channels_first" else 3
-  model = tf.keras.Sequential()
-  if batch_norm_first:
-    model.add(
-        tf.keras.layers.BatchNormalization(
-            axis=axis, input_shape=input_shape, fused=fused))
-    model.add(tf.keras.layers.Activation("relu"))
-  model.add(
-      tf.keras.layers.Conv2D(
-          filters=filters // 4,
-          kernel_size=1,
-          strides=strides,
-          input_shape=input_shape,
-          data_format=data_format,
-          use_bias=False,
-          padding="SAME"))
+  def __init__(self,
+               filters,
+               strides,
+               input_shape,
+               batch_norm_first=True,
+               data_format="channels_first",
+               fused=True,
+               dtype=tf.float32):
+    """Initialization.
 
-  model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.Activation("relu"))
-  model.add(
-      tf.keras.layers.Conv2D(
-          filters=filters // 4,
-          kernel_size=3,
-          strides=(1, 1),
-          data_format=data_format,
-          use_bias=False,
-          padding="SAME"))
+    Args:
+      filters: output filter size
+      strides: length 2 list/tuple of integers for height and width strides
+      input_shape: length 3 list/tuple of integers
+      batch_norm_first: whether to apply activation and batch norm before conv
+      data_format: tensor data format, "NCHW"/"NHWC"
+      fused: use fused batch normalization if True
+      dtype: float16, float32, or float64
+    """
+    super(_BottleneckResidualInner, self).__init__()
+    axis = 1 if data_format == "channels_first" else 3
+    if batch_norm_first:
+      self.batch_norm_0 = tf.keras.layers.BatchNormalization(
+          axis=axis, input_shape=input_shape, fused=fused, dtype=dtype)
+    self.conv2d_1 = tf.keras.layers.Conv2D(
+        filters=filters // 4,
+        kernel_size=1,
+        strides=strides,
+        input_shape=input_shape,
+        data_format=data_format,
+        use_bias=False,
+        padding="SAME",
+        dtype=dtype)
 
-  model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.Activation("relu"))
-  model.add(
-      tf.keras.layers.Conv2D(
-          filters=filters,
-          kernel_size=1,
-          strides=(1, 1),
-          data_format=data_format,
-          use_bias=False,
-          padding="SAME"))
+    self.batch_norm_1 = tf.keras.layers.BatchNormalization(
+        axis=axis, fused=fused, dtype=dtype)
+    self.conv2d_2 = tf.keras.layers.Conv2D(
+        filters=filters // 4,
+        kernel_size=3,
+        strides=(1, 1),
+        data_format=data_format,
+        use_bias=False,
+        padding="SAME",
+        dtype=dtype)
 
-  return model
+    self.batch_norm_2 = tf.keras.layers.BatchNormalization(
+        axis=axis, fused=fused, dtype=dtype)
+    self.conv2d_3 = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=1,
+        strides=(1, 1),
+        data_format=data_format,
+        use_bias=False,
+        padding="SAME",
+        dtype=dtype)
+
+    self.batch_norm_first = batch_norm_first
+
+  def call(self, x, training=True):
+    net = x
+    if self.batch_norm_first:
+      net = self.batch_norm_0(net, training=training)
+      net = tf.nn.relu(net)
+    net = self.conv2d_1(net)
+
+    net = self.batch_norm_1(net, training=training)
+    net = tf.nn.relu(net)
+    net = self.conv2d_2(net)
+
+    net = self.batch_norm_2(net, training=training)
+    net = tf.nn.relu(net)
+    net = self.conv2d_3(net)
+
+    return net
 
 
-def _ResidualInner(filters,
-                   strides,
-                   input_shape,
-                   batch_norm_first=True,
-                   data_format="channels_first",
-                   fused=True):
+class _ResidualInner(tf.keras.Model):
   """Single residual inner function contained in _ResdualBlock.
 
   Corresponds to the `F`/`G` functions in the paper.
-
-  Args:
-    filters: output filter size
-    strides: length 2 list/tuple of integers for height and width strides
-    input_shape: length 3 list/tuple of integers
-    batch_norm_first: whether to apply activation and batch norm before conv
-    data_format: tensor data format, "NCHW"/"NHWC"
-    fused: use fused batch normalization if True
-
-  Returns:
-    A keras model
   """
 
-  axis = 1 if data_format == "channels_first" else 3
-  model = tf.keras.Sequential()
-  if batch_norm_first:
-    model.add(
-        tf.keras.layers.BatchNormalization(
-            axis=axis, input_shape=input_shape, fused=fused))
-    model.add(tf.keras.layers.Activation("relu"))
-  model.add(
-      tf.keras.layers.Conv2D(
-          filters=filters,
-          kernel_size=3,
-          strides=strides,
-          input_shape=input_shape,
-          data_format=data_format,
-          use_bias=False,
-          padding="SAME"))
+  def __init__(self,
+               filters,
+               strides,
+               input_shape,
+               batch_norm_first=True,
+               data_format="channels_first",
+               fused=True,
+               dtype=tf.float32):
+    """Initialization.
 
-  model.add(tf.keras.layers.BatchNormalization(axis=axis, fused=fused))
-  model.add(tf.keras.layers.Activation("relu"))
-  model.add(
-      tf.keras.layers.Conv2D(
-          filters=filters,
-          kernel_size=3,
-          strides=(1, 1),
-          data_format=data_format,
-          use_bias=False,
-          padding="SAME"))
+    Args:
+      filters: output filter size
+      strides: length 2 list/tuple of integers for height and width strides
+      input_shape: length 3 list/tuple of integers
+      batch_norm_first: whether to apply activation and batch norm before conv
+      data_format: tensor data format, "NCHW"/"NHWC"
+      fused: use fused batch normalization if True
+      dtype: float16, float32, or float64
+    """
+    super(_ResidualInner, self).__init__()
+    axis = 1 if data_format == "channels_first" else 3
+    if batch_norm_first:
+      self.batch_norm_0 = tf.keras.layers.BatchNormalization(
+          axis=axis, input_shape=input_shape, fused=fused, dtype=dtype)
+    self.conv2d_1 = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=3,
+        strides=strides,
+        input_shape=input_shape,
+        data_format=data_format,
+        use_bias=False,
+        padding="SAME",
+        dtype=dtype)
 
-  return model
+    self.batch_norm_1 = tf.keras.layers.BatchNormalization(
+        axis=axis, fused=fused, dtype=dtype)
+    self.conv2d_2 = tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=3,
+        strides=(1, 1),
+        data_format=data_format,
+        use_bias=False,
+        padding="SAME",
+        dtype=dtype)
+
+    self.batch_norm_first = batch_norm_first
+
+  def call(self, x, training=True):
+    net = x
+    if self.batch_norm_first:
+      net = self.batch_norm_0(net, training=training)
+      net = tf.nn.relu(net)
+    net = self.conv2d_1(net)
+
+    net = self.batch_norm_1(net, training=training)
+    net = tf.nn.relu(net)
+    net = self.conv2d_2(net)
+
+    return net
+
+
+class InitBlock(tf.keras.Model):
+  """Initial block of RevNet."""
+
+  def __init__(self, config):
+    """Initialization.
+
+    Args:
+      config: tf.contrib.training.HParams object; specifies hyperparameters
+    """
+    super(InitBlock, self).__init__()
+    self.config = config
+    self.axis = 1 if self.config.data_format == "channels_first" else 3
+    self.conv2d = tf.keras.layers.Conv2D(
+        filters=self.config.init_filters,
+        kernel_size=self.config.init_kernel,
+        strides=(self.config.init_stride, self.config.init_stride),
+        data_format=self.config.data_format,
+        use_bias=False,
+        padding="SAME",
+        input_shape=self.config.input_shape,
+        dtype=self.config.dtype)
+    self.batch_norm = tf.keras.layers.BatchNormalization(
+        axis=self.axis, fused=self.config.fused, dtype=self.config.dtype)
+    self.activation = tf.keras.layers.Activation("relu")
+
+    if self.config.init_max_pool:
+      self.max_pool = tf.keras.layers.MaxPooling2D(
+          pool_size=(3, 3),
+          strides=(2, 2),
+          padding="SAME",
+          data_format=self.config.data_format,
+          dtype=self.config.dtype)
+
+  def call(self, x, training=True):
+    net = x
+    net = self.conv2d(net)
+    net = self.batch_norm(net, training=training)
+    net = self.activation(net)
+
+    if self.config.init_max_pool:
+      net = self.max_pool(net)
+
+    return net
+
+
+class FinalBlock(tf.keras.Model):
+  """Final block of RevNet."""
+
+  def __init__(self, config):
+    """Initialization.
+
+    Args:
+      config: tf.contrib.training.HParams object; specifies hyperparameters
+
+    Raises:
+      ValueError: Unsupported data format
+    """
+    super(FinalBlock, self).__init__()
+    self.config = config
+    self.axis = 1 if self.config.data_format == "channels_first" else 3
+
+    f = self.config.filters[-1]  # Number of filters
+    r = functools.reduce(operator.mul, self.config.strides, 1)  # Reduce ratio
+    r *= self.config.init_stride
+    if self.config.init_max_pool:
+      r *= 2
+
+    if self.config.data_format == "channels_first":
+      w, h = self.config.input_shape[1], self.config.input_shape[2]
+      input_shape = (f, w // r, h // r)
+    elif self.config.data_format == "channels_last":
+      w, h = self.config.input_shape[0], self.config.input_shape[1]
+      input_shape = (w // r, h // r, f)
+    else:
+      raise ValueError("Data format should be either `channels_first`"
+                       " or `channels_last`")
+    self.batch_norm = tf.keras.layers.BatchNormalization(
+        axis=self.axis,
+        input_shape=input_shape,
+        fused=self.config.fused,
+        dtype=self.config.dtype)
+    self.activation = tf.keras.layers.Activation("relu")
+    self.global_avg_pool = tf.keras.layers.GlobalAveragePooling2D(
+        data_format=self.config.data_format, dtype=self.config.dtype)
+    self.dense = tf.keras.layers.Dense(
+        self.config.n_classes, dtype=self.config.dtype)
+
+  def call(self, x, training=True):
+    net = x
+    net = self.batch_norm(net, training=training)
+    net = self.activation(net)
+    net = self.global_avg_pool(net)
+    net = self.dense(net)
+
+    return net

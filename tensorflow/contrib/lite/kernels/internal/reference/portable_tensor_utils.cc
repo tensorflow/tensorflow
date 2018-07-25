@@ -51,10 +51,11 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
     *scaling_factor = 1;
     return;
   }
-  *scaling_factor = kScale / range;
+  *scaling_factor = range / kScale;
+  const float scaling_factor_inv = 1.0f / *scaling_factor;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value =
-        static_cast<int32_t>(TfLiteRound(*scaling_factor * values[i]));
+        static_cast<int32_t>(TfLiteRound(values[i] * scaling_factor_inv));
     // Clamp: just in case some odd numeric offset.
     quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
   }
@@ -85,7 +86,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     float* __restrict__ result, int result_stride) {
   int batch, row, col;
   for (batch = 0; batch < n_batch; ++batch, vectors += m_cols) {
-    const float batch_scaling_factor_inv = 1.0 / scaling_factors[batch];
+    const float batch_scaling_factor = scaling_factors[batch];
     // Get the address of the first row.
     const int8_t* row_ptr = matrix;
     for (row = 0; row < m_rows; ++row, result += result_stride) {
@@ -98,7 +99,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       for (col = 0; col < m_cols; ++col, ++row_ptr) {
         dotprod += (*row_ptr) * (vectors[col]);
       }  // for col
-      *result += (dotprod * batch_scaling_factor_inv);
+      *result += (dotprod * batch_scaling_factor);
     }  // for row
   }    // for batch
 }
@@ -192,6 +193,13 @@ void PortableSub1Vector(const float* vector, int v_size, float* result) {
 
 void PortableZeroVector(float* vector, int v_size) {
   memset(vector, 0, v_size * sizeof(float));
+}
+
+void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
+                                  const float scale, float* result) {
+  for (int v = 0; v < v_size; ++v) {
+    *result++ = scale * *vector++;
+  }
 }
 
 void PortableClipVector(const float* vector, int v_size, float abs_limit,

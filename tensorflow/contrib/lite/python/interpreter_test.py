@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import io
 import numpy as np
+import six
 
 from tensorflow.contrib.lite.python import interpreter as interpreter_wrapper
 from tensorflow.python.framework import test_util
@@ -82,13 +83,35 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
     expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)
     interpreter.resize_tensor_input(input_details[0]['index'],
-                                    np.array(test_input.shape, dtype=np.int32))
+                                    test_input.shape)
     interpreter.allocate_tensors()
     interpreter.set_tensor(input_details[0]['index'], test_input)
     interpreter.invoke()
 
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+
+class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
+
+  def testInvalidModelContent(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Model provided has model identifier \''):
+      interpreter_wrapper.Interpreter(model_content=six.b('garbage'))
+
+  def testInvalidModelFile(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Could not open \'totally_invalid_file_name\''):
+      interpreter_wrapper.Interpreter(
+          model_path='totally_invalid_file_name')
+
+  def testInvokeBeforeReady(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'))
+    with self.assertRaisesRegexp(RuntimeError,
+                                 'Invoke called on model that is not ready'):
+      interpreter.invoke()
 
 
 class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):

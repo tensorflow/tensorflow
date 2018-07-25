@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "decode_json_example"
-    deprecation_message: "tf.decode_json_example is deprecated, please use tf.io.decode_json_example instead."
+    deprecated: true
   }
 }

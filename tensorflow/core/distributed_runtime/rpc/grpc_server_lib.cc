@@ -152,16 +152,14 @@ Status GrpcServer::Init(
                                        " was not defined in job \"",
                                        server_def_.job_name(), "\"");
       }
-      const std::vector<string> hostname_port =
-          str_util::Split(iter->second, ':');
-      if (hostname_port.size() != 2 ||
-          !strings::safe_strto32(hostname_port[1], &requested_port)) {
+      auto colon_index = iter->second.find_last_of(':');
+      if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                 &requested_port)) {
         return errors::InvalidArgument(
             "Could not parse port for local server from \"", iter->second,
-            "\"");
-      } else {
-        break;
+            "\".");
       }
+      break;
     }
   }
   if (requested_port == -1) {
@@ -246,6 +244,7 @@ Status GrpcServer::Init(
   // Finish setting up master environment.
   master_env_.ops = OpRegistry::Global();
   master_env_.worker_cache = worker_cache;
+  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
   master_env_.master_session_factory =
       [config, stats_factory](
           SessionOptions options, const MasterEnv* env,
@@ -289,12 +288,10 @@ Status GrpcServer::Init(
               nullptr);
 }
 
-
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
-  return Init(std::move(service_func), rendezvous_mgr_func, nullptr,
-              nullptr);
+  return Init(std::move(service_func), rendezvous_mgr_func, nullptr, nullptr);
 }
 
 Status GrpcServer::Init() { return Init(nullptr, nullptr, nullptr, nullptr); }
@@ -345,11 +342,13 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
   const string host_port = channel_cache_->TranslateTask(name_prefix);
   int requested_port;
 
-  if (!strings::safe_strto32(str_util::Split(host_port, ':')[1],
+  auto colon_index = host_port.find_last_of(':');
+  if (!strings::safe_strto32(host_port.substr(colon_index + 1),
                              &requested_port)) {
     return errors::Internal("Could not parse port for local server from \"",
-                            channel_cache_->TranslateTask(name_prefix), "\".");
+                            host_port, "\".");
   }
+
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);

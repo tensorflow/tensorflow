@@ -29,14 +29,14 @@ namespace {
 
 class PredTest : public ClientLibraryTestBase {
  protected:
-  void TestCompare(
-      bool lhs, bool rhs, bool expected,
-      XlaOp (XlaBuilder::*op)(const xla::XlaOp&, const xla::XlaOp&,
-                              tensorflow::gtl::ArraySlice<int64>)) {
+  void TestCompare(bool lhs, bool rhs, bool expected,
+                   std::function<XlaOp(const xla::XlaOp&, const xla::XlaOp&,
+                                       tensorflow::gtl::ArraySlice<int64>)>
+                       op) {
     XlaBuilder builder(TestName());
     XlaOp lhs_op = ConstantR0<bool>(&builder, lhs);
     XlaOp rhs_op = ConstantR0<bool>(&builder, rhs);
-    (builder.*op)(lhs_op, rhs_op, {});
+    op(lhs_op, rhs_op, {});
     ComputeAndCompareR0<bool>(&builder, expected, {});
   }
 };
@@ -54,27 +54,27 @@ TEST_F(PredTest, ConstantR0PredFalse) {
 }
 
 TEST_F(PredTest, ConstantR0PredCompareEq) {
-  TestCompare(true, false, false, &XlaBuilder::Eq);
+  TestCompare(true, false, false, &Eq);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareNe) {
-  TestCompare(true, false, true, &XlaBuilder::Ne);
+  TestCompare(true, false, true, &Ne);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareLe) {
-  TestCompare(true, false, false, &XlaBuilder::Le);
+  TestCompare(true, false, false, &Le);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareLt) {
-  TestCompare(true, false, false, &XlaBuilder::Lt);
+  TestCompare(true, false, false, &Lt);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareGe) {
-  TestCompare(true, false, true, &XlaBuilder::Ge);
+  TestCompare(true, false, true, &Ge);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareGt) {
-  TestCompare(true, false, true, &XlaBuilder::Gt);
+  TestCompare(true, false, true, &Gt);
 }
 
 TEST_F(PredTest, ConstantR1Pred) {

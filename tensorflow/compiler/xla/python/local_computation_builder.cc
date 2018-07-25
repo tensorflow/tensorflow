@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -485,6 +487,11 @@ LocalOp LocalComputationBuilder::ConvertElementType(
   return xla::ConvertElementType(operand.op(), new_element_type);
 }
 
+LocalOp LocalComputationBuilder::BitcastConvertType(
+    const LocalOp& operand, PrimitiveType new_element_type) {
+  return xla::BitcastConvertType(operand.op(), new_element_type);
+}
+
 LocalOp LocalComputationBuilder::Call(
     const LocalComputation& local_computation,
     tensorflow::gtl::ArraySlice<LocalOp> operands) {
@@ -613,6 +620,11 @@ _FORWARD_BINOP(Min)
 _FORWARD_BINOP(And)
 _FORWARD_BINOP(Or)
 _FORWARD_BINOP(Xor)
+_FORWARD_BINOP(ShiftLeft)
+_FORWARD_BINOP(ShiftRightArithmetic)
+_FORWARD_BINOP(ShiftRightLogical)
+_FORWARD_BINOP(Atan2)
+_FORWARD_BINOP(Pow)
 _FORWARD_UNOP(Not)
 _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
@@ -626,13 +638,27 @@ _FORWARD_UNOP(Sign)
 _FORWARD_UNOP(Cos)
 _FORWARD_UNOP(Sin)
 _FORWARD_UNOP(Tanh)
-_FORWARD_UNOP(SqrtF32)
-_FORWARD_UNOP(SquareF32)
-_FORWARD_BINOP(Pow)
 _FORWARD_UNOP(IsFinite)
-_FORWARD_UNOP(ReciprocalF32)
 _FORWARD_UNOP(Neg)
 _FORWARD_UNOP(Sort)
+_FORWARD_UNOP(Sqrt)
+_FORWARD_UNOP(Rsqrt)
+_FORWARD_UNOP(Square)
+_FORWARD_UNOP(Reciprocal)
+_FORWARD_UNOP(Erfc)
+_FORWARD_UNOP(Erf)
+_FORWARD_UNOP(ErfInv)
+_FORWARD_UNOP(Lgamma)
+_FORWARD_UNOP(Digamma)
+_FORWARD_UNOP(Acos)
+_FORWARD_UNOP(Asin)
+_FORWARD_UNOP(Atan)
+_FORWARD_UNOP(Tan)
+_FORWARD_UNOP(Acosh)
+_FORWARD_UNOP(Asinh)
+_FORWARD_UNOP(Atanh)
+_FORWARD_UNOP(Cosh)
+_FORWARD_UNOP(Sinh)
 
 #undef _FORWARD
 #undef _FORWARD_UNOP
