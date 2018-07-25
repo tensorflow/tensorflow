@@ -12074,6 +12074,32 @@ op {
   }
 }
 op {
+  name: "Cast"
+  input_arg {
+    name: "x"
+    type_attr: "SrcT"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "DstT"
+  }
+  attr {
+    name: "SrcT"
+    type: "type"
+  }
+  attr {
+    name: "DstT"
+    type: "type"
+  }
+  attr {
+    name: "Truncate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "Ceil"
   input_arg {
     name: "x"
