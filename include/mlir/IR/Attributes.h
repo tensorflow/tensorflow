@@ -50,6 +50,7 @@ public:
 
 protected:
   explicit Attribute(Kind kind) : kind(kind) {}
+  ~Attribute() {}
 
 private:
   /// Classification of the subclass, used for type checking.
@@ -78,6 +79,7 @@ public:
   }
 private:
   BoolAttr(bool value) : Attribute(Kind::Bool), value(value) {}
+  ~BoolAttr() = delete;
   bool value;
 };
 
@@ -95,6 +97,7 @@ public:
   }
 private:
   IntegerAttr(int64_t value) : Attribute(Kind::Integer), value(value) {}
+  ~IntegerAttr() = delete;
   int64_t value;
 };
 
@@ -112,6 +115,7 @@ public:
   }
 private:
   FloatAttr(double value) : Attribute(Kind::Float), value(value) {}
+  ~FloatAttr() = delete;
   double value;
 };
 
@@ -129,6 +133,7 @@ public:
   }
 private:
   StringAttr(StringRef value) : Attribute(Kind::String), value(value) {}
+  ~StringAttr() = delete;
   StringRef value;
 };
 
@@ -146,6 +151,7 @@ public:
   }
 private:
   ArrayAttr(ArrayRef<Attribute*> value) : Attribute(Kind::Array), value(value){}
+  ~ArrayAttr() = delete;
   ArrayRef<Attribute*> value;
 };
 
@@ -163,6 +169,7 @@ public:
   }
 private:
   AffineMapAttr(AffineMap *value) : Attribute(Kind::AffineMap), value(value) {}
+  ~AffineMapAttr() = delete;
   AffineMap *value;
 };
 

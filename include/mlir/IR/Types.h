@@ -86,14 +86,13 @@ public:
 
 protected:
   explicit Type(Kind kind, MLIRContext *context)
-    : context(context), kind(kind), subclassData(0) {
-  }
+      : context(context), kind(kind), subclassData(0) {}
   explicit Type(Kind kind, MLIRContext *context, unsigned subClassData)
-    : Type(kind, context) {
+      : Type(kind, context) {
     setSubclassData(subClassData);
   }
 
-  ~Type() = default;
+  ~Type() {}
 
   unsigned getSubclassData() const { return subclassData; }
 
@@ -133,6 +132,7 @@ public:
   }
 private:
   PrimitiveType(Kind kind, MLIRContext *context);
+  ~PrimitiveType() = delete;
 };
 
 inline PrimitiveType *Type::getAffineInt(MLIRContext *ctx) {
@@ -168,6 +168,7 @@ public:
 private:
   unsigned width;
   IntegerType(unsigned width, MLIRContext *context);
+  ~IntegerType() = delete;
 };
 
 inline IntegerType *Type::getInteger(unsigned width, MLIRContext *ctx) {
@@ -199,6 +200,7 @@ private:
 
   FunctionType(Type *const *inputsAndResults, unsigned numInputs,
                unsigned numResults, MLIRContext *context);
+  ~FunctionType() = delete;
 };
 
 
@@ -224,6 +226,7 @@ private:
   Type *elementType;
 
   VectorType(ArrayRef<unsigned> shape, Type *elementType, MLIRContext *context);
+  ~VectorType() = delete;
 };
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:
@@ -243,6 +246,7 @@ protected:
   Type *elementType;
 
   TensorType(Kind kind, Type *elementType, MLIRContext *context);
+  ~TensorType() {}
 };
 
 /// Ranked tensor types represent multi-dimensional arrays that have a shape
@@ -268,6 +272,7 @@ private:
 
   RankedTensorType(ArrayRef<int> shape, Type *elementType,
                    MLIRContext *context);
+  ~RankedTensorType() = delete;
 };
 
 /// Unranked tensor types represent multi-dimensional arrays that have an
@@ -282,6 +287,7 @@ public:
 
 private:
   UnrankedTensorType(Type *elementType, MLIRContext *context);
+  ~UnrankedTensorType() = delete;
 };
 
 /// MemRef types represent a region of memory that have a shape with a fixed
@@ -333,6 +339,7 @@ private:
   MemRefType(ArrayRef<int> shape, Type *elementType,
              ArrayRef<AffineMap*> affineMapList, unsigned memorySpace,
              MLIRContext *context);
+  ~MemRefType() = delete;
 };
 
 } // end namespace mlir

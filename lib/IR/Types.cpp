@@ -22,8 +22,7 @@
 using namespace mlir;
 
 PrimitiveType::PrimitiveType(Kind kind, MLIRContext *context)
-  : Type(kind, context) {
-}
+    : Type(kind, context) {}
 
 IntegerType::IntegerType(unsigned width, MLIRContext *context)
   : Type(Kind::Integer, context), width(width) {
