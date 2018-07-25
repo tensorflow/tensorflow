@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/math_ops.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -54,44 +55,12 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
 
   llvm::IRBuilder<> b(vector_tanh_body);
   llvm::FastMathFlags fast_math_flags;
-  fast_math_flags.setFast();
+  fast_math_flags.setFast(enable_fast_math);
   b.setFastMathFlags(fast_math_flags);
 
-  VectorSupportLibrary vsl(F32, vector_width, &b, "tanh_f32");
-
   llvm::Value* input = &*vector_tanh_function->arg_begin();
-  CHECK_EQ(input->getType(), vsl.vector_type());
-
-  // This implements the same rational interpolant as implemented in Eigen3.
-  llvm::Value* input_clamped =
-      vsl.Clamp(input, /*low=*/GetIeeeF32(-9.0), /*high=*/GetIeeeF32(9.0));
-
-  std::array<float, 7> numerator_coeffs{
-      -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
-      5.12229709037114e-08f,  1.48572235717979e-05f, 6.37261928875436e-04f,
-      4.89352455891786e-03f};
-
-  std::array<float, 4> denominator_coeffs{
-      1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
-      4.89352518554385e-03f};
-
-  llvm::Value* input_squared = vsl.Mul(input_clamped, input_clamped);
-  llvm::Value* numerator = vsl.SplatFloat(GetIeeeF32(numerator_coeffs[0]));
-  for (int i = 1; i < numerator_coeffs.size(); i++) {
-    numerator =
-        vsl.MulAdd(input_squared, numerator, GetIeeeF32(numerator_coeffs[i]));
-  }
-
-  numerator = vsl.Mul(input_clamped, numerator);
-
-  llvm::Value* denominator = vsl.SplatFloat(GetIeeeF32(denominator_coeffs[0]));
-  for (int i = 1; i < denominator_coeffs.size(); i++) {
-    denominator = vsl.MulAdd(input_squared, denominator,
-                             GetIeeeF32(denominator_coeffs[i]));
-  }
-
-  llvm::Value* result = vsl.Div(numerator, denominator);
-  b.CreateRet(result);
+  CHECK_EQ(vector_width, input->getType()->getVectorNumElements());
+  b.CreateRet(llvm_ir::EmitFastTanh(&b, input));
 
   DCHECK(!llvm::verifyFunction(*vector_tanh_function));
   return vector_tanh_function;

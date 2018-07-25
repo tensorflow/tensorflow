@@ -444,6 +444,7 @@ cc_library(
     deps = [
         ":vector_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/compiler/xla/service/llvm_ir:math_ops",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:transform_utils",

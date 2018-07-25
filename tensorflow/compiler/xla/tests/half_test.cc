@@ -48,7 +48,8 @@ class UnaryOpTest : public HalfTestBase,
                     public ::testing::WithParamInterface<UnaryOpTestParam> {};
 
 XLA_TEST_P(UnaryOpTest, Ops) {
-  std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1)});
+  std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1), half(9.0),
+                       half(42.0), half(-9.0), half(-100.0)});
   XlaBuilder builder(TestName());
   XlaOp x_opnd;
   auto x_data = CreateR1Parameter<half>(x, /*parameter_number=*/0, "x",
