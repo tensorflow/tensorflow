@@ -156,7 +156,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/debug/wrappers/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/kernel_tests/*.py"
-    "${tensorflow_source_dir}/tensorflow/python/meta_graph_transform/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/ops/quantized_conv_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/python/ops/quantized_ops_test.py"
     "${tensorflow_source_dir}/tensorflow/python/platform/build_info_test.py"
@@ -209,7 +208,6 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/python/saved_model/saved_model_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/sparse_image_warp_test.py"
     # requires scipy
-    "${tensorflow_source_dir}/tensorflow/contrib/keras/python/keras/preprocessing/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/tfprof/python/tools/tfprof/pprof_profiler_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/python/kernel_tests/interpolate_spline_test.py"
     # Takes very long to run without sharding (defined in bazel build file).
@@ -267,10 +265,9 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Flaky because of local cluster creation.
       "${tensorflow_source_dir}/tensorflow/python/training/sync_replicas_optimizer_test.py"
       "${tensorflow_source_dir}/tensorflow/python/debug/lib/session_debug_grpc_test.py"
-      "${tensorflow_source_dir}tensorflow/python/training/localhost_cluster_performance_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/training/localhost_cluster_performance_test.py"
       "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_cluster_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/iterator_ops_cluster_test.py"
       # Type error in testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU.
       "${tensorflow_source_dir}/tensorflow/python/data/kernel_tests/iterator_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/self_adjoint_eig_op_test.py"
