@@ -1,8 +1,6 @@
 # Description:
 #   XLA client libraries.
 
-load("//tools/build_defs:cc_public_library.bzl", "cc_public_library")
-
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = [":friends"])
@@ -177,10 +175,11 @@ cc_library(
     ],
 )
 
-cc_public_library(
+cc_library(
     name = "xla_computation",
     srcs = ["xla_computation.cc"],
     hdrs = ["xla_computation.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
