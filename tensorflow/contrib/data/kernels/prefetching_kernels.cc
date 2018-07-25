@@ -791,16 +791,17 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
-    OP_REQUIRES_OK(ctx, ctx->input("shard_num", &tensor_shard_num));
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("shard_num", &tensor_shard_num), done);
     int32 shard_num = tensor_shard_num->scalar<int32>()();
 
     const Tensor* tensor_incarnation_id;
-    OP_REQUIRES_OK(ctx, ctx->input("incarnation_id", &tensor_incarnation_id));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, ctx->input("incarnation_id", &tensor_incarnation_id), done);
     int64 incarnation_id = tensor_incarnation_id->scalar<int64>()();
 
     MultiDeviceIterator* iterator;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
     thread_pool_->Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
           std::vector<Tensor> components;
