@@ -272,6 +272,28 @@ public:
   }
 };
 
+/// This class provides the API for ops which have an unknown number of
+/// SSA operands.
+template <typename ConcreteType>
+class VariadicOperands : public TraitImpl<ConcreteType, VariadicOperands> {
+public:
+  unsigned getNumOperands() const {
+    return this->getOperation()->getNumOperands();
+  }
+
+  const SSAValue *getOperand(unsigned i) const {
+    return this->getOperation()->getOperand(i);
+  }
+
+  SSAValue *getOperand(unsigned i) {
+    return this->getOperation()->getOperand(i);
+  }
+
+  void setOperand(unsigned i, SSAValue *value) {
+    this->getOperation()->setOperand(i, value);
+  }
+};
+
 /// This class provides return value APIs for ops that are known to have a
 /// single result.
 template <typename ConcreteType>
@@ -288,6 +310,26 @@ public:
     if (op->getNumResults() != 1)
       return "requires one result";
     return nullptr;
+  }
+};
+
+/// This class provides the API for ops which have an unknown number of
+/// results.
+template <typename ConcreteType>
+class VariadicResults : public TraitImpl<ConcreteType, VariadicResults> {
+public:
+  unsigned getNumResults() const {
+    return this->getOperation()->getNumResults();
+  }
+
+  const SSAValue *getResult(unsigned i) const {
+    return this->getOperation()->getResult(i);
+  }
+
+  SSAValue *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+
+  void setResult(unsigned i, SSAValue *value) {
+    this->getOperation()->setResult(i, value);
   }
 };
 

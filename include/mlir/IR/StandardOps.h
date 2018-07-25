@@ -125,9 +125,9 @@ private:
 //   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
 //          (affineint) -> (affineint)
 //
-// TODO Add VariadicOperands/VariadicResults trait, and use them here
-// for getOperand/getResult accessors.
-class AffineApplyOp : public OpImpl::Base<AffineApplyOp> {
+class AffineApplyOp
+    : public OpImpl::Base<AffineApplyOp, OpImpl::VariadicOperands,
+                          OpImpl::VariadicResults> {
 public:
   // Returns the affine map to be applied by this operation.
   AffineMap *getAffineMap() const {

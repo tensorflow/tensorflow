@@ -41,3 +41,22 @@ bb0:
   %x = "affine_apply" (%i) { } : (affineint) -> (affineint) //  expected-error {{'affine_apply' op requires an affine map.}}
   return
 }
+
+// -----
+
+cfgfunc @affine_apply_wrong_operand_count() {
+bb0:
+  %i = "constant"() {value: 0} : () -> affineint
+  %x = "affine_apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (affineint) -> (affineint) //  expected-error {{'affine_apply' op operand count and affine map dimension and symbol count must match}}
+  return
+}
+
+// -----
+
+cfgfunc @affine_apply_wrong_result_count() {
+bb0:
+  %i = "constant"() {value: 0} : () -> affineint
+  %j = "constant"() {value: 1} : () -> affineint
+  %x = "affine_apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (affineint,affineint) -> (affineint) //  expected-error {{'affine_apply' op result count and affine map result count must match}}
+  return
+}

@@ -24,6 +24,8 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
+// TODO: Have verify functions return std::string to enable more descriptive
+// error messages.
 void AddFOp::print(OpAsmPrinter *p) const {
   *p << "addf " << *getOperand(0) << ", " << *getOperand(1) << " : "
      << *getType();
@@ -99,12 +101,21 @@ void AffineApplyOp::print(OpAsmPrinter *p) const {
 }
 
 const char *AffineApplyOp::verify() const {
-  // TODO: Check input and output dimensions match.
-
   // Check that affine map attribute was specified
   auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
     return "requires an affine map.";
+
+  // Check input and output dimensions match.
+  auto *map = affineMapAttr->getValue();
+
+  // Verify that operand count matches affine map dimension and symbol count.
+  if (getNumOperands() != map->getNumDims() + map->getNumSymbols())
+    return "operand count and affine map dimension and symbol count must match";
+
+  // Verify that result count matches affine map result count.
+  if (getNumResults() != map->getNumResults())
+    return "result count and affine map result count must match";
 
   return nullptr;
 }
