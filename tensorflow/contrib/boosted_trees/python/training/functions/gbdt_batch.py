@@ -520,9 +520,6 @@ class GradientBoostedDecisionTreeModel(object):
     if not input_deps:
       raise ValueError("No input tensors for prediction.")
 
-    if any(i.device != input_deps[0].device for i in input_deps):
-      raise ValueError("All input tensors should be on the same device.")
-
     # Get most current model stamp.
     ensemble_stamp = model_ops.tree_ensemble_stamp_token(self._ensemble_handle)
 
