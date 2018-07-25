@@ -831,7 +831,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc0.tar.gz",
           "https://github.com/NervanaSystems/ngraph-tf/archive/v0.3.0-rc0.tar.gz"
       ],
-      sha256 = "c09a35d0a605afeeaf5aad81181a6abc7e9b9e39312e8fdfbae20cbd8eb58523",
+      sha256 = "b4f4a530c0eb7a406bf3c9f6965d74e9a371a7635a9e644e190ec54258bb70ac",
       strip_prefix = "ngraph-tf-0.3.0-rc0",
       build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
   )
