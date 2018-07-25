@@ -175,7 +175,7 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
     tensorflow::TensorHandle* handle = op->Inputs()[i];
     if (handle->dtype != kernel->input_type(i)) {
       return errors::InvalidArgument(
-          "cannot compute ", op->Name(), " as input #", i,
+          "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
           " was expected to be a ", DataTypeString(kernel->input_type(i)),
           " tensor but is a ", DataTypeString(handle->dtype), " tensor");
     }
