@@ -257,6 +257,7 @@ cc_test(
     srcs = ["tf_driver_test.cc"],
     data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -283,6 +284,7 @@ cc_test(
     size = "small",
     srcs = ["generate_testspec_test.cc"],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
