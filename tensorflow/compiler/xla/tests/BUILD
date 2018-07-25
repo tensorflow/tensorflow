@@ -1905,6 +1905,16 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "outfeed_in_nested_computation_test",
+    srcs = ["outfeed_in_nested_computation_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla/tests:local_client_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "hlo_metadata_test",
     srcs = [
