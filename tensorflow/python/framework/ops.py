@@ -709,13 +709,16 @@ class _EagerTensorBase(Tensor):
       raise ValueError("Resource handles are not convertible to numpy.")
     return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
 
-  # __int__ and  __float__ may copy the tensor to CPU and
+  # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
   def __int__(self):
     return int(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
+
+  def __index__(self):
+    return int(self.numpy())
 
   def __array__(self, dtype=None):
     return np.array(self.numpy(), dtype=dtype)
