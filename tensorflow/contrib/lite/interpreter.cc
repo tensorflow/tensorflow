@@ -279,8 +279,9 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
         int node_index;
 
         TfLiteDelegateParams* params = CreateDelegateParams(delegate, subgraph);
-        AddNodeWithParameters(subgraph.input_tensors, subgraph.output_tensors,
-                              nullptr, 0, params, &registration, &node_index);
+        TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
+            subgraph.input_tensors, subgraph.output_tensors, nullptr, 0, params,
+            &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : subgraph.output_tensors) {
