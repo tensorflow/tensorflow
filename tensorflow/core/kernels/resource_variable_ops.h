@@ -28,6 +28,15 @@ class ReadVariableOp : public OpKernel {
   DataType dtype_;
 };
 
+class DestroyResourceOp : public OpKernel {
+ public:
+  explicit DestroyResourceOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  bool ignore_lookup_error_;
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_RESOURCE_VARIABLE_OPS_H_

@@ -21,7 +21,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.core import converter
-from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.lang import directives
 from tensorflow.contrib.autograph.pyct import templates
 
 
@@ -56,17 +56,17 @@ class SliceTransformer(converter.Base):
   def visit_Subscript(self, node):
     node = self.generic_visit(node)
     if not isinstance(node.slice, gast.Index):
-      # TODO(mdan): It might make more sense to wave them through.
-      raise NotImplementedError('non-index slice')
+      return node
 
     if not isinstance(node.ctx, gast.Load):
       # Index writes are handled at a higher level, one at which the rvalue is
       # also available.
       return node
 
-    dtype = anno.getanno(
+    dtype = self.get_definition_directive(
         node.value,
-        'element_type',
+        directives.set_element_type,
+        'dtype',
         default=templates.replace_as_expression('None'))
 
     template = """

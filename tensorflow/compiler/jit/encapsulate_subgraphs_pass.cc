@@ -138,7 +138,7 @@ class Encapsulator {
 
   // Find subgraphs marked with 'group_attribute', and build a new
   // subgraph, one for each value of 'group_attribute'.
-  Status SplitIntoSubgraphs();
+  Status SplitIntoSubgraphs(FunctionLibraryDefinition* library);
 
   // Build a FunctionDef for each subgraph, and add it 'library'. The values of
   // the 'group_attribute' annotations become the function names.
@@ -1478,7 +1478,7 @@ Status Encapsulator::CopySubgraphEdges(
   return Status::OK();
 }
 
-Status Encapsulator::SplitIntoSubgraphs() {
+Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
   Status s;
 
   // Map from input graph nodes to subgraph nodes.
@@ -1511,6 +1511,15 @@ Status Encapsulator::SplitIntoSubgraphs() {
     // Verify that the graph has well-formed control flow structure.
     std::vector<ControlFlowInfo> dummy;
     TF_RETURN_IF_ERROR(BuildControlFlowInfo(subgraph.GetGraph(), &dummy));
+  }
+
+  if (VLOG_IS_ON(1)) {
+    // Dump subgraphs.
+    for (auto& entry : subgraphs_) {
+      dump_graph::DumpGraphToFile(
+          strings::StrCat("encapsulate_subgraphs_subgraph_", entry.first),
+          *entry.second.GetGraph(), library);
+    }
   }
 
   return s;
@@ -1936,6 +1945,8 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
             // continue.
             TensorShapeProto proto;
             context->ShapeHandleToProto(shape, &proto);
+            VLOG(2) << "Node " << src_node->name()
+                    << " has known shape: " << proto.DebugString();
             if (dummy_node_images.find(src_node) == dummy_node_images.end()) {
               dummy_node_images[src_node] =
                   AddDummyShapedNode(src_node, src_port, control_flow_info,
@@ -1953,6 +1964,8 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
               if (VLOG_IS_ON(2)) {
                 TensorShapeProto proto;
                 context->ShapeHandleToProto(shape, &proto);
+                VLOG(2) << "Node " << src_node->name()
+                        << " has unknown shape: " << proto.DebugString();
               }
               stack.push_back({src_node, false});
             }
@@ -2195,6 +2208,23 @@ Status Encapsulator::FindClusterDependencies() {
       }
     }
   }
+  if (VLOG_IS_ON(2)) {
+    // Print debug information.
+    VLOG(2) << "node_ancestors_map:";
+    for (const auto& node_iter : node_ancestors_map) {
+      VLOG(2) << "\t" << node_iter.first->name() << ": subgraph = '"
+              << node_iter.second.subgraph
+              << "', outside_compilation_cluster = '"
+              << node_iter.second.outside_compilation_cluster
+              << "', ancestor_clusters: "
+              << (node_iter.second.ancestor_clusters.empty() ? "(empty)" : "");
+      for (const auto& cluster_iter : node_iter.second.ancestor_clusters) {
+        VLOG(2) << "\t\tsubgraph = '" << cluster_iter.subgraph
+                << "', outside_compilation_cluster = '"
+                << cluster_iter.outside_compilation_cluster << "'";
+      }
+    }
+  }
   return Status::OK();
 }
 
@@ -2402,7 +2432,7 @@ Status EncapsulateSubgraphsInFunctions(
                             std::move(outside_compilation_attribute),
                             &graph_in);
   TF_RETURN_IF_ERROR(encapsulator.FindClusterDependencies());
-  TF_RETURN_IF_ERROR(encapsulator.SplitIntoSubgraphs());
+  TF_RETURN_IF_ERROR(encapsulator.SplitIntoSubgraphs(library));
 
   TF_RETURN_IF_ERROR(encapsulator.BuildFunctionDefs(
       rewrite_subgraph_fn, reuse_existing_functions, library));
@@ -2451,7 +2481,7 @@ Status EncapsulateSubgraphsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateSubgraphsPass::Run";
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("before_encapsulate_subgraphs", **options.graph,
+    dump_graph::DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
                                 options.flib_def);
   }
 
@@ -2534,7 +2564,7 @@ Status EncapsulateSubgraphsPass::Run(
       "EncapsulateSubgraphsPass failed");
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("after_encapsulate_subgraphs", *graph_out,
+    dump_graph::DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
                                 options.flib_def);
   }
 

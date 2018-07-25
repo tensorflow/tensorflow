@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite APIs
 
 TensorFlow Lite provides programming APIs in C++ and Java, and in both cases
@@ -53,6 +56,7 @@ typedef enum {
 ```
 
 Failures can be easily verified with:
+
 ```c++
 if (status != kTfLiteOk) {
   // ... error handling here ...

@@ -772,6 +772,10 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   ScopedShapedBuffer result =
       executable->Run({&x_array}, DefaultExecutableRunOptions())
           .ConsumeValueOrDie();
+  ASSERT_IS_OK(local_client_->mutable_backend()
+                   ->BorrowStream(0)
+                   .ValueOrDie()
+                   ->BlockHostUntilDone());
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);
@@ -866,9 +870,7 @@ XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
   LiteralTestUtil::ExpectR1Equal<float>({-4.0, 125.0, 45.0}, *result);
 }
 
-// TODO(b/34359662): Support infeed/outfeed on GPU and CPU parallel.
-// 2017-10-18.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_GPU(InfeedOutfeedTest)) {
+XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);

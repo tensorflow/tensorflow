@@ -1753,6 +1753,22 @@ def is_jpeg(contents, name=None):
     return math_ops.equal(substr, b'\xff\xd8\xff', name=name)
 
 
+def _is_png(contents, name=None):
+  r"""Convenience function to check if the 'contents' encodes a PNG image.
+
+  Args:
+    contents: 0-D `string`. The encoded image bytes.
+    name: A name for the operation (optional)
+
+  Returns:
+     A scalar boolean tensor indicating if 'contents' may be a PNG image.
+     is_png is susceptible to false positives.
+  """
+  with ops.name_scope(name, 'is_png'):
+    substr = string_ops.substr(contents, 0, 3)
+    return math_ops.equal(substr, b'\211PN', name=name)
+
+
 @tf_export('image.decode_image')
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
@@ -1830,8 +1846,8 @@ def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
 
     def check_png():
       """Checks if an image is PNG."""
-      is_png = math_ops.equal(substr, b'\211PN', name='is_png')
-      return control_flow_ops.cond(is_png, _png, check_gif, name='cond_png')
+      return control_flow_ops.cond(
+          _is_png(contents), _png, check_gif, name='cond_png')
 
     def _jpeg():
       """Decodes a jpeg image."""

@@ -3372,26 +3372,48 @@ def in_test_phase(x, alt, training=None):
 
 
 @tf_export('keras.backend.relu')
-def relu(x, alpha=0., max_value=None):
+def relu(x, alpha=0., max_value=None, threshold=0):
   """Rectified linear unit.
 
   With default values, it returns element-wise `max(x, 0)`.
 
+  Otherwise, it follows:
+  `f(x) = max_value` for `x >= max_value`,
+  `f(x) = x` for `threshold <= x < max_value`,
+  `f(x) = alpha * (x - threshold)` otherwise.
+
   Arguments:
       x: A tensor or variable.
       alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: Saturation threshold.
+      max_value: float. Saturation threshold.
+      threshold: float. Threshold value for thresholded activation.
 
   Returns:
       A tensor.
   """
+  clip_max = max_value is not None
+
   if alpha != 0.:
-    negative_part = nn.relu(-x)
-  x = nn.relu(x)
-  if max_value is not None:
+    if threshold != 0:
+      negative_part = nn.relu(-x + threshold)
+    else:
+      negative_part = nn.relu(-x)
+
+  if threshold != 0:
+    # computes x for x > threshold else 0
+    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+  elif max_value == 6:
+    # if no threshold, then can use nn.relu6 native TF op for performance
+    x = nn.relu6(x)
+    clip_max = False
+  else:
+    x = nn.relu(x)
+
+  if clip_max:
     max_value = _to_tensor(max_value, x.dtype.base_dtype)
     zero = _to_tensor(0., x.dtype.base_dtype)
     x = clip_ops.clip_by_value(x, zero, max_value)
+
   if alpha != 0.:
     alpha = _to_tensor(alpha, x.dtype.base_dtype)
     x -= alpha * negative_part
@@ -3458,7 +3480,7 @@ def softsign(x):
 
 
 @tf_export('keras.backend.categorical_crossentropy')
-def categorical_crossentropy(target, output, from_logits=False):
+def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy between an output tensor and a target tensor.
 
   Arguments:
@@ -3468,28 +3490,33 @@ def categorical_crossentropy(target, output, from_logits=False):
           case `output` is expected to be the logits).
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
+      axis: Int specifying the channels axis. `axis=-1` corresponds to data
+          format `channels_last', and `axis=1` corresponds to data format
+          `channels_first`.
 
   Returns:
       Output tensor.
+
+  Raises:
+      ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  rank = len(output.get_shape())
+  axis = axis % rank
   # Note: nn.softmax_cross_entropy_with_logits_v2
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
-    output = output / math_ops.reduce_sum(  # pylint: disable=g-no-augmented-assignment
-        output, len(output.get_shape()) - 1, True)
+    output = output / math_ops.reduce_sum(output, axis, True)
     # manual computation of crossentropy
     epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
-    return -math_ops.reduce_sum(
-        target * math_ops.log(output),
-        axis=len(output.get_shape()) - 1)
+    return -math_ops.reduce_sum(target * math_ops.log(output), axis)
   else:
     return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
 
 
 @tf_export('keras.backend.sparse_categorical_crossentropy')
-def sparse_categorical_crossentropy(target, output, from_logits=False):
+def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   """Categorical crossentropy with integer targets.
 
   Arguments:
@@ -3499,10 +3526,22 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
           case `output` is expected to be the logits).
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
+      axis: Int specifying the channels axis. `axis=-1` corresponds to data
+          format `channels_last', and `axis=1` corresponds to data format
+          `channels_first`.
 
   Returns:
       Output tensor.
+
+  Raises:
+      ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  rank = len(output.get_shape())
+  axis = axis % rank
+  if axis != rank - 1:
+    permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
+    output = array_ops.transpose(output, perm=permutation)
+
   # Note: nn.sparse_softmax_cross_entropy_with_logits
   # expects logits, Keras expects probabilities.
   if not from_logits:

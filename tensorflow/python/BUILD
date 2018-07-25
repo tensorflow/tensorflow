@@ -74,7 +74,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools:__pkg__",
-        "//tensorflow/tools/api/generator:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -97,6 +97,7 @@ py_library(
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":kernels",
         ":layers",
         ":lib",
         ":list_ops",
@@ -706,7 +707,9 @@ py_library(
         "framework/error_interpolation.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [],
+    deps = [
+        ":util",
+    ],
 )
 
 py_library(
@@ -744,8 +747,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":framework_ops",
         ":function",
-        ":op_def_registry",
         ":tensor_shape",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -761,8 +764,10 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":constant_op",
         ":dtypes",
         ":framework_ops",
+        ":function",
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
@@ -782,6 +787,19 @@ py_library(
         ":framework_ops",
         ":platform",
         ":tensor_util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "kernels",
+    srcs = [
+        "framework/kernels.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+        ":util",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -823,6 +841,7 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_shape",
+        ":traceable_stack",
         ":util",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -888,6 +907,17 @@ py_library(
     ],
 )
 
+# This target is maintained separately from :util to provide separate visibility
+# for legacy users who were granted visibility when the functions were private
+# members of ops.Graph.
+py_library(
+    name = "tf_stack",
+    srcs = ["util/tf_stack.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
 py_library(
     name = "tensor_shape",
     srcs = ["framework/tensor_shape.py"],
@@ -919,6 +949,16 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "traceable_stack",
+    srcs = ["framework/traceable_stack.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
     ],
 )
 
@@ -1019,7 +1059,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":error_interpolation",
+        ":traceable_stack",
     ],
 )
 
@@ -1205,6 +1247,21 @@ py_test(
         ":random_ops",
         ":training",
         ":variables",
+    ],
+)
+
+py_test(
+    name = "framework_traceable_stack_test",
+    size = "small",
+    srcs = ["framework/traceable_stack_test.py"],
+    main = "framework/traceable_stack_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+        ":traceable_stack",
+        ":util",
     ],
 )
 
@@ -1435,6 +1492,20 @@ py_test(
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+    ],
+)
+
+py_test(
+    name = "framework_kernels_test",
+    size = "small",
+    srcs = ["framework/kernels_test.py"],
+    main = "framework/kernels_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":kernels",
         ":platform_test",
         ":test_ops",
     ],
@@ -2097,8 +2168,8 @@ py_library(
         ":linalg_ops_gen",
         ":linalg_ops_impl",
         ":math_ops",
-        ":nn_ops",
         ":random_ops",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -3007,6 +3078,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "init_ops_test",
+    size = "small",
+    srcs = ["ops/init_ops_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":init_ops",
+        ":framework_ops",
+        ":resource_variable_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
     name = "math_grad_test",
     size = "small",
     srcs = ["ops/math_grad_test.py"],
@@ -3298,6 +3383,9 @@ py_library(
         ],
     ),
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow:__pkg__",
+    ],
     deps = [
         "//third_party/py/numpy",
         "@org_python_pypi_backports_weakref",
@@ -3320,6 +3408,7 @@ py_test(
         ":math_ops",
         ":util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

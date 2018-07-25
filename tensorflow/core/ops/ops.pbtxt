@@ -2490,8 +2490,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -2674,8 +2672,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -3989,8 +3985,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4040,8 +4034,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -4140,6 +4132,8 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
         type: DT_COMPLEX64
@@ -4165,6 +4159,8 @@ op {
         type: DT_INT32
         type: DT_UINT8
         type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_INT8
         type: DT_INT16
         type: DT_COMPLEX64
@@ -5730,8 +5726,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5809,8 +5803,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -5888,8 +5880,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8592,8 +8582,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8664,8 +8652,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -8736,8 +8722,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15509,8 +15493,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15588,8 +15570,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15660,8 +15640,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -15803,8 +15781,6 @@ op {
       list {
         s: "NHWC"
         s: "NCHW"
-        s: "HWNC"
-        s: "HWCN"
       }
     }
   }
@@ -26206,6 +26182,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -27606,7 +27583,11 @@ op {
     type: DT_INT64
   }
   input_arg {
-    name: "stride"
+    name: "window_shift"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "window_stride"
     type: DT_INT64
   }
   output_arg {

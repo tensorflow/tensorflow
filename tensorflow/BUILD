@@ -20,11 +20,17 @@ load(
     "tf_additional_binary_deps",
 )
 load(
-    "//tensorflow/tools/api/generator:api_gen.bzl",
+    "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
 )
 
-load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
+# Config setting used when building for products
+# which requires restricted licenses to be avoided.
+config_setting(
+    name = "no_lgpl_deps",
+    values = {"define": "__TENSORFLOW_NO_LGPL_DEPS__=1"},
+    visibility = ["//visibility:public"],
+)
 
 # Config setting for determining if we are building for Android.
 config_setting(
@@ -434,6 +440,8 @@ load(
     "if_mkl",
 )
 
+load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
+
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl(
@@ -550,7 +558,7 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
-    ] 
+    ],
 )
 
 tf_cc_shared_object(

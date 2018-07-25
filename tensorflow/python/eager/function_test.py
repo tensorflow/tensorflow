@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -39,10 +40,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import adam
 from tensorflow.python.training import momentum
 from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
@@ -136,6 +139,18 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def disabled_testRandomSeed(self):
+
+    @function.defun
+    def f():
+      return random_ops.random_normal(())
+
+    random_seed.set_random_seed(1)
+    x = f()
+    self.assertNotEqual(x, f())
+    random_seed.set_random_seed(1)
+    self.assertAllEqual(f(), x)
+
   def testNestedInputsDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)
 
@@ -197,6 +212,19 @@ class FunctionTest(test.TestCase):
     self.assertEqual(fn_op.output_dtypes, None)
     self.assertEqual(fn_op.output_shapes, None)
     self.assertAllEqual(fn_op(x, x), None)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testDefunCondGradient(self):
+
+    @function.defun
+    def f(x):
+      return control_flow_ops.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      t.watch(x)
+      y = f(x)
+    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -1151,6 +1179,23 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     value = train()
     self.assertEqual(value.numpy(), -1.0)
+
+  # TODO(b/111663004): This should work when the outer context is graph
+  # building.
+  def testOptimizerNonSlotVarsInDefunNoError(self):
+    def loss(v):
+      return v**2
+
+    optimizer = adam.AdamOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(v)
+      optimizer.apply_gradients(grad)
+      return v.read_value()
+
+    train()
 
   def testOptimizerInDefunWithCapturedVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)

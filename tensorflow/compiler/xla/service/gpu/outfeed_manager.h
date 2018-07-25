@@ -16,10 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OUTFEED_MANAGER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_OUTFEED_MANAGER_H_
 
-#include <deque>
-#include <vector>
-
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/gpu/xfeed_queue.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
@@ -60,28 +58,7 @@ class OutfeedBuffer {
 
 // Manages a thread-safe queue of buffers. The buffers are supposed to be
 // produced by the transfer manager and consumed by the device.
-class OutfeedManager {
- public:
-  // Adds a tree of buffers to the queue. The individual buffers correspond to
-  // the elements of a tuple and may be nullptr if the buffer is a tuple index
-  // buffer.
-  void EnqueueOutfeedDestination(
-      ShapeTree<std::unique_ptr<OutfeedBuffer>>* buffers);
-
-  // Blocks until the queue is non-empty, then returns the buffer at the head of
-  // the queue.
-  ShapeTree<std::unique_ptr<OutfeedBuffer>>*
-  BlockingGetNextOutfeedDestination();
-
- private:
-  tensorflow::mutex mu_;
-
-  // Condition variable that is signaled every time a buffer is enqueued.
-  tensorflow::condition_variable cv_;
-
-  // The queue of trees of buffers. OutfeedBuffer* queue contents are not owned.
-  std::deque<ShapeTree<std::unique_ptr<OutfeedBuffer>>*> enqueued_buffers_;
-};
+using OutfeedManager = XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*>;
 
 // Singleton creator-or-accessor: Returns the GPU outfeed manager.
 OutfeedManager* GetOrCreateOutfeedManager();

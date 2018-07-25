@@ -164,9 +164,9 @@ cc_library(
 )
 
 cc_library(
-    name = "ops",
-    srcs = ["ops.cc"],
-    hdrs = ["ops.h"],
+    name = "dynamic_update_slice_util",
+    srcs = ["dynamic_update_slice_util.cc"],
+    hdrs = ["dynamic_update_slice_util.h"],
     deps = [
         ":fused_ir_emitter",
         ":ir_array",
@@ -177,6 +177,23 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+    ],
+)
+
+cc_library(
+    name = "sort_util",
+    srcs = ["sort_util.cc"],
+    hdrs = ["sort_util.h"],
+    deps = [
+        ":ir_array",
+        ":llvm_loop",
+        ":llvm_util",
+        ":loop_emitter",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
     ],
 )
 

@@ -567,6 +567,7 @@ StatusOr<SequentialHloOrdering::HloModuleSequence> ScheduleComputationsInModule(
       sequence[computation] = std::move(one_computation_sequence);
     }
   }
+  VLOG(1) << "Module schedule:\n" << sequence;
   return sequence;
 }
 

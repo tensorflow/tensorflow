@@ -223,7 +223,6 @@ tf_kernel_library(
         ":model_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )
@@ -319,7 +318,6 @@ tf_kernel_library(
         ":stats_ops_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
     alwayslink = 1,
 )

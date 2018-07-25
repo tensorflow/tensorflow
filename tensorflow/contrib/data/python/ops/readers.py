@@ -326,6 +326,7 @@ def make_csv_dataset(
     num_parallel_parser_calls=2,
     sloppy=False,
     num_rows_for_inference=100,
+    compression_type=None,
 ):
   """Reads CSV files into a dataset.
 
@@ -399,6 +400,8 @@ def make_csv_dataset(
     num_rows_for_inference: Number of rows of a file to use for type inference
       if record_defaults is not provided. If None, reads all the rows of all
       the files. Defaults to 100.
+    compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+      `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no compression.
 
   Returns:
     A dataset, where each element is a (features, labels) tuple that corresponds
@@ -461,7 +464,9 @@ def make_csv_dataset(
         use_quote_delim=use_quote_delim,
         na_value=na_value,
         select_cols=select_columns,
-        header=header)
+        header=header,
+        compression_type=compression_type,
+    )
 
   def map_fn(*columns):
     """Organizes columns into a features dictionary.
@@ -505,6 +510,7 @@ class CsvDataset(dataset_ops.Dataset):
   def __init__(self,
                filenames,
                record_defaults,
+               compression_type=None,
                buffer_size=None,
                header=False,
                field_delim=",",
@@ -562,6 +568,9 @@ class CsvDataset(dataset_ops.Dataset):
         both this and `select_columns` are specified, these must have the same
         lengths, and `column_defaults` is assumed to be sorted in order of
         increasing column index.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`. Defaults to no
+        compression.
       buffer_size: (Optional.) A `tf.int64` scalar denoting the number of bytes
         to buffer while reading files. Defaults to 4MB.
       header: (Optional.) A `tf.bool` scalar indicating whether the CSV file(s)
@@ -581,6 +590,11 @@ class CsvDataset(dataset_ops.Dataset):
     super(CsvDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
+    self._compression_type = convert.optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
     record_defaults = [
         constant_op.constant([], dtype=x) if x in _ACCEPTABLE_CSV_TYPES else x
         for x in record_defaults
@@ -621,6 +635,7 @@ class CsvDataset(dataset_ops.Dataset):
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
         select_cols=self._select_cols,
+        compression_type=self._compression_type,
     )
 
   @property
