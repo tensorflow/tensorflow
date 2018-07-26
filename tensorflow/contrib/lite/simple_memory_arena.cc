@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/lite/simple_memory_arena.h"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 #include <vector>

@@ -19,6 +19,10 @@ limitations under the License.
 // structure.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 namespace tflite {
 namespace tensor_utils {
 
@@ -28,8 +32,8 @@ float PortableClip(float f, float abs_limit);
 bool PortableIsZeroVector(const float* vector, int v_size);
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
-                                     int8_t* quantized_values, float* min,
-                                     float* max, float* scaling_factor);
+                                     int8_t* quantized_values, float* min_value,
+                                     float* max_value, float* scaling_factor);
 
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector.
