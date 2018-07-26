@@ -75,6 +75,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -2055,27 +2056,48 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   auto values = sort->operand_count() > 1 ? sort->operand(1) : nullptr;
+  ShapeIndex keys_shape_index({});
+  ShapeIndex values_shape_index({});
   if (values != nullptr) {
-    // TODO(b/26783907): Also sort the values by their corresponding key.
-    return Unimplemented("Key/Value Sort is not implemented on GPU");
+    keys_shape_index = ShapeIndex({0});
+    values_shape_index = ShapeIndex({1});
   }
+  auto keys_destination = GetAllocationSlice(*sort, keys_shape_index);
 
-  // First copy the operand to the output, so that we can sort in-place.
+  // First copy the operand(s) to the output, so that we can sort in-place.
   // TODO(b/26783907): Share buffer of output and operand when it is possible.
   if (sort->operand(0)->IsConstant()) {
     thunks.push_back(MakeUnique<HostToDeviceCopyThunk>(
         /*source_address=*/sort->operand(0)->literal().untyped_data(),
-        /*destination_buffer=*/GetAllocationSlice(*sort),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
+        /*destination_buffer=*/keys_destination,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(0)->shape()),
+        nullptr));
   } else {
     thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*sort->operand(0)),
-        /*destination_buffer=*/GetAllocationSlice(*sort),
-        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->shape()), sort));
+        /*destination_buffer=*/keys_destination,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(0)->shape()),
+        nullptr));
+  }
+  if (values != nullptr) {
+    if (values->IsConstant()) {
+      thunks.push_back(MakeUnique<HostToDeviceCopyThunk>(
+          /*source_address=*/sort->operand(1)->literal().untyped_data(),
+          /*destination_buffer=*/GetAllocationSlice(*sort, values_shape_index),
+          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(1)->shape()),
+          nullptr));
+    } else {
+      thunks.push_back(MakeUnique<DeviceToDeviceCopyThunk>(
+          /*source_address=*/GetAllocationSlice(*sort->operand(1)),
+          /*destination_buffer=*/GetAllocationSlice(*sort, values_shape_index),
+          /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(1)->shape()),
+          nullptr));
+    }
   }
 
   int64 dimension_to_sort = sort->dimensions(0);
-  int64 dimension_to_sort_bound = sort->shape().dimensions(dimension_to_sort);
+  int64 dimension_to_sort_bound =
+      sort->operand(0)->shape().dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   auto index_type = b_.getInt64Ty();
 
@@ -2099,7 +2121,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       thunks.push_back(
           BuildKernelThunk(sort, /*implements_whole_instruction=*/false));
       LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-          sort->shape(), ir_emitter_context_->device_description());
+          sort->operand(0)->shape(), ir_emitter_context_->device_description());
       UpdateLaunchDimensions(launch_dimensions, thunks.back().get(),
                              ir_emitter_context_->llvm_module());
 
@@ -2111,8 +2133,11 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       }
 
       TF_RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
-          dimension_to_sort, GetIrArray(*sort, *sort), IrName(sort), xor_mask,
-          &b_, &launch_dimensions));
+          dimension_to_sort, GetIrArray(*sort, *sort, keys_shape_index),
+          values != nullptr ? tensorflow::gtl::make_optional<IrArray>(
+                                  GetIrArray(*sort, *sort, values_shape_index))
+                            : tensorflow::gtl::nullopt,
+          IrName(sort), xor_mask, &b_, &launch_dimensions));
     }
   }
 
