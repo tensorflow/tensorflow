@@ -104,6 +104,8 @@ KNOWN_BUGS = {
     r"div.*int32": "72051395",
     # No support for SplitV
     r"split.*num_or_size_splits=\[2,2\]": "73377559",
+    # Scalar constants don't work.
+    r"constant.*shape=\[\]": "109811500",
 }
 
 
@@ -481,7 +483,7 @@ def make_zip_of_tests(zip_path,
                           else report_lib.FAILED)
         report["toco_log"] = toco_log
 
-        if FLAGS.save_graphdefs:
+        if True or FLAGS.save_graphdefs:
           archive.writestr(label + ".pbtxt",
                            text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
@@ -736,21 +738,22 @@ def make_constant_tests(zip_path):
 
   test_parameters = [{
       "dtype": [tf.float32, tf.int32],
-      "input_shape": [[1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
+      "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
   }]
 
   def build_graph(parameters):
-    # Since Toco & Tflite can't have a single constant op in the entire graph,
-    # this test adds a zero tensor with a constant op tensor.
-    input1 = tf.placeholder(dtype=parameters["dtype"], name="input1",
-                            shape=parameters["input_shape"])
-    out = tf.ones(parameters["input_shape"], dtype=parameters["dtype"]) + input1
-    return [input1], [out]
+    dummy_input = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input1",
+        shape=parameters["input_shape"])
+    out = tf.constant(
+        create_tensor_data(parameters["dtype"], parameters["input_shape"]))
+    return [dummy_input], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input1 = np.zeros(parameters["input_shape"],
-                      dtype=_TF_TYPE_INFO[parameters["dtype"]][0])
-    return [input1], sess.run(outputs, feed_dict={inputs[0]: input1})
+    dummy_input = np.zeros(
+        parameters["input_shape"], dtype=_TF_TYPE_INFO[parameters["dtype"]][0])
+    return [dummy_input], sess.run(outputs, feed_dict={inputs[0]: dummy_input})
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
