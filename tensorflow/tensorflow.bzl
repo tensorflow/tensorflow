@@ -404,7 +404,7 @@ def tf_gen_op_wrapper_cc(name,
   tf_cc_binary(
       name=tool,
       copts=tf_copts(),
-      linkopts=if_not_windows(["-lm"]),
+      linkopts=if_not_windows(["-lm","-Wl,-ldl"]),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=[op_gen] + deps)
 
@@ -573,7 +573,7 @@ def tf_gen_op_wrapper_py(name,
     deps = [str(Label("//tensorflow/core:" + name + "_op_lib"))]
   tf_cc_binary(
       name=tool_name,
-      linkopts=if_not_windows(["-lm"]) + cc_linkopts,
+      linkopts=if_not_windows(["-lm","-Wl,-ldl"]) + cc_linkopts,
       copts=tf_copts(),
       linkstatic=1,  # Faster to link this one-time-use binary dynamically
       deps=([
