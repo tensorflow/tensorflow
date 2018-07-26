@@ -848,7 +848,7 @@ class TensorBoard(Callback):
                       layout_pb2.Chart(
                           title=metric,
                           multiline=layout_pb2.MultilineChartContent(
-                              tag=[r'(val_{0}|{0})'.format(metric)])
+                              tag=[r'(epoch_val_{0}|epoch_{0})'.format(metric)])
                       ) for metric in self.model.metrics_names])
               ]))
 
