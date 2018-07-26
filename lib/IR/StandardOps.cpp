@@ -73,10 +73,12 @@ const char *ConstantOp::verify() const {
   return "requires a result type that aligns with the 'value' attribute";
 }
 
-/// ConstantIntOp only matches values whose result type is an IntegerType.
+/// ConstantIntOp only matches values whose result type is an IntegerType or
+/// AffineInt.
 bool ConstantIntOp::isClassFor(const Operation *op) {
   return ConstantOp::isClassFor(op) &&
-         isa<IntegerType>(op->getResult(0)->getType());
+         (isa<IntegerType>(op->getResult(0)->getType()) ||
+          op->getResult(0)->getType()->isAffineInt());
 }
 
 void DimOp::print(OpAsmPrinter *p) const {

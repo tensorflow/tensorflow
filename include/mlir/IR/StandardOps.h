@@ -74,7 +74,7 @@ protected:
 };
 
 /// This is a refinement of the "constant" op for the case where it is
-/// returning an integer value.
+/// returning an integer value (either an IntegerType or AffineInt).
 ///
 ///   %1 = "constant"(){value: 42}
 ///

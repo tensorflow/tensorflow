@@ -22,7 +22,6 @@
 #ifndef MLIR_IR_CFGOPERAND_H
 #define MLIR_IR_CFGOPERAND_H
 
-#include "mlir/IR/SSAOperand.h"
 #include "mlir/IR/SSAValue.h"
 
 namespace mlir {
