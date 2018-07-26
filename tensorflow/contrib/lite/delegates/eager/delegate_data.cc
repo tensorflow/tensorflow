@@ -23,7 +23,8 @@ tensorflow::Status DelegateData::Create(std::unique_ptr<DelegateData>* data) {
   std::vector<tensorflow::Device*> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
-      tensorflow::SessionOptions(), "/device:cpu:*", &devices));
+      tensorflow::SessionOptions(), "/job:localhost/replica:0/task:0",
+      &devices));
 
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
       new tensorflow::DeviceMgr(devices));
