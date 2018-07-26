@@ -85,9 +85,13 @@ class _UserDeviceSpec(object):
       dev_func = self._device_name_or_function
       func_name = function_utils.get_func_name(dev_func)
       func_code = function_utils.get_func_code(dev_func)
-      self.display_name = "%s<%s, %d>" % (func_name,
-                                          func_code.co_filename,
-                                          func_code.co_firstlineno)
+      if func_code:
+        fname = func_code.co_filename
+        lineno = func_code.co_firstlineno
+      else:
+        fname = "unknown"
+        lineno = -1
+      self.display_name = "%s<%s, %d>" % (func_name, fname, lineno)
 
     self.function = self._device_name_or_function
     if not (self._device_name_or_function is None or
