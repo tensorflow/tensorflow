@@ -3836,8 +3836,8 @@ class Graph(object):
       Nothing.
     """
     old_original_op = self._default_original_op
+    self._default_original_op = op
     try:
-      self._default_original_op = op
       yield
     finally:
       self._default_original_op = old_original_op
@@ -3954,15 +3954,15 @@ class Graph(object):
         # op name regex, which constrains the initial character.
         if not _VALID_OP_NAME_REGEX.match(name):
           raise ValueError("'%s' is not a valid scope name" % name)
+    old_stack = self._name_stack
+    if not name:  # Both for name=None and name="" we re-set to empty scope.
+      new_stack = None
+    elif name[-1] == "/":
+      new_stack = _name_from_scope_name(name)
+    else:
+      new_stack = self.unique_name(name)
+    self._name_stack = new_stack
     try:
-      old_stack = self._name_stack
-      if not name:  # Both for name=None and name="" we re-set to empty scope.
-        new_stack = None
-      elif name[-1] == "/":
-        new_stack = _name_from_scope_name(name)
-      else:
-        new_stack = self.unique_name(name)
-      self._name_stack = new_stack
       yield "" if new_stack is None else new_stack + "/"
     finally:
       self._name_stack = old_stack
@@ -4043,8 +4043,8 @@ class Graph(object):
                                   ignore_existing=False):
     with self.colocate_with(op, ignore_existing):
       if gradient_uid is not None and self._control_flow_context is not None:
+        self._control_flow_context.EnterGradientColocation(op, gradient_uid)
         try:
-          self._control_flow_context.EnterGradientColocation(op, gradient_uid)
           yield
         finally:
           self._control_flow_context.ExitGradientColocation(op, gradient_uid)
@@ -4086,7 +4086,6 @@ class Graph(object):
     Yields:
       A context manager that specifies the op with which to colocate
       newly created ops.
-
     """
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
@@ -4260,8 +4259,8 @@ class Graph(object):
         yields the container name.
     """
     original_container = self._container
+    self._container = container_name
     try:
-      self._container = container_name
       yield self._container
     finally:
       self._container = original_container
@@ -4971,8 +4970,8 @@ class _DefaultStack(threading.local):
   @tf_contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
+    self.stack.append(default)
     try:
-      self.stack.append(default)
       yield default
     finally:
       # stack may be empty if reset() was called
@@ -5160,13 +5159,15 @@ class _DefaultGraphStack(_DefaultStack):  # pylint: disable=protected-access
 
   @tf_contextlib.contextmanager
   def get_controller(self, default):
+    context.context().context_switches.push(
+        default.building_function, default.as_default)
     try:
-      context.context().context_switches.push(
-          default.building_function, default.as_default)
       with super(_DefaultGraphStack, self).get_controller(
           default) as g, context.graph_mode():
         yield g
     finally:
+      # If an exception is raised here it may be hiding a related exception in
+      # the try-block (just above).
       context.context().context_switches.pop()
 
 
@@ -5202,6 +5203,9 @@ def init_scope():
         `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
+
+  Raises:
+    RuntimeError: if graph state is incompatible with this initialization.
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
@@ -5214,10 +5218,10 @@ def init_scope():
     # the name scope of the current context.
     default_graph = get_default_graph()
     scope = default_graph.get_name_scope()
-    if scope and scope[-1] != '/':
+    if scope and scope[-1] != "/":
       # Names that end with trailing slashes are treated by `name_scope` as
       # absolute.
-      scope = scope + '/'
+      scope = scope + "/"
     inner_device_stack = default_graph._device_function_stack  # pylint: disable=protected-access
 
     outer_context = None
@@ -5262,6 +5266,8 @@ def init_scope():
           outer_graph._device_function_stack = inner_device_stack  # pylint: disable=protected-access
         yield
     finally:
+      # If an exception is raised here it may be hiding a related exception in
+      # try-block (just above).
       if outer_graph is not None:
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
