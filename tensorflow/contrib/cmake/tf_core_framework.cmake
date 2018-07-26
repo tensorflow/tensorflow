@@ -258,14 +258,21 @@ add_dependencies(tf_core_lib ${tensorflow_EXTERNAL_DEPENDENCIES} tf_protos_cc)
 # force_rebuild always runs forcing ${VERSION_INFO_CC} target to run
 # ${VERSION_INFO_CC} would cache, but it depends on a phony never produced
 # target.
-set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
-add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
-add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
-add_custom_command(OUTPUT
-    ${VERSION_INFO_CC}
-    COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
-    ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
-    DEPENDS __force_rebuild)
+# This code forces rebuild every time, not needed as version from git is fetched only once
+# move to make.bat which mimicks make.sh
+
+if (NOT WIN32)
+
+  set(VERSION_INFO_CC ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
+  add_custom_target(force_rebuild_target ALL DEPENDS ${VERSION_INFO_CC})
+  add_custom_command(OUTPUT __force_rebuild COMMAND ${CMAKE_COMMAND} -E echo)
+  add_custom_command(OUTPUT
+      ${VERSION_INFO_CC}
+      COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
+      ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
+      DEPENDS __force_rebuild)
+endif()
+
 set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
@@ -309,6 +316,16 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/*test*.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/loader.cc"
     "${tensorflow_source_dir}/tensorflow/contrib/tensorboard/db/vacuum.cc"
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.cc"
+)
+
+########################################################
+# tf_core_kernel_registry library
+########################################################
+file(GLOB_RECURSE tf_core_kernel_registry_srcs
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.h"
+    "${tensorflow_source_dir}/tensorflow/core/framework/op_kernel_registry.cc"
 )
 
 # TODO(jart): Why doesn't this work?
@@ -317,6 +334,9 @@ file(GLOB_RECURSE tf_core_framework_exclude_srcs
 #     PROPERTIES COMPILE_FLAGS -DSQLITE_OMIT_LOAD_EXTENSION)
 
 list(REMOVE_ITEM tf_core_framework_srcs ${tf_core_framework_exclude_srcs})
+
+add_library(tf_core_kernel_registry SHARED ${tf_core_kernel_registry_srcs} )
+add_dependencies( tf_core_kernel_registry tf_core_lib )
 
 add_library(tf_core_framework OBJECT
     ${tf_core_framework_srcs}
@@ -327,3 +347,5 @@ add_dependencies(tf_core_framework
     tf_core_lib
     proto_text
 )
+
+

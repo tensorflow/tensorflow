@@ -16,7 +16,7 @@ include (ExternalProject)
 
 set(PROTOBUF_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src)
 set(PROTOBUF_URL https://github.com/google/protobuf.git)
-set(PROTOBUF_TAG v3.6.0)
+set(PROTOBUF_TAG v3.6.0.1)
 
 if(WIN32)
   if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
