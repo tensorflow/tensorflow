@@ -91,12 +91,10 @@ class RevBlock(tf.keras.Model):
       h = block(h, training=training)
     return h
 
-  def backward_grads_and_vars(self, x, y, dy, training=True):
+  def backward_grads(self, x, y, dy, training=True):
     """Apply reversible block backward to outputs."""
 
     grads_all = []
-    vars_all = []
-
     for i in reversed(range(len(self.blocks))):
       block = self.blocks[i]
       if i == 0:
@@ -104,19 +102,15 @@ class RevBlock(tf.keras.Model):
         with tf.GradientTape() as tape:
           tape.watch(x)
           y = block(x, training=training)
-
         grads_combined = tape.gradient(
             y, [x] + block.trainable_variables, output_gradients=dy)
         dy = grads_combined[0]
-        grads_all += grads_combined[1:]
-        vars_all += block.trainable_variables
+        grads_all = grads_combined[1:] + grads_all
       else:
-        y, dy, grads, vars_ = block.backward_grads_and_vars(
-            y, dy, training=training)
-        grads_all += grads
-        vars_all += vars_
+        y, dy, grads = block.backward_grads(y, dy, training=training)
+        grads_all = grads + grads_all
 
-    return dy, grads_all, vars_all
+    return dy, grads_all
 
 
 class _Residual(tf.keras.Model):
@@ -195,7 +189,7 @@ class _Residual(tf.keras.Model):
 
     return tf.concat([y1, y2], axis=self.axis)
 
-  def backward_grads_and_vars(self, y, dy, training=True):
+  def backward_grads(self, y, dy, training=True):
     """Manually compute backward gradients given input and output grads."""
     dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=self.axis)
 
@@ -219,13 +213,11 @@ class _Residual(tf.keras.Model):
 
     del tape
 
-    grads = df + dg
-    vars_ = self.f.trainable_variables + self.g.trainable_variables
-
     x = tf.concat([x1, x2], axis=self.axis)
     dx = tf.concat([dx1, dx2], axis=self.axis)
+    grads = df + dg
 
-    return x, dx, grads, vars_
+    return x, dx, grads
 
 
 # Ideally, the following should be wrapped in `tf.keras.Sequential`, however

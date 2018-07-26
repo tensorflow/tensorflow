@@ -47,7 +47,6 @@ def model_fn(features, labels, mode, params):
   if isinstance(inputs, dict):
     inputs = features["image"]
 
-  FLAGS = params["FLAGS"]  # pylint:disable=invalid-name,redefined-outer-name
   config = params["config"]
   model = revnet.RevNet(config=config)
 
@@ -61,14 +60,10 @@ def model_fn(features, labels, mode, params):
     if FLAGS.use_tpu:
       optimizer = tf.contrib.tpu.CrossShardOptimizer(optimizer)
 
-    # Define gradients
-    grads, vars_, logits, loss = model.compute_gradients(
-        inputs, labels, training=True)
+    logits, saved_hidden = model(inputs, training=True)
+    grads, loss = model.compute_gradients(saved_hidden, labels, training=True)
     train_op = optimizer.apply_gradients(
-        zip(grads, vars_), global_step=global_step)
-
-    names = [v.name for v in model.variables]
-    tf.logging.warn("{}".format(names))
+        zip(grads, model.trainable_variables), global_step=global_step)
 
     return tf.contrib.tpu.TPUEstimatorSpec(
         mode=tf.estimator.ModeKeys.TRAIN, loss=loss, train_op=train_op)
@@ -141,8 +136,7 @@ def get_input_fn(config, data_dir, split):
   return input_fn
 
 
-def main(argv):
-  FLAGS = argv[0]  # pylint:disable=invalid-name,redefined-outer-name
+def main(_):
   tf.logging.set_verbosity(tf.logging.INFO)
 
   # RevNet specific configuration
@@ -177,10 +171,7 @@ def main(argv):
       train_batch_size=config.tpu_batch_size,
       eval_batch_size=config.tpu_eval_batch_size,
       config=run_config,
-      params={
-          "FLAGS": FLAGS,
-          "config": config,
-      })
+      params={"config": config})
 
   # Construct input functions
   train_input_fn = get_input_fn(
@@ -325,4 +316,4 @@ if __name__ == "__main__":
           " possible (i.e. up to --train_steps, which evaluates the model only"
           " after finishing the entire training regime)."))
   FLAGS = flags.FLAGS
-  tf.app.run(main=main, argv=[FLAGS])
+  tf.app.run()
