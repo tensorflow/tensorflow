@@ -122,6 +122,7 @@ REGISTER_OP("_HostCast")
     .Output("y: DstT")
     .Attr("SrcT: type")
     .Attr("DstT: type")
+    .Attr("Truncate: bool = false")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Cast x of type SrcT to y of DstT.
