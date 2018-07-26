@@ -64,6 +64,7 @@ enum class OperatorType : uint8 {
   kMaxPool,
   kFakeQuant,
   kMul,
+  kOneHot,
   kRandomUniform,
   kRange,
   kRank,
@@ -1766,6 +1767,27 @@ struct LogicalAndOperator : Operator {
 // TensorFlow equivalent: tf.logical_not.
 struct LogicalNotOperator : Operator {
   LogicalNotOperator() : Operator(OperatorType::kLogicalNot) {}
+};
+
+// OneHot operator:
+//
+// Inputs:
+// Inputs[0]: required: indices.
+// Inputs[1]: required: depth.
+// Inputs[2]: required: on_value.
+// Inputs[3]: required: off_value.
+//
+// TensorFlow equivalent: OneHot.
+struct OneHotOperator : Operator {
+  enum Inputs {
+    INDICES_INPUT = 0,
+    DEPTH_INPUT = 1,
+    ON_VALUE_INPUT = 2,
+    OFF_VALUE_INPUT = 3,
+  };
+
+  OneHotOperator() : Operator(OperatorType::kOneHot) {}
+  int axis = -1;
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

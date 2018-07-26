@@ -462,6 +462,14 @@ TEST_F(OperatorTest, BuiltinPack) {
   EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
+TEST_F(OperatorTest, BuiltinOneHot) {
+  OneHotOperator op;
+  op.axis = 2;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ONE_HOT", OperatorType::kOneHot), op);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";

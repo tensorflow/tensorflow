@@ -248,6 +248,7 @@ def generated_test_models():
         "mul",
         "neg",
         "not_equal",
+        "one_hot",
         "pack",
         "pad",
         "padv2",
