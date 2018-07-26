@@ -41,6 +41,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -59,6 +60,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 # TODO(b/29140563) This target is flaky, disabled until flakiness is
@@ -94,6 +96,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -128,6 +131,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -179,6 +183,7 @@ cc_library(
         "@llvm//:core",
         "@llvm//:support",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -196,6 +201,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -223,6 +229,7 @@ cc_library(
         "@llvm//:core",
         "@llvm//:support",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -240,6 +247,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -253,6 +261,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -331,6 +340,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
         "//tensorflow/stream_executor",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -347,6 +357,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -364,6 +375,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -428,6 +440,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service:pattern_matcher",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -486,6 +499,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -501,6 +515,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -625,6 +640,7 @@ cc_library(
         "@llvm//:core",
     ],
     alwayslink = True,  # Contains compiler registration
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -669,6 +685,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -702,6 +719,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_reachability",
         "//tensorflow/compiler/xla/service:hlo_scheduling",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -733,6 +751,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -762,6 +781,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -772,6 +792,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -783,6 +804,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(

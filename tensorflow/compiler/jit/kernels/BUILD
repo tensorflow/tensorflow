@@ -10,6 +10,7 @@ cc_library(
     name = "xla_launch_op",
     srcs = ["xla_launch_op.cc"],
     hdrs = ["xla_launch_op.h"],
+    copts= ["-g", "-O0"],
     deps = [
         "//tensorflow/compiler/jit:common",
         "//tensorflow/compiler/jit:xla_compilation_cache",
@@ -32,6 +33,7 @@ cc_library(
 cc_library(
     name = "parallel_check_op",
     srcs = ["parallel_check_op.cc"],
+    copts= ["-g", "-O0"],
     visibility = ["//tensorflow/compiler/jit:friends"],
     deps = [
         "//tensorflow/compiler/jit/legacy_flags:parallel_check_op_flags",

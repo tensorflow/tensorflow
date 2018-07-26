@@ -7,6 +7,7 @@ package(
 cc_library(
     name = "xla_ops",
     srcs = ["xla_ops.cc"],
+    copts= ["-g", "-O0"],
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
 )
@@ -14,6 +15,7 @@ cc_library(
 cc_library(
     name = "parallel_check_op",
     srcs = ["parallel_check_op.cc"],
+    copts= ["-g", "-O0"],
     deps = ["//tensorflow/core:framework"],
     alwayslink = 1,
 )

@@ -101,6 +101,7 @@ cc_library(
     name = "xla_gpu_device",
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
+    copts= ["-g", "-O0"],
     deps = [
         ":jit_compilation_passes",
         ":xla_device",
@@ -160,6 +161,7 @@ cc_library(
         "xla_device_context.h",
         "xla_device_ops.h",
     ],
+    copts= ["-g", "-O0"],
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = [
@@ -213,6 +215,7 @@ cc_library(
     hdrs = [
         "defs.h",
     ],
+    copts= ["-g", "-O0"],
     visibility = [":friends"],
 )
 
@@ -220,6 +223,7 @@ cc_library(
     name = "xla_launch_util",
     srcs = ["xla_launch_util.cc"],
     hdrs = ["xla_launch_util.h"],
+    copts= ["-g", "-O0"],
     deps = [
         ":common",
         ":xla_compilation_cache",
@@ -244,6 +248,7 @@ cc_library(
     name = "xla_compilation_cache",
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
+    copts= ["-g", "-O0"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
@@ -263,6 +268,7 @@ cc_library(
 cc_library(
     name = "jit_compilation_passes",
     srcs = ["jit_compilation_pass_registration.cc"],
+    copts= ["-g", "-O0"],
     deps = [
         ":compilation_passes",
         "//tensorflow/core:core_cpu_internal",
@@ -276,6 +282,7 @@ cc_library(
         "create_xla_launch_op.cc",
         "create_xla_launch_op.h",
     ],
+    copts= ["-g", "-O0"],
     deps = [
         ":common",
         ":compilation_passes",

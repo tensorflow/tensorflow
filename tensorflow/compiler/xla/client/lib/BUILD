@@ -26,6 +26,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/xla_client:xla_computation",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(

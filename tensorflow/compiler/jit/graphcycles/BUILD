@@ -12,6 +12,7 @@ cc_library(
     name = "graphcycles",
     srcs = ["graphcycles.cc"],
     hdrs = ["graphcycles.h"],
+    copts= ["-g", "-O0"],
     deps = [
         "//tensorflow/core:lib",
     ],

@@ -34,6 +34,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -46,6 +47,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -78,6 +80,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -91,6 +94,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -118,6 +122,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -136,6 +141,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",
     ],
+    copts = ["-g", "-O0"],
 )
 
 # This target is used to instantiate the XLA service in-process and create
@@ -159,6 +165,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -173,4 +180,5 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
     ],
+    copts = ["-g", "-O0"],
 )

@@ -27,6 +27,7 @@ cc_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
+    copts = ["-g", "-O0"],        
 )
 
 tf_cc_test(
@@ -57,6 +58,7 @@ cc_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
+    copts = ["-g", "-O0"],        
 )
 
 tf_cc_test(

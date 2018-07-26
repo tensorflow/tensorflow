@@ -59,6 +59,7 @@ cc_library(
         "@llvm//:support",
         "@llvm//:target",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(

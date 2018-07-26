@@ -175,6 +175,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -235,6 +236,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -308,6 +310,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -335,6 +338,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -360,6 +364,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -387,6 +392,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -445,6 +451,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -478,6 +485,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -490,6 +498,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],
 )
 
 tf_cc_test(
@@ -547,6 +556,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -569,6 +579,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -609,6 +620,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = 1,
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -640,6 +652,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],
 )
 
 cc_library(
@@ -662,12 +675,13 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
     name = "cpu_plugin",
     deps = [
-        ":service",
+            ":service",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -684,6 +698,7 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -713,6 +728,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -760,6 +776,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/stream_executor",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -778,6 +795,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -789,6 +807,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -807,6 +826,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -825,6 +845,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -841,6 +862,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -858,6 +880,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -868,6 +891,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -902,6 +926,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -945,6 +970,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -991,6 +1017,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1026,6 +1053,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1059,6 +1087,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1076,6 +1105,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1095,6 +1125,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1124,6 +1155,7 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1136,6 +1168,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1161,6 +1194,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1174,6 +1208,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1208,6 +1243,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1222,6 +1258,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1264,6 +1301,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1300,6 +1338,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1352,6 +1391,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1384,6 +1424,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1412,6 +1453,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1440,6 +1482,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1467,6 +1510,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1481,6 +1525,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1511,6 +1556,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1545,6 +1591,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1583,6 +1630,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
     alwayslink = True,  # Contains per-platform computation placer registration
 )
 
@@ -1596,6 +1644,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1633,6 +1682,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1673,6 +1723,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1748,6 +1799,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1759,6 +1811,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1775,6 +1828,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1792,6 +1846,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1810,6 +1865,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1851,6 +1907,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1887,6 +1944,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1907,6 +1965,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -1944,6 +2003,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -1963,6 +2023,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2011,6 +2072,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2033,6 +2095,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2069,6 +2132,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2087,6 +2151,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2100,6 +2165,7 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2142,6 +2208,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2240,6 +2307,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2261,6 +2329,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2277,6 +2346,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2314,6 +2384,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2345,6 +2416,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2359,6 +2431,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2451,6 +2524,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2475,6 +2549,7 @@ cc_library(
         "@llvm//:core",
         "@llvm//:transform_utils",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 xla_test(
@@ -2508,6 +2583,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2520,6 +2596,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2529,6 +2606,7 @@ cc_library(
     deps = [
         ":hlo_pass",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2558,6 +2636,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2591,6 +2670,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:regexp_internal",
     ],
+    copts = ["-g", "-O0"],    
     alwayslink = 1,
 )
 
@@ -2621,6 +2701,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2658,6 +2739,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2687,6 +2769,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2710,6 +2793,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2741,6 +2825,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2783,6 +2868,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//third_party/eigen3",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2794,6 +2880,7 @@ cc_library(
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2804,6 +2891,7 @@ cc_library(
         ":hlo",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2829,6 +2917,7 @@ cc_library(
         ":tuple_util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2857,6 +2946,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2884,6 +2974,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2912,6 +3003,7 @@ cc_library(
         ":implicit_broadcast_remover",
         "//tensorflow/compiler/xla:statusor",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2924,6 +3016,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -2938,6 +3031,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -2970,6 +3064,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -3001,12 +3096,14 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:regexp_internal",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
     name = "hlo_casting_utils",
     hdrs = ["hlo_casting_utils.h"],
     deps = ["//tensorflow/core:lib"],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(

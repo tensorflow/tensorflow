@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -56,6 +57,7 @@ cc_library(
         "@llvm//:target",
         "@llvm//:transform_utils",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -72,6 +74,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -87,6 +90,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -104,6 +108,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -124,6 +129,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -141,6 +147,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
         "//tensorflow/compiler/xla/service/gpu:partition_assignment",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -156,6 +163,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -168,4 +176,5 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )

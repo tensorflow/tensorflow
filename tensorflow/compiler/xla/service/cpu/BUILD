@@ -50,6 +50,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
+    copts = ["-g", "-O0"],    
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
@@ -63,6 +64,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -159,6 +161,7 @@ cc_library(
         "//conditions:default": [
         ],
     }),
+    copts = ["-g", "-O0"],    
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -170,6 +173,7 @@ cc_library(
         "windows_compatibility.h",
     ],
     hdrs = ["simple_orc_jit.h"],
+    copts = ["-g", "-O0"],    
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
@@ -218,6 +222,7 @@ cc_library(
     name = "cpu_executable",
     srcs = ["cpu_executable.cc"],
     hdrs = ["cpu_executable.h"],
+    copts = ["-g", "-O0"],    
     deps = [
         ":simple_orc_jit",
         "//tensorflow/compiler/xla:shape_tree",
@@ -252,6 +257,7 @@ cc_library(
         "elemental_ir_emitter.h",
         "ir_emitter.h",
     ],
+    copts = ["-g", "-O0"],    
     deps = [
         ":cpu_options",
         ":cpu_runtime",
@@ -303,6 +309,7 @@ cc_library(
         "@llvm//:analysis",
         "@llvm//:target",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -330,6 +337,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -346,6 +354,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm//:core",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -410,6 +419,7 @@ cc_library(
         "@llvm//:target",
         "@llvm//:x86_disassembler",  # fixdeps: keep
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -434,6 +444,7 @@ cc_library(
         "@llvm//:support",
         "@llvm//:target",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -446,7 +457,7 @@ cc_library(
         "cpu_runtime.h",
         "xfeed_manager.h",
     ],
-    copts = runtime_copts(),
+    copts = runtime_copts() + ["-g", "-O0"], 
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -472,6 +483,7 @@ cc_library(
         "@llvm//:core",
         "@llvm//:transform_utils",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 cc_library(
@@ -481,7 +493,7 @@ cc_library(
         "runtime_conv2d_impl.h",
     ],
     hdrs = ["runtime_conv2d.h"],
-    copts = runtime_copts(),
+    copts = runtime_copts() + ["-g", "-O0"], 
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
@@ -497,7 +509,7 @@ cc_library(
         "runtime_conv2d_mkl.cc",
     ],
     hdrs = ["runtime_conv2d_mkl.h"],
-    copts = runtime_copts(),
+    copts = runtime_copts() + ["-g", "-O0"],
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",
@@ -773,6 +785,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/core:lib",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -797,6 +810,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:shape_util",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(
@@ -824,6 +838,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
     ],
+    copts = ["-g", "-O0"],    
 )
 
 tf_cc_test(

@@ -16,6 +16,7 @@ cc_library(
     name = "xla_ops",
     srcs = ["ops/xla_ops.cc"],
     hdrs = ["ops/xla_ops.h"],
+    copts = ["-g", "-O0", ],
     deps = [
         "//tensorflow/cc:const_op",
         "//tensorflow/cc:ops",
@@ -38,6 +39,7 @@ cc_library(
     name = "xla_jit_ops",
     srcs = ["ops/xla_jit_op.cc"],
     hdrs = ["ops/xla_jit_op.h"],
+    copts = ["-g", "-O0", ],
     deps = [
         "//tensorflow/cc:const_op",
         "//tensorflow/cc:ops",

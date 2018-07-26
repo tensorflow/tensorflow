@@ -20,6 +20,7 @@ cc_library(
     name = "mark_for_compilation_pass_flags",
     srcs = ["mark_for_compilation_pass_flags.cc"],
     hdrs = ["mark_for_compilation_pass_flags.h"],
+    copts= ["-g", "-O0"],
     deps =
         [
             "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
@@ -32,6 +33,7 @@ cc_library(
     name = "parallel_check_op_flags",
     srcs = ["parallel_check_op_flags.cc"],
     hdrs = ["parallel_check_op_flags.h"],
+    copts= ["-g", "-O0"],
     deps =
         [
             "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
@@ -44,6 +46,7 @@ cc_library(
     name = "xla_device_flags",
     srcs = ["xla_device_flags.cc"],
     hdrs = ["xla_device_flags.h"],
+    copts= ["-g", "-O0"],
     deps =
         [
             "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",

@@ -99,6 +99,7 @@ tf_kernel_library(
         "index_ops.h",
         "shape_util.h",
     ],
+    copts = ["-g", "-O0", ],
     deps = [
         ":if_op",
         ":while_op",
@@ -151,6 +152,7 @@ tf_kernel_library(
     name = "while_op",
     srcs = ["while_op.cc"],
     hdrs = ["while_op.h"],
+    copts = ["-g", "-O0", ],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -167,6 +169,7 @@ tf_kernel_library(
     name = "if_op",
     srcs = ["if_op.cc"],
     hdrs = ["if_op.h"],
+    copts = ["-g", "-O0", ],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -201,6 +204,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "xla_cpu_only_ops",
     srcs = ["index_ops_cpu.cc"],
+    copts = ["-g", "-O0", ],
     deps = [
         ":index_ops_kernel_argmax_float_1d",
         ":index_ops_kernel_argmax_float_2d",
@@ -220,7 +224,7 @@ tf_kernel_library(
 cc_library(
     name = "index_ops_kernel_argmax_float_1d",
     srcs = ["index_ops_kernel_argmax_float_1d.cc"],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0", ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
@@ -233,7 +237,7 @@ cc_library(
 cc_library(
     name = "index_ops_kernel_argmax_float_2d",
     srcs = ["index_ops_kernel_argmax_float_2d.cc"],
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0", ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",

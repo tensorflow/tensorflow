@@ -157,6 +157,7 @@ cc_library(
         "xla_resource.h",
     ],
     visibility = [":friends"],
+    copts= ["-g", "-O0"],
     deps = [
         ":common",
         ":dump_graph",
@@ -199,6 +200,7 @@ cc_library(
         "str_util.h",
         "type_util.h",
     ],
+    copts= ["-g", "-O0"],
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
@@ -398,6 +400,7 @@ cc_library(
     hdrs = [
         "dump_graph.h",
     ],
+    copts= ["-g", "-O0"],
     deps = [
         "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
         "//tensorflow/core:core_cpu",
@@ -413,6 +416,7 @@ cc_library(
     name = "functionalize_control_flow",
     srcs = ["functionalize_control_flow.cc"],
     hdrs = ["functionalize_control_flow.h"],
+    copts= ["-g", "-O0"],    
     deps = [
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
