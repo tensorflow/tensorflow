@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -30,6 +31,7 @@ namespace llvm_ir {
 // implements the inner loop of BitonicSort. If 'launch_dimensions' is nullptr,
 // the inner compare loop will not be parallelized.
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
+                       const tensorflow::gtl::optional<IrArray>& values_array,
                        tensorflow::StringPiece name, llvm::Value* xor_mask,
                        llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions* launch_dimensions);
