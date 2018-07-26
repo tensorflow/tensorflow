@@ -114,6 +114,7 @@ cc_library(
     srcs = ["hlo_to_ir_bindings.cc"],
     hdrs = ["hlo_to_ir_bindings.h"],
     deps = [
+        ":buffer_allocations",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
@@ -142,6 +143,7 @@ cc_library(
     ],
     deps = [
         ":backend_configs",
+        ":buffer_allocations",
         ":cudnn_convolution_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
