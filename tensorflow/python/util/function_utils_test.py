@@ -24,6 +24,16 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import function_utils
 
 
+def silly_example_function():
+  pass
+
+
+class SillyCallableClass(object):
+
+  def __call__(self):
+    pass
+
+
 class FnArgsTest(test.TestCase):
 
   def test_simple_function(self):
@@ -123,6 +133,74 @@ class FnArgsTest(test.TestCase):
 
     self.assertEqual(3, double_wrapped_fn(3))
     self.assertEqual(3, double_wrapped_fn(a=3))
+
+
+class GetFuncNameTest(test.TestCase):
+
+  def testWithSimpleFunction(self):
+    self.assertEqual(
+        'silly_example_function',
+        function_utils.get_func_name(silly_example_function))
+
+  def testWithClassMethod(self):
+    self.assertEqual(
+        'GetFuncNameTest.testWithClassMethod',
+        function_utils.get_func_name(self.testWithClassMethod))
+
+  def testWithCallableClass(self):
+    callable_instance = SillyCallableClass()
+    self.assertRegexpMatches(
+        function_utils.get_func_name(callable_instance),
+        '<.*SillyCallableClass.*>')
+
+  def testWithFunctoolsPartial(self):
+    partial = functools.partial(silly_example_function)
+    self.assertRegexpMatches(
+        function_utils.get_func_name(partial),
+        '<.*functools.partial.*>')
+
+  def testWithLambda(self):
+    anon_fn = lambda x: x
+    self.assertEqual('<lambda>', function_utils.get_func_name(anon_fn))
+
+  def testRaisesWithNonCallableObject(self):
+    with self.assertRaises(ValueError):
+      function_utils.get_func_name(None)
+
+
+class GetFuncCodeTest(test.TestCase):
+
+  def testWithSimpleFunction(self):
+    code = function_utils.get_func_code(silly_example_function)
+    self.assertIsNotNone(code)
+    self.assertRegexpMatches(code.co_filename, 'function_utils_test.py')
+
+  def testWithClassMethod(self):
+    code = function_utils.get_func_code(self.testWithClassMethod)
+    self.assertIsNotNone(code)
+    self.assertRegexpMatches(code.co_filename, 'function_utils_test.py')
+
+  def testWithCallableClass(self):
+    callable_instance = SillyCallableClass()
+    code = function_utils.get_func_code(callable_instance)
+    self.assertIsNotNone(code)
+    self.assertRegexpMatches(code.co_filename, 'function_utils_test.py')
+
+  def testWithLambda(self):
+    anon_fn = lambda x: x
+    code = function_utils.get_func_code(anon_fn)
+    self.assertIsNotNone(code)
+    self.assertRegexpMatches(code.co_filename, 'function_utils_test.py')
+
+  def testWithFunctoolsPartial(self):
+    partial = functools.partial(silly_example_function)
+    code = function_utils.get_func_code(partial)
+    self.assertIsNone(code)
+
+  def testRaisesWithNonCallableObject(self):
+    with self.assertRaises(ValueError):
+      function_utils.get_func_code(None)
+
 
 if __name__ == '__main__':
   test.main()
