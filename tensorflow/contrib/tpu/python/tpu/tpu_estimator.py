@@ -791,7 +791,15 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
 
     is_dataset = inputs.is_dataset
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
-      raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
+      if not is_dataset:
+        raise TypeError(
+            'For mode PREDICT, `input_fn` must return `Dataset` instead of '
+            '`features` and `labels`.')
+
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True)
 
     if is_dataset:
       hooks.append(inputs.dataset_initializer_hook())
@@ -810,6 +818,7 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     """Generates enqueue ops for all the hosts."""
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
+    signals = None
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -819,11 +828,13 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
           # hosts).
           if flattened_inputs is None:
             features, labels = inputs.features_and_labels()  # Calls get_next()
+            signals = inputs.signals()
+
             inputs_structure_recorder.validate_and_record_structure(
-                features, labels)
+                features, labels, signals)
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
-                    features, labels))
+                    features, labels, signals))
           broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
@@ -833,7 +844,14 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
         broadcasted_inputs,
         tpu_ordinal_function=tpu_ordinal_function_impl,
         placement_function=device_function_impl)
-    return enqueue_ops
+
+    if signals is None:
+      return enqueue_ops
+    else:
+      return {
+          'ops': enqueue_ops,
+          'signals': signals,
+      }
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
@@ -1080,9 +1098,11 @@ class _InputPipeline(object):
       all_hooks.extend(hooks)
       if is_dataset:
         run_infeed_loop_on_coordinator = False
-        enqueue_ops.append(
-            _wrap_computation_in_while_loop(
-                device=host_device, op_fn=enqueue_ops_fn))
+        wrap_fn = (
+            _wrap_computation_in_while_loop
+            if self._ctx.mode != model_fn_lib.ModeKeys.PREDICT else
+            _wrap_computation_in_while_loop_with_stopping_signals)
+        enqueue_ops.append(wrap_fn(device=host_device, op_fn=enqueue_ops_fn))
       else:
         enqueue_ops.append(enqueue_ops_fn())
       infeed_queues.append(captured_infeed_queue.get())
