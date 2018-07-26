@@ -41,10 +41,8 @@ namespace {
 const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
 const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
 
-// Returns a list of devices sorted by preferred type and then name
-// from 'devices' whose type is in 'supported_device_types'.  This
-// function searches the device types in 'supported_device_types' and
-// returns the subset of devices that match.
+// Returns a list of devices having type in supported_device_types.  The
+// returned list is sorted by preferred type (higher numeric type is preferred).
 std::vector<Device*> FilterSupportedDevices(
     const std::vector<Device*>& devices,
     const DeviceTypeVector& supported_device_types) {
@@ -81,12 +79,12 @@ std::vector<Device*> FilterSupportedDevices(
 //   DeviceSet device_set = ...;
 //   ColocationGraph colocation_graph(graph, device_set);
 //
-//   // Add all the nodes of graph to colocation_graph.
+//   // Add all the nodes of the `graph` to the `colocation_graph`.
 //   for (Node* node : graph.nodes()) {
 //     TF_RETURN_IF_ERROR(colocation_graph.AddNode(*node));
 //   }
 //
-//   // Add one or more colocation constraint.
+//   // Add one or more colocation constraints.
 //   Node node_1 = *graph.FindNodeId(...);
 //   Node node_2 = *graph.FindNodeId(...);
 //   TF_RETURN_IF_ERROR(colocation_graph.ColocateNodes(node_1, node_2));
@@ -96,9 +94,9 @@ std::vector<Device*> FilterSupportedDevices(
 //     TF_RETURN_IF_ERROR(colocation_graph.AssignDevice(node));
 //   }
 //
-// The implementation uses the union-find algorithm to maintain the
-// connected components efficiently and incrementally as edges
-// (implied by ColocationGraph::ColocateNodes() invocations) are added.
+// This implementation uses the Union-Find algorithm to efficiently maintain the
+// connected components and incrementally adds edges via
+// ColocationGraph::ColocateNodes() invocations.
 class ColocationGraph {
  public:
   ColocationGraph(Graph* graph, const DeviceSet* device_set,
@@ -134,13 +132,9 @@ class ColocationGraph {
     std::unordered_map<StringPiece, const Node*, StringPieceHasher>
         colocation_group_root;
 
-    for (Node* node : graph_->nodes()) {
-      if (!node->IsOp()) {
-        continue;
-      }
-
-      // When adding the node, identify whether it is part of a
-      // colocation group.
+    for (Node* node : graph_->op_nodes()) {
+      // When adding the node, identify whether it is part of a colocation
+      // group.
 
       // This code is effectively the equivalent of GetNodeAttr() for a string
       // array, but it avoids all internal allocations (the allocation of the
@@ -219,11 +213,10 @@ class ColocationGraph {
     Member& x_root_member = members_[x_root];
     Member& y_root_member = members_[y_root];
 
-    // Merge the sets by swinging the parent pointer of the smaller
-    // tree to point to the root of the larger tree. Together with
-    // path compression in ColocationGraph::FindRoot, this ensures
-    // that we do not experience pathological performance on graphs
-    // such as chains.
+    // Merge the sets by setting the parent pointer of the smaller tree's root
+    // node to point to the root of the larger tree. Together with path
+    // compression in ColocationGraph::FindRoot, this ensures that we do not
+    // experience pathological performance on graphs such as chains.
     int new_root, old_root;
     if (x_root_member.rank < y_root_member.rank) {
       // The tree rooted at x_root is shallower, so connect it to
@@ -611,22 +604,16 @@ class ColocationGraph {
   // given id is connected.
   int FindRoot(int node_id) {
     Member& member = members_[node_id];
-
-    int parent = member.parent;
-    DCHECK_GE(parent, 0);
-
-    if (parent != node_id) {
-      // NOTE: Compress paths from node_id to its root, so that future
-      // calls to FindRoot and ColocateNodes are more efficient.
-      int root = FindRoot(parent);
-      if (parent != root) {
-        parent = root;
-        member.parent = root;
-      }
+    DCHECK_GE(member.parent, 0);
+    if (member.parent == node_id) {
+      // member.parent is the root of this disjoint tree.  Do nothing.
+    } else {
+      member.parent = FindRoot(member.parent);
     }
-
-    DCHECK_GE(parent, 0);
-    return parent;
+    // Now it is guaranteed that member.parent is the root of this disjoint
+    // tree.
+    DCHECK_GE(member.parent, 0);
+    return member.parent;
   }
 
   // Ensures that the devices of 'dst's resource and reference match the device
