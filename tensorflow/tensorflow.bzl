@@ -1456,7 +1456,7 @@ def tf_py_wrap_cc(name,
       srcs=srcs,
       swig_includes=swig_includes,
       deps=deps + extra_deps,
-      toolchain_deps=["//tools/defaults:crosstool"],
+      toolchain_deps=["@bazel_tools//tools/cpp:current_cc_toolchain"],
       module_name=module_name,
       py_module_name=name)
   vscriptname=name+"_versionscript"
