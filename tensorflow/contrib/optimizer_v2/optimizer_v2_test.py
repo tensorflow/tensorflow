@@ -38,12 +38,8 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      # Note that we name the variables uniquely here since the variables don't
-      # seem to be getting deleted at the end of the loop.
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype,
-                                                    name='a_%d' % i)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
-                                                    name='b_%d' % i)
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       def loss():
         return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
       # Note that for eager execution, minimize expects a function instead of a
@@ -131,12 +127,8 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      # Note that we name the variables uniquely here since the variables don't
-      # seem to be getting deleted at the end of the loop.
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype,
-                                                    name='a%d' % i)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
-                                                    name='b%d' % i)
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       # pylint: disable=cell-var-from-loop
       def loss():
         return 5 * var0
@@ -149,12 +141,8 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      # Note that we name the variables uniquely here since the variables don't
-      # seem to be getting deleted at the end of the loop.
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype,
-                                                    name='a_%d' % i)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
-                                                    name='b_%d' % i)
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       def loss():
         return constant_op.constant(5.0)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
@@ -165,12 +153,8 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      # Note that we name the variables uniquely here since the variables don't
-      # seem to be getting deleted at the end of the loop.
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype,
-                                                    name='a_%d' % i)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
-                                                    name='b_%d' % i)
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
       with self.assertRaisesRegexp(ValueError,
                                    'No gradients provided for any variable'):
@@ -179,12 +163,8 @@ class OptimizerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      # Note that we name the variables uniquely here since the variables don't
-      # seem to be getting deleted at the end of the loop.
-      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype,
-                                                    name='a%d' % i)
-      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype,
-                                                    name='b%d' % i)
+      var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+      var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
       def loss():
         return 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
       sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
