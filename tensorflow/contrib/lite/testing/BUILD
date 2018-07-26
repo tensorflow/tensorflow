@@ -142,6 +142,7 @@ cc_test(
 cc_library(
     name = "join",
     hdrs = ["join.h"],
+    deps = ["//tensorflow/contrib/lite:string"],
 )
 
 cc_test(
@@ -275,6 +276,7 @@ cc_library(
         ":join",
         ":split",
         ":tf_driver",
+        "//tensorflow/contrib/lite:string",
         "//tensorflow/core:framework",
     ],
 )
@@ -341,7 +343,7 @@ tf_cc_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
-        "no_oss",
+        "no_oss",  # needs test data
         "tflite_not_portable",
     ],
     deps = [

@@ -28,8 +28,8 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{gtl::ArraySlice<int64>{
-      reinterpret_cast<const int64*>(dim.data()), dim.size()}};
+  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
+      reinterpret_cast<const tensorflow::int64*>(dim.data()), dim.size()}};
   return {type, shape};
 }
 
