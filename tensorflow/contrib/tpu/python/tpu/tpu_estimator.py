@@ -22,6 +22,7 @@ import collections
 import copy
 import os
 import signal
+import sys
 import threading
 import time
 
@@ -790,7 +791,15 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
 
     is_dataset = inputs.is_dataset
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
-      raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
+      if not is_dataset:
+        raise TypeError(
+            'For mode PREDICT, `input_fn` must return `Dataset` instead of '
+            '`features` and `labels`.')
+
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True)
 
     if is_dataset:
       hooks.append(inputs.dataset_initializer_hook())
@@ -809,6 +818,7 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     """Generates enqueue ops for all the hosts."""
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
+    signals = None
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -818,11 +828,13 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
           # hosts).
           if flattened_inputs is None:
             features, labels = inputs.features_and_labels()  # Calls get_next()
+            signals = inputs.signals()
+
             inputs_structure_recorder.validate_and_record_structure(
-                features, labels)
+                features, labels, signals)
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
-                    features, labels))
+                    features, labels, signals))
           broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
@@ -832,7 +844,14 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
         broadcasted_inputs,
         tpu_ordinal_function=tpu_ordinal_function_impl,
         placement_function=device_function_impl)
-    return enqueue_ops
+
+    if signals is None:
+      return enqueue_ops
+    else:
+      return {
+          'ops': enqueue_ops,
+          'signals': signals,
+      }
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
@@ -1079,9 +1098,11 @@ class _InputPipeline(object):
       all_hooks.extend(hooks)
       if is_dataset:
         run_infeed_loop_on_coordinator = False
-        enqueue_ops.append(
-            _wrap_computation_in_while_loop(
-                device=host_device, op_fn=enqueue_ops_fn))
+        wrap_fn = (
+            _wrap_computation_in_while_loop
+            if self._ctx.mode != model_fn_lib.ModeKeys.PREDICT else
+            _wrap_computation_in_while_loop_with_stopping_signals)
+        enqueue_ops.append(wrap_fn(device=host_device, op_fn=enqueue_ops_fn))
       else:
         enqueue_ops.append(enqueue_ops_fn())
       infeed_queues.append(captured_infeed_queue.get())
@@ -1764,7 +1785,8 @@ class TPUEstimator(estimator_lib.Estimator):
   Current limitations:
   --------------------
 
-  1. TPU evaluation only works on a single host (one TPU worker).
+  1. TPU evaluation only works on a single host (one TPU worker) except
+     BROADCAST mode.
 
   2. `input_fn` for evaluation should **NOT** raise an end-of-input exception
      (`OutOfRangeError` or `StopIteration`). And all evaluation steps and all
@@ -2307,8 +2329,8 @@ class TPUEstimator(estimator_lib.Estimator):
           input_fn=input_fn, hooks=hooks, steps=steps, max_steps=max_steps,
           saving_listeners=saving_listeners
       )
-    except Exception as e:  # pylint: disable=broad-except
-      rendezvous.record_error('training_loop', e)
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('training_loop', sys.exc_info())
     finally:
       rendezvous.record_done('training_loop')
       rendezvous.raise_errors()
@@ -2322,8 +2344,8 @@ class TPUEstimator(estimator_lib.Estimator):
           input_fn, steps=steps, hooks=hooks, checkpoint_path=checkpoint_path,
           name=name
       )
-    except Exception as e:  # pylint: disable=broad-except
-      rendezvous.record_error('evaluation_loop', e)
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('evaluation_loop', sys.exc_info())
     finally:
       rendezvous.record_done('evaluation_loop')
       rendezvous.raise_errors()
@@ -2344,8 +2366,8 @@ class TPUEstimator(estimator_lib.Estimator):
           checkpoint_path=checkpoint_path,
           yield_single_examples=yield_single_examples):
         yield result
-    except Exception as e:  # pylint: disable=broad-except
-      rendezvous.record_error('prediction_loop', e)
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('prediction_loop', sys.exc_info())
     finally:
       rendezvous.record_done('prediction_loop')
       rendezvous.raise_errors()

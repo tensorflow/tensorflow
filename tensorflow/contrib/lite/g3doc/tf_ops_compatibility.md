@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common

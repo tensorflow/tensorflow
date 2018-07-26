@@ -48,6 +48,7 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(KeepAlive);
   ENQUEUE_REQUEST(CloseContext);
   ENQUEUE_REQUEST(RegisterFunction);
+  ENQUEUE_REQUEST(SendTensor);
 #undef ENQUEUE_REQUEST
 
   void* tag;  // Matches the operation started against this cq_.

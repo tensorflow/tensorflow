@@ -79,7 +79,7 @@ class ListTest(converter_testing.TestCase):
 
     ns = {'special_functions': special_functions}
     node, ctx = self.prepare(test_fn, ns)
-    def_, = anno.getanno(node.body[0].body[0].targets[0],
+    def_, = anno.getanno(node.body[0].targets[0],
                          anno.Static.ORIG_DEFINITIONS)
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.int32'),
@@ -114,7 +114,7 @@ class ListTest(converter_testing.TestCase):
       return tf.stack(l)
 
     node, ctx = self.prepare(test_fn, {})
-    def_, = anno.getanno(node.body[0].body[0].targets[0],
+    def_, = anno.getanno(node.body[0].targets[0],
                          anno.Static.ORIG_DEFINITIONS)
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.int32')

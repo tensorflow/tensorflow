@@ -33,7 +33,8 @@ def get_hparams_cifar_38():
   """RevNet-38 configurations for CIFAR-10/CIFAR-100."""
 
   config = tf.contrib.training.HParams()
-  # Hyperparameters from the RevNet paper
+  config.add_hparam("num_train_images", 50000)
+  config.add_hparam("num_eval_images", 10000)
   config.add_hparam("init_filters", 32)
   config.add_hparam("init_kernel", 3)
   config.add_hparam("init_stride", 1)
@@ -67,7 +68,8 @@ def get_hparams_cifar_38():
   config.add_hparam("div255", True)
   # This is imprecise, when training with validation set,
   # we only have 40k images in training data
-  config.add_hparam("iters_per_epoch", 50000 // config.batch_size)
+  config.add_hparam("iters_per_epoch",
+                    config.num_train_images // config.batch_size)
   config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
 
   # Customized TPU hyperparameters due to differing batch size caused by
@@ -76,7 +78,8 @@ def get_hparams_cifar_38():
   # https://cloud.google.com/tpu/docs/troubleshooting
   config.add_hparam("tpu_batch_size", 1024)
   config.add_hparam("tpu_eval_batch_size", 1024)
-  config.add_hparam("tpu_iters_per_epoch", 50000 // config.tpu_batch_size)
+  config.add_hparam("tpu_iters_per_epoch",
+                    config.num_train_images // config.tpu_batch_size)
   config.add_hparam("tpu_epochs",
                     config.max_train_iter // config.tpu_iters_per_epoch)
 
@@ -109,6 +112,8 @@ def get_hparams_imagenet_56():
   config = tf.contrib.training.HParams()
   config.add_hparam("n_classes", 1000)
   config.add_hparam("dataset", "ImageNet")
+  config.add_hparam("num_train_images", 1281167)
+  config.add_hparam("num_eval_images", 50000)
   config.add_hparam("init_filters", 128)
   config.add_hparam("init_kernel", 7)
   config.add_hparam("init_stride", 2)
@@ -126,6 +131,9 @@ def get_hparams_imagenet_56():
   else:
     config.add_hparam("input_shape", (224, 224, 3))
     config.add_hparam("data_format", "channels_last")
+  # Due to bottleneck residual blocks
+  filters = [f * 4 for f in config.filters]
+  config.filters = filters
 
   # Training details
   config.add_hparam("weight_decay", 1e-4)
@@ -140,11 +148,9 @@ def get_hparams_imagenet_56():
   config.add_hparam("dtype", tf.float32)
   config.add_hparam("eval_batch_size", 256)
   config.add_hparam("div255", True)
-  config.add_hparam("iters_per_epoch", 1281167 // config.batch_size)
+  config.add_hparam("iters_per_epoch",
+                    config.num_train_images // config.batch_size)
   config.add_hparam("epochs", config.max_train_iter // config.iters_per_epoch)
-  # Due to bottleneck residual blocks
-  filters = [f * 4 for f in config.filters]
-  config.filters = filters
 
   # Customized TPU hyperparameters due to differing batch size caused by
   # TPU architecture specifics
@@ -152,7 +158,8 @@ def get_hparams_imagenet_56():
   # https://cloud.google.com/tpu/docs/troubleshooting
   config.add_hparam("tpu_batch_size", 1024)
   config.add_hparam("tpu_eval_batch_size", 1024)
-  config.add_hparam("tpu_iters_per_epoch", 1281167 // config.tpu_batch_size)
+  config.add_hparam("tpu_iters_per_epoch",
+                    config.num_train_images // config.tpu_batch_size)
   config.add_hparam("tpu_epochs",
                     config.max_train_iter // config.tpu_iters_per_epoch)
 

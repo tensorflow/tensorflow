@@ -28,8 +28,7 @@ namespace llvm_ir {
 // Sentry allocation used to represent parameters of the entry computation in
 // alias_scope_metadata_ and noalias_metadata_.
 static const BufferAllocation* kParameterAllocation = new BufferAllocation(
-    /*index=*/-1, /*size=*/0, /*is_thread_local=*/false, /*is_reusable=*/false,
-    LogicalBuffer::Color(0));
+    /*index=*/-1, /*size=*/0, LogicalBuffer::Color(0));
 
 void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
                                                     llvm_ir::IrArray* array,

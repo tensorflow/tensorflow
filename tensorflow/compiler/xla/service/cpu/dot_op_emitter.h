@@ -88,17 +88,6 @@ class DotOpEmitter {
   // Emits a call to the CPU runtime to perform the matrix multiply.
   Status EmitCallToRuntime();
 
-  // Emits a series of nested loops for iterating over an operand array in the
-  // dot operation. Loops are constructed in major to minor dimension layout
-  // order. No loop is emitted for the given reduction_dimension. The function
-  // returns an IrArray index for the given operand_array containing the indvars
-  // of the loops. All dimensions of the index are filled except for the
-  // reduction dimension. name_suffix is the string to append to the names of
-  // LLVM constructs (eg, basic blocks) constructed by this method.
-  llvm_ir::IrArray::Index EmitOperandArrayLoopNest(
-      llvm_ir::ForLoopNest* loop_nest, const llvm_ir::IrArray& operand_array,
-      int64 reduction_dimension, tensorflow::StringPiece name_suffix);
-
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
     // The number of rows in the LHS.

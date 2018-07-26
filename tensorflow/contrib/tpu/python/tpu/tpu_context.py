@@ -594,7 +594,7 @@ class _InternalTPUContext(object):
         raise ValueError(
             'eval batch size {} must be divisible by number of replicas {}'
             .format(self._eval_batch_size, num_replicas))
-      if num_hosts > 1:
+      if num_hosts > 1 and not self.is_input_broadcast_with_iterators():
         raise ValueError(
             'TPUEstimator.evaluate should be running on single TPU worker. '
             'got {}.'.format(num_hosts))
@@ -609,7 +609,7 @@ class _InternalTPUContext(object):
         raise ValueError(
             'predict batch size {} must be divisible by number of replicas {}'
             .format(self._predict_batch_size, num_replicas))
-      if num_hosts > 1:
+      if num_hosts > 1 and not self.is_input_broadcast_with_iterators():
         raise ValueError(
             'TPUEstimator.predict should be running on single TPU worker. '
             'got {}.'.format(num_hosts))

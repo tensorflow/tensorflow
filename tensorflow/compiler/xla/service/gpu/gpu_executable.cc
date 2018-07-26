@@ -84,7 +84,7 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
-  std::vector<Pool<se::Stream>::SmartPtr> sub_streams;
+  std::vector<StreamPool::Ptr> sub_streams;
   sub_streams.reserve(thunk_schedule_->StreamCount() - 1);
   while (sub_streams.size() + 1 < thunk_schedule_->StreamCount()) {
     sub_streams.emplace_back();

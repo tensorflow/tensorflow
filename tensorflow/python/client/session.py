@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import re
 import threading
@@ -243,7 +244,7 @@ class _FetchMapper(object):
     elif isinstance(fetch, (list, tuple)):
       # NOTE(touts): This is also the code path for namedtuples.
       return _ListFetchMapper(fetch)
-    elif isinstance(fetch, dict):
+    elif isinstance(fetch, collections.Mapping):
       return _DictFetchMapper(fetch)
     else:
       # Look for a handler in the registered expansions.

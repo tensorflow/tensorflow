@@ -154,8 +154,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
         return false;
       }
       for (int i = 0; i < op->outputs.size(); ++i) {
-        auto output = op->outputs[i];
-        auto data_type = unsupported_op->output_data_types[i];
+        const string& output = op->outputs[i];
+        const ArrayDataType data_type = unsupported_op->output_data_types[i];
         model->GetArray(output).data_type = data_type;
       }
       break;

@@ -723,9 +723,17 @@ class Layer(checkpointable.CheckpointableBase):
             self._dtype = input_list[0].dtype.base_dtype.name
           except AttributeError:
             pass
+
         if all(hasattr(x, 'shape') for x in input_list):
           input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-        self.build(input_shapes)
+
+        if (not hasattr(self, '_is_graph_network') or
+            self.__class__.__name__ == 'Sequential'):
+          # Only if self is a layer or an instance of a sequential model do we
+          # need to build it.
+          self.build(input_shapes)
+        # We must set self.built since user defined build functions are not
+        # constrained to set self.built.
         self.built = True
 
       # Check input assumptions set after layer building, e.g. input shape.

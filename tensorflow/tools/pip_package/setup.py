@@ -62,7 +62,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.6.0',
     'setuptools <= 39.1.0',
-    'tensorboard >= 1.8.0',
+    'tensorboard >= 1.10.0, < 1.11.0',
     'termcolor >= 1.1.0',
 ]
 

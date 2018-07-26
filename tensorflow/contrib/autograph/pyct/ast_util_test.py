@@ -44,7 +44,7 @@ class AstUtilTest(test.TestCase):
         node, {qual_names.QN('a'): qual_names.QN('renamed_a')})
 
     self.assertIsInstance(node.body[0].value.left.id, str)
-    source, _ = compiler.ast_to_source(node)
+    source = compiler.ast_to_source(node)
     self.assertEqual(source.strip(), 'renamed_a + b')
 
   def test_rename_symbols_attributes(self):
@@ -54,7 +54,7 @@ class AstUtilTest(test.TestCase):
     node = ast_util.rename_symbols(
         node, {qual_names.from_str('b.c'): qual_names.QN('renamed_b_c')})
 
-    source, _ = compiler.ast_to_source(node)
+    source = compiler.ast_to_source(node)
     self.assertEqual(source.strip(), 'renamed_b_c = renamed_b_c.d')
 
   def test_rename_symbols_annotations(self):
@@ -97,10 +97,10 @@ class AstUtilTest(test.TestCase):
     d = ast_util.keywords_to_dict(keywords)
     # Make sure we generate a usable dict node by attaching it to a variable and
     # compiling everything.
-    output = parser.parse_str('b = 3')
-    output.body += (ast.Assign([ast.Name(id='d', ctx=ast.Store())], d),)
-    result, _ = compiler.ast_to_object(output)
-    self.assertDictEqual(result.d, {'a': 3, 'c': 1, 'd': 'e'})
+    node = parser.parse_str('def f(b): pass').body[0]
+    node.body.append(ast.Return(d))
+    result, _ = compiler.ast_to_object(node)
+    self.assertDictEqual(result.f(3), {'a': 3, 'c': 1, 'd': 'e'})
 
   def assertMatch(self, target_str, pattern_str):
     node = parser.parse_expression(target_str)
@@ -130,8 +130,8 @@ class AstUtilTest(test.TestCase):
                        'super(Bar, _).__init__(_)')
 
   def _mock_apply_fn(self, target, source):
-    target, _ = compiler.ast_to_source(target)
-    source, _ = compiler.ast_to_source(source)
+    target = compiler.ast_to_source(target)
+    source = compiler.ast_to_source(source)
     self._invocation_counts[(target.strip(), source.strip())] += 1
 
   def test_apply_to_single_assignments_dynamic_unpack(self):
@@ -157,23 +157,39 @@ class AstUtilTest(test.TestCase):
     })
 
   def test_parallel_walk(self):
-    ret = ast.Return(
-        ast.BinOp(
-            op=ast.Add(),
-            left=ast.Name(id='a', ctx=ast.Load()),
-            right=ast.Num(1)))
-    node = ast.FunctionDef(
-        name='f',
-        args=ast.arguments(
-            args=[ast.Name(id='a', ctx=ast.Param())],
-            vararg=None,
-            kwarg=None,
-            defaults=[]),
-        body=[ret],
-        decorator_list=[],
-        returns=None)
+    node = parser.parse_str(
+        textwrap.dedent("""
+      def f(a):
+        return a + 1
+    """))
     for child_a, child_b in ast_util.parallel_walk(node, node):
       self.assertEqual(child_a, child_b)
+
+  def test_parallel_walk_inconsistent_trees(self):
+    node_1 = parser.parse_str(
+        textwrap.dedent("""
+      def f(a):
+        return a + 1
+    """))
+    node_2 = parser.parse_str(
+        textwrap.dedent("""
+      def f(a):
+        return a + (a * 2)
+    """))
+    node_3 = parser.parse_str(
+        textwrap.dedent("""
+      def f(a):
+        return a + 2
+    """))
+    with self.assertRaises(ValueError):
+      for _ in ast_util.parallel_walk(node_1, node_2):
+        pass
+    # There is not particular reason to reject trees that differ only in the
+    # value of a constant.
+    # TODO(mdan): This should probably be allowed.
+    with self.assertRaises(ValueError):
+      for _ in ast_util.parallel_walk(node_1, node_3):
+        pass
 
 
 if __name__ == '__main__':

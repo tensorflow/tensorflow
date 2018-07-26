@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -378,7 +379,7 @@ Service::ExecuteParallelAndRegisterResult(
     ExecutionProfile* profile) {
   // Streams where the computation are launched, so we can wait on the streams
   // to complete.
-  std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<StreamPool::Ptr> streams;
   std::vector<std::unique_ptr<se::Timer>> timers;
 
   // Global data handles for the computation results, one for each computation.
@@ -405,7 +406,7 @@ Service::ExecuteParallelAndRegisterResult(
     CHECK_EQ(replicas.size(), arguments[i].size());
     std::vector<ScopedShapedBuffer> result_buffers;
     for (int64 replica = 0; replica < replicas.size(); ++replica) {
-      TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+      TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                           backend->BorrowStream(replicas[replica]));
       streams.push_back(std::move(stream));
 
@@ -517,13 +518,13 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         arguments,
     Backend* backend, const string& result_tag, ExecutionProfile* profile) {
   // Set up streams.
-  std::vector<Pool<se::Stream>::SmartPtr> streams;
+  std::vector<StreamPool::Ptr> streams;
 
   TF_ASSIGN_OR_RETURN(auto replicas,
                       Replicas(*backend, SingleComputationDeviceHandle()));
   TF_RET_CHECK(!replicas.empty());
   for (se::StreamExecutor* executor : replicas) {
-    TF_ASSIGN_OR_RETURN(Pool<se::Stream>::SmartPtr stream,
+    TF_ASSIGN_OR_RETURN(StreamPool::Ptr stream,
                         backend->BorrowStream(executor));
     streams.push_back(std::move(stream));
   }
@@ -535,7 +536,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
 
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
-  for (const Pool<se::Stream>::SmartPtr& stream : streams) {
+  for (const StreamPool::Ptr& stream : streams) {
     ExecutableRunOptions options;
     options.set_stream(stream.get());
     options.set_device_ordinal(stream->parent()->device_ordinal());

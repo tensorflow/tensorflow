@@ -292,6 +292,46 @@ struct Buffer : GenericBuffer {
   std::vector<DataType<A>> data;
 };
 
+class Shape {
+ public:
+  // For Shape, we stick to half-way encapsulation for now:
+  // we hide the raw dims_ member, but expose it raw by accessors
+  // because from some brainstorming, it's not at all easy to
+  // anticipate which flavor of more hermetic encapsulation would
+  // actually buy us future-proof-ness without being needlessly
+  // cumbersome.
+  Shape() {}
+  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
+
+  void ReplaceDims(std::initializer_list<int> dim_list) {
+    dims_ = std::vector<int>(dim_list);
+  }
+
+  const std::vector<int>& dims() const { return dims_; }
+  std::vector<int>* mutable_dims() { return &dims_; }
+  const int dimensions_count() const { return dims_.size(); }
+
+  // We still have that one convenience accessor to avoid
+  // the awkward double bracket issue:  shape.dims()[i].
+  int dims(int i) const {
+    // Always check for out-of-bounds accesses, even in optimized builds where
+    // standard assertions are disabled. Out-of-bounds access here is a common
+    // occurrence.
+    CHECK_GE(i, 0);
+    CHECK_GT(dims_.size(), i);
+    return dims_[i];
+  }
+
+  bool operator==(const Shape& comp) const {
+    return (this->dims_ == comp.dims());
+  }
+
+  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
+
+ private:
+  std::vector<int> dims_;
+};
+
 // Base class for all operator classes.
 struct Operator {
   // Non-default-constructible: only OperatorType-specific subclass
@@ -1469,6 +1509,8 @@ struct TensorFlowUnsupportedOperator : Operator {
   bool quantized = false;
   // Output data types
   std::vector<ArrayDataType> output_data_types;
+  // Output shapes.
+  std::vector<Shape> output_shapes;
 };
 
 // Softmax activation function.
@@ -1738,46 +1780,6 @@ struct Alloc {
 inline bool operator<(const Alloc& a, const Alloc& b) {
   return a.start < b.start;
 }
-
-class Shape {
- public:
-  // For Shape, we stick to half-way encapsulation for now:
-  // we hide the raw dims_ member, but expose it raw by accessors
-  // because from some brainstorming, it's not at all easy to
-  // anticipate which flavor of more hermetic encapsulation would
-  // actually buy us future-proof-ness without being needlessly
-  // cumbersome.
-  Shape() {}
-  Shape(std::initializer_list<int> dim_list) : dims_(dim_list) {}
-
-  void ReplaceDims(std::initializer_list<int> dim_list) {
-    dims_ = std::vector<int>(dim_list);
-  }
-
-  const std::vector<int>& dims() const { return dims_; }
-  std::vector<int>* mutable_dims() { return &dims_; }
-  const int dimensions_count() const { return dims_.size(); }
-
-  // We still have that one convenience accessor to avoid
-  // the awkward double bracket issue:  shape.dims()[i].
-  int dims(int i) const {
-    // Always check for out-of-bounds accesses, even in optimized builds where
-    // standard assertions are disabled. Out-of-bounds access here is a common
-    // occurrence.
-    CHECK_GE(i, 0);
-    CHECK_GT(dims_.size(), i);
-    return dims_[i];
-  }
-
-  bool operator==(const Shape& comp) const {
-    return (this->dims_ == comp.dims());
-  }
-
-  bool operator!=(const Shape& comp) const { return !((*this) == comp); }
-
- private:
-  std::vector<int> dims_;
-};
 
 // Array represents an array (either a constant parameter array or an
 // activations array) in a Model.

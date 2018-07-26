@@ -284,6 +284,13 @@ class Softmax(Layer):
 class ReLU(Layer):
   """Rectified Linear Unit activation function.
 
+  With default values, it returns element-wise `max(x, 0)`.
+
+  Otherwise, it follows:
+  `f(x) = max_value` for `x >= max_value`,
+  `f(x) = x` for `threshold <= x < max_value`,
+  `f(x) = negative_slope * (x - threshold)` otherwise.
+
   Input shape:
       Arbitrary. Use the keyword argument `input_shape`
       (tuple of integers, does not include the samples axis)
@@ -294,21 +301,39 @@ class ReLU(Layer):
 
   Arguments:
       max_value: float >= 0. Maximum activation value.
+      negative_slope: float >= 0. Negative slope coefficient.
+      threshold: float. Threshold value for thresholded activation.
   """
 
-  def __init__(self, max_value=None, **kwargs):
+  def __init__(self, max_value=None, negative_slope=0, threshold=0, **kwargs):
     super(ReLU, self).__init__(**kwargs)
-    self.support_masking = True
-    self.max_value = K.cast_to_floatx(max_value)
-    if self.max_value < 0.:
+    if max_value is not None and max_value < 0.:
       raise ValueError('max_value of Relu layer '
                        'cannot be negative value: ' + str(max_value))
+    if negative_slope < 0.:
+      raise ValueError('negative_slope of Relu layer '
+                       'cannot be negative value: ' + str(negative_slope))
+
+    self.support_masking = True
+    self.max_value = K.cast_to_floatx(max_value)
+    self.negative_slope = K.cast_to_floatx(negative_slope)
+    self.threshold = K.cast_to_floatx(threshold)
 
   def call(self, inputs):
-    return activations.relu(inputs, max_value=self.max_value)
+    # alpha is used for leaky relu slope in activations instead of
+    # negative_slope.
+    return activations.relu(
+        inputs,
+        alpha=self.negative_slope,
+        max_value=self.max_value,
+        threshold=self.threshold)
 
   def get_config(self):
-    config = {'max_value': self.max_value}
+    config = {
+        'max_value': self.max_value,
+        'negative_slope': self.negative_slope,
+        'threshold': self.threshold
+    }
     base_config = super(ReLU, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 

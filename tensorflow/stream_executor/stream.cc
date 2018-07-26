@@ -268,6 +268,12 @@ Stream::~Stream() {
   VLOG_CALL();
 
   temporary_memory_manager_.ForceDeallocateAll();
+  // Ensure the stream is completed.
+  auto status = BlockHostUntilDone();
+  if (!status.ok()) {
+    LOG(WARNING) << "Error blocking host until done in stream destructor: "
+                 << status;
+  }
 
   if (allocated_) {
     parent_->DeallocateStream(this);
@@ -1935,7 +1941,14 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
   mutex_lock lock(mu_);
   for (auto &stream : sub_streams_) {
     if (stream.first.get() == sub_stream) {
-      stream.second = true;
+      // Streams have a monotonic state machine; if a stream
+      // encounters an error, it will remain in an error state
+      // forever. Only allow re-use of ok streams.
+      //
+      // TODO(toddw): Improve this mechanism, if necessary, to drop
+      // failed streams completely.
+      const bool ready_to_reuse = sub_stream->ok();
+      stream.second = ready_to_reuse;
       return;
     }
   }

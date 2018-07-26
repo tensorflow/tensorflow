@@ -2,9 +2,8 @@
 
 The @{tf.train.Saver} class provides methods to save and restore models. The
 @{tf.saved_model.simple_save} function is an easy way to build a
-@{tf.saved_model$saved model} suitable for serving.
-[Estimators](@{$guide/estimators}) automatically save and restore
-variables in the `model_dir`.
+@{tf.saved_model$saved model} suitable for serving. [Estimators](./estimators)
+automatically save and restore variables in the `model_dir`.
 
 ## Save and restore variables
 

@@ -60,10 +60,11 @@ class ConversionTest(test.TestCase):
       return a + b
 
     program_ctx = self._simple_program_ctx()
-    ast, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    self.assertTrue(isinstance(ast, gast.FunctionDef), ast)
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, = nodes
+    self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
-    self.assertTrue(ns['b'] is b)
+    self.assertIs(ns['b'], b)
 
   def test_entity_to_graph_call_tree(self):
 
@@ -78,14 +79,11 @@ class ConversionTest(test.TestCase):
 
     self.assertTrue(f in program_ctx.dependency_cache)
     self.assertTrue(g in program_ctx.dependency_cache)
-    self.assertEqual('tf__f', program_ctx.dependency_cache[f].name)
-    # need one extra .body[0] in order to step past the try/except wrapper that
-    # is added automatically, the other for the with tf.name_scope('f') that is
-    # added automatically
-    self.assertEqual(
-        'tf__g',
-        program_ctx.dependency_cache[f].body[0].body[0].body[0].value.func.id)
-    self.assertEqual('tf__g', program_ctx.dependency_cache[g].name)
+    f_node = program_ctx.dependency_cache[f][0]
+    g_node = program_ctx.dependency_cache[g][0]
+    self.assertEqual('tf__f', f_node.name)
+    self.assertEqual('tf__g', f_node.body[0].body[0].body[0].value.func.id)
+    self.assertEqual('tf__g', g_node.name)
 
   def test_entity_to_graph_class_hierarchy(self):
 
@@ -118,9 +116,9 @@ class ConversionTest(test.TestCase):
     self.assertTrue(TestBase in program_ctx.dependency_cache)
     self.assertTrue(TestSubclass in program_ctx.dependency_cache)
     self.assertEqual('TfTestBase',
-                     program_ctx.dependency_cache[TestBase].body[-1].name)
+                     program_ctx.dependency_cache[TestBase][-1].name)
     self.assertEqual('TfTestSubclass',
-                     program_ctx.dependency_cache[TestSubclass].body[-1].name)
+                     program_ctx.dependency_cache[TestSubclass][-1].name)
 
   def test_entity_to_graph_class_hierarchy_whitelisted(self):
 
@@ -139,10 +137,9 @@ class ConversionTest(test.TestCase):
     self.assertTrue(TestSubclass in program_ctx.dependency_cache)
     self.assertFalse(training.Model in program_ctx.dependency_cache)
     self.assertEqual(
-        'Model',
-        program_ctx.dependency_cache[TestSubclass].body[0].names[0].name)
+        'Model', program_ctx.dependency_cache[TestSubclass][0].names[0].name)
     self.assertEqual('TfTestSubclass',
-                     program_ctx.dependency_cache[TestSubclass].body[-1].name)
+                     program_ctx.dependency_cache[TestSubclass][-1].name)
 
   def test_entity_to_graph_lambda(self):
     f = lambda a: a

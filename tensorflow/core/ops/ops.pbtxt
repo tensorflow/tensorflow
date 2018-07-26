@@ -4977,6 +4977,13 @@ op {
     name: "DstT"
     type: "type"
   }
+  attr {
+    name: "Truncate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "Ceil"

@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import functools
 
+import six
+
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -55,3 +57,32 @@ def fn_args(fn):
     if _is_bounded_method(fn):
       args.remove('self')
   return tuple(args)
+
+
+def get_func_name(func):
+  """Returns name of passed callable."""
+  _, func = tf_decorator.unwrap(func)
+  if callable(func):
+    if tf_inspect.isfunction(func):
+      return func.__name__
+    elif tf_inspect.ismethod(func):
+      return '%s.%s' % (six.get_method_self(func).__class__.__name__,
+                        six.get_method_function(func).__name__)
+    else:  # Probably a class instance with __call__
+      return type(func)
+  else:
+    raise ValueError('Argument must be callable')
+
+
+def get_func_code(func):
+  """Returns func_code of passed callable."""
+  _, func = tf_decorator.unwrap(func)
+  if callable(func):
+    if tf_inspect.isfunction(func) or tf_inspect.ismethod(func):
+      return six.get_function_code(func)
+    elif hasattr(func, '__call__'):
+      return six.get_function_code(func.__call__)
+    else:
+      raise ValueError('Unhandled callable, type=%s' % type(func))
+  else:
+    raise ValueError('Argument must be callable')

@@ -43,10 +43,13 @@ namespace {
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
-  context->ReportError(context, "Node number %d (%s) %s.\n", node_index,
-                       EnumNameBuiltinOperator(static_cast<BuiltinOperator>(
-                           registration.builtin_code)),
-                       message);
+  context->ReportError(
+      context, "Node number %d (%s) %s.\n", node_index,
+      registration.custom_name
+          ? registration.custom_name
+          : EnumNameBuiltinOperator(
+                static_cast<BuiltinOperator>(registration.builtin_code)),
+      message);
   return kTfLiteError;
 }
 
@@ -131,9 +134,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   context_.SetExternalContext = SetExternalContext;
 
   // Invalid to call these these except from TfLiteDelegate
-  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
-  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
-  SetForbiddenContextFunction(&context_.GetExecutionPlan);
+  SwitchToKernelContext();
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -278,8 +279,9 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
         int node_index;
 
         TfLiteDelegateParams* params = CreateDelegateParams(delegate, subgraph);
-        AddNodeWithParameters(subgraph.input_tensors, subgraph.output_tensors,
-                              nullptr, 0, params, &registration, &node_index);
+        TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
+            subgraph.input_tensors, subgraph.output_tensors, nullptr, 0, params,
+            &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : subgraph.output_tensors) {
@@ -924,6 +926,19 @@ void Interpreter::SetNumThreads(int num_threads) {
   }
 }
 
+void Interpreter::SwitchToDelegateContext() {
+  context_.GetNodeAndRegistration = GetNodeAndRegistration;
+  context_.ReplaceSubgraphsWithDelegateKernels =
+      ReplaceSubgraphsWithDelegateKernels;
+  context_.GetExecutionPlan = GetExecutionPlan;
+}
+
+void Interpreter::SwitchToKernelContext() {
+  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
+  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
+  SetForbiddenContextFunction(&context_.GetExecutionPlan);
+}
+
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
                                                   bool allow_dynamic_tensors) {
   if (!allow_dynamic_tensors) {
@@ -950,17 +965,12 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate,
 
   // TODO(aselle): Consider if it is worth storing pointers to delegates.
   // Setup additional context interface.
-  context_.GetNodeAndRegistration = GetNodeAndRegistration;
-  context_.ReplaceSubgraphsWithDelegateKernels =
-      ReplaceSubgraphsWithDelegateKernels;
-  context_.GetExecutionPlan = GetExecutionPlan;
+  SwitchToDelegateContext();
 
   TfLiteStatus status = delegate->Prepare(&context_, delegate);
 
   // Remove additional context info.
-  SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
-  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
-  SetForbiddenContextFunction(&context_.GetExecutionPlan);
+  SwitchToKernelContext();
 
   TF_LITE_ENSURE_OK(&context_, status);
 

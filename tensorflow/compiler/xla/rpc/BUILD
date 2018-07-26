@@ -56,7 +56,7 @@ tf_cc_test(
         ":grpc_stub",
         "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",

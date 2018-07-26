@@ -126,13 +126,10 @@ class BaseSaverBuilder(object):
           def f():
             with ops.device(v.device):
               x = v.read_value()
-            # To allow variables placed on non-CPU devices to be checkpointed,
-            # we copy them to CPU on the same machine first.
-            device_spec = pydev.DeviceSpec().parse_from_string(v.device)
-            device_spec.merge_from(
-                pydev.DeviceSpec().parse_from_string("/device:CPU:0"))
-            with ops.device(device_spec.to_string()):
-              return array_ops.identity(x)
+              # To allow variables placed on non-CPU devices to be checkpointed,
+              # we copy them to CPU on the same machine first.
+              with ops.device("/device:CPU:0"):
+                return array_ops.identity(x)
           return f
 
         self.handle_op = var.handle
@@ -1928,6 +1925,14 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   execution is enabled.
   @end_compatibility
   """  # pylint: disable=g-doc-exception
+  return _import_meta_graph_with_return_elements(
+      meta_graph_or_file, clear_devices, import_scope, **kwargs)[0]
+
+
+def _import_meta_graph_with_return_elements(
+    meta_graph_or_file, clear_devices=False, import_scope=None,
+    return_elements=None, **kwargs):
+  """Import MetaGraph, and return both a saver and returned elements."""
   if context.executing_eagerly():
     raise RuntimeError("Exporting/importing meta graphs is not supported when "
                        "eager execution is enabled. No graph exists when eager "
@@ -1937,12 +1942,22 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   else:
     meta_graph_def = meta_graph_or_file
 
-  imported_vars = meta_graph.import_scoped_meta_graph(
-      meta_graph_def,
-      clear_devices=clear_devices,
-      import_scope=import_scope,
-      **kwargs)
+  imported_vars, imported_return_elements = (
+      meta_graph.import_scoped_meta_graph_with_return_elements(
+          meta_graph_def,
+          clear_devices=clear_devices,
+          import_scope=import_scope,
+          return_elements=return_elements,
+          **kwargs))
 
+  saver = _create_saver_from_imported_meta_graph(
+      meta_graph_def, import_scope, imported_vars)
+  return saver, imported_return_elements
+
+
+def _create_saver_from_imported_meta_graph(
+    meta_graph_def, import_scope, imported_vars):
+  """Return a saver for restoring variable values to an imported MetaGraph."""
   if meta_graph_def.HasField("saver_def"):
     # Infer the scope that is prepended by `import_scoped_meta_graph`.
     scope = import_scope

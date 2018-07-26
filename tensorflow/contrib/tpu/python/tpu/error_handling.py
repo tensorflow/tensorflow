@@ -19,10 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
+import sys
 import threading
 import time
-import traceback
 
+import six
 
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
@@ -51,7 +52,7 @@ class ErrorRendezvous(object):
     self._num_sources = num_sources
     self._session_cancel_timer = None
 
-  def record_error(self, source, exception, session=None):
+  def record_error(self, source, exc_info, session=None):
     """Report an exception from the given source.
 
     If a session is passed, a timer will be registered to close it after a few
@@ -61,12 +62,12 @@ class ErrorRendezvous(object):
 
     Args:
       source: string, source of the error
-      exception: Exception being thrown
+      exc_info: Output from `sys.exc_info` (type, value, traceback)
       session: Session to close after delay.
     """
-    logging.info('Error recorded from %s: %s', source, exception)
-    stack_trace = traceback.format_exc()
-    self._errors[source] = (exception, stack_trace)
+    _, value, _ = exc_info
+    self._errors[source] = exc_info
+    logging.info('Error recorded from %s: %s', source, value)
 
     if session is not None and self._session_cancel_timer is None:
 
@@ -98,10 +99,10 @@ class ErrorRendezvous(object):
     """Context manager to report any errors within a block."""
     try:
       yield
-    except Exception as e:  # pylint: disable=broad-except
-      self.record_error(source, e, session)
+    except Exception:  # pylint: disable=broad-except
+      self.record_error(source, sys.exc_info(), session)
 
-  def raise_errors(self, timeout_sec=5):
+  def raise_errors(self, timeout_sec=0):
     """Wait for up to `timeout` seconds for all error sources to finish.
 
     Preferentially raise "interesting" errors (errors not in the
@@ -117,16 +118,15 @@ class ErrorRendezvous(object):
 
     kept_errors = [(k, v) for (k, v) in self._errors.items() if v is not None]
 
-    if not kept_errors:
-      return
-
     # First check for any interesting errors, then fall back on the session
     # cancelled errors etc.
-    for k, (exc, _) in kept_errors:
-      if isinstance(exc, _UNINTERESTING_ERRORS):
+    for k, (typ, value, traceback) in kept_errors:
+      if isinstance(value, _UNINTERESTING_ERRORS):
         continue
       else:
-        raise exc
+        logging.warn('Reraising captured error')
+        six.reraise(typ, value, traceback)
 
-    for k, (exc, _) in kept_errors:
-      raise exc
+    for k, (typ, value, traceback) in kept_errors:
+      logging.warn('Reraising captured error')
+      six.reraise(typ, value, traceback)

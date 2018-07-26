@@ -37,7 +37,9 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
+        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
@@ -384,12 +386,12 @@ cuda_py_tests(
         "test/base_test.py",
         # "test/batch_matmul_test.py",
         # "test/biasadd_matmul_test.py",
-        "test/binary_tensor_weight_broadcast_test.py",
-        "test/concatenation_test.py",
+        # "test/binary_tensor_weight_broadcast_test.py",  # Blocked by trt4 installation
+        # "test/concatenation_test.py",  # Blocked by trt4 installation
         "test/const_broadcast_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
-        "test/unary_test.py",
+        # "test/unary_test.py",  # Blocked by trt4 installation
         # "test/vgg_block_nchw_test.py",
         # "test/vgg_block_test.py",
     ],
