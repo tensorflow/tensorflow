@@ -147,6 +147,7 @@ py_library(
     deps = [
         ":distillation_loss",
         ":estimator_utils",
+        ":model",
         ":trainer_hooks",
         "//tensorflow/contrib/boosted_trees:gbdt_batch",
         "//tensorflow/contrib/boosted_trees:model_ops_py",
