@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -38,10 +38,10 @@ class ScopedInstructionProfiler;
 class HloExecutionProfiler {
  public:
   // If profiling is enabled, start an execution timer running.
-  explicit HloExecutionProfiler(
-      bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
-      const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams,
-      const HloComputation* computation);
+  explicit HloExecutionProfiler(bool do_profile, HloExecutionProfile* profile,
+                                se::Stream* stream,
+                                const std::vector<StreamPool::Ptr>& sub_streams,
+                                const HloComputation* computation);
 
   // If profiling is enabled, sets the total cycle count on the profile from the
   // execution timer.
@@ -72,7 +72,7 @@ class HloExecutionProfiler {
   double clock_rate_ghz_;
   HloExecutionProfile* profile_;
   se::Stream* stream_;
-  const std::vector<Pool<se::Stream>::SmartPtr>& sub_streams_;
+  const std::vector<StreamPool::Ptr>& sub_streams_;
   const HloComputation* computation_;
   std::stack<std::unique_ptr<se::Timer>> timers_;
   // Contains the HLO instructions for which we are currently measuring the

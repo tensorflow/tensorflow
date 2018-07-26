@@ -564,7 +564,7 @@ cc_library(
         ":computation_placer",
         ":device_memory_allocator",
         ":platform_util",
-        ":pool",
+        ":stream_pool",
         ":transfer_manager",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -598,6 +598,7 @@ cc_library(
         ":hlo_proto_util",
         ":platform_util",
         ":source_map_util",
+        ":stream_pool",
         ":transfer_manager",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -751,8 +752,8 @@ cc_library(
         ":hlo_execution_profile",
         ":hlo_graph_dumper",
         ":hlo_proto",
-        ":pool",
         ":shaped_buffer",
+        ":stream_pool",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
@@ -838,7 +839,7 @@ cc_library(
     hdrs = ["execution_tracker.h"],
     deps = [
         ":backend",
-        ":pool",
+        ":stream_pool",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -2715,21 +2716,25 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "pool",
-    hdrs = ["pool.h"],
+    name = "stream_pool",
+    srcs = ["stream_pool.cc"],
+    hdrs = ["stream_pool.h"],
     deps = [
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
 
 tf_cc_test(
-    name = "pool_test",
-    srcs = ["pool_test.cc"],
+    name = "stream_pool_test",
+    srcs = ["stream_pool_test.cc"],
     deps = [
-        ":pool",
+        ":stream_pool",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:stream_executor_no_cuda",
     ],
 )
 

@@ -114,6 +114,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:source_map_util",
+        "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@llvm//:support",

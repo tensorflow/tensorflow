@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -153,17 +154,17 @@ class XlaDevice : public LocalDevice {
   // stream are executed on the device. Operations include data
   // copying back and forth between CPU and the device, and
   // computations enqueued by XLA.
-  xla::Backend::StreamPtr stream_;
+  xla::StreamPool::Ptr stream_;
   // If true, only stream_ is valid and all computation and transfers use
   // stream_. If false, computation is performed by stream_ and transfers are
   // performed by host_to_device/device_to_host_stream.
   bool use_multiple_streams_;
   // If use_multiple_streams_, host to device transfers are performed using this
   // stream.
-  xla::Backend::StreamPtr host_to_device_stream_;
+  xla::StreamPool::Ptr host_to_device_stream_;
   // If use_multiple_streams_, device to host transfers are performed using this
   // stream.
-  xla::Backend::StreamPtr device_to_host_stream_;
+  xla::StreamPool::Ptr device_to_host_stream_;
   // Must we use XLA's transfer manager for correct host<->device transfers? if
   // false, we can use ThenMemcpy() instead.
   bool transfer_as_literal_;
