@@ -46,6 +46,28 @@ limitations under the License.
 namespace tflite {
 namespace eager {
 namespace kernel {
+
+// Controls the lifetime of tensor handles in a vector.
+class VectorOfHandles {
+ public:
+  explicit VectorOfHandles(int num_elements) : vector_(num_elements, nullptr) {}
+
+  ~VectorOfHandles() {
+    for (auto* handle : vector_) {
+      if (handle) handle->Unref();
+    }
+  }
+
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* GetVector() {
+    return &vector_;
+  }
+
+  tensorflow::TensorHandle* GetHandle(int index) { return vector_[index]; }
+
+ private:
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> vector_;
+};
+
 // Executes the TensorFlow op given by 'op_name', with the attributes specified
 // in 'nodedef'. Inputs and outputs are given as indices into the 'buffer_map'.
 tensorflow::Status ExecuteEagerOp(tensorflow::EagerContext* eager_context,
@@ -54,8 +76,9 @@ tensorflow::Status ExecuteEagerOp(tensorflow::EagerContext* eager_context,
                                   const std::vector<int>& inputs,
                                   const std::vector<int>& outputs) {
   const tensorflow::AttrTypeMap* attr_types;
-  TF_RETURN_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types),
+      " (while processing attributes of '", op_name, "')");
 
   tensorflow::EagerOperation op(eager_context, op_name.c_str(), attr_types);
   for (const auto& attr : nodedef.attr()) {
@@ -64,7 +87,8 @@ tensorflow::Status ExecuteEagerOp(tensorflow::EagerContext* eager_context,
 
   for (int input_index : inputs) {
     if (!buffer_map->HasTensor(input_index)) {
-      return tensorflow::errors::Internal("Invalid tensor index ", input_index);
+      return tensorflow::errors::Internal(
+          "Cannot read from invalid tensor index ", input_index);
     }
     auto* handle = new tensorflow::TensorHandle(
         buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
@@ -73,21 +97,20 @@ tensorflow::Status ExecuteEagerOp(tensorflow::EagerContext* eager_context,
   }
 
   int num_retvals = outputs.size();
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> retvals(
-      num_retvals, nullptr);
+  VectorOfHandles retvals(num_retvals);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      EagerExecute(&op, retvals.GetVector(), &num_retvals),
+      " (while executing '", op_name, "' via Eager)");
 
-  TF_RETURN_IF_ERROR(EagerExecute(&op, &retvals, &num_retvals));
-
-  if (outputs.size() != num_retvals) {
+  if (num_retvals != outputs.size()) {
     return tensorflow::errors::Internal(
         "Unexpected number of outputs from EagerExecute");
   }
 
   for (int i = 0; i < num_retvals; ++i) {
     const tensorflow::Tensor* tensor = nullptr;
-    TF_RETURN_IF_ERROR(retvals[i]->Tensor(&tensor));
+    TF_RETURN_IF_ERROR(retvals.GetHandle(i)->Tensor(&tensor));
     buffer_map->SetFromTensorFlow(outputs[i], *tensor);
-    retvals[i]->Unref();
   }
 
   return tensorflow::Status::OK();
@@ -145,7 +168,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     TfLiteRegistration* reg;
     context->GetNodeAndRegistration(context, node_index, &node, &reg);
 
-    op_data->nodes.emplace_back(OpNode());
+    op_data->nodes.push_back(OpNode());
     OpNode& node_data = op_data->nodes.back();
 
     node_data.name = "";
@@ -237,7 +260,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   for (auto tensor_index : op_data->subgraph_outputs) {
     if (!buffer_map->HasTensor(tensor_index)) {
-      context->ReportError(context, "Invalid tensor index %d", tensor_index);
+      context->ReportError(context, "Cannot write to invalid tensor index %d",
+                           tensor_index);
       return kTfLiteError;
     }
 
