@@ -27,6 +27,9 @@ def tflite_copts():
         str(Label("//tensorflow:ios_x86_64")): [
             "-msse4.1",
         ],
+        str(Label("//tensorflow:windows")): [
+            "/DTF_COMPILE_LIBRARY",
+        ],
         "//conditions:default": [],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
