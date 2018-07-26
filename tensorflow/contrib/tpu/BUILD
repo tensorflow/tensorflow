@@ -15,6 +15,7 @@ package(
     default_visibility = [
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
+        "//learning/deepmind:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
 )
