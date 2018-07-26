@@ -43,6 +43,27 @@ py_library(
     ],
 )
 
+py_library(
+    name = "resnet_preprocessing",
+    srcs = ["resnet_preprocessing.py"],
+    srcs_version = "PY2AND3",
+    tags = ["local"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_library(
+    name = "imagenet_input",
+    srcs = ["imagenet_input.py"],
+    srcs_version = "PY2AND3",
+    tags = ["local"],
+    deps = [
+        ":resnet_preprocessing",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 # Tests
 cuda_py_test(
     name = "ops_test",
