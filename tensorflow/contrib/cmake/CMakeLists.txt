@@ -456,7 +456,6 @@ if (tensorflow_ENABLE_GPU)
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
-    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h
     ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
