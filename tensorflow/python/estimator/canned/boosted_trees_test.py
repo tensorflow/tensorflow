@@ -1508,7 +1508,8 @@ class ModelFnTests(test_util.TensorFlowTestCase):
         l2=0.01,
         tree_complexity=0.,
         min_node_weight=0.,
-        center_bias=center_bias)
+        center_bias=center_bias,
+        pruning_mode='none')
 
     estimator_spec = boosted_trees._bt_model_fn(  # pylint:disable=protected-access
         features=features,

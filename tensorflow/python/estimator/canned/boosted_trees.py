@@ -46,7 +46,7 @@ from tensorflow.python.util.tf_export import estimator_export
 # TODO(nponomareva): Reveal pruning params here.
 _TreeHParams = collections.namedtuple('TreeHParams', [
     'n_trees', 'max_depth', 'learning_rate', 'l1', 'l2', 'tree_complexity',
-    'min_node_weight', 'center_bias'
+    'min_node_weight', 'center_bias', 'pruning_mode'
 ])
 
 _HOLD_FOR_MULTI_CLASS_SUPPORT = object()
@@ -410,9 +410,20 @@ class _EnsembleGrower(object):
     Args:
       tree_ensemble: A TreeEnsemble variable.
       tree_hparams: TODO. collections.namedtuple for hyper parameters.
+    Raises:
+      ValueError: when pruning mode is invalid or pruning is used and no tree
+      complexity is set.
     """
     self._tree_ensemble = tree_ensemble
     self._tree_hparams = tree_hparams
+    # pylint: disable=protected-access
+    self._pruning_mode_parsed = boosted_trees_ops.PruningMode.from_str(
+        tree_hparams.pruning_mode)
+
+    if (self._pruning_mode_parsed != boosted_trees_ops.PruningMode.NO_PRUNING
+        and tree_hparams.tree_complexity <= 0):
+      raise ValueError('For pruning, tree_complexity must be positive.')
+    # pylint: enable=protected-access
 
   @abc.abstractmethod
   def center_bias(self, center_bias_var, gradients, hessians):
@@ -500,7 +511,7 @@ class _EnsembleGrower(object):
         right_node_contribs=right_node_contribs_list,
         learning_rate=self._tree_hparams.learning_rate,
         max_depth=self._tree_hparams.max_depth,
-        pruning_mode=boosted_trees_ops.PruningMode.NO_PRUNING)
+        pruning_mode=self._pruning_mode_parsed)
     return grow_op
 
 
@@ -675,6 +686,7 @@ def _bt_model_fn(
   is_single_machine = (config.num_worker_replicas <= 1)
   sorted_feature_columns = sorted(feature_columns, key=lambda tc: tc.name)
   center_bias = tree_hparams.center_bias
+
   if train_in_memory:
     assert n_batches_per_layer == 1, (
         'When train_in_memory is enabled, input_fn should return the entire '
@@ -925,7 +937,8 @@ class BoostedTreesClassifier(estimator.Estimator):
                tree_complexity=0.,
                min_node_weight=0.,
                config=None,
-               center_bias=False):
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesClassifier` instance.
 
     Example:
@@ -999,7 +1012,11 @@ class BoostedTreesClassifier(estimator.Estimator):
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
-
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     Raises:
       ValueError: when wrong arguments are given or unsupported functionalities
@@ -1012,9 +1029,9 @@ class BoostedTreesClassifier(estimator.Estimator):
         n_classes, weight_column, label_vocabulary=label_vocabulary)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
-                                l1_regularization, l2_regularization,
-                                tree_complexity, min_node_weight, center_bias)
+    tree_hparams = _TreeHParams(
+        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access
@@ -1058,7 +1075,8 @@ class BoostedTreesRegressor(estimator.Estimator):
                tree_complexity=0.,
                min_node_weight=0.,
                config=None,
-               center_bias=False):
+               center_bias=False,
+               pruning_mode='none'):
     """Initializes a `BoostedTreesRegressor` instance.
 
     Example:
@@ -1125,6 +1143,11 @@ class BoostedTreesRegressor(estimator.Estimator):
         regression problems, the first node will return the mean of the labels.
         For binary classification problems, it will return a logit for a prior
         probability of label 1.
+      pruning_mode: one of 'none', 'pre', 'post' to indicate no pruning, pre-
+        pruning (do not split a node if not enough gain is observed) and post
+        pruning (build the tree up to a max depth and then prune branches with
+        negative gain). For pre and post pruning, you MUST provide
+        tree_complexity >0.
 
     Raises:
       ValueError: when wrong arguments are given or unsupported functionalities
@@ -1136,9 +1159,9 @@ class BoostedTreesRegressor(estimator.Estimator):
     head = _create_regression_head(label_dimension, weight_column)
 
     # HParams for the model.
-    tree_hparams = _TreeHParams(n_trees, max_depth, learning_rate,
-                                l1_regularization, l2_regularization,
-                                tree_complexity, min_node_weight, center_bias)
+    tree_hparams = _TreeHParams(
+        n_trees, max_depth, learning_rate, l1_regularization, l2_regularization,
+        tree_complexity, min_node_weight, center_bias, pruning_mode)
 
     def _model_fn(features, labels, mode, config):
       return _bt_model_fn(  # pylint: disable=protected-access

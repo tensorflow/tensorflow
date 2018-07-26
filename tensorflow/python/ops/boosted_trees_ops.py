@@ -37,7 +37,18 @@ from tensorflow.python.training import saver
 
 
 class PruningMode(object):
+  """Class for working with Pruning modes."""
   NO_PRUNING, PRE_PRUNING, POST_PRUNING = range(0, 3)
+
+  _map = {'none': NO_PRUNING, 'pre': PRE_PRUNING, 'post': POST_PRUNING}
+
+  @classmethod
+  def from_str(cls, mode):
+    if mode in cls._map:
+      return cls._map[mode]
+    else:
+      raise ValueError('pruning_mode mode must be one of: {}'.format(', '.join(
+          sorted(cls._map))))
 
 
 class _TreeEnsembleSavable(saver.BaseSaverBuilder.SaveableObject):
