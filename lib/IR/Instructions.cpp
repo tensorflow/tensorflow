@@ -22,7 +22,7 @@ using namespace mlir;
 /// Replace all uses of 'this' value with the new value, updating anything in
 /// the IR that uses 'this' to use the other value instead.  When this returns
 /// there are zero uses of 'this'.
-void SSAValue::replaceAllUsesWith(SSAValue *newValue) {
+void IRObjectWithUseList::replaceAllUsesWith(IRObjectWithUseList *newValue) {
   assert(this != newValue && "cannot RAUW a value with itself");
   while (!use_empty()) {
     use_begin()->set(newValue);
@@ -105,6 +105,10 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
 void Instruction::dropAllReferences() {
   for (auto &op : getInstOperands())
     op.drop();
+
+  if (auto *term = dyn_cast<TerminatorInst>(this))
+    for (auto &dest : term->getDestinations())
+      dest.drop();
 }
 
 //===----------------------------------------------------------------------===//
@@ -209,7 +213,7 @@ OperationInst *SSAValue::getDefiningInst() {
 }
 
 //===----------------------------------------------------------------------===//
-// Terminators
+// TerminatorInst
 //===----------------------------------------------------------------------===//
 
 /// Remove this terminator from its BasicBlock and delete it.
@@ -218,6 +222,25 @@ void TerminatorInst::eraseFromBlock() {
   getBlock()->setTerminator(nullptr);
   destroy();
 }
+
+/// Return the list of destination entries that this terminator branches to.
+MutableArrayRef<BBDestination> TerminatorInst::getDestinations() {
+  switch (getKind()) {
+  case Kind::Operation:
+    assert(0 && "not a terminator");
+  case Kind::Branch:
+    return cast<BranchInst>(this)->getDestinations();
+  case Kind::CondBranch:
+    return cast<CondBranchInst>(this)->getDestinations();
+  case Kind::Return:
+    // Return has no basic block successors.
+    return {};
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// ReturnInst
+//===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specific fields.
 ReturnInst *ReturnInst::create(ArrayRef<CFGValue *> operands) {
@@ -245,6 +268,15 @@ ReturnInst::~ReturnInst() {
     operand.~InstOperand();
 }
 
+//===----------------------------------------------------------------------===//
+// BranchInst
+//===----------------------------------------------------------------------===//
+
+BranchInst::BranchInst(BasicBlock *dest)
+    : TerminatorInst(Kind::Branch), dest(this, dest) {}
+
+void BranchInst::setDest(BasicBlock *block) { dest.set(block); }
+
 /// Add one value to the operand list.
 void BranchInst::addOperand(CFGValue *value) {
   operands.emplace_back(InstOperand(this, value));
@@ -255,6 +287,18 @@ void BranchInst::addOperands(ArrayRef<CFGValue *> values) {
   operands.reserve(operands.size() + values.size());
   for (auto *value : values)
     addOperand(value);
+}
+
+//===----------------------------------------------------------------------===//
+// CondBranchInst
+//===----------------------------------------------------------------------===//
+
+CondBranchInst::CondBranchInst(CFGValue *condition, BasicBlock *trueDest,
+                               BasicBlock *falseDest)
+    : TerminatorInst(Kind::CondBranch),
+      condition(condition), dests{{this}, {this}}, numTrueOperands(0) {
+  dests[falseIndex].set(falseDest);
+  dests[trueIndex].set(trueDest);
 }
 
 /// Add one value to the true operand list.

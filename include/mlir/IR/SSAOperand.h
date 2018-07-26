@@ -29,16 +29,16 @@ class SSAValue;
 
 /// A reference to a value, suitable for use as an operand of an instruction,
 /// statement, etc.
-class SSAOperand {
+class IROperand {
 public:
-  SSAOperand() {}
-  SSAOperand(SSAValue *value) : value(value) { insertIntoCurrent(); }
+  IROperand() {}
+  IROperand(IRObjectWithUseList *value) : value(value) { insertIntoCurrent(); }
 
   /// Return the current value being used by this operand.
-  SSAValue *get() const { return value; }
+  IRObjectWithUseList *get() const { return value; }
 
   /// Set the current value being used by this operand.
-  void set(SSAValue *newValue) {
+  void set(IRObjectWithUseList *newValue) {
     // It isn't worth optimizing for the case of switching operands on a single
     // value.
     removeFromCurrent();
@@ -54,16 +54,16 @@ public:
     back = nullptr;
   }
 
-  ~SSAOperand() { removeFromCurrent(); }
+  ~IROperand() { removeFromCurrent(); }
 
   /// Return the next operand on the use-list of the value we are referring to.
   /// This should generally only be used by the internal implementation details
   /// of the SSA machinery.
-  SSAOperand *getNextOperandUsingThisValue() { return nextUse; }
+  IROperand *getNextOperandUsingThisValue() { return nextUse; }
 
-  /// We support a move constructor so SSAOperands can be in vectors, but this
+  /// We support a move constructor so IROperand's can be in vectors, but this
   /// shouldn't be used by general clients.
-  SSAOperand(SSAOperand &&other) {
+  IROperand(IROperand &&other) {
     other.removeFromCurrent();
     value = other.value;
     other.value = nullptr;
@@ -75,17 +75,17 @@ public:
 private:
   /// The value used as this operand.  This can be null when in a
   /// "dropAllUses" state.
-  SSAValue *value = nullptr;
+  IRObjectWithUseList *value = nullptr;
 
   /// The next operand in the use-chain.
-  SSAOperand *nextUse = nullptr;
+  IROperand *nextUse = nullptr;
 
   /// This points to the previous link in the use-chain.
-  SSAOperand **back = nullptr;
+  IROperand **back = nullptr;
 
   /// Operands are not copyable or assignable.
-  SSAOperand(const SSAOperand &use) = delete;
-  SSAOperand &operator=(const SSAOperand &use) = delete;
+  IROperand(const IROperand &use) = delete;
+  IROperand &operator=(const IROperand &use) = delete;
 
   void removeFromCurrent() {
     if (!back)
@@ -105,52 +105,53 @@ private:
 };
 
 /// A reference to a value, suitable for use as an operand of an instruction,
-/// statement, etc.  SSAValueTy is the root type to use for values this tracks,
+/// statement, etc.  IRValueTy is the root type to use for values this tracks,
 /// and SSAUserTy is the type that will contain operands.
-template <typename SSAValueTy, typename SSAOwnerTy>
-class SSAOperandImpl : public SSAOperand {
+template <typename IRValueTy, typename IROwnerTy>
+class IROperandImpl : public IROperand {
 public:
-  SSAOperandImpl(SSAOwnerTy *owner) : owner(owner) {}
-  SSAOperandImpl(SSAOwnerTy *owner, SSAValueTy *value)
-      : SSAOperand(value), owner(owner) {}
+  IROperandImpl(IROwnerTy *owner) : owner(owner) {}
+  IROperandImpl(IROwnerTy *owner, IRValueTy *value)
+      : IROperand(value), owner(owner) {}
 
   /// Return the current value being used by this operand.
-  SSAValueTy *get() const { return (SSAValueTy *)SSAOperand::get(); }
+  IRValueTy *get() const { return (IRValueTy *)IROperand::get(); }
 
   /// Set the current value being used by this operand.
-  void set(SSAValueTy *newValue) { SSAOperand::set(newValue); }
+  void set(IRValueTy *newValue) { IROperand::set(newValue); }
 
   /// Return the user that owns this use.
-  SSAOwnerTy *getOwner() { return owner; }
-  const SSAOwnerTy *getOwner() const { return owner; }
+  IROwnerTy *getOwner() { return owner; }
+  const IROwnerTy *getOwner() const { return owner; }
 
   /// Return which operand this is in the operand list of the User.
   // TODO:  unsigned getOperandNumber() const;
 
-  /// We support a move constructor so SSAOperands can be in vectors, but this
+  /// We support a move constructor so IROperand's can be in vectors, but this
   /// shouldn't be used by general clients.
-  SSAOperandImpl(SSAOperandImpl &&other)
-      : SSAOperand(std::move(other)), owner(other.owner) {}
+  IROperandImpl(IROperandImpl &&other)
+      : IROperand(std::move(other)), owner(other.owner) {}
 
 private:
   /// The owner of this operand.
-  SSAOwnerTy *const owner;
+  IROwnerTy *const owner;
 };
 
-inline auto SSAValue::use_begin() const -> use_iterator {
-  return SSAValue::use_iterator(firstUse);
+inline auto IRObjectWithUseList::use_begin() const -> use_iterator {
+  return use_iterator(firstUse);
 }
 
-inline auto SSAValue::use_end() const -> use_iterator {
-  return SSAValue::use_iterator(nullptr);
+inline auto IRObjectWithUseList::use_end() const -> use_iterator {
+  return use_iterator(nullptr);
 }
 
-inline auto SSAValue::getUses() const -> llvm::iterator_range<use_iterator> {
+inline auto IRObjectWithUseList::getUses() const
+    -> llvm::iterator_range<use_iterator> {
   return {use_begin(), use_end()};
 }
 
 /// Returns true if this value has exactly one use.
-inline bool SSAValue::hasOneUse() const {
+inline bool IRObjectWithUseList::hasOneUse() const {
   return firstUse && firstUse->getNextOperandUsingThisValue() == nullptr;
 }
 

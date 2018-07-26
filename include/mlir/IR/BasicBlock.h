@@ -30,7 +30,8 @@ class BBArgument;
 /// Basic blocks form a graph (the CFG) which can be traversed through
 /// predecessor and successor edges.
 class BasicBlock
-  : public llvm::ilist_node_with_parent<BasicBlock, CFGFunction> {
+    : public IRObjectWithUseList,
+      public llvm::ilist_node_with_parent<BasicBlock, CFGFunction> {
 public:
   explicit BasicBlock();
   ~BasicBlock();

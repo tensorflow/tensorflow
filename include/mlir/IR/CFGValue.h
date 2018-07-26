@@ -39,7 +39,7 @@ enum class CFGValueKind {
 };
 
 /// The operand of a CFG Instruction contains a CFGValue.
-using InstOperand = SSAOperandImpl<CFGValue, Instruction>;
+using InstOperand = IROperandImpl<CFGValue, Instruction>;
 
 /// CFGValue is the base class for SSA values in CFG functions.
 class CFGValue : public SSAValueImpl<InstOperand, CFGValueKind> {

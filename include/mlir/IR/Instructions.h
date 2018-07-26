@@ -30,9 +30,13 @@
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
-class OperationInst;
 class BasicBlock;
 class CFGFunction;
+class OperationInst;
+class TerminatorInst;
+
+/// The operand of a CFG Instruction contains a CFGValue.
+using BBDestination = IROperandImpl<BasicBlock, TerminatorInst>;
 
 /// Instruction is the root of the operation and terminator instructions in the
 /// hierarchy.
@@ -292,6 +296,21 @@ public:
   /// Remove this terminator from its BasicBlock and delete it.
   void eraseFromBlock();
 
+  /// Return the list of destination entries that this terminator branches to.
+  MutableArrayRef<BBDestination> getDestinations();
+
+  ArrayRef<BBDestination> getDestinations() const {
+    return const_cast<TerminatorInst *>(this)->getDestinations();
+  }
+
+  unsigned getNumSuccessors() const { return getDestinations().size(); }
+
+  const BasicBlock *getSuccessor(unsigned i) const {
+    return getDestinations()[i].get();
+  }
+
+  BasicBlock *getSuccessor(unsigned i) { return getDestinations()[i].get(); }
+
 protected:
   TerminatorInst(Kind kind) : Instruction(kind) {}
   ~TerminatorInst() {}
@@ -305,7 +324,8 @@ public:
   ~BranchInst() {}
 
   /// Return the block this branch jumps to.
-  BasicBlock *getDest() const { return dest; }
+  BasicBlock *getDest() const { return dest.get(); }
+  void setDest(BasicBlock *block);
 
   unsigned getNumOperands() const { return operands.size(); }
 
@@ -321,16 +341,18 @@ public:
   /// Erase a specific argument from the arg list.
   // TODO: void eraseArgument(int Index);
 
+  MutableArrayRef<BBDestination> getDestinations() { return dest; }
+  ArrayRef<BBDestination> getDestinations() const { return dest; }
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::Branch;
   }
 
 private:
-  explicit BranchInst(BasicBlock *dest)
-      : TerminatorInst(Kind::Branch), dest(dest) {}
+  explicit BranchInst(BasicBlock *dest);
 
-  BasicBlock *dest;
+  BBDestination dest;
   std::vector<InstOperand> operands;
 };
 
@@ -338,6 +360,9 @@ private:
 /// condition to one of two possible successors. It may pass arguments to each
 /// successor.
 class CondBranchInst : public TerminatorInst {
+  // These are the indices into the dests list.
+  enum { trueIndex = 0, falseIndex = 1 };
+
 public:
   static CondBranchInst *create(CFGValue *condition, BasicBlock *trueDest,
                                 BasicBlock *falseDest) {
@@ -350,10 +375,10 @@ public:
   const CFGValue *getCondition() const { return condition; }
 
   /// Return the destination if the condition is true.
-  BasicBlock *getTrueDest() const { return trueDest; }
+  BasicBlock *getTrueDest() const { return dests[trueIndex].get(); }
 
   /// Return the destination if the condition is false.
-  BasicBlock *getFalseDest() const { return falseDest; }
+  BasicBlock *getFalseDest() const { return dests[falseIndex].get(); }
 
   // Support non-const operand iteration.
   using operand_iterator = OperandIterator<CondBranchInst, CFGValue>;
@@ -476,20 +501,21 @@ public:
   /// Add a list of values to the operand list.
   void addFalseOperands(ArrayRef<CFGValue *> values);
 
+  MutableArrayRef<BBDestination> getDestinations() { return dests; }
+  ArrayRef<BBDestination> getDestinations() const { return dests; }
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
     return inst->getKind() == Kind::CondBranch;
   }
 
 private:
-  explicit CondBranchInst(CFGValue *condition, BasicBlock *trueDest,
-                          BasicBlock *falseDest)
-      : TerminatorInst(Kind::CondBranch), condition(condition),
-        trueDest(trueDest), falseDest(falseDest), numTrueOperands(0) {}
+  CondBranchInst(CFGValue *condition, BasicBlock *trueDest,
+                 BasicBlock *falseDest);
 
   CFGValue *condition;
-  BasicBlock *trueDest;
-  BasicBlock *falseDest;
+  BBDestination dests[2]; // 0 is the true dest, 1 is the false dest.
+
   // Operand list. The true operands are stored first, followed by the false
   // operands.
   std::vector<InstOperand> operands;

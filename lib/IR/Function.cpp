@@ -108,6 +108,7 @@ CFGFunction::~CFGFunction() {
   for (auto &bb : *this) {
     for (auto &inst : bb)
       inst.dropAllReferences();
+    bb.getTerminator()->dropAllReferences();
   }
 }
 

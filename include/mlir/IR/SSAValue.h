@@ -29,8 +29,42 @@
 
 namespace mlir {
 class OperationInst;
-class SSAOperand;
+class IROperand;
 template <typename OperandType, typename OwnerType> class SSAValueUseIterator;
+
+class IRObjectWithUseList {
+public:
+  ~IRObjectWithUseList() {
+    assert(use_empty() && "Cannot destroy a value that still has uses!");
+  }
+
+  /// Returns true if this value has no uses.
+  bool use_empty() const { return firstUse == nullptr; }
+
+  /// Returns true if this value has exactly one use.
+  inline bool hasOneUse() const;
+
+  using use_iterator = SSAValueUseIterator<IROperand, void>;
+  using use_range = llvm::iterator_range<use_iterator>;
+
+  inline use_iterator use_begin() const;
+  inline use_iterator use_end() const;
+
+  /// Returns a range of all uses, which is useful for iterating over all uses.
+  inline use_range getUses() const;
+
+  /// Replace all uses of 'this' value with the new value, updating anything in
+  /// the IR that uses 'this' to use the other value instead.  When this returns
+  /// there are zero uses of 'this'.
+  void replaceAllUsesWith(IRObjectWithUseList *newValue);
+
+protected:
+  IRObjectWithUseList() {}
+
+private:
+  friend class IROperand;
+  IROperand *firstUse = nullptr;
+};
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
@@ -45,35 +79,20 @@ enum class SSAValueKind {
 /// This is the common base class for all values in the MLIR system,
 /// representing a computable value that has a type and a set of users.
 ///
-class SSAValue {
+class SSAValue : public IRObjectWithUseList {
 public:
-  ~SSAValue() {
-    assert(use_empty() && "Cannot destroy a value that still has uses!");
-  }
+  ~SSAValue() {}
 
   SSAValueKind getKind() const { return typeAndKind.getInt(); }
 
   Type *getType() const { return typeAndKind.getPointer(); }
 
-  /// Returns true if this value has no uses.
-  bool use_empty() const { return firstUse == nullptr; }
-
-  /// Returns true if this value has exactly one use.
-  inline bool hasOneUse() const;
-
-  using use_iterator = SSAValueUseIterator<SSAOperand, void>;
-  using use_range = llvm::iterator_range<use_iterator>;
-
-  inline use_iterator use_begin() const;
-  inline use_iterator use_end() const;
-
-  /// Returns a range of all uses, which is useful for iterating over all uses.
-  inline use_range getUses() const;
-
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
   /// there are zero uses of 'this'.
-  void replaceAllUsesWith(SSAValue *newValue);
+  void replaceAllUsesWith(SSAValue *newValue) {
+    IRObjectWithUseList::replaceAllUsesWith(newValue);
+  }
 
   /// If this value is the result of an OperationInst, return the instruction
   /// that defines it.
@@ -84,27 +103,24 @@ public:
 
 protected:
   SSAValue(SSAValueKind kind, Type *type) : typeAndKind(type, kind) {}
-
 private:
-  friend class SSAOperand;
   const llvm::PointerIntPair<Type *, 3, SSAValueKind> typeAndKind;
-  SSAOperand *firstUse = nullptr;
 };
 
 /// This template unifies the implementation logic for CFGValue and StmtValue
 /// while providing more type-specific APIs when walking use lists etc.
 ///
-/// SSAOperandTy is the concrete instance of SSAOperand to use (including
+/// IROperandTy is the concrete instance of IROperand to use (including
 /// substituted template arguments) and KindTy is the enum 'kind' discriminator
 /// that subclasses want to use.
 ///
-template <typename SSAOperandTy, typename KindTy>
+template <typename IROperandTy, typename KindTy>
 class SSAValueImpl : public SSAValue {
 public:
   // Provide more specific implementations of the base class functionality.
   KindTy getKind() const { return (KindTy)SSAValue::getKind(); }
 
-  // TODO: using use_iterator = SSAValueUseIterator<SSAOperandTy>;
+  // TODO: using use_iterator = SSAValueUseIterator<IROperandTy>;
   // TODO: using use_range = llvm::iterator_range<use_iterator>;
 
   // TODO: inline use_iterator use_begin() const;
@@ -122,10 +138,10 @@ protected:
 /// An iterator over all uses of a ValueBase.
 template <typename OperandType, typename OwnerType>
 class SSAValueUseIterator
-    : public std::iterator<std::forward_iterator_tag, SSAOperand> {
+    : public std::iterator<std::forward_iterator_tag, IROperand> {
 public:
   SSAValueUseIterator() = default;
-  explicit SSAValueUseIterator(SSAOperand *current) : current(current) {}
+  explicit SSAValueUseIterator(IROperand *current) : current(current) {}
   OperandType *operator->() const { return current; }
   OperandType &operator*() const { return current; }
 
