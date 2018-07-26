@@ -215,7 +215,12 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
       return false;
     }
-    if (ValueTypeAfterChange(value) == BF16) {
+    // We use the original type for the value because we are going to examine
+    // the uses of it, instead of the value itself. If ValueTypeAfterChange()
+    // were used, it would cause problems when there are aliasing buffers, i.e.,
+    // ResolveInconsistencyOfAliasingBuffers() would fail to revert the
+    // tentative change to BF16 even if the uses require F32.
+    if (value->shape().element_type() == BF16) {
       continue;
     }
     for (const HloUse& use : value->uses()) {
@@ -566,6 +571,9 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       }
       visited_computations->insert(visited_in_while.begin(),
                                    visited_in_while.end());
+    } else if (hlo->opcode() == HloOpcode::kFusion) {
+      ResolveInconsistencyOfAliasingBuffersHelper(
+          hlo->fused_instructions_computation(), visited_computations);
     }
   }
   // Now adjust parameters of called computations.
@@ -769,8 +777,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
   // propagation in reverse topological order.
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
-    if ((*comp_it)->IsFusionComputation()) {
-      // Fusion computations are handled when visiting the fusion instruction.
+    if (ContainsKey(computations_visited_in_backward_pass_, *comp_it)) {
       continue;
     }
     auto insts = (*comp_it)->MakeInstructionPostOrder();
@@ -778,6 +785,7 @@ StatusOr<bool> BFloat16Propagation::Run(HloModule* module) {
       DetermineInstructionPrecision(*inst_it,
                                     /*skip_parameters=*/true);
     }
+    computations_visited_in_backward_pass_.insert(*comp_it);
   }
 
   // It's possible that an instruction does not define a buffer, but the
