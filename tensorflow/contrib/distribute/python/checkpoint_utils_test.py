@@ -49,17 +49,23 @@ class CheckpointUtilsWithDistributionStrategyTest(
   def testInitFromCheckpoint(self, distribution, in_tower_mode):
     checkpoint_dir = self.get_temp_dir()
     with self.test_session() as session:
-      v1_value, _, _, _ = checkpoint_utils_test._create_checkpoints(
+      v1_value, v2_value, _, _ = checkpoint_utils_test._create_checkpoints(
           session, checkpoint_dir)
 
     def init_and_verify(g):
       v1 = variable_scope.get_variable("new_var1", [1, 10])
+      v2 = variable_scope.get_variable(
+          "new_var2", [10, 10],
+          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          aggregation=variable_scope.VariableAggregation.MEAN)
       checkpoint_utils.init_from_checkpoint(checkpoint_dir, {
           "var1": "new_var1",
+          "var2": "new_var2"
       })
       with self.test_session(graph=g) as session:
         session.run(variables.global_variables_initializer())
         self.assertAllEqual(v1_value, self.evaluate(v1))
+        self.assertAllEqual(v2_value, self.evaluate(v2))
 
     with ops.Graph().as_default() as g, distribution.scope():
       if in_tower_mode:

@@ -311,29 +311,16 @@ def _set_checkpoint_initializer(variable,
     # TODO(priyag, allenl): Use `SaveableObject.restore` instead here.
     if resource_variable_ops.is_resource_variable(variable):
       init_op = variable.assign(restore_op, read_value=False)
+      # TODO(priyag): Remove this when using `SaveableObject.restore` instead.
+      if hasattr(init_op, "_index"):
+        init_op = distribute_lib.get_distribution_strategy().group(init_op)
     else:
       init_op = state_ops.assign(variable, restore_op)
 
     # pylint:disable=protected-access
-    # We need special handling for `DistributedVariable`s as they contain
-    # mutliple actual variables. `assign` on a `DistributedVariable` returns a
-    # combined `init_op` which contains initializers for all the contained
-    # variables. We then set each underlying variable's `_initializer_op` using
-    # the corresponding `init_op`.
-    # TODO(priyag): Use `isinstance` checks when `DistributedVariable` class
-    # moves out of contrib.
-    if any(base.__name__ == "DistributedVariable"
-           for base in  variable.__class__.__bases__):
-      assert distribute_lib.get_cross_tower_context()
-      assert hasattr(variable, "_index")
-      for (d, v) in six.iteritems(variable._index):
-        v._initializer_op = init_op._index[d]
-        restore_op.set_shape(v.shape)
-        v._initial_value = restore_op
-    else:
-      variable._initializer_op = init_op
-      restore_op.set_shape(variable.shape)
-      variable._initial_value = restore_op
+    variable._initializer_op = init_op
+    restore_op.set_shape(variable.shape)
+    variable._initial_value = restore_op
     # pylint:enable=protected-access
 
 
