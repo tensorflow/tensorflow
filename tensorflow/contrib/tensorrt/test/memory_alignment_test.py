@@ -39,18 +39,12 @@ class MemoryAlignmentTest(trt_test.TfTrtIntegrationTestBase):
     g = ops.Graph()
     with g.as_default():
       inp = array_ops.placeholder(
-          dtype=dtype,
-          shape=[None] + input_dims[1:],
-          name=input_name)
+          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
       with g.device("/GPU:0"):
         e1 = constant_op.constant(
-            np.random.randn(1, 1, 3, 5),
-            name="kernel_1",
-            dtype=dtype)
+            np.random.randn(1, 1, 3, 5), name="kernel_1", dtype=dtype)
         e2 = constant_op.constant(
-            np.random.randn(1, 1, 5, 10),
-            name="kernel_2",
-            dtype=dtype)
+            np.random.randn(1, 1, 5, 10), name="kernel_2", dtype=dtype)
         conv = nn.conv2d(
             input=inp,
             filter=e1,
