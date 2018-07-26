@@ -171,6 +171,7 @@ py_test(
     name = "baseline_test",
     size = "medium",
     srcs = ["canned/baseline_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -207,6 +208,7 @@ py_test(
     name = "boosted_trees_test",
     size = "medium",
     srcs = ["canned/boosted_trees_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = [
         "optonly",
@@ -676,6 +678,7 @@ py_test(
     name = "keras_test",
     size = "large",
     srcs = ["keras_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
