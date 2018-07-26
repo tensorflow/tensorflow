@@ -198,11 +198,6 @@ public:
     return {getTrailingObjects<InstOperand>(), numOperands};
   }
 
-  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return getInstOperands()[idx];
-  }
-
   //===--------------------------------------------------------------------===//
   // Results
   //===--------------------------------------------------------------------===//
@@ -508,59 +503,16 @@ class ReturnInst final
     : public TerminatorInst,
       private llvm::TrailingObjects<ReturnInst, InstOperand> {
 public:
-  /// Create a new OperationInst with the specific fields.
+  /// Create a new ReturnInst with the specific fields.
   static ReturnInst *create(ArrayRef<CFGValue *> operands);
 
   unsigned getNumOperands() const { return numOperands; }
-
-  CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
-  const CFGValue *getOperand(unsigned idx) const {
-    return getInstOperand(idx).get();
-  }
-
-  void setOperand(unsigned idx, CFGValue *value) {
-    return getInstOperand(idx).set(value);
-  }
-
-  // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<ReturnInst, CFGValue>;
-
-  operand_iterator operand_begin() { return operand_iterator(this, 0); }
-
-  operand_iterator operand_end() {
-    return operand_iterator(this, getNumOperands());
-  }
-
-  llvm::iterator_range<operand_iterator> getOperands() {
-    return {operand_begin(), operand_end()};
-  }
-
-  // Support const operand iteration.
-  typedef OperandIterator<const ReturnInst, const CFGValue>
-      const_operand_iterator;
-
-  const_operand_iterator operand_begin() const {
-    return const_operand_iterator(this, 0);
-  }
-
-  const_operand_iterator operand_end() const {
-    return const_operand_iterator(this, getNumOperands());
-  }
-
-  llvm::iterator_range<const_operand_iterator> getOperands() const {
-    return {operand_begin(), operand_end()};
-  }
 
   ArrayRef<InstOperand> getInstOperands() const {
     return {getTrailingObjects<InstOperand>(), numOperands};
   }
   MutableArrayRef<InstOperand> getInstOperands() {
     return {getTrailingObjects<InstOperand>(), numOperands};
-  }
-
-  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return getInstOperands()[idx];
   }
 
   void destroy();
