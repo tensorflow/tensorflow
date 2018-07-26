@@ -210,6 +210,11 @@ class DistributedVariable(DistributedDelegate):
     # without this it will use `__getattr__` which will delegate to a component
     # variable.
     self._keras_initialized = False
+    # Typically, a `DistributedVariable`'s initializer is composed of the
+    # initializers of the components variables. However, in some cases, such as
+    # when restoring from a checkpoint, we may set the _initializer_op
+    # property on the entire `DistributedVariable`.
+    self._initializer_op = None
     super(DistributedVariable, self).__init__(index)
 
   def is_initialized(self, name=None):
@@ -239,9 +244,14 @@ class DistributedVariable(DistributedDelegate):
 
   @property
   def initializer(self):
-    # return grouped ops of all the var initializations of component values of
-    # the mirrored variable
-    return control_flow_ops.group([v.initializer for v in self._index.values()])
+    if self._initializer_op:
+      init_op = self._initializer_op
+    else:
+      # return grouped ops of all the var initializations of component values of
+      # the mirrored variable
+      init_op = control_flow_ops.group(
+          [v.initializer for v in self._index.values()])
+    return init_op
 
   @property
   def graph(self):
