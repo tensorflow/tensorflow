@@ -1923,6 +1923,74 @@ ENTRY %test_module {
   EXPECT_NE(slice_param, slice_while1);
 }
 
+TEST_F(WhileBufferAssignmentTest, ColocatedBufferWithConstant) {
+  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+
+  const char* module_str = R"(
+HloModule test_module
+
+%cond.v0 {
+  %param = s32[] parameter(0)
+  ROOT %constant = pred[] constant(true)
+}
+
+%cond.v1 {
+  %param.0 = s32[] parameter(0)
+  ROOT %constant.0 = pred[] constant(true)
+}
+
+%body.v0 {
+  ROOT %param.1 = s32[] parameter(0)
+}
+
+%body.v1 {
+  %param.2 = s32[] parameter(0)
+  ROOT add = s32[] add(%param.2, %param.2)
+}
+
+ENTRY %test_module {
+  %constant.42 = s32[] constant(42)
+  %while.0 = s32[] while(%constant.42), condition=%cond.v0, body=%body.v0
+  %mul = s32[] multiply(%while.0, %while.0)
+  %while.1 = s32[] while(%mul), condition=%cond.v1, body=%body.v1
+  ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(module_str));
+
+  // Run CopyInsertion and check if the graph constructed above doesn't need
+  // any copies inserted for BufferAssignment to run.
+  int64 instruction_count = module->instruction_count();
+  CopyInsertion copy_insertion;
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  ASSERT_EQ(instruction_count, module->instruction_count());
+
+  // Get the instructions in the module.
+  const HloInstruction* bcast = module->entry_computation()->root_instruction();
+  const HloInstruction* constant =
+      module->entry_computation()->GetInstructionWithName("constant.42");
+  ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
+  const HloInstruction* while1 = bcast->operand(0);
+  ASSERT_EQ(while1->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while0 = while1->operand(0)->operand(0);
+  ASSERT_EQ(while0->opcode(), HloOpcode::kWhile);
+
+  // Run buffer assignment.
+  auto assignment = RunBufferAssignment(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_constant,
+                          assignment->GetUniqueSlice(constant, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                          assignment->GetUniqueSlice(while0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                          assignment->GetUniqueSlice(while1, {}));
+
+  // The constant slice is part of the while0's colocation set (init value), but
+  // not merged into the while1's colocation set.
+  EXPECT_EQ(slice_constant, slice_while0);
+  EXPECT_NE(slice_constant, slice_while1);
+}
+
 // Tests that the colocated buffers for while instructions are properly assigned
 // during buffer assignment such that the result tuple elements are not assigned
 // to the same buffer.
