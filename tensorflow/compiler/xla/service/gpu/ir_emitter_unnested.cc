@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -231,11 +232,20 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     ++arg_it;
 
     kernel->addDereferenceableAttr(arg_no + 1, alloc->size());
+
+    const int64 alignment = [&] {
+      if (alloc->is_entry_computation_parameter()) {
+        return kEntryParameterAlignBytes;
+      } else if (alloc->is_constant()) {
+        return kConstantBufferAlignBytes;
+      } else {
+        return kXlaAllocatedBufferAlignBytes;
+      }
+    }();
+
     kernel->addParamAttr(
-        arg_no, llvm::Attribute::get(context, llvm::Attribute::Alignment,
-                                     alloc->is_entry_computation_parameter()
-                                         ? kEntryParameterAlignBytes
-                                         : kXlaAllocatedBufferAlignBytes));
+        arg_no,
+        llvm::Attribute::get(context, llvm::Attribute::Alignment, alignment));
 
     if (alloc->IsPreallocatedTempBuffer()) {
       fn_arg->setName("temp_buf");
@@ -1763,6 +1773,8 @@ Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
             .GetUniqueTopLevelSlice(tuple_element)
             .ok();
       });
+  // TODO(b/111689850): This logic isn't quite correct.
+  //
   // Tuples (especially tuples that are the final result of a computation) can
   // be so huge that if we were to emit a kernel that took each tuple element as
   // a parameter, we would exceed the max allowable number of parameters to a
@@ -1770,9 +1782,9 @@ Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
   // buffer, we collect their buffer addresses in a host array, and then copy
   // that array to the tuple's buffer.
   //
-  // Some tuple elements (e.g. const or bitcast of const) might not have a
-  // buffer -- their contents are stored in code. In that case, we fall back to
-  // emitting kernels which have access to their buffer addresses in code.
+  // Some tuple elements might not have an unambiguous buffer (like the result
+  // of a select-tuple). In that case, we fall back to emitting kernels which
+  // have access to their buffer addresses in code.
   if (all_tuple_elements_have_buffer) {
     std::vector<BufferAllocation::Slice> tuple_element_buffers;
     for (const HloInstruction* tuple_element : tuple->operands()) {
@@ -2299,11 +2311,6 @@ GetHloBufferSlices(const HloInstruction* hlo,
 
   // Adds entries for all subshapes of instr to `slices`.
   auto add_slices_for = [&](const HloInstruction* instr) {
-    // GPU constants don't have buffers; don't bother looking for one.
-    if (instr->IsConstant()) {
-      return;
-    }
-
     ShapeUtil::ForEachSubshape(
         instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
           if (slices.count({instr, index})) {
@@ -2365,21 +2372,25 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
 
   // We'll pass a pointer to each of the elements of `buffers` to our kernel, in
   // this order.
-  std::vector<const BufferAllocation*> buffers(buffers_needed.begin(),
-                                               buffers_needed.end());
-  std::sort(buffers.begin(), buffers.end(),
+  std::vector<const BufferAllocation*> non_constant_buffers;
+  c_copy_if(buffers_needed, std::back_inserter(non_constant_buffers),
+            [](const BufferAllocation* allocation) {
+              return !allocation->is_constant();
+            });
+
+  std::sort(non_constant_buffers.begin(), non_constant_buffers.end(),
             [](const BufferAllocation* a, const BufferAllocation* b) {
               return a->index() < b->index();
             });
 
-  llvm::Function* kernel = BuildKernelPrototype(*inst, buffers);
+  llvm::Function* kernel = BuildKernelPrototype(*inst, non_constant_buffers);
 
   // Build a map from a BufferAllocation to the corresponding argument in our
   // kernel.
   std::unordered_map<const BufferAllocation*, llvm::Value*> kernel_args;
   {
     auto arg_it = kernel->arg_begin();
-    auto buffers_it = buffers.begin();
+    auto buffers_it = non_constant_buffers.begin();
     for (; arg_it != kernel->arg_end(); ++arg_it, ++buffers_it) {
       kernel_args[*buffers_it] = arg_it;
     }
@@ -2397,8 +2408,16 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
             << " is found in slice " << slice.ToString() << " at GTE index "
             << gte_index.ToString();
 
-    llvm::Value* loc = b_.CreateInBoundsGEP(kernel_args.at(slice.allocation()),
-                                            {b_.getInt64(slice.offset())});
+    llvm::Value* loc;
+    if (slice.allocation()->is_constant()) {
+      loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
+          llvm_ir::AsStringRef(
+              ConstantBufferAllocationToGlobalName(*slice.allocation())));
+      CHECK_NE(loc, nullptr);
+    } else {
+      loc = b_.CreateInBoundsGEP(kernel_args.at(slice.allocation()),
+                                 {b_.getInt64(slice.offset())});
+    }
 
     // If gte_index is nonempty, we have to dereference `loc` to get to the
     // value we're ultimately interested in.
@@ -2421,9 +2440,9 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
         llvm::ConstantPointerNull::get(b_.getInt8PtrTy()));
   }
 
-  return MakeUnique<KernelThunk>(buffers, llvm_ir::AsString(kernel->getName()),
-                                 implements_whole_instruction ? inst : nullptr,
-                                 unroll_factor);
+  return MakeUnique<KernelThunk>(
+      non_constant_buffers, llvm_ir::AsString(kernel->getName()),
+      implements_whole_instruction ? inst : nullptr, unroll_factor);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(
@@ -2660,7 +2679,17 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
   // If the init_value was fused into this reduce we have to generate it first.
   if (fused && init_value_operand->opcode() != HloOpcode::kParameter) {
     CHECK_EQ(HloOpcode::kConstant, init_value_operand->opcode());
-    TF_RETURN_IF_ERROR(HandleConstant(const_cast<HloInstruction*>(init_value)));
+
+    const Literal& literal = init_value_operand->literal();
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        *module_, initializer->getType(),
+        /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
+        /*Name=*/"");
+    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    bindings_.BindHloToIrValue(*init_value_operand, global_for_const);
   }
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const IrArray::Index& index) {
@@ -3390,6 +3419,47 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
                          ir_emitter_context_->llvm_module());
 
   return true;
+}
+
+Status IrEmitterUnnested::EmitConstantGlobals() {
+  for (const BufferAllocation& allocation :
+       ir_emitter_context_->buffer_assignment().Allocations()) {
+    if (!allocation.is_constant()) {
+      continue;
+    }
+
+    const Literal& literal = LiteralForConstantAllocation(allocation);
+    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
+    llvm::ArrayType* global_type =
+        llvm::ArrayType::get(b_.getInt8Ty(), allocation.size());
+    llvm::Constant* initializer =
+        should_emit_initializer
+            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
+            : llvm::ConstantAggregateZero::get(global_type);
+    if (should_emit_initializer) {
+      VLOG(3) << "Emitted initializer for constant with shape "
+              << ShapeUtil::HumanString(literal.shape());
+    }
+
+    // These globals will be looked up by name by GpuExecutable so we need to
+    // give them an external linkage.  Not all of their uses are visible in the
+    // LLVM IR (e.g. TupleThunk) so we can't give then a linkage that merely
+    // preserves their names (like available_externally), we also need to ensure
+    // that they stick around even if they're "unused".
+    //
+    // We may have to be more more clever here in the future if we notice that
+    // we're keeping around too many globals because of their linkage.
+    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
+        global_type, /*isConstant=*/should_emit_initializer,
+        llvm::GlobalValue::ExternalLinkage,
+        /*Initializer=*/initializer,
+        llvm_ir::AsStringRef(ConstantBufferAllocationToGlobalName(allocation)));
+    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
+        global_for_const);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace gpu

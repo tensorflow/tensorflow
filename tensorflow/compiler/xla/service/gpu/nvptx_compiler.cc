@@ -540,11 +540,13 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          BufferSizeBytesFunction(),
-                          /*color_alignment=*/[](LogicalBuffer::Color) {
-                            return kXlaAllocatedBufferAlignBytes;
-                          }));
+      BufferAssigner::Run(
+          module.get(), hlo_schedule->ConsumeHloOrdering(),
+          BufferSizeBytesFunction(),
+          /*color_alignment=*/
+          [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
@@ -565,6 +567,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   HloComputation* entry_computation = module->entry_computation();
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context);
+
+  TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
+
   {
     XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend - IR emission");
     TF_RETURN_IF_ERROR(entry_computation->Accept(&ir_emitter));

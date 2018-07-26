@@ -92,6 +92,9 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter,
       KernelThunk* thunk);
 
+  // Emits LLVM global variables corresponding to constant instructions.
+  Status EmitConstantGlobals();
+
  private:
   // Builds the appropriate thunk for the instruction hlo and returns the owning
   // pointer to it. The caller needs to make sure `inst` outlives the lifetime
