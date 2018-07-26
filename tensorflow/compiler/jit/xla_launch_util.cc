@@ -64,11 +64,13 @@ xla::StatusOr<xla::OwningDeviceMemory> XlaAllocator::Allocate(
     int device_ordinal, uint64 size, bool retry_on_failure) {
   AllocationAttributes attrs;
   attrs.no_retry_on_failure = !retry_on_failure;
-  void* data =
-      wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
-  if (data == nullptr) {
-    return errors::ResourceExhausted("Out of memory while trying to allocate ",
-                                     size, " bytes.");
+  void* data = nullptr;
+  if (size != 0) {
+    data = wrapped_->AllocateRaw(Allocator::kAllocatorAlignment, size, attrs);
+    if (data == nullptr) {
+      return errors::ResourceExhausted(
+          "Out of memory while trying to allocate ", size, " bytes.");
+    }
   }
   return xla::OwningDeviceMemory(se::DeviceMemoryBase(data, size),
                                  device_ordinal, this);

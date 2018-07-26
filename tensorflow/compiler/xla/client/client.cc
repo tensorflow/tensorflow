@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -409,8 +410,10 @@ StatusOr<string> Client::ExecutionStatsAsString(
   return string("[Execution Statistics] not available.");
 }
 
-StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+StatusOr<ChannelHandle> Client::CreateChannelHandleByType(
+    ChannelHandle::ChannelType type) {
   CreateChannelHandleRequest request;
+  request.set_channel_type(type);
   CreateChannelHandleResponse response;
 
   VLOG(1) << "making create channel handle request";
@@ -422,6 +425,18 @@ StatusOr<ChannelHandle> Client::CreateChannelHandle() {
   }
 
   return response.channel();
+}
+
+StatusOr<ChannelHandle> Client::CreateChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_DEVICE);
+}
+
+StatusOr<ChannelHandle> Client::CreateHostToDeviceChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::HOST_TO_DEVICE);
+}
+
+StatusOr<ChannelHandle> Client::CreateDeviceToHostChannelHandle() {
+  return CreateChannelHandleByType(ChannelHandle::DEVICE_TO_HOST);
 }
 
 }  // namespace xla

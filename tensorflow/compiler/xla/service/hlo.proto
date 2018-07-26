@@ -155,6 +155,11 @@ message HloInstructionProto {
   repeated int64 replica_group_ids = 44;
   int64 all_reduce_id = 45;
   string cross_replica_sum_barrier = 46;
+
+  // Whether this Send/Recv instruction transfers data to/from the host. Only
+  // present for Send and Recv instructions and their SendDone and RecvDone
+  // partners.
+  bool is_host_transfer = 47;
 }
 
 // Serialization of HloComputation.
@@ -239,8 +244,9 @@ message BufferAllocationProto {
   int64 index = 1;
   int64 size = 2;
   bool is_thread_local = 3;
-  bool is_reusable = 4;
+  bool is_tuple = 11;
   bool is_entry_computation_parameter = 5;
+  bool is_constant = 12;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
   bool maybe_live_out = 7;

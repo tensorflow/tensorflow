@@ -35,7 +35,7 @@ class AssertsTest(converter_testing.TestCase):
     node, ctx = self.prepare(test_fn, {})
     node = asserts.transform(node, ctx)
 
-    self.assertTrue(isinstance(node.body[0].body[0].value, gast.Call))
+    self.assertTrue(isinstance(node.body[0].value, gast.Call))
 
 
 if __name__ == '__main__':

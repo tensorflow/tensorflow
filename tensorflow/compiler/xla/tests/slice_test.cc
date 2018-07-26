@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -344,7 +344,11 @@ INSTANTIATE_TEST_CASE_P(
         R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 2},
         R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 8},
         R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 7},
-        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125}
+        R1Spec{1024 * 1024 + 71, 3, 1024 * 512 - 9, 125},
+        R1Spec{16 * 1024 * 1024, 0, 16 * 1024 * 1024, 4097},
+        R1Spec{16 * 1024 * 1024, 0, 16 * 1024 * 1024, 4093},
+        R1Spec{16 * 1024 * 1024, 12 * 1024 + 17, 16 * 1024 * 1024 - 231, 4097},
+        R1Spec{16 * 1024 * 1024, 12 * 1024 + 17, 16 * 1024 * 1024 - 231, 4093}
     ),
     SliceR1TestDataToString
 );

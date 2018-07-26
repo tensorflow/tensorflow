@@ -628,16 +628,17 @@ def cast(x, dtype, name=None):
   ```
 
   The operation supports data types (for `x` and `dtype`) of
-  `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`, `float16`, `float32`,
-  `float64`, `complex64`, `complex128`, `bfloat16`. In case of casting from
-  complex types (`complex64`, `complex128`) to real types, only the real part
-  of `x` is returned. In case of casting from real types to complex types
-  (`complex64`, `complex128`), the imaginary part of the returned value is set
-  to `0`. The handling of complex types here matches the behavior of numpy.
+  `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
+  `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
+  In case of casting from complex types (`complex64`, `complex128`) to real
+  types, only the real part of `x` is returned. In case of casting from real
+  types to complex types (`complex64`, `complex128`), the imaginary part of the
+  returned value is set to `0`. The handling of complex types here matches the
+  behavior of numpy.
 
   Args:
     x: A `Tensor` or `SparseTensor` of numeric type. It could be
-      `uint8`, `int8`, `uint16`, `int16`, `int32`, `int64`,
+      `uint8`, `uint16`, `uint32`, `uint64`, `int8`, `int16`, `int32`, `int64`,
       `float16`, `float32`, `float64`, `complex64`, `complex128`, `bfloat16`.
     dtype: The destination type. The list of supported dtypes is the same
       as `x`.

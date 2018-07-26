@@ -47,7 +47,6 @@ class Wrapper(Layer):
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
-    self._track_checkpointable(layer, name='layer')
     # Tracks mapping of Wrapper inputs to inner layer inputs. Useful when
     # the inner layer has update ops that depend on its inputs (as opposed
     # to the inputs to the Wrapper layer).
@@ -168,6 +167,7 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
+    self._track_checkpointable(layer, name='layer')
 
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
@@ -417,6 +417,8 @@ class Bidirectional(Wrapper):
     self._num_constants = None
     super(Bidirectional, self).__init__(layer, **kwargs)
     self.input_spec = layer.input_spec
+    self._track_checkpointable(self.forward_layer, name='forward_layer')
+    self._track_checkpointable(self.backward_layer, name='backward_layer')
 
   @property
   def trainable(self):
@@ -526,7 +528,8 @@ class Bidirectional(Wrapper):
     else:
       return super(Bidirectional, self).__call__(inputs, **kwargs)
 
-  def call(self, inputs,
+  def call(self,
+           inputs,
            training=None,
            mask=None,
            initial_state=None,

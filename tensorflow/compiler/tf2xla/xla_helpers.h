@@ -19,7 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 

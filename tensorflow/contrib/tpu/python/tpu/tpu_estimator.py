@@ -22,9 +22,9 @@ import collections
 import copy
 import os
 import signal
+import sys
 import threading
 import time
-import traceback
 
 import numpy as np
 import six
@@ -32,6 +32,7 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
+from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
@@ -43,7 +44,6 @@ from tensorflow.contrib.training.python.training import hparam
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -68,7 +68,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import evaluation
-from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
@@ -367,16 +366,16 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                ctx,
                enqueue_ops,
                dequeue_ops,
-               run_infeed_loop_on_coordinator=True):
+               run_infeed_loop_on_coordinator=True,
+               rendezvous=None):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
+    self._rendezvous = rendezvous
 
     self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
-
-    self._session_cancel_timer = None
 
     self._feed_error = None
     self._finished = False
@@ -384,14 +383,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
-    self._init_ops = []
-    # For distributed sessions, we can't run initialize_system in a separate
-    # graph here because 'begin' is only invoked when the MonitoredSession is
-    # created. We need to reinitialize the system every time MonitoredSession
-    # creates an underlying tf.Session, so we initialize from Scaffold.finalize.
-    # See _get_and_wrap_scaffold for more details.
-    if self._master_job is None:
-      self._init_ops.append(tpu.initialize_system(job=self._master_job))
+    self._init_ops = [tpu.initialize_system(job=self._master_job)]
     self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
@@ -401,62 +393,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     for op in summary_writer_init_ops:
       self._finalize_ops.append(contrib_summary.flush(writer=op.inputs[0]))
 
-  def _log_error(self, session, error):
-    """Log an infeed or outfeed error.
-
-    This logs a short error message immediately, and schedules a timer to
-    emit the full stack trace and error message after a short period of time.
-    If the main session has terminated by the time the timer triggers, we
-    assume the real source of the error was from the main session and avoid
-    emitting a stack trace for the infeed.
-
-    Args:
-      session: `tf.Session`, session to be terminated error: exception that
-        triggered logging.
-      error: the Exception to log.
-    """
-    logging.warning(
-        '\n\n'
-        'Error occurred during infeed/outfeed.  This may be due to a compile '
-        'error in the main session.  Waiting for a short time for the main '
-        'session to come back.\n\n%s', error)
-
-    self._feed_error = traceback.format_exc()
-
-    # If we've already encountered a feed error, don't schedule another
-    # cancellation op.
-    if self._session_cancel_timer:
-      return
-
-    def _cancel_session():
-      """Close the session to avoid the main thread from hanging.
-
-      If input pipeline triggers any error, the infeed thread dies but the main
-      thread for TPU computation waits for the infeed enqueue forever. Close the
-      Session to cancel the main thread Session.run execution.
-
-      We sleep for a few seconds before closing to give some time for the TPU
-      compilation error, if any, propagating, from TPU to CPU host. Compilation
-      errors should be reported by the main thread so that the program can be
-      interrupted and users can take action.  Due to a race condition, the
-      infeed thread might see an error first.  Closing the session here
-      immediately would result in a session cancellation exception in the main
-      thread, instead of the expected compile error.  User code that depends on
-      having the proper exception type will therefore be confused.
-      """
-      time.sleep(5)
-
-      # If the main session is still running, the infeed/outfeed errors are
-      # legitimate, and should be logged.
-      if not self._finished and self._feed_error:
-        logging.error('Feed error: %s', self._feed_error)
-        logging.error('Closing session.  A RuntimeError should follow.')
-        session.close()
-
-    self._session_cancel_timer = threading.Thread(target=_cancel_session)
-    self._session_cancel_timer.daemon = True
-    self._session_cancel_timer.start()
-
   def _run_infeed(self, queue_ctx, session):
     logging.info('Starting infeed thread controller.')
     if self._initial_infeed_sleep_secs:
@@ -465,7 +401,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       time.sleep(self._initial_infeed_sleep_secs)
       logging.info('%s thread starting after sleep', self._name)
 
-    try:
+    with self._rendezvous.catch_errors(source='infeed', session=session):
       if self._run_infeed_loop_on_coordinator:
         for count, steps in enumerate(queue_ctx.read_iteration_counts()):
           for i in xrange(steps):
@@ -475,25 +411,21 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         for _ in queue_ctx.read_iteration_counts():
           session.run(self._enqueue_ops)
       logging.info('Infeed thread finished, shutting down.')
-    except Exception as e:  # pylint: disable=broad-except
-      self._log_error(session, e)
 
   def _run_outfeed(self, queue_ctx, session):
     logging.info('Starting outfeed thread controller.')
-    try:
+    with self._rendezvous.catch_errors(source='outfeed', session=session):
       for count, steps in enumerate(queue_ctx.read_iteration_counts()):
         for i in xrange(steps):
           logging.debug('Outfeed dequeue for iteration (%d, %d)', count, i)
           session.run(self._dequeue_ops)
       logging.info('Outfeed thread finished, shutting down.')
-    except Exception as e:  # pylint: disable=broad-except
-      self._log_error(session, e)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpQueueContext(name=name, target=target, args=args)
 
   def after_create_session(self, session, coord):
-    logging.info('Running init_ops')
+    logging.info('Init TPU system')
     session.run(self._init_ops,
                 options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
 
@@ -506,11 +438,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def before_run(self, run_context):
     self._feed_error = None
 
-    # Wait for the cancellation timer to complete before continuing.
-    if self._session_cancel_timer:
-      self._session_cancel_timer.join()
-      self._session_cancel_timer = None
-
     iterations = run_context.session.run(self._iterations_per_loop_var)
 
     logging.info('Enqueue next (%d) batch(es) of data to infeed.', iterations)
@@ -521,16 +448,14 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._outfeed_controller.send_next_batch_signal(iterations)
 
   def end(self, session):
-    if self._session_cancel_timer:
-      logging.warning('Feed error occurred; waiting for message.')
-      self._session_cancel_timer.join()
-
     self._finished = True
     logging.info('Stop infeed thread controller')
     self._infeed_controller.join()
+    self._rendezvous.record_done('infeed')
 
     logging.info('Stop output thread controller')
     self._outfeed_controller.join()
+    self._rendezvous.record_done('outfeed')
 
     logging.info('Shutdown TPU system.')
     session.run(self._finalize_ops)
@@ -538,9 +463,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops):
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
-        ctx, enqueue_ops, dequeue_ops, run_infeed_loop_on_coordinator=False)
+        ctx, enqueue_ops, dequeue_ops, run_infeed_loop_on_coordinator=False,
+        rendezvous=rendezvous)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpSignalOnceQueueContext(name=name, target=target, args=args)
@@ -710,8 +636,6 @@ def generate_per_core_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -846,8 +770,6 @@ def generate_per_host_v2_enqueue_ops_fn_for_host(
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(per_host_sharded_inputs[0]))
     captured_infeed_queue.capture(infeed_queue)
-    infeed_queue.set_configuration_from_sharded_input_tensors(
-        per_host_sharded_inputs)
 
     per_host_enqueue_ops = infeed_queue.generate_enqueue_ops(
         per_host_sharded_inputs, tpu_ordinal_function=tpu_ordinal_function_impl)
@@ -869,14 +791,23 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
 
     is_dataset = inputs.is_dataset
     if ctx.mode == model_fn_lib.ModeKeys.PREDICT:
-      raise TypeError('Mode PREDICT not yet supported in BROADCAST mode.')
+      if not is_dataset:
+        raise TypeError(
+            'For mode PREDICT, `input_fn` must return `Dataset` instead of '
+            '`features` and `labels`.')
 
-    hooks.append(inputs.dataset_initializer_hook())
+      inputs = _InputsWithStoppingSignals(
+          dataset=inputs.dataset,
+          batch_size=ctx.batch_size_for_input_fn,
+          add_padding=True)
+
+    if is_dataset:
+      hooks.append(inputs.dataset_initializer_hook())
     num_replicas_per_host = ctx.num_of_replicas_per_host
 
   def tpu_ordinal_function_impl(replica_id):
     if ctx.device_assignment:
-      return ctx.device_assignment.tpu_ordinal(replica_id=replica_id)
+      return ctx.device_assignment.tpu_ordinal(replica=replica_id)
     else:
       return replica_id % num_replicas_per_host
 
@@ -887,6 +818,7 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     """Generates enqueue ops for all the hosts."""
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
+    signals = None
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -896,11 +828,13 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
           # hosts).
           if flattened_inputs is None:
             features, labels = inputs.features_and_labels()  # Calls get_next()
+            signals = inputs.signals()
+
             inputs_structure_recorder.validate_and_record_structure(
-                features, labels)
+                features, labels, signals)
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
-                    features, labels))
+                    features, labels, signals))
           broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
@@ -910,7 +844,14 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
         broadcasted_inputs,
         tpu_ordinal_function=tpu_ordinal_function_impl,
         placement_function=device_function_impl)
-    return enqueue_ops
+
+    if signals is None:
+      return enqueue_ops
+    else:
+      return {
+          'ops': enqueue_ops,
+          'signals': signals,
+      }
 
   return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
@@ -1157,9 +1098,11 @@ class _InputPipeline(object):
       all_hooks.extend(hooks)
       if is_dataset:
         run_infeed_loop_on_coordinator = False
-        enqueue_ops.append(
-            _wrap_computation_in_while_loop(
-                device=host_device, op_fn=enqueue_ops_fn))
+        wrap_fn = (
+            _wrap_computation_in_while_loop
+            if self._ctx.mode != model_fn_lib.ModeKeys.PREDICT else
+            _wrap_computation_in_while_loop_with_stopping_signals)
+        enqueue_ops.append(wrap_fn(device=host_device, op_fn=enqueue_ops_fn))
       else:
         enqueue_ops.append(enqueue_ops_fn())
       infeed_queues.append(captured_infeed_queue.get())
@@ -1349,7 +1292,8 @@ class _ModelFnWrapper(object):
       loss = tpu_estimator_spec.loss
       captured_scaffold_fn.capture(tpu_estimator_spec.scaffold_fn)
       to_record = {}
-      to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
+      if tpu_estimator_spec.eval_metrics:
+        to_record['eval_metrics'] = tpu_estimator_spec.eval_metrics
       if tpu_estimator_spec.host_call is not None:
         # We assume that evaluate won't update global step, so we don't wrap
         # this host_call.
@@ -1652,7 +1596,7 @@ class _OutfeedHostCall(object):
       RuntimeError: If outfeed tensor is scalar.
     """
     if not self._names:
-      return []
+      return {}
 
     ret = {}
     # For each i, dequeue_ops[i] is a list containing the tensors from all
@@ -1671,11 +1615,13 @@ class _OutfeedHostCall(object):
     # Outfeed ops execute on each replica's first logical core. Note: we must
     # constraint it such that we have at most one outfeed dequeue and enqueue
     # per replica.
-    tpu_device_placement_fn = self._ctx.tpu_device_placement_function
     for i in xrange(self._ctx.num_replicas):
-      with ops.device(tpu_device_placement_fn(i)):
+      host_device, ordinal_id = self._ctx.device_for_replica(i)
+      with ops.device(host_device):
         outfeed_tensors = tpu_ops.outfeed_dequeue_tuple(
-            dtypes=tensor_dtypes, shapes=tensor_shapes)
+            dtypes=tensor_dtypes,
+            shapes=tensor_shapes,
+            device_ordinal=ordinal_id)
         for j, item in enumerate(outfeed_tensors):
           dequeue_ops[j].append(item)
 
@@ -1799,6 +1745,9 @@ class InstallSignalHandlerHook(session_run_hook.SessionRunHook):
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
+  TPUEstimator also supports training on CPU and GPU. You don't need to define
+  a separate `tf.estimator.Estimator`.
+
   TPUEstimator handles many of the details of running on TPU devices, such as
   replicating inputs and models for each core, and returning to host
   periodically to run hooks.
@@ -1836,7 +1785,8 @@ class TPUEstimator(estimator_lib.Estimator):
   Current limitations:
   --------------------
 
-  1. TPU evaluation only works on a single host (one TPU worker).
+  1. TPU evaluation only works on a single host (one TPU worker) except
+     BROADCAST mode.
 
   2. `input_fn` for evaluation should **NOT** raise an end-of-input exception
      (`OutOfRangeError` or `StopIteration`). And all evaluation steps and all
@@ -2122,6 +2072,7 @@ class TPUEstimator(estimator_lib.Estimator):
     self._export_to_tpu = export_to_tpu
 
     self._is_input_fn_invoked = None
+    self._rendezvous = {}
 
   def _add_meta_graph_for_mode(self,
                                builder,
@@ -2365,6 +2316,65 @@ class TPUEstimator(estimator_lib.Estimator):
     """
     pass
 
+  def train(self,
+            input_fn,
+            hooks=None,
+            steps=None,
+            max_steps=None,
+            saving_listeners=None):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.TRAIN] = rendezvous
+    try:
+      return super(TPUEstimator, self).train(
+          input_fn=input_fn, hooks=hooks, steps=steps, max_steps=max_steps,
+          saving_listeners=saving_listeners
+      )
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('training_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('training_loop')
+      rendezvous.raise_errors()
+
+  def evaluate(self, input_fn, steps=None, hooks=None, checkpoint_path=None,
+               name=None):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.EVAL] = rendezvous
+    try:
+      return super(TPUEstimator, self).evaluate(
+          input_fn, steps=steps, hooks=hooks, checkpoint_path=checkpoint_path,
+          name=name
+      )
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('evaluation_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('evaluation_loop')
+      rendezvous.raise_errors()
+
+  def predict(self,
+              input_fn,
+              predict_keys=None,
+              hooks=None,
+              checkpoint_path=None,
+              yield_single_examples=True):
+    rendezvous = error_handling.ErrorRendezvous(num_sources=3)
+    self._rendezvous[model_fn_lib.ModeKeys.PREDICT] = rendezvous
+    try:
+      for result in super(TPUEstimator, self).predict(
+          input_fn=input_fn,
+          predict_keys=predict_keys,
+          hooks=hooks,
+          checkpoint_path=checkpoint_path,
+          yield_single_examples=yield_single_examples):
+        yield result
+    except Exception:  # pylint: disable=broad-except
+      rendezvous.record_error('prediction_loop', sys.exc_info())
+    finally:
+      rendezvous.record_done('prediction_loop')
+      rendezvous.raise_errors()
+
+    rendezvous.record_done('prediction_loop')
+    rendezvous.raise_errors()
+
   def _augment_model_fn(self, model_fn, batch_axis):
     """Returns a new model_fn, which wraps the TPU support."""
 
@@ -2459,7 +2469,9 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   host_ops,
                   run_infeed_loop_on_coordinator=(
-                      run_infeed_loop_on_coordinator)),
+                      run_infeed_loop_on_coordinator),
+                  rendezvous=self._rendezvous[mode],
+              ),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
@@ -2527,7 +2539,8 @@ class TPUEstimator(estimator_lib.Estimator):
           host_call_ret = host_calls.create_tpu_hostcall()
           eval_metric_ops = {}
           eval_update_ops = []
-          for k, v in host_call_ret['eval_metrics'].items():
+
+          for k, v in host_call_ret.get('eval_metrics', {}).items():
             eval_metric_ops[k] = (v[0], dummy_update_op)
             eval_update_ops.append(v[1])
 
@@ -2541,7 +2554,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   eval_update_ops + host_ops,
                   run_infeed_loop_on_coordinator=(
-                      run_infeed_loop_on_coordinator)),
+                      run_infeed_loop_on_coordinator),
+                  rendezvous=self._rendezvous[mode]),
           ] + input_hooks
 
           return model_fn_lib.EstimatorSpec(
@@ -2607,8 +2621,8 @@ class TPUEstimator(estimator_lib.Estimator):
 
         hooks = [
             _StoppingPredictHook(scalar_stopping_signal),
-            TPUInfeedOutfeedSessionHookForPrediction(ctx, enqueue_ops,
-                                                     host_ops),
+            TPUInfeedOutfeedSessionHookForPrediction(
+                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode]),
         ] + input_hooks
 
         return model_fn_lib.EstimatorSpec(
@@ -2709,7 +2723,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       outputs_from_all_shards=False,
       device_assignment=ctx.device_assignment)
 
-  scaffold = _get_and_wrap_scaffold(captured_scaffold_fn, ctx)
+  scaffold = _get_scaffold(captured_scaffold_fn)
   return loss, host_calls, scaffold
 
 
@@ -2732,7 +2746,7 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       outputs_from_all_shards=False,
       device_assignment=ctx.device_assignment)
 
-  scaffold = _get_and_wrap_scaffold(captured_scaffold_fn, ctx)
+  scaffold = _get_scaffold(captured_scaffold_fn)
   return loss, host_call, scaffold
 
 
@@ -2760,7 +2774,7 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       num_shards=num_cores,
       outputs_from_all_shards=False)
 
-  scaffold = _get_and_wrap_scaffold(captured_scaffold_fn, ctx)
+  scaffold = _get_scaffold(captured_scaffold_fn)
   return dummy_predict_op, host_calls, scaffold
 
 
@@ -2850,20 +2864,8 @@ class _CapturedObject(object):
     return self._object
 
 
-def _get_and_wrap_scaffold(captured_scaffold_fn, ctx):
-  """Retrieves the Scaffold from `captured_scaffold_fn`.
-
-  Also wraps the scaffold's finalize method to initialize the TPU after the
-  graph is finalized.
-
-  Args:
-    captured_scaffold_fn: a `_CapturedObject` containing a scaffold_fn.
-    ctx: A `_InternalTPUContext` instance used to initialize the TPU.
-
-  Returns:
-    The Scaffold produced by captured_scaffold_fn, wrapped to initialize the TPU
-    after the graph is finalized.
-  """
+def _get_scaffold(captured_scaffold_fn):
+  """Retrieves the Scaffold from `captured_scaffold_fn`."""
   with _CapturingContext(message='Inside scaffold_fn'):
     scaffold_fn = captured_scaffold_fn.get()
     if scaffold_fn:
@@ -2874,64 +2876,14 @@ def _get_and_wrap_scaffold(captured_scaffold_fn, ctx):
     else:
       scaffold = None
 
-  if scaffold is None:
-    # When master_address is None, we are using DirectSession, so we can't
-    # invoke initialize_system from finalize. See comments below.
-    if ctx.master_address() is None:
-      return scaffold
-    scaffold = monitored_session.Scaffold()
+  if scaffold:
+    wrapped_finalize = scaffold.finalize
 
-  wrapped_finalize = scaffold.finalize
+    def _finalize():
+      with _CapturingContext('Inside Scaffold.finalize'):
+        wrapped_finalize()
 
-  def _finalize():
-    """Invoke wrapped_finalize and initialize the TPU."""
-    with _CapturingContext('Inside Scaffold.finalize'):
-      wrapped_finalize()
-    # Run tpu.initialize_system in its own graph after finalizing the main graph
-    # for distributed sessions. This is necessary because the TPU must be
-    # initialized before the TPU graph rewrite pass runs. We can't put the
-    # initialization op in the main graph because the main graph also contains
-    # replicate ops created by tpu.shard. If we tried to run initialization from
-    # the main graph, the TPU graph rewrite pass would rewrite the replicate ops
-    # before actually evaluating the initialization ops.
-    #
-    # For distributed sessions, the master may independently restart. After a
-    # master restarts, the rewrite pass runs again when any op in the main graph
-    # runs, so we must reinitialize the system every time the main graph is
-    # finalized.
-    #
-    # Special case: When master_address is unset, we're using DirectSession.
-    # DirectSession resets device state between sessions, and uses
-    # place_pruned_graph. Initialization currently passes state to replication
-    # through the TPU_SYSTEM resource manager. Under DirectSession, this
-    # resource manager gets reset when init_session is closed, so DirectSession
-    # can't initialize here, and must instead initialize from the main graph's
-    # init_ops. This is possible with DirectSession because it uses
-    # place_pruned_graph, which removes unreferenced ops before invoking the
-    # rewrite pass. This makes it possible to run init_ops from the main graph,
-    # which contains both tpu.initialize_system and tpu.shard ops, without first
-    # triggering the TPU graph rewrite. We can't do this for distributed
-    # sessions because they don't support place_pruned_graph.
-    #
-    # TODO(b/110943344) Clean this up as part of the initialize_system dataflow
-    # cleanup. It should be possible to remove the special case for
-    # DirectSession and the other call to initialize_system from
-    # _obtain_topology, when topology info is always explicitly passed from
-    # tpu.initialize_system to tpu.shard, though this requires editing or
-    # rebuilding the main graph each time the master restarts.
-    if ctx.master_address() is None:
-      return
-    with ops.Graph().as_default():
-      logging.info('Init TPU system master_address %s', ctx.master_address())
-      with session_lib.Session(
-          ctx.master_address(),
-          config=ctx.config.session_config) as init_session:
-        run_options = config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000)
-        init_session.run(
-            tpu.initialize_system(job=ctx.master_job), options=run_options)
-      logging.info('TPU system initialized')
-
-  scaffold.finalize = _finalize
+    scaffold.finalize = _finalize
   return scaffold
 
 

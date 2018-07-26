@@ -7,7 +7,6 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
@@ -113,9 +112,7 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
-        "//tensorflow/contrib/tensorrt:init_py",
-    ]) + select({
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
         "//tensorflow:with_kafka_support_windows_override": [],
         "//tensorflow:with_kafka_support": [
             "//tensorflow/contrib/kafka",
@@ -133,6 +130,11 @@ py_library(
         "//tensorflow/contrib/bigtable",  # depends on bigtable
         "//tensorflow/contrib/cloud:cloud_py",  # doesn't compile on Windows
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        # TODO(aaroey): tensorrt dependency has to appear before tflite so the
+        # build can resolve its flatbuffers symbols within the tensorrt library.
+        # This is an issue with the tensorrt static library and will be fixed by
+        # the next tensorrt release, so fix the order here after that.
+        "//tensorflow/contrib/tensorrt:init_py",  # doesn't compile on windows
         "//tensorflow/contrib/lite/python:lite",  # unix dependency, need to fix code
     ]),
 )

@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -177,7 +177,7 @@ XLA_TEST_F(PrngTest, Uniformity108) {
   EXPECT_LT(UniformChiSquared(108, 256), 132.144);
 }
 XLA_TEST_F(PrngTest, Uniformity256) {
-  EXPECT_LT(UniformChiSquared(256, 256), 293.248);
+  EXPECT_LT(UniformChiSquared(256, 512), 293.248);
 }
 
 XLA_TEST_F(PrngTest, MapUsingRng) {
