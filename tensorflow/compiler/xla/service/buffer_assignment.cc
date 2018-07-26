@@ -817,8 +817,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 }
 
 Status BufferAssigner::AssignBuffersForComputation(
-    const HloComputation* computation, const DebugOptions& debug_options,
-    bool is_thread_local,
+    const HloComputation* computation, bool is_thread_local,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
     FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
@@ -1678,7 +1677,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, module->config().debug_options(),
+        computation,
         /*is_thread_local=*/false, colocated_buffers, colocated_allocations,
         &buffers_to_assign_sequentially, assignment.get()));
   }
@@ -1699,7 +1698,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       continue;
     }
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, module->config().debug_options(),
+        computation,
         /*is_thread_local=*/true, colocated_buffers, colocated_allocations,
         /*buffers_to_assign_sequentially=*/nullptr, assignment.get()));
   }
