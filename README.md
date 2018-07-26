@@ -26,7 +26,7 @@ Keep up to date with release announcements and security updates by
 subscribing to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 
-** Tensorflow ROCm port **
+**Tensorflow ROCm port**
 This project is based on TensorFlow 1.8.0. It has been verified to work with the latest ROCm1.8.2 release. Please follow the instructions [here](https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/quick-start.md) to set up your ROCm stack.
 
 A docker container: **rocm/tensorflow:rocm1.7.1(https://hub.docker.com/r/rocm/tensorflow/)** is readily available to be used.
