@@ -674,13 +674,11 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
                                     AffineExpr *rhs, MLIRContext *context) {
   auto &impl = context->getImpl();
 
-  // Check if we already have this affine expression.
+  // Check if we already have this affine expression, and return it if we do.
   auto keyValue = std::make_tuple((unsigned)kind, lhs, rhs);
-  auto **result = &impl.affineExprs[keyValue];
-
-  // If we already have it, return that value.
-  if (*result)
-    return *result;
+  auto cached = impl.affineExprs.find(keyValue);
+  if (cached != impl.affineExprs.end())
+    return cached->second;
 
   // Simplify the expression if possible.
   AffineExpr *simplified;
@@ -704,24 +702,19 @@ AffineExpr *AffineBinaryOpExpr::get(AffineExpr::Kind kind, AffineExpr *lhs,
     llvm_unreachable("unexpected binary affine expr");
   }
 
-  // The recursive calls above may have invalidated the 'result' pointer.
-  result = &impl.affineExprs[keyValue];
-
-  // If simplified to a non-binary affine op expr, don't store it.
-  if (simplified && !isa<AffineBinaryOpExpr>(simplified)) {
-    // 'affineExprs' only contains uniqued AffineBinaryOpExpr's.
-    return simplified;
-  }
-
+  // The simplified one would have already been cached; just return it.
   if (simplified)
-    // We know that it's a binary op expression.
-    return *result = simplified;
+    return simplified;
 
-  // On the first use, we allocate them into the bump pointer.
-  *result = impl.allocator.Allocate<AffineBinaryOpExpr>();
+  // An expression with these operands will already be in the
+  // simplified/canonical form. Create and store it.
+  auto *result = impl.allocator.Allocate<AffineBinaryOpExpr>();
   // Initialize the memory using placement new.
-  new (*result) AffineBinaryOpExpr(kind, lhs, rhs);
-  return *result;
+  new (result) AffineBinaryOpExpr(kind, lhs, rhs);
+  bool inserted = impl.affineExprs.insert({keyValue, result}).second;
+  assert(inserted && "the expression shouldn't already exist in the map");
+  (void)inserted;
+  return result;
 }
 
 AffineDimExpr *AffineDimExpr::get(unsigned position, MLIRContext *context) {
