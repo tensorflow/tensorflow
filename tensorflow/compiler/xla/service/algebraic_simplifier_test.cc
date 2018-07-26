@@ -2489,8 +2489,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
       shape,
       builder.AddInstruction(
           HloInstruction::CreateParameter(0, shape, "slice_from")),
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int>({0, 0, 0}))),
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          1, ShapeUtil::MakeShape(U32, {3}), "slice_indices")),
       /*slice_sizes=*/{10, 100, 1000}));
 
   auto computation = module().AddEntryComputation(builder.Build());
@@ -2523,8 +2523,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
       builder.AddInstruction(
           HloInstruction::CreateParameter(2, slice_shape, "to_update")),
       slice,
-      builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR1<int>({0, 0, 0})))));
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
 
   auto computation = module().AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,

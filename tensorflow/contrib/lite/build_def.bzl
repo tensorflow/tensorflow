@@ -254,7 +254,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "reduce_max",
-        "reduce_prod",
+        #"reduce_prod",  # disabled due to b/111823366
         "relu",
         "relu1",
         "relu6",

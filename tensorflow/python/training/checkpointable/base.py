@@ -501,12 +501,6 @@ class CheckpointableBase(object):
       ValueError: If the variable name is not unique.
     """
     self._maybe_initialize_checkpointable()
-    if overwrite and self._lookup_dependency(name) is not None:
-      raise ValueError(
-          ("A variable named '%s' already exists in this Checkpointable, but "
-           "Checkpointable._add_variable called to create another with "
-           "that name. Variable names must be unique within a Checkpointable "
-           "object.") % (name,))
     with ops.init_scope():
       if context.executing_eagerly():
         # If this is a variable with a single Tensor stored in the checkpoint,

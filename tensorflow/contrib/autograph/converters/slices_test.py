@@ -38,7 +38,7 @@ class SliceTest(converter_testing.TestCase):
       return l[1]
 
     node, ctx = self.prepare(test_fn, {})
-    def_, = anno.getanno(node.body[0].args.args[0], anno.Static.DEFINITIONS)
+    def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.int32')
     }
@@ -59,11 +59,11 @@ class SliceTest(converter_testing.TestCase):
       return l[1]
 
     node, ctx = self.prepare(test_fn, {})
-    def_, = anno.getanno(node.body[0].args.args[0], anno.Static.DEFINITIONS)
+    def_, = anno.getanno(node.args.args[0], anno.Static.DEFINITIONS)
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.int32')
     }
-    def_, = anno.getanno(node.body[0].body[0].body[0].targets[0],
+    def_, = anno.getanno(node.body[0].body[0].targets[0],
                          anno.Static.DEFINITIONS)
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.float32')

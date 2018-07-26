@@ -31,9 +31,12 @@ import logging
 import sys
 import traceback
 
-from tensorflow.contrib.autograph.pyct.origin_info import CodeLocation
+from tensorflow.contrib.autograph.pyct import origin_info
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import tf_inspect
+
+
+# TODO(mdan): Add a superclass common to all errors.
 
 
 class GraphConstructionError(Exception):
@@ -65,27 +68,35 @@ class TfRuntimeError(Exception):
     return message + ''.join(traceback.format_list(self.custom_traceback))
 
 
-def _rewrite_frame(source_map, cleaned_traceback, stack_frame_indices):
-  """Rewrites the stack frames at the given indices using the given source map.
+def _rewrite_tb(source_map, tb, filter_function_name=None):
+  """Rewrites code references in a traceback.
 
   Args:
-    source_map: Dict[CodeLocation, OriginInfo], a mapping between the user and
-        AG generated code.
-    cleaned_traceback: List[Tuple[text, text, text, text]], the current
-        traceback.
-    stack_frame_indices: Iterable[Int], frame indices to possibly rewrite if
-        there are matching source mapping keys.
-
+    source_map: Dict[origin_info.LineLocation, origin_info.OriginInfo], mapping
+        locations to their origin
+    tb: List[Tuple[Text, Text, Text, Text]], consistent with
+        traceback.extract_tb
+    filter_function_name: Optional[Text], allows restricting restricts the
+        frames to rewrite to a particular function name
   Returns:
-    None
+    List[Tuple[Text, Text, Text, Text]], the rewritten traceback
   """
-  for frame_index in stack_frame_indices:
-    # (file_path, line number, function name, code)
-    file_path, line_number, _, _ = cleaned_traceback[frame_index]
-    source_map_key = CodeLocation(file_path=file_path, line_number=line_number)
-    found_mapping = source_map_key in source_map
-    if found_mapping:
-      cleaned_traceback[frame_index] = source_map[source_map_key].as_frame()
+  new_tb = []
+  for frame in tb:
+    filename, lineno, function_name, _ = frame
+    loc = origin_info.LineLocation(filename, lineno)
+    origin = source_map.get(loc)
+    # TODO(mdan): We shouldn't need the function name at all.
+    # filename + lineno should be sufficient, even if there are multiple source
+    # maps.
+    if origin is not None:
+      if filter_function_name == function_name or filter_function_name is None:
+        new_tb.append(origin.as_frame())
+      else:
+        new_tb.append(frame)
+    else:
+      new_tb.append(frame)
+  return new_tb
 
 
 # TODO(znado): Make more robust to name changes in the rewriting logic.
@@ -98,18 +109,20 @@ def _remove_rewrite_frames(tb):
   return cleaned_tb
 
 
+# TODO(mdan): rename to raise_*
 def rewrite_graph_construction_error(source_map):
   """Rewrites errors raised by non-AG APIs inside AG generated code.
 
-  Meant to be called from the try/except block inside each AutoGraph generated
-  function.  Only rewrites the traceback frames corresponding to the function
-  that this is called from.  When we raise a GraphConstructionError at the end
-  it is then caught by calling functions, where they can be responsible for
-  rewriting their own frames.
+  This is called from the except handler inside an AutoGraph generated function
+  (that is, during exception handling). Only rewrites the frames corresponding
+  to the function that this is called from, so each function is responsible
+  to call this to have its own frames rewritten.
+
+  This function always raises an error.
 
   Args:
-    source_map: Dict[CodeLocation, OriginInfo], a mapping between the user and
-        AG generated code.
+    source_map: Dict[origin_info.Location, origin_info.OriginInfo], the source
+        map belonging to the calling function
 
   Raises:
     GraphConstructionError: The rewritten underlying error.
@@ -120,31 +133,19 @@ def rewrite_graph_construction_error(source_map):
   assert original_error is not None
   try:
     _, _, _, func_name, _, _ = tf_inspect.stack()[1]
-    # The latest function call is added to the beginning of a traceback, but
-    # when rewriting the traceback of multiple function calls the previous
-    # functions' except blocks may have already rewritten their own frames so
-    # we want to copy over all of the previous frames. We may have rewritten
-    # previous frames only if the error is a GraphConstructionError.
     if isinstance(original_error, GraphConstructionError):
+      # TODO(mdan): This is incomplete.
+      # The error might have bubbled through a non-converted function.
       cleaned_traceback = traceback.extract_tb(e_traceback)
       previous_traceback = original_error.custom_traceback
       cleaned_traceback = [cleaned_traceback[0]] + previous_traceback
     else:
       cleaned_traceback = traceback.extract_tb(e_traceback)
-    cleaned_traceback = _remove_rewrite_frames(cleaned_traceback)
 
-    current_frame_indices = []
-    # This code is meant to be called from the try/except block that wraps a
-    # function body.  Here we look for all frames that came from the function
-    # that this wraps, look for any matching line numbers in the source
-    # mapping, and then rewrite them if matches are found.
-    for fi, frame in enumerate(cleaned_traceback):
-      _, _, frame_func_name, _ = frame
-      if frame_func_name == func_name:
-        current_frame_indices.append(fi)
-        break
-    if current_frame_indices:
-      _rewrite_frame(source_map, cleaned_traceback, current_frame_indices)
+    # Remove the frame corresponding to this function call.
+    cleaned_traceback = cleaned_traceback[1:]
+
+    cleaned_traceback = _rewrite_tb(source_map, cleaned_traceback, func_name)
 
     if isinstance(original_error, GraphConstructionError):
       original_error.custom_traceback = cleaned_traceback
@@ -153,6 +154,7 @@ def rewrite_graph_construction_error(source_map):
       new_error = GraphConstructionError(original_error, cleaned_traceback)
   except Exception:
     logging.exception('Error while rewriting AutoGraph error:')
+    # TODO(mdan): Should reraise here, removing the top frame as well.
     raise original_error
   else:
     raise new_error
@@ -161,18 +163,17 @@ def rewrite_graph_construction_error(source_map):
     del e_traceback
 
 
+# TODO(mdan): This should be consistent with rewrite_graph_construction_error
+# Both should either raise or return.
 def rewrite_tf_runtime_error(error, source_map):
   """Rewrites TensorFlow runtime errors raised by ops created in AG code.
 
   Args:
-    error: error_impl.OpError, an TensorFlow error that will have its traceback
-        rewritten.
-    source_map: Dict[CodeLocation, OriginInfo], a mapping between the user and
-        AG generated code.
+    error: tf.OpError
+    source_map: Dict[origin_info.LineLocation, origin_info.OriginInfo]
 
   Returns:
-    A TfRuntimeError with a traceback rewritten according to the given
-    source mapping.
+    TfRuntimeError, the rewritten underlying error.
   """
   # Check for cases where we leave a user method and re-enter it in the
   # traceback.  This is done by looking at the function names when the
@@ -198,15 +199,16 @@ def rewrite_tf_runtime_error(error, source_map):
   # The source map keys are (file_path, line_number) so get the set of all user
   # file_paths.
   try:
-    all_user_files = set(k.file_path for k in source_map)
+    all_user_files = set(loc.filename for loc in source_map)
     cleaned_traceback = []
     last_user_frame_index = None
     last_user_user_file_path = None
     last_user_user_fn_name = None
+    # TODO(mdan): Simplify this logic.
     for fi, frame in enumerate(error.op.traceback):
-      frame_file_path, frame_line_number, _, _ = frame
-      src_map_key = CodeLocation(
-          file_path=frame_file_path, line_number=frame_line_number)
+      frame_file_path, lineno, _, _ = frame
+      lineno -= 1  # Frame line numbers are 1-based.
+      src_map_key = origin_info.LineLocation(frame_file_path, lineno)
       if frame_file_path in all_user_files:
         if src_map_key in source_map:
           original_fn_name = source_map[src_map_key].function_name
@@ -223,8 +225,8 @@ def rewrite_tf_runtime_error(error, source_map):
         last_user_user_file_path = frame_file_path
       cleaned_traceback.append(frame)
 
-    for fi in range(len(cleaned_traceback)):
-      _rewrite_frame(source_map, cleaned_traceback, [fi])
+    cleaned_traceback = _rewrite_tb(source_map, cleaned_traceback)
+
     op_name = error.op.name
     op_message = error.message
     rewritten_error = TfRuntimeError(op_name, op_message, cleaned_traceback)
@@ -263,7 +265,7 @@ def improved_errors(converted_function):
     ValueError: If converted_function is not generated by AutoGraph
   """
   if (getattr(converted_function, 'ag_source_map', None) is None or
-      not converted_function.ag_source_map):
+      not isinstance(converted_function.ag_source_map, dict)):
     raise ValueError(
         'converted_function must be the result of an autograph.to_graph call')
   try:

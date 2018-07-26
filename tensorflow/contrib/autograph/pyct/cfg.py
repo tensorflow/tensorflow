@@ -67,10 +67,8 @@ class Node(object):
     if isinstance(self.ast_node, gast.FunctionDef):
       return 'def %s' % self.ast_node.name
     elif isinstance(self.ast_node, gast.withitem):
-      source, _ = compiler.ast_to_source(self.ast_node.context_expr)
-      return source.strip()
-    source, _ = compiler.ast_to_source(self.ast_node)
-    return source.strip()
+      return compiler.ast_to_source(self.ast_node.context_expr).strip()
+    return compiler.ast_to_source(self.ast_node).strip()
 
 
 class Graph(

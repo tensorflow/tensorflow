@@ -111,8 +111,8 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/xla_client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
@@ -198,6 +198,25 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gpu_alignment_test",
+    testonly = True,
+    srcs = ["gpu_alignment_test.cc"],
+    tags = [
+        "requires-gpu-sm35",
+    ],
+    deps = [
+        ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service/llvm_ir:alias_analysis",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

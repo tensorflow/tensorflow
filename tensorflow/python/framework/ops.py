@@ -50,14 +50,15 @@ from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.framework import versions
-from tensorflow.python.util import tf_stack
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
@@ -71,6 +72,27 @@ _USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "1") != "0"
 def tensor_id(tensor):
   """Returns a unique identifier for this Tensor."""
   return tensor._id  # pylint: disable=protected-access
+
+
+class _UserDeviceSpec(object):
+  """Store user-specified device and provide computation of merged device."""
+
+  def __init__(self, device_name_or_function):
+    self._device_name_or_function = device_name_or_function
+
+    self.display_name = str(self._device_name_or_function)
+    if callable(self._device_name_or_function):
+      dev_func = self._device_name_or_function
+      func_name = function_utils.get_func_name(dev_func)
+      func_code = function_utils.get_func_code(dev_func)
+      self.display_name = "%s<%s, %d>" % (func_name,
+                                          func_code.co_filename,
+                                          func_code.co_firstlineno)
+
+    self.function = self._device_name_or_function
+    if not (self._device_name_or_function is None or
+            callable(self._device_name_or_function)):
+      self.function = pydev.merge_device(self._device_name_or_function)
 
 
 class _NullContextmanager(object):
@@ -709,13 +731,16 @@ class _EagerTensorBase(Tensor):
       raise ValueError("Resource handles are not convertible to numpy.")
     return self._cpu_nograd()._numpy()  # pylint: disable=protected-access
 
-  # __int__ and  __float__ may copy the tensor to CPU and
+  # __int__, __float__ and __index__ may copy the tensor to CPU and
   # only work for scalars; values are cast as per numpy.
   def __int__(self):
     return int(self.numpy())
 
   def __float__(self):
     return float(self.numpy())
+
+  def __index__(self):
+    return int(self.numpy())
 
   def __array__(self, dtype=None):
     return np.array(self.numpy(), dtype=dtype)
@@ -1716,7 +1741,12 @@ class Operation(object):
     self._id_value = self._graph._next_id()
     self._original_op = original_op
     self._traceback = tf_stack.extract_stack()
-    # List of traceable_stack.TraceableObjects for colocation context managers.
+
+    # List of _UserDevSpecs holding code location of device context manager
+    # invocations and the users original argument to them.
+    self._device_code_locations = None
+    # Dict mapping op name to file and line information for op colocation
+    # context managers.
     self._colocation_code_locations = None
     self._control_flow_context = self.graph._get_control_flow_context()
     # pylint: enable=protected-access
@@ -1858,6 +1888,37 @@ class Operation(object):
     return c_api.TF_OperationDevice(self._c_op)
 
   @property
+  def _device_assignments(self):
+    """Code locations for device context managers active at op creation.
+
+    This property will return a list of traceable_stack.TraceableObject
+    instances where .obj is a string representing the assigned device
+    (or information about the function that would be applied to this op
+    to compute the desired device) and the filename and lineno members
+    record the location of the relevant device context manager.
+
+    For example, suppose file_a contained these lines:
+
+      file_a.py:
+        15: with tf.device('/gpu:0'):
+        16:   node_b = tf.constant(4, name='NODE_B')
+
+    Then a TraceableObject t_obj representing the device context manager
+    would have these member values:
+
+      t_obj.obj -> '/gpu:0'
+      t_obj.filename = 'file_a.py'
+      t_obj.lineno = 15
+
+    and node_b.op._device_assignments would return the list [t_obj].
+
+    Returns:
+      [str: traceable_stack.TraceableObject, ...] as per this method's
+      description, above.
+    """
+    return self._device_code_locations or []
+
+  @property
   def _colocation_dict(self):
     """Code locations for colocation context managers active at op creation.
 
@@ -1878,11 +1939,10 @@ class Operation(object):
     would have these member values:
 
       t_obj.obj -> None
-      t_obj.name = 'NODE_A'
       t_obj.filename = 'file_a.py'
       t_obj.lineno = 15
 
-    and node_b.op._colocation_code_locations would return the dictionary
+    and node_b.op._colocation_dict would return the dictionary
 
       { 'NODE_A': t_obj }
 
@@ -2732,7 +2792,7 @@ class Graph(object):
     # Functions that will be applied to choose a device if none is specified.
     # After switch_to_thread_local(), self._thread_local._device_function_stack
     # is used instead.
-    self._graph_device_function_stack = []
+    self._graph_device_function_stack = traceable_stack.TraceableStack()
     # Default original_op applied to new ops.
     self._default_original_op = None
     # Current control flow context. It could be either CondContext or
@@ -4044,7 +4104,7 @@ class Graph(object):
     # In the future, a caller may specify that device_functions win
     # over colocation, in which case we can add support.
     device_fn_tmp = self._device_function_stack
-    self._device_function_stack = []
+    self._device_function_stack = traceable_stack.TraceableStack()
 
     if ignore_existing:
       current_stack = self._colocation_stack
@@ -4067,6 +4127,13 @@ class Graph(object):
       # Reset the colocation stack if requested.
       if ignore_existing:
         self._colocation_stack = current_stack
+
+  def _add_device_to_stack(self, device_name_or_function, offset=0):
+    """Add device to stack manually, separate from a context manager."""
+    total_offset = 1 + offset
+    spec = _UserDeviceSpec(device_name_or_function)
+    self._device_function_stack.push_obj(spec, offset=total_offset)
+    return spec
 
   @tf_contextlib.contextmanager
   def device(self, device_name_or_function):
@@ -4125,31 +4192,26 @@ class Graph(object):
     Yields:
       A context manager that specifies the default device to use for newly
       created ops.
-
     """
-    # pylint: enable=line-too-long
-    if (device_name_or_function is not None and
-        not callable(device_name_or_function)):
-      device_function = pydev.merge_device(device_name_or_function)
-    else:
-      device_function = device_name_or_function
-
+    self._add_device_to_stack(device_name_or_function, offset=2)
     try:
-      self._device_function_stack.append(device_function)
       yield
     finally:
-      self._device_function_stack.pop()
+      self._device_function_stack.pop_obj()
 
   def _apply_device_functions(self, op):
     """Applies the current device function stack to the given operation."""
-    # Apply any device functions in reverse order, so that the most recently
+    # Apply any device functions in LIFO order, so that the most recently
     # pushed function has the first chance to apply a device to the op.
     # We apply here because the result can depend on the Operation's
     # signature, which is computed in the Operation constructor.
-    for device_function in reversed(self._device_function_stack):
-      if device_function is None:
+    # pylint: disable=protected-access
+    for device_spec in self._device_function_stack.peek_objs():
+      if device_spec.function is None:
         break
-      op._set_device(device_function(op))  # pylint: disable=protected-access
+      op._set_device(device_spec.function(op))
+    op._device_code_locations = self._snapshot_device_function_stack_metadata()
+    # pylint: enable=protected-access
 
   # pylint: disable=g-doc-return-or-yield
   @tf_contextlib.contextmanager
@@ -4673,17 +4735,45 @@ class Graph(object):
     if self._stack_state_is_thread_local:
       # This may be called from a thread where device_function_stack doesn't yet
       # exist.
+      # pylint: disable=protected-access
       if not hasattr(self._thread_local, "_device_function_stack"):
-        self._thread_local._device_function_stack = (
-            self._graph_device_function_stack[:])
+        stack_copy_for_this_thread = self._graph_device_function_stack.copy()
+        self._thread_local._device_function_stack = stack_copy_for_this_thread
       return self._thread_local._device_function_stack
+      # pylint: enable=protected-access
     else:
       return self._graph_device_function_stack
+
+  @property
+  def _device_functions_outer_to_inner(self):
+    user_device_specs = self._device_function_stack.peek_objs()
+    device_functions = [spec.function for spec in user_device_specs]
+    device_functions_outer_to_inner = list(reversed(device_functions))
+    return device_functions_outer_to_inner
+
+  def _snapshot_device_function_stack_metadata(self):
+    """Return device function stack as a list of TraceableObjects.
+
+    Returns:
+      [traceable_stack.TraceableObject, ...] where each TraceableObject's .obj
+      member is a displayable name for the user's argument to Graph.device, and
+      the filename and lineno members point to the code location where
+      Graph.device was called directly or indirectly by the user.
+    """
+    traceable_objects = self._device_function_stack.peek_traceable_objs()
+    snapshot = []
+    for obj in traceable_objects:
+      obj_copy = obj.copy_metadata()
+      obj_copy.obj = obj.obj.display_name
+      snapshot.append(obj_copy)
+    return snapshot
 
   @_device_function_stack.setter
   def _device_function_stack(self, device_function_stack):
     if self._stack_state_is_thread_local:
+      # pylint: disable=protected-access
       self._thread_local._device_function_stack = device_function_stack
+      # pylint: enable=protected-access
     else:
       self._graph_device_function_stack = device_function_stack
 
@@ -4693,12 +4783,12 @@ class Graph(object):
     if self._stack_state_is_thread_local:
       # This may be called from a thread where colocation_stack doesn't yet
       # exist.
+      # pylint: disable=protected-access
       if not hasattr(self._thread_local, "_colocation_stack"):
         stack_copy_for_this_thread = self._graph_colocation_stack.copy()
-        # pylint: disable=protected-access
         self._thread_local._colocation_stack = stack_copy_for_this_thread
-        # pylint: enable=protected-access
       return self._thread_local._colocation_stack
+      # pylint: enable=protected-access
     else:
       return self._graph_colocation_stack
 
@@ -4710,7 +4800,9 @@ class Graph(object):
   @_colocation_stack.setter
   def _colocation_stack(self, colocation_stack):
     if self._stack_state_is_thread_local:
+      # pylint: disable=protected-access
       self._thread_local._colocation_stack = colocation_stack
+      # pylint: enable=protected-access
     else:
       self._graph_colocation_stack = colocation_stack
 
@@ -5237,7 +5329,10 @@ def enable_eager_execution(config=None,
      to this function.
   """
   return enable_eager_execution_internal(
-      config, device_policy, execution_mode, None)
+      config=config,
+      device_policy=device_policy,
+      execution_mode=execution_mode,
+      server_def=None)
 
 
 def enable_eager_execution_internal(config=None,

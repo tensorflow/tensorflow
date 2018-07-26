@@ -154,6 +154,7 @@ TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
   if (TF_GetCode(out_status) != TF_OK) RETURN_ERROR
   TFE_OpSetAttrType(op, "SrcT", src_type_enum);
   TFE_OpSetAttrType(op, "DstT", dst_type_enum);
+  TFE_OpSetAttrBool(op, "Truncate", false);
   TFE_TensorHandle* output = nullptr;
   int num_outputs = 1;
   TFE_Execute(op, &output, &num_outputs, out_status);

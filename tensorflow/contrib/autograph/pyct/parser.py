@@ -37,6 +37,7 @@ def parse_entity(entity):
 
 def parse_str(src):
   """Returns the AST of given piece of code."""
+  # TODO(mdan): This should exclude the module things are autowrapped in.
   return gast.parse(src)
 
 

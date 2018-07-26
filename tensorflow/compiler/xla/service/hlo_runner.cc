@@ -180,8 +180,12 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  return executable->ExecuteOnStreamWrapper(&service_run_options,
-                                            /*profile=*/profile, arguments);
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer retval,
+      executable->ExecuteOnStreamWrapper(&service_run_options,
+                                         /*profile=*/profile, arguments));
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  return std::move(retval);
 }
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
@@ -309,6 +313,7 @@ StatusOr<std::vector<std::unique_ptr<Literal>>> HloRunner::ExecuteReplicated(
 
   std::vector<std::unique_ptr<Literal>> exec_results;
   for (int64 i = 0; i < options.num_replicas; ++i) {
+    TF_RETURN_IF_ERROR(streams[i]->BlockHostUntilDone());
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
                         backend().transfer_manager()->TransferLiteralFromDevice(
                             streams[i].get(), results[i]));

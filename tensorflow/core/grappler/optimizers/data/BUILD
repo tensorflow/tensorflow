@@ -46,7 +46,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
     ] + tf_protos_all(),
@@ -58,8 +58,14 @@ tf_cc_test(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/kernels:cast_op",
     ],
 )
 
@@ -73,7 +79,7 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -98,6 +104,43 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "map_fusion",
+    srcs = ["map_fusion.cc"],
+    hdrs = [
+        "map_fusion.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+    ] + tf_protos_all(),
+)
+
+tf_cc_test(
+    name = "map_fusion_test",
+    srcs = ["map_fusion_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_utils",
+        ":map_fusion",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_library(
     name = "noop_elimination",
     srcs = ["noop_elimination.cc"],
     hdrs = [
@@ -107,7 +150,7 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -141,7 +184,7 @@ cc_library(
     deps = [
         ":graph_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
@@ -171,6 +214,7 @@ cc_library(
     deps = [
         ":function_rename",
         ":map_and_batch_fusion",
+        ":map_fusion",
         ":noop_elimination",
         ":shuffle_and_repeat_fusion",
     ],

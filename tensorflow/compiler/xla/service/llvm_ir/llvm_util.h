@@ -292,6 +292,27 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
 // don't start with xla_ to LLVM.
 void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
 
+// Zero-extends two 32-bit values to 64 bits, multiplies them, and returns the
+// result as a pair of (low 32 bits, high 32 bits).
+std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
+                                                    llvm::Value* src0,
+                                                    llvm::Value* src1);
+// Splits the 64-bit integer value into its high and low 32 bits.
+std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
+    llvm::IRBuilder<>* b, llvm::Value* value_64bits);
+
+// Checks whether a global variable is already created to represent a
+// state passed between RNG calls implemented with Philox algorithm. If not,
+// creates such a variable. Returns the global variable.
+llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
+    llvm::Module* module, llvm::IRBuilder<>* b);
+
+// Adds a value to the global state variable each time when a RNG hlo is
+// executed. The value of this global state variable is added to the seed
+// of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
+// should rarely produce the same result.
+void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
+                                        llvm::IRBuilder<>* b);
 }  // namespace llvm_ir
 }  // namespace xla
 

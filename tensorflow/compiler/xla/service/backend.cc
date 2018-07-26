@@ -96,24 +96,19 @@ Backend::CreateDefaultBackend() {
   return CreateBackend(backend_options);
 }
 
-StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(auto exec, stream_executor(device_ordinal));
-  return BorrowStream(exec);
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  return BorrowStream(executor);
 }
 
-StatusOr<Backend::StreamPtr> Backend::BorrowStream(
-    se::StreamExecutor* executor) {
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   tensorflow::mutex_lock l(mu_);
   if (0 == stream_pools_.count(executor)) {
     stream_pools_.emplace(std::piecewise_construct,
                           std::forward_as_tuple(executor),
-                          std::forward_as_tuple([executor]() {
-                            auto stream = MakeUnique<se::Stream>(executor);
-                            stream->Init();
-                            return stream;
-                          }));
+                          std::forward_as_tuple());
   }
-  return stream_pools_.at(executor).Allocate();
+  return stream_pools_.at(executor).BorrowStream(executor);
 }
 
 Backend::Backend(

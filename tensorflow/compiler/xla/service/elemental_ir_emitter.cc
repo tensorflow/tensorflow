@@ -1223,168 +1223,254 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
   return source_index;
 }
 
-llvm_ir::ElementGenerator ElementalIrEmitter::MakeRngElementGenerator(
+StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
+    const HloInstruction* hlo,
+    const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
+    const llvm_ir::IrArray::Index& index, llvm::Value* raw_value) const {
+  TF_ASSIGN_OR_RETURN(llvm::Value * a_or_mean,
+                      operand_to_generator.at(hlo->operand(0))(index));
+  TF_ASSIGN_OR_RETURN(llvm::Value * b_or_sigma,
+                      operand_to_generator.at(hlo->operand(1))(index));
+  PrimitiveType elem_prim_ty = hlo->shape().element_type();
+  llvm::Type* elem_ir_ty =
+      llvm_ir::PrimitiveTypeToIrType(elem_prim_ty, module_);
+  llvm::Type* raw_value_ty = raw_value->getType();
+
+  // Convert raw integer to float in range [0, 1) if the element is a float.
+  llvm::Value* elem_value = raw_value;
+  if (elem_ir_ty->isFloatingPointTy()) {
+    elem_value = b_->CreateUIToFP(elem_value, elem_ir_ty);
+    unsigned raw_value_size_in_bits = raw_value_ty->getPrimitiveSizeInBits();
+    CHECK(raw_value_size_in_bits == 32 || raw_value_size_in_bits == 64);
+    elem_value = b_->CreateFDiv(
+        elem_value,
+        llvm::ConstantFP::get(elem_ir_ty,
+                              raw_value_size_in_bits == 64 ? 0x1p64 : 0x1p32));
+  }
+
+  // Convert the value for the requested distribution.
+  switch (hlo->random_distribution()) {
+    case RNG_UNIFORM: {
+      if (elem_ir_ty->isFloatingPointTy()) {
+        return b_->CreateFAdd(
+            b_->CreateFMul(b_->CreateFSub(b_or_sigma, a_or_mean), elem_value),
+            a_or_mean);
+      } else {
+        // To generate a uniform random value in [a, b) from a raw random sample
+        // in range [0, 2^N), we let range = b - a and return
+        // (a + raw_value % range). If range is not a power of 2, raw values
+        // larger than (2^N - 2^N % range) are biased toward results in
+        // [a, a + (limit % range)). An unbiased algorithm would need to drop
+        // raw values and re-sample, but we don't do this because re-sampling in
+        // an efficient way is complex, and it's not clear that users need it.
+        // In particular, if one thread in a GPU warp needs to re-sample, we pay
+        // the same cost as if the whole warp were to re-sample.  So an
+        // efficient re-sampling implementation on GPU would need to do
+        // nontrivial work to share entropy between threads in the warp.
+        auto range = b_->CreateSub(b_or_sigma, a_or_mean);
+        return b_->CreateAdd(a_or_mean, b_->CreateURem(elem_value, range));
+      }
+    }
+    case RNG_NORMAL: {
+      TF_ASSIGN_OR_RETURN(
+          llvm::Value * r,
+          EmitErfcInv(elem_prim_ty,
+                      b_->CreateFMul(llvm::ConstantFP::get(elem_ir_ty, 2.0),
+                                     elem_value)));
+      return b_->CreateFAdd(b_->CreateFMul(r, b_or_sigma), a_or_mean);
+    }
+    default:
+      return InvalidArgument(
+          "unhandled distribution %s",
+          RandomDistribution_Name(hlo->random_distribution()).c_str());
+  }
+}
+
+namespace {
+
+// Checks that the primitive type is supported by the elemental IR emitter for
+// Philox RNG and returns the number of elements in each 128 bit sample of the
+// Philox RNG algorithm.
+int32 GetNumberOfElementsPerPhiloxRngSample(PrimitiveType elem_prim_ty) {
+  // Calculate the number of elements, that is the number of random numbers, in
+  // a 128 bit sample.
+  switch (elem_prim_ty) {
+    case U32:
+    case S32:
+    case F32:
+    // The algorithm uses 32 bits to generate values for F16.
+    case F16:
+      return 4;
+    case U64:
+    case F64:
+      return 2;
+    default:
+      // BF16 is converted to F16 by the hlo pass HloElementTypeConverter.
+      // Other data types are not supported by XLA random operation.
+      LOG(FATAL) << "Unrecognized primitive type for RNG " << elem_prim_ty;
+  }
+  return 0;
+}
+
+// Calculates the four uint32 values for the 128-bit Philox sample.
+std::array<llvm::Value*, 4> CalculateSampleValues(
+    llvm::Value* sample_idx, llvm::Value* hlo_random_value,
+    llvm::Value* global_random_number, llvm::Value* rng_state,
+    llvm::IRBuilder<>* b) {
+  llvm::Type* index_ty = sample_idx->getType();
+
+  std::array<llvm::Value*, 4> counter_values;
+
+  // Use the sample index to initialize counter[0] and counter[1].
+  unsigned index_ty_size_in_bits = index_ty->getPrimitiveSizeInBits();
+  CHECK(index_ty_size_in_bits == 32 || index_ty_size_in_bits == 64);
+  if (index_ty_size_in_bits == 32) {
+    counter_values[0] = sample_idx;
+    counter_values[1] = b->getInt32(0);
+  } else {
+    std::tie(counter_values[0], counter_values[1]) =
+        llvm_ir::SplitInt64ToInt32s(b, sample_idx);
+  }
+
+  // Xor the global state variable with the global random number seed and use
+  // the result to initialize counter[2] and counter[3].
+  std::tie(counter_values[2], counter_values[3]) = llvm_ir::SplitInt64ToInt32s(
+      b, b->CreateXor(rng_state, global_random_number));
+
+  // The algorithm uses a 64 bit key, which is also interpreted as two uint32
+  // values.
+  llvm::Value* key_values[2];
+
+  // Use a module random number to initialize the key.
+  std::tie(key_values[0], key_values[1]) =
+      llvm_ir::SplitInt64ToInt32s(b, hlo_random_value);
+
+  // Prepare the constants used in the Philox RNG Algorithm.
+  llvm::Value* philoxW32A = b->getInt32(0x9E3779B9);
+  llvm::Value* philoxW32B = b->getInt32(0xBB67AE85);
+  llvm::Value* philoxM4xW32A = b->getInt32(0xD2511F53);
+  llvm::Value* philoxM4xW32B = b->getInt32(0xCD9E8D57);
+
+  // Compute the 128 bit value for the current sample by repeating the
+  // single round computation and key raising computation for ten times.
+  for (int round = 0; round < 10; ++round) {
+    // A single round of computation of the counter values is as follows:
+    //  MultiplyHighLow(kPhiloxM4x32A, counter[0], &lo0, &hi0);
+    //  MultiplyHighLow(kPhiloxM4x32B, counter[2], &lo1, &hi1);
+    //  counter[0] = hi1 ^ counter[1] ^ key[0];
+    //  counter[1] = lo1;
+    //  counter[2] = hi0 ^ counter[3] ^ key[1];
+    //  counter[3] = lo0;
+    llvm::Value* lo0;
+    llvm::Value* hi0;
+    std::tie(lo0, hi0) =
+        llvm_ir::UMulLowHigh32(b, philoxM4xW32A, counter_values[0]);
+    llvm::Value* lo1;
+    llvm::Value* hi1;
+    std::tie(lo1, hi1) =
+        llvm_ir::UMulLowHigh32(b, philoxM4xW32B, counter_values[2]);
+    counter_values[0] =
+        b->CreateXor(hi1, b->CreateXor(counter_values[1], key_values[0]));
+    counter_values[1] = lo1;
+    counter_values[2] =
+        b->CreateXor(hi0, b->CreateXor(counter_values[3], key_values[1]));
+    counter_values[3] = lo0;
+    key_values[0] = b->CreateAdd(key_values[0], philoxW32A);
+    key_values[1] = b->CreateAdd(key_values[1], philoxW32B);
+  }
+
+  return counter_values;
+}
+
+}  // namespace
+
+// Implements the Philox algorithm to generate random numbers in parallel.
+// Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
+//   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
+//
+// The paper presents a few variants of the Philox algorithm, we picked the
+// 4x32_10 version of the algorithm for the following reasons:
+//   . 4x32 uses 32-bit multiplication which is fast on GPUs.
+//   . The authors recommend the 10-round variant, and TensorFlow also uses it.
+//
+// Precondition: the RNG instruction is not fused.
+llvm_ir::ElementGenerator ElementalIrEmitter::MakePhiloxRngElementGenerator(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator)
     const {
-  PrimitiveType param_prim_type = hlo->operand(0)->shape().element_type();
-  llvm::Type* param_ir_type =
-      llvm_ir::PrimitiveTypeToIrType(param_prim_type, module_);
+  VLOG(3) << "Using philox RNG algorithm";
+  CHECK(!hlo->IsFused());
+  // A random number generated by the per module random number generator.
+  // This ensures that each RNG HLO generates a different random sequence.
+  llvm::Value* hlo_random_value = b_->getInt64(hlo->GetModule()->RandomNew64());
+  // A value specified by the configuration or generated by a global random
+  // number generator.
+  llvm::Value* global_random_number =
+      b_->getInt64(hlo_module_config_.seed() != 0 ? hlo_module_config_.seed()
+                                                  : GlobalRandomValue());
 
-  // Same values as PCG library
-  // https://github.com/imneme/pcg-c/blob/master/include/pcg_variants.h
-  llvm::Value* multiplier =
-      b_->getInt(llvm::APInt(128, {0x4385DF649FCCF645, 0x2360ED051FC65DA4}));
-  llvm::Value* increment =
-      b_->getInt(llvm::APInt(128, {0x14057B7EF767814F, 0x5851F42D4C957F2D}));
+  int elems_per_sample =
+      GetNumberOfElementsPerPhiloxRngSample(hlo->shape().element_type());
 
-  auto random_value_from_hlo = [hlo]() {
-    const HloModule* module =
-        hlo->IsFused() ? hlo->parent()->FusionInstruction()->parent()->parent()
-                       : hlo->parent()->parent();
-    return module->RandomNew64();
-  };
+  // Allocate stack storage for the 128 bit sample as four int32.
+  llvm::Type* int32_ty = b_->getInt32Ty();
+  llvm::Value* sample_address = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      int32_ty, /*element_count=*/b_->getInt32(4), "sample", b_);
 
-  // Seed each RNG emitter with a new 64-bit seed from the HloModule. If the
-  // compilation order is deterministic (i.e., RandomNew64 invocation order is
-  // deterministic), then the order of RNG is deterministic for a given seed and
-  // hence tests will be deterministic.
-  // If the user provides a global seed instruction then we only use 64-bits of
-  // the host's random number generator to seed the 128 bit value with the other
-  // 64-bits is due to a user specified global seed instruction.
-  // Create a GlobalVariable to maintain state between invocations. There is a
-  // bug in NVPTX with GlobalVariable and 128 bit values, so using 2 64-bit
-  // values.
-  llvm::GlobalVariable* state_ptr0 = new llvm::GlobalVariable(
-      /*M=*/*module_,
-      /*Ty=*/b_->getInt64Ty(),
-      /*isConstant=*/false,
-      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/b_->getInt64(random_value_from_hlo()),
-      /*Name=*/"state_ptr0");
+  // Load the global state variable for the Philox RNG algorithm.
+  llvm::GlobalVariable* rng_state_ptr =
+      llvm_ir::GetOrCreateVariableForPhiloxRngState(module_, b_);
+  llvm::Value* rng_state = b_->CreateLoad(rng_state_ptr, "rng_state_value");
 
-  // When the module config seed is 0, the expected result of a prng is a random
-  // value. Instead of using the random_value_from_hlo, we need a global random
-  // value as the graph seed. This is because if we use random_value_from_hlo
-  // here, then for a newly built hlo graph, it always gives the same number.
-  uint64 graph_seed = hlo_module_config_.seed() != 0 ? hlo_module_config_.seed()
-                                                     : GlobalRandomValue();
-  llvm::GlobalVariable* state_ptr1 = new llvm::GlobalVariable(
-      /*M=*/*module_,
-      /*Ty=*/b_->getInt64Ty(),
-      /*isConstant=*/false,
-      /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
-      /*Initializer=*/b_->getInt64(graph_seed),
-      /*Name=*/"state_ptr1");
-
-  // We want each thread to use its own stream, so we modify the increment per
-  // thread. We want the increment to remain odd, so we shift the thread id left
-  // 1 and add it to the increment.
-  increment = b_->CreateAdd(increment, b_->CreateShl(EmitThreadId(), 1));
-
-  // PCG-XSL-RR algorithm
-  // http://www.pcg-random.org/pdf/toms-oneill-pcg-family-v1.02.pdf
-  //   state = multiplier * state + increment
-  //   return uint64_t(state ^ (state >> 64))) >>> (state >> 122)
-  // where ">>>" is bitwise rotation
-  auto get_next_i64 = [=]() {
-    llvm::Value* state0 = b_->CreateZExtOrTrunc(
-        b_->CreateLoad(state_ptr0, "state0"), b_->getInt128Ty());
-    llvm::Value* state1 = b_->CreateShl(
-        b_->CreateZExtOrTrunc(b_->CreateLoad(state_ptr1, "state1"),
-                              b_->getInt128Ty()),
-        64);
-    llvm::Value* state = b_->CreateOr(state0, state1);
-    llvm::Value* updated =
-        b_->CreateAdd(b_->CreateMul(state, multiplier), increment);
-    b_->CreateStore(b_->CreateTrunc(updated, b_->getInt64Ty()), state_ptr0);
-    b_->CreateStore(
-        b_->CreateTrunc(b_->CreateLShr(updated, 64), b_->getInt64Ty()),
-        state_ptr1);
-
-    return llvm_ir::CreateRor(
-        b_->CreateTrunc(b_->CreateXor(state, b_->CreateLShr(state, 64)),
-                        b_->getInt64Ty()),
-        b_->CreateTrunc(b_->CreateLShr(state, 122), b_->getInt64Ty()), b_);
-  };
-
-  auto get_next_uniform_float = [=]() {
-    return b_->CreateFDiv(b_->CreateUIToFP(get_next_i64(), param_ir_type),
-                          llvm::ConstantFP::get(param_ir_type, 0x1p64));
-  };
-
+  // Build and return the elemental IR generator to generate a random value for
+  // the element corresponding to the current thread.
+  //
+  // This elemental IR generator computes one sample with multiple random
+  // numbers but only returns one random number. As a result, neighboring
+  // threads may calculate the same sample unnecessarily. However, if the
+  // kernel containing the RNG hlo is unrolled, LLVM is able to optimize away
+  // the duplicated computation of the same sample. In particular, if the unroll
+  // factor is a multiplier of elems_per_sample, LLVM is able to completely
+  // remove such duplicated computation. If the unroll factor is a non-trivial
+  // factor of elems_per_sample, LLVM can only partially remove such duplicated
+  // computation.
   return [=](const llvm_ir::IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    switch (hlo->random_distribution()) {
-      case RNG_UNIFORM: {
-        TF_ASSIGN_OR_RETURN(llvm::Value * p,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        TF_ASSIGN_OR_RETURN(llvm::Value * q,
-                            operand_to_generator.at(hlo->operand(1))(index));
-        if (primitive_util::IsFloatingPointType(param_prim_type)) {
-          return b_->CreateFAdd(
-              b_->CreateFMul(b_->CreateFSub(q, p), get_next_uniform_float()),
-              p);
-        } else {
-          auto r = b_->CreateSub(q, p);
-          auto leading_zeros = llvm_ir::EmitCallToIntrinsic(
-              llvm::Intrinsic::ctlz, {r, b_->getInt1(true)}, {param_ir_type},
-              b_);
-          auto in_block = b_->GetInsertBlock();
-
-          // A terminator should be present iff we're emitting code
-          // into the middle (as opposed to the end) of a basic block.
-          CHECK_EQ(b_->GetInsertPoint() == in_block->end(),
-                   in_block->getTerminator() == nullptr);
-
-          llvm::BasicBlock* body_block;
-          llvm::BasicBlock* out_block;
-
-          if (b_->GetInsertPoint() == in_block->end()) {
-            body_block =
-                llvm_ir::CreateBasicBlock(nullptr, IrName(hlo, "rng_body"), b_);
-            out_block =
-                llvm_ir::CreateBasicBlock(nullptr, IrName(hlo, "rng_out"), b_);
-            llvm::BranchInst::Create(body_block, in_block);
-          } else {
-            body_block =
-                in_block->splitBasicBlock(b_->GetInsertPoint(), "rng_body");
-            out_block =
-                body_block->splitBasicBlock(b_->GetInsertPoint(), "rng_out");
-            body_block->getTerminator()->eraseFromParent();
-          }
-
-          SetToFirstInsertPoint(body_block, b_);
-          auto random = b_->CreateAnd(
-              b_->CreateZExtOrTrunc(get_next_i64(), param_ir_type),
-              b_->CreateLShr(llvm::ConstantInt::get(param_ir_type, ~0),
-                             leading_zeros));
-          llvm::BranchInst::Create(out_block, body_block,
-                                   b_->CreateICmpULT(random, r), body_block);
-          SetToFirstInsertPoint(out_block, b_);
-          return b_->CreateAdd(
-              p, b_->CreateSelect(b_->CreateICmpEQ(p, q),
-                                  llvm::ConstantInt::get(param_ir_type, 0),
-                                  random));
-        }
-      }
-      case RNG_NORMAL: {
-        TF_ASSIGN_OR_RETURN(llvm::Value * m,
-                            operand_to_generator.at(hlo->operand(0))(index));
-        TF_ASSIGN_OR_RETURN(llvm::Value * s,
-                            operand_to_generator.at(hlo->operand(1))(index));
-        TF_ASSIGN_OR_RETURN(
-            llvm::Value * r,
-            EmitErfcInv(
-                param_prim_type,
-                b_->CreateFMul(llvm::ConstantFP::get(param_ir_type, 2.0),
-                               get_next_uniform_float())));
-        return b_->CreateFAdd(b_->CreateFMul(r, s), m);
-      }
-      default:
-        return InvalidArgument(
-            "unhandled distribution %s",
-            RandomDistribution_Name(hlo->random_distribution()).c_str());
+    llvm::Type* index_ty = index.GetType();
+    // Calculate the linear element index.
+    llvm::Value* elem_idx = index.linear();
+    if (elem_idx == nullptr) {
+      elem_idx = index.Linearize(AsInt64Slice(hlo->shape().dimensions()), b_);
     }
+
+    // Calculate the index for the 128 bit sample and the offset of the current
+    // element within the sample.
+    llvm::Value* elems_per_sample_value =
+        llvm::ConstantInt::get(index_ty, elems_per_sample);
+    llvm::Value* sample_idx = b_->CreateUDiv(elem_idx, elems_per_sample_value);
+    llvm::Value* elem_offset = b_->CreateURem(elem_idx, elems_per_sample_value);
+
+    std::array<llvm::Value*, 4> counter_values = CalculateSampleValues(
+        sample_idx, hlo_random_value, global_random_number, rng_state, b_);
+
+    // Store the four counter_values into the sample_address alloca so we can
+    // load the elem_offset'th one below.
+    for (int idx = 0; idx < 4; ++idx) {
+      b_->CreateStore(counter_values[idx],
+                      b_->CreateInBoundsGEP(sample_address, b_->getInt32(idx)));
+    }
+
+    llvm::Type* int64_ty = b_->getInt64Ty();
+    CHECK(elems_per_sample == 2 || elems_per_sample == 4);
+    llvm::Type* raw_value_ty = elems_per_sample == 2 ? int64_ty : int32_ty;
+    // Retrieve the raw value for the current element from the current sample.
+    llvm::Value* raw_elem_value = b_->CreateLoad(
+        b_->CreateInBoundsGEP(
+            b_->CreatePointerCast(sample_address, raw_value_ty->getPointerTo()),
+            elem_offset),
+        "raw_elem_value");
+
+    return ConvertValueForDistribution(hlo, operand_to_generator, index,
+                                       raw_elem_value);
   };
 }
 
@@ -1517,10 +1603,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     start_index_value = b_->CreateSExtOrTrunc(start_index_value, index_type);
     int64 largest_valid_start_index =
         input_hlo->shape().dimensions(i) - hlo->shape().dimensions(i);
@@ -1671,10 +1753,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     start_index_value = b_->CreateSExtOrTrunc(start_index_value, index_type);
     llvm::Value* update_dim_size =
         index_typed_const(update_hlo->shape().dimensions(i));
@@ -2042,7 +2120,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions(), b_));
       };
     case HloOpcode::kRng:
-      return MakeRngElementGenerator(hlo, operand_to_generator);
+      return MakePhiloxRngElementGenerator(hlo, operand_to_generator);
     case HloOpcode::kPad:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& padded_index) -> StatusOr<llvm::Value*> {

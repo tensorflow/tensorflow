@@ -3407,6 +3407,7 @@ py_test(
         ":math_ops",
         ":util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

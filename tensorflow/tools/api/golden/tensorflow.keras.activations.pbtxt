@@ -22,7 +22,7 @@ tf_module {
   }
   member_method {
     name: "relu"
-    argspec: "args=[\'x\', \'alpha\', \'max_value\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
+    argspec: "args=[\'x\', \'alpha\', \'max_value\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\', \'0\'], "
   }
   member_method {
     name: "selu"

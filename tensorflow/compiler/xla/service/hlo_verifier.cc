@@ -119,7 +119,7 @@ Status CheckIsTokenOperand(const HloInstruction* instruction,
   const HloInstruction* token = instruction->operand(operand_no);
   if (!ShapeUtil::Equal(token->shape(), ShapeUtil::MakeTokenShape())) {
     return InternalError(
-        "Expected operand %lld to be token-shaped, actual shape is"
+        "Expected operand %lld to be token-shaped, actual shape is "
         "%s:\n%s",
         operand_no, ShapeUtil::HumanString(token->shape()).c_str(),
         instruction->ToString().c_str());

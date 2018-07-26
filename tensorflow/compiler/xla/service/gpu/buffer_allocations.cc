@@ -49,12 +49,12 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
     if (registered_buffers_.count(i)) {
       se::DeviceMemoryBase address = FindOrDie(registered_buffers_, i);
       if (reinterpret_cast<uintptr_t>(address.opaque()) %
-              kCudaMallocAlignBytes !=
+              kEntryParameterAlignBytes !=
           0) {
         return InternalError(
             "Address of registered buffer %lld must be a multiple of %llx, but "
             "was %p",
-            i, kCudaMallocAlignBytes, address.opaque());
+            i, kEntryParameterAlignBytes, address.opaque());
       }
       buffer_allocations->SetBuffer(i, FindOrDie(registered_buffers_, i));
       continue;
@@ -71,12 +71,12 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
         TF_ASSIGN_OR_RETURN(
             buffer, memory_allocator->Allocate(device_ordinal, buffer_size));
         if (reinterpret_cast<uintptr_t>(buffer.opaque()) %
-                kCudaMallocAlignBytes !=
+                kXlaAllocatedBufferAlignBytes !=
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
               "multiple of %llx, but was %p",
-              kCudaMallocAlignBytes, buffer.opaque());
+              kXlaAllocatedBufferAlignBytes, buffer.opaque());
         }
         // We do manual memory management within BufferAllocations.  Be sure not
         // to do a TF_RETURN_IF_ERROR between this line and the

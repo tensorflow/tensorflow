@@ -24,7 +24,7 @@ limitations under the License.
 #include "grpcpp/security/credentials.h"
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/io/path.h"

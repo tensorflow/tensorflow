@@ -28,88 +28,76 @@ from tensorflow.python.util import tf_inspect
 
 
 def zero_div():
-  return array_ops.constant(10, dtype=dtypes.int32) // 0
+  x = array_ops.constant(10, dtype=dtypes.int32)
+  return x // 0
 
 
 def zero_div_caller():
-  a = zero_div() + 2
-  return a
+  return zero_div()
 
 
 class RuntimeErrorsTest(test.TestCase):
 
-  def setUp(self):
-    self._fake_origin = origin_info.OriginInfo('new file', 'new func', 96, 0,
-                                               'print("hello world!")')
+  def fake_origin(self, function, line_offset):
+    _, lineno = tf_inspect.getsourcelines(function)
+    filename = tf_inspect.getsourcefile(function)
+    lineno += line_offset
+    loc = origin_info.LineLocation(filename, lineno)
+    origin = origin_info.OriginInfo(loc, 'test_function_name', 'test_code')
+    return loc, origin
 
-  def test_error_replacement(self):
-    _, zero_div_lineno = tf_inspect.getsourcelines(zero_div)
-    src_map = {
-        errors.CodeLocation(
-            file_path=__file__, line_number=zero_div_lineno + 1):
-            self._fake_origin
-    }
+  def test_improved_errors_basic(self):
+    loc, origin = self.fake_origin(zero_div, 2)
+    zero_div_caller.ag_source_map = {loc: origin}
+
+    ops = zero_div_caller()
     with self.assertRaises(errors.TfRuntimeError) as cm:
-      z = zero_div_caller()
-      zero_div_caller.ag_source_map = src_map
       with errors.improved_errors(zero_div_caller):
         with self.test_session() as sess:
-          sess.run(z)
-    expected = cm.exception
-    current_traceback = expected.custom_traceback
-    for frame in current_traceback:
-      self.assertNotEqual('zero_div', frame[2])
-    self.assertTrue(
-        any(self._fake_origin.as_frame() == frame
-            for frame in current_traceback))
+          sess.run(ops)
 
-  def test_error_not_found(self):
-    src_map = {
-        errors.CodeLocation(file_path=__file__, line_number=-1):
-            self._fake_origin
-    }
+    for frame in cm.exception.custom_traceback:
+      _, _, function_name, _ = frame
+      self.assertNotEqual('zero_div', function_name)
+    self.assertIn(origin.as_frame(), set(cm.exception.custom_traceback))
+
+  def test_improved_errors_no_matching_lineno(self):
+    loc, origin = self.fake_origin(zero_div, -1)
+    zero_div_caller.ag_source_map = {loc: origin}
+
+    ops = zero_div_caller()
     with self.assertRaises(errors.TfRuntimeError) as cm:
-      z = zero_div_caller()
-      zero_div_caller.ag_source_map = src_map
       with errors.improved_errors(zero_div_caller):
         with self.test_session() as sess:
-          sess.run(z)
-    expected = cm.exception
-    current_traceback = expected.custom_traceback
-    self.assertTrue(any('zero_div' in frame[2] for frame in current_traceback))
-    for frame in current_traceback:
-      self.assertNotEqual(frame, self._fake_origin.as_frame())
+          sess.run(ops)
 
-  def test_rewriting_error(self):
-    _, zero_div_lineno = tf_inspect.getsourcelines(zero_div)
-    src_map = {
-        errors.CodeLocation(
-            file_path=__file__, line_number=zero_div_lineno + 1):
-            None
-    }
-    with self.assertRaisesRegexp(tf_errors.InvalidArgumentError,
-                                 'Integer division by zero'):
-      z = zero_div_caller()
-      zero_div_caller.ag_source_map = src_map
+    all_function_names = set()
+    for frame in cm.exception.custom_traceback:
+      _, _, function_name, _ = frame
+      all_function_names.add(function_name)
+      self.assertNotEqual('test_function_name', function_name)
+    self.assertIn('zero_div', all_function_names)
+
+  def test_improved_errors_failures(self):
+    loc, _ = self.fake_origin(zero_div, 2)
+    zero_div_caller.ag_source_map = {loc: 'bogus object'}
+
+    ops = zero_div_caller()
+    with self.assertRaises(tf_errors.InvalidArgumentError):
       with errors.improved_errors(zero_div_caller):
         with self.test_session() as sess:
-          sess.run(z)
+          sess.run(ops)
 
-  def test_no_ag_source_map(self):
+  def test_improved_errors_validation(self):
     with self.assertRaisesRegexp(
         ValueError,
         'converted_function must be the result of an autograph.to_graph call'):
-      with errors.improved_errors(None):
-        pass
-
-  def test_bad_ag_source_map(self):
+      errors.improved_errors(zero_div).__enter__()
     with self.assertRaisesRegexp(
         ValueError,
         'converted_function must be the result of an autograph.to_graph call'):
-      src_map = None
-      zero_div_caller.ag_source_map = src_map
-      with errors.improved_errors(None):
-        pass
+      zero_div_caller.ag_source_map = 'not a dict'
+      errors.improved_errors(zero_div_caller).__enter__()
 
 
 if __name__ == '__main__':

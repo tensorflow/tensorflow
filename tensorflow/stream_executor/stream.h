@@ -125,7 +125,7 @@ class Stream {
   Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
-  // later.
+  // later. Sub-streams that are !ok() will not be reused.
   void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
