@@ -26,10 +26,12 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -856,3 +858,25 @@ def cast_if_floating_dtype(x):
         for val in x
     ]
   return math_ops.cast(x, dtype=K.floatx()) if x.dtype.is_floating else x
+
+
+def get_output_sample_weight_and_mode(skip_target_weighing_indices,
+                                      sample_weight_mode, output_name,
+                                      output_index):
+  """Returns the sample weight and weight mode for a single output."""
+  if output_index in skip_target_weighing_indices:
+    return None, None
+
+  if sample_weight_mode == 'temporal':
+    default_value = [[1.]]
+    shape = [None, None]
+    mode = 'temporal'
+  else:
+    default_value = [1.]
+    shape = [None]
+    mode = None
+  weight = array_ops.placeholder_with_default(
+      constant_op.constant(default_value, dtype=K.floatx()),
+      shape=shape,
+      name=output_name + '_sample_weights')
+  return weight, mode

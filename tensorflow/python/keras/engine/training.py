@@ -24,7 +24,6 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -374,21 +373,14 @@ class Model(Network):
               'sample_weight_mode dictionary: "' + name + '". '
               'Only expected the following keys: ' + str(self.output_names))
       for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          if name not in sample_weight_mode:
-            raise ValueError(
-                'Output "' + name + '" missing from sample_weight_modes '
-                'dictionary')
-          if sample_weight_mode.get(name) == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + 'sample_weights')
-            sample_weight_modes.append(None)
+        if (i not in skip_target_weighing_indices and
+            name not in sample_weight_mode):
+          raise ValueError('Output "' + name +
+                           '" missing from sample_weight_modes dictionary')
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
         sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     elif isinstance(sample_weight_mode, list):
       if len(sample_weight_mode) != len(self.outputs):
         raise ValueError('When passing a list as sample_weight_mode, '
@@ -396,36 +388,17 @@ class Model(Network):
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed '
                          'sample_weight_mode=' + str(sample_weight_mode))
-      for i in range(len(self.output_names)):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          mode = sample_weight_mode[i]
-          name = self.output_names[i]
-          if mode == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + '_sample_weights')
-            sample_weight_modes.append(None)
+      for i, name in enumerate(self.output_names):
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode[i], name, i)
         sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     else:
       for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          sample_weight_modes.append(None)
-          sample_weights.append(None)
-        else:
-          if sample_weight_mode == 'temporal':
-            sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([[1.]], dtype=K.floatx()),
-                shape=[None, None], name=name + '_sample_weights'))
-            sample_weight_modes.append('temporal')
-          else:
-            sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([1.], dtype=K.floatx()),
-                shape=[None], name=name + '_sample_weights'))
-            sample_weight_modes.append(None)
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode, name, i)
+        sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = []
     for i in range(len(self.outputs)):
