@@ -227,7 +227,7 @@ void TerminatorInst::eraseFromBlock() {
 MutableArrayRef<BBDestination> TerminatorInst::getDestinations() {
   switch (getKind()) {
   case Kind::Operation:
-    assert(0 && "not a terminator");
+    llvm_unreachable("not a terminator");
   case Kind::Branch:
     return cast<BranchInst>(this)->getDestinations();
   case Kind::CondBranch:
