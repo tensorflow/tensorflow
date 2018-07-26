@@ -215,7 +215,7 @@ tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_FLOAT);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -253,7 +253,7 @@ tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
                                      Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -290,7 +290,7 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT32);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -326,7 +326,7 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT64);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -363,7 +363,7 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_BOOL);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -409,7 +409,7 @@ tensorflow::Status ImportStringArray(const TensorProto& input_tensor,
                                      Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_STRING);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
