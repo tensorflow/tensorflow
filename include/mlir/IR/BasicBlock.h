@@ -23,6 +23,7 @@
 
 namespace mlir {
 class BBArgument;
+template <typename BlockType> class SuccessorIterator;
 
 /// Each basic block in a CFG function contains a list of basic block arguments,
 /// normal instructions, and a terminator instruction.
@@ -118,6 +119,31 @@ public:
 
   TerminatorInst *getTerminator() const { return terminator; }
 
+  //===--------------------------------------------------------------------===//
+  // Predecessors and successors.
+  //===--------------------------------------------------------------------===//
+
+  unsigned getNumSuccessors() const {
+    return getTerminator()->getNumSuccessors();
+  }
+  const BasicBlock *getSuccessor(unsigned i) const {
+    return const_cast<BasicBlock *>(this)->getSuccessor(i);
+  }
+  BasicBlock *getSuccessor(unsigned i) {
+    return getTerminator()->getSuccessor(i);
+  }
+
+  // Support successor iteration.
+  using const_succ_iterator = SuccessorIterator<const BasicBlock>;
+  const_succ_iterator succ_begin() const;
+  const_succ_iterator succ_end() const;
+  llvm::iterator_range<const_succ_iterator> getSuccessors() const;
+
+  using succ_iterator = SuccessorIterator<BasicBlock>;
+  succ_iterator succ_begin();
+  succ_iterator succ_end();
+  llvm::iterator_range<succ_iterator> getSuccessors();
+
   void print(raw_ostream &os) const;
   void dump() const;
 
@@ -143,6 +169,53 @@ private:
 
   friend struct llvm::ilist_traits<BasicBlock>;
 };
+
+/// This template implments the successor iterators for basic block.
+template <typename BlockType>
+class SuccessorIterator final
+    : public IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
+                                     BlockType> {
+public:
+  /// Initializes the result iterator to the specified index.
+  SuccessorIterator(BlockType *object, unsigned index)
+      : IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
+                                BlockType>(object, index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator SuccessorIterator<const BlockType>() const {
+    return SuccessorIterator<const BlockType>(this->object, this->index);
+  }
+
+  BlockType *operator*() const {
+    return this->object->getSuccessor(this->index);
+  }
+};
+
+inline auto BasicBlock::succ_begin() const -> const_succ_iterator {
+  return const_succ_iterator(this, 0);
+}
+
+inline auto BasicBlock::succ_end() const -> const_succ_iterator {
+  return const_succ_iterator(this, getNumSuccessors());
+}
+
+inline auto BasicBlock::getSuccessors() const
+    -> llvm::iterator_range<const_succ_iterator> {
+  return {succ_begin(), succ_end()};
+}
+
+inline auto BasicBlock::succ_begin() -> succ_iterator {
+  return succ_iterator(this, 0);
+}
+
+inline auto BasicBlock::succ_end() -> succ_iterator {
+  return succ_iterator(this, getNumSuccessors());
+}
+
+inline auto BasicBlock::getSuccessors() -> llvm::iterator_range<succ_iterator> {
+  return {succ_begin(), succ_end()};
+}
 
 } // end namespace mlir
 

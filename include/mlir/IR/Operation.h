@@ -220,7 +220,7 @@ protected:
   unsigned index;
 };
 
-/// This template implments the operand iterators for the various IR classes
+/// This template implements the operand iterators for the various IR classes
 /// in terms of getOperand(idx).
 template <typename ObjectType, typename ElementType>
 class OperandIterator final
@@ -244,7 +244,7 @@ public:
   }
 };
 
-/// This template implments the result iterators for the various IR classes
+/// This template implements the result iterators for the various IR classes
 /// in terms of getResult(idx).
 template <typename ObjectType, typename ElementType>
 class ResultIterator final

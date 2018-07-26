@@ -130,6 +130,6 @@ struct DenseMapInfo<std::tuple<Ts...> > {
   }
 };
 
-}
+} // end namespace llvm
 
 #endif // MLIR_SUPPORT_STLEXTRAS_H

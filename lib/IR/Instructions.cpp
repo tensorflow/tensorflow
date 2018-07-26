@@ -107,7 +107,7 @@ void Instruction::dropAllReferences() {
     op.drop();
 
   if (auto *term = dyn_cast<TerminatorInst>(this))
-    for (auto &dest : term->getDestinations())
+    for (auto &dest : term->getBasicBlockOperands())
       dest.drop();
 }
 
@@ -224,14 +224,14 @@ void TerminatorInst::eraseFromBlock() {
 }
 
 /// Return the list of destination entries that this terminator branches to.
-MutableArrayRef<BBDestination> TerminatorInst::getDestinations() {
+MutableArrayRef<BasicBlockOperand> TerminatorInst::getBasicBlockOperands() {
   switch (getKind()) {
   case Kind::Operation:
     llvm_unreachable("not a terminator");
   case Kind::Branch:
-    return cast<BranchInst>(this)->getDestinations();
+    return cast<BranchInst>(this)->getBasicBlockOperands();
   case Kind::CondBranch:
-    return cast<CondBranchInst>(this)->getDestinations();
+    return cast<CondBranchInst>(this)->getBasicBlockOperands();
   case Kind::Return:
     // Return has no basic block successors.
     return {};

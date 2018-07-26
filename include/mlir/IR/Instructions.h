@@ -35,8 +35,8 @@ class CFGFunction;
 class OperationInst;
 class TerminatorInst;
 
-/// The operand of a CFG Instruction contains a CFGValue.
-using BBDestination = IROperandImpl<BasicBlock, TerminatorInst>;
+/// The operand of a TerminatorInst contains a BasicBlock.
+using BasicBlockOperand = IROperandImpl<BasicBlock, TerminatorInst>;
 
 /// Instruction is the root of the operation and terminator instructions in the
 /// hierarchy.
@@ -296,20 +296,23 @@ public:
   /// Remove this terminator from its BasicBlock and delete it.
   void eraseFromBlock();
 
-  /// Return the list of destination entries that this terminator branches to.
-  MutableArrayRef<BBDestination> getDestinations();
+  /// Return the list of BasicBlockOperand operands of this terminator that
+  /// this terminator holds.
+  MutableArrayRef<BasicBlockOperand> getBasicBlockOperands();
 
-  ArrayRef<BBDestination> getDestinations() const {
-    return const_cast<TerminatorInst *>(this)->getDestinations();
+  ArrayRef<BasicBlockOperand> getBasicBlockOperands() const {
+    return const_cast<TerminatorInst *>(this)->getBasicBlockOperands();
   }
 
-  unsigned getNumSuccessors() const { return getDestinations().size(); }
+  unsigned getNumSuccessors() const { return getBasicBlockOperands().size(); }
 
   const BasicBlock *getSuccessor(unsigned i) const {
-    return getDestinations()[i].get();
+    return getBasicBlockOperands()[i].get();
   }
 
-  BasicBlock *getSuccessor(unsigned i) { return getDestinations()[i].get(); }
+  BasicBlock *getSuccessor(unsigned i) {
+    return getBasicBlockOperands()[i].get();
+  }
 
 protected:
   TerminatorInst(Kind kind) : Instruction(kind) {}
@@ -341,8 +344,8 @@ public:
   /// Erase a specific argument from the arg list.
   // TODO: void eraseArgument(int Index);
 
-  MutableArrayRef<BBDestination> getDestinations() { return dest; }
-  ArrayRef<BBDestination> getDestinations() const { return dest; }
+  MutableArrayRef<BasicBlockOperand> getBasicBlockOperands() { return dest; }
+  ArrayRef<BasicBlockOperand> getBasicBlockOperands() const { return dest; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
@@ -352,7 +355,7 @@ public:
 private:
   explicit BranchInst(BasicBlock *dest);
 
-  BBDestination dest;
+  BasicBlockOperand dest;
   std::vector<InstOperand> operands;
 };
 
@@ -501,8 +504,8 @@ public:
   /// Add a list of values to the operand list.
   void addFalseOperands(ArrayRef<CFGValue *> values);
 
-  MutableArrayRef<BBDestination> getDestinations() { return dests; }
-  ArrayRef<BBDestination> getDestinations() const { return dests; }
+  MutableArrayRef<BasicBlockOperand> getBasicBlockOperands() { return dests; }
+  ArrayRef<BasicBlockOperand> getBasicBlockOperands() const { return dests; }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Instruction *inst) {
@@ -514,7 +517,7 @@ private:
                  BasicBlock *falseDest);
 
   CFGValue *condition;
-  BBDestination dests[2]; // 0 is the true dest, 1 is the false dest.
+  BasicBlockOperand dests[2]; // 0 is the true dest, 1 is the false dest.
 
   // Operand list. The true operands are stored first, followed by the false
   // operands.
