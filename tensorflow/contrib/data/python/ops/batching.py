@@ -515,10 +515,7 @@ def batch_and_drop_remainder(batch_size):
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    # TODO(jsimsa): Switch to using `batch(..., drop_remainder=True)` any time
-    # after 6/30/2018.
-    batched = dataset.batch(batch_size)
-    return _filter_irregular_batches(batch_size)(batched)
+    return dataset.batch(batch_size, drop_remainder=True)
 
   return _apply_fn
 
@@ -553,11 +550,9 @@ def padded_batch_and_drop_remainder(batch_size,
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    # TODO(jsimsa): Switch to using `padded_batch(..., drop_remainder=True)`
-    # any time after 6/30/2018.
-    batched = dataset.padded_batch(
-        batch_size, padded_shapes=padded_shapes, padding_values=padding_values)
-    return _filter_irregular_batches(batch_size)(batched)
+    return dataset.padded_batch(
+        batch_size, padded_shapes=padded_shapes, padding_values=padding_values,
+        drop_remainder=True)
 
   return _apply_fn
 
