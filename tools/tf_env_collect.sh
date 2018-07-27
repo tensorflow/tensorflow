@@ -108,8 +108,8 @@ DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
   echo '== cuda libs  ==================================================='
 } >> ${OUTPUT_FILE}
 
-find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
-find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
+find -L /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
+find -L /usr/local -type f -name 'libcudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 
 # Remove any words with google.
 mv $OUTPUT_FILE old-$OUTPUT_FILE
