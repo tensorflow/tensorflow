@@ -716,7 +716,30 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
     });
     os << ')';
   }
-  os << ":\n";
+  os << ':';
+
+  // Print out some context information about the predecessors of this block.
+  if (!block->getFunction()) {
+    os << "\t// block is not in a function!";
+  } else if (block->hasNoPredecessors()) {
+    // Don't print "no predecessors" for the entry block.
+    if (block != &block->getFunction()->front())
+      os << "\t// no predecessors";
+  } else if (auto *pred = block->getSinglePredecessor()) {
+    os << "\t// pred: bb" << getBBID(pred);
+  } else {
+    // We want to print the predecessors in increasing numeric order, not in
+    // whatever order the use-list is in, so gather and sort them.
+    SmallVector<unsigned, 4> predIDs;
+    for (auto *pred : block->getPredecessors())
+      predIDs.push_back(getBBID(pred));
+    llvm::array_pod_sort(predIDs.begin(), predIDs.end());
+
+    os << "\t// " << predIDs.size() << " preds: ";
+
+    interleaveComma(predIDs, [&](unsigned predID) { os << "bb" << predID; });
+  }
+  os << '\n';
 
   for (auto &inst : block->getOperations()) {
     os << "  ";

@@ -71,6 +71,26 @@ void BasicBlock::setTerminator(TerminatorInst *inst) {
     inst->block = this;
 }
 
+/// Return true if this block has no predecessors.
+bool BasicBlock::hasNoPredecessors() const {
+  return pred_begin() == pred_end();
+}
+
+/// If this basic block has exactly one predecessor, return it.  Otherwise,
+/// return null.
+///
+/// Note that multiple edges from a single block (e.g. if you have a cond
+/// branch with the same block as the true/false destinations) is not
+/// considered to be a single predecessor.
+BasicBlock *BasicBlock::getSinglePredecessor() {
+  auto it = pred_begin();
+  if (it == pred_end())
+    return nullptr;
+  auto *firstPred = *it;
+  ++it;
+  return it == pred_end() ? firstPred : nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // ilist_traits for BasicBlock
 //===----------------------------------------------------------------------===//

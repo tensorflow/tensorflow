@@ -94,11 +94,11 @@ bb42 (%0: i32, %f: i64):
 cfgfunc @multiblock() {
 bb0:         // CHECK: bb0:
   return     // CHECK:   return
-bb1:         // CHECK: bb1:
+bb1:         // CHECK: bb1:   // no predecessors
   br bb4     // CHECK:   br bb3
-bb2:         // CHECK: bb2:
+bb2:         // CHECK: bb2:   // pred: bb2
   br bb2     // CHECK:   br bb2
-bb4:         // CHECK: bb3:
+bb4:         // CHECK: bb3:   // pred: bb1
   return     // CHECK:   return
 }            // CHECK: }
 
@@ -184,14 +184,14 @@ bb0:       // CHECK: bb0:
   %0 = "foo"() : () -> (i1, i17)
   br bb2
 
-bb1:       // CHECK: bb1:
+bb1:       // CHECK: bb1: // pred: bb2
   // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
   %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
 
   // CHECK: return %1#0, %1#1 : i16, i8
   return %1#0, %1#1 : i16, i8
 
-bb2:       // CHECK: bb2:
+bb2:       // CHECK: bb2:  // pred: bb0
   // CHECK: %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   br bb1
@@ -219,9 +219,11 @@ bb0:
   // CHECK: cond_br %0, bb1(%1 : i32), bb2(%2 : i64)
   cond_br %cond, bb1(%a : i32), bb2(%b : i64)
 
+// CHECK: bb1({{.*}}: i32): // pred: bb0
 bb1(%x : i32):
-  return %x : i32
+  br bb2(%b: i64)
 
+// CHECK: bb2({{.*}}: i64): // 2 preds: bb0, bb1
 bb2(%y : i64):
   %z = "foo"() : () -> i32
   return %z : i32

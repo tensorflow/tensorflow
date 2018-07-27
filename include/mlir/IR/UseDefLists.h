@@ -58,6 +58,11 @@ public:
 protected:
   IRObjectWithUseList() {}
 
+  /// Return the first IROperand that is using this value, for use by custom
+  /// use/def iterators.
+  IROperand *getFirstUse() { return firstUse; }
+  const IROperand *getFirstUse() const { return firstUse; }
+
 private:
   friend class IROperand;
   IROperand *firstUse = nullptr;
@@ -179,12 +184,12 @@ class SSAValueUseIterator
     : public std::iterator<std::forward_iterator_tag, IROperand> {
 public:
   SSAValueUseIterator() = default;
-  explicit SSAValueUseIterator(IROperand *current) : current(current) {}
+  explicit SSAValueUseIterator(OperandType *current) : current(current) {}
   OperandType *operator->() const { return current; }
   OperandType &operator*() const { return current; }
 
   template <typename SFINAE_Owner = OwnerType>
-  typename std::enable_if<!std::is_void<OwnerType>::value, SFINAE_Owner>::type
+  typename std::enable_if<!std::is_void<OwnerType>::value, SFINAE_Owner *>::type
   getUser() const {
     return current->getOwner();
   }

@@ -23,6 +23,7 @@
 
 namespace mlir {
 class BBArgument;
+template <typename BlockType> class PredecessorIterator;
 template <typename BlockType> class SuccessorIterator;
 
 /// Each basic block in a CFG function contains a list of basic block arguments,
@@ -123,6 +124,33 @@ public:
   // Predecessors and successors.
   //===--------------------------------------------------------------------===//
 
+  // Predecessor iteration.
+  using const_pred_iterator = PredecessorIterator<const BasicBlock>;
+  const_pred_iterator pred_begin() const;
+  const_pred_iterator pred_end() const;
+  llvm::iterator_range<const_pred_iterator> getPredecessors() const;
+
+  using pred_iterator = PredecessorIterator<BasicBlock>;
+  pred_iterator pred_begin();
+  pred_iterator pred_end();
+  llvm::iterator_range<pred_iterator> getPredecessors();
+
+  /// Return true if this block has no predecessors.
+  bool hasNoPredecessors() const;
+
+  /// If this basic block has exactly one predecessor, return it.  Otherwise,
+  /// return null.
+  ///
+  /// Note that if a block has duplicate predecessors from a single block (e.g.
+  /// if you have a conditional branch with the same block as the true/false
+  /// destinations) is not considered to be a single predecessor.
+  BasicBlock *getSinglePredecessor();
+
+  const BasicBlock *getSinglePredecessor() const {
+    return const_cast<BasicBlock *>(this)->getSinglePredecessor();
+  }
+
+  // Indexed successor access.
   unsigned getNumSuccessors() const {
     return getTerminator()->getNumSuccessors();
   }
@@ -133,7 +161,7 @@ public:
     return getTerminator()->getSuccessor(i);
   }
 
-  // Support successor iteration.
+  // Successor iteration.
   using const_succ_iterator = SuccessorIterator<const BasicBlock>;
   const_succ_iterator succ_begin() const;
   const_succ_iterator succ_end() const;
@@ -169,6 +197,78 @@ private:
 
   friend struct llvm::ilist_traits<BasicBlock>;
 };
+
+//===----------------------------------------------------------------------===//
+// Predecessors
+//===----------------------------------------------------------------------===//
+
+/// Implement a predecessor iterator as a forward iterator.  This works by
+/// walking the use lists of basic blocks.  The entries on this list are the
+/// BasicBlockOperands that are embedded into terminator instructions.  From the
+/// operand, we can get the terminator that contains it, and it's parent block
+/// is the predecessor.
+template <typename BlockType>
+class PredecessorIterator
+    : public llvm::iterator_facade_base<PredecessorIterator<BlockType>,
+                                        std::forward_iterator_tag,
+                                        BlockType *> {
+public:
+  PredecessorIterator(BasicBlockOperand *firstOperand)
+      : bbUseIterator(firstOperand) {}
+
+  PredecessorIterator &operator=(const PredecessorIterator &rhs) {
+    bbUseIterator = rhs.bbUseIterator;
+  }
+
+  bool operator==(const PredecessorIterator &rhs) const {
+    return bbUseIterator == rhs.bbUseIterator;
+  }
+
+  BlockType *operator*() const {
+    // The use iterator points to an operand of a terminator.  The predecessor
+    // we return is the basic block that that terminator is embedded into.
+    return bbUseIterator.getUser()->getBlock();
+  }
+
+  PredecessorIterator &operator++() {
+    ++bbUseIterator;
+    return *this;
+  }
+
+private:
+  using BBUseIterator = SSAValueUseIterator<BasicBlockOperand, TerminatorInst>;
+  BBUseIterator bbUseIterator;
+};
+
+inline auto BasicBlock::pred_begin() const -> const_pred_iterator {
+  return const_pred_iterator((BasicBlockOperand *)getFirstUse());
+}
+
+inline auto BasicBlock::pred_end() const -> const_pred_iterator {
+  return const_pred_iterator(nullptr);
+}
+
+inline auto BasicBlock::getPredecessors() const
+    -> llvm::iterator_range<const_pred_iterator> {
+  return {pred_begin(), pred_end()};
+}
+
+inline auto BasicBlock::pred_begin() -> pred_iterator {
+  return pred_iterator((BasicBlockOperand *)getFirstUse());
+}
+
+inline auto BasicBlock::pred_end() -> pred_iterator {
+  return pred_iterator(nullptr);
+}
+
+inline auto BasicBlock::getPredecessors()
+    -> llvm::iterator_range<pred_iterator> {
+  return {pred_begin(), pred_end()};
+}
+
+//===----------------------------------------------------------------------===//
+// Successors
+//===----------------------------------------------------------------------===//
 
 /// This template implments the successor iterators for basic block.
 template <typename BlockType>
