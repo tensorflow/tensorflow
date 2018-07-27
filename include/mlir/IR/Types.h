@@ -43,9 +43,12 @@ public:
     F32,
     F64,
 
+    // TensorFlow types.
+    TFControl,
+
     /// This is a marker for the last primitive type.  The range of primitive
     /// types is expected to be this element and earlier.
-    LAST_PRIMITIVE_TYPE = F64,
+    LAST_PRIMITIVE_TYPE = TFControl,
 
     // Derived types.
     Integer,
@@ -79,6 +82,7 @@ public:
   static PrimitiveType *getF16(MLIRContext *ctx);
   static PrimitiveType *getF32(MLIRContext *ctx);
   static PrimitiveType *getF64(MLIRContext *ctx);
+  static PrimitiveType *getTFControl(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -149,6 +153,9 @@ inline PrimitiveType *Type::getF32(MLIRContext *ctx) {
 }
 inline PrimitiveType *Type::getF64(MLIRContext *ctx) {
   return PrimitiveType::get(Kind::F64, ctx);
+}
+inline PrimitiveType *Type::getTFControl(MLIRContext *ctx) {
+  return PrimitiveType::get(Kind::TFControl, ctx);
 }
 
 /// Integer types can have arbitrary bitwidth up to a large fixed limit of 4096.

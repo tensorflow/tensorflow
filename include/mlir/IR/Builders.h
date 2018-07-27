@@ -62,6 +62,7 @@ public:
   PrimitiveType *getF16Type();
   PrimitiveType *getF32Type();
   PrimitiveType *getF64Type();
+  PrimitiveType *getTFControlType();
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);

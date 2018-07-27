@@ -287,6 +287,9 @@ void ModulePrinter::printType(const Type *type) {
   case Type::Kind::F64:
     os << "f64";
     return;
+  case Type::Kind::TFControl:
+    os << "tf_control";
+    return;
 
   case Type::Kind::Integer: {
     auto *integer = cast<IntegerType>(type);

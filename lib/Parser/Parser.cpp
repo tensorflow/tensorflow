@@ -281,6 +281,9 @@ Type *Parser::parsePrimitiveType() {
   case Token::kw_affineint:
     consumeToken(Token::kw_affineint);
     return builder.getAffineIntType();
+  case Token::kw_tf_control:
+    consumeToken(Token::kw_tf_control);
+    return builder.getTFControlType();
   case Token::inttype: {
     auto width = getToken().getIntTypeBitwidth();
     if (!width.hasValue())

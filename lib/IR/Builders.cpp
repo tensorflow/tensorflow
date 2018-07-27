@@ -47,6 +47,10 @@ PrimitiveType *Builder::getF32Type() { return Type::getF32(context); }
 
 PrimitiveType *Builder::getF64Type() { return Type::getF64(context); }
 
+PrimitiveType *Builder::getTFControlType() {
+  return Type::getTFControl(context);
+}
+
 IntegerType *Builder::getIntegerType(unsigned width) {
   return Type::getInteger(width, context);
 }
