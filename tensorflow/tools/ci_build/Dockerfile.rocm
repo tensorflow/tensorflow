@@ -100,12 +100,12 @@ RUN apt-get update --allow-insecure-repositories && \
 # COPY and install the hcc package built in the previous stage
 RUN mkdir -p $HOME/pkgs/hcc
 COPY --from=tool_builder /home/rocm-user/hcc/build/*.deb $HOME/pkgs/hcc/
-RUN cd $HOME/pkgs/hcc && sudo dpkg -i *.deb
+RUN cd $HOME/pkgs/hcc && dpkg -i *.deb
 
 # COPY and install the HIP package built in the previous stage
 RUN mkdir -p $HOME/pkgs/HIP
 COPY --from=tool_builder /home/rocm-user/HIP/build/*.deb $HOME/pkgs/HIP/
-RUN cd $HOME/pkgs/HIP && sudo dpkg -i *.deb
+RUN cd $HOME/pkgs/HIP && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
