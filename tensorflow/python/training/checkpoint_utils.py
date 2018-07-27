@@ -24,7 +24,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -308,14 +307,14 @@ def _set_checkpoint_initializer(variable,
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
 
-    # TODO(priyag, allenl): Use `SaveableObject.restore` instead here.
-    if resource_variable_ops.is_resource_variable(variable):
-      init_op = variable.assign(restore_op, read_value=False)
-      # TODO(priyag): Remove this when using `SaveableObject.restore` instead.
-      if hasattr(init_op, "_index"):
-        init_op = distribute_lib.get_distribution_strategy().group(init_op)
-    else:
-      init_op = state_ops.assign(variable, restore_op)
+    names_to_saveables = saver.BaseSaverBuilder.OpListToDict([variable])
+    saveable_objects = []
+    for name, op in names_to_saveables.items():
+      for s in saver.BaseSaverBuilder.SaveableObjectsForOp(op, name):
+        saveable_objects.append(s)
+
+    assert len(saveable_objects) == 1  # Should be only one variable.
+    init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
 
     # pylint:disable=protected-access
     variable._initializer_op = init_op
