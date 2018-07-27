@@ -40,22 +40,22 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     --build_tests_only --test_output=errors --local_test_jobs=${TF_GPU_COUNT} --config=opt \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
-    -//tensorflow/python:optimizer_test \
-    -//tensorflow/python/estimator:boosted_trees_test   \
-    -//tensorflow/python/estimator:dnn_linear_combined_test   \
-    -//tensorflow/python/feature_column:feature_column_test \
+    -//tensorflow/python/eager:pywrap_tfe_test \
+    -//tensorflow/python/estimator:estimator_test \
     -//tensorflow/python/keras:activations_test \
+    -//tensorflow/python/keras:cudnn_recurrent_test \
     -//tensorflow/python/keras:normalization_test \
     -//tensorflow/python/keras:pooling_test \
+    -//tensorflow/python/keras:training_gpu_test \
     -//tensorflow/python/kernel_tests:atrous_conv2d_test \
     -//tensorflow/python/kernel_tests:bincount_op_test \
     -//tensorflow/python/kernel_tests:concat_op_test \
     -//tensorflow/python/kernel_tests:control_flow_ops_py_test \
-    -//tensorflow/python/kernel_tests:conv_ops_3d_test \
-    -//tensorflow/python/kernel_tests:conv_ops_test \
     -//tensorflow/python/kernel_tests:conv1d_test \
     -//tensorflow/python/kernel_tests:conv2d_backprop_filter_grad_test \
     -//tensorflow/python/kernel_tests:conv2d_transpose_test \
+    -//tensorflow/python/kernel_tests:conv_ops_3d_test \
+    -//tensorflow/python/kernel_tests:conv_ops_test \
     -//tensorflow/python/kernel_tests:dct_ops_test \
     -//tensorflow/python/kernel_tests:depthwise_conv_op_test \
     -//tensorflow/python/kernel_tests:fft_ops_test \
@@ -71,6 +71,7 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:pooling_ops_3d_test \
     -//tensorflow/python/kernel_tests:pooling_ops_test \
     -//tensorflow/python/ops/parallel_for:control_flow_ops_test \
+    -//tensorflow/python/ops/parallel_for:gradients_test \
     -//tensorflow/python/profiler/internal:run_metadata_test \
     -//tensorflow/python/profiler:profile_context_test \
     -//tensorflow/python/profiler:profiler_test \
@@ -82,21 +83,4 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python:learning_rate_decay_test \
     -//tensorflow/python:memory_optimizer_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
-    -//tensorflow/python:timeline_test \
-    -//tensorflow/python:virtual_gpu_test \
-    -//tensorflow/python:function_def_to_graph_test \
-    -//tensorflow/python/keras:models_test \
-    -//tensorflow/python/keras:training_test \
-    -//tensorflow/python/keras:cudnn_recurrent_test \
-    -//tensorflow/python/kernel_tests/distributions:beta_test \
-    -//tensorflow/python/kernel_tests/distributions:dirichlet_test \
-    -//tensorflow/python/kernel_tests/distributions:student_t_test \
-    -//tensorflow/python/estimator:baseline_test \
-    -//tensorflow/python/estimator:dnn_test \
-    -//tensorflow/python/estimator:estimator_test \
-    -//tensorflow/python/estimator:linear_test \
-    -//tensorflow/python/kernel_tests:topk_op_test \
-    -//tensorflow/python/kernel_tests/distributions:gamma_test \
-    -//tensorflow/python/eager:pywrap_tfe_test \
-    -//tensorflow/python/keras:training_gpu_test \
-    -//tensorflow/python/ops/parallel_for:gradients_test
+    -//tensorflow/python:timeline_testdiff 
