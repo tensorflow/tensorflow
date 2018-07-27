@@ -3284,7 +3284,8 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
                            const Dims<4>& block_shape_dims,
                            const int32* paddings_data,
                            const Dims<4>& paddings_dims, T* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& output_dims,
+                           const int32_t pad_value) {
   const int output_batch_size = ArraySize(output_dims, 3);
   const int output_height = ArraySize(output_dims, 2);
   const int output_width = ArraySize(output_dims, 1);
@@ -3309,7 +3310,7 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
                 padding_top + input_height ||
             out_w * block_shape_width + shift_w < padding_left ||
             out_w * block_shape_width + shift_w >= padding_left + input_width) {
-          memset(out, 0, depth * sizeof(T));
+          memset(out, pad_value, depth * sizeof(T));
         } else {
           const T* in =
               input_data +
@@ -3322,6 +3323,17 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+template <typename T>
+inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
+                           const int32* block_shape_data,
+                           const Dims<4>& block_shape_dims,
+                           const int32* paddings_data,
+                           const Dims<4>& paddings_dims, T* output_data,
+                           const Dims<4>& output_dims) {
+  SpaceToBatchND(input_data, input_dims, block_shape_data, block_shape_dims,
+                 paddings_data, paddings_dims, output_data, output_dims, 0);
 }
 
 template <typename T>
