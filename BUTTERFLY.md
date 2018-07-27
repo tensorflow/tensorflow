@@ -1,5 +1,15 @@
 ### Butterfly specific changes to tensorflow build.
 
+#### Prerequisites
+
+You'll need to install the following libraries:
+
+```bash
+$ brew install autoconf
+$ brew install automake
+$ brew install libtool
+```
+
 #### Background 
 
 We are currently building our own tensorflow binary since by default the binary for mobiles do not include some of the ops required by our models.
