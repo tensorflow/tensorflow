@@ -1064,7 +1064,10 @@ TEST(FunctionalizeControlFlow, Cycle) {
   // less -> XlaIf <--> identity.
   Status status = FunctionalizeControlFlow(graph.get(), &library);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Detect a cycle"))
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "Detected a cycle"))
+      << status.error_message();
+  EXPECT_TRUE(
+      str_util::StrContains(status.error_message(), "{{node cond/Less_5_If}}"))
       << status.error_message();
 }
 

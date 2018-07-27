@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -689,12 +690,12 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
 Status ValidateGraph(const Graph* graph,
                      const FunctionLibraryDefinition& flib_def,
                      const DeviceType& device_type, const string& name) {
-  auto maybe_error = [&](const string& op, const Status& s) -> Status {
+  auto maybe_error = [&](const Node* node, const Status& s) -> Status {
     if (!s.ok()) {
       return errors::InvalidArgument(strings::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
-          " on ", device_type.type_string(), ": ", op, " (", s.error_message(),
-          ")"));
+          " on ", device_type.type_string(), ": ", node->def().op(), " (",
+          s.error_message(), ")", FormatNodeForError(*node)));
     }
     return Status::OK();
   };
@@ -707,15 +708,15 @@ Status ValidateGraph(const Graph* graph,
     Status s;
     if (fdef) {
       s = ValidateFunctionDef(fdef, flib_def);
-      TF_RETURN_IF_ERROR(maybe_error(node->def().op(), s));
+      TF_RETURN_IF_ERROR(maybe_error(node, s));
       continue;
     }
     const OpDef* op_def;
     s = OpRegistry::Global()->LookUpOpDef(node->def().op(), &op_def);
-    TF_RETURN_IF_ERROR(maybe_error(node->def().op(), s));
+    TF_RETURN_IF_ERROR(maybe_error(node, s));
     TF_RETURN_IF_ERROR(ValidateNodeDef(node->def(), *op_def));
     s = FindKernelDef(device_type, node->def(), nullptr, nullptr);
-    TF_RETURN_IF_ERROR(maybe_error(node->def().op(), s));
+    TF_RETURN_IF_ERROR(maybe_error(node, s));
   }
   return Status::OK();
 }
