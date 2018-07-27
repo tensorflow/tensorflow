@@ -70,6 +70,11 @@ struct FusedGraphInfo {
 using HloMatcherPattern = std::vector<HloMatcherNode>;
 using ReplacedInstructions = std::vector<HloInstruction*>;
 
+struct OutlinedInfo {
+  HloInstruction* call_to_outlined_computation;
+  ReplacedInstructions removed_instructions;
+};
+
 class HloMatcher : public HloPassInterface {
  public:
   HloMatcher(const std::vector<HloMatcherPattern>& patterns,
@@ -82,13 +87,29 @@ class HloMatcher : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module) override;
 
  protected:
-  ReplacedInstructions OutlineExpressionFromComputation(
+  OutlinedInfo OutlineExpressionFromComputation(
       const HloMatcherMatched& matched,
-      const std::string& outlined_computation_name, const char metadata_index);
+      const std::string& outlined_computation_name, const char metadata_index) {
+    return OutlineExpressionFromComputation(matched, outlined_computation_name,
+                                            metadata_index, {});
+  }
+
+  OutlinedInfo OutlineExpressionFromComputation(
+      const HloMatcherMatched& matched,
+      const std::string& outlined_computation_name, const char metadata_index,
+      std::vector<HloInstruction*> forced_parameters);
+
+  unsigned MarkReplacedInstructions(const OutlinedInfo& outlined_info);
+
+  // A vector of lists of matches found. One vector entry per pattern, one list
+  // entry per match in the computation
+  std::vector<std::list<HloMatcherMatched>> matches_;
+
+  // The list of patterns to try to find in the computations
+  std::vector<HloMatcherPattern> patterns_;
 
  private:
-  virtual ReplacedInstructions ReplaceNodes(int pattern,
-                                            const HloMatcherMatched&) = 0;
+  virtual unsigned ReplaceNodes() = 0;
 
   void MatchPatternStart(HloComputation*, HloInstruction* inst);
   bool MatchPattern(HloInstruction* inst, const HloMatcherPattern& pattern,
@@ -96,13 +117,6 @@ class HloMatcher : public HloPassInterface {
   void AddMatch(unsigned pattern, const HloMatcherMatched& match);
 
   bool root_computation_only_;
-
-  // The list of patterns to try to find in the computations
-  std::vector<HloMatcherPattern> patterns_;
-
-  // A vector of lists of matches found. One vector entry per pattern, one list
-  // entry per match in the computation
-  std::vector<std::list<HloMatcherMatched>> matches_;
 
   // A map of instructions in the computation to matches. When replacing
   // instructions due to one match, other matches which contain the instruction

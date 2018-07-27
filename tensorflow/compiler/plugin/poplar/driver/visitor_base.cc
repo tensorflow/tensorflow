@@ -67,7 +67,7 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"uniform_scale_add", RandomUniformScale},
     {"norm", RandomNormal},
     {"uniform", RandomUniform},
-    {"avgpool", CreatePoplibsWindowReduction},
+    {"avg_pool", CreatePoplibsWindowReduction},
     {"wide_const", CreateWideConstant},
     {"depthwise_conv", CreateConv2D},
     {"conv_with_reverse", Create2DConvWithReverse},
@@ -75,6 +75,8 @@ static std::map<std::string, FusedCallFn> fused_call_map = {
     {"zero_pad", CreateZeroPadOp},
     {"depthwise_filter", CreateDepthwiseBackpropFilter},
     {"reduction_no_convert", CreateReductionNoConvert},
+    {"max_pool", CreatePoplibsWindowReduction},
+    {"max_pool_grad", CreateBwdMaxPool},
 };
 
 BaseVisitor::BaseVisitor(poplar::Graph& graph, CompilerResources& res)

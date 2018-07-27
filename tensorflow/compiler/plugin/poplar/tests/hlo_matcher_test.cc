@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -31,19 +31,25 @@ class TestMatcher : public HloMatcher {
               CompilerAnnotations& annotations, const char* name,
               const char index, bool root_only)
       : HloMatcher(patterns, annotations, root_only),
-        match_index(index), match_name(name) {}
+        match_index(index),
+        match_name(name) {}
 
  private:
-  ReplacedInstructions ReplaceNodes(int pattern,
-                                    const HloMatcherMatched& match) override {
-    replace_count++;
-    match_pattern.push_back(pattern);
-    match_count.push_back(match.instructions.size());
-
-    ReplacedInstructions replaced =
-        OutlineExpressionFromComputation(match, match_name, match_index);
-
-    return replaced;
+  unsigned ReplaceNodes() override {
+    unsigned int replacement_count = 0;
+    for (int pattern = 0; pattern < matches_.size(); pattern++) {
+      for (HloMatcherMatched& match : matches_[pattern]) {
+        if (match.ok) {
+          replace_count++;
+          match_pattern.push_back(pattern);
+          match_count.push_back(match.instructions.size());
+          const OutlinedInfo outlined_info =
+              OutlineExpressionFromComputation(match, match_name, match_index);
+          replacement_count += MarkReplacedInstructions(outlined_info);
+        }
+      }
+    }
+    return replacement_count;
   }
 
  public:

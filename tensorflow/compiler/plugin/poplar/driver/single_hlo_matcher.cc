@@ -13,28 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_EARLY_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_EARLY_H_
-
 #include "tensorflow/compiler/plugin/poplar/driver/single_hlo_matcher.h"
 
 namespace xla {
-
 namespace poplarplugin {
 
-// The purpose of this pass is to extract patterns created by tf2xla *before*
-// other passes attempt to optimize the graph and hence making the pattern
-// matching more difficult
-class FuseOpsEarly : public SingleHloMatcher {
- public:
-  FuseOpsEarly(struct CompilerAnnotations& annotations);
-
-  ~FuseOpsEarly() override = default;
-
-  tensorflow::StringPiece name() const override { return "poplar-fuse-early"; }
-};
+unsigned SingleHloMatcher::ReplaceNodes() {
+  unsigned int replacement_count = 0;
+  for (int pattern = 0; pattern < matches_.size(); pattern++) {
+    for (HloMatcherMatched& match : matches_[pattern]) {
+      if (match.ok) {
+        auto& fuse = fuse_info_[pattern];
+        std::string name = op_prefix_ + fuse.name;
+        const OutlinedInfo outlined_info =
+            OutlineExpressionFromComputation(match, name, fuse.op_index);
+        replacement_count += MarkReplacedInstructions(outlined_info);
+      }
+    }
+  }
+  return replacement_count;
+}
 
 }  // namespace poplarplugin
 }  // namespace xla
-
-#endif

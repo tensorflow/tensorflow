@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/expression_outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_max_pool.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_early.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
@@ -394,6 +395,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<FuseMaxPool>(resources.annotations);
     pipeline.AddPass<FuseOpsLate>(resources.annotations);
     pipeline.AddPass<Outliner>(resources.annotations);
     pipeline.AddPass<InplaceFinder>(resources.annotations);

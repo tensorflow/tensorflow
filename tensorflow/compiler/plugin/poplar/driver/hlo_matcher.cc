@@ -190,22 +190,7 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
     }
   }
 
-  unsigned int replacement_count = 0;
-  for (int pattern = 0; pattern < matches_.size(); pattern++) {
-    for (HloMatcherMatched& match : matches_[pattern]) {
-      if (match.ok) {
-        const ReplacedInstructions& replaced = ReplaceNodes(pattern, match);
-        for (auto i : replaced) {
-          auto range = match_map_.equal_range(i);
-          for (auto m = range.first; m != range.second; ++m) {
-            m->second->ok = false;
-          }
-
-          replacement_count++;
-        }
-      }
-    }
-  }
+  unsigned int replacement_count = ReplaceNodes();
 
   patterns_.clear();
   matches_.clear();
@@ -214,9 +199,10 @@ StatusOr<bool> HloMatcher::Run(HloModule* module) {
   return replacement_count != 0;
 }
 
-ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
+OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
     const HloMatcherMatched& matched,
-    const std::string& outlined_computation_name, const char metadata_index) {
+    const std::string& outlined_computation_name, const char metadata_index,
+    std::vector<HloInstruction*> forced_parameters) {
   auto& instructions_to_outline = matched.instructions;
   HloModule* module = matched.computation->parent();
   HloInstruction* root = instructions_to_outline[0];
@@ -282,6 +268,17 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
     }
   }
 
+  // Add forced parameters as arguments - DCE doe not remove unused parameters.
+  // This allows us to link and easily maintain outputs of a fwd pass to the bwd
+  // pass
+  for (unsigned i = 0; i < forced_parameters.size(); i++) {
+    HloInstruction* inst = forced_parameters[i];
+    const unsigned parameter_num = arguments.size() + i;
+    builder.AddInstruction(HloInstruction::CreateParameter(
+        parameter_num, inst->shape(), StrCat("arg_", parameter_num)));
+    arguments.push_back(inst);
+  }
+
   // Creates a call to the nested computation.
   HloComputation* nested_computation =
       module->AddEmbeddedComputation(builder.Build(FindOrDie(outlined, root)));
@@ -296,15 +293,29 @@ ReplacedInstructions HloMatcher::OutlineExpressionFromComputation(
 
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 
-  ReplacedInstructions replaced;
+  OutlinedInfo outlined_info = {call, {}};
   for (auto inst : instructions_to_outline) {
     if (inst->user_count() == 0) {
       TF_CHECK_OK(matched.computation->RemoveInstruction(inst));
-      replaced.push_back(inst);
+      outlined_info.removed_instructions.push_back(inst);
     }
   }
 
-  return replaced;
+  return outlined_info;
+}
+
+unsigned HloMatcher::MarkReplacedInstructions(
+    const OutlinedInfo& outlined_info) {
+  unsigned int replacement_count = 0;
+  for (auto i : outlined_info.removed_instructions) {
+    auto range = match_map_.equal_range(i);
+    for (auto m = range.first; m != range.second; ++m) {
+      m->second->ok = false;
+    }
+
+    replacement_count++;
+  }
+  return replacement_count;
 }
 
 }  // namespace poplarplugin
