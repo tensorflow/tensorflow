@@ -192,26 +192,25 @@ class _Residual(tf.keras.Model):
   def backward_grads(self, y, dy, training=True):
     """Manually compute backward gradients given input and output grads."""
     dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=self.axis)
+    y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
 
-    with tf.GradientTape(persistent=True) as tape:
-      tape.watch(y)
-      y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
+    with tf.GradientTape() as gtape:
+      gtape.watch(y1)
       gy1 = self.g(y1, training=training)
-      x2 = y2 - gy1
-      fx2 = self.f(x2, training=training)
-      x1 = y1 - fx2
-
-    grads_combined = tape.gradient(
+    grads_combined = gtape.gradient(
         gy1, [y1] + self.g.trainable_variables, output_gradients=dy2)
     dg = grads_combined[1:]
     dx1 = dy1 + grads_combined[0]
+    x2 = y2 - gy1
 
-    grads_combined = tape.gradient(
+    with tf.GradientTape() as ftape:
+      ftape.watch(x2)
+      fx2 = self.f(x2, training=training)
+    grads_combined = ftape.gradient(
         fx2, [x2] + self.f.trainable_variables, output_gradients=dx1)
     dx2 = dy2 + grads_combined[0]
     df = grads_combined[1:]
-
-    del tape
+    x1 = y1 - fx2
 
     x = tf.concat([x1, x2], axis=self.axis)
     dx = tf.concat([dx1, dx2], axis=self.axis)
