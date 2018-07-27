@@ -22,6 +22,7 @@ VALID_LIBS=[
     "jsoncpp_git",
     "lmdb",
     "nasm",
+    "nsync",
     "org_sqlite",
     "pcre",
     "png_archive",
