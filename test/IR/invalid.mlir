@@ -10,7 +10,7 @@ extfunc @illegaltype(i) // expected-error {{expected type}}
 
 // -----
 
-extfunc @nestedtensor(tensor<tensor<i8>>) -> () // expected-error {{expected type}}
+extfunc @nestedtensor(tensor<tensor<i8>>) -> () // expected-error {{invalid tensor element type}}
 
 // -----
 // Test no map in memref type.
@@ -240,7 +240,12 @@ bb1(%x: i17):
 
 // Test no nested vector.
 extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
-// expected-error@-1 {{expected type}}
+// expected-error@-1 {{invalid vector element type}}
+
+// -----
+
+// affineint is not allowed in a vector.
+extfunc @vectors(vector<1 x affineint>) // expected-error {{invalid vector element type}}
 
 // -----
 

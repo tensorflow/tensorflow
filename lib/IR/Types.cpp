@@ -21,12 +21,13 @@
 #include "mlir/Support/STLExtras.h"
 using namespace mlir;
 
-PrimitiveType::PrimitiveType(Kind kind, MLIRContext *context)
-    : Type(kind, context) {}
-
 IntegerType::IntegerType(unsigned width, MLIRContext *context)
   : Type(Kind::Integer, context), width(width) {
 }
+
+FloatType::FloatType(Kind kind, MLIRContext *context) : Type(kind, context) {}
+
+OtherType::OtherType(Kind kind, MLIRContext *context) : Type(kind, context) {}
 
 FunctionType::FunctionType(Type *const *inputsAndResults, unsigned numInputs,
                            unsigned numResults, MLIRContext *context)

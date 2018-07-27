@@ -24,8 +24,9 @@
 namespace mlir {
 class AffineMap;
 class MLIRContext;
-class PrimitiveType;
 class IntegerType;
+class FloatType;
+class OtherType;
 
 /// Instances of the Type class are immutable, uniqued, immortal, and owned by
 /// MLIRContext.  As such, they are passed around by raw non-const pointer.
@@ -34,21 +35,23 @@ class Type {
 public:
   /// Integer identifier for all the concrete type kinds.
   enum class Kind {
-    // Target pointer sized integer.
+    // Target pointer sized integer, used (e.g.) in affine mappings.
     AffineInt,
+
+    // TensorFlow types.
+    TFControl,
+
+    /// These are marker for the first and last 'other' type.
+    FIRST_OTHER_TYPE = AffineInt,
+    LAST_OTHER_TYPE = TFControl,
 
     // Floating point.
     BF16,
     F16,
     F32,
     F64,
-
-    // TensorFlow types.
-    TFControl,
-
-    /// This is a marker for the last primitive type.  The range of primitive
-    /// types is expected to be this element and earlier.
-    LAST_PRIMITIVE_TYPE = TFControl,
+    FIRST_FLOATING_POINT_TYPE = BF16,
+    LAST_FLOATING_POINT_TYPE = F64,
 
     // Derived types.
     Integer,
@@ -67,9 +70,10 @@ public:
   /// Return the LLVMContext in which this type was uniqued.
   MLIRContext *getContext() const { return context; }
 
-  // Convenience predicates.  This is only for primitive types, derived types
-  // should use isa/dyn_cast.
+  // Convenience predicates.  This is only for 'other' and floating point types,
+  // derived types should use isa/dyn_cast.
   bool isAffineInt() const { return getKind() == Kind::AffineInt; }
+  bool isTFControl() const { return getKind() == Kind::TFControl; }
   bool isBF16() const { return getKind() == Kind::BF16; }
   bool isF16() const { return getKind() == Kind::F16; }
   bool isF32() const { return getKind() == Kind::F32; }
@@ -77,12 +81,12 @@ public:
 
   // Convenience factories.
   static IntegerType *getInteger(unsigned width, MLIRContext *ctx);
-  static PrimitiveType *getAffineInt(MLIRContext *ctx);
-  static PrimitiveType *getBF16(MLIRContext *ctx);
-  static PrimitiveType *getF16(MLIRContext *ctx);
-  static PrimitiveType *getF32(MLIRContext *ctx);
-  static PrimitiveType *getF64(MLIRContext *ctx);
-  static PrimitiveType *getTFControl(MLIRContext *ctx);
+  static FloatType *getBF16(MLIRContext *ctx);
+  static FloatType *getF16(MLIRContext *ctx);
+  static FloatType *getF32(MLIRContext *ctx);
+  static FloatType *getF64(MLIRContext *ctx);
+  static OtherType *getAffineInt(MLIRContext *ctx);
+  static OtherType *getTFControl(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -124,40 +128,6 @@ inline raw_ostream &operator<<(raw_ostream &os, const Type &type) {
   return os;
 }
 
-/// Primitive types are the atomic base of the type system, including affine
-/// integer and floating point values.
-class PrimitiveType : public Type {
-public:
-  static PrimitiveType *get(Kind kind, MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Type *type) {
-    return type->getKind() <= Kind::LAST_PRIMITIVE_TYPE;
-  }
-private:
-  PrimitiveType(Kind kind, MLIRContext *context);
-  ~PrimitiveType() = delete;
-};
-
-inline PrimitiveType *Type::getAffineInt(MLIRContext *ctx) {
-  return PrimitiveType::get(Kind::AffineInt, ctx);
-}
-inline PrimitiveType *Type::getBF16(MLIRContext *ctx) {
-  return PrimitiveType::get(Kind::BF16, ctx);
-}
-inline PrimitiveType *Type::getF16(MLIRContext *ctx) {
-  return PrimitiveType::get(Kind::F16, ctx);
-}
-inline PrimitiveType *Type::getF32(MLIRContext *ctx) {
-  return PrimitiveType::get(Kind::F32, ctx);
-}
-inline PrimitiveType *Type::getF64(MLIRContext *ctx) {
-  return PrimitiveType::get(Kind::F64, ctx);
-}
-inline PrimitiveType *Type::getTFControl(MLIRContext *ctx) {
-  return PrimitiveType::get(Kind::TFControl, ctx);
-}
-
 /// Integer types can have arbitrary bitwidth up to a large fixed limit of 4096.
 class IntegerType : public Type {
 public:
@@ -180,6 +150,56 @@ private:
 
 inline IntegerType *Type::getInteger(unsigned width, MLIRContext *ctx) {
   return IntegerType::get(width, ctx);
+}
+
+class FloatType : public Type {
+public:
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Type *type) {
+    return type->getKind() >= Kind::FIRST_FLOATING_POINT_TYPE &&
+           type->getKind() <= Kind::LAST_FLOATING_POINT_TYPE;
+  }
+
+  static FloatType *get(Kind kind, MLIRContext *context);
+
+private:
+  FloatType(Kind kind, MLIRContext *context);
+  ~FloatType() = delete;
+};
+
+inline FloatType *Type::getBF16(MLIRContext *ctx) {
+  return FloatType::get(Kind::BF16, ctx);
+}
+inline FloatType *Type::getF16(MLIRContext *ctx) {
+  return FloatType::get(Kind::F16, ctx);
+}
+inline FloatType *Type::getF32(MLIRContext *ctx) {
+  return FloatType::get(Kind::F32, ctx);
+}
+inline FloatType *Type::getF64(MLIRContext *ctx) {
+  return FloatType::get(Kind::F64, ctx);
+}
+
+/// This is a type for the random collection of special base types.
+class OtherType : public Type {
+public:
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool classof(const Type *type) {
+    return type->getKind() >= Kind::FIRST_OTHER_TYPE &&
+           type->getKind() <= Kind::LAST_OTHER_TYPE;
+  }
+  static OtherType *get(Kind kind, MLIRContext *context);
+
+private:
+  OtherType(Kind kind, MLIRContext *context);
+  ~OtherType() = delete;
+};
+
+inline OtherType *Type::getAffineInt(MLIRContext *ctx) {
+  return OtherType::get(Kind::AffineInt, ctx);
+}
+inline OtherType *Type::getTFControl(MLIRContext *ctx) {
+  return OtherType::get(Kind::TFControl, ctx);
 }
 
 /// Function types map from a list of inputs to a list of results.
@@ -209,7 +229,6 @@ private:
                unsigned numResults, MLIRContext *context);
   ~FunctionType() = delete;
 };
-
 
 /// Vector types represent multi-dimensional SIMD vectors, and have a fixed
 /// known constant shape with one or more dimension.

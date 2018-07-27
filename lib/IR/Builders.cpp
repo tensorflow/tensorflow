@@ -35,21 +35,17 @@ Module *Builder::createModule() { return new Module(context); }
 // Types.
 //===----------------------------------------------------------------------===//
 
-PrimitiveType *Builder::getAffineIntType() {
-  return Type::getAffineInt(context);
-}
+FloatType *Builder::getBF16Type() { return Type::getBF16(context); }
 
-PrimitiveType *Builder::getBF16Type() { return Type::getBF16(context); }
+FloatType *Builder::getF16Type() { return Type::getF16(context); }
 
-PrimitiveType *Builder::getF16Type() { return Type::getF16(context); }
+FloatType *Builder::getF32Type() { return Type::getF32(context); }
 
-PrimitiveType *Builder::getF32Type() { return Type::getF32(context); }
+FloatType *Builder::getF64Type() { return Type::getF64(context); }
 
-PrimitiveType *Builder::getF64Type() { return Type::getF64(context); }
+OtherType *Builder::getAffineIntType() { return Type::getAffineInt(context); }
 
-PrimitiveType *Builder::getTFControlType() {
-  return Type::getTFControl(context);
-}
+OtherType *Builder::getTFControlType() { return Type::getTFControl(context); }
 
 IntegerType *Builder::getIntegerType(unsigned width) {
   return Type::getInteger(width, context);

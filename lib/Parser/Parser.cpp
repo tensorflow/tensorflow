@@ -161,8 +161,6 @@ public:
   // as the results of their action.
 
   // Type parsing.
-  Type *parsePrimitiveType();
-  Type *parseElementType();
   VectorType *parseVectorType();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
   Type *parseTensorType();
@@ -256,16 +254,41 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 // Type Parsing
 //===----------------------------------------------------------------------===//
 
-/// Parse the low-level fixed dtypes in the system.
+/// Parse an arbitrary type.
 ///
-///   primitive-type ::= `f16` | `bf16` | `f32` | `f64`
-///   primitive-type ::= integer-type
-///   primitive-type ::= `affineint`
+///   type ::= integer-type
+///          | float-type
+///          | other-type
+///          | vector-type
+///          | tensor-type
+///          | memref-type
+///          | function-type
 ///
-Type *Parser::parsePrimitiveType() {
+///   float-type ::= `f16` | `bf16` | `f32` | `f64`
+///   other-type ::= `affineint` | `tf_control`
+///
+Type *Parser::parseType() {
   switch (getToken().getKind()) {
   default:
     return (emitError("expected type"), nullptr);
+  case Token::kw_memref:
+    return parseMemRefType();
+  case Token::kw_tensor:
+    return parseTensorType();
+  case Token::kw_vector:
+    return parseVectorType();
+  case Token::l_paren:
+    return parseFunctionType();
+  // integer-type
+  case Token::inttype: {
+    auto width = getToken().getIntTypeBitwidth();
+    if (!width.hasValue())
+      return (emitError("invalid integer width"), nullptr);
+    consumeToken(Token::inttype);
+    return builder.getIntegerType(width.getValue());
+  }
+
+  // float-type
   case Token::kw_bf16:
     consumeToken(Token::kw_bf16);
     return builder.getBF16Type();
@@ -278,31 +301,15 @@ Type *Parser::parsePrimitiveType() {
   case Token::kw_f64:
     consumeToken(Token::kw_f64);
     return builder.getF64Type();
+
+  // other-type
   case Token::kw_affineint:
     consumeToken(Token::kw_affineint);
     return builder.getAffineIntType();
   case Token::kw_tf_control:
     consumeToken(Token::kw_tf_control);
     return builder.getTFControlType();
-  case Token::inttype: {
-    auto width = getToken().getIntTypeBitwidth();
-    if (!width.hasValue())
-      return (emitError("invalid integer width"), nullptr);
-    consumeToken(Token::inttype);
-    return builder.getIntegerType(width.getValue());
   }
-  }
-}
-
-/// Parse the element type of a tensor or memref type.
-///
-///   element-type ::= primitive-type | vector-type
-///
-Type *Parser::parseElementType() {
-  if (getToken().is(Token::kw_vector))
-    return parseVectorType();
-
-  return parsePrimitiveType();
 }
 
 /// Parse a vector type.
@@ -343,12 +350,13 @@ VectorType *Parser::parseVectorType() {
   }
 
   // Parse the element type.
-  auto *elementType = parsePrimitiveType();
-  if (!elementType)
+  auto typeLoc = getToken().getLoc();
+  auto *elementType = parseType();
+  if (!elementType || parseToken(Token::greater, "expected '>' in vector type"))
     return nullptr;
 
-  if (parseToken(Token::greater, "expected '>' in vector type"))
-    return nullptr;
+  if (!isa<FloatType>(elementType) && !isa<IntegerType>(elementType))
+    return (emitError(typeLoc, "invalid vector element type"), nullptr);
 
   return VectorType::get(dimensions, elementType);
 }
@@ -411,12 +419,14 @@ Type *Parser::parseTensorType() {
   }
 
   // Parse the element type.
-  auto elementType = parseElementType();
-  if (!elementType)
+  auto typeLoc = getToken().getLoc();
+  auto *elementType = parseType();
+  if (!elementType || parseToken(Token::greater, "expected '>' in tensor type"))
     return nullptr;
 
-  if (parseToken(Token::greater, "expected '>' in tensor type"))
-    return nullptr;
+  if (!isa<IntegerType>(elementType) && !isa<FloatType>(elementType) &&
+      !isa<VectorType>(elementType))
+    return (emitError(typeLoc, "invalid tensor element type"), nullptr);
 
   if (isUnranked)
     return builder.getTensorType(elementType);
@@ -442,9 +452,14 @@ Type *Parser::parseMemRefType() {
     return nullptr;
 
   // Parse the element type.
-  auto elementType = parseElementType();
+  auto typeLoc = getToken().getLoc();
+  auto *elementType = parseType();
   if (!elementType)
     return nullptr;
+
+  if (!isa<IntegerType>(elementType) && !isa<FloatType>(elementType) &&
+      !isa<VectorType>(elementType))
+    return (emitError(typeLoc, "invalid memref element type"), nullptr);
 
   // Parse semi-affine-map-composition.
   SmallVector<AffineMap *, 2> affineMapComposition;
@@ -506,29 +521,6 @@ Type *Parser::parseFunctionType() {
   return builder.getFunctionType(arguments, results);
 }
 
-/// Parse an arbitrary type.
-///
-///   type ::= primitive-type
-///          | vector-type
-///          | tensor-type
-///          | memref-type
-///          | function-type
-///   element-type ::= primitive-type | vector-type
-///
-Type *Parser::parseType() {
-  switch (getToken().getKind()) {
-  case Token::kw_memref:
-    return parseMemRefType();
-  case Token::kw_tensor:
-    return parseTensorType();
-  case Token::kw_vector:
-    return parseVectorType();
-  case Token::l_paren:
-    return parseFunctionType();
-  default:
-    return parsePrimitiveType();
-  }
-}
 
 /// Parse a list of types without an enclosing parenthesis.  The list must have
 /// at least one member.

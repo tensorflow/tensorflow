@@ -57,12 +57,13 @@ public:
   Module *createModule();
 
   // Types.
-  PrimitiveType *getAffineIntType();
-  PrimitiveType *getBF16Type();
-  PrimitiveType *getF16Type();
-  PrimitiveType *getF32Type();
-  PrimitiveType *getF64Type();
-  PrimitiveType *getTFControlType();
+  FloatType *getBF16Type();
+  FloatType *getF16Type();
+  FloatType *getF32Type();
+  FloatType *getF64Type();
+
+  OtherType *getAffineIntType();
+  OtherType *getTFControlType();
   IntegerType *getIntegerType(unsigned width);
   FunctionType *getFunctionType(ArrayRef<Type *> inputs,
                                 ArrayRef<Type *> results);

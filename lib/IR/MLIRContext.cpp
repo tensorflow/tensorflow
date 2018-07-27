@@ -187,8 +187,13 @@ public:
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
 
-  // Primitive type uniquing.
-  PrimitiveType *primitives[int(Type::Kind::LAST_PRIMITIVE_TYPE) + 1] = {
+  // Uniquing table for 'other' types.
+  OtherType *otherTypes[int(Type::Kind::LAST_OTHER_TYPE) -
+                        int(Type::Kind::FIRST_OTHER_TYPE) + 1] = {nullptr};
+
+  // Uniquing table for 'float' types.
+  FloatType *floatTypes[int(Type::Kind::LAST_FLOATING_POINT_TYPE) -
+                        int(Type::Kind::FIRST_FLOATING_POINT_TYPE) + 1] = {
       nullptr};
 
   // Affine map uniquing.
@@ -293,24 +298,6 @@ Identifier Identifier::get(StringRef str, const MLIRContext *context) {
 // Type uniquing
 //===----------------------------------------------------------------------===//
 
-PrimitiveType *PrimitiveType::get(Kind kind, MLIRContext *context) {
-  assert(kind <= Kind::LAST_PRIMITIVE_TYPE && "Not a primitive type kind");
-  auto &impl = context->getImpl();
-
-  // We normally have these types.
-  if (impl.primitives[(int)kind])
-    return impl.primitives[(int)kind];
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *ptr = impl.allocator.Allocate<PrimitiveType>();
-
-  // Initialize the memory using placement new.
-  new (ptr) PrimitiveType(kind, context);
-
-  // Cache and return it.
-  return impl.primitives[(int)kind] = ptr;
-}
-
 IntegerType *IntegerType::get(unsigned width, MLIRContext *context) {
   auto &impl = context->getImpl();
 
@@ -321,6 +308,47 @@ IntegerType *IntegerType::get(unsigned width, MLIRContext *context) {
   }
 
   return result;
+}
+
+FloatType *FloatType::get(Kind kind, MLIRContext *context) {
+  assert(kind >= Kind::FIRST_FLOATING_POINT_TYPE &&
+         kind <= Kind::LAST_FLOATING_POINT_TYPE && "Not an FP type kind");
+  auto &impl = context->getImpl();
+
+  // We normally have these types.
+  auto *&entry =
+      impl.floatTypes[(int)kind - int(Kind::FIRST_FLOATING_POINT_TYPE)];
+  if (entry)
+    return entry;
+
+  // On the first use, we allocate them into the bump pointer.
+  auto *ptr = impl.allocator.Allocate<FloatType>();
+
+  // Initialize the memory using placement new.
+  new (ptr) FloatType(kind, context);
+
+  // Cache and return it.
+  return entry = ptr;
+}
+
+OtherType *OtherType::get(Kind kind, MLIRContext *context) {
+  assert(kind >= Kind::FIRST_OTHER_TYPE && kind <= Kind::LAST_OTHER_TYPE &&
+         "Not an 'other' type kind");
+  auto &impl = context->getImpl();
+
+  // We normally have these types.
+  auto *&entry = impl.otherTypes[(int)kind - int(Kind::FIRST_OTHER_TYPE)];
+  if (entry)
+    return entry;
+
+  // On the first use, we allocate them into the bump pointer.
+  auto *ptr = impl.allocator.Allocate<OtherType>();
+
+  // Initialize the memory using placement new.
+  new (ptr) OtherType(kind, context);
+
+  // Cache and return it.
+  return entry = ptr;
 }
 
 FunctionType *FunctionType::get(ArrayRef<Type *> inputs,
@@ -356,7 +384,7 @@ FunctionType *FunctionType::get(ArrayRef<Type *> inputs,
 
 VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
   assert(!shape.empty() && "vector types must have at least one dimension");
-  assert((isa<PrimitiveType>(elementType) || isa<IntegerType>(elementType)) &&
+  assert((isa<FloatType>(elementType) || isa<IntegerType>(elementType)) &&
          "vectors elements must be primitives");
 
   auto *context = elementType->getContext();
@@ -385,7 +413,7 @@ VectorType *VectorType::get(ArrayRef<unsigned> shape, Type *elementType) {
 
 TensorType::TensorType(Kind kind, Type *elementType, MLIRContext *context)
     : Type(kind, context), elementType(elementType) {
-  assert((isa<PrimitiveType>(elementType) || isa<VectorType>(elementType) ||
+  assert((isa<FloatType>(elementType) || isa<VectorType>(elementType) ||
           isa<IntegerType>(elementType)) &&
          "tensor elements must be primitives or vectors");
   assert(isa<TensorType>(this));
