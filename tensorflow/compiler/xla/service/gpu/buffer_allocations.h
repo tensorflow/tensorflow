@@ -107,15 +107,6 @@ class BufferAllocations {
   bool torn_down_ = false;
 };
 
-// In XLA:GPU we map constant buffer allocations to globals in the generated
-// LLVM IR.  This function gives us the name of the global variable a constant
-// buffer is mapped to.
-string ConstantBufferAllocationToGlobalName(const BufferAllocation& allocation);
-
-// Return the Literal corresponding to `allocation`, which must be a constant
-// allocation.
-const Literal& LiteralForConstantAllocation(const BufferAllocation& allocation);
-
 // LLVM and PTXAS don't deal well with large constants, so we only emit very
 // small constants directly in LLVM IR.  Larger constants are emitted with zero
 // initializers in LLVM IR and are later overwritten when the PTX/CUBIN is
