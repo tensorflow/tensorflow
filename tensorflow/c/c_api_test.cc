@@ -1708,6 +1708,20 @@ class CApiGradientsTest : public ::testing::Test {
     return op;
   }
 
+  void BuildGraphAndAddGradientsWithPrefixes(const char* prefix1,
+      const char* prefix2 = nullptr) {
+    TF_Output inputs[2];
+    TF_Output outputs[1];
+    TF_Output grad_outputs[2];
+
+    BuildSuccessGraph(inputs, outputs);
+
+    AddGradients(false, prefix1, inputs, 2, outputs, 1, grad_outputs);
+    if (prefix2 != nullptr) {
+      AddGradients(false, prefix2, inputs, 2, outputs, 1, grad_outputs);
+    }
+  }
+
   TF_Status* s_;
   TF_Graph* graph_;
   TF_Graph* expected_graph_;
@@ -1727,19 +1741,53 @@ TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_NoGradInputs) {
   TestGradientsError(false);
 }
 
-TEST_F(CApiGradientsTest, Gradients_WithPrefix) {
-  TF_Output inputs[2];
-  TF_Output outputs[1];
-  TF_Output grad_outputs[2];
-
-  BuildSuccessGraph(inputs, outputs);
-  AddGradients(false, "mygrads", inputs, 2, outputs, 1, grad_outputs);
-  EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
-
-  AddGradients(false, "mygrads_1", inputs, 2, outputs, 1, grad_outputs);
+TEST_F(CApiGradientsTest, GradientsPrefix_PrefixIsOk) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients");
   ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
 
-  AddGradients(false, "mygrads_1", inputs, 2, outputs, 1, grad_outputs);
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsWithDistinctPrefixes) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients_1");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsInSameScope) {
+  BuildGraphAndAddGradientsWithPrefixes("scope/gradients", "scope/gradients_1");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsInDifferentScopes) {
+  BuildGraphAndAddGradientsWithPrefixes("scope/gradients", "scope_1/gradients");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_2ndGradientsAsSubScopeOf1st) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients/sub");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_PrefixMatchesExistingNodeName) {
+  BuildGraphAndAddGradientsWithPrefixes("Const_0");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsWithIdenticalPrefixes) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_2ndGradientsMatchingNodeOf1st) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients/MatMul");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_1stGradientsMatchingNodeOf2nd) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients/MatMul", "gradients");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_2ndGradientsAsParentScopeOf1st) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients/sub", "gradients");
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
 }
 

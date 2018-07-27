@@ -156,11 +156,10 @@ public final class Graph implements AutoCloseable {
    * {@code prefix} is used as the name prefix applied to all nodes added to the graph to compute gradients. It must
    * be unique within the provided graph or the operation will fail. 
    * <p>
-   * If {@code prefix} is null, then the nodes will be added to under the default prefix, which is "gradients" for the 
-   * first invocation, then "gradients_1", "gradients_2", etc. for any subsequent calls to the same graph.
+   * If {@code prefix} is null, then one will be chosen automatically.
    * 
    * @param prefix unique string prefix applied before the names of nodes added to the graph to compute gradients.
-   *               If null, defaults to "gradients".
+   *               If null, a default one will be chosen.
    * @param y output of the function to derive
    * @param x inputs of the function for which partial derivatives are computed
    * @param dx if not null, the partial derivatives of some loss function {@code L} w.r.t. {@code y}
