@@ -1,5 +1,39 @@
 # This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.  
+# MIOpen and tensorflow.
+
+# This Dockerfile uses a multi-stage build
+# The first stage is to build the HCC, HIP and other tools we need for the TF build
+# The second stage is to do the TF CI build itself
+# The separation of stages allows to reduce the size of the final docker image
+# by copying over only the packages built in the first stage over to the second one
+
+
+###################################################
+# Stage 1 : build the tools needed for the TF build
+###################################################
+
+FROM rocm/rocm-terminal:1.8.2 as tool_builder
+
+ENV DEBIAN_FRONTEND noninteractive
+ENV HOME /home/rocm-user
+
+# install packages needed for this image
+RUN sudo apt-get update && sudo apt-get install -y python rpm git mercurial libxml2 libxml2-dev
+
+# Workaround : build HCC from source using the commit that is known to have fix for issue812
+RUN cd $HOME && git clone --recursive https://github.com/RadeonOpenCompute/hcc.git
+RUN cd $HOME/hcc  && git checkout -b issue812-fix d530be7
+RUN cd $HOME/hcc && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release .. && sudo make package -j$(nproc) && sudo dpkg -i *.deb
+
+# Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
+RUN cd $HOME && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git
+RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && sudo make package -j$(nproc) && sudo dpkg -i *.deb
+
+
+###########################
+# Stage 2 : do the TF build
+###########################
+
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
@@ -48,6 +82,8 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
   virtualenv \
   python-pip \
   python3-pip \
+  libxml2 \
+  libxml2-dev \
   wget && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
@@ -61,9 +97,15 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Workaround: build HIP from source using fork that holds roc-1.8.x with merged PR457
-RUN cd ~ && git clone -b roc-1.8.x-pr457 https://github.com/parallelo/HIP.git
-RUN cd ~/HIP && mkdir -p build && cd build && cmake .. && make package -j && dpkg -i *.deb
+# COPY and install the hcc package built in the previous stage
+RUN mkdir -p $HOME/pkgs/hcc
+COPY --from=tool_builder /home/rocm-user/hcc/build/*.deb $HOME/pkgs/hcc/
+RUN cd $HOME/pkgs/hcc && dpkg -i *.deb
+
+# COPY and install the HIP package built in the previous stage
+RUN mkdir -p $HOME/pkgs/HIP
+COPY --from=tool_builder /home/rocm-user/HIP/build/*.deb $HOME/pkgs/HIP/
+RUN cd $HOME/pkgs/HIP && dpkg -i *.deb
 
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
