@@ -54,9 +54,8 @@ public:
   /// Returns the function that this statement is part of.
   MLFunction *getFunction() const;
 
-  /// Returns the number of nested loops starting from (i.e., inclusive of) this
-  /// statement.
-  unsigned getNumNestedLoops() const;
+  /// Returns true if there are no more loops nested under this stmt.
+  bool isInnermost() const;
 
   /// Destroys this statement and its subclass data.
   void destroy();

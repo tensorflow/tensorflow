@@ -121,9 +121,9 @@ MLFunction::MLFunction(StringRef name, FunctionType *type)
     : Function(name, type, Kind::MLFunc), StmtBlock(StmtBlockKind::MLFunc) {}
 
 MLFunction::~MLFunction() {
-  struct DropReferencesPass : public StmtVisitor<DropReferencesPass> {
+  struct DropReferencesPass : public StmtWalker<DropReferencesPass> {
     void visitOperationStmt(OperationStmt *stmt) { stmt->dropAllReferences(); }
   };
   DropReferencesPass pass;
-  pass.visit(this);
+  pass.walk(const_cast<MLFunction *>(this));
 }

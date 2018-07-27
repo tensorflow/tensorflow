@@ -846,7 +846,7 @@ MLFunctionPrinter::MLFunctionPrinter(const MLFunction *function,
 /// Number all of the SSA values in this ML function.
 void MLFunctionPrinter::numberValues() {
   // Visits all operation statements and numbers the first result.
-  struct NumberValuesPass : public StmtVisitor<NumberValuesPass> {
+  struct NumberValuesPass : public StmtWalker<NumberValuesPass> {
     NumberValuesPass(MLFunctionPrinter *printer) : printer(printer) {}
     void visitOperationStmt(OperationStmt *stmt) {
       if (stmt->getNumResults() != 0)
@@ -857,7 +857,7 @@ void MLFunctionPrinter::numberValues() {
 
   NumberValuesPass pass(this);
   // TODO: it'd be cleaner to have constant visitor istead of using const_cast.
-  pass.visit(const_cast<MLFunction *>(function));
+  pass.walk(const_cast<MLFunction *>(function));
 }
 
 void MLFunctionPrinter::print() {

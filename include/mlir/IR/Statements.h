@@ -213,9 +213,6 @@ public:
     return block->getStmtBlockKind() == StmtBlockKind::For;
   }
 
-  /// Returns true if there are no more for stmt's nested under this for stmt.
-  bool isInnermost() const { return 1 == getNumNestedLoops(); }
-
 private:
   AffineConstantExpr *lowerBound;
   AffineConstantExpr *upperBound;

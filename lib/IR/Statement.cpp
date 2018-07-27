@@ -60,16 +60,16 @@ MLFunction *Statement::getFunction() const {
   return this->getBlock()->getFunction();
 }
 
-unsigned Statement::getNumNestedLoops() const {
-  struct NestedLoopCounter : public StmtVisitor<NestedLoopCounter> {
+bool Statement::isInnermost() const {
+  struct NestedLoopCounter : public StmtWalker<NestedLoopCounter> {
     unsigned numNestedLoops;
     NestedLoopCounter() : numNestedLoops(0) {}
-    void visitForStmt(const ForStmt *fs) { numNestedLoops++; }
+    void walkForStmt(const ForStmt *fs) { numNestedLoops++; }
   };
 
   NestedLoopCounter nlc;
-  nlc.visit(const_cast<Statement *>(this));
-  return nlc.numNestedLoops;
+  nlc.walk(const_cast<Statement *>(this));
+  return nlc.numNestedLoops == 1;
 }
 
 //===----------------------------------------------------------------------===//
