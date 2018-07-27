@@ -23,6 +23,7 @@ class ExtractEnergyDepsOp : public OpKernel {
         OP_REQUIRES(context, n_samples_ > 0, errors::InvalidArgument("n_samples should be greater than 0"));
         OP_REQUIRES_OK(context, context->GetAttr("max_n_deps", &max_n_deps_));
         OP_REQUIRES(context, max_n_deps_ > 0, errors::InvalidArgument("max_n_deps should be greater than 0"));
+        OP_REQUIRES_OK(context, context->GetAttr("time_sort", &time_sort_));
     }
 
     void Compute(OpKernelContext *context) override {
@@ -72,27 +73,30 @@ class ExtractEnergyDepsOp : public OpKernel {
                 }
             }
 
-            std::sort(event_edeps.begin(), event_edeps.end(),
-                      [](const std::pair<model::EnergyDep *, std::vector<std::pair<int, uint64_t>>> a,
-                         const std::pair<model::EnergyDep *, std::vector<std::pair<int, uint64_t>>> b) {
-                          double t_sum = 0;
-                          double weight_sum = 0;
-                          for (auto pos : a.first->pos()) {
-                              double weight = pos.weightmod() + 1;
-                              t_sum += pos.mean().t() * weight;
-                              weight_sum += weight;
-                          }
-                          double t_a = t_sum / weight_sum;
-                          t_sum = 0;
-                          weight_sum = 0;
-                          for (auto pos : b.first->pos()) {
-                              double weight = pos.weightmod() + 1;
-                              t_sum += pos.mean().t() * weight;
-                              weight_sum += weight;
-                          }
-                          double t_b = t_sum / weight_sum;
-                          return t_a < t_b;
-                      });
+            if (time_sort_)
+                std::sort(event_edeps.begin(), event_edeps.end(),
+                          [](const std::pair<model::EnergyDep *, std::vector<std::pair<int, uint64_t>>> a,
+                             const std::pair<model::EnergyDep *, std::vector<std::pair<int, uint64_t>>> b) {
+                              double t_sum = 0;
+                              double weight_sum = 0;
+                              for (auto pos : a.first->pos()) {
+                                  double weight = pos.weightmod() + 1;
+                                  t_sum += pos.mean().t() * weight;
+                                  weight_sum += weight;
+                              }
+                              double t_a = t_sum / weight_sum;
+                              t_sum = 0;
+                              weight_sum = 0;
+                              for (auto pos : b.first->pos()) {
+                                  double weight = pos.weightmod() + 1;
+                                  t_sum += pos.mean().t() * weight;
+                                  weight_sum += weight;
+                              }
+                              double t_b = t_sum / weight_sum;
+                              return t_a < t_b;
+                          });
+            else
+                std::random_shuffle(event_edeps.begin(), event_edeps.end());
 
             if (event_edeps.size() > max_event_edeps) max_event_edeps = event_edeps.size();
         }
@@ -237,6 +241,7 @@ class ExtractEnergyDepsOp : public OpKernel {
     std::string event_tag_;
     int n_samples_;
     int max_n_deps_;
+    bool time_sort_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExtractEnergyDeps").Device(DEVICE_CPU), ExtractEnergyDepsOp);

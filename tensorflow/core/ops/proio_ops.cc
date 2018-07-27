@@ -17,6 +17,7 @@ REGISTER_OP("ExtractEnergyDeps")
     .Attr("event_tag: string = 'Tracker'")
     .Attr("n_samples: int = 1")
     .Attr("max_n_deps: int = 1024")
+    .Attr("time_sort: bool = false")
     .SetShapeFn([](InferenceContext* c) {
         DimensionHandle eventDim = c->Dim(c->input(0), 0);
         int nSamples;
