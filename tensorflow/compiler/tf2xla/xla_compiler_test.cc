@@ -312,7 +312,7 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
       str_util::StrContains(status.error_message(), "depends on a parameter"))
       << status.error_message();
   EXPECT_TRUE(
-      str_util::StrContains(status.error_message(), "[[Node: C = Reshape"))
+      str_util::StrContains(status.error_message(), "[[{{node C}} = Reshape"))
       << status.error_message();
 }
 
@@ -1077,6 +1077,8 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(str_util::StrContains(status.error_message(), "InvalidOp"))
       << status.error_message();
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node fill_fn}}"))
+      << status.error_message();
 }
 
 // Tests a graph which has a node with invalid data type.
@@ -1101,6 +1103,8 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   EXPECT_TRUE(str_util::StrContains(status.error_message(),
                                     "is not in the list of allowed values"))
       << status.error_message();
+  EXPECT_TRUE(str_util::StrContains(status.error_message(), "{{node Shape}}"))
+      << status.error_message();
 }
 
 TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
@@ -1122,9 +1126,10 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
                                    std::move(graph_copy), args, &result);
     ASSERT_FALSE(status.ok());
-    EXPECT_TRUE(str_util::StrContains(status.error_message(),
-                                      "The following nodes are unreachable "
-                                      "from the source in the graph: NoOp"))
+    EXPECT_TRUE(
+        str_util::StrContains(status.error_message(),
+                              "The following nodes are unreachable "
+                              "from the source in the graph: {{node NoOp}}"))
         << status.error_message();
   }
 
