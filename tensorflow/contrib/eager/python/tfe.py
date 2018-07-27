@@ -34,6 +34,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 
 @@run
 @@enable_eager_execution
+@@enable_remote_eager_execution
 
 @@custom_gradient
 
@@ -114,6 +115,7 @@ from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
 from tensorflow.python.framework.ops import enable_eager_execution
+from tensorflow.python.framework.ops import enable_eager_execution_internal as enable_remote_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.framework.test_util import run_all_in_graph_and_eager_modes as run_all_tests_in_graph_and_eager_modes

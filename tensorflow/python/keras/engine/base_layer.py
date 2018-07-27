@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -173,6 +174,12 @@ class Layer(checkpointable.CheckpointableBase):
     self._outbound_nodes = []
 
     self.supports_masking = False
+
+    call_argspec = tf_inspect.getargspec(self.call)
+    if 'training' in call_argspec.args:
+      self._expects_training_arg = True
+    else:
+      self._expects_training_arg = False
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -786,16 +793,7 @@ class Layer(checkpointable.CheckpointableBase):
     if hasattr(self, '_initial_weights') and self._initial_weights is not None:
       self.set_weights(self._initial_weights)
       del self._initial_weights
-    self._post_build_cleanup()
     return outputs
-
-  def _post_build_cleanup(self):
-    """Hooks to run after all sub-Layers are built."""
-    # Note that in addition to Layer.__call__, this method is called by Model
-    # after building a graph network (which skips __call__). It should be called
-    # when possible if self.built may have switched from False to True, and is
-    # idempotent.
-    pass  # No-op for Layers which don't override this method.
 
   def apply(self, inputs, *args, **kwargs):
     """Apply the layer on a input.
@@ -970,6 +968,39 @@ class Layer(checkpointable.CheckpointableBase):
     Returns:
         An input shape tuple.
     """
+    if context.executing_eagerly():
+      # In this case we build the model first in order to do shape inference.
+      # This is acceptable because the framework only calls
+      # `compute_output_shape` on shape values that the layer would later be
+      # built for. It would however cause issues in case a user attempts to
+      # use `compute_output_shape` manually (these users will have to
+      # implement `compute_output_shape` themselves).
+      self.build(input_shape)
+
+      with context.graph_mode():
+        graph = eager_function.CapturingGraph({})
+        with graph.as_default():
+          if isinstance(input_shape, list):
+            inputs = [generate_placeholders_from_shape(shape)
+                      for shape in input_shape]
+          else:
+            inputs = generate_placeholders_from_shape(input_shape)
+
+          try:
+            if self._expects_training_arg:
+              outputs = self(inputs, training=False)
+            else:
+              outputs = self(inputs)
+          except TypeError:
+            raise NotImplementedError('We could not automatically infer '
+                                      'the static shape of the layer\'s output.'
+                                      ' Please implement the '
+                                      '`compute_output_shape` method on your '
+                                      'layer (%s).' % self.__class__.__name__)
+      if isinstance(outputs, list):
+        return [output.shape for output in outputs]
+      else:
+        return outputs.shape
     raise NotImplementedError
 
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
@@ -1925,3 +1956,18 @@ def make_variable(name,
       synchronization=synchronization,
       aggregation=aggregation)
   return v
+
+
+def generate_dummy_data_from_shape(shape):
+  if isinstance(shape, tensor_shape.TensorShape):
+    shape = shape.as_list()
+
+  # Replace Nones in input shape with dummy `1` value
+  shape = [x.value if isinstance(x, tensor_shape.Dimension) else x
+           for x in shape]
+  shape = [1 if x is None else x for x in shape]
+  return array_ops.ones(shape, dtype=backend.floatx())
+
+
+def generate_placeholders_from_shape(shape):
+  return array_ops.placeholder(shape=shape, dtype=backend.floatx())

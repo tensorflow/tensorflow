@@ -126,14 +126,15 @@ def model_builder(features,
 
   create_estimator_spec_op = getattr(head, "create_estimator_spec", None)
 
+  training_hooks = []
   if num_trees:
     if center_bias:
       num_trees += 1
+
     finalized_trees, attempted_trees = gbdt_model.get_number_of_trees_tensor()
-    training_hooks = [
+    training_hooks.append(
         trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees)
-    ]
+                                      finalized_trees))
 
   if output_type == ModelBuilderOutputType.MODEL_FN_OPS:
     if use_core_libs and callable(create_estimator_spec_op):

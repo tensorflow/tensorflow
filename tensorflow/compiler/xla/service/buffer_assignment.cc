@@ -817,8 +817,7 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 }
 
 Status BufferAssigner::AssignBuffersForComputation(
-    const HloComputation* computation, const DebugOptions& debug_options,
-    bool is_thread_local,
+    const HloComputation* computation, bool is_thread_local,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
     FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
@@ -1342,11 +1341,25 @@ BufferAssigner::MergeColocatedBufferSets(
   auto cannot_merge_buffer_sets = [&colocated_buffer_sets, &buffer_liveness,
                                    &buffer_size,
                                    &is_entry_parameter](int64 i, int64 j) {
-    // Do not merge if one of the sets includes live outs or entry parameters.
+    // Do not merge if one of the sets includes live outs, entry parameters or
+    // constants.
+    //
+    // Buffer liveness does not report the correct live range for entry
+    // parameter and live out buffers so we have to special case them here.  On
+    // backends that support constant buffer allocations, constant buffers are
+    // assigned globals in readonly storage so we can't merge colocated buffer
+    // sets containing constants with colocated buffer sets containing writing
+    // instructions or other constants.
+    //
+    // Moreover (on the CPU/GPU backends) the entry parameter buffers belong to
+    // the caller of the executable so we can't write to entry parameters
+    // either, and the argument for not merging constants also applies to entry
+    // parameters.
     for (int64 key : {i, j}) {
       for (auto& buffer : colocated_buffer_sets[key]) {
         if (buffer_liveness.MaybeLiveOut(*buffer) ||
-            is_entry_parameter(*buffer)) {
+            is_entry_parameter(*buffer) ||
+            buffer->instruction()->opcode() == HloOpcode::kConstant) {
           return true;
         }
       }
@@ -1664,7 +1677,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, module->config().debug_options(),
+        computation,
         /*is_thread_local=*/false, colocated_buffers, colocated_allocations,
         &buffers_to_assign_sequentially, assignment.get()));
   }
@@ -1685,7 +1698,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       continue;
     }
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, module->config().debug_options(),
+        computation,
         /*is_thread_local=*/true, colocated_buffers, colocated_allocations,
         /*buffers_to_assign_sequentially=*/nullptr, assignment.get()));
   }

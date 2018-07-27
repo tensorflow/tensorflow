@@ -19,6 +19,10 @@ limitations under the License.
 // structure.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 
+#if defined(_MSC_VER)
+#define __restrict__ __restrict
+#endif
+
 #ifndef USE_NEON
 #if defined(__ARM_NEON__) || defined(__ARM_NEON)
 #define USE_NEON

@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 import json
 import os
 import weakref
@@ -30,6 +29,7 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -144,10 +144,6 @@ class Network(base_layer.Layer):
 
     self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
         weakref.ref(self))
-    # A zero-argument function which should be called and set back to None as
-    # soon as the network is built (only applicable to subclassed Models). Runs
-    # restore operations when graph building.
-    self._in_progress_restore_finalizer = None
 
   @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
@@ -739,6 +735,86 @@ class Network(base_layer.Layer):
       return specs[0]
     return specs
 
+  def build(self, input_shape):
+    """Builds the model based on input shapes received.
+
+    This is to be used for subclassed models, which do not know at instantiation
+    time what their inputs look like.
+
+    Args:
+     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
+         are tuples, integers, or TensorShapes.
+
+    Raises:
+      ValueError:
+        1. In case of invalid user-provided data (not of type tuple,
+           list, or TensorShape).
+        2. If the model requires call arguments that are agnostic
+           to the input shapes (positional or kwarg in call signature).
+        3. If not all layers were properly built.
+        4. If float type inputs are not supported within the layers.
+
+      In each of these cases, the user should build their model by calling it
+      on real tensor data.
+    """
+    if self._is_graph_network:
+      self.built = True
+      return
+
+    # If subclass network
+    if input_shape is None:
+      raise ValueError('Input shape must be defined when calling build on a '
+                       'model subclass network.')
+    valid_types = (tuple, list, tensor_shape.TensorShape)
+    if not isinstance(input_shape, valid_types):
+      raise ValueError('Specified input shape is not one of the valid types. '
+                       'Please specify a batch input shape of type tuple or '
+                       'list of input shapes. User provided '
+                       'input type: {}'.format(type(input_shape)))
+
+    if input_shape and not self.inputs:
+      if isinstance(input_shape, list):
+        # List of input shapes
+        x = [base_layer.generate_dummy_data_from_shape(shape)
+             for shape in input_shape]
+      else:
+        x = base_layer.generate_dummy_data_from_shape(input_shape)
+
+      kwargs = {}
+      num_call_args = len(tf_inspect.getargspec(self.call).args)
+      if self._expects_training_arg and num_call_args == 3:
+        # Has call signature of call(self, input, training)
+        kwargs['training'] = False
+      elif num_call_args > 2:
+        # Has invalid call signature of call(self, input, *args, **kwargs)
+        raise ValueError('Currently, you cannot build your model if it has '
+                         'positional or keyword arguments that are not '
+                         'inputs to the model, but are required for its '
+                         '`call` method. Instead, in order to instantiate '
+                         'and build your model, `call` your model on real '
+                         'tensor data with all expected call arguments.')
+
+      try:
+        self.call(x, **kwargs)
+      except (errors.InvalidArgumentError, TypeError):
+        raise ValueError('You cannot build your model by calling `build` '
+                         'if your layers do not support float type inputs. '
+                         'Instead, in order to instantiate and build your '
+                         'model, `call` your model on real tensor data (of '
+                         'the correct dtype).')
+
+    if self._layers:
+      self._track_layers(self._layers)
+    if self.layers:
+      for layer in self.layers:
+        if not layer.built:
+          raise ValueError('Layer: {} was not built in your model. Calling '
+                           '`build` manually on a subclassed model is only '
+                           'allowed for models with a static topology. '
+                           'In this case, you can build your model by '
+                           'calling it on real tensor data.'.format(layer))
+    self.built = True
+
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
@@ -779,6 +855,8 @@ class Network(base_layer.Layer):
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
+      if context.executing_eagerly():
+        return super(Network, self).compute_output_shape(input_shape)
       raise NotImplementedError
 
     if isinstance(input_shape, list):
@@ -1423,13 +1501,9 @@ class Network(base_layer.Layer):
             'load_weights).')
       if not context.executing_eagerly():
         session = backend.get_session()
-        finalizer = functools.partial(status.run_restore_ops, session=session)
-        if self.built:
-          finalizer()
-        else:
-          # Hold on to this status object until the network is built (for
-          # subclassed Models). Then we'll run restore ops if necessary.
-          self._in_progress_restore_finalizer = finalizer
+        # Restore existing variables (if any) immediately, and set up a
+        # streaming restore for any variables created in the future.
+        checkpointable_utils.streaming_restore(status=status, session=session)
       return status
     if h5py is None:
       raise ImportError(
@@ -1446,14 +1520,6 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
-
-  def _post_build_cleanup(self):
-    super(Network, self)._post_build_cleanup()
-    if self._in_progress_restore_finalizer is not None:
-      # Runs queued restore operations left over from load_weights when graph
-      # building.
-      self._in_progress_restore_finalizer()
-      self._in_progress_restore_finalizer = None
 
   def _updated_config(self):
     """Util shared between different serialization methods.

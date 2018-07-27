@@ -777,6 +777,7 @@ def TF_Reset(target, containers=None, config=None):
   $1 = &types_local;
 }
 
+%unignore TF_NewSessionRef;
 %unignore SetRequireShapeInferenceFns;
 %unignore TF_TryEvaluateConstant_wrapper;
 %noexception TF_TryEvaluateConstant_wrapper;

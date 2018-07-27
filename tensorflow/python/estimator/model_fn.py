@@ -380,15 +380,12 @@ def _maybe_add_default_serving_output(export_outputs):
   return export_outputs
 
 
-class _TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
-    'mode',
-    'predictions',
-    'loss',
-    'train_op',
-    'eval_metrics',
-    'export_outputs',
-    'scaffold_fn',
-    'host_call'])):
+class _TPUEstimatorSpec(
+    collections.namedtuple('TPUEstimatorSpec', [
+        'mode', 'predictions', 'loss', 'train_op', 'eval_metrics',
+        'export_outputs', 'scaffold_fn', 'host_call', 'training_hooks',
+        'evaluation_hooks', 'prediction_hooks'
+    ])):
   """Ops and objects returned from a `model_fn` and passed to `TPUEstimator`.
 
   This is a simplified implementation of `tf.contrib.tpu.EstimatorSpec`. See
@@ -404,17 +401,24 @@ class _TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
               eval_metrics=None,
               export_outputs=None,
               scaffold_fn=None,
-              host_call=None):
+              host_call=None,
+              training_hooks=None,
+              evaluation_hooks=None,
+              prediction_hooks=None):
     """Creates a `_TPUEstimatorSpec` instance."""
-    return super(_TPUEstimatorSpec, cls).__new__(cls,
-                                                 mode=mode,
-                                                 predictions=predictions,
-                                                 loss=loss,
-                                                 train_op=train_op,
-                                                 eval_metrics=eval_metrics,
-                                                 export_outputs=export_outputs,
-                                                 scaffold_fn=scaffold_fn,
-                                                 host_call=host_call)
+    return super(_TPUEstimatorSpec, cls).__new__(
+        cls,
+        mode=mode,
+        predictions=predictions,
+        loss=loss,
+        train_op=train_op,
+        eval_metrics=eval_metrics,
+        export_outputs=export_outputs,
+        scaffold_fn=scaffold_fn,
+        host_call=host_call,
+        training_hooks=training_hooks,
+        evaluation_hooks=evaluation_hooks,
+        prediction_hooks=prediction_hooks)
 
   def as_estimator_spec(self):
     """Creates an equivalent `EstimatorSpec` used by CPU train/eval."""
@@ -423,12 +427,16 @@ class _TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
     else:
       metric_fn, tensors = self.eval_metrics
       eval_metric_ops = metric_fn(**tensors)
-    return EstimatorSpec(mode=self.mode,
-                         predictions=self.predictions,
-                         loss=self.loss,
-                         train_op=self.train_op,
-                         eval_metric_ops=eval_metric_ops,
-                         export_outputs=self.export_outputs)
+    return EstimatorSpec(
+        mode=self.mode,
+        predictions=self.predictions,
+        loss=self.loss,
+        train_op=self.train_op,
+        eval_metric_ops=eval_metric_ops,
+        export_outputs=self.export_outputs,
+        training_hooks=self.training_hooks,
+        evaluation_hooks=self.evaluation_hooks,
+        prediction_hooks=self.prediction_hooks)
 
 
 def _check_is_tensor_or_operation(x, name):
