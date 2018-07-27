@@ -432,9 +432,15 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
         return array_ops.reverse(input_, axis=[seq_axis])
 
     with vs.variable_scope("bw") as bw_scope:
-      inputs_reverse = _reverse(
-          inputs, seq_lengths=sequence_length,
-          seq_axis=time_axis, batch_axis=batch_axis)
+
+      def _map_reverse(inp):
+        return _reverse(
+            inp,
+            seq_lengths=sequence_length,
+            seq_axis=time_axis,
+            batch_axis=batch_axis)
+
+      inputs_reverse = nest.map_structure(_map_reverse, inputs)
       tmp, output_state_bw = dynamic_rnn(
           cell=cell_bw, inputs=inputs_reverse, sequence_length=sequence_length,
           initial_state=initial_state_bw, dtype=dtype,
