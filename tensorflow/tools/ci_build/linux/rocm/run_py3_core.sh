@@ -83,4 +83,4 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python:learning_rate_decay_test \
     -//tensorflow/python:memory_optimizer_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
-    -//tensorflow/python:timeline_testdiff 
+    -//tensorflow/python:timeline_test
