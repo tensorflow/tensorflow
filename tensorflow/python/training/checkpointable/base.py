@@ -144,7 +144,7 @@ class _CheckpointPosition(object):
         # process deferred restorations for it and its dependencies.
         restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
         if restore_ops:
-          self._checkpoint.restore_ops.extend(restore_ops)
+          self._checkpoint.new_restore_ops(restore_ops)
 
   def bind_object(self, checkpointable):
     """Set a checkpoint<->object correspondence and process slot variables.

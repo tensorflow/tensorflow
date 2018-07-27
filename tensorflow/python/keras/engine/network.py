@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 import json
 import os
 import weakref
@@ -144,10 +143,6 @@ class Network(base_layer.Layer):
 
     self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
         weakref.ref(self))
-    # A zero-argument function which should be called and set back to None as
-    # soon as the network is built (only applicable to subclassed Models). Runs
-    # restore operations when graph building.
-    self._in_progress_restore_finalizer = None
 
   @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
@@ -1423,13 +1418,9 @@ class Network(base_layer.Layer):
             'load_weights).')
       if not context.executing_eagerly():
         session = backend.get_session()
-        finalizer = functools.partial(status.run_restore_ops, session=session)
-        if self.built:
-          finalizer()
-        else:
-          # Hold on to this status object until the network is built (for
-          # subclassed Models). Then we'll run restore ops if necessary.
-          self._in_progress_restore_finalizer = finalizer
+        # Restore existing variables (if any) immediately, and set up a
+        # streaming restore for any variables created in the future.
+        checkpointable_utils.streaming_restore(status=status, session=session)
       return status
     if h5py is None:
       raise ImportError(
@@ -1446,14 +1437,6 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
-
-  def _post_build_cleanup(self):
-    super(Network, self)._post_build_cleanup()
-    if self._in_progress_restore_finalizer is not None:
-      # Runs queued restore operations left over from load_weights when graph
-      # building.
-      self._in_progress_restore_finalizer()
-      self._in_progress_restore_finalizer = None
 
   def _updated_config(self):
     """Util shared between different serialization methods.
