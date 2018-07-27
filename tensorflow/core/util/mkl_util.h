@@ -1882,8 +1882,7 @@ class MklPrimitive {
  public:
   virtual ~MklPrimitive() {}
 
-  // Dummy data.
-  // does not matter since MKL should never operate on this buffer.
+  // Dummy data which MKL DNN never operates on
   unsigned char *DummyData = nullptr;
 };
 
