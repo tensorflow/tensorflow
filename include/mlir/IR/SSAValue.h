@@ -29,15 +29,15 @@
 
 namespace mlir {
 class OperationInst;
+class OperationStmt;
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
-  BBArgument,
-  InstResult,
-
-  // FnArg
-  // StmtResult
-  // ForStmt
+  BBArgument,   // basic block argument
+  InstResult,   // instruction result
+  FnArgument,   // ML function argument
+  StmtResult,   // statement result
+  InductionVar, // for statement induction variable
 };
 
 /// This is the common base class for all values in the MLIR system,
@@ -65,13 +65,20 @@ public:
     return const_cast<SSAValue *>(this)->getDefiningInst();
   }
 
+  /// If this value is the result of an OperationStmt, return the statement
+  /// that defines it.
+  OperationStmt *getDefiningStmt();
+  const OperationStmt *getDefiningStmt() const {
+    return const_cast<SSAValue *>(this)->getDefiningStmt();
+  }
+
 protected:
   SSAValue(SSAValueKind kind, Type *type) : typeAndKind(type, kind) {}
 private:
   const llvm::PointerIntPair<Type *, 3, SSAValueKind> typeAndKind;
 };
 
-/// This template unifies the implementation logic for CFGValue and StmtValue
+/// This template unifies the implementation logic for CFGValue and MLValue
 /// while providing more type-specific APIs when walking use lists etc.
 ///
 /// IROperandTy is the concrete instance of IROperand to use (including

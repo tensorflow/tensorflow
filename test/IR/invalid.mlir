@@ -268,3 +268,11 @@ bb0:
   %a = "foo"() : () -> i32
   cond_br %c, bb0(%a, %a : i32, i32), i32 // expected-error {{expected basic block name}}
 }
+
+// -----
+
+mlfunc @undef() {
+  %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undefined SSA value %y}}
+  return
+}
+

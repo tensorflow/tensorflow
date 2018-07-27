@@ -190,9 +190,11 @@ public:
     insertPoint = block->end();
   }
 
-  OperationStmt *createOperation(Identifier name,
+  OperationStmt *createOperation(Identifier name, ArrayRef<MLValue *> operands,
+                                 ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {
-    auto op = new OperationStmt(name, attributes, context);
+    auto op =
+        OperationStmt::create(name, operands, resultTypes, attributes, context);
     block->getStatements().push_back(op);
     return op;
   }

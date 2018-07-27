@@ -39,10 +39,7 @@ unsigned Operation::getNumOperands() const {
   if (auto *inst = dyn_cast<OperationInst>(this)) {
     return inst->getNumOperands();
   } else {
-    auto *stmt = cast<OperationStmt>(this);
-    (void)stmt;
-    // TODO: Add operands to OperationStmt.
-    return 0;
+    return cast<OperationStmt>(this)->getNumOperands();
   }
 }
 
@@ -51,9 +48,7 @@ SSAValue *Operation::getOperand(unsigned idx) {
     return inst->getOperand(idx);
   } else {
     auto *stmt = cast<OperationStmt>(this);
-    (void)stmt;
-    // TODO: Add operands to OperationStmt.
-    abort();
+    return stmt->getOperand(idx);
   }
 }
 
@@ -62,9 +57,7 @@ void Operation::setOperand(unsigned idx, SSAValue *value) {
     inst->setOperand(idx, cast<CFGValue>(value));
   } else {
     auto *stmt = cast<OperationStmt>(this);
-    (void)stmt;
-    // TODO: Add operands to OperationStmt.
-    abort();
+    stmt->setOperand(idx, cast<MLValue>(value));
   }
 }
 
@@ -74,9 +67,7 @@ unsigned Operation::getNumResults() const {
     return inst->getNumResults();
   } else {
     auto *stmt = cast<OperationStmt>(this);
-    (void)stmt;
-    // TODO: Add results to OperationStmt.
-    return 0;
+    return stmt->getNumResults();
   }
 }
 
@@ -86,9 +77,7 @@ SSAValue *Operation::getResult(unsigned idx) {
     return inst->getResult(idx);
   } else {
     auto *stmt = cast<OperationStmt>(this);
-    (void)stmt;
-    // TODO: Add operands to OperationStmt.
-    abort();
+    return stmt->getResult(idx);
   }
 }
 

@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_CFGOPERAND_H
-#define MLIR_IR_CFGOPERAND_H
+#ifndef MLIR_IR_CFGVALUE_H
+#define MLIR_IR_CFGVALUE_H
 
 #include "mlir/IR/SSAValue.h"
 
@@ -48,6 +48,11 @@ public:
     case SSAValueKind::BBArgument:
     case SSAValueKind::InstResult:
       return true;
+
+    case SSAValueKind::FnArgument:
+    case SSAValueKind::StmtResult:
+    case SSAValueKind::InductionVar:
+      return false;
     }
   }
 

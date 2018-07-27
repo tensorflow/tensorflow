@@ -1209,7 +1209,9 @@ namespace {
 /// notably for dealing with operations and SSA values.
 class FunctionParser : public Parser {
 public:
-  FunctionParser(ParserState &state) : Parser(state) {}
+  enum class Kind { CFGFunc, MLFunc };
+
+  Kind getKind() const { return kind; }
 
   /// After the function is finished parsing, this function checks to see if
   /// there are any remaining issues.
@@ -1257,7 +1259,12 @@ public:
   Operation *parseVerboseOperation(const CreateOperationFunction &createOpFunc);
   Operation *parseCustomOperation(const CreateOperationFunction &createOpFunc);
 
+protected:
+  FunctionParser(ParserState &state, Kind kind) : Parser(state), kind(kind) {}
+
 private:
+  /// Kind indicates if this is CFG or ML function parser.
+  Kind kind;
   /// This keeps track of all of the SSA values we are tracking, indexed by
   /// their name.  This has one entry per result number.
   llvm::StringMap<SmallVector<std::pair<SSAValue *, SMLoc>, 1>> values;
@@ -1290,7 +1297,7 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   return inst->getResult(0);
 }
 
-/// Given an unbound reference to an SSA value and its type, return a the value
+/// Given an unbound reference to an SSA value and its type, return the value
 /// it specifies.  This returns null on failure.
 SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type *type) {
   auto &entries = values[useInfo.name];
@@ -1318,7 +1325,13 @@ SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type *type) {
     return (emitError(useInfo.loc, "reference to invalid result number"),
             nullptr);
 
-  // Otherwise, this is a forward reference.  Create a placeholder and remember
+  if (getKind() == Kind::MLFunc)
+    return (
+        emitError(useInfo.loc, "use of undefined SSA value " + useInfo.name),
+        nullptr);
+
+  // Otherwise, this is a forward reference.  If we are in ML function return
+  // an error. In CFG function, create a placeholder and remember
   // that we did so.
   auto *result = createForwardReferencePlaceholder(useInfo.loc, type);
   entries[useInfo.number].first = result;
@@ -1532,15 +1545,11 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
 
   // If the instruction had a name, register it.
   if (!resultID.empty()) {
-    // FIXME: Add result infra to handle Stmt results as well to make this
-    // generic.
-    if (auto *inst = dyn_cast<OperationInst>(op)) {
-      if (inst->getNumResults() == 0)
-        return emitError(loc, "cannot name an operation with no results");
+    if (op->getNumResults() == 0)
+      return emitError(loc, "cannot name an operation with no results");
 
-      for (unsigned i = 0, e = inst->getNumResults(); i != e; ++i)
-        addDefinition({resultID, i, loc}, inst->getResult(i));
-    }
+    for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
+      addDefinition({resultID, i, loc}, op->getResult(i));
   }
 
   return ParseSuccess;
@@ -1778,7 +1787,8 @@ namespace {
 class CFGFunctionParser : public FunctionParser {
 public:
   CFGFunctionParser(ParserState &state, CFGFunction *function)
-      : FunctionParser(state), function(function), builder(function) {}
+      : FunctionParser(state, Kind::CFGFunc), function(function),
+        builder(function) {}
 
   ParseResult parseFunctionBody();
 
@@ -2014,7 +2024,8 @@ namespace {
 class MLFunctionParser : public FunctionParser {
 public:
   MLFunctionParser(ParserState &state, MLFunction *function)
-      : FunctionParser(state), function(function), builder(function) {}
+      : FunctionParser(state, Kind::MLFunc), function(function),
+        builder(function) {}
 
   ParseResult parseFunctionBody();
 
@@ -2176,7 +2187,11 @@ ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
   auto createOpFunc = [&](Identifier name, ArrayRef<SSAValue *> operands,
                           ArrayRef<Type *> resultTypes,
                           ArrayRef<NamedAttribute> attrs) -> Operation * {
-    return builder.createOperation(name, attrs);
+    SmallVector<MLValue *, 8> stmtOperands;
+    stmtOperands.reserve(operands.size());
+    for (auto *op : operands)
+      stmtOperands.push_back(cast<MLValue>(op));
+    return builder.createOperation(name, stmtOperands, resultTypes, attrs);
   };
 
   builder.setInsertionPoint(block);

@@ -96,7 +96,9 @@ bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
         break;
       case Statement::Kind::Operation:
         auto *op = cast<OperationStmt>(&stmt);
-        builder.createOperation(op->getName(), op->getAttrs());
+        // TODO: clone operands and result types.
+        builder.createOperation(op->getName(), /*operands*/ {},
+                                /*resultTypes*/ {}, op->getAttrs());
         // TODO: loop iterator parsing not yet implemented; replace loop
         // iterator uses in unrolled body appropriately.
         break;

@@ -112,6 +112,24 @@ mlfunc @mlfunc_with_args(%a : f16) {
   return  %a  // CHECK: return
 }
 
+// CHECK-LABEL: mlfunc @mlfunc_with_ops() {
+mlfunc @mlfunc_with_ops() {
+  // CHECK: %0 = "foo"() : () -> i64
+  %a = "foo"() : ()->i64
+  // CHECK: for x = 1 to 10 {
+  for %i = 1 to 10 {
+    // CHECK: %1 = "doo"() : () -> f32
+    %b = "doo"() : ()->f32
+    // CHECK: "bar"(%0, %1) : (i64, f32) -> ()
+    "bar"(%a, %b) : (i64, f32) -> ()
+  // CHECK: }
+  }
+  // CHECK: return
+  return
+  // CHECK: }
+}
+
+
 // CHECK-LABEL: mlfunc @loops() {
 mlfunc @loops() {
   // CHECK: for x = 1 to 100 step 2 {

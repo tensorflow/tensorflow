@@ -29,6 +29,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/OperationSet.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseMap.h"
@@ -579,8 +580,6 @@ private:
 } // end anonymous namespace
 
 void FunctionPrinter::printOperation(const Operation *op) {
-  os << "  ";
-
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*dontPrintResultNo*/ true);
     os << " = ";
@@ -717,6 +716,7 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
   os << ":\n";
 
   for (auto &inst : block->getOperations()) {
+    os << "  ";
     print(&inst);
     os << '\n';
   }
@@ -743,7 +743,7 @@ void CFGFunctionPrinter::print(const OperationInst *inst) {
 }
 
 void CFGFunctionPrinter::print(const BranchInst *inst) {
-  os << "  br bb" << getBBID(inst->getDest());
+  os << "br bb" << getBBID(inst->getDest());
 
   if (inst->getNumOperands() != 0) {
     os << '(';
@@ -759,7 +759,7 @@ void CFGFunctionPrinter::print(const BranchInst *inst) {
 }
 
 void CFGFunctionPrinter::print(const CondBranchInst *inst) {
-  os << "  cond_br ";
+  os << "cond_br ";
   printValueID(inst->getCondition());
 
   os << ", bb" << getBBID(inst->getTrueDest());
@@ -788,7 +788,7 @@ void CFGFunctionPrinter::print(const CondBranchInst *inst) {
 }
 
 void CFGFunctionPrinter::print(const ReturnInst *inst) {
-  os << "  return";
+  os << "return";
 
   if (inst->getNumOperands() != 0)
     os << ' ';
@@ -830,6 +830,8 @@ public:
   const static unsigned indentWidth = 2;
 
 private:
+  void numberValues();
+
   const MLFunction *function;
   int numSpaces;
 };
@@ -837,7 +839,26 @@ private:
 
 MLFunctionPrinter::MLFunctionPrinter(const MLFunction *function,
                                      const ModulePrinter &other)
-    : FunctionPrinter(other), function(function), numSpaces(0) {}
+    : FunctionPrinter(other), function(function), numSpaces(0) {
+  numberValues();
+}
+
+/// Number all of the SSA values in this ML function.
+void MLFunctionPrinter::numberValues() {
+  // Visits all operation statements and numbers the first result.
+  struct NumberValuesPass : public StmtVisitor<NumberValuesPass> {
+    NumberValuesPass(MLFunctionPrinter *printer) : printer(printer) {}
+    void visitOperationStmt(OperationStmt *stmt) {
+      if (stmt->getNumResults() != 0)
+        printer->numberValueID(stmt->getResult(0));
+    }
+    MLFunctionPrinter *printer;
+  };
+
+  NumberValuesPass pass(this);
+  // TODO: it'd be cleaner to have constant visitor istead of using const_cast.
+  pass.visit(const_cast<MLFunction *>(function));
+}
 
 void MLFunctionPrinter::print() {
   os << "mlfunc ";
@@ -870,6 +891,7 @@ void MLFunctionPrinter::print(const Statement *stmt) {
 }
 
 void MLFunctionPrinter::print(const OperationStmt *stmt) {
+  os.indent(numSpaces);
   printOperation(stmt);
 }
 

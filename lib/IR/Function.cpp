@@ -18,6 +18,7 @@
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
@@ -120,6 +121,9 @@ MLFunction::MLFunction(StringRef name, FunctionType *type)
     : Function(name, type, Kind::MLFunc), StmtBlock(StmtBlockKind::MLFunc) {}
 
 MLFunction::~MLFunction() {
-  // TODO: When move SSA stuff is supported.
-  // dropAllReferences();
+  struct DropReferencesPass : public StmtVisitor<DropReferencesPass> {
+    void visitOperationStmt(OperationStmt *stmt) { stmt->dropAllReferences(); }
+  };
+  DropReferencesPass pass;
+  pass.visit(this);
 }
