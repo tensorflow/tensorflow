@@ -671,7 +671,6 @@ class Model(Network):
             updates=updates,
             name='train_function',
             **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_test_function(self):
     if not hasattr(self, 'test_function'):
@@ -689,7 +688,6 @@ class Model(Network):
           updates=self.state_updates + self.metrics_updates,
           name='test_function',
           **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -708,7 +706,6 @@ class Model(Network):
           updates=self.state_updates,
           name='predict_function',
           **kwargs)
-    self._post_build_cleanup()
 
   def _get_iterator_get_next_tensors(self, iterator):
     get_next_op = self._iterator_get_next.get(iterator, None)
