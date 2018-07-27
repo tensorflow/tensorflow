@@ -31,8 +31,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using stream_executor::dnn::DataLayout;
-using stream_executor::dnn::FilterLayout;
+using se::dnn::DataLayout;
+using se::dnn::FilterLayout;
 
 static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
   int major, minor;
@@ -44,7 +44,7 @@ static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          stream_executor::StreamExecutor* stream_executor) {
+                          se::StreamExecutor* stream_executor) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
