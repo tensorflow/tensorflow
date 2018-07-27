@@ -325,7 +325,8 @@ class CompClusterOp : public OpKernel {
             for (auto cluster : clusters) {
                 auto track = new model::Track();
                 for (auto keyValuePair : cluster) track->add_observation(ids(i, keyValuePair.first));
-                event->AddEntry(track, "Reconstructed");
+                auto trackID = event->AddEntry(track, "Reconstructed");
+                event->TagEntry(trackID, "Vis");
             }
 
             output(i) = "test";
