@@ -167,8 +167,8 @@ RTGLaunchOp::~RTGLaunchOp() {
 }
 
 //TODO: back to GPU
-//REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_GPU), RTGLaunchOp);
-REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_CPU), RTGLaunchOp);    
+REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_GPU), RTGLaunchOp);
+//REGISTER_KERNEL_BUILDER(Name("RTGLaunchOp").Device(DEVICE_CPU), RTGLaunchOp);    
 
 }  // namespace tensorflow
 

@@ -2826,7 +2826,7 @@ cc_library(
              ]),
         copts = tf_copts() + ["-g", "-O0", ] + ["-std=c++14"]
                 + ["-fexceptions"],
-        linkopts = if_rocm(["-lmigraph"] + ["-lmigraph_cpu"] + ["-lmigraph_miopen"]),
+        linkopts = if_rocm(["-lmigraph"] + ["-lmigraph_cpu"] + ["-lmigraph_gpu"]) + ["-lmigraph_device"],
         deps = [
             ":core_cpu",
             ":core_cpu_internal",

@@ -61,24 +61,28 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
         } else if (!use_gpu) {
             break;
         } else if (convert.starts_with(name, Converter::literal_prefix)) {
+#if 0            
             // place literal in GPU memory
             std::string str = ins->op.name();
             migraph::shape shape = ins->lit.get_shape();
             char * lit_ptr = base_ptr + convert.get_offset(shape);
             hipMemcpy(lit_ptr, ins->lit.data(), shape.bytes(), hipMemcpyHostToDevice);
             params[str] = {shape, lit_ptr};
+#endif            
         }
     }
     if (!use_gpu) {
         program->compile(migraph::cpu::cpu_target{});
+        std::cout << "---After compile---" << std::endl;
+        std::cout << *program << std::endl;
         arg = program->eval(params);
     } else  {
         
-        auto handle = migraph::miopen::make_obj<migraph::miopen::miopen_handle>(&miopenCreate);
+        // auto handle = migraph::miopen::make_obj<migraph::miopen::miopen_handle>(&miopenCreate);
 
         params["output"] = {output_shape, output_ptr};
         // params["handle"] = {migraph::shape::any_type, handle.get()};
-        program->compile(migraph::miopen::target{});
+        program->compile(migraph::gpu::target{});
         std::cout << "---After compile---" << std::endl;
         std::cout << *program << std::endl;
         arg = program->eval(params);
@@ -94,7 +98,7 @@ void EvalProgram(void* p_program, Tensor* output, std::vector<const Tensor*>& in
     } else {
 #if 1
         migraph::argument ret = {arg_shape, output_ptr};
-        migraph::argument val = migraph::miopen::from_gpu(ret);
+        migraph::argument val = migraph::gpu::from_gpu(ret);
         float* f_ptr = val.cast<float>();
         float ele = f_ptr[0];
 #endif                

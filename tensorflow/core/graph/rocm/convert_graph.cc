@@ -1028,7 +1028,7 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
                 }
             }
         }
-        int RTGOpCnt = 0;
+        int RTGOpCnt = -1;
         for (unsigned id = 0; id < maxClusterNum; id++) {
             Cluster& cluster = clusters[id];
             if (cluster.getSize() < MIN_CLUSTER_SIZE)
@@ -1041,13 +1041,13 @@ Status ConvertGraphToRTG(std::unique_ptr<Graph>* g, T_INPUT_MAP* inputs) {
             }
             if (output_cnt > 1)
                 continue;
+            RTGOpCnt++;
             if ((dbg >= 0) && (RTGOpCnt != dbg))
                 continue;
             if ((dbg_limit >= 0) && (RTGOpCnt >= dbg_limit))
                 continue;
             std::cout << "RTGOp: " << RTGOpCnt << "\n";
             ConvertSubgraphToRTG(g, cluster, inputs, id2Mask, use_gpu, refiner);
-            RTGOpCnt++;
         }
     }
 

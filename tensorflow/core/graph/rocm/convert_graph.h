@@ -27,9 +27,9 @@ limitations under the License.
 #include "rocm/include/migraph/generate.hpp"
 #include "rocm/include/migraph/iterator_for.hpp"
 #include "rocm/include/migraph/cpu/cpu_target.hpp"
-#include "rocm/include/migraph/miopen/target.hpp"
-#include "rocm/include/migraph/miopen/miopen.hpp"
-#include "rocm/include/migraph/miopen/hip.hpp"
+#include "rocm/include/migraph/gpu/target.hpp"
+#include "rocm/include/migraph/gpu/miopen.hpp"
+#include "rocm/include/migraph/gpu/hip.hpp"
 #include "rocm/include/miopen/miopen.h"
 
 #define ALIGN_BYTES(addr, size) (((addr % size) != 0) ? (addr += (size - addr % size)) : addr)
