@@ -198,7 +198,7 @@ function(add_python_module MODULE_NAME)
             # so we currently add explicit commands to include those files
             # later on in this script.
             if (NOT "${script}" MATCHES "_test\.py$")
-	        add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+            add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
                   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
             endif()
         endforeach()
@@ -297,7 +297,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     )
     target_link_libraries(${tf_python_op_lib_name}_gen_python PRIVATE
         tf_protos_cc
-				tf_python_protos_cc
+                tf_python_protos_cc
         ${tensorflow_EXTERNAL_LIBRARIES}
     )
 
@@ -549,15 +549,15 @@ if(WIN32)
         ${NUMPY_INCLUDE_DIR}
     )
     #target_link_libraries(pywrap_tensorflow_internal_static
-    #	tf_protos_cc
-    #	tf_python_protos_cc
+    #   tf_protos_cc
+    #   tf_python_protos_cc
     #)
     add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
     set(pywrap_tensorflow_internal_static_dependencies
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
-	${nsync_STATIC_LIBRARIES}
+    ${nsync_STATIC_LIBRARIES}
     )
 
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
@@ -763,57 +763,40 @@ file(WRITE "${api_init_list_file}" "${api_init_files}")
 # recongnize paths. As CUDA isn't built with MKL, the MKL built directory is the only path to this command to work around that issue.
 # To not override the CUDA and system path in other circumstances, `if-else` branch used here to handle this problem,
 # and should be removed if the path issue can be resolved.
+# UPDATE: Below block appears to handle multiple items in PATH correctly, but risks command line limits if PATH is large.
+# If you have issues, try `set(PY_RUNTIME_ENV "PATH=${mkl_BIN_DIRS}")` instead.
 ###
 
-if (tensorflow_ENABLE_MKL_SUPPORT)
+set(PY_RUNTIME_ENV "")
+if(tensorflow_ENABLE_MKL_SUPPORT)
     # add mkl dist dlls to system path for python
-    # TODO: In current cmake version, PY_RUNTIME_ENV behaves strange with multiple paths,
-    # so we have to specify only one path in it to work around the issue. We need this if/else
-    # to protect overwriting CUDA environments
-    set(PY_RUNTIME_ENV ${mkl_BIN_DIRS})
-    add_custom_command(
-          OUTPUT ${api_init_files}
-          DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
+    file(TO_CMAKE_PATH "$ENV{PATH}" PY_RUNTIME_ENV)
+    set(PY_RUNTIME_ENV ${mkl_BIN_DIRS} ${PY_RUNTIME_ENV})
+    file(TO_NATIVE_PATH "${PY_RUNTIME_ENV}" PY_RUNTIME_ENV)
+    set(PY_RUNTIME_ENV "PATH=${PY_RUNTIME_ENV}")
+endif(tensorflow_ENABLE_MKL_SUPPORT)
 
-          # tensorflow/__init__.py depends on files generated in this step. So, remove it while
-          # this step is running since the files aren't there yet.
-          COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
+add_custom_command(
+      OUTPUT ${api_init_files}
+      DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
 
-          # Run create_python_api.py to generate API init files.
-          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python PATH=${PY_RUNTIME_ENV} ${PYTHON_EXECUTABLE}
-                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
-                  "--root_init_template=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/api_template.__init__.py"
-                  "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow"
-                  "--package=tensorflow.python"
-                  "--apiname=tensorflow"
-                  "${api_init_list_file}"
+      # tensorflow/__init__.py depends on files generated in this step. So, remove it while
+      # this step is running since the files aren't there yet.
+      COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
 
-          COMMENT "Generating __init__.py files for Python API."
-          WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
-          VERBATIM
-    )
-else (tensorflow_ENABLE_MKL_SUPPORT)
-    add_custom_command(
-          OUTPUT ${api_init_files}
-          DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
+      # Run create_python_api.py to generate API init files.
+      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python "${PY_RUNTIME_ENV}" ${PYTHON_EXECUTABLE}
+              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
+              "--root_init_template=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/api_template.__init__.py"
+              "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow"
+              "--package=tensorflow.python"
+              "--apiname=tensorflow"
+              "${api_init_list_file}"
 
-          # tensorflow/__init__.py depends on files generated in this step. So, remove it while
-          # this step is running since the files aren't there yet.
-          COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
-
-          # Run create_python_api.py to generate API init files.
-          COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
-                  "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
-                  "--root_init_template=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/api_template.__init__.py"
-                  "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow"
-                  "--package=tensorflow.python"
-                  "--apiname=tensorflow"
-                  "${api_init_list_file}"
-
-          COMMENT "Generating __init__.py files for Python API."
-          WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
-    )
-endif (tensorflow_ENABLE_MKL_SUPPORT)
+      COMMENT "Generating __init__.py files for Python API."
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
+      VERBATIM
+)
 
 add_custom_target(tf_python_api SOURCES ${api_init_files})
 add_dependencies(tf_python_api tf_python_ops)
@@ -848,12 +831,12 @@ add_custom_command(
       DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
 
       # Run create_python_api.py to generate API init files.
-      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
+      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python "${PY_RUNTIME_ENV}" ${PYTHON_EXECUTABLE}
               "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
               "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
               "--package=tensorflow.python.estimator"
               "--apiname=estimator"
-	      "--output_package=tensorflow.python.estimator.api"
+          "--output_package=tensorflow.python.estimator.api"
               "${estimator_api_init_list_file}"
 
       COMMENT "Generating __init__.py files for Python API."
