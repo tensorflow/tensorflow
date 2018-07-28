@@ -739,7 +739,7 @@ def sigmoid_cross_entropy(
 
 @tf_export("losses.softmax_cross_entropy")
 def softmax_cross_entropy(
-    onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
+    onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None, dim=-1,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits_v2.
@@ -802,7 +802,7 @@ def softmax_cross_entropy(
     onehot_labels = array_ops.stop_gradient(
         onehot_labels, name="labels_stop_gradient")
     losses = nn.softmax_cross_entropy_with_logits_v2(
-        labels=onehot_labels, logits=logits, name="xentropy")
+        labels=onehot_labels, logits=logits, dim=dim, name="xentropy")
 
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
