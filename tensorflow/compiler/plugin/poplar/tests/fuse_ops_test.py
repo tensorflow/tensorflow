@@ -16,6 +16,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import nn
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 class IpuFuseOpsTest(test_util.TensorFlowTestCase):
@@ -118,6 +119,61 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['ReluGrad/call/NonLinearityGrad']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testMaxPool(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [1,1,10,10], name="a")
+      c = nn.max_pool(pa, ksize=[1,1,5,5], strides=[1,1,2,2],
+                      data_format='NCHW', padding='SAME', name="max")
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fd = {
+        pa: np.ones([1,1,10,10]),
+      }
+      result = sess.run(c, fd)
+      self.assertAllClose(result, np.ones([1,1,5,5]))
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['max/call/maxPool']
+      self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
+
+  def testFwdAndBwdMaxPool(self):
+    with ops.device("/device:IPU:0"):
+      pa = array_ops.placeholder(np.float32, [1,1,2,2], name="a")
+      pb = array_ops.placeholder(np.float32, [1,1,2,2], name="a")
+      c = nn.max_pool(pa, ksize=[1,1,2,2], strides=[1,1,1,1],
+                      data_format='NCHW', padding='SAME')
+      d = gen_nn_ops.max_pool_grad(pa, pb, c, ksize=[1,1,2,2],
+              strides=[1,1,1,1], data_format='NCHW', padding='SAME')
+
+    with ops.device('cpu'):
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with tu.ipu_session() as sess:
+      fe = {
+        pa: np.ones([1,1,2,2]),
+        pb: np.zeros([1,1,2,2]),
+      }
+      result = sess.run(d, fe)
+      self.assertAllClose(result, [[[[1, 2], [ 2, 4]]]])
+
+      result = sess.run(report)
+      self.assertTrue(len(result) == 3)
+
+      s = tu.extract_all_strings_from_event_trace(result)
+      cs_list = tu.get_compute_sets_from_report(s)
+
+      ok = ['MaxPool/call/maxPool',
+            '/maxPoolBwd']
       self.assertTrue(tu.check_all_compute_sets_in_list(cs_list, ok))
 
 if __name__ == "__main__":

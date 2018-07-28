@@ -19,6 +19,11 @@ static bool IsPoplibsFusion(const HloInstruction *inst,
   return false;
 }
 
+static bool IsAllFloatValue(const HloInstruction *inst, const double value) {
+  return !ShapeUtil::IsZeroElementArray(inst->shape()) &&
+         inst->literal().IsAllFloat(value);
+}
+
 bool IsFloatType(const HloInstruction *inst) {
   return ShapeUtil::ElementIsFloating(inst->shape());
 }
@@ -41,13 +46,11 @@ bool IsConstantZero(const HloInstruction *inst) {
 }
 
 bool IsConstantHalf(const HloInstruction *inst) {
-  return !ShapeUtil::IsZeroElementArray(inst->shape()) &&
-         inst->literal().IsAllFloat(0.5);
+  return IsAllFloatValue(inst, 0.5);
 }
 
 bool IsConstantOne(const HloInstruction *inst) {
-  return !ShapeUtil::IsZeroElementArray(inst->shape()) &&
-         inst->literal().IsAllFloat(1.0);
+  return IsAllFloatValue(inst, 1.0);
 }
 
 bool IsPoplarConvolution(const HloInstruction *inst) {
@@ -68,6 +71,38 @@ bool IsExternalPadding(const HloInstruction *inst) {
 
 bool IsAveragePool(const HloInstruction *inst) {
   return inst->metadata().op_type() == "AvgPool";
+}
+
+bool Is2DMaxPool(const HloInstruction *inst) {
+  if (inst->metadata().op_type() == "MaxPool") {
+    const Window &window(inst->window());
+    unsigned reduction_dims = 0;
+    for (int64 i = 0; i < window.dimensions_size(); i++) {
+      auto &d = window.dimensions(i);
+      if (d.size() != 1 || d.stride() != 1 || d.padding_low() != 0 ||
+          d.padding_high() != 0) {
+        reduction_dims++;
+      }
+    }
+    return inst->window().dimensions_size() == 4 && reduction_dims == 2;
+  }
+  return false;
+}
+
+bool Is2DMaxPoolGrad(const HloInstruction *inst) {
+  if (inst->metadata().op_type() == "MaxPoolGrad") {
+    const Window &window(inst->window());
+    unsigned reduction_dims = 0;
+    for (int64 i = 0; i < window.dimensions_size(); i++) {
+      auto &d = window.dimensions(i);
+      if (d.size() != 1 || d.stride() != 1 || d.padding_low() != 0 ||
+          d.padding_high() != 0) {
+        reduction_dims++;
+      }
+    }
+    return inst->window().dimensions_size() == 4 && reduction_dims == 2;
+  }
+  return false;
 }
 
 bool Is2DReductionWindow(const HloInstruction *inst) {
@@ -205,6 +240,13 @@ bool IsOpWithWindowNoStride(const HloInstruction *inst) {
     default:
       return false;
   }
+}
+bool IsScalarConstantNegativeInfinity(const HloInstruction *inst) {
+  return IsScalarConstant(inst) &&
+         IsAllFloatValue(inst, -std::numeric_limits<double>::infinity());
+}
+bool IsScalarConstantOne(const HloInstruction *inst) {
+  return IsScalarConstant(inst) && IsAllFloatValue(inst, 0);
 }
 
 }  // namespace poplarplugin

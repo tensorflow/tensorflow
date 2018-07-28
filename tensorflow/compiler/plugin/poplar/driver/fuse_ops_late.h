@@ -16,23 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_LATE_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_FUSE_OPS_LATE_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+#include "tensorflow/compiler/plugin/poplar/driver/single_hlo_matcher.h"
 
 namespace xla {
 
 namespace poplarplugin {
 
-class FuseOpsLate : public HloMatcher {
+class FuseOpsLate : public SingleHloMatcher {
  public:
   FuseOpsLate(struct CompilerAnnotations& annotations);
 
   ~FuseOpsLate() override = default;
 
   tensorflow::StringPiece name() const override { return "poplar-fuse-late"; }
-
- private:
-  ReplacedInstructions ReplaceNodes(int pattern,
-                                    const HloMatcherMatched& match) override;
 };
 
 }  // namespace poplarplugin

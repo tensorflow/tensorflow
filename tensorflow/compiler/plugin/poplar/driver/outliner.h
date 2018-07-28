@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
+#include "tensorflow/compiler/plugin/poplar/driver/single_hlo_matcher.h"
 
 namespace xla {
 
@@ -24,16 +24,13 @@ class HloModule;
 
 namespace poplarplugin {
 
-class Outliner : public HloMatcher {
+class Outliner : public SingleHloMatcher {
  public:
   Outliner(struct CompilerAnnotations& annotations);
 
   ~Outliner() override = default;
 
   tensorflow::StringPiece name() const override { return "outline"; }
-
-  ReplacedInstructions ReplaceNodes(int pattern,
-                                    const HloMatcherMatched& match) override;
 };
 
 }  // namespace poplarplugin

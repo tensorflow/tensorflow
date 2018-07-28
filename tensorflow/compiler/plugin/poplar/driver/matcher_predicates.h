@@ -17,6 +17,8 @@ bool IsConstantOne(const HloInstruction*);
 bool IsPoplarConvolution(const HloInstruction*);
 bool IsExternalPadding(const HloInstruction*);
 bool IsAveragePool(const HloInstruction*);
+bool Is2DMaxPool(const HloInstruction*);
+bool Is2DMaxPoolGrad(const HloInstruction*);
 bool Is2DReductionWindow(const HloInstruction*);
 bool IsScalarConstant(const HloInstruction*);
 bool IsConvFilterTranspose(const HloInstruction*);
@@ -34,6 +36,8 @@ bool IsF16ToF32Convert(const HloInstruction*);
 bool IsPopOpsConvolution(const HloInstruction*);
 bool IsOpWithWindowNoBaseDilation(const HloInstruction*);
 bool IsOpWithWindowNoStride(const HloInstruction*);
+bool IsScalarConstantNegativeInfinity(const HloInstruction*);
+bool IsScalarConstantOne(const HloInstruction*);
 
 }  // namespace poplarplugin
 }  // namespace xla

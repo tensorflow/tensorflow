@@ -95,11 +95,6 @@ ExpressionOutliner::ExpressionOutliner(struct CompilerAnnotations& annotations)
     : HloMatcher({}, annotations, true),
       inplace_instructions(annotations.inplace_instructions) {}
 
-ReplacedInstructions ExpressionOutliner::ReplaceNodes(
-    int, const HloMatcherMatched&) {
-  return {};
-}
-
 StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
   HloComputation* comp = module->entry_computation();
 

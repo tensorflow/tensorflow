@@ -13,36 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXPRESSION_OUTLINER_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SINGLE_HLO_MATCHER_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_SINGLE_HLO_MATCHER_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 
-#include <set>
-
 namespace xla {
-
-class HloModule;
 
 namespace poplarplugin {
 
-// Extract elementwise ops into a called sub-graph
-// (must come after InplaceFinder)
-
-class ExpressionOutliner : public HloMatcher {
+// Template for all Fusing passes which match a single Poplibs op
+class SingleHloMatcher : public HloMatcher {
  public:
-  ExpressionOutliner(struct CompilerAnnotations& annotations);
+  SingleHloMatcher(struct CompilerAnnotations& annotations,
+                   const std::vector<HloMatcherPattern>& patterns,
+                   const std::vector<FusedGraphInfo>& fuse_info,
+                   std::string op_prefix)
+      : HloMatcher(patterns, annotations, false),
+        fuse_info_(std::move(fuse_info)),
+        op_prefix_(op_prefix){};
 
-  ~ExpressionOutliner() override = default;
+  ~SingleHloMatcher() override = default;
 
-  tensorflow::StringPiece name() const override { return "expression-outline"; }
-
-  StatusOr<bool> Run(HloModule* module) override;
+ protected:
+  std::vector<FusedGraphInfo> fuse_info_;
 
  private:
-  unsigned ReplaceNodes() override { return 0; };
+  unsigned ReplaceNodes() override;
 
-  const std::set<const HloInstruction*>& inplace_instructions;
+  std::string op_prefix_;
 };
 
 }  // namespace poplarplugin

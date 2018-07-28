@@ -22,7 +22,7 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static FusedGraphInfo fuse_info[] = {
+static const std::vector<FusedGraphInfo> fuse_info = {
     {"const_slice_update", 0},
     {"const_slice_update", 0},
     {"const_slice", 0},
@@ -42,9 +42,9 @@ static FusedGraphInfo fuse_info[] = {
     {"uniform_scale_add", 4},
     {"norm", 0},
     {"uniform", 0},
-    {"avgpool", 1},
-    {"avgpool", 1},
-    {"avgpool", 1},
+    {"avg_pool", 1},
+    {"avg_pool", 1},
+    {"avg_pool", 1},
     {"bias_apply", 0},
     {"reduction_no_convert", 1},
     {"reduction_no_convert", 1},
@@ -251,17 +251,7 @@ static const std::vector<HloMatcherPattern> patterns = {
 };
 
 FuseOpsLate::FuseOpsLate(struct CompilerAnnotations& annotations)
-    : HloMatcher(patterns, annotations, false) {}
-
-ReplacedInstructions FuseOpsLate::ReplaceNodes(int pattern,
-                                               const HloMatcherMatched& match) {
-  std::string name("_pop_op_");
-  name += fuse_info[pattern].name;
-
-  char index = fuse_info[pattern].op_index;
-
-  return OutlineExpressionFromComputation(match, name, index);
-}
+    : SingleHloMatcher(annotations, patterns, fuse_info, "_pop_op_") {}
 
 }  // namespace poplarplugin
 }  // namespace xla
