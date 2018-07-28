@@ -51,6 +51,42 @@ private:
   explicit AddFOp(const Operation *state) : Base(state) {}
 };
 
+/// The "affine_apply" operation applies an affine map to a list of operands,
+/// yielding a list of results. The operand and result list sizes must be the
+/// same. All operands and results are of type 'AffineInt'. This operation
+/// requires a single affine map attribute named "map".
+/// For example:
+///
+///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
+///          (affineint) -> (affineint)
+///
+/// equivalently:
+///
+///   #map42 = (d0)->(d0+1)
+///   %y = affine_apply #map42(%x)
+///
+class AffineApplyOp
+    : public OpImpl::Base<AffineApplyOp, OpImpl::VariadicOperands,
+                          OpImpl::VariadicResults> {
+public:
+  // Returns the affine map to be applied by this operation.
+  AffineMap *getAffineMap() const {
+    return getAttrOfType<AffineMapAttr>("map")->getValue();
+  }
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static StringRef getOperationName() { return "affine_apply"; }
+
+  // Hooks to customize behavior of this op.
+  static OpAsmParserResult parse(OpAsmParser *parser);
+  void print(OpAsmPrinter *p) const;
+  const char *verify() const;
+
+private:
+  friend class Operation;
+  explicit AffineApplyOp(const Operation *state) : Base(state) {}
+};
+
 /// The "constant" operation requires a single attribute named "value".
 /// It returns its value as an SSA value.  For example:
 ///
@@ -150,36 +186,6 @@ public:
 private:
   friend class Operation;
   explicit LoadOp(const Operation *state) : Base(state) {}
-};
-
-/// The "affine_apply" operation applies an affine map to a list of operands,
-/// yielding a list of results. The operand and result list sizes must be the
-/// same. All operands and results are of type 'AffineInt'. This operation
-/// requires a single affine map attribute named "map".
-/// For example:
-///
-///   %y = "affine_apply" (%x) { map: (d0) -> (d0 + 1) } :
-///          (affineint) -> (affineint)
-///
-class AffineApplyOp
-    : public OpImpl::Base<AffineApplyOp, OpImpl::VariadicOperands,
-                          OpImpl::VariadicResults> {
-public:
-  // Returns the affine map to be applied by this operation.
-  AffineMap *getAffineMap() const {
-    return getAttrOfType<AffineMapAttr>("map")->getValue();
-  }
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static StringRef getOperationName() { return "affine_apply"; }
-
-  // Hooks to customize behavior of this op.
-  const char *verify() const;
-  void print(OpAsmPrinter *p) const;
-
-private:
-  friend class Operation;
-  explicit AffineApplyOp(const Operation *state) : Base(state) {}
 };
 
 /// Install the standard operations in the specified operation set.

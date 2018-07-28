@@ -1,8 +1,12 @@
 // RUN: %S/../../mlir-opt %s -o - | FileCheck %s
 
-// CHECK: #map{{[0-9]+}} = (d0, d1) -> ((d0 + 1), (d1 + 2))
+// CHECK: #map0 = (d0) -> ((d0 + 1))
+
+// CHECK: #map1 = (d0, d1) -> ((d0 + 1), (d1 + 2))
 #map5 = (d0, d1) -> (d0 + 1, d1 + 2)
-#id2 = (i,j)->(i,j)
+
+// CHECK: #map2 = (d0, d1) [s0, s1] -> ((d0 + s1), (d1 + s0))
+// CHECK: #map3 = () [s0] -> ((s0 + 1))
 
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
 cfgfunc @cfgfunc_with_ops(f32) {
@@ -47,13 +51,20 @@ bb0:
   %i = "constant"() {value: 0} : () -> affineint
   %j = "constant"() {value: 1} : () -> affineint
 
-  // CHECK: affine_apply map: (d0) -> ((d0 + 1))
-  %x = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
+  // CHECK: affine_apply #map0(%0)
+  %a = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
     (affineint) -> (affineint)
 
-  // CHECK: affine_apply map: (d0, d1) -> ((d0 + 1), (d1 + 2))
-  %y = "affine_apply" (%i, %j) { map: #map5 } :
+  // CHECK: affine_apply #map1(%0, %1)
+  %b = "affine_apply" (%i, %j) { map: #map5 } :
     (affineint, affineint) -> (affineint, affineint)
+
+  // CHECK: affine_apply #map2(%0, %1)[%1, %0]
+  %c = affine_apply (i,j)[m,n] -> (i+n, j+m)(%i, %j)[%j, %i]
+
+  // CHECK: affine_apply #map3()[%0]
+  %d = affine_apply ()[x] -> (x+1)()[%i]
+
   return
 }
 

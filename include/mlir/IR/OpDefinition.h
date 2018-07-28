@@ -318,6 +318,28 @@ public:
   void setOperand(unsigned i, SSAValue *value) {
     this->getOperation()->setOperand(i, value);
   }
+
+  // Support non-const operand iteration.
+  using operand_iterator = Operation::operand_iterator;
+  operand_iterator operand_begin() {
+    return this->getOperation()->operand_begin();
+  }
+  operand_iterator operand_end() { return this->getOperation()->operand_end(); }
+  llvm::iterator_range<operand_iterator> getOperands() {
+    return this->getOperands();
+  }
+
+  // Support const operand iteration.
+  using const_operand_iterator = Operation::const_operand_iterator;
+  const_operand_iterator operand_begin() const {
+    return this->getOperation()->operand_begin();
+  }
+  const_operand_iterator operand_end() const {
+    return this->getOperation()->operand_end();
+  }
+  llvm::iterator_range<const_operand_iterator> getOperands() const {
+    return this->getOperands();
+  }
 };
 
 /// This class provides return value APIs for ops that are known to have a

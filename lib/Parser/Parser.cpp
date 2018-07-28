@@ -1674,10 +1674,18 @@ public:
     switch (delimeter) {
     case Delimeter::NoDelimeter:
       break;
+    case Delimeter::OptionalParenDelimeter:
+      if (parser.getToken().isNot(Token::l_paren))
+        return false;
+      LLVM_FALLTHROUGH;
     case Delimeter::ParenDelimeter:
       if (parser.parseToken(Token::l_paren, "expected '(' in operand list"))
         return true;
       break;
+    case Delimeter::OptionalSquareDelimeter:
+      if (parser.getToken().isNot(Token::l_square))
+        return false;
+      LLVM_FALLTHROUGH;
     case Delimeter::SquareDelimeter:
       if (parser.parseToken(Token::l_square, "expected '[' in operand list"))
         return true;
@@ -1694,14 +1702,17 @@ public:
       } while (parser.consumeIf(Token::comma));
     }
 
-    // Handle delimeters.
+    // Handle delimeters.   If we reach here, the optional delimiters were
+    // present, so we need to parse their closing one.
     switch (delimeter) {
     case Delimeter::NoDelimeter:
       break;
+    case Delimeter::OptionalParenDelimeter:
     case Delimeter::ParenDelimeter:
       if (parser.parseToken(Token::r_paren, "expected ')' in operand list"))
         return true;
       break;
+    case Delimeter::OptionalSquareDelimeter:
     case Delimeter::SquareDelimeter:
       if (parser.parseToken(Token::r_square, "expected ']' in operand list"))
         return true;

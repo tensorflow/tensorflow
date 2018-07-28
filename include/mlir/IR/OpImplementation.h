@@ -49,7 +49,12 @@ public:
   /// Print a comma separated list of operands.
   template <typename ContainerType>
   void printOperands(const ContainerType &container) {
-    auto it = container.begin(), end = container.end();
+    printOperands(container.begin(), container.end());
+  }
+
+  /// Print a comma separated list of operands.
+  template <typename IteratorType>
+  void printOperands(IteratorType it, IteratorType end) {
     if (it == end)
       return;
     printOperand(*it);
@@ -198,9 +203,16 @@ public:
   /// These are the supported delimeters around operand lists, used by
   /// parseOperandList.
   enum Delimeter {
+    /// Zero or more operands with no delimeters.
     NoDelimeter,
+    /// Parens surrounding zero or more operands.
     ParenDelimeter,
+    /// Square brackets surrounding zero or more operands.
     SquareDelimeter,
+    /// Parens supporting zero or more operands, or nothing.
+    OptionalParenDelimeter,
+    /// Square brackets supporting zero or more ops, or nothing.
+    OptionalSquareDelimeter,
   };
 
   /// Parse zero or more SSA comma-separated operand references with a specified

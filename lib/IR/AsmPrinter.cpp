@@ -93,29 +93,25 @@ private:
 
 // TODO Support visiting other types/instructions when implemented.
 void ModuleState::visitType(const Type *type) {
-  if (type->getKind() == Type::Kind::Function) {
+  if (auto *funcType = dyn_cast<FunctionType>(type)) {
     // Visit input and result types for functions.
-    auto *funcType = cast<FunctionType>(type);
-    for (auto *input : funcType->getInputs()) {
+    for (auto *input : funcType->getInputs())
       visitType(input);
-    }
-    for (auto *result : funcType->getResults()) {
+    for (auto *result : funcType->getResults())
       visitType(result);
-    }
-  } else if (type->getKind() == Type::Kind::MemRef) {
+  } else if (auto *memref = dyn_cast<MemRefType>(type)) {
     // Visit affine maps in memref type.
-    auto *memref = cast<MemRefType>(type);
-    for (AffineMap *map : memref->getAffineMaps()) {
+    for (auto *map : memref->getAffineMaps()) {
       recordAffineMapReference(map);
     }
   }
 }
 
 void ModuleState::visitAttribute(const Attribute *attr) {
-  if (isa<AffineMapAttr>(attr)) {
-    recordAffineMapReference(cast<AffineMapAttr>(attr)->getValue());
-  } else if (isa<ArrayAttr>(attr)) {
-    for (auto elt : cast<ArrayAttr>(attr)->getValue()) {
+  if (auto *mapAttr = dyn_cast<AffineMapAttr>(attr)) {
+    recordAffineMapReference(mapAttr->getValue());
+  } else if (auto *array = dyn_cast<ArrayAttr>(attr)) {
+    for (auto elt : array->getValue()) {
       visitAttribute(elt);
     }
   }
@@ -535,7 +531,7 @@ public:
     ModulePrinter::printAttribute(attr);
   }
   void printAffineMap(const AffineMap *map) {
-    return ModulePrinter::printAffineMap(map);
+    return ModulePrinter::printAffineMapReference(map);
   }
   void printAffineExpr(const AffineExpr *expr) {
     return ModulePrinter::printAffineExpr(expr);
