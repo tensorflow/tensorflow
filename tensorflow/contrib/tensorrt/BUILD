@@ -393,6 +393,7 @@ cuda_py_tests(
         # "test/unary_test.py",  # Blocked by trt4 installation
         # "test/vgg_block_nchw_test.py",
         # "test/vgg_block_test.py",
+        "test/memory_alignment_test.py",
     ],
     additional_deps = [
         ":tf_trt_integration_test_base",
