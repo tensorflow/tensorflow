@@ -264,12 +264,15 @@ class SavedModelLoader(object):
       **saver_kwargs: keyword arguments to pass to tf.train.import_meta_graph.
 
     Returns:
-      Saver defined by the MetaGraph, which can be used to restore the variable
-      values.
+      A tuple of
+        * Saver defined by the MetaGraph, which can be used to restore the
+          variable values.
+        * List of `Operation`/`Tensor` objects returned from
+          `tf.import_graph_def` (may be `None`).
     """
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
     with graph.as_default():
-      return tf_saver.import_meta_graph(
+      return tf_saver._import_meta_graph_with_return_elements(  # pylint: disable=protected-access
           meta_graph_def, import_scope=import_scope, **saver_kwargs)
 
   def restore_variables(self, sess, saver, import_scope=None):
@@ -341,8 +344,8 @@ class SavedModelLoader(object):
       `MetagraphDef` proto of the graph that was loaded.
     """
     with sess.graph.as_default():
-      saver = self.load_graph(sess.graph, tags, import_scope,
-                              **saver_kwargs)
+      saver, _ = self.load_graph(sess.graph, tags, import_scope,
+                                 **saver_kwargs)
       self.restore_variables(sess, saver, import_scope)
       self.run_init_ops(sess, tags, import_scope)
     return self.get_meta_graph_def_from_tags(tags)

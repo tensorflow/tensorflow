@@ -7,9 +7,8 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#ifndef EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_H
-#define EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_H
-
+#ifndef CXX11_SRC_FIXEDPOINT_MATMATPRODUCT_H_
+#define CXX11_SRC_FIXEDPOINT_MATMATPRODUCT_H_
 
 namespace Eigen {
 namespace internal {
@@ -21,6 +20,14 @@ template<> struct scalar_product_traits<QInt8, QInt8>
   enum {
     Defined = 1
   };
+  typedef QInt32 ReturnType;
+};
+
+// Accumulate the product of 2 QInt16 inputs on 32 bits to prevent
+// overflows
+template <>
+struct scalar_product_traits<QInt16, QInt16> {
+  enum { Defined = 1 };
   typedef QInt32 ReturnType;
 };
 
@@ -247,9 +254,76 @@ void gebp_kernel<QUInt8, QInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjuga
 }
 #endif
 
+#ifndef EIGEN_USE_OPTIMIZED_INT16_INT16_MAT_MAT_PRODUCT
+
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<QInt16, QInt16, _ConjLhs, _ConjRhs> {
+ public:
+  typedef QInt16 LhsScalar;
+  typedef QInt16 RhsScalar;
+  typedef QInt32 ResScalar;
+
+  enum {
+    // register block size along the M and N directions
+    // One for the current implementation
+    nr = 1,
+    mr = 1,
+    // Progress made at each iteration of the product loop
+    // also 1 for the current implementation
+    LhsProgress = 1,
+    RhsProgress = 1
+  };
+};
+
+// The signed 16bit Mat-Mat product itself.
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
+  EIGEN_DONT_INLINE
+  void operator()(const DataMapper& res, const QInt16* blockA,
+                  const QInt16* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
+};
+
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr,
+                                   ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QInt16* blockA, const QInt16* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
+  EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+
+  eigen_assert(alpha.value == 1);
+  eigen_assert(strideA == -1);
+  eigen_assert(strideB == -1);
+  eigen_assert(offsetA == 0);
+  eigen_assert(offsetB == 0);
+
+  eigen_assert(rows > 0);
+  eigen_assert(cols > 0);
+  eigen_assert(depth > 0);
+  eigen_assert(blockA);
+  eigen_assert(blockB);
+
+  for (Index j = 0; j < cols; ++j) {
+    Index startB = j * depth;
+
+    for (Index i = 0; i < rows; ++i) {
+      Index startA = i * depth;
+
+      for (Index k = 0; k < depth; ++k) {
+        res(i, j) += blockA[startA + k] * blockB[startB + k];
+      }
+    }
+  }
+}
+#endif
+
 }  // namespace internal
 }  // namespace Eigen
 
-
-
-#endif  // EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_H
+#endif  // CXX11_SRC_FIXEDPOINT_MATMATPRODUCT_H_

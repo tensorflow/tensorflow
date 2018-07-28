@@ -180,9 +180,6 @@ def get_nested_model_3(input_dim, num_classes):
       x = self.dense2(x)
       return self.bn(x)
 
-    def compute_output_shape(self, input_shape):
-      return tensor_shape.TensorShape((input_shape[0], 5))
-
   test_model = Inner()
   x = test_model(x)
   outputs = keras.layers.Dense(num_classes)(x)

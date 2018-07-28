@@ -657,5 +657,56 @@ void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
   }
 }
 
+std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
+                                                    llvm::Value* src0,
+                                                    llvm::Value* src1) {
+  CHECK_EQ(src0->getType()->getPrimitiveSizeInBits(), 32);
+  CHECK_EQ(src1->getType()->getPrimitiveSizeInBits(), 32);
+  llvm::Type* int64_ty = b->getInt64Ty();
+  src0 = b->CreateZExt(src0, int64_ty);
+  src1 = b->CreateZExt(src1, int64_ty);
+  return SplitInt64ToInt32s(b, b->CreateMul(src0, src1));
+}
+
+std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
+    llvm::IRBuilder<>* b, llvm::Value* value_64bits) {
+  CHECK_EQ(value_64bits->getType()->getPrimitiveSizeInBits(), 64);
+  llvm::Type* int32_ty = b->getInt32Ty();
+  llvm::Value* low_32bits = b->CreateTrunc(value_64bits, int32_ty);
+  llvm::Value* high_32bits =
+      b->CreateTrunc(b->CreateLShr(value_64bits, 32), int32_ty);
+  return std::make_pair(low_32bits, high_32bits);
+}
+
+llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
+    llvm::Module* module, llvm::IRBuilder<>* b) {
+  static const char* kPhiloxRngStateVariableName = "philox_rng_state";
+  llvm::GlobalVariable* state_ptr =
+      module->getNamedGlobal(kPhiloxRngStateVariableName);
+  if (!state_ptr) {
+    state_ptr = new llvm::GlobalVariable(
+        /*M=*/*module,
+        /*Ty=*/b->getInt64Ty(),
+        /*isConstant=*/false,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/b->getInt64(0),
+        /*Name=*/kPhiloxRngStateVariableName);
+  }
+  return state_ptr;
+}
+
+void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
+                                        llvm::IRBuilder<>* builder) {
+  llvm::GlobalVariable* state_ptr =
+      GetOrCreateVariableForPhiloxRngState(module, builder);
+  llvm::Value* state_value_old = builder->CreateLoad(state_ptr, "load_state");
+  // If the 64-bit value overflows, we use the wraparound value. This should
+  // be fine in practice as we only add one to the value each time when a RNG is
+  // executed.
+  llvm::Value* state_value_new = builder->CreateAdd(
+      state_value_old, builder->getInt64(value), "inc_state");
+  builder->CreateStore(state_value_new, state_ptr);
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

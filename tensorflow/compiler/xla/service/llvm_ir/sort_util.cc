@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -38,19 +39,18 @@ namespace llvm_ir {
 namespace {
 // Adds the inner comparison loop where we compare elements pointed to by
 // 'keys_index' and 'compare_keys_index'.
-void EmitCompareLoop(int64 dimension_to_sort,
-                     const llvm_ir::IrArray::Index& keys_index,
-                     const llvm_ir::IrArray::Index& compare_keys_index,
-                     const llvm_ir::IrArray& keys_array, llvm::IRBuilder<>* b) {
-  // TODO(b/26783907): parallelize this loop.
-
+void EmitCompareLoop(int64 dimension_to_sort, const IrArray::Index& keys_index,
+                     const IrArray::Index& compare_keys_index,
+                     const IrArray& keys_array,
+                     const tensorflow::gtl::optional<IrArray>& values_array,
+                     llvm::IRBuilder<>* b) {
   // if (is_smaller_index &&
   //     compare_keys[dimension_to_sort] < dimension_to_sort_bound)
   llvm::Value* is_smaller_index = b->CreateICmpSLT(
       keys_index[dimension_to_sort], compare_keys_index[dimension_to_sort]);
   int64 dimension_to_sort_bound =
       keys_array.GetShape().dimensions(dimension_to_sort);
-  auto if_data = llvm_ir::EmitIfThenElse(
+  auto if_data = EmitIfThenElse(
       b->CreateAnd(is_smaller_index,
                    b->CreateICmpSLT(compare_keys_index[dimension_to_sort],
                                     keys_index.GetConstantWithIndexType(
@@ -63,19 +63,31 @@ void EmitCompareLoop(int64 dimension_to_sort,
   auto comparison =
       primitive_util::IsFloatingPointType(key_type)
           // TODO(b/26783907): Figure out how to handle NaNs.
-          ? b->CreateFCmp(llvm::FCmpInst::FCMP_ULT, key1, key2)
+          ? b->CreateFCmp(llvm::FCmpInst::FCMP_ULT, key2, key1)
           : b->CreateICmp(primitive_util::IsSignedIntegralType(key_type)
                               ? llvm::ICmpInst::ICMP_SLT
                               : llvm::ICmpInst::ICMP_ULT,
-                          key1, key2);
-  auto min_key = b->CreateSelect(comparison, key1, key2);
-  auto max_key = b->CreateSelect(comparison, key2, key1);
-  keys_array.EmitWriteArrayElement(keys_index, min_key, b);
-  keys_array.EmitWriteArrayElement(compare_keys_index, max_key, b);
+                          key2, key1);
+  // If key2 < key1
+  auto if_smaller_data =
+      EmitIfThenElse(comparison, "is_smaller_than", b, /*emit_else=*/false);
+  SetToFirstInsertPoint(if_smaller_data.true_block, b);
+  // Swap key1 with key2.
+  keys_array.EmitWriteArrayElement(keys_index, key2, b);
+  keys_array.EmitWriteArrayElement(compare_keys_index, key1, b);
+  if (values_array.has_value()) {
+    // Also swap the values.
+    auto value1 = values_array.value().EmitReadArrayElement(keys_index, b);
+    auto value2 =
+        values_array.value().EmitReadArrayElement(compare_keys_index, b);
+    values_array.value().EmitWriteArrayElement(keys_index, value2, b);
+    values_array.value().EmitWriteArrayElement(compare_keys_index, value1, b);
+  }
 }
 }  // namespace
 
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
+                       const tensorflow::gtl::optional<IrArray>& values_array,
                        tensorflow::StringPiece name, llvm::Value* xor_mask,
                        llvm::IRBuilder<>* b,
                        const gpu::LaunchDimensions* launch_dimensions) {
@@ -131,7 +143,7 @@ Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
     compare_keys_index[dimension_to_sort] =
         b->CreateXor(compare_index[0], xor_mask);
     EmitCompareLoop(dimension_to_sort, keys_index, compare_keys_index,
-                    keys_array, b);
+                    keys_array, values_array, b);
     return Status::OK();
   };
   if (launch_dimensions != nullptr) {

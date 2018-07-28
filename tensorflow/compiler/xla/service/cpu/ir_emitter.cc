@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -175,23 +176,34 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
       result_global, IrShapeType(literal.shape())->getPointerTo());
 }
 
+Status IrEmitter::EmitConstantGlobals() {
+  for (const BufferAllocation& allocation : assignment_.Allocations()) {
+    if (!allocation.is_constant()) {
+      continue;
+    }
+
+    const Literal& literal = llvm_ir::LiteralForConstantAllocation(allocation);
+    llvm::Constant* global_for_const;
+    auto it = emitted_literals_.find(&literal);
+    if (it != emitted_literals_.end()) {
+      global_for_const = it->second;
+    } else {
+      global_for_const = EmitGlobalForLiteral(literal);
+      InsertOrDie(&emitted_literals_, &literal, global_for_const);
+    }
+
+    InsertOrDie(&constant_buffer_to_global_, allocation.index(),
+                global_for_const);
+  }
+
+  return Status::OK();
+}
+
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
   VLOG(2) << "HandleConstant: " << constant->ToString();
-  const Literal& literal = constant->literal();
-  llvm::Constant* global_for_const;
-
-  auto it = emitted_literals_.find(&literal);
-  if (it != emitted_literals_.end()) {
-    global_for_const = it->second;
-  } else {
-    global_for_const = EmitGlobalForLiteral(literal);
-    emitted_literals_[&literal] = global_for_const;
-  }
-  emitted_value_[constant] = global_for_const;
-  VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*global_for_const);
-  VLOG(2) << "  its type: "
-          << llvm_ir::DumpToString(*global_for_const->getType());
-  return Status::OK();
+  // IrEmitter::EmitConstantGlobals has already taken care of emitting the body
+  // of the constant.
+  return EmitTargetAddressForOp(constant);
 }
 
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
@@ -2506,6 +2518,23 @@ Status IrEmitter::HandleIota(HloInstruction* iota) {
   return Unimplemented("Iota is not implemented on CPU.");
 }
 
+Status IrEmitter::HandleRng(HloInstruction* rng) {
+  ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
+  for (const HloInstruction* operand : rng->operands()) {
+    operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
+      return GetIrArrayFor(operand).EmitReadArrayElement(index, &b_);
+    };
+  }
+
+  CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
+  TF_RETURN_IF_ERROR(EmitTargetElementLoop(
+      rng, elemental_emitter.MakeElementGenerator(rng, operand_to_generator)));
+
+  llvm_ir::IncrementVariableForPhiloxRngState(1, module_, &b_);
+
+  return Status::OK();
+}
+
 Status IrEmitter::FinishVisit(HloInstruction* root) {
   // When this method is called, we should have already emitted an IR value for
   // the root (return) op. The IR value holds the address of the buffer holding
@@ -2693,6 +2722,10 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
           MinimumAlignmentForShape(target_shape));
     }
     return b_.CreateBitCast(tempbuf_address, element_type->getPointerTo());
+  }
+
+  if (allocation.is_constant()) {
+    return FindOrDie(constant_buffer_to_global_, allocation.index());
   }
 
   llvm::Value* tempbuf_address_ptr = llvm_ir::EmitBufferIndexingGEP(

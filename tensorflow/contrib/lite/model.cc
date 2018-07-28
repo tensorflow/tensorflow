@@ -730,6 +730,14 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = static_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_ONE_HOT: {
+      auto* params = MallocPOD<TfLiteOneHotParams>();
+      if (auto* schema_params = op->builtin_options_as_OneHotOptions()) {
+        params->axis = schema_params->axis();
+      }
+      *builtin_data = static_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:

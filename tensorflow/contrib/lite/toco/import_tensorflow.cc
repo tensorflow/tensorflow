@@ -215,7 +215,7 @@ tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_FLOAT);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -253,7 +253,7 @@ tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
                                      Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -290,7 +290,7 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT32);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -326,7 +326,7 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_INT64);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -363,7 +363,7 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
                                    Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_BOOL);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -409,7 +409,7 @@ tensorflow::Status ImportStringArray(const TensorProto& input_tensor,
                                      Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_STRING);
   const auto& input_shape = input_tensor.tensor_shape();
-  CHECK_LE(input_shape.dim_size(), 4);
+  CHECK_LE(input_shape.dim_size(), 6);
   int input_flat_size;
   auto status = ImportShape(input_shape.dim(), &input_flat_size,
                             output_array->mutable_shape());
@@ -1833,6 +1833,27 @@ tensorflow::Status ConvertSparseToDenseOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertOneHotOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "OneHot");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 4));
+
+  const auto dtype = GetDataTypeAttr(node, "T");
+  // TODO(b/111744875): Support DT_UINT8 and quantization.
+  CHECK(dtype == DT_INT32 || dtype == DT_INT64 || dtype == DT_FLOAT ||
+        dtype == DT_BOOL);
+
+  auto op = absl::make_unique<OneHotOperator>();
+  op->axis = HasAttr(node, "axis") ? GetIntAttr(node, "axis") : -1;
+  for (const string& input : node.input()) {
+    op->inputs.push_back(input);
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op.release());
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -1909,6 +1930,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"NextIteration", ConvertOperatorSpecialCasedAsRNNBackEdge},
       {"NoOp", ConvertNoOpOperator},
       {"NotEqual", ConvertSimpleOperator<TensorFlowNotEqualOperator, 2>},
+      {"OneHot", ConvertOneHotOperator},
       {"Pack", ConvertPackOperator},
       {"Pad", ConvertSimpleOperator<PadOperator, 2>},
       {"PadV2", ConvertSimpleOperator<PadV2Operator, 3>},

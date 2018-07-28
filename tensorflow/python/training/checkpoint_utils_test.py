@@ -386,7 +386,9 @@ class CheckpointsTest(test.TestCase):
         op for op in g.get_operations()
         if (op.name.startswith("init_from_checkpoint/") and
             not op.name.startswith("init_from_checkpoint/checkpoint_initializer"
-                                  ) and op.type != "AssignVariableOp")
+                                  ) and
+            op.type != "AssignVariableOp" and
+            op.type != "Identity")
     ]
     self.assertEqual(ops_in_init_from_checkpoint_scope, [])
 
