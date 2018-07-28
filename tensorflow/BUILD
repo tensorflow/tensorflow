@@ -408,14 +408,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-# TODO(laigd): consider removing this option and make TensorRT enabled
-# automatically when CUDA is enabled.
-config_setting(
-    name = "with_tensorrt_support",
-    values = {"define": "with_tensorrt_support=true"},
-    visibility = ["//visibility:public"],
-)
-
 package_group(
     name = "internal",
     packages = [

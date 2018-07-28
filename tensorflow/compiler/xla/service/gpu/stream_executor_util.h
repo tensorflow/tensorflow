@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_EXECUTOR_UTIL_H_
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -29,14 +30,13 @@ namespace gpu {
 // layouts.
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
-                                      stream_executor::dnn::DataLayout input,
-                                      stream_executor::dnn::FilterLayout filter,
-                                      stream_executor::dnn::DataLayout output);
+                                      se::dnn::DataLayout input,
+                                      se::dnn::FilterLayout filter,
+                                      se::dnn::DataLayout output);
 
 // Returns (input, filter, output) StreamExecutor layouts given the XLA layouts.
-StatusOr<std::tuple<stream_executor::dnn::DataLayout,
-                    stream_executor::dnn::FilterLayout,
-                    stream_executor::dnn::DataLayout>>
+StatusOr<
+    std::tuple<se::dnn::DataLayout, se::dnn::FilterLayout, se::dnn::DataLayout>>
 XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                       const Layout& input, const Layout& filter,
                                       const Layout& output);

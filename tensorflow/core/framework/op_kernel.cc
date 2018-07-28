@@ -1288,4 +1288,10 @@ void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
   SetStatus(s);
 }
 
+void CheckNotInComputeAsync(OpKernelContext* ctx,
+                            const char* correct_macro_name) {
+  CHECK_EQ(nullptr, ctx->op_kernel().AsAsync())
+      << "Use " << correct_macro_name << " in AsyncOpKernel implementations.";
+}
+
 }  // namespace tensorflow

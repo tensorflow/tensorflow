@@ -143,7 +143,7 @@ If the device you have specified does not exist, you will get
 ```
 InvalidArgumentError: Invalid argument: Cannot assign a device to node 'b':
 Could not satisfy explicit device specification '/device:GPU:2'
-   [[Node: b = Const[dtype=DT_FLOAT, value=Tensor<type: float shape: [3,2]
+   [[{{node b}} = Const[dtype=DT_FLOAT, value=Tensor<type: float shape: [3,2]
    values: 1 2 3...>, _device="/device:GPU:2"]()]]
 ```
 

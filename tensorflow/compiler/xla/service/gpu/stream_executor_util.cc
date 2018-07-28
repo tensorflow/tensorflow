@@ -20,10 +20,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using stream_executor::dnn::DataLayout;
-using stream_executor::dnn::DataLayoutString;
-using stream_executor::dnn::FilterLayout;
-using stream_executor::dnn::FilterLayoutString;
+using se::dnn::DataLayout;
+using se::dnn::DataLayoutString;
+using se::dnn::FilterLayout;
+using se::dnn::FilterLayoutString;
 
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,

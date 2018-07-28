@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -60,7 +61,7 @@ class TransferManagerTest : public LocalClientTestBase {
   }
 
  protected:
-  Backend::StreamPtr stream_ptr_;
+  StreamPool::Ptr stream_ptr_;
   se::Stream* stream_;
 
  private:

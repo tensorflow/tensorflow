@@ -31,8 +31,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using stream_executor::dnn::DataLayout;
-using stream_executor::dnn::FilterLayout;
+using se::dnn::DataLayout;
+using se::dnn::FilterLayout;
 
 static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
   int major, minor;
@@ -44,7 +44,7 @@ static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          stream_executor::StreamExecutor* stream_executor) {
+                          se::StreamExecutor* stream_executor) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
@@ -52,31 +52,44 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   //   W <=> X
   //
   // Therefore kOutputInputYX and kBatchDepthYX mean NCHW.
+  //
+  // If you have trouble keeping these straight, consider that all that matters
+  // is the location of the channel dim: Is it major (NCHW), or minor (NHWC)?
 
-  // As of today, our empirical evidence is that cudnn 7.0 is faster on V100 x
-  // fp16 with the mostly-NHWC layout. The heuristic may change as cudnn version
-  // changes, as well as the hardware updates.
+  constexpr auto kAllNCHW =
+      std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
+                      DataLayout::kBatchDepthYX);
+  constexpr auto kAllNHWC =
+      std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
+                      DataLayout::kBatchYXDepth);
+
+  // If we're not Volta or not fp16, the decision is easy: Use NCHW.
   if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
         IsVoltaOrLater(*stream_executor))) {
-    return std::make_tuple(DataLayout::kBatchDepthYX,
-                           FilterLayout::kOutputInputYX,
-                           DataLayout::kBatchDepthYX);
+    return kAllNCHW;
   }
+
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
-  // For BackwardInput that has stride, full NHWC layouts run significantly
-  // slower than (NHWC, NCHW, NCHW) or (NHWC, NCHW, NHWC).
+
+  // Empirically we've found with Volta and cudnn 7 that backward-input convs
+  // with stride are significantly faster with NCHW layouts.
   //
-  // TODO(timshen): more closely compare (NHWC, NCHW, NCHW) and (NHWC, NCHW,
-  // NHWC).
+  // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
+  // which on paper gives good performance. However, there are two observations:
+  // * a mixed layout combination is more cuDNN-bug prone, based on empirical
+  //   envidence.
+  // * we've also observed that for mixed layouts, cuDNN transposes data back
+  //   and forth from a different layout combination. If we end up with
+  //   transposes anyway, we prefer to have them in XLA, as they can be fused.
+  // TODO(timshen): Figure out the exact condition. This may be achieved by
+  // auto-tuning layouts offline.
   if (instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
       window_util::HasStride(instr->window())) {
-    return std::make_tuple(DataLayout::kBatchYXDepth,
-                           FilterLayout::kOutputInputYX,
-                           DataLayout::kBatchDepthYX);
+    return kAllNCHW;
   }
-  return std::make_tuple(DataLayout::kBatchYXDepth,
-                         FilterLayout::kOutputYXInput,
-                         DataLayout::kBatchYXDepth);
+
+  // For other Volta f16 convolutions, use NHWC.
+  return kAllNHWC;
 }
 
 // Adds layout constraints on the cudnn custom-call instruction. The layout

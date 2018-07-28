@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/kernels/activation_functor.h"
@@ -38,14 +39,14 @@ bool PortableIsZeroVector(const float* vector, int v_size) {
 
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values,
-                                     float* __restrict__ min,
-                                     float* __restrict__ max,
+                                     float* __restrict__ min_value,
+                                     float* __restrict__ max_value,
                                      float* __restrict__ scaling_factor) {
   auto minmax = std::minmax_element(values, values + size);
-  *min = *minmax.first;
-  *max = *minmax.second;
+  *min_value = *minmax.first;
+  *max_value = *minmax.second;
   const int kScale = 127;
-  const float range = std::max(std::abs(*min), std::abs(*max));
+  const float range = std::max(std::abs(*min_value), std::abs(*max_value));
   if (range == 0) {
     memset(quantized_values, 0, size * sizeof(int8_t));
     *scaling_factor = 1;

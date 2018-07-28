@@ -34,11 +34,13 @@ class ErrorHandlersTest(converter_testing.TestCase):
       raise ValueError()
 
     node, ctx = self.prepare(test_fn, {})
-    anno.setanno(node.body[0], anno.Basic.ORIGIN,
-                 origin_info.OriginInfo('test_path', None, None, None, None))
+    anno.setanno(node, anno.Basic.ORIGIN,
+                 origin_info.OriginInfo(None, None, None))
     node = error_handlers.transform(node, ctx)
     with self.compiled(node, {}) as result:
       with self.assertRaises(errors.GraphConstructionError):
+        # Here we just assert that the handler works. Its correctness is
+        # verified by errors_test.py.
         result.test_fn()
 
   def test_no_origin_annotation(self):

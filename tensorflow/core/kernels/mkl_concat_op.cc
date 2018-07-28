@@ -308,11 +308,9 @@ class MklConcatOp : public OpKernel {
     }
 
     if (invoke_eigen) {
-      string msg = std::string("Invoking Eigen version of Concat. Reason:") +
-                   (!is_concat_dim_channel
-                        ? std::string("Concat dimension is not channel")
-                        : std::string("Not all tensors are in Mkl layout"));
-      VLOG(1) << "_MklConcatOp: " << msg;
+      VLOG(1) << "_MklConcatOp: Invoking Eigen version of Concat. Reason:"
+              << (!is_concat_dim_channel ? "Concat dimension is not channel"
+                                         : "Not all tensors are in Mkl layout");
       CallEigenVersion(context, input_tensors, input_shapes);
       return;
     }

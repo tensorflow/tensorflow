@@ -226,7 +226,8 @@ TEST_P(OpsTest, RunZipTests) {
   string message = test_driver.GetErrorMessage();
   if (bug_number.empty()) {
     if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {
-      EXPECT_EQ(message, string("Failed to invoke interpreter")) << message;
+      EXPECT_EQ(message, string("Failed to invoke NNAPI interpreter"))
+          << message;
     } else {
       EXPECT_TRUE(result) << message;
     }
