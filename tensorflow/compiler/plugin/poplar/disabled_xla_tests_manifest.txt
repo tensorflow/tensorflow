@@ -193,6 +193,7 @@ LocalClientExecuteTest.TupleResultWithLayout POPLAR
 
 LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 LocalClientExecuteTest.InfeedTest POPLAR
+OutfeedInNestedComputationTest POPLAR
 
 DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
 
