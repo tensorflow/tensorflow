@@ -29,7 +29,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training_arrays
@@ -458,43 +457,21 @@ class Model(Network):
         weights = sample_weights[i]
         output_metrics = nested_metrics[i]
         output_weighted_metrics = nested_weighted_metrics[i]
+        output_shape = self.outputs[i].get_shape().as_list()
+        loss_fn = self.loss_functions[i]
 
-        def handle_metrics(metrics, weights=None):
+        def handle_metrics(metrics, output_shape, loss_fn, weights=None):
+          """Invokes metric functions for the output."""
 
           for metric in metrics:
-            if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-              # custom handling of accuracy/crossentropy
-              # (because of class mode duality)
-              output_shape = self.outputs[i].get_shape().as_list()
-              if (output_shape[-1] == 1 or
-                  self.loss_functions[i] == losses.binary_crossentropy):
-                # case: binary accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.binary_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.binary_crossentropy
-              elif self.loss_functions[
-                  i] == losses.sparse_categorical_crossentropy:
-                # case: categorical accuracy/crossentropy with sparse targets
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.sparse_categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.sparse_categorical_crossentropy
-              else:
-                # case: categorical accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.categorical_crossentropy
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            else:
-              metric_fn = metrics_module.get(metric)
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            metric_name = training_utils.get_base_metric_name(
+            metric_fn = training_utils.get_metric_function(
+                metric, output_shape=output_shape, loss_fn=loss_fn)
+            metric_name = training_utils.get_metric_name(
                 metric, weighted=weights is not None)
+
             with K.name_scope(metric_name):
+              weighted_metric_fn = training_utils.weighted_masked_objective(
+                  metric_fn)
               metric_result = weighted_metric_fn(
                   y_true, y_pred, weights=weights, mask=masks[i])
 
@@ -508,8 +485,9 @@ class Model(Network):
               self.stateful_metric_functions.append(metric_fn)
               self.metrics_updates += metric_fn.updates
 
-        handle_metrics(output_metrics)
-        handle_metrics(output_weighted_metrics, weights=weights)
+        handle_metrics(output_metrics, output_shape, loss_fn)
+        handle_metrics(
+            output_weighted_metrics, output_shape, loss_fn, weights=weights)
 
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
