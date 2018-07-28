@@ -1316,6 +1316,20 @@ void ConvertResizeBilinearOperator(const Model& model,
   (*resize_op->mutable_attr())["align_corners"].set_b(src_op.align_corners);
 }
 
+void ConvertOneHotOperator(const Model& model, const OneHotOperator& src_op,
+                           GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* onehot_op = tensorflow_graph->add_node();
+  onehot_op->set_op("OneHot");
+  onehot_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 4);
+  for (const auto& input : src_op.inputs) {
+    *onehot_op->add_input() = input;
+  }
+  (*onehot_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+  (*onehot_op->mutable_attr())["axis"].set_i(src_op.axis);
+}
+
 namespace {
 // TODO(aselle): Remove when available in absl
 absl::string_view FindLongestCommonPrefix(absl::string_view a,
@@ -2158,6 +2172,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertLogicalNotOperator(model,
                               static_cast<const LogicalNotOperator&>(src_op),
                               tensorflow_graph);
+  } else if (src_op.type == OperatorType::kOneHot) {
+    ConvertOneHotOperator(model, static_cast<const OneHotOperator&>(src_op),
+                          tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

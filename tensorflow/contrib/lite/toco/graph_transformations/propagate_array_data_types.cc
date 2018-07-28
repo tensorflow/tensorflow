@@ -201,6 +201,18 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       SetDataTypeForAllOutputs(model, op, data_type);
       break;
     }
+    case OperatorType::kOneHot: {
+      CHECK_EQ(op->inputs.size(), 4);
+      CHECK_EQ(op->outputs.size(), 1);
+      const ArrayDataType on_value_type =
+          model->GetArray(op->inputs[OneHotOperator::ON_VALUE_INPUT]).data_type;
+      const ArrayDataType off_value_type =
+          model->GetArray(op->inputs[OneHotOperator::OFF_VALUE_INPUT])
+              .data_type;
+      CHECK(on_value_type == off_value_type);
+      model->GetArray(op->outputs[0]).data_type = on_value_type;
+      break;
+    }
     default: {
       // These operators produce outputs with the same type as their 1st input
       CHECK_GT(op->inputs.size(), 0);

@@ -53,10 +53,10 @@ def model_fn(features, labels, mode, params):
         global_step, config.lr_decay_steps, config.lr_list)
     optimizer = tf.train.MomentumOptimizer(
         learning_rate, momentum=config.momentum)
-    grads, vars_, logits, loss = model.compute_gradients(
-        inputs, labels, training=True)
+    logits, saved_hidden = model(inputs, training=True)
+    grads, loss = model.compute_gradients(saved_hidden, labels, training=True)
     train_op = optimizer.apply_gradients(
-        zip(grads, vars_), global_step=global_step)
+        zip(grads, model.trainable_variables), global_step=global_step)
 
     return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op)
   else:
@@ -130,8 +130,7 @@ def get_input_fn(config, data_dir, split):
   return input_fn
 
 
-def main(argv):
-  FLAGS = argv[0]  # pylint:disable=invalid-name,redefined-outer-name
+def main(_):
   tf.logging.set_verbosity(tf.logging.INFO)
 
   # RevNet specific configuration
@@ -197,4 +196,4 @@ if __name__ == "__main__":
       help="[Optional] Architecture of network. "
       "Other options include `revnet-110` and `revnet-164`")
   FLAGS = flags.FLAGS
-  tf.app.run(main=main, argv=[FLAGS])
+  tf.app.run()

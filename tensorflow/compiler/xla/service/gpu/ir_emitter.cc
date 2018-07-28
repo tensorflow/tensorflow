@@ -81,19 +81,6 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  const Literal& literal = constant->literal();
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-  llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-      *module_, initializer->getType(),
-      /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, initializer,
-      /*Name=*/"");
-  VLOG(2) << "HandleConstant: " << constant->ToString() << std::endl
-          << "  emitted_value: " << llvm_ir::DumpToString(*global_for_const)
-          << std::endl
-          << "  its type: "
-          << llvm_ir::DumpToString(*global_for_const->getType());
-  bindings_.BindHloToIrValue(*constant, global_for_const);
   return Status::OK();
 }
 

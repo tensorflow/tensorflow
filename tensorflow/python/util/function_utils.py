@@ -69,20 +69,24 @@ def get_func_name(func):
       return '%s.%s' % (six.get_method_self(func).__class__.__name__,
                         six.get_method_function(func).__name__)
     else:  # Probably a class instance with __call__
-      return type(func)
+      return str(type(func))
   else:
     raise ValueError('Argument must be callable')
 
 
 def get_func_code(func):
-  """Returns func_code of passed callable."""
+  """Returns func_code of passed callable, or None if not available."""
   _, func = tf_decorator.unwrap(func)
   if callable(func):
     if tf_inspect.isfunction(func) or tf_inspect.ismethod(func):
       return six.get_function_code(func)
-    elif hasattr(func, '__call__'):
+    # Since the object is not a function or method, but is a callable, we will
+    # try to access the __call__method as a function.  This works with callable
+    # classes but fails with functool.partial objects despite their __call__
+    # attribute.
+    try:
       return six.get_function_code(func.__call__)
-    else:
-      raise ValueError('Unhandled callable, type=%s' % type(func))
+    except AttributeError:
+      return None
   else:
     raise ValueError('Argument must be callable')

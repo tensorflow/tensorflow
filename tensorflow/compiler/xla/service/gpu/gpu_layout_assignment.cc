@@ -31,8 +31,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using stream_executor::dnn::DataLayout;
-using stream_executor::dnn::FilterLayout;
+using se::dnn::DataLayout;
+using se::dnn::FilterLayout;
 
 static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
   int major, minor;
@@ -44,7 +44,7 @@ static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          stream_executor::StreamExecutor* stream_executor) {
+                          se::StreamExecutor* stream_executor) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
@@ -72,14 +72,20 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
   // Empirically we've found with Volta and cudnn 7 that backward-input convs
-  // with stride are significantly faster with input in NHWC and filter/output
-  // in NCHW.
+  // with stride are significantly faster with NCHW layouts.
+  //
+  // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
+  // which on paper gives good performance. However, there are two observations:
+  // * a mixed layout combination is more cuDNN-bug prone, based on empirical
+  //   envidence.
+  // * we've also observed that for mixed layouts, cuDNN transposes data back
+  //   and forth from a different layout combination. If we end up with
+  //   transposes anyway, we prefer to have them in XLA, as they can be fused.
+  // TODO(timshen): Figure out the exact condition. This may be achieved by
+  // auto-tuning layouts offline.
   if (instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
       window_util::HasStride(instr->window())) {
-    return std::make_tuple(DataLayout::kBatchYXDepth,     // NHWC
-                           FilterLayout::kOutputInputYX,  // NCHW
-                           DataLayout::kBatchDepthYX      // NCHW
-    );
+    return kAllNCHW;
   }
 
   // For other Volta f16 convolutions, use NHWC.

@@ -202,6 +202,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
              IsIEEEFloatingPointScalarConstant(producer->operand(0)) &&
              fused_parameter_users[0]->opcode() == HloOpcode::kMultiply;
     }
+    return false;
   }
 
   // Other output fusions are not currently supported on GPUs.

@@ -28,23 +28,39 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 
 
+def create_in_process_cluster(num_workers, num_ps):
+  """Create an in-process cluster that consists of only standard server."""
+  # Leave some memory for cuda runtime.
+  gpu_mem_frac = 0.7 / num_workers
+  worker_config = config_pb2.ConfigProto()
+  worker_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
+
+  ps_config = config_pb2.ConfigProto()
+  ps_config.device_count['GPU'] = 0
+
+  # Create in-process servers. Once an in-process tensorflow server is created,
+  # there is no way to terminate it. So we create one cluster per test process.
+  # We could've started the server in another process, we could then kill that
+  # process to terminate the server. The reasons why we don't want multiple
+  # processes are
+  # 1) it is more difficult to manage these processes
+  # 2) there is something global in CUDA such that if we initialize CUDA in the
+  # parent process, the child process cannot initialize it again and thus cannot
+  # use GPUs (https://stackoverflow.com/questions/22950047).
+  return test_util.create_local_cluster(
+      num_workers,
+      num_ps=num_ps,
+      worker_config=worker_config,
+      ps_config=ps_config)
+
+
 class MultiWorkerTestBase(test.TestCase):
   """Base class for testing multi node strategy and dataset."""
 
   @classmethod
   def setUpClass(cls):
     """Create a local cluster with 2 workers."""
-    num_workers = 2
-    # Leave some memory for cuda runtime.
-    gpu_mem_frac = 0.7 / num_workers
-    default_config = config_pb2.ConfigProto()
-    default_config.gpu_options.per_process_gpu_memory_fraction = gpu_mem_frac
-
-    # The local cluster takes some portion of the local GPUs and there is no way
-    # for the cluster to terminate unless using multiple processes. Therefore,
-    # we have to only create only one cluster throughout a test process.
-    workers, _ = test_util.create_local_cluster(
-        num_workers, num_ps=0, worker_config=default_config)
+    workers, _ = create_in_process_cluster(num_workers=2, num_ps=0)
     cls._master_target = workers[0].target
 
   @contextlib.contextmanager

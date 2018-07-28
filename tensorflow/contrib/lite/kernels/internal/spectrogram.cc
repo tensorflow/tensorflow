@@ -43,13 +43,13 @@ bool Spectrogram::Initialize(int window_length, int step_length) {
   return Initialize(window, step_length);
 }
 
-inline int Log2Floor(uint n) {
+inline int Log2Floor(uint32_t n) {
   if (n == 0) return -1;
   int log = 0;
-  uint value = n;
+  uint32_t value = n;
   for (int i = 4; i >= 0; --i) {
     int shift = (1 << i);
-    uint x = value >> shift;
+    uint32_t x = value >> shift;
     if (x != 0) {
       value = x;
       log += shift;
@@ -58,7 +58,7 @@ inline int Log2Floor(uint n) {
   return log;
 }
 
-inline int Log2Ceiling(uint n) {
+inline int Log2Ceiling(uint32_t n) {
   int floor = Log2Floor(n);
   if (n == (n & ~(n - 1)))  // zero or a power of two
     return floor;
@@ -66,7 +66,7 @@ inline int Log2Ceiling(uint n) {
     return floor + 1;
 }
 
-inline uint NextPowerOfTwo(uint value) {
+inline uint32_t NextPowerOfTwo(uint32_t value) {
   int exponent = Log2Ceiling(value);
   // DCHECK_LT(exponent, std::numeric_limits<uint32>::digits);
   return 1 << exponent;

@@ -30,5 +30,7 @@ const int64 kEntryParameterAlignBytes = 16;
 const int64 kXlaAllocatedBufferAlignBytes =
     tensorflow::Allocator::kAllocatorAlignment;
 
+const int64 kConstantBufferAlignBytes = kXlaAllocatedBufferAlignBytes;
+
 }  // namespace gpu
 }  // namespace xla
