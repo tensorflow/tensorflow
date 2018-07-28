@@ -1,10 +1,12 @@
+package(
+    default_visibility = ["//tensorflow:internal"],
+)
+
 licenses(["notice"])  # Apache 2.0
 
-package(
-    default_visibility = [
-        "//tensorflow:internal",
-    ],
-)
+exports_files(["LICENSE"])
+
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "distribute_coordinator",
@@ -23,6 +25,7 @@ py_test(
     size = "small",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":distribute_coordinator",
         "//tensorflow/core:protos_all_py",
