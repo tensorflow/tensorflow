@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from math import ceil
+import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
@@ -774,17 +775,25 @@ def _ExtractImagePatchesGrad(op, grad):
   row_steps = range(0, rows_out * stride_r, stride_r)
   col_steps = range(0, cols_out * stride_h, stride_h)
 
-  idx = []
+  idx = np.zeros((rows_out * cols_out * ksize_r * ksize_c, 2),
+                 dtype=np.int64)
+  idx_len = 0
   for i in range(rows_out):
-    for j in range(cols_out):
-      r_low, c_low = row_steps[i] - pad_rows, col_steps[j] - pad_cols
-      r_high, c_high = r_low + ksize_r_eff, c_low + ksize_c_eff
+    r_low = row_steps[i] - pad_rows
+    r_high = r_low + ksize_r_eff
 
-      idx.extend([(r * (cols_in) + c, i * (cols_out * ksize_r * ksize_c) + j *
-                   (ksize_r * ksize_c) + ri * (ksize_c) + ci)
-                  for (ri, r) in enumerate(range(r_low, r_high, rate_r))
-                  for (ci, c) in enumerate(range(c_low, c_high, rate_c))
-                  if 0 <= r and r < rows_in and 0 <= c and c < cols_in])
+    for j in range(cols_out):
+      c_low = col_steps[j] - pad_cols
+      c_high = c_low + ksize_c_eff
+
+      for (ri, r) in enumerate(range(r_low, r_high, rate_r)):
+        for (ci, c) in enumerate(range(c_low, c_high, rate_c)):
+          if 0 <= r and r < rows_in and 0 <= c and c < cols_in:
+            idx[idx_len][0] = r * (cols_in) + c
+            idx[idx_len][1] = (i * (cols_out * ksize_r * ksize_c) +
+                               j * (ksize_r * ksize_c) + ri * (ksize_c) + ci)
+            idx_len += 1
+  idx = idx[:idx_len]
 
   sp_shape = (rows_in * cols_in, rows_out * cols_out * ksize_r * ksize_c)
 
