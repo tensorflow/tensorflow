@@ -24,6 +24,14 @@ load(
     "gen_api_init_files",  # @unused
 )
 
+# Config setting used when building for products
+# which requires restricted licenses to be avoided.
+config_setting(
+    name = "no_lgpl_deps",
+    values = {"define": "__TENSORFLOW_NO_LGPL_DEPS__=1"},
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -373,6 +381,14 @@ config_setting(
     },
 )
 
+# Setting to use when loading kernels dynamically
+config_setting(
+    name = "dynamic_loaded_kernels",
+    define_values = {
+        "dynamic_loaded_kernels": "true",
+    },
+)
+
 config_setting(
     name = "using_cuda_nvcc",
     define_values = {
@@ -397,14 +413,6 @@ config_setting(
 config_setting(
     name = "override_eigen_strong_inline",
     values = {"define": "override_eigen_strong_inline=true"},
-    visibility = ["//visibility:public"],
-)
-
-# TODO(laigd): consider removing this option and make TensorRT enabled
-# automatically when CUDA is enabled.
-config_setting(
-    name = "with_tensorrt_support",
-    values = {"define": "with_tensorrt_support=true"},
     visibility = ["//visibility:public"],
 )
 

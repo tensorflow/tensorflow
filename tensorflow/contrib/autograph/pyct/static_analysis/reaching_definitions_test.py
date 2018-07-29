@@ -61,6 +61,20 @@ class DefinitionInfoTest(test.TestCase):
       expected = (expected,)
     self.assertSetEqual(defined_in_str, set(expected))
 
+  def assertSameDef(self, first, second):
+    self.assertHasDefs(first, 1)
+    self.assertHasDefs(second, 1)
+    self.assertIs(
+        anno.getanno(first, anno.Static.DEFINITIONS)[0],
+        anno.getanno(second, anno.Static.DEFINITIONS)[0])
+
+  def assertNotSameDef(self, first, second):
+    self.assertHasDefs(first, 1)
+    self.assertHasDefs(second, 1)
+    self.assertIsNot(
+        anno.getanno(first, anno.Static.DEFINITIONS)[0],
+        anno.getanno(second, anno.Static.DEFINITIONS)[0])
+
   def test_conditional(self):
 
     def test_fn(a, b):
@@ -93,10 +107,10 @@ class DefinitionInfoTest(test.TestCase):
 
     self.assertHasDefs(fn_body[0].value.args[0], 1)
     self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
-    self.assertHasDefs(fn_body[1].body[0].value, 1)
     self.assertHasDefs(fn_body[1].body[1].targets[0], 1)
     self.assertHasDefs(fn_body[1].body[1].value, 1)
     # The loop does have an invariant test, but the CFG doesn't know that.
+    self.assertHasDefs(fn_body[1].body[0].value, 2)
     self.assertHasDefs(fn_body[2].value, 2)
 
   def test_while_else(self):
@@ -171,10 +185,7 @@ class DefinitionInfoTest(test.TestCase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     inner_fn_body = fn_body[1].body[1].body
-    self.assertHasDefs(inner_fn_body[0].value, 1)
-    self.assertTrue(
-        anno.getanno(inner_fn_body[0].value, anno.Static.DEFINITIONS)[0] is
-        anno.getanno(def_of_a_in_if, anno.Static.DEFINITIONS)[0])
+    self.assertSameDef(inner_fn_body[0].value, def_of_a_in_if)
 
   def test_nested_functions_isolation(self):
 
@@ -191,17 +202,12 @@ class DefinitionInfoTest(test.TestCase):
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body[0].body
 
-    self.assertHasDefs(fn_body[3].value, 1)
-    self.assertHasDefs(fn_body[1].body[1].value, 1)
-
     parent_return = fn_body[3]
     child_return = fn_body[1].body[1]
     # The assignment `a = 1` makes `a` local to `child`.
-    self.assertFalse(
-        anno.getanno(parent_return.value, anno.Static.DEFINITIONS)[0] is
-        anno.getanno(child_return.value, anno.Static.DEFINITIONS)[0])
+    self.assertNotSameDef(parent_return.value, child_return.value)
 
-  def test_debug(self):
+  def test_function_call_in_with(self):
 
     def foo(_):
       pass
@@ -215,6 +221,42 @@ class DefinitionInfoTest(test.TestCase):
 
     self.assertHasDefs(fn_body[0].items[0].context_expr.func, 0)
     self.assertHasDefs(fn_body[0].items[0].context_expr.args[0], 1)
+
+  def test_mutation_subscript(self):
+
+    def test_fn(a):
+      l = []
+      l[0] = a
+      return l
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    creation = fn_body[0].targets[0]
+    mutation = fn_body[1].targets[0].value
+    use = fn_body[2].value
+    self.assertSameDef(creation, mutation)
+    self.assertSameDef(creation, use)
+
+  def test_replacement(self):
+
+    def foo(a):
+      return a
+
+    def test_fn(a):
+      a = foo(a)
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    param = node.body[0].args.args[0]
+    source = fn_body[0].value.args[0]
+    target = fn_body[0].targets[0]
+    retval = fn_body[1].value
+    self.assertSameDef(param, source)
+    self.assertNotSameDef(source, target)
+    self.assertSameDef(target, retval)
 
 
 if __name__ == '__main__':

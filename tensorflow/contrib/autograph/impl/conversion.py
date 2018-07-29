@@ -158,12 +158,13 @@ def class_to_graph(c, program_ctx):
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c)
+        owner_type=c,
+        rewrite_errors=False)
     if class_namespace is None:
       class_namespace = namespace
     else:
       class_namespace.update(namespace)
-    converted_members[m] = node
+    converted_members[m] = node[0]
   namer = program_ctx.new_namer(class_namespace)
   class_name = namer.compiled_class_name(c.__name__, c)
 
@@ -174,10 +175,10 @@ def class_to_graph(c, program_ctx):
   # program_ctx.update_name_map(namer)).
   output_nodes = []
   renames = {}
-  bases = []
+  base_names = []
   for base in c.__bases__:
     if isinstance(object, base):
-      bases.append('object')
+      base_names.append('object')
       continue
     if is_whitelisted_for_graph(base):
       alias = namer.new_symbol(base.__name__, ())
@@ -189,28 +190,28 @@ def class_to_graph(c, program_ctx):
     else:
       # This will trigger a conversion into a class with this name.
       alias = namer.compiled_class_name(base.__name__, base)
-    bases.append(alias)
+    base_names.append(alias)
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
   program_ctx.update_name_map(namer)
 
   # Generate the definition of the converted class.
-  output_nodes.append(
-      gast.ClassDef(
-          class_name,
-          bases=bases,
-          keywords=[],
-          body=list(converted_members.values()),
-          decorator_list=[]))
-  node = gast.Module(output_nodes)
-
+  bases = [gast.Name(n, gast.Load(), None) for n in base_names]
+  class_def = gast.ClassDef(
+      class_name,
+      bases=bases,
+      keywords=[],
+      body=list(converted_members.values()),
+      decorator_list=[])
   # Make a final pass to replace references to the class or its base classes.
   # Most commonly, this occurs when making super().__init__() calls.
   # TODO(mdan): Making direct references to superclass' superclass will fail.
-  node = qual_names.resolve(node)
+  class_def = qual_names.resolve(class_def)
   renames[qual_names.QN(c.__name__)] = qual_names.QN(class_name)
-  node = ast_util.rename_symbols(node, renames)
+  class_def = ast_util.rename_symbols(class_def, renames)
 
-  return node, class_name, class_namespace
+  output_nodes.append(class_def)
+
+  return output_nodes, class_name, class_namespace
 
 
 def _add_reserved_symbol(namespace, name, entity):
@@ -242,7 +243,12 @@ def _add_self_references(namespace, autograph_module):
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
+def function_to_graph(f,
+                      program_ctx,
+                      arg_values,
+                      arg_types,
+                      owner_type=None,
+                      rewrite_errors=True):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
@@ -260,7 +266,7 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context)
+  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -273,15 +279,16 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, owner_type=None):
   program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.
 
-  return node, new_name, namespace
+  return (node,), new_name, namespace
 
 
-def node_to_graph(node, context):
+def node_to_graph(node, context, rewrite_errors=True):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
+    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -316,5 +323,6 @@ def node_to_graph(node, context):
   node = converter.apply_(node, context, logical_expressions)
   node = converter.apply_(node, context, side_effect_guards)
   node = converter.apply_(node, context, name_scopes)
-  node = converter.apply_(node, context, error_handlers)
+  if rewrite_errors:
+    node = converter.apply_(node, context, error_handlers)
   return node

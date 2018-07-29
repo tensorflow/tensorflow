@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
@@ -64,18 +64,19 @@ bool IsNoOp(const NodeDef& node, const GraphView& graph) {
 Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   *output = item.graph;
-  GraphView graph(output);
+  MutableGraphView graph(output);
   std::set<string> nodes_to_delete;
   for (const NodeDef& node : item.graph.node()) {
     if (!IsNoOp(node, graph)) continue;
 
     GraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
     NodeDef* const parent = graph.GetRegularFanin(input_port).node;
-    graph_utils::ReplaceInput(node, *parent, &graph);
+    graph.ReplaceInput(node, *parent);
 
     nodes_to_delete.insert(node.name());
   }
-  TF_RETURN_IF_ERROR(graph_utils::DeleteNodes(nodes_to_delete, output));
+
+  graph.DeleteNodes(nodes_to_delete);
   return Status::OK();
 }
 

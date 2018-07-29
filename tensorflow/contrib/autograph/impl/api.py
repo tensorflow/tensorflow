@@ -23,7 +23,6 @@ from functools import wraps
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
-import gast
 import six
 # pylint:enable=g-bad-import-order
 
@@ -245,19 +244,21 @@ def to_graph(e,
   _, name, namespace = conversion.entity_to_graph(e, program_ctx, arg_values,
                                                   arg_types)
 
-  module = gast.Module([])
+  nodes = []
   for dep in reversed(program_ctx.dependency_cache.values()):
-    module.body.append(dep)
-  compiled_node, compiled_src = compiler.ast_to_object(
-      module, source_prefix=program_ctx.required_imports)
+    nodes.extend(dep)
+  compiled_module, compiled_src = compiler.ast_to_object(
+      nodes,
+      source_prefix=program_ctx.required_imports,
+      include_source_map=True)
 
   # The compiled code should see everything the entry entity saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
   for key, val in namespace.items():
     # Avoid overwriting entities that have been transformed.
-    if key not in compiled_node.__dict__:
-      compiled_node.__dict__[key] = val
-  compiled_fn = getattr(compiled_node, name)
+    if key not in compiled_module.__dict__:
+      compiled_module.__dict__[key] = val
+  compiled_fn = getattr(compiled_module, name)
 
   # Need this so the source_mapping attribute is available for the context
   # manager to access for runtime errors.
@@ -270,7 +271,7 @@ def to_graph(e,
                      '"%s", which is reserved for AutoGraph.' %
                      (compiled_fn, source_map_attribute_name))
   setattr(compiled_fn, source_map_attribute_name,
-          compiled_node.__dict__['ag_source_map__'])
+          compiled_module.__dict__['ag_source_map__'])
 
   if verbose:
     logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
@@ -308,7 +309,7 @@ def to_code(e,
   conversion.entity_to_graph(e, program_ctx, arg_values, arg_types)
 
   code = '\n'.join(
-      compiler.ast_to_source(dep, indentation)[0]
+      compiler.ast_to_source(dep, indentation)
       for dep in reversed(tuple(six.itervalues(program_ctx.dependency_cache))))
 
   return program_ctx.required_imports + '\n\n' + code

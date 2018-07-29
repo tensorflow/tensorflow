@@ -1096,6 +1096,74 @@ class KerasCallbacksTest(test.TestCase):
 
       assert os.path.exists(temp_dir)
 
+  def test_Tensorboard_batch_logging(self):
+
+    class FileWriterStub(object):
+
+      def __init__(self, logdir, graph=None):
+        self.logdir = logdir
+        self.graph = graph
+        self.batches_logged = []
+        self.summary_values = []
+        self.summary_tags = []
+
+      def add_summary(self, summary, step):
+        self.summary_values.append(summary.value[0].simple_value)
+        self.summary_tags.append(summary.value[0].tag)
+        self.batches_logged.append(step)
+
+      def flush(self):
+        pass
+
+      def close(self):
+        pass
+
+    logdir = 'fake_dir'
+
+    # log every batch
+    tb_cbk = keras.callbacks.TensorBoard(logdir)
+    tb_cbk.writer = FileWriterStub(logdir)
+
+    for batch in range(5):
+      tb_cbk.on_batch_end(batch, {'acc': np.float32(batch)})
+    self.assertEqual(tb_cbk.writer.batches_logged, [0, 1, 2, 3, 4])
+    self.assertEqual(tb_cbk.writer.summary_values, [0., 1., 2., 3., 4.])
+    self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 5)
+
+  def test_Tensorboard_epoch_and_batch_logging(self):
+
+    class FileWriterStub(object):
+
+      def __init__(self, logdir, graph=None):
+        self.logdir = logdir
+        self.graph = graph
+
+      def add_summary(self, summary, step):
+        if 'batch_' in summary.value[0].tag:
+          self.batch_summary = (step, summary)
+        elif 'epoch_' in summary.value[0].tag:
+          self.epoch_summary = (step, summary)
+
+      def flush(self):
+        pass
+
+      def close(self):
+        pass
+
+    logdir = 'fake_dir'
+
+    tb_cbk = keras.callbacks.TensorBoard(logdir)
+    tb_cbk.writer = FileWriterStub(logdir)
+
+    tb_cbk.on_batch_end(0, {'acc': np.float32(5.0)})
+    tb_cbk.on_epoch_end(0, {'acc': np.float32(10.0)})
+    batch_step, batch_summary = tb_cbk.writer.batch_summary
+    self.assertEqual(batch_step, 0)
+    self.assertEqual(batch_summary.value[0].simple_value, 5.0)
+    epoch_step, epoch_summary = tb_cbk.writer.epoch_summary
+    self.assertEqual(epoch_step, 0)
+    self.assertEqual(epoch_summary.value[0].simple_value, 10.0)
+
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')

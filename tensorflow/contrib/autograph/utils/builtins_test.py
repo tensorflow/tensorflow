@@ -33,7 +33,8 @@ class BuiltinsTest(test.TestCase):
   def test_dynamic_len_tf_scalar(self):
     a = constant_op.constant(1)
 
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError,
+                                 'len requires non-zero rank for tensor.*'):
       with self.test_session() as sess:
         sess.run(builtins.dynamic_builtin(len, a))
 

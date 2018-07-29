@@ -51,7 +51,11 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
   if (device_type_ == DeviceType(DEVICE_CPU)) {
     platform_id_ = se::host::kHostPlatformId;
   } else if (device_type_ == DeviceType(DEVICE_GPU)) {
-    platform_id_ = se::cuda::kCudaPlatformId;
+    platform_id_ = ctx->device()
+                       ->tensorflow_gpu_device_info()
+                       ->stream->parent()
+                       ->platform()
+                       ->id();
   } else {
     platform_id_ = nullptr;
   }

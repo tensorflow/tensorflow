@@ -89,7 +89,20 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
-               [alignment](LogicalBuffer::Color) { return alignment; })
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true)
+        .ConsumeValueOrDie();
+  }
+
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersForConstants(
+      HloModule* module, int64 alignment = 1) {
+    return BufferAssigner::Run(
+               module, xla::MakeUnique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/false)
         .ConsumeValueOrDie();
   }
 
@@ -98,8 +111,9 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, xla::MakeUnique<DependencyHloOrdering>(module),
                backend().compiler()->BufferSizeBytesFunction(),
-               [alignment](LogicalBuffer::Color) { return alignment; }, false,
-               std::move(colorer))
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true, std::move(colorer))
         .ConsumeValueOrDie();
   }
 
@@ -115,7 +129,9 @@ class BufferAssignmentTest : public HloTestBase {
                module,
                xla::MakeUnique<SequentialHloOrdering>(module, module_sequence),
                backend().compiler()->BufferSizeBytesFunction(),
-               [alignment](LogicalBuffer::Color) { return alignment; })
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true)
         .ConsumeValueOrDie();
   }
 
@@ -294,9 +310,15 @@ TEST_F(BufferAssignmentTest, ScalarConstant) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module.get());
-  // Check that the constant does not have a buffer assigned.
-  EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
+  {
+    auto buffers = RunBufferAssignment(module.get());
+    EXPECT_TRUE(buffers->HasTopLevelAllocation(const0));
+  }
+
+  {
+    auto buffers = RunBufferAssignmentNoBuffersForConstants(module.get());
+    EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
+  }
 }
 
 TEST_F(BufferAssignmentTest, BufferForConst) {
@@ -312,12 +334,18 @@ TEST_F(BufferAssignmentTest, BufferForConst) {
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module.get());
-  // The two constant nodes have no buffers assigned.
-  EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
-  EXPECT_FALSE(buffers->HasTopLevelAllocation(const1));
-  // The add node has an output buffer.
-  GetAssignedOutputAllocation(*buffers, add);
+  {
+    auto buffers = RunBufferAssignment(module.get());
+    EXPECT_TRUE(buffers->HasTopLevelAllocation(const0));
+    EXPECT_TRUE(buffers->HasTopLevelAllocation(const1));
+    GetAssignedOutputAllocation(*buffers, add);
+  }
+  {
+    auto buffers = RunBufferAssignmentNoBuffersForConstants(module.get());
+    EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
+    EXPECT_FALSE(buffers->HasTopLevelAllocation(const1));
+    GetAssignedOutputAllocation(*buffers, add);
+  }
 }
 
 TEST_F(BufferAssignmentTest, HasAllocationAt) {
@@ -1094,7 +1122,7 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
 
   // Allocations for the call computation should not be thread-local.
   auto& call_param_alloc = GetTopLevelAllocation(*assignment, call_param);
-  EXPECT_FALSE(call_param_alloc.is_entry_computation_parameter());
+  EXPECT_TRUE(call_param_alloc.is_entry_computation_parameter());
   EXPECT_FALSE(call_param_alloc.maybe_live_out());
   EXPECT_FALSE(call_param_alloc.is_thread_local());
 
@@ -1196,7 +1224,7 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
 
 // TODO(b/32248867): Enable when buffer assignment gives allocations to
 // constants.
-TEST_F(BufferAssignmentTest, DISABLED_TupleConstantAsOutput) {
+TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
   auto builder = HloComputation::Builder(TestName());
@@ -1253,16 +1281,18 @@ TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
 
   auto assignment = RunBufferAssignment(module.get());
 
-  EXPECT_EQ(3, assignment->Allocations().size());
+  EXPECT_EQ(2, assignment->Allocations().size());
   // Buffers for call are colocated with the sub-computation.
   EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{}),
             GetAllocation(*assignment, sub_tuple, /*index=*/{}));
   EXPECT_EQ(GetAllocation(*assignment, call, /*index=*/{0}),
             GetAllocation(*assignment, sub_param, /*index=*/{}));
-  // The parameter isn't aliased with anything.
+
+  // The parameter isn't aliased with the result tuple, but it is aliased with
+  // the call operand.
   EXPECT_NE(GetTopLevelAllocation(*assignment, param),
             GetTopLevelAllocation(*assignment, sub_tuple));
-  EXPECT_NE(GetTopLevelAllocation(*assignment, param),
+  EXPECT_EQ(GetTopLevelAllocation(*assignment, param),
             GetTopLevelAllocation(*assignment, sub_param));
 }
 
@@ -1326,13 +1356,15 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
             GetAllocation(*assignment, c_call, /*index=*/{0}));
   EXPECT_EQ(GetAllocation(*assignment, c_call, /*index=*/{0}),
             GetAllocation(*assignment, d_param, /*index=*/{0}));
-  // The parameters aren't aliased with anything.
+
   EXPECT_TRUE(BuffersDistinct({a_param}, {b_param}, *assignment));
   EXPECT_TRUE(BuffersDistinct({a_param}, {c_param}, *assignment));
   EXPECT_TRUE(BuffersDistinct({a_param}, {d_param}, *assignment));
-  EXPECT_TRUE(BuffersDistinct({b_param}, {c_param}, *assignment));
-  EXPECT_TRUE(BuffersDistinct({b_param}, {d_param}, *assignment));
-  EXPECT_TRUE(BuffersDistinct({c_param}, {d_param}, *assignment));
+
+  EXPECT_EQ(GetAllocation(*assignment, b_param, /*index=*/{0}),
+            GetAllocation(*assignment, c_param, /*index=*/{0}));
+  EXPECT_EQ(GetAllocation(*assignment, c_param, /*index=*/{0}),
+            GetAllocation(*assignment, d_param, /*index=*/{0}));
 }
 
 TEST_F(BufferAssignmentTest, BitcastAsOutput) {
@@ -1640,6 +1672,66 @@ TEST_F(BufferAssignmentTest, PeakBuffersWhile) {
       nonbcast_buffer->instruction() == condition->parameter_instruction(0));
 }
 
+TEST_F(BufferAssignmentTest, ConstantBuffersAreNotReused) {
+  const char* hlo_text = R"(
+HloModule Module
+
+True {
+  ROOT x.0.1 = f32[] parameter(0)
+}
+
+False {
+  x.0.0 = f32[] parameter(0)
+  ROOT copy.1 = f32[] copy(x.0.0)
+}
+
+ENTRY main {
+  pred.1.0 = pred[] parameter(0)
+  constant.1.1 = f32[] constant(56)
+  copy.2 = f32[] copy(constant.1.1)
+  constant.1.2 = f32[] constant(12)
+  ROOT conditional.1.3 = f32[] conditional(pred.1.0, copy.2, constant.1.2),
+      true_computation=True, false_computation=False
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text));
+
+  HloInstruction* constant_1 =
+      module->entry_computation()->GetInstructionWithName("constant.1.1");
+  HloInstruction* constant_2 =
+      module->entry_computation()->GetInstructionWithName("constant.1.2");
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  {
+    const BufferAllocation& allocation_for_const_1 =
+        GetTopLevelAllocation(*buffers, constant_1);
+    EXPECT_TRUE(allocation_for_const_1.is_constant());
+    for (const auto& buffer_offset_pair :
+         allocation_for_const_1.assigned_buffers()) {
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kCopy);
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kConditional);
+    }
+  }
+
+  {
+    const BufferAllocation& allocation_for_const_2 =
+        GetTopLevelAllocation(*buffers, constant_2);
+    EXPECT_TRUE(allocation_for_const_2.is_constant());
+    for (const auto& buffer_offset_pair :
+         allocation_for_const_2.assigned_buffers()) {
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kCopy);
+      EXPECT_NE(buffer_offset_pair.first->instruction()->opcode(),
+                HloOpcode::kConditional);
+    }
+  }
+}
+
 class WhileBufferAssignmentTest : public HloTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
@@ -1679,7 +1771,9 @@ class WhileBufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, xla::MakeUnique<SequentialHloOrdering>(module, sequence),
                ByteSizeOf,
-               [alignment](LogicalBuffer::Color) { return alignment; })
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/true)
         .ConsumeValueOrDie();
   }
 
@@ -1829,6 +1923,74 @@ ENTRY %test_module {
   EXPECT_NE(slice_param, slice_while1);
 }
 
+TEST_F(WhileBufferAssignmentTest, ColocatedBufferWithConstant) {
+  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+
+  const char* module_str = R"(
+HloModule test_module
+
+%cond.v0 {
+  %param = s32[] parameter(0)
+  ROOT %constant = pred[] constant(true)
+}
+
+%cond.v1 {
+  %param.0 = s32[] parameter(0)
+  ROOT %constant.0 = pred[] constant(true)
+}
+
+%body.v0 {
+  ROOT %param.1 = s32[] parameter(0)
+}
+
+%body.v1 {
+  %param.2 = s32[] parameter(0)
+  ROOT add = s32[] add(%param.2, %param.2)
+}
+
+ENTRY %test_module {
+  %constant.42 = s32[] constant(42)
+  %while.0 = s32[] while(%constant.42), condition=%cond.v0, body=%body.v0
+  %mul = s32[] multiply(%while.0, %while.0)
+  %while.1 = s32[] while(%mul), condition=%cond.v1, body=%body.v1
+  ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(module_str));
+
+  // Run CopyInsertion and check if the graph constructed above doesn't need
+  // any copies inserted for BufferAssignment to run.
+  int64 instruction_count = module->instruction_count();
+  CopyInsertion copy_insertion;
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  ASSERT_EQ(instruction_count, module->instruction_count());
+
+  // Get the instructions in the module.
+  const HloInstruction* bcast = module->entry_computation()->root_instruction();
+  const HloInstruction* constant =
+      module->entry_computation()->GetInstructionWithName("constant.42");
+  ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
+  const HloInstruction* while1 = bcast->operand(0);
+  ASSERT_EQ(while1->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while0 = while1->operand(0)->operand(0);
+  ASSERT_EQ(while0->opcode(), HloOpcode::kWhile);
+
+  // Run buffer assignment.
+  auto assignment = RunBufferAssignment(module.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_constant,
+                          assignment->GetUniqueSlice(constant, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
+                          assignment->GetUniqueSlice(while0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto slice_while1,
+                          assignment->GetUniqueSlice(while1, {}));
+
+  // The constant slice is part of the while0's colocation set (init value), but
+  // not merged into the while1's colocation set.
+  EXPECT_EQ(slice_constant, slice_while0);
+  EXPECT_NE(slice_constant, slice_while1);
+}
+
 // Tests that the colocated buffers for while instructions are properly assigned
 // during buffer assignment such that the result tuple elements are not assigned
 // to the same buffer.
@@ -1923,7 +2085,9 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
           backend().compiler()->BufferSizeBytesFunction(),
-          [](LogicalBuffer::Color) { return 1; }));
+          [](LogicalBuffer::Color) { return 1; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
 
   // The result tuple elements must be assigned with different buffers.
   TF_ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
@@ -2031,6 +2195,56 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
   EXPECT_TRUE(BuffersDistinct({call1}, {call2}, *assignment));
 }
 
+TEST_F(BufferAssignmentTest, CallParamCoAllocation) {
+  const char* hlo_text = R"(
+HloModule CallParamCoAllocation
+
+Callee {
+  param0 = (f32[100],(f32[200],f32[300])) parameter(0)
+  param1 = s32[20] parameter(1)
+  ROOT constant = f32[] constant(1)
+}
+
+ENTRY Main {
+  entry_param0 = f32[100] parameter(0)
+  entry_param1 = s32[20]  parameter(1)
+  custom_call = (f32[200],f32[300]) custom-call(), custom_call_target="call-target"
+  call_op0 = (f32[100],(f32[200],f32[300])) tuple(entry_param0, custom_call)
+  ROOT call_result = f32[] call(call_op0, entry_param1), to_apply=Callee
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      HloRunner::CreateModuleFromString(
+          hlo_text, legacy_flags::GetDebugOptionsFromFlags()));
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  HloComputation* main = module->entry_computation();
+  HloComputation* callee = module->GetComputationWithName("Callee");
+  EXPECT_NE(callee, nullptr);
+
+  HloInstruction* param0 = callee->parameter_instruction(0);
+  HloInstruction* param1 = callee->parameter_instruction(1);
+
+  HloInstruction* entry_param0 = main->parameter_instruction(0);
+  HloInstruction* entry_param1 = main->parameter_instruction(1);
+  HloInstruction* custom_call = main->GetInstructionWithName("custom_call");
+
+  EXPECT_EQ(GetAllocation(*buffers, entry_param0, {}),
+            GetAllocation(*buffers, param0, {0}));
+  EXPECT_EQ(GetAllocation(*buffers, entry_param1, {}),
+            GetAllocation(*buffers, param1, {}));
+
+  EXPECT_EQ(GetAllocation(*buffers, custom_call, {}),
+            GetAllocation(*buffers, param0, {1}));
+  EXPECT_EQ(GetAllocation(*buffers, custom_call, {0}),
+            GetAllocation(*buffers, param0, {1, 0}));
+  EXPECT_EQ(GetAllocation(*buffers, custom_call, {1}),
+            GetAllocation(*buffers, param0, {1, 1}));
+}
+
 static bool IsPostOrderTraversal(
     const std::vector<const HloInstruction*>& sequence) {
   tensorflow::gtl::FlatSet<const HloInstruction*> seen_so_far;
@@ -2127,7 +2341,9 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
       BufferAssigner::Run(
           module.get(),
           xla::MakeUnique<SequentialHloOrdering>(module.get(), sequence),
-          ByteSizeOf, [](LogicalBuffer::Color) { return 1; })
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true)
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));

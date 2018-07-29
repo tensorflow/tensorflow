@@ -1817,15 +1817,34 @@ class CondContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context."""
     if not op.inputs:
-      # Remove any external control dependency on this op
+      # If we're in a while loop, remove any control inputs from outside the
+      # loop.
       self._RemoveExternalControlEdges(op)
-      # pylint: disable=protected-access
-      op._add_control_input(self._pivot.op)
-      # pylint: enable=protected-access
+
+      if not any(util.OpInContext(input_op, self)
+                 for input_op in op.control_inputs):
+        # pylint: disable=protected-access
+        op._add_control_input(self._pivot.op)
+        # pylint: enable=protected-access
     else:
+      # Make each input to 'op' available in this CondContext. If an input is
+      # already part of this context there's nothing to do, but if it's
+      # external, AddValue() will handle adding the appropriate Switch node and
+      # other bookkeeping.
       for index in range(len(op.inputs)):
         x = op.inputs[index]
-        real_x = self.AddValue(x)
+        if op.type == "Merge" and x.op.type == "NextIteration":
+          # Edge case: if we're importing a while loop inside this CondContext,
+          # AddValue() will not correctly handle the NextIteration inputs to
+          # Merge node. The problem is that the NextIteration should also be
+          # part of this context, but if we're importing it won't have been
+          # processed and added to the context yet, so AddValue() will try to
+          # add a Switch which results in an invalid graph. Instead, we use the
+          # NextIteration input as-is here, and it will eventually be added to
+          # the context via AddOp().
+          real_x = x
+        else:
+          real_x = self.AddValue(x)
         if real_x != x:
           # pylint: disable=protected-access
           op._update_input(index, real_x)
@@ -3146,7 +3165,7 @@ def while_loop(cond,
   happen is that the thread updating `x` can never get ahead of the
   counter thread because the thread incrementing `x` depends on the value
   of the counter.
-  
+
   ```python
   import tensorflow as tf
 

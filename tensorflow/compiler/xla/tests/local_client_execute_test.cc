@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -772,6 +772,10 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
   ScopedShapedBuffer result =
       executable->Run({&x_array}, DefaultExecutableRunOptions())
           .ConsumeValueOrDie();
+  ASSERT_IS_OK(local_client_->mutable_backend()
+                   ->BorrowStream(0)
+                   .ValueOrDie()
+                   ->BlockHostUntilDone());
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);

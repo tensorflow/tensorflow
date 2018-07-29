@@ -145,7 +145,8 @@ message GPUOptions {
     bool use_unified_memory = 2;
 
     // If > 1, the number of device-to-device copy streams to create
-    // for each GPUDevice.
+    // for each GPUDevice.  Default value is 0, which is automatically
+    // converted to 1.
     int32 num_dev_to_dev_copy_streams = 3;
   }
 
@@ -389,6 +390,9 @@ message ConfigProto {
   message Experimental {
     // Task name for group resolution.
     string collective_group_leader = 1;
+    // Whether the client will format templated errors. For example, the string:
+    // "The node was defined on ^^node:Foo:${file}:${line}^^".
+    bool client_handles_error_formatting = 2;
   };
 
   Experimental experimental = 16;
@@ -412,6 +416,11 @@ message RunOptions {
   int64 timeout_in_ms = 2;
 
   // The thread pool to use, if session_inter_op_thread_pool is configured.
+  // To use the caller thread set this to -1 - this uses the caller thread
+  // to execute Session::Run() and thus avoids a context switch. Using the
+  // caller thread to execute Session::Run() should be done ONLY for simple
+  // graphs, where the overhead of an additional context switch is
+  // comparable with the overhead of Session::Run().
   int32 inter_op_thread_pool = 3;
 
   // Whether the partition graph(s) executed by the executor(s) should be

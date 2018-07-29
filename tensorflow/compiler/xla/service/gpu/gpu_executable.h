@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -66,7 +68,7 @@ class GpuExecutable : public Executable {
   }
 
   // Returns the compiled PTX for the computation.
-  tensorflow::StringPiece ptx() const { return ptx_; }
+  const string& ptx() const { return ptx_; }
 
   // Returns the cubin (compiled PTX) stored in this GpuExecutable.  May be
   // empty, in which case compilation is left up to the GPU driver.
@@ -98,6 +100,15 @@ class GpuExecutable : public Executable {
   // computation. Uses points-to analysis from buffer assignment.
   const PointsToSet& GetRootPointsToSet() const;
 
+  using BufferAllocToDeviceMemoryMap =
+      tensorflow::gtl::FlatMap<BufferAllocation::Index, se::DeviceMemoryBase>;
+
+  // Loads the PTX or CUBIN for this executable into `executor` and resolves the
+  // globals corresponding to constant buffers.  Returns a map mapping buffer
+  // allocation indices to GPU pointers.
+  StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
+      stream_executor::StreamExecutor* executor);
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false
@@ -125,6 +136,14 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<const BufferAssignment> assignment_;
+
+  // Cache of module handles and constant buffer allocation maps used by
+  // `ResolveConstantGlobals`.
+  tensorflow::mutex module_handle_mutex_;
+  std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+      module_handles_ GUARDED_BY(module_handle_mutex_);
+  std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
+      module_globals_ GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

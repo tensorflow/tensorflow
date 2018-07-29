@@ -112,7 +112,6 @@ class Analyzer(cfg.GraphVisitor):
   def __init__(self, graph, definition_factory):
     self._definition_factory = definition_factory
     super(Analyzer, self).__init__(graph)
-    self.defs_by_ast_node = {}
     # This allows communicating that nodes have extra reaching definitions,
     # e.g. those that a function closes over.
     self.extra_in = {}
@@ -160,13 +159,12 @@ class Analyzer(cfg.GraphVisitor):
 
     self.in_[node] = defs_in
     self.out[node] = defs_out
-    self.defs_by_ast_node[node.ast_node] = defs_out.value
 
     # TODO(mdan): Move this to the superclass?
     return prev_defs_out != defs_out
 
 
-class WholeTreeAnalyzer(transformer.Base):
+class TreeAnnotator(transformer.Base):
   """AST visitor that annotates each symbol name with its reaching definitions.
 
   Simultaneously, the visitor runs the dataflow analysis on each function node,
@@ -179,12 +177,11 @@ class WholeTreeAnalyzer(transformer.Base):
   """
 
   def __init__(self, source_info, graphs, definition_factory):
-    super(WholeTreeAnalyzer, self).__init__(source_info)
-    self.stmt_reaching_defs_info = None
+    super(TreeAnnotator, self).__init__(source_info)
+    self.definition_factory = definition_factory
     self.graphs = graphs
     self.current_analyzer = None
-    self.definition_factory = definition_factory
-    self.current_stmt_defs = None
+    self.current_cfg_node = None
 
   def visit_FunctionDef(self, node):
     parent_analyzer = self.current_analyzer
@@ -209,7 +206,11 @@ class WholeTreeAnalyzer(transformer.Base):
 
     # Recursively process any remaining subfunctions.
     self.current_analyzer = analyzer
-    node = self.generic_visit(node)
+    # Note: not visiting name, decorator_list and returns because they don't
+    # apply to this anlysis.
+    # TODO(mdan): Should we still process the function name?
+    node.args = self.visit(node.args)
+    node.body = self.visit_block(node.body)
     self.current_analyzer = parent_analyzer
 
     return node
@@ -226,11 +227,19 @@ class WholeTreeAnalyzer(transformer.Base):
       # definitions.
       return node
 
+    analyzer = self.current_analyzer
+    cfg_node = self.current_cfg_node
+
+    assert cfg_node is not None, 'name node outside of any statement?'
+
     qn = anno.getanno(node, anno.Basic.QN)
-    assert self.current_stmt_defs is not None, (
-        'name node outside of any statement?')
-    anno.setanno(node, anno.Static.DEFINITIONS,
-                 tuple(self.current_stmt_defs.get(qn, ())))
+    if isinstance(node.ctx, gast.Load):
+      anno.setanno(node, anno.Static.DEFINITIONS,
+                   tuple(analyzer.in_[cfg_node].value.get(qn, ())))
+    else:
+      anno.setanno(node, anno.Static.DEFINITIONS,
+                   tuple(analyzer.out[cfg_node].value.get(qn, ())))
+
     return node
 
   def _aggregate_predecessors_defined_in(self, node):
@@ -239,23 +248,41 @@ class WholeTreeAnalyzer(transformer.Base):
     for p in preds:
       node_defined_in |= set(self.current_analyzer.out[p].value.keys())
     anno.setanno(node, anno.Static.DEFINED_VARS_IN, frozenset(node_defined_in))
-    node = self.generic_visit(node)
-    return node
 
   def visit_If(self, node):
-    return self._aggregate_predecessors_defined_in(node)
+    self._aggregate_predecessors_defined_in(node)
+    return self.generic_visit(node)
 
   def visit_For(self, node):
-    return self._aggregate_predecessors_defined_in(node)
+    self._aggregate_predecessors_defined_in(node)
+
+    # Manually accounting for the shortcoming described in
+    # cfg.AstToCfg.visit_For.
+    parent = self.current_cfg_node
+    self.current_cfg_node = self.current_analyzer.graph.index[node.iter]
+    node.target = self.visit(node.target)
+    self.current_cfg_node = parent
+
+    node.iter = self.visit(node.iter)
+    node.body = self.visit_block(node.body)
+    node.orelse = self.visit_block(node.orelse)
+
+    return node
 
   def visit_While(self, node):
-    return self._aggregate_predecessors_defined_in(node)
+    self._aggregate_predecessors_defined_in(node)
+    return self.generic_visit(node)
 
   def visit(self, node):
+    parent = self.current_cfg_node
+
     if (self.current_analyzer is not None and
-        node in self.current_analyzer.defs_by_ast_node):
-      self.current_stmt_defs = self.current_analyzer.defs_by_ast_node[node]
-    return super(WholeTreeAnalyzer, self).visit(node)
+        node in self.current_analyzer.graph.index):
+      self.current_cfg_node = self.current_analyzer.graph.index[node]
+    node = super(TreeAnnotator, self).visit(node)
+
+    self.current_cfg_node = parent
+    return node
 
 
 def resolve(node, source_info, graphs, definition_factory):
@@ -269,6 +296,6 @@ def resolve(node, source_info, graphs, definition_factory):
   Returns:
     ast.AST
   """
-  visitor = WholeTreeAnalyzer(source_info, graphs, definition_factory)
+  visitor = TreeAnnotator(source_info, graphs, definition_factory)
   node = visitor.visit(node)
   return node

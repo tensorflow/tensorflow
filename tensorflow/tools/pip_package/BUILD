@@ -11,7 +11,6 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
@@ -79,7 +78,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
     "//tensorflow/contrib/nn:nn_py",
     "//tensorflow/contrib/predictor:predictor_pip",
-    "//tensorflow/contrib/proto:proto_pip",
+    "//tensorflow/contrib/proto:proto",
     "//tensorflow/contrib/receptive_field:receptive_field_pip",
     "//tensorflow/contrib/rpc:rpc_pip",
     "//tensorflow/contrib/session_bundle:session_bundle_pip",
@@ -190,9 +189,7 @@ sh_binary(
             "//tensorflow/contrib/lite/python:tflite_convert",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
-        "//tensorflow/contrib/tensorrt:init_py",
-    ]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

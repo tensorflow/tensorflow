@@ -94,7 +94,7 @@ class BigtableClient(object):
         project_id, instance_id, connection_pool_size, max_receive_message_size)
 
   def table(self, name, snapshot=None):
-    """Opens a table and returns a `BigTable` object.
+    """Opens a table and returns a `BigtableTable` object.
 
     Args:
       name: A `tf.string` `tf.Tensor` name of the table to open.
@@ -102,19 +102,20 @@ class BigtableClient(object):
         request the creation of a snapshot. (Note: currently unimplemented.)
 
     Returns:
-      A `BigTable` python object representing the operations available on the
-      table.
+      A `BigtableTable` python object representing the operations available on
+      the table.
     """
     # TODO(saeta): Implement snapshot functionality.
     table = gen_bigtable_ops.bigtable_table(self._resource, name)
-    return BigTable(name, snapshot, table)
+    return BigtableTable(name, snapshot, table)
 
 
-class BigTable(object):
-  """BigTable is the entrypoint for reading and writing data in Cloud Bigtable.
+class BigtableTable(object):
+  """BigtableTable is the entrypoint for reading and writing data in Cloud
+  Bigtable.
 
-  This BigTable class is the python representation of the Cloud Bigtable table
-  within TensorFlow. Methods on this class allow data to be read from and
+  This BigtableTable class is the Python representation of the Cloud Bigtable
+  table within TensorFlow. Methods on this class allow data to be read from and
   written to the Cloud Bigtable service in flexible and high performance
   manners.
   """

@@ -1261,6 +1261,11 @@ class MultiRNNCell(RNNCell):
       raise TypeError(
           "cells must be a list or tuple, but saw: %s." % cells)
 
+    if len(set([id(cell) for cell in cells])) < len(cells):
+      logging.log_first_n(logging.WARN,
+                          "At least two cells provided to MultiRNNCell "
+                          "are the same object and will share weights.", 1)
+
     self._cells = cells
     for cell_number, cell in enumerate(self._cells):
       # Add Checkpointable dependencies on these cells so their variables get

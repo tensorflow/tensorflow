@@ -258,7 +258,7 @@ tf_module {
   }
   member {
     name: "Variable"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'tensorflow.python.ops.variables.VariableMetaclass\'>"
   }
   member {
     name: "VariableAggregation"

@@ -71,12 +71,6 @@ class DomainMetadata {
 
   // Returns a string representation of the metadata.
   virtual string ToString() const = 0;
-
-  // Given a reachable set (the set of instructions which are reachable from
-  // each other via user/operand pathways, without crossing a kDomain
-  // instruciton), makes sure that all of them have metadata attributes which
-  // are coherent with this metadata object.
-  virtual Status NormalizeInstructions(const Domain& domain) const = 0;
 };
 
 }  // namespace xla

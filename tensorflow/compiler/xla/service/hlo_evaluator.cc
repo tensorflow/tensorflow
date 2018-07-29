@@ -1122,45 +1122,90 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
 // hoops to make this work.
 namespace {
 template <typename KeyType, typename ValueType>
-std::unique_ptr<Literal> EvaluateSortInternal(HloInstruction* sort,
-                                              const Literal& keys_literal,
-                                              const Literal& values_literal) {
-  CHECK_EQ(sort->operand_count(), 2);
+StatusOr<std::unique_ptr<Literal>> EvaluateSortInternal(
+    HloInstruction* sort, const Literal& keys_literal,
+    const Literal& values_literal) {
+  auto rank = ShapeUtil::Rank(keys_literal.shape());
+  TF_RET_CHECK(
+      ShapeUtil::SameDimensions(keys_literal.shape(), values_literal.shape()))
+      << "Sort keys and values must have the same dimensions";
+  TF_RET_CHECK(rank > 0 && rank <= 2)
+      << "Sort is only supported for rank-1 and rank-2 shapes, rank is: "
+      << rank;
+  TF_RET_CHECK(sort->operand_count() == 2) << "Expected key-value sort";
   // We need to sort and array of keys and an array of values, where the
   // sorted order of the values is determined by the keys. The simplest(?)
   // way to do this is to go to an array-of-pairs representation, sort the
   // array using the keys, and then go back to pair-of-arrays.
   VLOG(3) << "HandleSort keys_literal: " << keys_literal.ToString();
   VLOG(3) << "HandleSort values_literal: " << values_literal.ToString();
-  const auto& keys_data = keys_literal.data<KeyType>();
-  const auto& values_data = values_literal.data<ValueType>();
-  using kv_pair = std::pair<KeyType, ValueType>;
-  std::vector<kv_pair> key_value_vector;
-  CHECK_EQ(keys_data.size(), values_data.size());
-  key_value_vector.reserve(keys_data.size());
-  for (int i = 0; i < keys_data.size(); ++i) {
-    key_value_vector.push_back(std::make_pair(keys_data[i], values_data[i]));
+
+  auto sort_r1 = [](const Literal& keys_literal,
+                    const Literal& values_literal) {
+    const auto& keys_data = keys_literal.data<KeyType>();
+    const auto& values_data = values_literal.data<ValueType>();
+
+    using kv_pair = std::pair<KeyType, ValueType>;
+    std::vector<kv_pair> key_value_vector;
+    CHECK_EQ(keys_data.size(), values_data.size());
+    key_value_vector.reserve(keys_data.size());
+    for (int i = 0; i < keys_data.size(); ++i) {
+      key_value_vector.push_back(std::make_pair(keys_data[i], values_data[i]));
+    }
+    std::sort(key_value_vector.begin(), key_value_vector.end(),
+              [](const kv_pair& a, const kv_pair& b) {
+                return SafeLess<KeyType>(a.first, b.first);
+              });
+    std::vector<KeyType> result_keys;
+    std::vector<ValueType> result_values;
+    for (const auto& key_value : key_value_vector) {
+      result_keys.push_back(key_value.first);
+      result_values.push_back(key_value.second);
+    }
+    auto result_keys_literal = MakeUnique<Literal>(keys_literal.shape());
+    result_keys_literal->PopulateR1(
+        tensorflow::gtl::ArraySlice<KeyType>(result_keys));
+    auto result_values_literal = MakeUnique<Literal>(values_literal.shape());
+    result_values_literal->PopulateR1(
+        tensorflow::gtl::ArraySlice<ValueType>(result_values));
+    return std::make_pair(std::move(result_keys_literal),
+                          std::move(result_values_literal));
+  };
+
+  std::unique_ptr<Literal> result_tuple;
+  if (rank == 1) {
+    auto result_pair = sort_r1(keys_literal, values_literal);
+    result_tuple = LiteralUtil::MakeTuple(
+        {result_pair.first.get(), result_pair.second.get()});
+  } else {
+    // For R2 sort, the desired semantics are to sort each matrix row
+    // independently.
+    auto keys_result_literal = MakeUnique<Literal>(keys_literal.shape());
+    auto values_result_literal = MakeUnique<Literal>(values_literal.shape());
+    int64 r1_length = keys_literal.shape().dimensions(1);
+    for (int64 row = 0; row < keys_literal.shape().dimensions(0); ++row) {
+      TF_ASSIGN_OR_RETURN(auto keys_r1_slice,
+                          keys_literal.Slice({row, 0}, {row + 1, r1_length})
+                              ->Reshape({r1_length}));
+      TF_ASSIGN_OR_RETURN(auto values_r1_slice,
+                          values_literal.Slice({row, 0}, {row + 1, r1_length})
+                              ->Reshape({r1_length}));
+      auto r1_result_pair = sort_r1(*keys_r1_slice, *values_r1_slice);
+      TF_ASSIGN_OR_RETURN(auto sorted_keys,
+                          r1_result_pair.first->Reshape({1, r1_length}));
+      TF_ASSIGN_OR_RETURN(auto sorted_values,
+                          r1_result_pair.second->Reshape({1, r1_length}));
+      TF_RETURN_IF_ERROR(keys_result_literal->CopySliceFrom(
+          *sorted_keys, {0, 0}, {row, 0}, {1, r1_length}));
+      TF_RETURN_IF_ERROR(values_result_literal->CopySliceFrom(
+          *sorted_values, {0, 0}, {row, 0}, {1, r1_length}));
+    }
+    result_tuple = LiteralUtil::MakeTuple(
+        {keys_result_literal.get(), values_result_literal.get()});
   }
-  std::sort(key_value_vector.begin(), key_value_vector.end(),
-            [](const kv_pair& a, const kv_pair& b) {
-              return SafeLess<KeyType>(a.first, b.first);
-            });
-  std::vector<KeyType> result_keys;
-  std::vector<ValueType> result_values;
-  for (const auto& key_value : key_value_vector) {
-    result_keys.push_back(key_value.first);
-    result_values.push_back(key_value.second);
-  }
-  auto result_keys_literal = MakeUnique<Literal>(sort->operand(0)->shape());
-  result_keys_literal->PopulateR1(
-      tensorflow::gtl::ArraySlice<KeyType>(result_keys));
-  auto result_values_literal = MakeUnique<Literal>(sort->operand(1)->shape());
-  result_values_literal->PopulateR1(
-      tensorflow::gtl::ArraySlice<ValueType>(result_values));
-  auto result_tuple = LiteralUtil::MakeTuple(
-      {result_keys_literal.get(), result_values_literal.get()});
+
   VLOG(3) << "HandleSort result_tuple: " << result_tuple->ToString();
-  return result_tuple;
+  return std::move(result_tuple);
 }
 
 template <typename KeyType>
@@ -1204,6 +1249,15 @@ StatusOr<std::unique_ptr<Literal>> EvaluateSort(HloInstruction* sort,
 }  // namespace
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
+  const int64 sort_dim = sort->dimensions(0);
+  const int64 rank = ShapeUtil::Rank(sort->operand(0)->shape());
+  if (sort_dim != rank - 1) {
+    return Unimplemented(
+        "Trying to support along dimension %lld, which is not the last "
+        "dimension",
+        sort_dim);
+  }
+
   if (!ShapeUtil::IsTuple(sort->shape())) {
     return DefaultAction(sort);
   } else {

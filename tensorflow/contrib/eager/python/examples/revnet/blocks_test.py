@@ -179,7 +179,7 @@ class RevBlockTest(tf.test.TestCase):
       degree = compute_degree(g1, g2)
       self.assertLessEqual(degree, atol)
 
-  def test_backward_grads_and_vars_channels_first(self):
+  def test_backward_grads_channels_first(self):
     """Test `backward` function with `channels_first` data format."""
     if not tf.test.is_gpu_available():
       self.skipTest("GPU not available")
@@ -201,7 +201,8 @@ class RevBlockTest(tf.test.TestCase):
         tape.watch(x)
         y = block(x, training=True)
       # Compute grads from reconstruction
-      dx, dw, vars_ = block.backward_grads_and_vars(x, y, dy, training=True)
+      dx, dw = block.backward_grads(x, y, dy, training=True)
+      vars_ = block.trainable_variables
       # Compute true grads
       grads = tape.gradient(y, [x] + vars_, output_gradients=dy)
       dx_true, dw_true = grads[0], grads[1:]
@@ -224,7 +225,8 @@ class RevBlockTest(tf.test.TestCase):
         tape.watch(x)
         y = block(x, training=True)
       # Compute grads from reconstruction
-      dx, dw, vars_ = block.backward_grads_and_vars(x, y, dy, training=True)
+      dx, dw = block.backward_grads(x, y, dy, training=True)
+      vars_ = block.trainable_variables
       # Compute true grads
       grads = tape.gradient(y, [x] + vars_, output_gradients=dy)
       dx_true, dw_true = grads[0], grads[1:]
@@ -245,7 +247,7 @@ class _ResidualTest(tf.test.TestCase):
     _validate_block_call_channels_first(blocks._Residual, self)
     _validate_block_call_channels_last(blocks._Residual, self)
 
-  def test_backward_grads_and_vars_channels_first(self):
+  def test_backward_grads_channels_first(self):
     """Test `backward_grads` function with `channels_first` data format."""
     if not tf.test.is_gpu_available():
       self.skipTest("GPU not available")
@@ -269,9 +271,8 @@ class _ResidualTest(tf.test.TestCase):
         y = residual(x_true, training=True)
 
       # Gradients computed due to reversibility
-      x, dx, dw, vars_ = residual.backward_grads_and_vars(
-          y, dy=dy, training=True)
-
+      x, dx, dw = residual.backward_grads(y, dy=dy, training=True)
+      vars_ = residual.trainable_variables
       # True gradients computed by the tape
       grads = tape.gradient(y, [x_true] + vars_, output_gradients=dy)
       dx_true, dw_true = grads[0], grads[1:]

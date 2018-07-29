@@ -257,7 +257,7 @@ def run_main(_):
   parser.add_argument(
       "--input_arrays",
       type=str,
-      help="Names of the output arrays, comma-separated.")
+      help="Names of the input arrays, comma-separated.")
   parser.add_argument(
       "--input_shapes",
       type=str,

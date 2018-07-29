@@ -28,6 +28,7 @@ import six
 
 from google.protobuf import text_format
 
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
@@ -203,6 +204,10 @@ class EstimatorConstructorTest(test.TestCase):
 
     est = estimator.Estimator(model_fn=model_fn)
     self.assertTrue(isinstance(est.config, run_config.RunConfig))
+    self.assertTrue(est._session_config.allow_soft_placement)
+    rewrite_options = est._session_config.graph_options.rewrite_options
+    self.assertEqual(rewrite_options.meta_optimizer_iterations,
+                     rewriter_config_pb2.RewriterConfig.ONE)
 
   def test_default_model_dir(self):
 

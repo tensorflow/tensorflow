@@ -43,7 +43,7 @@ class AnfTransformerTest(test.TestCase):
       return a
 
     node, _ = parser.parse_entity(test_function)
-    node = anf.transform(node, self._simple_source_info())
+    node = anf.transform(node.body[0], self._simple_source_info())
     result, _ = compiler.ast_to_object(node)
 
     self.assertEqual(test_function(), result.test_function())

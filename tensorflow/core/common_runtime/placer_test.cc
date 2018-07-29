@@ -1142,6 +1142,50 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakegpu:11"));
 }
 
+// Test that the "Cannot assign a device" error message contains a format tag
+// when requested.
+TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("TestDevice",
+                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  options.config.mutable_experimental()->set_client_handles_error_formatting(
+      true);
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(),
+                            "Cannot assign a device for operation 'in'"
+                            " (defined at ^^node:in:${file}:${line}^^)"));
+}
+
+// Test that the "Cannot assign a device" error message does not contain a
+// format tag when not it shouldn't
+TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementNoFormatTag) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("TestDevice",
+                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  options.config.mutable_experimental()->set_client_handles_error_formatting(
+      false);
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(), "Cannot assign a device for operation 'in'"));
+  EXPECT_FALSE(str_util::StrContains(
+      s.error_message(), "'in' (defined at ^^node:in:${file}:${line}^^)"));
+}
+
 // Test that placement fails when a node requests an explicit device that is not
 // supported by the registered kernels if allow_soft_placement is no set.
 TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {

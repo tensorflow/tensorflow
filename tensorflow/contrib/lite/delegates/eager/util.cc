@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/delegates/eager/util.h"
 
 namespace tflite {
+namespace eager {
 
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
@@ -44,4 +45,28 @@ TfLiteStatus CopyShape(TfLiteContext* context, const tensorflow::Tensor& src,
   return context->ResizeTensor(context, tensor, shape);
 }
 
+TF_DataType GetTensorFlowDataType(TfLiteType type) {
+  switch (type) {
+    case kTfLiteNoType:
+      return TF_FLOAT;
+    case kTfLiteFloat32:
+      return TF_FLOAT;
+    case kTfLiteInt16:
+      return TF_INT16;
+    case kTfLiteInt32:
+      return TF_INT32;
+    case kTfLiteUInt8:
+      return TF_UINT8;
+    case kTfLiteInt64:
+      return TF_INT64;
+    case kTfLiteComplex64:
+      return TF_COMPLEX64;
+    case kTfLiteString:
+      return TF_STRING;
+    case kTfLiteBool:
+      return TF_BOOL;
+  }
+}
+
+}  // namespace eager
 }  // namespace tflite

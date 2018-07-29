@@ -1,3 +1,6 @@
+book_path: /mobile/_book.yaml
+project_path: /mobile/_project.yaml
+
 # List of Hosted Models
 
 ## Image classification (Float Models)
