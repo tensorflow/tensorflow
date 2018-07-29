@@ -741,7 +741,7 @@ def _ExtractImagePatchesGrad(op, grad):
 
   # Create indices matrix for input tensor.
   # Note that 0 is preserved for padding location,
-  # so indice for input starts from 1 to 1 + rows_in * cols_in.
+  # so indices for input start from 1 to 1 + rows_in * cols_in.
   input_indices_num = 1 + rows_in * cols_in
   input_idx = array_ops.reshape(math_ops.range(1, input_indices_num,
                                                dtype=ops.dtypes.int64),
@@ -756,7 +756,7 @@ def _ExtractImagePatchesGrad(op, grad):
   # Create indices matrix for output tensor.
   _, rows_out, cols_out, _ = [dim.value for dim in op.outputs[0].get_shape()]
   _, ksize_r, ksize_c, _ = op.get_attr("ksizes")
-  # Indice for output starts from 0.
+  # Indices for output start from 0.
   output_indices_num = rows_out * cols_out * ksize_r * ksize_c
   output_idx = array_ops.reshape(math_ops.range(output_indices_num,
                                                 dtype=ops.dtypes.int64),
