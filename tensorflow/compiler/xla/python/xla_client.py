@@ -99,12 +99,27 @@ _UNARY_OPS = [
     'Cos',
     'Sin',
     'Tanh',
-    'Sqrt',
-    'Square',
     'IsFinite',
+    'Sqrt',
+    'Rsqrt',
+    'Square',
     'Reciprocal',
     'Neg',
     'Sort',
+    'Erf',
+    'Erfc',
+    'ErfInv',
+    'Lgamma',
+    'Digamma',
+    'Acos',
+    'Asin',
+    'Atan',
+    'Tan',
+    'Acosh',
+    'Asinh',
+    'Atanh',
+    'Cosh',
+    'Sinh',
 ]
 
 _BINARY_OPS = [
@@ -128,6 +143,7 @@ _BINARY_OPS = [
     'ShiftLeft',
     'ShiftRightArithmetic',
     'ShiftRightLogical',
+    'Atan2',
 ]
 
 
@@ -704,6 +720,18 @@ class ComputationBuilder(object):
       A LocalOp representing the added conversion op.
     """
     return self._client.ConvertElementType(operand, new_element_type)
+
+  def BitcastConvertType(self, operand, new_element_type):
+    """Enqueues a bitcast type conversion operation onto the computation.
+
+    Args:
+      operand: the operand to convert.
+      new_element_type: the target primitive type.
+
+    Returns:
+      A LocalOp representing the added conversion op.
+    """
+    return self._client.BitcastConvertType(operand, new_element_type)
 
   def GetShape(self, operand):
     return _wrap_shape(self._client.GetShape(operand))

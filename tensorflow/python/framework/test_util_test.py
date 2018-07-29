@@ -73,7 +73,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     test_util.assert_equal_graph_def(def_57, def_75)
     # Compare two unequal graphs
     with self.assertRaisesRegexp(AssertionError,
-                                 r"^Found unexpected node 'seven"):
+                                 r"^Found unexpected node '{{node seven}}"):
       test_util.assert_equal_graph_def(def_57, def_empty)
 
   def testIsGoogleCudaEnabled(self):

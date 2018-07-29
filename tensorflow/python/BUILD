@@ -96,6 +96,7 @@ py_library(
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":kernels",
         ":layers",
         ":lib",
         ":list_ops",
@@ -745,8 +746,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework",
+        ":framework_ops",
         ":function",
-        ":op_def_registry",
         ":tensor_shape",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -762,8 +763,10 @@ py_test(
     deps = [
         ":array_ops",
         ":client_testlib",
+        ":constant_op",
         ":dtypes",
         ":framework_ops",
+        ":function",
         ":function_def_to_graph",
         ":graph_to_function_def",
         ":math_ops",
@@ -783,6 +786,19 @@ py_library(
         ":framework_ops",
         ":platform",
         ":tensor_util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "kernels",
+    srcs = [
+        "framework/kernels.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pywrap_tensorflow",
+        ":util",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -1475,6 +1491,20 @@ py_test(
     deps = [
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":platform_test",
+        ":test_ops",
+    ],
+)
+
+py_test(
+    name = "framework_kernels_test",
+    size = "small",
+    srcs = ["framework/kernels_test.py"],
+    main = "framework/kernels_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_test_lib",
+        ":kernels",
         ":platform_test",
         ":test_ops",
     ],
@@ -3377,6 +3407,7 @@ py_test(
         ":math_ops",
         ":util",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -3627,6 +3658,7 @@ tf_cuda_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_ref",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],

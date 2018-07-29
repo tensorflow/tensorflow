@@ -463,6 +463,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   return MakeUnique<HloConstantInstruction>(std::move(literal));
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
+    const Shape& shape) {
+  return WrapUnique(new HloInstruction(HloOpcode::kIota, shape));
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateGetTupleElement(const Shape& shape,
                                       HloInstruction* operand, int64 index) {
@@ -1119,6 +1124,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
     case HloOpcode::kGather:
+    case HloOpcode::kIota:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1516,8 +1522,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTupleSelect:
       return true;
 
-    // These opcodes have complex or special behavior so just return false.
-    case HloOpcode::kWhile:
+    // This opcode has complex or special behavior so just return false.
     case HloOpcode::kAfterAll:
       return false;
 
@@ -1532,6 +1537,14 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kConditional:
       return eq_computations(true_computation(), other.true_computation()) &&
              eq_computations(false_computation(), other.false_computation());
+
+    case HloOpcode::kWhile: {
+      if (eq_computations(while_body(), other.while_body()) &&
+          eq_computations(while_condition(), other.while_condition())) {
+        return true;
+      }
+      return false;
+    }
 
     case HloOpcode::kDomain:
       return operand_side_metadata().Matches(other.operand_side_metadata()) &&
@@ -1556,6 +1569,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
+    case HloOpcode::kIota:
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
@@ -1576,6 +1590,7 @@ bool HloInstruction::IdenticalSlowPath(
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
+  return false;
 }
 
 void HloInstruction::RemoveUser(HloInstruction* user) {
@@ -2300,6 +2315,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleDomain(this);
     case HloOpcode::kAfterAll:
       return visitor->HandleAfterAll(this);
+    case HloOpcode::kIota:
+      return visitor->HandleIota(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:

@@ -514,33 +514,42 @@ def _tensor_pool_adjusted_model(model, tensor_pool_fn):
   Raises:
     ValueError: If tensor pool does not support the `model`.
   """
-  if tensor_pool_fn is None:
-    return model
-
-  pooled_generated_data, pooled_generator_inputs = tensor_pool_fn(
-      (model.generated_data, model.generator_inputs))
-
   if isinstance(model, namedtuples.GANModel):
+    pooled_generator_inputs, pooled_generated_data = tensor_pool_fn(
+        (model.generator_inputs, model.generated_data))
     with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
       dis_gen_outputs = model.discriminator_fn(pooled_generated_data,
                                                pooled_generator_inputs)
-    return model._replace(discriminator_gen_outputs=dis_gen_outputs)
+    return model._replace(
+        generator_inputs=pooled_generator_inputs,
+        generated_data=pooled_generated_data,
+        discriminator_gen_outputs=dis_gen_outputs)
   elif isinstance(model, namedtuples.ACGANModel):
+    pooled_generator_inputs, pooled_generated_data = tensor_pool_fn(
+        (model.generator_inputs, model.generated_data))
     with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
-      (dis_pooled_gen_outputs,
-       dis_pooled_gen_classification_logits) = model.discriminator_fn(
+      (pooled_discriminator_gen_outputs,
+       pooled_discriminator_gen_classification_logits) = model.discriminator_fn(
            pooled_generated_data, pooled_generator_inputs)
     return model._replace(
-        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        generator_inputs=pooled_generator_inputs,
+        generated_data=pooled_generated_data,
+        discriminator_gen_outputs=pooled_discriminator_gen_outputs,
         discriminator_gen_classification_logits=
-        dis_pooled_gen_classification_logits)
+        pooled_discriminator_gen_classification_logits)
   elif isinstance(model, namedtuples.InfoGANModel):
+    pooled_generator_inputs, pooled_generated_data, pooled_structured_input = (
+        tensor_pool_fn((model.generator_inputs, model.generated_data,
+                        model.structured_generator_inputs)))
     with variable_scope.variable_scope(model.discriminator_scope, reuse=True):
-      (dis_pooled_gen_outputs,
+      (pooled_discriminator_gen_outputs,
        pooled_predicted_distributions) = model.discriminator_and_aux_fn(
            pooled_generated_data, pooled_generator_inputs)
     return model._replace(
-        discriminator_gen_outputs=dis_pooled_gen_outputs,
+        generator_inputs=pooled_generator_inputs,
+        generated_data=pooled_generated_data,
+        structured_generator_inputs=pooled_structured_input,
+        discriminator_gen_outputs=pooled_discriminator_gen_outputs,
         predicted_distributions=pooled_predicted_distributions)
   else:
     raise ValueError('Tensor pool does not support `model`: %s.' % type(model))
@@ -632,33 +641,38 @@ def gan_loss(
         'is provided, `model` must be an `ACGANModel`. Instead, was %s.' %
         type(model))
 
+  # Optionally create pooled model.
+  pooled_model = (_tensor_pool_adjusted_model(model, tensor_pool_fn) if
+                  tensor_pool_fn else model)
+
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
-  dis_loss = discriminator_loss_fn(
-      _tensor_pool_adjusted_model(model, tensor_pool_fn),
-      add_summaries=add_summaries)
+  dis_loss = discriminator_loss_fn(pooled_model, add_summaries=add_summaries)
 
   # Add optional extra losses.
   if _use_aux_loss(gradient_penalty_weight):
     gp_loss = tfgan_losses.wasserstein_gradient_penalty(
-        model,
+        pooled_model,
         epsilon=gradient_penalty_epsilon,
         target=gradient_penalty_target,
         one_sided=gradient_penalty_one_sided,
         add_summaries=add_summaries)
     dis_loss += gradient_penalty_weight * gp_loss
   if _use_aux_loss(mutual_information_penalty_weight):
-    info_loss = tfgan_losses.mutual_information_penalty(
+    gen_info_loss = tfgan_losses.mutual_information_penalty(
         model, add_summaries=add_summaries)
-    dis_loss += mutual_information_penalty_weight * info_loss
-    gen_loss += mutual_information_penalty_weight * info_loss
+    dis_info_loss = (gen_info_loss if tensor_pool_fn is None else
+                     tfgan_losses.mutual_information_penalty(
+                         pooled_model, add_summaries=add_summaries))
+    gen_loss += mutual_information_penalty_weight * gen_info_loss
+    dis_loss += mutual_information_penalty_weight * dis_info_loss
   if _use_aux_loss(aux_cond_generator_weight):
     ac_gen_loss = tfgan_losses.acgan_generator_loss(
         model, add_summaries=add_summaries)
     gen_loss += aux_cond_generator_weight * ac_gen_loss
   if _use_aux_loss(aux_cond_discriminator_weight):
     ac_disc_loss = tfgan_losses.acgan_discriminator_loss(
-        model, add_summaries=add_summaries)
+        pooled_model, add_summaries=add_summaries)
     dis_loss += aux_cond_discriminator_weight * ac_disc_loss
   # Gathers auxiliary losses.
   if model.generator_scope:

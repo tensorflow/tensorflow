@@ -887,6 +887,44 @@ TEST_F(GraphPropertiesTest, LargeFunctionStaticShapeInference) {
   EXPECT_EQ(8, in_prop3.shape().dim(3).size());
 }
 
+TEST_F(GraphPropertiesTest, LargeFunctionWithMultipleOutputs) {
+  // Test graph produced in python using:
+  /*
+    @function.Defun(noinline=True)
+    def MyFunc():
+      @function.Defun(*[tf.float32] * 2)
+      def Cond(n, unused_x):
+        return n > 0
+
+      @function.Defun(*[tf.float32] * 2)
+      def Body(n, x):
+        return n - 1, x + n
+
+      i = tf.constant(10)
+      return functional_ops.While([i, 0.], Cond, Body)
+
+    with tf.Graph().as_default():
+      z = MyFunc()
+  */
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "function_functional_while.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  const auto out_props = properties.GetOutputProperties("MyFunc_AenMyWWx1Us");
+  EXPECT_EQ(2, out_props.size());
+
+  const OpInfo::TensorProperties& out_prop0 = out_props[0];
+  EXPECT_EQ(DT_INT32, out_prop0.dtype());
+  EXPECT_FALSE(out_prop0.shape().unknown_rank());
+
+  const OpInfo::TensorProperties& out_prop1 = out_props[1];
+  EXPECT_EQ(DT_FLOAT, out_prop1.dtype());
+  EXPECT_FALSE(out_prop1.shape().unknown_rank());
+}
+
 TEST_F(GraphPropertiesTest, FunctionWithErrorStaticShapeInference) {
   GrapplerItem item;
   string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,

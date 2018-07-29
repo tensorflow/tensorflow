@@ -18,10 +18,12 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/Triple.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 using xla::source_map_util::InvalidParameterArgument;
@@ -29,8 +31,8 @@ using xla::source_map_util::InvalidParameterArgument;
 namespace xla {
 
 namespace {
-StatusOr<Backend::StreamPtr> BorrowStreamForDevice(int device_ordinal,
-                                                   Backend* backend) {
+StatusOr<StreamPool::Ptr> BorrowStreamForDevice(int device_ordinal,
+                                                Backend* backend) {
   if (device_ordinal < 0) {
     device_ordinal = backend->default_device_ordinal();
   }
@@ -141,7 +143,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   TF_RETURN_IF_ERROR(
       ValidateExecutionOptions(arguments, run_options, *backend_));
 
-  Backend::StreamPtr stream;
+  StreamPool::Ptr stream;
   if (run_options.stream() == nullptr) {
     // NB!  The lifetime of `stream` needs to match the lifetime of
     // `actual_options` (otherwise we will end up using a returned stream in

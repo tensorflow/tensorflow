@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MKL_POOLING_OPS_COMMON_H_
 
 #ifdef INTEL_MKL
-#include <string>
 #include <vector>
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"

@@ -17,8 +17,12 @@
 
 set -e
 
+function is_absolute {
+  [[ "$1" = /* ]] || [[ "$1" =~ ^[a-zA-Z]:[/\\].* ]]
+}
+
 function real_path() {
-  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+  is_absolute "$1" && echo "$1" || echo "$PWD/${1#./}"
 }
 
 function cp_external() {

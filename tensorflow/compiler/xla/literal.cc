@@ -1775,7 +1775,9 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       // Nothing to do but assign the shape which is done above.
       return;
     default:
-      LOG(FATAL) << "Unhandled primitive type " << subshape().element_type();
+      // TODO(b/111551621): Support serializing more PrimitiveTypes.
+      LOG(FATAL) << "Unhandled primitive type "
+                 << PrimitiveType_Name(subshape().element_type());
   }
 }
 

@@ -4977,6 +4977,13 @@ op {
     name: "DstT"
     type: "type"
   }
+  attr {
+    name: "Truncate"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "Ceil"
@@ -26182,6 +26189,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }

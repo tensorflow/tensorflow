@@ -315,7 +315,7 @@ def main(_):
                      FLAGS.hidden_dim, FLAGS.num_layers, FLAGS.dropout,
                      use_cudnn_rnn)
     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-    checkpoint = tfe.Checkpoint(
+    checkpoint = tf.train.Checkpoint(
         learning_rate=learning_rate, model=model,
         # GradientDescentOptimizer has no state to checkpoint, but noting it
         # here lets us swap in an optimizer that does.

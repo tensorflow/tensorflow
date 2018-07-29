@@ -209,8 +209,8 @@ TEST_F(OpCompatibilityTest, Same) {
                    .Finalize(node_def()));
   ExpectSuccess(*RegisteredOpDef());
   EXPECT_EQ(
-      "same = Same[N=3, T=DT_FLOAT, TList=[DT_BOOL, DT_BOOL]](a, b, c, c:1, "
-      "c:2, d, d:1, d:2, e, e:1)",
+      "{{node same}} = Same[N=3, T=DT_FLOAT, TList=[DT_BOOL, DT_BOOL]](a, b, "
+      "c, c:1, c:2, d, d:1, d:2, e, e:1)",
       Result());
 }
 
@@ -224,7 +224,7 @@ TEST_F(OpCompatibilityTest, AddAttr) {
       OpDefBuilder("AddAttr").Output("ndef: string").Finalize(&old_op));
   TF_ASSERT_OK(NodeDefBuilder("add_attr", &old_op.op_def).Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("add_attr = AddAttr[a=42]()", Result());
+  EXPECT_EQ("{{node add_attr}} = AddAttr[a=42]()", Result());
 }
 
 // Should be able to make an attr restriction less strict.
@@ -241,7 +241,7 @@ TEST_F(OpCompatibilityTest, LessStrict) {
                    .Attr("a", "B")
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("less_strict = LessStrict[a=\"B\"]()", Result());
+  EXPECT_EQ("{{node less_strict}} = LessStrict[a=\"B\"]()", Result());
 }
 
 // Should be able to remove an attr restriction.
@@ -259,7 +259,8 @@ TEST_F(OpCompatibilityTest, RemoveRestriction) {
                    .Attr("a", DT_INT32)
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("remove_restriction = RemoveRestriction[a=DT_INT32]()", Result());
+  EXPECT_EQ("{{node remove_restriction}} = RemoveRestriction[a=DT_INT32]()",
+            Result());
 }
 
 // Should be able to change the order of attrs.
@@ -278,7 +279,7 @@ TEST_F(OpCompatibilityTest, AttrOrder) {
                    .Attr("a", 7)
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("attr_order = AttrOrder[a=7, b=true]()", Result());
+  EXPECT_EQ("{{node attr_order}} = AttrOrder[a=7, b=true]()", Result());
 }
 
 // Should be able to make an input/output polymorphic.
@@ -299,7 +300,8 @@ TEST_F(OpCompatibilityTest, TypePolymorphic) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("type_polymorphic = TypePolymorphic[T=DT_INT32](a)", Result());
+  EXPECT_EQ("{{node type_polymorphic}} = TypePolymorphic[T=DT_INT32](a)",
+            Result());
 }
 
 // Should be able to make a single input/output into a list.
@@ -320,7 +322,7 @@ TEST_F(OpCompatibilityTest, MakeList) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("make_list = MakeList[N=1](a)", Result());
+  EXPECT_EQ("{{node make_list}} = MakeList[N=1](a)", Result());
 }
 
 // Should be able to make a single input/output into a polymorphic list.
@@ -343,7 +345,8 @@ TEST_F(OpCompatibilityTest, MakePolyList) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("make_poly_list = MakePolyList[N=1, T=DT_INT32](a)", Result());
+  EXPECT_EQ("{{node make_poly_list}} = MakePolyList[N=1, T=DT_INT32](a)",
+            Result());
 }
 
 // Should be able to make a single input/output into an arbitrary list.
@@ -364,7 +367,7 @@ TEST_F(OpCompatibilityTest, MakeAnyList) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("make_any_list = MakeAnyList[T=[DT_INT32]](a)", Result());
+  EXPECT_EQ("{{node make_any_list}} = MakeAnyList[T=[DT_INT32]](a)", Result());
 }
 
 // Should be able to make a single polymorphic input/output into a list of
@@ -387,7 +390,8 @@ TEST_F(OpCompatibilityTest, PolyIntoList) {
                    .Input(FakeInput(DT_INT32))
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("poly_into_list = PolyIntoList[N=1, T=DT_INT32](a)", Result());
+  EXPECT_EQ("{{node poly_into_list}} = PolyIntoList[N=1, T=DT_INT32](a)",
+            Result());
 }
 
 // Should be able to make a multiple inputs/outputs into a list with
@@ -413,7 +417,7 @@ TEST_F(OpCompatibilityTest, MakeMultipleSameList) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("make_list = MakeMultipleSameList[N=2](a, b)", Result());
+  EXPECT_EQ("{{node make_list}} = MakeMultipleSameList[N=2](a, b)", Result());
 }
 
 // Changing from int32, float -> T
@@ -437,8 +441,9 @@ TEST_F(OpCompatibilityTest, MakeMultipleAnyList) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("make_list = MakeMultipleAnyList[T=[DT_INT32, DT_FLOAT]](a, b)",
-            Result());
+  EXPECT_EQ(
+      "{{node make_list}} = MakeMultipleAnyList[T=[DT_INT32, DT_FLOAT]](a, b)",
+      Result());
 }
 
 // Should be able to change the name of an input/output.
@@ -455,7 +460,7 @@ TEST_F(OpCompatibilityTest, ChangeName) {
                    .Input(FakeInput())
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("change_name = ChangeName[](a)", Result());
+  EXPECT_EQ("{{node change_name}} = ChangeName[](a)", Result());
 }
 
 // Should be able to add an input/output of type
@@ -473,7 +478,7 @@ TEST_F(OpCompatibilityTest, AddNInts) {
   TF_ASSERT_OK(
       NodeDefBuilder("add_n_ints", &old_op.op_def).Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("add_n_ints = AddNInts[N=0]()", Result());
+  EXPECT_EQ("{{node add_n_ints}} = AddNInts[N=0]()", Result());
 }
 
 // Should be able to add an input/output of type N * T
@@ -492,7 +497,7 @@ TEST_F(OpCompatibilityTest, AddNSame) {
   TF_ASSERT_OK(
       NodeDefBuilder("add_n_same", &old_op.op_def).Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("add_n_same = AddNSame[N=0, T=DT_BOOL]()", Result());
+  EXPECT_EQ("{{node add_n_same}} = AddNSame[N=0, T=DT_BOOL]()", Result());
 }
 
 // Should be able to add an input/output of type N * T
@@ -517,8 +522,10 @@ TEST_F(OpCompatibilityTest, AddNSameAsExisting) {
                    .Input(FakeInput(DT_STRING))
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("add_n_same_as_existing = AddNSameAsExisting[N=0, T=DT_STRING](a)",
-            Result());
+  EXPECT_EQ(
+      "{{node add_n_same_as_existing}} = AddNSameAsExisting[N=0, "
+      "T=DT_STRING](a)",
+      Result());
 }
 
 // Should be able to add an input/output of type T
@@ -536,7 +543,7 @@ TEST_F(OpCompatibilityTest, AddAnyList) {
   TF_ASSERT_OK(
       NodeDefBuilder("add_any_list", &old_op.op_def).Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("add_any_list = AddAnyList[T=[]]()", Result());
+  EXPECT_EQ("{{node add_any_list}} = AddAnyList[T=[]]()", Result());
 }
 
 // Should be able to allow shorter lists.
@@ -557,8 +564,10 @@ TEST_F(OpCompatibilityTest, ShorterAnyList) {
                    .Input(FakeInput(2, DT_BOOL))
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("shorter_any_list = ShorterAnyList[T=[DT_BOOL, DT_BOOL]](a, a:1)",
-            Result());
+  EXPECT_EQ(
+      "{{node shorter_any_list}} = ShorterAnyList[T=[DT_BOOL, DT_BOOL]](a, "
+      "a:1)",
+      Result());
 }
 
 REGISTER_OP("ShorterSameList")
@@ -578,7 +587,8 @@ TEST_F(OpCompatibilityTest, ShorterSameList) {
                    .Input(FakeInput(2))
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("shorter_same_list = ShorterSameList[N=2](a, a:1)", Result());
+  EXPECT_EQ("{{node shorter_same_list}} = ShorterSameList[N=2](a, a:1)",
+            Result());
 }
 
 // Can remove a restriction to an attr
@@ -597,7 +607,7 @@ TEST_F(OpCompatibilityTest, AttrRemoveRestriction) {
                    .Attr("t", DT_INT32)
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("remove_restriction = AttrRemoveRestriction[t=DT_INT32]()",
+  EXPECT_EQ("{{node remove_restriction}} = AttrRemoveRestriction[t=DT_INT32]()",
             Result());
 }
 
@@ -619,7 +629,8 @@ TEST_F(OpCompatibilityTest, AttrLessRestrictive) {
                    .Attr("t", DT_INT32)
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("less_restrictive = AttrLessRestrictive[t=DT_INT32]()", Result());
+  EXPECT_EQ("{{node less_restrictive}} = AttrLessRestrictive[t=DT_INT32]()",
+            Result());
 }
 
 // Can remove a minimum from an attr.
@@ -637,7 +648,7 @@ TEST_F(OpCompatibilityTest, AttrRemoveMin) {
                    .Attr("n", 4)
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("remove_min = AttrRemoveMin[n=4]()", Result());
+  EXPECT_EQ("{{node remove_min}} = AttrRemoveMin[n=4]()", Result());
 }
 
 // Can lower the minimum on an attr.
@@ -655,7 +666,7 @@ TEST_F(OpCompatibilityTest, AttrLowerMin) {
                    .Attr("n", 4)
                    .Finalize(node_def()));
   ExpectSuccess(old_op.op_def);
-  EXPECT_EQ("lower_min = AttrLowerMin[n=4]()", Result());
+  EXPECT_EQ("{{node lower_min}} = AttrLowerMin[n=4]()", Result());
 }
 
 // Can make a ref input into a non-ref input.

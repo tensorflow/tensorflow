@@ -59,7 +59,7 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
       : parameter_arrays_(parameter_arrays),
         tiled_parameter_info_(nullptr),
         elemental_emitter_(elemental_emitter),
-        ir_builder_(elemental_emitter->ir_builder()),
+        b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
@@ -103,7 +103,7 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   const HloInstruction* fused_root_ = nullptr;
 
   // Borrowed
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Module* module_;
 
   // Map from instruction pointers to functions to generate elements of their

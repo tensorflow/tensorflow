@@ -16,13 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_ALLOCATOR_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRT_ALLOCATOR_H_
 
-#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include <unordered_map>
+
 #include "tensorflow/core/framework/allocator.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
+namespace tensorflow {
+namespace tensorrt {
+// std::align is not supported, so this function mimic its behavior.
+void* Align(size_t alignment, size_t size, void*& ptr, size_t& space);
+}  // namespace tensorrt
+}  // namespace tensorflow
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #if NV_TENSORRT_MAJOR == 3
 // Define interface here temporarily until TRT 4.0 is released
 namespace nvinfer1 {

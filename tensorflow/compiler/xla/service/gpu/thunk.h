@@ -41,7 +41,7 @@ class GpuExecutable;
 // This is thread-compatible.
 class Thunk {
  public:
-  enum class Kind {
+  enum Kind {
     kConditional,
     kConvolution,
     kCopy,
@@ -110,6 +110,8 @@ class Thunk {
 
 // A sequence of thunks.
 using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
+
+std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 }  // namespace gpu
 }  // namespace xla

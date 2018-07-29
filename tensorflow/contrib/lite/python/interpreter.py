@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import numpy as np
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # Lazy load since some of the performance benchmark skylark rules
@@ -162,6 +163,9 @@ class Interpreter(object):
       ValueError: If the interpreter could not resize the input tensor.
     """
     self._ensure_safe()
+    # `ResizeInputTensor` now only accepts int32 numpy array as `tensor_size
+    # parameter.
+    tensor_size = np.array(tensor_size, dtype=np.int32)
     self._interpreter.ResizeInputTensor(input_index, tensor_size)
 
   def get_output_details(self):
@@ -204,7 +208,7 @@ class Interpreter(object):
     for i in range(10):
       input().fill(3.)
       interpreter.invoke()
-      print("inference %s" % output)
+      print("inference %s" % output())
 
     Notice how this function avoids making a numpy array directly. This is
     because it is important to not hold actual numpy views to the data longer

@@ -94,7 +94,8 @@ class TestCase(test.TestCase):
       return 7
 
     try:
-      result, source = compiler.ast_to_object(node)
+      result, source = compiler.ast_to_object(node, include_source_map=True)
+
       result.tf = self.make_fake_mod('fake_tf', *symbols)
       fake_ag = self.make_fake_mod('fake_ag', converted_call)
       fake_ag.__dict__.update(operators.__dict__)
@@ -144,6 +145,7 @@ class TestCase(test.TestCase):
               recursive=True,
               autograph_decorators=()):
     node, source = parser.parse_entity(test_fn)
+    node = node.body[0]
     if namer is None:
       namer = FakeNamer()
     program_ctx = converter.ProgramContext(

@@ -24,13 +24,11 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training_arrays
@@ -39,7 +37,6 @@ from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -372,21 +369,14 @@ class Model(Network):
               'sample_weight_mode dictionary: "' + name + '". '
               'Only expected the following keys: ' + str(self.output_names))
       for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          if name not in sample_weight_mode:
-            raise ValueError(
-                'Output "' + name + '" missing from sample_weight_modes '
-                'dictionary')
-          if sample_weight_mode.get(name) == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + 'sample_weights')
-            sample_weight_modes.append(None)
+        if (i not in skip_target_weighing_indices and
+            name not in sample_weight_mode):
+          raise ValueError('Output "' + name +
+                           '" missing from sample_weight_modes dictionary')
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode.get(name), name, i)
         sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     elif isinstance(sample_weight_mode, list):
       if len(sample_weight_mode) != len(self.outputs):
         raise ValueError('When passing a list as sample_weight_mode, '
@@ -394,36 +384,17 @@ class Model(Network):
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed '
                          'sample_weight_mode=' + str(sample_weight_mode))
-      for i in range(len(self.output_names)):
-        if i in skip_target_weighing_indices:
-          weight = None
-          sample_weight_modes.append(None)
-        else:
-          mode = sample_weight_mode[i]
-          name = self.output_names[i]
-          if mode == 'temporal':
-            weight = K.placeholder(ndim=2, name=name + '_sample_weights')
-            sample_weight_modes.append('temporal')
-          else:
-            weight = K.placeholder(ndim=1, name=name + '_sample_weights')
-            sample_weight_modes.append(None)
+      for i, name in enumerate(self.output_names):
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode[i], name, i)
         sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     else:
       for i, name in enumerate(self.output_names):
-        if i in skip_target_weighing_indices:
-          sample_weight_modes.append(None)
-          sample_weights.append(None)
-        else:
-          if sample_weight_mode == 'temporal':
-            sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([[1.]], dtype=K.floatx()),
-                shape=[None, None], name=name + '_sample_weights'))
-            sample_weight_modes.append('temporal')
-          else:
-            sample_weights.append(array_ops.placeholder_with_default(
-                constant_op.constant([1.], dtype=K.floatx()),
-                shape=[None], name=name + '_sample_weights'))
-            sample_weight_modes.append(None)
+        weight, mode = training_utils.get_output_sample_weight_and_mode(
+            skip_target_weighing_indices, sample_weight_mode, name, i)
+        sample_weights.append(weight)
+        sample_weight_modes.append(mode)
     self.sample_weight_modes = sample_weight_modes
     self._feed_sample_weight_modes = []
     for i in range(len(self.outputs)):
@@ -486,43 +457,21 @@ class Model(Network):
         weights = sample_weights[i]
         output_metrics = nested_metrics[i]
         output_weighted_metrics = nested_weighted_metrics[i]
+        output_shape = self.outputs[i].get_shape().as_list()
+        loss_fn = self.loss_functions[i]
 
-        def handle_metrics(metrics, weights=None):
+        def handle_metrics(metrics, output_shape, loss_fn, weights=None):
+          """Invokes metric functions for the output."""
 
           for metric in metrics:
-            if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-              # custom handling of accuracy/crossentropy
-              # (because of class mode duality)
-              output_shape = self.outputs[i].get_shape().as_list()
-              if (output_shape[-1] == 1 or
-                  self.loss_functions[i] == losses.binary_crossentropy):
-                # case: binary accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.binary_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.binary_crossentropy
-              elif self.loss_functions[
-                  i] == losses.sparse_categorical_crossentropy:
-                # case: categorical accuracy/crossentropy with sparse targets
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.sparse_categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.sparse_categorical_crossentropy
-              else:
-                # case: categorical accuracy/crossentropy
-                if metric in ('accuracy', 'acc'):
-                  metric_fn = metrics_module.categorical_accuracy
-                elif metric in ('crossentropy', 'ce'):
-                  metric_fn = metrics_module.categorical_crossentropy
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            else:
-              metric_fn = metrics_module.get(metric)
-              weighted_metric_fn = training_utils.weighted_masked_objective(
-                  metric_fn)
-            metric_name = training_utils.get_base_metric_name(
+            metric_fn = training_utils.get_metric_function(
+                metric, output_shape=output_shape, loss_fn=loss_fn)
+            metric_name = training_utils.get_metric_name(
                 metric, weighted=weights is not None)
+
             with K.name_scope(metric_name):
+              weighted_metric_fn = training_utils.weighted_masked_objective(
+                  metric_fn)
               metric_result = weighted_metric_fn(
                   y_true, y_pred, weights=weights, mask=masks[i])
 
@@ -536,8 +485,9 @@ class Model(Network):
               self.stateful_metric_functions.append(metric_fn)
               self.metrics_updates += metric_fn.updates
 
-        handle_metrics(output_metrics)
-        handle_metrics(output_weighted_metrics, weights=weights)
+        handle_metrics(output_metrics, output_shape, loss_fn)
+        handle_metrics(
+            output_weighted_metrics, output_shape, loss_fn, weights=weights)
 
     # Prepare gradient updates and state updates.
     self.total_loss = total_loss
@@ -607,7 +557,6 @@ class Model(Network):
             updates=updates,
             name='train_function',
             **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_test_function(self):
     if not hasattr(self, 'test_function'):
@@ -625,7 +574,6 @@ class Model(Network):
           updates=self.state_updates + self.metrics_updates,
           name='test_function',
           **self._function_kwargs)
-    self._post_build_cleanup()
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -644,7 +592,6 @@ class Model(Network):
           updates=self.state_updates,
           name='predict_function',
           **kwargs)
-    self._post_build_cleanup()
 
   def _get_iterator_get_next_tensors(self, iterator):
     get_next_op = self._iterator_get_next.get(iterator, None)
@@ -991,10 +938,14 @@ class Model(Network):
         inputs = inputs[0]
 
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+        if context.executing_eagerly():
+          input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
+          self.build(input_shape=input_shape)
+        else:
+          self.symbolic_set_inputs(inputs)
       else:
         input_shape = (None,) + inputs.shape[1:]
-      self.build(input_shape=input_shape)
+        self.build(input_shape=input_shape)
     elif context.executing_eagerly():
       self._eager_set_inputs(inputs)
     else:

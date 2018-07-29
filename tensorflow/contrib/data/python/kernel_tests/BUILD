@@ -121,6 +121,7 @@ py_test(
     srcs = ["get_single_element_test.py"],
     deps = [
         "//tensorflow/contrib/data/python/ops:get_single_element",
+        "//tensorflow/contrib/data/python/ops:grouping",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
@@ -128,6 +129,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -190,6 +192,7 @@ py_test(
     deps = [
         "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/contrib/data/python/ops:error_ops",
+        "//tensorflow/contrib/data/python/ops:optimization",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
@@ -211,6 +214,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -232,7 +236,12 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "manual",
+        "no_oss",
+        "no_windows_gpu" +
+        "notap",
+    ],
 )
 
 py_test(

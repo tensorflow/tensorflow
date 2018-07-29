@@ -731,6 +731,54 @@ class LossWeightingTest(test.TestCase):
         model.fit(x_np, [y_np, y_np], epochs=1,
                   sample_weight={'1': bad_w_np})
 
+  def test_default_sample_weight(self):
+    """Verifies that fit works without having to set sample_weight."""
+
+    num_classes = 5
+    input_dim = 5
+    timesteps = 3
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(
+          keras.layers.TimeDistributed(
+              keras.layers.Dense(num_classes),
+              input_shape=(timesteps, input_dim)))
+
+      x = np.random.random((10, timesteps, input_dim))
+      y = np.random.random((10, timesteps, num_classes))
+
+      # sample_weight_mode is a list and mode value is None
+      model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode=[None])
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a list and mode value is `temporal`
+      model.compile(
+          loss='mse', optimizer='rmsprop', sample_weight_mode=['temporal'])
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a dict and mode value is None
+      model.compile(
+          loss='mse',
+          optimizer='rmsprop',
+          sample_weight_mode={'time_distributed': None})
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a dict and mode value is `temporal`
+      model.compile(
+          loss='mse',
+          optimizer='rmsprop',
+          sample_weight_mode={'time_distributed': 'temporal'})
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a not a list/dict and mode value is None
+      model.compile(loss='mse', optimizer='rmsprop', sample_weight_mode=None)
+      model.fit(x, y, epochs=1, batch_size=10)
+
+      # sample_weight_mode is a not a list/dict and mode value is `temporal`
+      model.compile(
+          loss='mse', optimizer='rmsprop', sample_weight_mode='temporal')
+      model.fit(x, y, epochs=1, batch_size=10)
+
 
 class LossMaskingTest(test.TestCase):
 
@@ -765,6 +813,22 @@ class LossMaskingTest(test.TestCase):
               keras.backend.variable(x),
               keras.backend.variable(y),
               keras.backend.variable(weights), keras.backend.variable(mask)))
+
+
+class LearningPhaseTest(test.TestCase):
+
+  def test_empty_model_no_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      self.assertFalse(model.uses_learning_phase)
+
+  def test_dropout_has_learning_phase(self):
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_dim=3))
+      model.add(keras.layers.Dropout(0.5))
+      model.add(keras.layers.Dense(2))
+      self.assertTrue(model.uses_learning_phase)
 
 
 class TestDynamicTrainability(test.TestCase):
