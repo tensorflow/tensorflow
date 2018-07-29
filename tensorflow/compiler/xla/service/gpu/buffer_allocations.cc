@@ -173,45 +173,6 @@ void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,
   buffers_[buffer_index] = buffer;
 }
 
-static const HloInstruction& InstrForConstantBufferAllocation(
-    const BufferAllocation& allocation) {
-  CHECK(allocation.is_constant());
-  HloInstruction* const_instr = nullptr;
-  for (const auto& buffer_offset_pair : allocation.assigned_buffers()) {
-    const LogicalBuffer* buffer = buffer_offset_pair.first;
-    // BufferAssignment may have assigned non-constant instructions to this
-    // allocation too so we can't CHECK this condition.  E.g. for
-    //
-    //   while(init = constant, body = identity, cond = ...)
-    //
-    // the LogicalBuffer for the kWhile instruction will have the same
-    // BufferAllocation as the LogicalBuffer for the (init) constant.
-    if (buffer->instruction()->opcode() == HloOpcode::kConstant) {
-      CHECK_EQ(const_instr, nullptr)
-          << const_instr->ToString() << " " << buffer->ToString();
-      const_instr = buffer->instruction();
-    }
-  }
-  CHECK_NE(const_instr, nullptr);
-  return *const_instr;
-}
-
-string ConstantBufferAllocationToGlobalName(
-    const BufferAllocation& allocation) {
-  string instr_name = InstrForConstantBufferAllocation(allocation).name();
-  for (char& c : instr_name) {
-    if (c == '.') {
-      c = '_';
-    }
-  }
-  return tensorflow::strings::StrCat("buffer_for_", instr_name);
-}
-
-const Literal& LiteralForConstantAllocation(
-    const BufferAllocation& allocation) {
-  return InstrForConstantBufferAllocation(allocation).literal();
-}
-
 bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {
   // LLVM can sometimes do interesting optimizations using scalar constants.
   return ShapeUtil::IsScalar(literal.shape());

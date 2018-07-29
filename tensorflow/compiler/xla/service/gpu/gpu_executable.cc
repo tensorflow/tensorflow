@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -190,7 +191,9 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
 
   se::MultiModuleLoaderSpec module_spec;
-  module_spec.AddCudaCubinInMemory(cubin());
+  if (!cubin().empty()) {
+    module_spec.AddCudaCubinInMemory(cubin());
+  }
   module_spec.AddCudaPtxInMemory(ptx().c_str());
 
   tensorflow::gtl::FlatMap<int64, se::DeviceMemoryBase> globals;
@@ -204,13 +207,15 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryBase global,
           executor->GetUntypedSymbol(
-              ConstantBufferAllocationToGlobalName(allocation), module_handle));
+              llvm_ir::ConstantBufferAllocationToGlobalName(allocation),
+              module_handle));
       VLOG(3) << "Resolved global "
-              << ConstantBufferAllocationToGlobalName(allocation) << " to "
-              << global.opaque();
+              << llvm_ir::ConstantBufferAllocationToGlobalName(allocation)
+              << " to " << global.opaque();
       InsertOrDie(&globals, i, global);
 
-      const Literal& literal = LiteralForConstantAllocation(allocation);
+      const Literal& literal =
+          llvm_ir::LiteralForConstantAllocation(allocation);
       CHECK(ShapeUtil::IsArray(literal.shape()));
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
         VLOG(3) << "H2D memcpy for constant with shape "

@@ -26,6 +26,12 @@ from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.ops import math_ops
 
 
+# ================== Old estimator interface===================================
+# The estimators below were designed for old feature columns and old estimator
+# interface. They can be used with new feature columns and losses by setting
+# use_core_libs = True.
+
+
 class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
   """An estimator using gradient boosted decision trees."""
 
@@ -356,9 +362,16 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
         config=config,
         feature_engineering_fn=feature_engineering_fn)
 
+# ================== New Estimator interface===================================
+# The estimators below use new core Estimator interface and must be used with
+# new feature columns and heads.
+
 
 class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
-  """An estimator using gradient boosted decision trees."""
+  """An estimator using gradient boosted decision trees.
+
+  Useful for training with user specified `Head`.
+  """
 
   def __init__(self,
                learner_config,
@@ -374,6 +387,36 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
                logits_modifier_function=None,
                center_bias=True,
                output_leaf_index=False):
+    """Initializes a core version of GradientBoostedDecisionTreeEstimator.
+
+    Args:
+      learner_config: A config for the learner.
+      examples_per_layer: Number of examples to accumulate before growing a
+        layer. It can also be a function that computes the number of examples
+        based on the depth of the layer that's being built.
+      head: `Head` instance.
+      num_trees: An int, number of trees to build.
+      feature_columns: A list of feature columns.
+      weight_column_name: Name of the column for weights, or None if not
+        weighted.
+      model_dir: Directory for model exports, etc.
+      config: `RunConfig` object to configure the runtime settings.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
+      feature_engineering_fn: Feature engineering function. Takes features and
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
+      logits_modifier_function: A modifier function for the logits.
+      center_bias: Whether a separate tree should be created for first fitting
+        the bias.
+      output_leaf_index: whether to output leaf indices along with predictions
+        during inference. The leaf node indexes are available in predictions
+        dict by the key 'leaf_index'. For example,
+        result_dict = classifier.predict(...)
+        for example_prediction_result in result_dict:
+          # access leaf index list by example_prediction_result["leaf_index"]
+          # which contains one leaf index per tree
+    """
 
     def _model_fn(features, labels, mode, config):
       return model.model_builder(
@@ -396,4 +439,88 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
           output_type=model.ModelBuilderOutputType.ESTIMATOR_SPEC)
 
     super(CoreGradientBoostedDecisionTreeEstimator, self).__init__(
+        model_fn=_model_fn, model_dir=model_dir, config=config)
+
+
+class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
+  """A ranking estimator using gradient boosted decision trees."""
+
+  def __init__(
+      self,
+      learner_config,
+      examples_per_layer,
+      head,
+      ranking_model_pair_keys,
+      num_trees=None,
+      feature_columns=None,
+      weight_column_name=None,
+      model_dir=None,
+      config=None,
+      label_keys=None,
+      logits_modifier_function=None,
+      center_bias=False,
+      output_leaf_index=False,
+  ):
+    """Initializes a GradientBoostedDecisionTreeRanker instance.
+
+    This is an estimator that can be trained off the pairwise data and can be
+    used for inference on non-paired data. This is essentially LambdaMart.
+    Args:
+      learner_config: A config for the learner.
+      examples_per_layer: Number of examples to accumulate before growing a
+        layer. It can also be a function that computes the number of examples
+        based on the depth of the layer that's being built.
+      head: `Head` instance.
+      ranking_model_pair_keys: Keys to distinguish between features
+        for left and right part of the training pairs for ranking. For example,
+        for an Example with features "a.f1" and "b.f1", the keys would be
+        ("a", "b").
+      num_trees: An int, number of trees to build.
+      feature_columns: A list of feature columns.
+      weight_column_name: Name of the column for weights, or None if not
+        weighted.
+      model_dir: Directory for model exports, etc.
+      config: `RunConfig` object to configure the runtime settings.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
+      logits_modifier_function: A modifier function for the logits.
+      center_bias: Whether a separate tree should be created for first fitting
+        the bias.
+      output_leaf_index: whether to output leaf indices along with predictions
+        during inference. The leaf node indexes are available in predictions
+        dict by the key 'leaf_index'. It is a Tensor of rank 2 and its shape is
+        [batch_size, num_trees].
+        For example,
+        result_iter = classifier.predict(...)
+        for result_dict in result_iter:
+          # access leaf index list by result_dict["leaf_index"]
+          # which contains one leaf index per tree
+
+    Raises:
+      ValueError: If learner_config is not valid.
+    """
+
+    def _model_fn(features, labels, mode, config):
+      return model.ranking_model_builder(
+          features=features,
+          labels=labels,
+          mode=mode,
+          config=config,
+          params={
+              'head': head,
+              'n_classes': 2,
+              'feature_columns': feature_columns,
+              'learner_config': learner_config,
+              'num_trees': num_trees,
+              'weight_column_name': weight_column_name,
+              'examples_per_layer': examples_per_layer,
+              'center_bias': center_bias,
+              'logits_modifier_function': logits_modifier_function,
+              'use_core_libs': True,
+              'output_leaf_index': output_leaf_index,
+              'ranking_model_pair_keys': ranking_model_pair_keys,
+          },
+          output_type=model.ModelBuilderOutputType.ESTIMATOR_SPEC)
+
+    super(CoreGradientBoostedDecisionTreeRanker, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

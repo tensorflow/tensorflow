@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -114,7 +115,8 @@ void HloToIrBindings::EmitBasePointersForHlos(
           } else if (slice.allocation()->is_constant()) {
             llvm::Value* global_for_constant =
                 module_->getGlobalVariable(llvm_ir::AsStringRef(
-                    ConstantBufferAllocationToGlobalName(*slice.allocation())));
+                    llvm_ir::ConstantBufferAllocationToGlobalName(
+                        *slice.allocation())));
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
             const int64 offset = slice.offset();
