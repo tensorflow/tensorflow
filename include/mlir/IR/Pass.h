@@ -26,18 +26,19 @@ class Module;
 class Pass {
 public:
   virtual ~Pass() = default;
+  virtual void runOnModule(Module *m) = 0;
 };
 
 class ModulePass : public Pass {
 public:
-  virtual void runOnModule(Module *m) = 0;
+  virtual void runOnModule(Module *m) override = 0;
 };
 
 class FunctionPass : public Pass {
 public:
   virtual void runOnCFGFunction(CFGFunction *f) = 0;
   virtual void runOnMLFunction(MLFunction *f) = 0;
-  virtual void runOnModule(Module *m);
+  virtual void runOnModule(Module *m) override;
 };
 
 class CFGFunctionPass : public FunctionPass {

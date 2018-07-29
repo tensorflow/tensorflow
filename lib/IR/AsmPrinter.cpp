@@ -444,20 +444,20 @@ void ModulePrinter::printAffineBinaryOpExpr(const AffineBinaryOpExpr *expr) {
 void ModulePrinter::printAffineMap(const AffineMap *map) {
   // Dimension identifiers.
   os << '(';
-  for (int i = 0; i < (int)map->getNumDims() - 1; i++)
-    os << "d" << i << ", ";
+  for (int i = 0; i < (int)map->getNumDims() - 1; ++i)
+    os << 'd' << i << ", ";
   if (map->getNumDims() >= 1)
-    os << "d" << map->getNumDims() - 1;
-  os << ")";
+    os << 'd' << map->getNumDims() - 1;
+  os << ')';
 
   // Symbolic identifiers.
-  if (map->getNumSymbols() >= 1) {
-    os << " [";
-    for (int i = 0; i < (int)map->getNumSymbols() - 1; i++)
-      os << "s" << i << ", ";
+  if (map->getNumSymbols() != 0) {
+    os << '[';
+    for (unsigned i = 0; i < map->getNumSymbols() - 1; ++i)
+      os << 's' << i << ", ";
     if (map->getNumSymbols() >= 1)
-      os << "s" << map->getNumSymbols() - 1;
-    os << "]";
+      os << 's' << map->getNumSymbols() - 1;
+    os << ']';
   }
 
   // AffineMap should have at least one result.
@@ -466,7 +466,7 @@ void ModulePrinter::printAffineMap(const AffineMap *map) {
   os << " -> (";
   interleaveComma(map->getResults(),
                   [&](AffineExpr *expr) { printAffineExpr(expr); });
-  os << ")";
+  os << ')';
 
   if (!map->isBounded()) {
     return;
@@ -476,7 +476,7 @@ void ModulePrinter::printAffineMap(const AffineMap *map) {
   os << " size (";
   interleaveComma(map->getRangeSizes(),
                   [&](AffineExpr *expr) { printAffineExpr(expr); });
-  os << ")";
+  os << ')';
 }
 
 //===----------------------------------------------------------------------===//

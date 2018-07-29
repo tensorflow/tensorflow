@@ -49,18 +49,20 @@ static cl::opt<bool>
 checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
                   cl::init(false));
 
-// TODO(clattner): replace these bool options with an enum list option.
-static cl::opt<bool> convertToCFGOpt(
-    "convert-to-cfg",
-    cl::desc("Convert all ML functions in the module to CFG ones"));
+enum Passes {
+  ConvertToCFG,
+  UnrollInnermostLoops,
+  TFRaiseControlFlow,
+};
 
-static cl::opt<bool> unrollInnermostLoops("unroll-innermost-loops",
-                                          cl::desc("Unroll innermost loops"),
-                                          cl::init(false));
-
-static cl::opt<bool> raiseTFControlFlow(
-    "tf-raise-control-flow",
-    cl::desc("Raise TensorFlow Switch/Match nodes to a CFG"));
+static cl::list<Passes> passList(
+    "", cl::desc("Compiler passes to run"),
+    cl::values(clEnumValN(ConvertToCFG, "convert-to-cfg",
+                          "Convert all ML functions in the module to CFG ones"),
+               clEnumValN(UnrollInnermostLoops, "unroll-innermost-loops",
+                          "Unroll innermost loops"),
+               clEnumValN(TFRaiseControlFlow, "tf-raise-control-flow",
+                          "Dynamic TensorFlow Switch/Match nodes to a CFG")));
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -97,23 +99,21 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
   if (!module)
     return OptFailure;
 
-  // Convert ML functions into CFG functions
-  if (convertToCFGOpt) {
-    auto *pass = createConvertToCFGPass();
-    pass->runOnModule(module.get());
-    delete pass;
-    module->verify();
-  }
+  // Run each of the passes that were selected.
+  for (auto passKind : passList) {
+    Pass *pass = nullptr;
+    switch (passKind) {
+    case ConvertToCFG:
+      pass = createConvertToCFGPass();
+      break;
+    case UnrollInnermostLoops:
+      pass = createLoopUnrollPass();
+      break;
+    case TFRaiseControlFlow:
+      pass = createRaiseTFControlFlowPass();
+      break;
+    }
 
-  if (unrollInnermostLoops) {
-    auto *pass = createLoopUnrollPass();
-    pass->runOnModule(module.get());
-    delete pass;
-    module->verify();
-  }
-
-  if (raiseTFControlFlow) {
-    auto *pass = createRaiseTFControlFlowPass();
     pass->runOnModule(module.get());
     delete pass;
     module->verify();

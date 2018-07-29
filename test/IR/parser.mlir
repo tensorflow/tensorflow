@@ -3,8 +3,8 @@
 //
 // RUN: %S/../../mlir-opt %s -o - | FileCheck %s
 
-// CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4) [s0] -> (d0, d1, d2, d3, d4)
-#map0 = (d0, d1, d2, d3, d4) [s0] -> (d0, d1, d2, d3, d4)
+// CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
+#map0 = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d3, d4)
 
 // CHECK-DAG: #map{{[0-9]+}} = (d0) -> (d0)
 #map1 = (d0) -> (d0)
