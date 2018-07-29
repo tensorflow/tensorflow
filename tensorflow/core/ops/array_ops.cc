@@ -2881,7 +2881,7 @@ REGISTER_OP("ScatterNdNonAliasingAdd")
     .Input("indices: Tindices")
     .Input("updates: T")
     .Output("output: T")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn(shape_inference::ScatterNdUpdateShape);
 

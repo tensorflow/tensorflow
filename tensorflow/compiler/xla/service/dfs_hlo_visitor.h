@@ -212,6 +212,7 @@ class DfsHloVisitorBase {
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
   virtual Status HandleConstant(HloInstructionPtr hlo) = 0;
+  virtual Status HandleIota(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetTupleElement(HloInstructionPtr hlo) = 0;
   virtual Status HandleReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;

@@ -114,6 +114,7 @@ REGISTER_OP("Cast")
     .Output("y: DstT")
     .Attr("SrcT: type")
     .Attr("DstT: type")
+    .Attr("Truncate: bool = false")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("_HostCast")
@@ -121,6 +122,7 @@ REGISTER_OP("_HostCast")
     .Output("y: DstT")
     .Attr("SrcT: type")
     .Attr("DstT: type")
+    .Attr("Truncate: bool = false")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Cast x of type SrcT to y of DstT.
@@ -1504,6 +1506,13 @@ REGISTER_OP("QuantizedAdd")
     .SetIsCommutative()
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::BroadcastBinaryOpShapeFn(c));
+      // min_x, max_x, min_y, max_y should be scalar.
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
       return Status::OK();

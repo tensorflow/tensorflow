@@ -58,6 +58,7 @@ cc_library(
     }),
     deps = [
         ":op_macros",
+        "//tensorflow/contrib/lite:arena_planner",
         "//tensorflow/contrib/lite:context",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
     ],
@@ -175,6 +176,8 @@ cc_library(
         "mfcc.cc",
         "mul.cc",
         "neg.cc",
+        "one_hot.cc",
+        "pack.cc",
         "pad.cc",
         "pooling.cc",
         "pow.cc",
@@ -1149,6 +1152,33 @@ tf_cc_test(
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "pack_test",
+    size = "small",
+    srcs = ["pack_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "one_hot_test",
+    size = "small",
+    srcs = ["one_hot_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

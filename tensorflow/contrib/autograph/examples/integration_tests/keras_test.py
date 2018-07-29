@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import tensorflow as tf
 
+from tensorflow.contrib import autograph
+
 
 class MinimalKeras(tf.keras.Model):
 
@@ -27,10 +29,33 @@ class MinimalKeras(tf.keras.Model):
     return x * 3
 
 
+class ModelWithStaticConditional(object):
+
+  def __init__(self, initial):
+    self.initial = initial
+    if self.initial:
+      self.h = 15
+
+  @autograph.convert()
+  def call(self):
+    x = 10
+    if self.initial:
+      x += self.h
+    return x
+
+
 class KerasTest(tf.test.TestCase):
 
   def test_basic(self):
     MinimalKeras()
+
+  def test_conditional_attributes_False(self):
+    model = ModelWithStaticConditional(False)
+    self.assertEqual(model.call(), 10)
+
+  def test_conditional_attributes_True(self):
+    model = ModelWithStaticConditional(True)
+    self.assertEqual(model.call(), 25)
 
 
 if __name__ == '__main__':

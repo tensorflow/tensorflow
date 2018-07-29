@@ -25,8 +25,8 @@ from tensorflow.contrib.cloud.python.ops.bigquery_reader_ops import *
 from tensorflow.contrib.cloud.python.ops.gcs_config_ops import *
 
 if os.name != 'nt':
-  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigTable
   from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableClient
+  from tensorflow.contrib.bigtable.python.ops.bigtable_api import BigtableTable
 
 del os
 
@@ -34,8 +34,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'BigQueryReader',
-    'BigTable',
     'BigtableClient',
+    'BigtableTable',
     'BlockCacheParams',
     'configure_colab_session',
     'configure_gcs',

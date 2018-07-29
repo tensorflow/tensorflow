@@ -181,6 +181,23 @@ cc_library(
 )
 
 cc_library(
+    name = "sort_util",
+    srcs = ["sort_util.cc"],
+    hdrs = ["sort_util.h"],
+    deps = [
+        ":ir_array",
+        ":llvm_loop",
+        ":llvm_util",
+        ":loop_emitter",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:partition_assignment",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
     name = "tuple_ops",
     srcs = ["tuple_ops.cc"],
     hdrs = ["tuple_ops.h"],
@@ -203,6 +220,25 @@ cc_library(
         ":llvm_loop",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
+    name = "buffer_assignment_util",
+    srcs = ["buffer_assignment_util.cc"],
+    hdrs = ["buffer_assignment_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+    ],
+)
+
+cc_library(
+    name = "math_ops",
+    srcs = ["math_ops.cc"],
+    hdrs = ["math_ops.h"],
+    deps = [
+        ":llvm_util",
         "@llvm//:core",
     ],
 )

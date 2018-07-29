@@ -119,7 +119,7 @@ Status CheckIsTokenOperand(const HloInstruction* instruction,
   const HloInstruction* token = instruction->operand(operand_no);
   if (!ShapeUtil::Equal(token->shape(), ShapeUtil::MakeTokenShape())) {
     return InternalError(
-        "Expected operand %lld to be token-shaped, actual shape is"
+        "Expected operand %lld to be token-shaped, actual shape is "
         "%s:\n%s",
         operand_no, ShapeUtil::HumanString(token->shape()).c_str(),
         instruction->ToString().c_str());
@@ -208,6 +208,12 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
 
 Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
   return CheckShape(constant, constant->literal().shape());
+}
+
+Status ShapeVerifier::HandleIota(HloInstruction* iota) {
+  return ShapeUtil::Rank(iota->shape()) == 1
+             ? Status::OK()
+             : InternalError("Iota only supports arrays of rank 1.");
 }
 
 Status ShapeVerifier::HandleGetTupleElement(HloInstruction* get_tuple_element) {

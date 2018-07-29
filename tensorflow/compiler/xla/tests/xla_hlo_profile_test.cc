@@ -18,10 +18,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -133,7 +134,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   DeviceMemoryAllocator* allocator = backend->memory_allocator();
   auto* transfer_manager = backend->transfer_manager();
   TF_ASSERT_OK_AND_ASSIGN(
-      Backend::StreamPtr stream_ptr,
+      StreamPool::Ptr stream_ptr,
       backend->BorrowStream(backend->default_device_ordinal()));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -172,6 +173,7 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       auto execution_result,
       executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
                                   &hlo_execution_profile));
+  TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
   *profile_output =

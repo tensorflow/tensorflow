@@ -28,10 +28,12 @@ py_library(
     srcs = ["get_single_element.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":grouping",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -129,6 +131,7 @@ py_library(
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//third_party/py/numpy",
     ],
 )
 

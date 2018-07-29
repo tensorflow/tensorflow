@@ -1005,6 +1005,28 @@ ENTRY CrossReplicaSumWithSubgroups {
 }
 
 )"
+},
+// Iota
+{
+"Iota",
+R"(HloModule iota
+
+ENTRY Iota {
+  ROOT iota = f32[100]{0} iota()
+}
+
+)"
+},
+// custom-call with window and dim_labels
+{
+"CustomCallWithWindowAndDimLabels",
+R"(HloModule CustomCallWithWindowAndDimLabels
+
+ENTRY Computation {
+  ROOT r = f32[100]{0} custom-call(), window={size=2x2}, dim_labels=b01f_01io->b01f, custom_call_target="target"
+}
+
+)"
 }
   });
   // clang-format on

@@ -1997,6 +1997,30 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleReducePrecision<ElementwiseT>(reduce_precision);
   }
 
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, float>::value ||
+                std::is_same<NativeT, int32>::value ||
+                std::is_same<NativeT, uint32>::value>::type* = nullptr>
+  Status HandleIota(HloInstruction* iota) {
+    auto result = MakeUnique<Literal>(iota->shape());
+    auto data = result->data<ReturnT>();
+    std::iota(data.begin(), data.end(), 0);
+    parent_->evaluated_[iota] = std::move(result);
+    return Status::OK();
+  }
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_same<NativeT, float>::value ||
+                  std::is_same<NativeT, int32>::value ||
+                  std::is_same<NativeT, uint32>::value)>::type* = nullptr>
+  Status HandleIota(HloInstruction* iota) {
+    return InvalidArgument("Unsupported type for iota");
+  }
+  Status HandleIota(HloInstruction* iota) override {
+    return HandleIota<ReturnT>(iota);
+  }
+
  private:
   // Creates a vector of multipliers which can be used to create a linear index
   // into shape.
@@ -2054,10 +2078,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                              start_indices_typed.end());
 
     // Clamp the start indices so the slice is in-bounds w.r.t the operand.
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to officially document different behavior.
     for (int64 i = 0; i < start.size(); ++i) {
       start[i] = std::min<int64>(
           std::max(int64{0}, start[i]),
@@ -2091,10 +2111,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                              start_indices_typed.end());
     // Clamp the update start indices so the slice is in-bounds w.r.t the
     // operand.
-
-    // TODO(b/74360564): This is implementation defined behavior, but is
-    // currently respected by all implementations. Change this if we ever decide
-    // to oficially document different behavior.
     for (int64 i = 0; i < rank; ++i) {
       start[i] = std::min<int64>(
           std::max<int64>(0, start[i]),

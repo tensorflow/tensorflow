@@ -66,7 +66,7 @@ inline bool CanEmitFusedDynamicUpdateSliceInPlace(
 Status EmitDynamicUpdateSliceInPlace(
     tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
     const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* ir_builder);
+    llvm::IRBuilder<>* b);
 
 // Given a loop-fusion node whose root is a dynamic-update-slice op whose
 // array-to-be-updated and output share the same buffer slice, emits
@@ -76,7 +76,7 @@ Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    llvm::IRBuilder<>* ir_builder);
+    llvm::IRBuilder<>* b);
 
 // Same as EmitFusedDynamicUpdateSliceInPlace, except emits a parallel loop with
 // the given launch dimensions.
@@ -84,8 +84,7 @@ Status EmitParallelFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
     tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
-    const gpu::LaunchDimensions& launch_dimensions,
-    llvm::IRBuilder<>* ir_builder);
+    const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b);
 
 }  // namespace llvm_ir
 }  // namespace xla

@@ -88,6 +88,11 @@ Status CpuExecutable::AllocateBuffers(
       continue;
     }
 
+    if (allocation.is_constant()) {
+      VLOG(3) << "allocation #" << i << " is a constant";
+      continue;
+    }
+
     if (allocation.is_thread_local()) {
       VLOG(3) << "buffer #" << i << " is thread-local";
       continue;

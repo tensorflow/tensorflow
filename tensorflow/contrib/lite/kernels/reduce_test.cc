@@ -22,6 +22,7 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 
 class BaseOpModel : public SingleOpModel {
  public:
@@ -197,6 +198,16 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
 
+TEST(ConstFloatMeanOpTest, Scalar) {
+  std::vector<float> data = {3.27};
+  MeanOpConstModel m({TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}}, {},
+                     {0}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.27})));
+}
+
 TEST(DynamicFloatMeanOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -340,6 +351,16 @@ TEST(DynamicFloatSumOpTest, NotKeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({144, 156})));
+}
+
+TEST(ConstFloatSumOpTest, Scalar) {
+  std::vector<float> data = {17.};
+  SumOpConstModel m({TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}}, {}, {0},
+                    false);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({17.})));
 }
 
 TEST(DynamicFloatSumOpTest, KeepDims) {
@@ -628,6 +649,20 @@ TEST(DynamicUint8MaxOpTest, KeepDims) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(
                   ArrayFloatNear({11.1294, 0.862745}, kQuantizedTolerance)));
+}
+
+TEST(DynamicUint8MaxOpTest, Scalar) {
+  float kQuantizedTolerance = GetTolerance(-10.0, 12.0);
+  std::vector<float> data = {11.14};
+  MaxOpDynamicModel m({TensorType_UINT8, {}, -10.0, 12.0},
+                      {TensorType_UINT8, {}, -10.0, 12.0},
+                      {TensorType_INT32, {1}}, true);
+  std::vector<int> axis = {0};
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({11.1294}, kQuantizedTolerance)));
 }
 
 }  // namespace

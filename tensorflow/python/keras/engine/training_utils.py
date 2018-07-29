@@ -26,10 +26,12 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 
 
@@ -700,17 +702,16 @@ def populate_metric_names(model):
   for i in range(len(model.outputs)):
     metrics = model.nested_metrics[i]
     for metric in metrics:
-      base_metric_name = get_base_metric_name(metric)
+      base_metric_name = get_metric_name(metric)
       add_metric_name(model, base_metric_name, i)
 
 
-def get_base_metric_name(metric, weighted=False):
-  """Returns the metric name given the metric function.
+def get_metric_name(metric, weighted=False):
+  """Returns the metric name corresponding to the given metric input.
 
   Arguments:
       metric: Metric function name or reference.
-      weighted: Boolean indicating if the metric for which we are adding
-          names is weighted.
+      weighted: Boolean indicating if the given metric is weighted.
 
   Returns:
       a metric name.
@@ -732,6 +733,36 @@ def get_base_metric_name(metric, weighted=False):
     metric_name = metric_name_prefix + metric_name
 
   return metric_name
+
+
+def get_metric_function(metric, output_shape=None, loss_fn=None):
+  """Returns the metric function corresponding to the given metric input.
+
+  Arguments:
+      metric: Metric function name or reference.
+      output_shape: The shape of the output that this metric
+          will be calculated for.
+      loss_fn: The loss function used.
+
+  Returns:
+      The metric function.
+  """
+  if metric in ['accuracy', 'acc']:
+    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
+      return metrics_module.binary_accuracy  # case: binary accuracy
+    elif loss_fn == losses.sparse_categorical_crossentropy:
+      # case: categorical accuracy with sparse targets
+      return metrics_module.sparse_categorical_accuracy
+    return metrics_module.categorical_accuracy  # case: categorical accuracy
+  elif metric in ['crossentropy', 'ce']:
+    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
+      return metrics_module.binary_crossentropy  # case: binary cross-entropy
+    elif loss_fn == losses.sparse_categorical_crossentropy:
+      # case: categorical cross-entropy with sparse targets
+      return metrics_module.sparse_categorical_crossentropy
+    # case: categorical cross-entropy
+    return metrics_module.categorical_crossentropy
+  return metrics_module.get(metric)
 
 
 def add_metric_name(model, metric_name, index):
@@ -856,3 +887,25 @@ def cast_if_floating_dtype(x):
         for val in x
     ]
   return math_ops.cast(x, dtype=K.floatx()) if x.dtype.is_floating else x
+
+
+def get_output_sample_weight_and_mode(skip_target_weighing_indices,
+                                      sample_weight_mode, output_name,
+                                      output_index):
+  """Returns the sample weight and weight mode for a single output."""
+  if output_index in skip_target_weighing_indices:
+    return None, None
+
+  if sample_weight_mode == 'temporal':
+    default_value = [[1.]]
+    shape = [None, None]
+    mode = 'temporal'
+  else:
+    default_value = [1.]
+    shape = [None]
+    mode = None
+  weight = array_ops.placeholder_with_default(
+      constant_op.constant(default_value, dtype=K.floatx()),
+      shape=shape,
+      name=output_name + '_sample_weights')
+  return weight, mode

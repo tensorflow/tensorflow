@@ -82,7 +82,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'max_value\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'max_value\', \'negative_slope\', \'threshold\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'0\', \'0\'], "
   }
   member_method {
     name: "add_loss"

@@ -740,6 +740,7 @@ class TensorBoard(Callback):
     self.write_images = write_images
     self.batch_size = batch_size
     self._current_batch = 0
+    self._total_batches_seen = 0
     # abstracted writer class to be able to stub for testing
     self._writer_class = tf_summary.FileWriter
     self.embeddings_freq = embeddings_freq
@@ -883,6 +884,24 @@ class TensorBoard(Callback):
         self._epoch + self._current_val_batch / self._validation_batches)
     self._current_val_batch += 1
 
+  def _write_custom_summaries(self, step, logs=None):
+    """Writes metrics out as custom scalar summaries.
+
+    Arguments:
+        step: the global step to use for Tensorboard.
+        logs: dict. Keys are scalar summary names, values are
+            NumPy scalars.
+
+    """
+    logs = logs or {}
+    for name, value in logs.items():
+      summary = tf_summary.Summary()
+      summary_value = summary.value.add()
+      summary_value.simple_value = value.item()
+      summary_value.tag = name
+      self.writer.add_summary(summary, step)
+    self.writer.flush()
+
   def on_train_begin(self, logs=None):
     """Checks if histogram summaries can be run."""
 
@@ -898,6 +917,16 @@ class TensorBoard(Callback):
       if self._validation_batches == 0:
         raise ValueError(
             'If printing histograms, validation data must have length > 0.')
+
+  def on_batch_end(self, batch, logs=None):
+    """Writes scalar summaries for metrics on every training batch."""
+    # Don't output batch_size and batch number as Tensorboard summaries
+    logs = logs or {}
+    batch_logs = {('batch_' + k): v
+                  for k, v in logs.items()
+                  if k not in ['batch', 'size']}
+    self._write_custom_summaries(self._total_batches_seen, batch_logs)
+    self._total_batches_seen += 1
 
   def on_epoch_begin(self, epoch, logs=None):
     """Add histogram op to Model test_function callbacks, reset batch count."""
@@ -915,7 +944,12 @@ class TensorBoard(Callback):
   def on_epoch_end(self, epoch, logs=None):
     """Checks if summary ops should run next epoch, logs scalar summaries."""
 
-    logs = logs or {}
+    # don't output batch_size and
+    # batch number as Tensorboard summaries
+    logs = {('epoch_' + k): v
+            for k, v in logs.items()
+            if k not in ['batch', 'size']}
+    self._write_custom_summaries(epoch, logs)
 
     # pop the histogram summary op after each epoch
     if self.histogram_freq:
@@ -963,16 +997,6 @@ class TensorBoard(Callback):
                           epoch)
 
           i += self.batch_size
-
-    for name, value in logs.items():
-      if name in ['batch', 'size']:
-        continue
-      summary = tf_summary.Summary()
-      summary_value = summary.value.add()
-      summary_value.simple_value = value.item()
-      summary_value.tag = name
-      self.writer.add_summary(summary, epoch)
-    self.writer.flush()
 
   def on_train_end(self, logs=None):
     self.writer.close()

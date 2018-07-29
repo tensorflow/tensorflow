@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string.h>
 #include <map>
-#include <string>
 #include <vector>
 #include <memory>
 
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/padding.h"
@@ -298,8 +298,8 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(const MklConvFwdParams& convFwdDims) {
-    std::string prefix = "conv2d_fwd_";
+  static string CreateKey(const MklConvFwdParams& convFwdDims) {
+    string prefix = "conv2d_fwd_";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convFwdDims.src_dims);
@@ -314,12 +314,12 @@ class MklConv2DFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 
   MklPrimitive* GetConv2DFwd(const MklConvFwdParams& convFwdDims) {
-    std::string key = CreateKey(convFwdDims);
+    string key = CreateKey(convFwdDims);
     return this->GetOp(key);
   }
 
   void SetConv2DFwd(const MklConvFwdParams& convFwdDims, MklPrimitive* op) {
-    std::string key = CreateKey(convFwdDims);
+    string key = CreateKey(convFwdDims);
     this->SetOp(key, op);
   }
 };
@@ -930,10 +930,9 @@ class MklConv2DOp : public OpKernel {
         conv2d_fwd->Execute(src_data, filter_data, dst_data);
       }
     } catch (mkldnn::error &e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) +
-                       ", in file " + std::string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
+      string error_msg = tensorflow::strings::StrCat(
+          "Status: ", e.status, ", message: ", string(e.message), ", in file ",
+          __FILE__, ":", __LINE__);
       OP_REQUIRES_OK(context,
         errors::Aborted("Operation received an exception:", error_msg));
     }

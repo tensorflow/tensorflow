@@ -220,7 +220,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
         self.assertNotEqual(out4.max(), out5.max())
 
   @parameterized.named_parameters(
-      *testing_utils.generate_combinations_with_testcase_name(
+      *test_util.generate_combinations_with_testcase_name(
           rnn_type=['LSTM', 'GRU'], to_cudnn=[True, False],
           bidirectional=[True, False], implementation=[1, 2],
           model_nest_level=[1, 2], model_type=['seq', 'func']))
@@ -301,7 +301,7 @@ class CuDNNTest(test.TestCase, parameterized.TestCase):
     os.remove(fname)
 
   @parameterized.named_parameters(
-      *testing_utils.generate_combinations_with_testcase_name(
+      *test_util.generate_combinations_with_testcase_name(
           rnn_type=['LSTM', 'GRU'], to_cudnn=[True, False]))
   def test_load_weights_between_noncudnn_rnn_time_distributed(self, rnn_type,
                                                               to_cudnn):

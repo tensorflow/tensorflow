@@ -282,6 +282,88 @@ class TransformerTest(test.TestCase):
     self.assertTrue(isinstance(node.body[1].body[0], gast.Assign))
     self.assertTrue(isinstance(node.body[1].body[1], gast.Return))
 
+  def test_robust_error_on_list_visit(self):
+
+    class BrokenTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        # This is broken because visit expects a single node, not a list, and
+        # the body of an if is a list.
+        # Importantly, the default error handling in visit also expects a single
+        # node.  Therefore, mistakes like this need to trigger a type error
+        # before the visit called here installs its error handler.
+        # That type error can then be caught by the enclosing call to visit,
+        # and correctly blame the If node.
+        self.visit(node.body)
+        return node
+
+    def test_function(x):
+      if x > 0:
+        return x
+
+    tr = BrokenTransformer(self._simple_source_info())
+
+    node, _ = parser.parse_entity(test_function)
+    with self.assertRaises(transformer.AutographParseError) as cm:
+      node = tr.visit(node)
+    obtained_message = str(cm.exception)
+    expected_message = r'expected "ast.AST", got "\<(type|class) \'list\'\>"'
+    self.assertRegexpMatches(obtained_message, expected_message)
+    # The exception should point at the if statement, not any place else.  Could
+    # also check the stack trace.
+    self.assertTrue(
+        'Occurred at node:\nIf' in obtained_message, obtained_message)
+    self.assertTrue(
+        'Occurred at node:\nFunctionDef' not in obtained_message,
+        obtained_message)
+    self.assertTrue(
+        'Occurred at node:\nReturn' not in obtained_message, obtained_message)
+
+  def test_robust_error_on_ast_corruption(self):
+    # A child class should not be able to be so broken that it causes the error
+    # handling in `transformer.Base` to raise an exception.  Why not?  Because
+    # then the original error location is dropped, and an error handler higher
+    # up in the call stack gives misleading information.
+
+    # Here we test that the error handling in `visit` completes, and blames the
+    # correct original exception, even if the AST gets corrupted.
+
+    class NotANode(object):
+      pass
+
+    class BrokenTransformer(transformer.Base):
+
+      def visit_If(self, node):
+        node.body = NotANode()
+        raise ValueError('I blew up')
+
+    def test_function(x):
+      if x > 0:
+        return x
+
+    tr = BrokenTransformer(self._simple_source_info())
+
+    node, _ = parser.parse_entity(test_function)
+    with self.assertRaises(transformer.AutographParseError) as cm:
+      node = tr.visit(node)
+    obtained_message = str(cm.exception)
+    # The message should reference the exception actually raised, not anything
+    # from the exception handler.
+    expected_substring = 'I blew up'
+    self.assertTrue(expected_substring in obtained_message, obtained_message)
+    # Expect the exception to have failed to parse the corrupted AST
+    self.assertTrue(
+        '<could not convert AST to source>' in obtained_message,
+        obtained_message)
+    # The exception should point at the if statement, not any place else.  Could
+    # also check the stack trace.
+    self.assertTrue(
+        'Occurred at node:\nIf' in obtained_message, obtained_message)
+    self.assertTrue(
+        'Occurred at node:\nFunctionDef' not in obtained_message,
+        obtained_message)
+    self.assertTrue(
+        'Occurred at node:\nReturn' not in obtained_message, obtained_message)
 
 if __name__ == '__main__':
   test.main()

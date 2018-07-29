@@ -22,49 +22,115 @@ import collections
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
+from tensorflow.contrib.autograph.pyct import ast_util
+from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.python.util import tf_inspect
 
 
-class CodeLocation(
-    collections.namedtuple('CodeLocation', ('file_path', 'line_number'))):
-  """Location of a line of code.
+class LineLocation(
+    collections.namedtuple('LineLocation', ('filename', 'lineno'))):
+  """Similar to Location, but without column information.
 
   Attributes:
-    file_path: text, the full path to the file containing the code.
-    line_number: Int, the 1-based line number of the code in its file.
+    filename: Text
+    lineno: int, 1-based
   """
   pass
 
 
+class Location(
+    collections.namedtuple('Location', ('filename', 'lineno', 'col_offset'))):
+  """Encodes code location information.
+
+  Attributes:
+    filename: Text
+    lineno: int, 1-based
+    col_offset: int
+  """
+
+  @property
+  def line_loc(self):
+    return LineLocation(self.filename, self.lineno)
+
+
 class OriginInfo(
-    collections.namedtuple('OriginInfo',
-                           ('file_path', 'function_name', 'line_number',
-                            'column_offset', 'source_code_line'))):
+    collections.namedtuple(
+        'OriginInfo',
+        ('loc', 'function_name', 'source_code_line'))):
   """Container for information about the source code before conversion.
 
-  Instances of this class contain information about the source code that
-  transformed code originated from. Examples include:
-    * line number
-    * file name
-    * original user code
+  Attributes:
+    loc: Location
+    function_name: Optional[Text]
+    source_code_line: Text
   """
 
   def as_frame(self):
-    """Makes a traceback frame tuple.
-
-    Returns:
-      A tuple of (file_path, line_number, function_name, source_code_line).
-    """
-    return (self.file_path, self.line_number, self.function_name,
+    """Returns a 4-tuple consistent with the return of traceback.extract_tb."""
+    return (self.loc.filename, self.loc.lineno, self.function_name,
             self.source_code_line)
 
 
+# TODO(mdan): This source map should be a class - easier to refer to.
+def source_map(nodes, code, filename, indices_in_code):
+  """Creates a source map between an annotated AST and the code it compiles to.
+
+  Args:
+    nodes: Iterable[ast.AST, ...]
+    code: Text
+    filename: Optional[Text]
+    indices_in_code: Union[int, Iterable[int, ...]], the positions at which
+        nodes appear in code. The parser always returns a module when parsing
+        code. This argument indicates the position in that module's body at
+        which the corresponding of node should appear.
+
+  Returns:
+    Dict[CodeLocation, OriginInfo], mapping locations in code to locations
+    indicated by origin annotations in node.
+  """
+  reparsed_nodes = parser.parse_str(code)
+  reparsed_nodes = [reparsed_nodes.body[i] for i in indices_in_code]
+
+  resolve(reparsed_nodes, code)
+  result = {}
+
+  for before, after in ast_util.parallel_walk(nodes, reparsed_nodes):
+    # Note: generated code might not be mapped back to its origin.
+    # TODO(mdan): Generated code should always be mapped to something.
+    origin_info = anno.getanno(before, anno.Basic.ORIGIN, default=None)
+    final_info = anno.getanno(after, anno.Basic.ORIGIN, default=None)
+    if origin_info is None or final_info is None:
+      continue
+
+    line_loc = LineLocation(filename, final_info.loc.lineno)
+
+    existing_origin = result.get(line_loc)
+    if existing_origin is not None:
+      # Overlaps may exist because of child nodes, but almost never to
+      # different line locations. Exception make decorated functions, where
+      # both lines are mapped to the same line in the AST.
+
+      # Line overlaps: keep bottom node.
+      if existing_origin.loc.line_loc == origin_info.loc.line_loc:
+        if existing_origin.loc.lineno >= origin_info.loc.lineno:
+          continue
+
+      # In case of overlaps, keep the leftmost node.
+      if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
+        continue
+
+    result[line_loc] = origin_info
+
+  return result
+
+
 # TODO(znado): Consider refactoring this into a Visitor.
-def resolve(node, source, function=None):
+# TODO(mdan): Does this work correctly with inner functions?
+def resolve(nodes, source, function=None):
   """Adds an origin information to all nodes inside the body of function.
 
   Args:
-    node: The AST node for the function whose body nodes will be annotated.
+    nodes: Union[ast.AST, Iterable[ast.AST, ...]]
     source: Text, the source code string for the function whose body nodes will
       be annotated.
     function: Callable, the function that will have all nodes inside of it
@@ -76,25 +142,32 @@ def resolve(node, source, function=None):
     A tuple of the AST node for function and a String containing its source
     code.
   """
+  if not isinstance(nodes, (list, tuple)):
+    nodes = (nodes,)
+
   if function:
     _, function_lineno = tf_inspect.getsourcelines(function)
     function_filepath = tf_inspect.getsourcefile(function)
   else:
     function_lineno = None
     function_filepath = None
+
   source_lines = source.split('\n')
-  for n in gast.walk(node):
-    if hasattr(n, 'lineno'):
-      # n.lineno is relative to the start of the enclosing function, so need to
-      # offset it by the line of the function.
-      source_code_line = source_lines[n.lineno - 1]
+  for node in nodes:
+    for n in gast.walk(node):
+      if not hasattr(n, 'lineno'):
+        continue
+
+      lineno_in_body = n.lineno
+
+      source_code_line = source_lines[lineno_in_body - 1]
       if function:
-        source_lineno = n.lineno + function_lineno - 1
+        source_lineno = function_lineno + lineno_in_body
         function_name = function.__name__
       else:
-        source_lineno = n.lineno
+        source_lineno = lineno_in_body
         function_name = None
-      anno.setanno(
-          n, anno.Basic.ORIGIN,
-          OriginInfo(function_filepath, function_name, source_lineno,
-                     n.col_offset, source_code_line))
+
+      location = Location(function_filepath, source_lineno, n.col_offset)
+      origin = OriginInfo(location, function_name, source_code_line)
+      anno.setanno(n, anno.Basic.ORIGIN, origin)

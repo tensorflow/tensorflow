@@ -54,8 +54,8 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   BenchmarkTfLiteModel(BenchmarkParams params);
 
   std::vector<Flag> GetFlags() override;
-  void LogFlags() override;
-  bool ValidateFlags() override;
+  void LogParams() override;
+  bool ValidateParams() override;
   uint64_t ComputeInputBytes() override;
   void Init() override;
   void RunImpl() override;

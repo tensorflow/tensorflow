@@ -87,6 +87,7 @@ namespace xla {
   V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
+  V(kIota, "iota")                                           \
   V(kIsFinite, "is-finite")                                  \
   V(kLe, "less-than-or-equal-to", kHloOpcodeIsComparison)    \
   V(kLog, "log")                                             \

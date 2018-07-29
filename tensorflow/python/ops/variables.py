@@ -40,15 +40,15 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator(_, *args, **kwds):
-  del args, kwds
-  raise NotImplementedError("resource_variable_ops needs to be imported")
+def default_variable_creator(_, **kwds):
+  del kwds
+  raise NotImplementedError("variable_scope needs to be imported")
 
 
 def _make_getter(captured_getter, captured_previous):
   """To avoid capturing loop variables."""
-  def getter(*args, **kwargs):
-    return captured_getter(captured_previous, *args, **kwargs)
+  def getter(**kwargs):
+    return captured_getter(captured_previous, **kwargs)
   return getter
 
 
@@ -86,11 +86,48 @@ class VariableAggregation(enum.Enum):
 class VariableMetaclass(type):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
+  def _variable_call(cls,
+                     initial_value=None,
+                     trainable=None,
+                     collections=None,
+                     validate_shape=True,
+                     caching_device=None,
+                     name=None,
+                     variable_def=None,
+                     dtype=None,
+                     expected_shape=None,
+                     import_scope=None,
+                     constraint=None,
+                     use_resource=None,
+                     synchronization=VariableSynchronization.AUTO,
+                     aggregation=VariableAggregation.NONE):
+    """Call on Variable class. Useful to force the signature."""
+    previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+    for getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
+      previous_getter = _make_getter(getter, previous_getter)
+
+    # Reset `aggregation` that is explicitly set as `None` to the enum NONE.
+    if aggregation is None:
+      aggregation = VariableAggregation.NONE
+    return previous_getter(
+        initial_value=initial_value,
+        trainable=trainable,
+        collections=collections,
+        validate_shape=validate_shape,
+        caching_device=caching_device,
+        name=name,
+        variable_def=variable_def,
+        dtype=dtype,
+        expected_shape=expected_shape,
+        import_scope=import_scope,
+        constraint=constraint,
+        use_resource=use_resource,
+        synchronization=synchronization,
+        aggregation=aggregation)
+
   def __call__(cls, *args, **kwargs):
     if cls is Variable:
-      previous_getter = lambda *a, **k: default_variable_creator(None, *a, **k)
-      # TODO(apassos) use a stack of getters here
-      return previous_getter(*args, **kwargs)
+      return cls._variable_call(*args, **kwargs)
     else:
       return super(VariableMetaclass, cls).__call__(*args, **kwargs)
 
@@ -183,27 +220,31 @@ class Variable(six.with_metaclass(VariableMetaclass,
   various `Optimizer` classes use this collection as the default list of
   variables to optimize.
 
-  WARNING: tf.Variable objects have a non-intuitive memory model. A Variable is
-  represented internally as a mutable Tensor which can non-deterministically
-  alias other Tensors in a graph. The set of operations which consume a Variable
-  and can lead to aliasing is undetermined and can change across TensorFlow
-  versions. Avoid writing code which relies on the value of a Variable either
-  changing or not changing as other operations happen. For example, using
-  Variable objects or simple functions thereof as predicates in a `tf.cond` is
-  dangerous and error-prone:
+  WARNING: tf.Variable objects by default have a non-intuitive memory model. A
+  Variable is represented internally as a mutable Tensor which can
+  non-deterministically alias other Tensors in a graph. The set of operations
+  which consume a Variable and can lead to aliasing is undetermined and can
+  change across TensorFlow versions. Avoid writing code which relies on the
+  value of a Variable either changing or not changing as other operations
+  happen. For example, using Variable objects or simple functions thereof as
+  predicates in a `tf.cond` is dangerous and error-prone:
 
   ```
   v = tf.Variable(True)
   tf.cond(v, lambda: v.assign(False), my_false_fn)  # Note: this is broken.
   ```
 
-  Here replacing tf.Variable with tf.contrib.eager.Variable will fix any
-  nondeterminism issues.
+  Here replacing adding `use_resource=True` when constructing the variable will
+  fix any nondeterminism issues:
+  ```
+  v = tf.Variable(True, use_resource=True)
+  tf.cond(v, lambda: v.assign(False), my_false_fn)
+  ```
 
   To use the replacement for variables which does
   not have these issues:
 
-  * Replace `tf.Variable` with `tf.contrib.eager.Variable`;
+  * Add `use_resource=True` when constructing `tf.Variable`;
   * Call `tf.get_variable_scope().set_use_resource(True)` inside a
     `tf.variable_scope` before the `tf.get_variable()` call.
   """
@@ -650,8 +691,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
   @staticmethod
   def from_proto(variable_def, import_scope=None):
     """Returns a `Variable` object created from `variable_def`."""
-    return Variable(variable_def=variable_def,
-                    import_scope=import_scope)
+    return RefVariable(variable_def=variable_def,
+                       import_scope=import_scope)
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.
@@ -832,19 +873,7 @@ class RefVariable(Variable):
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
       RuntimeError: If eager execution is enabled.
-
-    @compatibility(eager)
-    `tf.Variable` is not compatible with eager execution.  Use
-    `tfe.Variable` instead which is compatible with both eager execution
-    and graph construction.  See [the TensorFlow Eager Execution
-    guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/eager/python/g3doc/guide.md#variables-and-optimizers)
-    for details on how variables work in eager execution.
-    @end_compatibility
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "tf.Variable not supported when eager execution is enabled. "
-          "Please use tf.contrib.eager.Variable instead")
     self._in_graph_mode = True
     if variable_def:
       # If variable_def is provided, recreates the variable from its fields.
@@ -955,8 +984,7 @@ class RefVariable(Variable):
       # Ensure that we weren't lifted into the eager context.
       if context.executing_eagerly():
         raise RuntimeError(
-            "tf.Variable not supported when eager execution is enabled. "
-            "Please use tf.contrib.eager.Variable instead")
+            "RefVariable not supported when eager execution is enabled. ")
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
 

@@ -166,6 +166,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

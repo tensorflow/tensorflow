@@ -98,12 +98,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       bool is_top_level_computation,
       std::vector<const HloInstruction*>* instruction_order);
 
-  llvm::IRBuilder<>* ir_builder() { return &ir_builder_; }
+  llvm::IRBuilder<>* b() { return &b_; }
 
   // Emits a call to `computation` with scalar arguments `arguments`.
   StatusOr<llvm::Value*> EmitScalarCall(
       PrimitiveType return_type, HloComputation* computation,
       const std::vector<llvm::Value*>& arguments, tensorflow::StringPiece name);
+
+  // Emit an LLVM global variable for every constant buffer allocation.
+  Status EmitConstantGlobals();
 
  protected:
   //
@@ -148,6 +151,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleConcatenate(HloInstruction* concatenate) override;
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleAfterAll(HloInstruction* gen_token) override;
+  Status HandleIota(HloInstruction* iota) override;
+  Status HandleRng(HloInstruction* rng) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -415,7 +420,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // creates the encapsulated llvm::Function s.t. it is added to the llvm
   // module's function list).
   std::unique_ptr<IrFunction> compute_function_;
-  llvm::IRBuilder<> ir_builder_;
+  llvm::IRBuilder<> b_;
 
   // Maps HLO instructions to their index into the profile counter array.
   const std::unordered_map<const HloInstruction*, int64>
@@ -451,23 +456,22 @@ class IrEmitter : public DfsHloVisitorWithDefault {
         : use_rdtscp_(use_rdtscp), prof_counters_(prof_counters) {}
 
     // Record the cycle counter before an HLO executes.
-    void RecordCycleStart(llvm::IRBuilder<>* ir_builder, HloInstruction* hlo);
+    void RecordCycleStart(llvm::IRBuilder<>* b, HloInstruction* hlo);
     // Record the number of cycles it took for an HLO to execute.
-    void RecordCycleDelta(llvm::IRBuilder<>* ir_builder, HloInstruction* hlo,
+    void RecordCycleDelta(llvm::IRBuilder<>* b, HloInstruction* hlo,
                           llvm::Value* prof_counter);
     // Record the number of cycles it took for the entire computation to
     // execute.
-    void RecordCompleteComputation(llvm::IRBuilder<>* ir_builder,
+    void RecordCompleteComputation(llvm::IRBuilder<>* b,
                                    llvm::Value* prof_counter);
 
     // Convenience function to generate a call to an intrinsic which reads the
     // CPU cycle counter.
-    llvm::Value* ReadCycleCounter(llvm::IRBuilder<>* ir_builder);
+    llvm::Value* ReadCycleCounter(llvm::IRBuilder<>* b);
 
     // Store the cycle counter delta to the per-HLO profile counter.
-    void UpdateProfileCounter(llvm::IRBuilder<>* ir_builder,
-                              llvm::Value* prof_counter, llvm::Value* cycle_end,
-                              llvm::Value* cycle_start);
+    void UpdateProfileCounter(llvm::IRBuilder<>* b, llvm::Value* prof_counter,
+                              llvm::Value* cycle_end, llvm::Value* cycle_start);
 
    private:
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
@@ -558,6 +562,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   tensorflow::gtl::FlatMap<const Literal*, llvm::Constant*,
                            LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
       emitted_literals_;
+
+  tensorflow::gtl::FlatMap<BufferAllocation::Index, llvm::Constant*>
+      constant_buffer_to_global_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };
