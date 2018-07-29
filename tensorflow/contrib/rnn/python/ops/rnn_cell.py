@@ -3392,3 +3392,232 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
 
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
+
+class NTMCell(rnn_cell_impl.RNNCell):
+  """Neural Turing Machine Cell with LSTM controller.
+
+    Implementation based on:
+    https://arxiv.org/abs/1807.08518
+    Mark Collier, Joeran Beel
+
+    which is in turn based on the source code of:
+    https://github.com/snowkylin/ntm
+
+    and of course the original NTM paper:
+    Neural Turing Machines
+    https://arxiv.org/abs/1410.5401
+    A Graves, G Wayne, I Danihelka
+  """
+  def __init__(self, controller_layers, controller_units, memory_size,
+    memory_vector_dim, read_head_num, write_head_num, shift_range=1,
+    output_dim=None, clip_value=20, dtype=dtypes.float32, reuse=False):
+    """Initialize the NTM Cell.
+
+      Args:
+        controller_layers: int, The number of layers in the LSTM controller.
+        controller_units: int, The number of units per layer in the
+          LSTM controller
+        memory_size: int, The number of memory locations in the
+          NTM memory matrix
+        memory_vector_dim: int, The dimensionality of each location in the
+          NTM memory matrix
+        read_head_num: int, The number of read heads from the controller
+          into memory
+        write_head_num: int, The number of write heads from the controller
+          into memory
+        shift_range: int, The number of places to the left/right it is possible
+          to iterate the previous address to in a single step
+        output_dim: int, The number of dimensions to make a linear projection
+          of the NTM controller outputs to.
+          If None, no linear projection is applied
+        clip_value: float, The maximum absolute value the controller parameters
+          are clipped to
+        dtype: Default dtype of the layer (default of `None` means use the type
+          of the first input). Required when `build` is called before `call`.
+        reuse: (optional) Python boolean describing whether to reuse variables
+          in an existing scope.  If not `True`, and the existing scope already
+          has the given variables, an error is raised.
+    """
+    super(NTMCell, self).__init__(_reuse=reuse, dtype=dtype)
+
+    self.controller_layers = controller_layers
+    self.controller_units = controller_units
+    self.memory_size = memory_size
+    self.memory_vector_dim = memory_vector_dim
+    self.read_head_num = read_head_num
+    self.write_head_num = write_head_num
+    self.clip_value = clip_value
+    self.reuse = reuse
+
+    def single_cell(num_units):
+      return rnn_cell_impl.BasicLSTMCell(num_units, forget_bias=1.0)
+
+    self.controller = rnn_cell_impl.MultiRNNCell(
+      [single_cell(self.controller_units)
+        for _ in range(self.controller_layers)])
+    self.NTMControllerState = collections.namedtuple('NTMControllerState',
+      ('controller_state', 'read_vector_list', 'w_list', 'M'))
+
+    self.step = 0
+    self.output_dim = output_dim
+    self.shift_range = shift_range
+
+    self.o2p_initializer = init_ops.truncated_normal_initializer(
+      stddev=1.0 / math.sqrt(self.controller_units), dtype=self.dtype)
+    self.o2o_initializer = init_ops.truncated_normal_initializer(
+      stddev=1.0 / math.sqrt(
+        self.controller_units + self.memory_vector_dim * self.read_head_num),
+      dtype=self.dtype)
+
+  def __call__(self, x, prev_state):
+    prev_read_vector_list = prev_state.read_vector_list
+
+    controller_input = array_ops.concat([x] + prev_read_vector_list, axis=1)
+    with vs.variable_scope('controller', reuse=self.reuse):
+      controller_output, controller_state = self.controller(controller_input,
+        prev_state.controller_state)
+
+    num_parameters_per_head = self.memory_vector_dim + 2 * self.shift_range + 4
+    num_heads = self.read_head_num + self.write_head_num
+    total_parameter_num = num_parameters_per_head * num_heads + \
+      self.memory_vector_dim * 2 * self.write_head_num
+    with vs.variable_scope('o2p', reuse=(self.step > 0) or self.reuse):
+      parameters = layers.fully_connected(
+        controller_output, total_parameter_num, activation_fn=None,
+        weights_initializer=self.o2p_initializer)
+    parameters = clip_ops.clip_by_value(parameters,
+      -self.clip_value, self.clip_value)
+    head_parameter_list = array_ops.split(
+      parameters[:, :num_parameters_per_head * num_heads], num_heads, axis=1)
+    erase_add_list = array_ops.split(
+      parameters[:, num_parameters_per_head * num_heads:],
+      2 * self.write_head_num, axis=1)
+
+    prev_w_list = prev_state.w_list
+    prev_M = prev_state.M
+    w_list = []
+    for i, head_parameter in enumerate(head_parameter_list):
+      k = math_ops.tanh(head_parameter[:, 0:self.memory_vector_dim])
+      beta = nn_ops.softplus(head_parameter[:, self.memory_vector_dim])
+      g = math_ops.sigmoid(head_parameter[:, self.memory_vector_dim + 1])
+      s = nn_ops.softmax(head_parameter[:,self.memory_vector_dim + 2:
+        self.memory_vector_dim + 2 + (self.shift_range * 2 + 1)])
+      gamma = nn_ops.softplus(head_parameter[:, -1]) + 1
+      with vs.variable_scope('addressing_head_%d' % i):
+        w = self.addressing(k, beta, g, s, gamma, prev_M, prev_w_list[i])
+      w_list.append(w)
+
+    read_w_list = w_list[:self.read_head_num]
+    read_vector_list = []
+    for i in range(self.read_head_num):
+      read_vector = math_ops.reduce_sum(
+        array_ops.expand_dims(read_w_list[i], dim=2) * prev_M, axis=1)
+      read_vector_list.append(read_vector)
+
+    write_w_list = w_list[self.read_head_num:]
+    M = prev_M
+    for i in range(self.write_head_num):
+      w = array_ops.expand_dims(write_w_list[i], axis=2)
+      erase_vector = array_ops.expand_dims(
+        math_ops.sigmoid(erase_add_list[i * 2]), axis=1)
+      add_vector = array_ops.expand_dims(
+        math_ops.tanh(erase_add_list[i * 2 + 1]), axis=1)
+      erase_M = array_ops.ones(M.get_shape()) - math_ops.matmul(w, erase_vector)
+      M = M * erase_M + math_ops.matmul(w, add_vector)
+
+    if not self.output_dim:
+      output_dim = x.get_shape()[1]
+    else:
+      output_dim = self.output_dim
+    with vs.variable_scope('o2o', reuse=(self.step > 0) or self.reuse):
+      NTM_output = layers.fully_connected(
+        array_ops.concat([controller_output] + read_vector_list, axis=1),
+        output_dim,
+        activation_fn=None,
+        weights_initializer=self.o2o_initializer)
+      NTM_output = clip_ops.clip_by_value(NTM_output,
+        -self.clip_value, self.clip_value)
+
+    self.step += 1
+    return NTM_output, self.NTMControllerState(
+      controller_state=controller_state, read_vector_list=read_vector_list,
+      w_list=w_list, M=M)
+
+  def addressing(self, k, beta, g, s, gamma, prev_M, prev_w):
+    k = array_ops.expand_dims(k, axis=2)
+    inner_product = math_ops.matmul(prev_M, k)
+    k_norm = math_ops.sqrt(math_ops.reduce_sum(
+      math_ops.square(k), axis=1, keepdims=True))
+    M_norm = math_ops.sqrt(math_ops.reduce_sum(
+      math_ops.square(prev_M), axis=2, keepdims=True))
+    norm_product = M_norm * k_norm
+    K = array_ops.squeeze(inner_product / (norm_product + 1e-8))
+
+    K_amplified = math_ops.exp(array_ops.expand_dims(beta, axis=1) * K)
+    w_c = K_amplified / math_ops.reduce_sum(K_amplified, axis=1, keepdims=True)
+
+    g = array_ops.expand_dims(g, axis=1)
+    w_g = g * w_c + (1 - g) * prev_w
+
+    s = array_ops.concat([s[:, :self.shift_range + 1],
+      array_ops.zeros([s.get_shape()[0],
+        self.memory_size - (self.shift_range * 2 + 1)]),
+      s[:, -self.shift_range:]], axis=1)
+    t = array_ops.concat([array_ops.reverse(s, axis=[1]),
+      array_ops.reverse(s, axis=[1])], axis=1)
+    s_matrix = array_ops.stack(
+      [t[:, self.memory_size - i - 1:self.memory_size * 2 - i - 1]
+        for i in range(self.memory_size)],
+      axis=1)
+    w_ = math_ops.reduce_sum(
+      array_ops.expand_dims(w_g, axis=1) * s_matrix, axis=2)
+    w_sharpen = math_ops.pow(w_, array_ops.expand_dims(gamma, axis=1))
+    w = w_sharpen / math_ops.reduce_sum(w_sharpen, axis=1, keepdims=True)
+
+    return w
+
+  def zero_state(self, batch_size, dtype):
+    def expand(x, dim, N):
+      return array_ops.concat(
+        [array_ops.expand_dims(x, dim) for _ in range(N)], axis=dim)
+
+    def learned_init(units):
+      return array_ops.squeeze(layers.fully_connected(array_ops.ones([1, 1]),
+        units, activation_fn=None, biases_initializer=None))
+    
+    with vs.variable_scope('init', reuse=self.reuse):
+      read_vector_list = [expand(
+        math_ops.tanh(learned_init(self.memory_vector_dim)),
+        dim=0, N=batch_size)
+        for i in range(self.read_head_num)]
+
+      w_list = [expand(
+          nn_ops.softmax(learned_init(self.memory_size)), dim=0, N=batch_size)
+        for i in range(self.read_head_num + self.write_head_num)]
+
+      controller_init_state = self.controller.zero_state(batch_size, dtype)
+
+      M = expand(vs.get_variable('init_M',
+              [self.memory_size, self.memory_vector_dim],
+              initializer=init_ops.constant_initializer(1e-6)),
+            dim=0, N=batch_size)
+
+      return self.NTMControllerState(
+        controller_state=controller_init_state,
+        read_vector_list=read_vector_list,
+        w_list=w_list,
+        M=M)
+
+  @property
+  def state_size(self):
+    return self.NTMControllerState(
+      controller_state=self.controller.state_size,
+      read_vector_list=[self.memory_vector_dim
+        for _ in range(self.read_head_num)],
+      w_list=[self.memory_size
+        for _ in range(self.read_head_num + self.write_head_num)],
+      M=tensor_shape.TensorShape([self.memory_size * self.memory_vector_dim]))
+
+  @property
+  def output_size(self):
+    return self.output_dim
