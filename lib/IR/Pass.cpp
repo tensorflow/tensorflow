@@ -1,4 +1,4 @@
-//===- Loop.h - Loop Transformations ----------------------------*- C++ -*-===//
+//===- Pass.cpp - Pass infrastructure implementation ----------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,21 +15,24 @@
 // limitations under the License.
 // =============================================================================
 //
-// This header file defines prototypes that expose passes in the loop
-// transformation library.
+// This file implements loop unrolling.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TRANSFORMS_LOOP_H
-#define MLIR_TRANSFORMS_LOOP_H
+#include "mlir/IR/Pass.h"
+#include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Module.h"
 
-namespace mlir {
+using namespace mlir;
 
-class MLFunctionPass;
-
-/// A loop unrolling pass.
-MLFunctionPass *createLoopUnrollPass();
-
-} // end namespace mlir
-
-#endif // MLIR_TRANSFORMS_LOOP_H
+/// Function passes walk a module and look at each function with their
+/// corresponding hooks.
+void FunctionPass::runOnModule(Module *m) {
+  for (auto &fn : *m) {
+    if (auto *mlFunc = dyn_cast<MLFunction>(&fn))
+      runOnMLFunction(mlFunc);
+    if (auto *cfgFunc = dyn_cast<CFGFunction>(&fn))
+      runOnCFGFunction(cfgFunc);
+  }
+}

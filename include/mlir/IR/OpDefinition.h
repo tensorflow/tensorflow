@@ -361,6 +361,26 @@ public:
   }
 };
 
+/// This class provides the API for ops that are known to have exactly two
+/// results.
+template <typename ConcreteType>
+class TwoResults : public TraitImpl<ConcreteType, TwoResults> {
+public:
+  const SSAValue *getResult(unsigned i) const {
+    return this->getOperation()->getResult(i);
+  }
+
+  SSAValue *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+
+  Type *getType(unsigned i) const { return getResult(i)->getType(); }
+
+  static const char *verifyTrait(const Operation *op) {
+    if (op->getNumResults() != 2)
+      return "requires two results";
+    return nullptr;
+  }
+};
+
 /// This class provides the API for ops which have an unknown number of
 /// results.
 template <typename ConcreteType>

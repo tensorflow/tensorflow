@@ -19,11 +19,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Transforms/ConvertToCFG.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/Pass.h"
+#include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/DenseSet.h"
 using namespace mlir;
 
@@ -43,7 +44,7 @@ private:
   CFGFunction *cfgFunc;
   CFGFuncBuilder builder;
 };
-} // namespace
+} // end anonymous namespace
 
 CFGFunction *FunctionConverter::convert(const MLFunction *mlFunc) {
   builder.createBlock();
@@ -60,12 +61,14 @@ CFGFunction *FunctionConverter::convert(const MLFunction *mlFunc) {
 //===----------------------------------------------------------------------===//
 // Module converter
 //===----------------------------------------------------------------------===//
+
 namespace {
 // ModuleConverter class does CFG conversion for the whole module.
-class ModuleConverter {
+class ModuleConverter : public ModulePass {
 public:
-  explicit ModuleConverter(Module *module) : module(module) {}
-  void run();
+  explicit ModuleConverter() {}
+
+  void runOnModule(Module *m) override;
 
 private:
   // Generates CFG functions for all ML functions in the module.
@@ -83,14 +86,15 @@ private:
 
   // Map from ML functions to generated CFG functions.
   llvm::DenseMap<const MLFunction *, CFGFunction *> generatedFuncs;
-  Module *module;
+  Module *module = nullptr;
 };
 } // end anonymous namespace
 
 // Iterates over all functions in the module generating CFG functions
 // equivalent to ML functions and replacing references to ML functions
 // with references to the generated ML functions.
-void ModuleConverter::run() {
+void ModuleConverter::runOnModule(Module *m) {
+  module = m;
   convertMLFunctions();
   replaceReferences();
 }
@@ -153,8 +157,7 @@ void ModuleConverter::removeMLFunctions() {
 // Entry point method
 //===----------------------------------------------------------------------===//
 
-void mlir::convertToCFG(Module *module) {
-  ModuleConverter moduleConverter(module);
-  moduleConverter.run();
-  module->verify();
-}
+/// Replaces all ML functions in the module with equivalent CFG functions.
+/// Function references are appropriately patched to refer to the newly
+/// generated CFG functions.
+ModulePass *mlir::createConvertToCFGPass() { return new ModuleConverter(); }

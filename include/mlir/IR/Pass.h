@@ -1,4 +1,4 @@
-//===- mlir/Pass.h - Base class for passes ----------------------*- C++ -*-===//
+//===- mlir/Pass.h - Base classes for compiler passes -----------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,32 +14,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-//
-// This file defines a base class that indicates that a specified class is a
-// transformation pass implementation.
-//
-//===----------------------------------------------------------------------===//
+
 #ifndef MLIR_PASS_H
 #define MLIR_PASS_H
 
-#include "mlir/IR/MLFunction.h"
-#include "mlir/IR/Module.h"
-
 namespace mlir {
+class CFGFunction;
+class MLFunction;
+class Module;
 
 class Pass {
-protected:
+public:
   virtual ~Pass() = default;
 };
 
-class FunctionPass : public Pass {};
+class ModulePass : public Pass {
+public:
+  virtual void runOnModule(Module *m) = 0;
+};
 
-class CFGFunctionPass : public FunctionPass {};
+class FunctionPass : public Pass {
+public:
+  virtual void runOnCFGFunction(CFGFunction *f) = 0;
+  virtual void runOnMLFunction(MLFunction *f) = 0;
+  virtual void runOnModule(Module *m);
+};
+
+class CFGFunctionPass : public FunctionPass {
+public:
+  virtual void runOnMLFunction(MLFunction *f) override {}
+  virtual void runOnCFGFunction(CFGFunction *f) override = 0;
+};
 
 class MLFunctionPass : public FunctionPass {
 public:
-  virtual bool runOnMLFunction(MLFunction *f) = 0;
-  virtual bool runOnModule(Module *m);
+  virtual void runOnCFGFunction(CFGFunction *f) override {}
+  virtual void runOnMLFunction(MLFunction *f) override = 0;
 };
 
 } // end namespace mlir

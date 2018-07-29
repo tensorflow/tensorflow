@@ -24,10 +24,11 @@
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/Pass.h"
 #include "mlir/Parser.h"
-#include "mlir/Pass.h"
-#include "mlir/Transforms/ConvertToCFG.h"
-#include "mlir/Transforms/Loop.h"
+#include "mlir/TensorFlow/ControlFlowOps.h"
+#include "mlir/TensorFlow/Passes.h"
+#include "mlir/Transforms/Passes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
@@ -48,6 +49,7 @@ static cl::opt<bool>
 checkParserErrors("check-parser-errors", cl::desc("Check for parser errors"),
                   cl::init(false));
 
+// TODO(clattner): replace these bool options with an enum list option.
 static cl::opt<bool> convertToCFGOpt(
     "convert-to-cfg",
     cl::desc("Convert all ML functions in the module to CFG ones"));
@@ -55,6 +57,10 @@ static cl::opt<bool> convertToCFGOpt(
 static cl::opt<bool> unrollInnermostLoops("unroll-innermost-loops",
                                           cl::desc("Unroll innermost loops"),
                                           cl::init(false));
+
+static cl::opt<bool> raiseTFControlFlow(
+    "tf-raise-control-flow",
+    cl::desc("Raise TensorFlow Switch/Match nodes to a CFG"));
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -72,6 +78,10 @@ static std::unique_ptr<ToolOutputFile> getOutputStream() {
   return result;
 }
 
+static void initializeMLIRContext(MLIRContext &ctx) {
+  TFControlFlow::registerOperations(ctx);
+}
+
 /// Parses the memory buffer and, if successfully parsed, prints the parsed
 /// output. Optionally, convert ML functions into CFG functions.
 /// TODO: pull parsing and printing into separate functions.
@@ -82,17 +92,31 @@ OptResult parseAndPrintMemoryBuffer(std::unique_ptr<MemoryBuffer> buffer) {
 
   // Parse the input file.
   MLIRContext context;
+  initializeMLIRContext(context);
   std::unique_ptr<Module> module(parseSourceFile(sourceMgr, &context));
   if (!module)
     return OptFailure;
 
   // Convert ML functions into CFG functions
-  if (convertToCFGOpt)
-    convertToCFG(module.get());
+  if (convertToCFGOpt) {
+    auto *pass = createConvertToCFGPass();
+    pass->runOnModule(module.get());
+    delete pass;
+    module->verify();
+  }
 
   if (unrollInnermostLoops) {
-    MLFunctionPass *loopUnroll = createLoopUnrollPass();
-    loopUnroll->runOnModule(module.get());
+    auto *pass = createLoopUnrollPass();
+    pass->runOnModule(module.get());
+    delete pass;
+    module->verify();
+  }
+
+  if (raiseTFControlFlow) {
+    auto *pass = createRaiseTFControlFlowPass();
+    pass->runOnModule(module.get());
+    delete pass;
+    module->verify();
   }
 
   // Print the output.
@@ -187,6 +211,7 @@ splitMemoryBufferForErrorChecking(std::unique_ptr<MemoryBuffer> buffer) {
 
     // Parse the input file.
     MLIRContext context;
+    initializeMLIRContext(context);
     std::unique_ptr<Module> module(
         parseSourceFile(sourceMgr, &context, checker));
 

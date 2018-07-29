@@ -1,4 +1,4 @@
-//===- ConvertToCFG.h - Convert ML functions to CFG ones --------*- C++ -*-===//
+//===- Passes.h - Pass Entrypoints ------------------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,20 +15,27 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines APIs to convert ML functions into CFG functions.
+// This header file defines prototypes that expose pass constructors in the loop
+// transformation library.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TRANSFORMS_CONVERTTOCFG_H
-#define MLIR_TRANSFORMS_CONVERTTOCFG_H
+#ifndef MLIR_TRANSFORMS_PASSES_H
+#define MLIR_TRANSFORMS_PASSES_H
 
 namespace mlir {
-class Module;
+
+class MLFunctionPass;
+class ModulePass;
+
+/// A loop unrolling pass.
+MLFunctionPass *createLoopUnrollPass();
 
 /// Replaces all ML functions in the module with equivalent CFG functions.
-/// Function references are appropriately patched to refer only
-/// to CFG functions.
-void convertToCFG(Module *module);
+/// Function references are appropriately patched to refer to the newly
+/// generated CFG functions.
+ModulePass *createConvertToCFGPass();
 
-} // namespace mlir
-#endif // MLIR_TRANSFORMS_CONVERTTOCFG_H
+} // end namespace mlir
+
+#endif // MLIR_TRANSFORMS_LOOP_H

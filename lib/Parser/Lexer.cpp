@@ -57,6 +57,10 @@ Token Lexer::lexToken() {
     // Unknown character, emit an error.
     return emitError(tokStart, "unexpected character");
 
+  case '_':
+    // Handle bare identifiers.
+    return lexBareIdentifierOrKeyword(tokStart);
+
   case 0:
     // This may either be a nul character in the source file or may be the EOF
     // marker that llvm::MemoryBuffer guarantees will be there.
@@ -151,7 +155,7 @@ Token Lexer::lexComment() {
 
 /// Lex a bare identifier or keyword that starts with a letter.
 ///
-///   bare-id ::= letter (letter|digit|[_$])*
+///   bare-id ::= (letter|[_]) (letter|digit|[_$])*
 ///   integer-type ::= `i[1-9][0-9]*`
 ///
 Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
