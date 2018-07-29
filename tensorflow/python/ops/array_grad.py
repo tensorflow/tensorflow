@@ -762,19 +762,19 @@ def _ExtractImagePatchesGrad(op, grad):
                                                 dtype=ops.dtypes.int64),
                                  (1, rows_out, cols_out, ksize_r * ksize_c))
 
-  # Construct mapping table for indices: input -> output.
+  # Construct mapping table for indices: (input -> output).
   idx_matrix = array_ops.concat([array_ops.expand_dims(input_idx_patched, axis=-1),
                                  array_ops.expand_dims(output_idx, axis=-1)],
                                 axis=-1)
   idx_map = array_ops.reshape(idx_matrix, (-1, 2))
 
   sp_shape = (input_indices_num, output_indices_num)
-  sp_mat = sparse_tensor.SparseTensor(
+  sp_mat_full = sparse_tensor.SparseTensor(
       idx_map,
       array_ops.ones_like(idx_map[:, 0], dtype=grad.dtype),
       sp_shape)
-  # Remove all padding locations: [0, :].
-  sp_mat = sparse_ops.sparse_slice(sp_mat,
+  # Remove all padding locations [0, :].
+  sp_mat = sparse_ops.sparse_slice(sp_mat_full,
                                    (1, 0),
                                    (input_indices_num - 1, output_indices_num))
 
