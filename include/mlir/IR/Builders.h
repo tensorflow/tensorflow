@@ -103,11 +103,22 @@ protected:
 /// block.
 class CFGFuncBuilder : public Builder {
 public:
+  CFGFuncBuilder(BasicBlock *block, BasicBlock::iterator insertPoint)
+      : Builder(block->getFunction()->getContext()),
+        function(block->getFunction()) {
+    setInsertionPoint(block, insertPoint);
+  }
+
+  CFGFuncBuilder(OperationInst *insertBefore)
+      : CFGFuncBuilder(insertBefore->getBlock(),
+                       BasicBlock::iterator(insertBefore)) {}
+
   CFGFuncBuilder(BasicBlock *block)
       : Builder(block->getFunction()->getContext()),
         function(block->getFunction()) {
     setInsertionPoint(block);
   }
+
   CFGFuncBuilder(CFGFunction *function)
       : Builder(function->getContext()), function(function) {}
 
@@ -119,22 +130,34 @@ public:
     insertPoint = BasicBlock::iterator();
   }
 
+  /// Set the insertion point to the specified location.
+  void setInsertionPoint(BasicBlock *block, BasicBlock::iterator insertPoint) {
+    assert(block->getFunction() == function &&
+           "can't move to a different function");
+    this->block = block;
+    this->insertPoint = insertPoint;
+  }
+
+  /// Set the insertion point to the specified operation.
+  void setInsertionPoint(OperationInst *inst) {
+    setInsertionPoint(inst->getBlock(), BasicBlock::iterator(inst));
+  }
+
   /// Set the insertion point to the end of the specified block.
   void setInsertionPoint(BasicBlock *block) {
-    this->block = block;
-    insertPoint = block->end();
+    setInsertionPoint(block, block->end());
   }
 
   // Add new basic block and set the insertion point to the end of it.
   BasicBlock *createBlock();
 
-  // Instructions.
+  // Create an operation at the current insertion point.
   OperationInst *createOperation(Identifier name, ArrayRef<CFGValue *> operands,
                                  ArrayRef<Type *> resultTypes,
                                  ArrayRef<NamedAttribute> attributes) {
     auto op =
         OperationInst::create(name, operands, resultTypes, attributes, context);
-    block->getOperations().push_back(op);
+    block->getOperations().insert(insertPoint, op);
     return op;
   }
 
