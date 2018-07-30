@@ -70,8 +70,8 @@ enum OptResult { OptSuccess, OptFailure };
 /// other errors.
 static std::unique_ptr<ToolOutputFile> getOutputStream() {
   std::error_code error;
-  auto result = make_unique<ToolOutputFile>(outputFilename, error,
-                                            sys::fs::F_None);
+  auto result =
+      llvm::make_unique<ToolOutputFile>(outputFilename, error, sys::fs::F_None);
   if (error) {
     llvm::errs() << error.message() << '\n';
     exit(1);
