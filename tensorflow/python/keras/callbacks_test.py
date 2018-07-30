@@ -66,7 +66,7 @@ class KerasCallbacksTest(test.TestCase):
       np.random.seed(1337)
 
       temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
       filepath = os.path.join(temp_dir, 'checkpoint.h5')
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -482,7 +482,7 @@ class KerasCallbacksTest(test.TestCase):
     with self.test_session():
       np.random.seed(1337)
       temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
       filepath = os.path.join(temp_dir, 'log.tsv')
 
       sep = '\t'
@@ -560,7 +560,7 @@ class KerasCallbacksTest(test.TestCase):
     # does not result in invalid CSVs.
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     with self.test_session():
       fp = os.path.join(tmpdir, 'test.csv')
@@ -652,7 +652,7 @@ class KerasCallbacksTest(test.TestCase):
     np.random.seed(1337)
 
     temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
@@ -750,7 +750,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_TensorBoard_histogram_freq_must_have_validation_data(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     with self.test_session():
       filepath = os.path.join(tmpdir, 'logs')
@@ -822,7 +822,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     with self.test_session():
       filepath = os.path.join(tmpdir, 'logs')
@@ -925,7 +925,7 @@ class KerasCallbacksTest(test.TestCase):
 
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
     (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
         train_samples=TRAIN_SAMPLES,
         test_samples=TEST_SAMPLES,
@@ -970,7 +970,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_Tensorboard_histogram_summaries_with_generator(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir)
+    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
 
     def generator():
       x = np.random.randn(10, 100).astype(np.float32)
@@ -1067,7 +1067,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_TensorBoard_with_ReduceLROnPlateau(self):
     with self.test_session():
       temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1125,7 +1125,7 @@ class KerasCallbacksTest(test.TestCase):
         pass
 
     temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
     tb_cbk = keras.callbacks.TensorBoard(temp_dir)
     tb_cbk.writer = FileWriterStub(temp_dir)
@@ -1157,7 +1157,7 @@ class KerasCallbacksTest(test.TestCase):
         pass
 
     temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
     tb_cbk = keras.callbacks.TensorBoard(temp_dir)
     tb_cbk.writer = FileWriterStub(temp_dir)
@@ -1175,7 +1175,7 @@ class KerasCallbacksTest(test.TestCase):
   def test_Tensorboard_eager(self):
     with self.test_session():
       temp_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
-      self.addCleanup(shutil.rmtree, temp_dir)
+      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
