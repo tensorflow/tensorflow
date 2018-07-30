@@ -281,3 +281,12 @@ mlfunc @undef() {
   return
 }
 
+// -----
+
+mlfunc @duplicate_induction_var() {
+  for %i = 1 to 10 {   // expected-error {{previously defined here}}
+    for %i = 1 to 10 { // expected-error {{redefinition of SSA value 'i'}}
+    }
+  }
+  return
+}

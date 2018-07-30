@@ -542,18 +542,36 @@ public:
 protected:
   void numberValueID(const SSAValue *value) {
     assert(!valueIDs.count(value) && "Value numbered multiple times");
-    valueIDs[value] = nextValueID++;
+    unsigned id;
+    switch (value->getKind()) {
+    case SSAValueKind::BBArgument:
+    case SSAValueKind::InstResult:
+    case SSAValueKind::StmtResult:
+      id = nextValueID++;
+      break;
+    case SSAValueKind::FnArgument:
+      id = nextFnArgumentID++;
+      break;
+    case SSAValueKind::InductionVar:
+      id = nextInductionVarID++;
+      break;
+    }
+    valueIDs[value] = id;
   }
 
-  void printValueID(const SSAValue *value,
-                    bool dontPrintResultNo = false) const {
+  void printValueID(const SSAValue *value, bool printResultNo = true) const {
     int resultNo = -1;
     auto lookupValue = value;
 
-    // If this is a reference to the result of a multi-result instruction, print
-    // out the # identifier and make sure to map our lookup to the first result
-    // of the instruction.
+    // If this is a reference to the result of a multi-result instruction or
+    // statement, print out the # identifier and make sure to map our lookup
+    // to the first result of the instruction.
     if (auto *result = dyn_cast<InstResult>(value)) {
+      if (result->getOwner()->getNumResults() != 1) {
+        resultNo = result->getResultNumber();
+        lookupValue = result->getOwner()->getResult(0);
+      }
+    } else if (auto *result = dyn_cast<StmtResult>(value)) {
       if (result->getOwner()->getNumResults() != 1) {
         resultNo = result->getResultNumber();
         lookupValue = result->getOwner()->getResult(0);
@@ -566,8 +584,14 @@ protected:
       return;
     }
 
-    os << '%' << it->getSecond();
-    if (resultNo != -1 && !dontPrintResultNo)
+    os << '%';
+    if (isa<ForStmt>(value))
+
+      os << 'i';
+    else if (isa<FnArgument>(value))
+      os << "arg";
+    os << it->getSecond();
+    if (resultNo != -1 && printResultNo)
       os << '#' << resultNo;
   }
 
@@ -575,12 +599,14 @@ private:
   /// This is the value ID for each SSA value in the current function.
   DenseMap<const SSAValue *, unsigned> valueIDs;
   unsigned nextValueID = 0;
+  unsigned nextInductionVarID = 0;
+  unsigned nextFnArgumentID = 0;
 };
 } // end anonymous namespace
 
 void FunctionPrinter::printOperation(const Operation *op) {
   if (op->getNumResults()) {
-    printValueID(op->getResult(0), /*dontPrintResultNo*/ true);
+    printValueID(op->getResult(0), /*printResultNo=*/false);
     os << " = ";
   }
 
@@ -874,6 +900,9 @@ void MLFunctionPrinter::numberValues() {
       if (stmt->getNumResults() != 0)
         printer->numberValueID(stmt->getResult(0));
     }
+    void visitForStmt(ForStmt *stmt) {
+      printer->numberValueID(stmt->getInductionVar());
+    }
     MLFunctionPrinter *printer;
   };
 
@@ -918,7 +947,9 @@ void MLFunctionPrinter::print(const OperationStmt *stmt) {
 }
 
 void MLFunctionPrinter::print(const ForStmt *stmt) {
-  os.indent(numSpaces) << "for x = " << *stmt->getLowerBound();
+  os.indent(numSpaces) << "for ";
+  printOperand(stmt->getInductionVar());
+  os << " = " << *stmt->getLowerBound();
   os << " to " << *stmt->getUpperBound();
   if (stmt->getStep()->getValue() != 1)
     os << " step " << *stmt->getStep();

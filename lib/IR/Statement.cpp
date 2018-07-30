@@ -18,6 +18,7 @@
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/Types.h"
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -189,6 +190,16 @@ OperationStmt *SSAValue::getDefiningStmt() {
     return result->getOwner();
   return nullptr;
 }
+
+//===----------------------------------------------------------------------===//
+// ForStmt
+//===----------------------------------------------------------------------===//
+
+ForStmt::ForStmt(AffineConstantExpr *lowerBound, AffineConstantExpr *upperBound,
+                 AffineConstantExpr *step, MLIRContext *context)
+    : Statement(Kind::For), StmtBlock(StmtBlockKind::For),
+      MLValue(MLValueKind::InductionVar, Type::getAffineInt(context)),
+      lowerBound(lowerBound), upperBound(upperBound), step(step) {}
 
 //===----------------------------------------------------------------------===//
 // IfStmt

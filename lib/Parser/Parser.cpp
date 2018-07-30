@@ -2086,10 +2086,8 @@ ParseResult MLFunctionParser::parseForStmt() {
   if (getToken().isNot(Token::percent_identifier))
     return emitError("expected SSA identifier for the loop variable");
 
-  // TODO: create SSA value definition from name
-  StringRef name = getTokenSpelling().drop_front();
-  (void)name;
-
+  auto loc = getToken().getLoc();
+  StringRef inductionVariableName = getTokenSpelling().drop_front();
   consumeToken(Token::percent_identifier);
 
   if (parseToken(Token::equal, "expected ="))
@@ -2116,13 +2114,19 @@ ParseResult MLFunctionParser::parseForStmt() {
   }
 
   // Create for statement.
-  ForStmt *stmt = builder.createFor(lowerBound, upperBound, step);
+  ForStmt *forStmt = builder.createFor(lowerBound, upperBound, step);
+
+  // Create SSA value definition for the induction variable.
+  addDefinition({inductionVariableName, 0, loc}, forStmt->getInductionVar());
 
   // If parsing of the for statement body fails,
   // MLIR contains for statement with those nested statements that have been
   // successfully parsed.
-  if (parseStmtBlock(static_cast<StmtBlock *>(stmt)))
+  if (parseStmtBlock(forStmt))
     return ParseFailure;
+
+  // Reset insertion point to the current block.
+  builder.setInsertionPoint(forStmt->getBlock());
 
   return ParseSuccess;
 }
@@ -2173,6 +2177,9 @@ ParseResult MLFunctionParser::parseIfStmt() {
     if (parseElseClause(elseClause))
       return ParseFailure;
   }
+
+  // Reset insertion point to the current block.
+  builder.setInsertionPoint(ifStmt->getBlock());
 
   return ParseSuccess;
 }

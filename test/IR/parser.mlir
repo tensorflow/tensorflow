@@ -116,7 +116,7 @@ mlfunc @mlfunc_with_args(%a : f16) {
 mlfunc @mlfunc_with_ops() {
   // CHECK: %0 = "foo"() : () -> i64
   %a = "foo"() : ()->i64
-  // CHECK: for x = 1 to 10 {
+  // CHECK: for %i0 = 1 to 10 {
   for %i = 1 to 10 {
     // CHECK: %1 = "doo"() : () -> f32
     %b = "doo"() : ()->f32
@@ -132,18 +132,34 @@ mlfunc @mlfunc_with_ops() {
 
 // CHECK-LABEL: mlfunc @loops() {
 mlfunc @loops() {
-  // CHECK: for x = 1 to 100 step 2 {
+  // CHECK: for %i0 = 1 to 100 step 2 {
   for %i = 1 to 100 step 2 {
-    // CHECK: for x = 1 to 200 {
+    // CHECK: for %i1 = 1 to 200 {
     for %j = 1 to 200 {
     }        // CHECK:     }
   }          // CHECK:   }
   return     // CHECK:   return
 }            // CHECK: }
 
+// CHECK-LABEL: mlfunc @complex_loops() {
+mlfunc @complex_loops() {
+  for %i1 = 1 to 100 {      // CHECK:   for %i0 = 1 to 100 {
+    for %j1 = 1 to 100 {    // CHECK:     for %i1 = 1 to 100 {
+       "foo"() : () -> ()   // CHECK:       "foo"() : () -> ()
+    }                       // CHECK:     }
+    "boo"() : () -> ()      // CHECK:     "boo"() : () -> ()
+    for %j2 = 1 to 10 {     // CHECK:     for %i2 = 1 to 10 {
+      for %k2 = 1 to 10 {   // CHECK:       for %i3 = 1 to 10 {
+        "goo"() : () -> ()  // CHECK:         "goo"() : () -> ()
+      }                     // CHECK:       }
+    }                       // CHECK:     }
+  }                         // CHECK:   }
+  return                    // CHECK:   return
+}                           // CHECK: }
+
 // CHECK-LABEL: mlfunc @ifstmt() {
 mlfunc @ifstmt() {
-  for %i = 1 to 10 {    // CHECK   for x = 1 to 10 {
+  for %i = 1 to 10 {    // CHECK   for %i0 = 1 to 10 {
     if () {             // CHECK     if () {
     } else if () {      // CHECK     } else if () {
     } else {            // CHECK     } else {

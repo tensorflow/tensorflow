@@ -187,19 +187,17 @@ private:
 };
 
 /// For statement represents an affine loop nest.
-class ForStmt : public Statement, public StmtBlock {
+class ForStmt : public Statement, public StmtBlock, private MLValue {
 public:
   // TODO: lower and upper bounds should be affine maps with
   // dimension and symbol use lists.
   explicit ForStmt(AffineConstantExpr *lowerBound,
-                   AffineConstantExpr *upperBound, AffineConstantExpr *step)
-      : Statement(Kind::For), StmtBlock(StmtBlockKind::For),
-        lowerBound(lowerBound), upperBound(upperBound), step(step) {}
+                   AffineConstantExpr *upperBound, AffineConstantExpr *step,
+                   MLIRContext *context);
 
   // Loop bounds and step are immortal objects and don't need to be deleted.
   ~ForStmt() {}
 
-  // TODO: represent induction variable
   AffineConstantExpr *getLowerBound() const { return lowerBound; }
   AffineConstantExpr *getUpperBound() const { return upperBound; }
   AffineConstantExpr *getStep() const { return step; }
@@ -212,6 +210,16 @@ public:
   static bool classof(const StmtBlock *block) {
     return block->getStmtBlockKind() == StmtBlockKind::For;
   }
+
+  // For statement represents induction variable by inheriting
+  // from MLValue. This design is hidden behind interfaces.
+  static bool classof(const SSAValue *value) {
+    return value->getKind() == SSAValueKind::InductionVar;
+  }
+
+  /// MLValue methods
+  MLValue *getInductionVar() { return this; }
+  const MLValue *getInductionVar() const { return this; }
 
 private:
   AffineConstantExpr *lowerBound;

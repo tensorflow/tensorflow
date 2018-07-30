@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: mlfunc @loops() {
 mlfunc @loops() {
-  // CHECK: for x = 1 to 100 step 2 {
+  // CHECK: for %i0 = 1 to 100 step 2 {
   for %i = 1 to 100 step 2 {
     // CHECK: "custom"(){value: 1} : () -> ()
     // CHECK-NEXT: "custom"(){value: 1} : () -> ()
