@@ -305,6 +305,7 @@ class StridedSliceAssignOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
+      mutex_lock ml(*v->mu());
       OP_REQUIRES_OK(context,
                      PrepareToUpdateVariable<Device, T>(context, v->tensor()));
       old_lhs = *v->tensor();
