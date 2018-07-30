@@ -52,14 +52,21 @@ UnrankedTensorType::UnrankedTensorType(Type *elementType, MLIRContext *context)
 }
 
 MemRefType::MemRefType(ArrayRef<int> shape, Type *elementType,
-                       ArrayRef<AffineMap*> affineMapList,
+                       ArrayRef<AffineMap *> affineMapList,
                        unsigned memorySpace, MLIRContext *context)
-  : Type(Kind::MemRef, context, shape.size()),
-    elementType(elementType), shapeElements(shape.data()),
-    numAffineMaps(affineMapList.size()), affineMapList(affineMapList.data()),
-    memorySpace(memorySpace) {
-}
+    : Type(Kind::MemRef, context, shape.size()), elementType(elementType),
+      shapeElements(shape.data()), numAffineMaps(affineMapList.size()),
+      affineMapList(affineMapList.data()), memorySpace(memorySpace) {}
 
 ArrayRef<AffineMap*> MemRefType::getAffineMaps() const {
   return ArrayRef<AffineMap*>(affineMapList, numAffineMaps);
+}
+
+unsigned MemRefType::getNumDynamicDims() {
+  unsigned numDynamicDims = 0;
+  for (int dimSize : getShape()) {
+    if (dimSize < 0)
+      ++numDynamicDims;
+  }
+  return numDynamicDims;
 }

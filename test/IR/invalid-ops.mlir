@@ -68,3 +68,23 @@ bb0:
   %i = crazyThing() {value: 0} : () -> affineint  // expected-error {{custom op 'crazyThing' is unknown}}
   return
 }
+
+// -----
+
+cfgfunc @bad_alloc_wrong_dynamic_dim_count() {
+bb0:
+  %0 = "constant"() {value: 7} : () -> affineint
+  // Test alloc with wrong number of dynamic dimensions.
+  %1 = alloc(%0)[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{Dynamic dimensions count mismatch: dimension operand count does not equal memref dynamic dimension count}}
+  return
+}
+
+// -----
+
+cfgfunc @bad_alloc_wrong_symbol_count() {
+bb0:
+  %0 = "constant"() {value: 7} : () -> affineint
+  // Test alloc with wrong number of symbols
+  %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{AffineMap symbol count mismatch: symbol operand count does not equal memref affine map symbol count}}
+  return
+}

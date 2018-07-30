@@ -86,6 +86,44 @@ private:
   explicit AffineApplyOp(const Operation *state) : OpBase(state) {}
 };
 
+/// The "alloc" operation allocates a region of memory, as specified by its
+/// memref type. For example:
+///
+///   %0 = alloc() : memref<8x64xf32, (d0, d1) -> (d0, d1), 1>
+///
+/// The optional list of dimension operands are bound to the dynamic dimensions
+/// specified in its memref type. In the example below, the ssa value '%d' is
+/// bound to the second dimension of the memref (which is dynamic).
+///
+///   %0 = alloc(%d) : memref<8x?xf32, (d0, d1) -> (d0, d1), 1>
+///
+/// The optional list of symbol operands are bound to the symbols of the
+/// memrefs affine map. In the example below, the ssa value '%s' is bound to
+/// the symbol 's0' in the affine map specified in the allocs memref type.
+///
+///   %0 = alloc()[%s] : memref<8x64xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
+///
+/// This operation returns a single ssa value of memref type, which can be used
+/// by subsequent load and store operations.
+
+class AllocOp
+    : public OpBase<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
+public:
+  SSAValue *getMemRef() { return getOperation()->getResult(0); }
+  const SSAValue *getMemRef() const { return getOperation()->getResult(0); }
+
+  static StringRef getOperationName() { return "alloc"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+  static OpAsmParserResult parse(OpAsmParser *parser);
+  void print(OpAsmPrinter *p) const;
+
+private:
+  friend class Operation;
+  explicit AllocOp(const Operation *state) : OpBase(state) {}
+};
+
 /// The "constant" operation requires a single attribute named "value".
 /// It returns its value as an SSA value.  For example:
 ///

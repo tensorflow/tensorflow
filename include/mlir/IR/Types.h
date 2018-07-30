@@ -346,6 +346,9 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const { return memorySpace; }
 
+  /// Returns the number of dimensions with dynamic size.
+  unsigned getNumDynamicDims();
+
   static bool classof(const Type *type) {
     return type->getKind() == Kind::MemRef;
   }
@@ -356,11 +359,11 @@ private:
   /// An array of integers which stores the shape dimension sizes.
   const int *shapeElements;
   /// The number of affine maps in the 'affineMapList' array.
-  unsigned numAffineMaps;
-  /// List of affine maps in affine map composition.
+  const unsigned numAffineMaps;
+  /// List of affine maps in the memref's layout/index map composition.
   AffineMap *const *const affineMapList;
   /// Memory space in which data referenced by memref resides.
-  unsigned memorySpace;
+  const unsigned memorySpace;
 
   MemRefType(ArrayRef<int> shape, Type *elementType,
              ArrayRef<AffineMap*> affineMapList, unsigned memorySpace,
