@@ -403,6 +403,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Any)
     HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
     HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
