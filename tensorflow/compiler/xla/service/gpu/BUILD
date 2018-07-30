@@ -545,6 +545,38 @@ cc_library(
 )
 
 cc_library(
+    name = "pad_for_tensor_cores",
+    srcs = ["pad_for_tensor_cores.cc"],
+    hdrs = ["pad_for_tensor_cores.h"],
+    deps = [
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:window_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:shape_inference",
+    ],
+)
+
+tf_cc_test(
+    name = "pad_for_tensor_cores_test",
+    srcs = ["pad_for_tensor_cores_test.cc"],
+    deps = [
+        ":ir_emission_utils",
+        ":pad_for_tensor_cores",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # build_cleaner: keep
+    ],
+)
+
+cc_library(
     name = "gpu_transfer_manager",
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
@@ -588,9 +620,11 @@ cc_library(
         ":ir_emission_utils",
         ":ir_emitter",
         ":multi_output_fusion",
+        ":pad_for_tensor_cores",
         ":pad_insertion",
         ":partition_assignment",
         ":stream_assignment",
+        ":stream_executor_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
