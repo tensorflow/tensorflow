@@ -139,7 +139,7 @@ def main(_):
 
   # Estimator specific configuration
   run_config = tf.estimator.RunConfig(
-      model_dir=FLAGS.train_dir,  # Directory for storing checkpoints
+      model_dir=FLAGS.model_dir,  # Directory for storing checkpoints
       tf_random_seed=config.seed,
       save_summary_steps=config.log_every,
       save_checkpoints_steps=config.log_every,
@@ -153,7 +153,7 @@ def main(_):
   # Construct estimator
   revnet_estimator = tf.estimator.Estimator(
       model_fn=model_fn,
-      model_dir=FLAGS.train_dir,
+      model_dir=FLAGS.model_dir,
       config=run_config,
       params={"config": config})
 
@@ -173,14 +173,14 @@ def main(_):
     input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
         "image": inputs
     })
-    revnet_estimator.export_savedmodel(FLAGS.train_dir, input_fn)
+    revnet_estimator.export_savedmodel(FLAGS.model_dir, input_fn)
 
 
 if __name__ == "__main__":
   flags.DEFINE_string(
       "data_dir", default=None, help="Directory to load tfrecords")
   flags.DEFINE_string(
-      "train_dir",
+      "model_dir",
       default=None,
       help="[Optional] Directory to store the training information")
   flags.DEFINE_string(
