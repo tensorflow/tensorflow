@@ -307,6 +307,37 @@ public:
   };
 };
 
+/// This class provides the API for ops that are known to have a at least a
+/// specified number of operands.  This is used as a trait like this:
+///
+///   class FooOp : public OpBase<FooOp, OpTrait::AtLeastNOperands<2>::Impl> {
+///
+template <unsigned N> class AtLeastNOperands {
+public:
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType, AtLeastNOperands<N>::Impl> {
+  public:
+    const SSAValue *getOperand(unsigned i) const {
+      return this->getOperation()->getOperand(i);
+    }
+
+    SSAValue *getOperand(unsigned i) {
+      return this->getOperation()->getOperand(i);
+    }
+
+    void setOperand(unsigned i, SSAValue *value) {
+      this->getOperation()->setOperand(i, value);
+    }
+
+    static const char *verifyTrait(const Operation *op) {
+      // TODO(clattner): Allow verifier to return non-constant string.
+      if (op->getNumOperands() < N)
+        return "incorrect number of operands";
+      return nullptr;
+    }
+  };
+};
+
 /// This class provides the API for ops which have an unknown number of
 /// SSA operands.
 template <typename ConcreteType>
@@ -393,6 +424,35 @@ public:
     static const char *verifyTrait(const Operation *op) {
       // TODO(clattner): Allow verifier to return non-constant string.
       if (op->getNumResults() != N)
+        return "incorrect number of results";
+      return nullptr;
+    }
+  };
+};
+
+/// This class provides the API for ops that are known to have at least a
+/// specified number of results.  This is used as a trait like this:
+///
+///   class FooOp : public OpBase<FooOp, OpTrait::AtLeastNResults<2>::Impl> {
+///
+template <unsigned N> class AtLeastNResults {
+public:
+  template <typename ConcreteType>
+  class Impl : public TraitBase<ConcreteType, AtLeastNResults<N>::Impl> {
+  public:
+    const SSAValue *getResult(unsigned i) const {
+      return this->getOperation()->getResult(i);
+    }
+
+    SSAValue *getResult(unsigned i) {
+      return this->getOperation()->getResult(i);
+    }
+
+    Type *getType(unsigned i) const { return getResult(i)->getType(); }
+
+    static const char *verifyTrait(const Operation *op) {
+      // TODO(clattner): Allow verifier to return non-constant string.
+      if (op->getNumResults() < N)
         return "incorrect number of results";
       return nullptr;
     }
