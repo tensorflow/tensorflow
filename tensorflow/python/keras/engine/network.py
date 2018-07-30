@@ -967,7 +967,7 @@ class Network(base_layer.Layer):
         mask: List of masks (tensors or None).
 
     Returns:
-        Three lists: output_tensors, output_masks, output_shapes
+        Two lists: output_tensors, output_masks
     """
     # Note: masking support is relevant mainly for Keras.
     # It cannot be factored out without having the fully reimplement the network
@@ -1034,7 +1034,6 @@ class Network(base_layer.Layer):
               else:
                 output_masks = [None for _ in output_tensors]
               computed_tensors = [computed_tensor]
-              computed_masks = [computed_mask]
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
