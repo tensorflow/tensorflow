@@ -164,7 +164,7 @@ class ROCMExecutor : public internal::StreamExecutorInterface {
 
   // Search for the symbol and returns a device pointer and size.
   // Returns false if symbol does not exist.
-  bool GetSymbol(const string& symbol_name, void **mem, size_t *bytes) override;
+  bool GetSymbol(const string& symbol_name, ModuleHandle module_handle, void **mem, size_t *bytes) override;
 
   DeviceDescription *PopulateDeviceDescription() const override;
 
