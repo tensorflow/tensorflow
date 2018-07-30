@@ -158,7 +158,7 @@ struct unsafe_div_op {
   EIGEN_EMPTY_STRUCT_CTOR(unsafe_div_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
                                                            const T& b) const {
-    if (TF_PREDICT_TRUE(b != 0)) {
+    if (b != 0) {
       return scalar_quotient_op<T>()(a, b);
     } else {
       return 0;
