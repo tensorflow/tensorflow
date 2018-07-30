@@ -339,7 +339,7 @@ class FlatRep {
 
   inline size_t NextIndex(size_t i, uint32 num_probes) const {
     // Quadratic probing.
-    return (i + num_probes) & mask_;
+    return (i + num_probes + 3 * num_probes * num_probes) & mask_;
   }
 };
 
