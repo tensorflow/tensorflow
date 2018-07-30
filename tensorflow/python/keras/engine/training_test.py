@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
@@ -45,6 +46,7 @@ except ImportError:
 
 class TrainingTest(test.TestCase):
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_fit_on_arrays(self):
     with self.test_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
@@ -57,7 +59,7 @@ class TrainingTest(test.TestCase):
 
       model = keras.models.Model([a, b], [d, e])
 
-      optimizer = 'rmsprop'
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       loss_weights = [1., 0.5]
       metrics = ['mae']
@@ -224,7 +226,7 @@ class TrainingTest(test.TestCase):
       x = keras.layers.Input(shape=(3,), name='input_a')
       y = keras.layers.Dense(4)(x)
       model = keras.models.Model(x, y)
-      model.compile(optimizer='rmsprop', loss='mse')
+      model.compile(optimizer, loss='mse')
       # This will work
       model.fit([input_a_np], output_d_np, epochs=1)
       with self.assertRaises(ValueError):
@@ -240,6 +242,7 @@ class TrainingTest(test.TestCase):
                 batch_size=5,
                 verbose=2)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_evaluate_predict_on_arrays(self):
     with self.test_session():
       a = keras.layers.Input(shape=(3,), name='input_a')
@@ -252,7 +255,7 @@ class TrainingTest(test.TestCase):
 
       model = keras.models.Model([a, b], [d, e])
 
-      optimizer = 'rmsprop'
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
       loss_weights = [1., 0.5]
       metrics = ['mae']
@@ -322,6 +325,7 @@ class TrainingTest(test.TestCase):
       })
       self.assertEqual(len(out), 2)
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_invalid_loss_or_metrics(self):
     num_classes = 5
     train_samples = 1000
@@ -334,27 +338,29 @@ class TrainingTest(test.TestCase):
       model.add(keras.layers.Activation('relu'))
       model.add(keras.layers.Dense(num_classes))
       model.add(keras.layers.Activation('softmax'))
-      model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      model.compile(optimizer, loss='categorical_crossentropy')
       np.random.seed(1337)
       (x_train, y_train), (_, _) = testing_utils.get_test_data(
           train_samples=train_samples,
           test_samples=test_samples,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      with self.assertRaises(ValueError):
-        model.fit(x_train, y_train)
 
       with self.assertRaises(ValueError):
         model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
 
       with self.assertRaises(TypeError):
-        model.compile(loss='categorical_crossentropy',
-                      optimizer='rmsprop',
-                      metrics=set(0))
+        model.compile(
+            optimizer, loss='categorical_crossentropy', metrics=set(0))
 
-      with self.assertRaises(ValueError):
-        model.compile(loss=None,
-                      optimizer='rmsprop')
+      if not context.executing_eagerly():
+        # TODO(psv): Investigate these use cases in eager mode.
+        with self.assertRaises(ValueError):
+          model.fit(x_train, y_train)
+
+        with self.assertRaises(ValueError):
+          model.compile(optimizer, loss=None)
 
   def test_training_on_sparse_data_with_dense_placeholders(self):
     if scipy_sparse is None:
