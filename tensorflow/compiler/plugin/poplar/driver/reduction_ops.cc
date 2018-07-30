@@ -431,10 +431,10 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
 
     // Find the type of the reduction
     if (inst->opcode() == HloOpcode::kCall) {
-      if (inst->to_apply()->name() == "_pop_op_avg_pool") {
+      if (inst->to_apply()->name().substr(0, 16) == "_pop_op_avg_pool") {
         reduction_type = popnn::PoolingType::AVG;
         pooling_inst = inst->to_apply()->root_instruction()->operand(0);
-      } else if (inst->to_apply()->name() == "_pop_op_max_pool") {
+      } else if (inst->to_apply()->name().substr(0, 16) == "_pop_op_max_pool") {
         reduction_type = popnn::PoolingType::MAX;
         pooling_inst = inst->to_apply()->root_instruction();
       } else {
