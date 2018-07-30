@@ -65,6 +65,7 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kAny:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
+    case OperatorType::kLogicalOr:
       // These operators unconditionally produce bool outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
       break;

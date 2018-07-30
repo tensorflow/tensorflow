@@ -1925,6 +1925,21 @@ void ConvertLogicalNotOperator(const Model& model,
   *logical_op->add_input() = src_op.inputs[0];
 }
 
+void ConvertLogicalOrOperator(const Model& model,
+                              const LogicalOrOperator& src_op,
+                              const char* op_name, GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* logical_or_op = tensorflow_graph->add_node();
+  logical_or_op->set_op(op_name);
+  logical_or_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    *logical_or_op->add_input() = src_op.inputs[i];
+  }
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*logical_or_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -2175,6 +2190,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kOneHot) {
     ConvertOneHotOperator(model, static_cast<const OneHotOperator&>(src_op),
                           tensorflow_graph);
+  } else if (src_op.type == OperatorType::kLogicalOr) {
+    ConvertLogicalOrOperator(model,
+                             static_cast<const LogicalOrOperator&>(src_op),
+                             "LogicalOr", tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

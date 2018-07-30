@@ -231,6 +231,7 @@ _TF_TYPE_INFO = {
     tf.int32: (np.int32, "INT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int64: (np.int64, "INT64"),
+    tf.bool: (np.bool, "BOOL"),
 }
 
 
@@ -244,7 +245,8 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
     value = (max_value-min_value)*np.random.random_sample(shape)+min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64):
     value = np.random.randint(min_value, max_value+1, shape)
-
+  elif dtype == tf.bool:
+    value = np.random.choice([True, False], size=shape)
   return np.dtype(dtype).type(value) if np.isscalar(value) else value.astype(
       dtype)
 
@@ -2978,6 +2980,35 @@ def make_pack_tests(zip_path):
       all_values.append(input_values)
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_logical_or_tests(zip_path):
+  """Make a set of tests to do logical_or."""
+
+  test_parameters = [{
+      "input_shape_pair": [([], []), ([1, 1, 1, 3], [1, 1, 1, 3]),
+                           ([2, 3, 4, 5], [2, 3, 4, 5]), ([2, 3, 3], [2, 3]),
+                           ([5, 5], [1]), ([10], [2, 4, 10])],
+  }]
+
+  def build_graph(parameters):
+    """Build the logical_or op testing graph."""
+    input_value1 = tf.placeholder(
+        dtype=tf.bool, name="input1", shape=parameters["input_shape_pair"][0])
+    input_value2 = tf.placeholder(
+        dtype=tf.bool, name="input2", shape=parameters["input_shape_pair"][1])
+    out = tf.logical_or(input_value1, input_value2)
+    return [input_value1, input_value2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(tf.bool,
+                                      parameters["input_shape_pair"][0])
+    input_value2 = create_tensor_data(tf.bool,
+                                      parameters["input_shape_pair"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
