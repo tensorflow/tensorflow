@@ -40,7 +40,23 @@ namespace tensorflow {
 XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
-XlaCompilationCache::~XlaCompilationCache() = default;
+XlaCompilationCache::~XlaCompilationCache() {
+  // Ensure any use of our programs have completed by waiting for all stream
+  // executors to complete.
+  for (auto* executor : client_->backend().stream_executors()) {
+    bool ok = executor->SynchronizeAllActivity();
+    if (!ok) {
+      LOG(ERROR) << "Error synchronizing activity while waiting for all "
+                    "programs to complete";
+    }
+  }
+  // TODO(b/110813685): Think about the program ownership model. Programs are
+  // currently owned by the compilation cache which means we must wait for
+  // program completion in the destructor. There are multiple compilation caches
+  // around, which complicates things a little. Perhaps having programs be
+  // shared_ptrs (an invasive change) would make the model easier to reason
+  // about?
+}
 
 string XlaCompilationCache::DebugString() {
   return "XLA JIT compilation cache";

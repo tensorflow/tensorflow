@@ -177,6 +177,11 @@ class Context(object):
         - tf.contrib.eager.SYNC: executes each operation synchronously.
         - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
           operations may return "non-ready" handles.
+      server_def: (Optional.) A tensorflow::ServerDef proto.
+        Enables execution on remote devices. GrpcServers need to be started by
+        creating an identical server_def to this, and setting the appropriate
+        task_indexes, so that the servers can communicate. It will then be
+        possible to execute operations on remote devices.
 
     Raises:
      ValueError: If execution_mode is not valid.

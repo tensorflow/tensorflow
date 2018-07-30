@@ -28,18 +28,37 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_util
 
 
-def validate_destinations(destinations):
-  if not isinstance(destinations,
-                    (value_lib.DistributedValues, six.string_types, list)):
-    raise ValueError("destinations must be one of a `DistributedValues` object,"
-                     " a device string, a list of device strings or None")
+def check_destinations(destinations):
+  """Checks whether `destinations` is not None and not empty.
 
-  if not destinations:
+  Args:
+    destinations: a DistributedValues, Variable, string or a list of strings.
+
+  Returns:
+    Boolean indicating whether `destinations` is not None and not empty.
+  """
+  # Calling bool() on a ResourceVariable is not allowed.
+  if isinstance(destinations, resource_variable_ops.ResourceVariable):
+    return bool(destinations.device)
+  return bool(destinations)
+
+
+def validate_destinations(destinations):
+  if not isinstance(
+      destinations,
+      (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
+       six.string_types, list)):
+    raise ValueError("destinations must be one of a `DistributedValues` object,"
+                     " a tf.Variable object, a device string, a list of device "
+                     "strings or None")
+
+  if not check_destinations(destinations):
     raise ValueError("destinations can not be empty")
 
 
@@ -59,6 +78,8 @@ def _validate_value_destination_pairs(value_destination_pairs):
 def get_devices_from(destinations):
   if isinstance(destinations, value_lib.DistributedValues):
     return list(destinations.devices)
+  elif isinstance(destinations, resource_variable_ops.ResourceVariable):
+    return [destinations.device]
   elif isinstance(destinations, six.string_types):
     return [device_util.resolve(destinations)]
   else:
@@ -225,7 +246,10 @@ class ReductionToOneDeviceCrossTowerOps(CrossTowerOps):
     super(ReductionToOneDeviceCrossTowerOps, self).__init__()
 
   def _reduce(self, aggregation, per_device_value, destinations):
-    devices = get_devices_from(destinations or per_device_value)
+    if check_destinations(destinations):
+      devices = get_devices_from(destinations)
+    else:
+      devices = get_devices_from(per_device_value)
     reduce_to_device = self.reduce_to_device or devices[0]
     reduced = _simple_reduce(per_device_value, reduce_to_device,
                              self.accumulation_fn, aggregation)
@@ -508,7 +532,10 @@ class AllReduceCrossTowerOps(CrossTowerOps):
             logging.WARN,
             "Efficient allreduce is not supported for IndexedSlices.", 10)
 
-      devices = get_devices_from(destinations or per_device_value)
+      if check_destinations(destinations):
+        devices = get_devices_from(destinations)
+      else:
+        devices = get_devices_from(per_device_value)
       reduce_to_device = devices[0]
       reduced = _simple_reduce(per_device_value, reduce_to_device,
                                math_ops.add_n, aggregation)

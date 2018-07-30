@@ -3007,14 +3007,7 @@ void ArithmeticOptimizer::DedupComputations() {
 
   // Delete duplicates
   if (fetch_nodes_known_ && !duplicates.empty()) {
-    int last = optimized_graph_->node_size() - 1;
-    for (auto it = duplicates.rbegin(); it != duplicates.rend(); ++it) {
-      int index = *it;
-      optimized_graph_->mutable_node()->SwapElements(index, last);
-      last--;
-    }
-    optimized_graph_->mutable_node()->DeleteSubrange(last + 1,
-                                                     duplicates.size());
+    EraseNodesFromGraph(duplicates, optimized_graph_);
     // Rebuild the NodeMap which was invalidated by the node  swapping above.
     node_map_.reset(new NodeMap(optimized_graph_));
   }

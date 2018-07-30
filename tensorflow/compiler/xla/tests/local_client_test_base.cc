@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -189,7 +190,19 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> executable,
       local_client_->Compile(computation, argument_layouts, build_options));
-  return executable->Run(arguments, run_options);
+  TF_ASSIGN_OR_RETURN(auto ret, executable->Run(arguments, run_options));
+
+  auto device_ordinal =
+      build_options.device_ordinal() == -1 ? 0 : build_options.device_ordinal();
+  auto* stream = run_options.stream();
+  if (!stream) {
+    stream = local_client_->mutable_backend()
+                 ->BorrowStream(device_ordinal)
+                 .ValueOrDie()
+                 .get();
+  }
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  return std::move(ret);
 }
 
 }  // namespace xla

@@ -127,6 +127,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<TensorFlowSqrtOperator>("SQRT", OperatorType::kSqrt);
   CheckSimpleOperator<TensorFlowRsqrtOperator>("RSQRT", OperatorType::kRsqrt);
   CheckSimpleOperator<PowOperator>("POW", OperatorType::kPow);
+  CheckSimpleOperator<LogicalOrOperator>("LOGICAL_OR",
+                                         OperatorType::kLogicalOr);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -450,6 +452,24 @@ TEST_F(OperatorTest, BuiltinSparseToDense) {
       SerializeAndDeserialize(
           GetOperator("SPARSE_TO_DENSE", OperatorType::kSparseToDense), op);
   EXPECT_EQ(op.validate_indices, output_toco_op->validate_indices);
+}
+
+TEST_F(OperatorTest, BuiltinPack) {
+  PackOperator op;
+  op.values_count = 3;
+  op.axis = 1;
+  std::unique_ptr<toco::PackOperator> output_toco_op =
+      SerializeAndDeserialize(GetOperator("PACK", OperatorType::kPack), op);
+  EXPECT_EQ(op.values_count, output_toco_op->values_count);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
+}
+
+TEST_F(OperatorTest, BuiltinOneHot) {
+  OneHotOperator op;
+  op.axis = 2;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("ONE_HOT", OperatorType::kOneHot), op);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

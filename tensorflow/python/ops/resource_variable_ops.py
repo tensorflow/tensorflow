@@ -196,15 +196,16 @@ class ResourceVariable(variables.RefVariable):
   the variable are fixed. The value can be changed using one of the assign
   methods.
 
-  Just like any `Tensor`, variables created with `ResourceVariable()` can be
-  used as inputs for other Ops in the graph. Additionally, all the operators
-  overloaded for the `Tensor` class are carried over to variables, so you can
-  also add nodes to the graph by just doing arithmetic on variables.
+  Just like any `Tensor`, variables created with
+  `tf.Variable(use_resource=True)` can be used as inputs for other Ops in the
+  graph. Additionally, all the operators overloaded for the `Tensor` class are
+  carried over to variables, so you can also add nodes to the graph by just
+  doing arithmetic on variables.
 
-  Unlike tf.Variable, a tf.ResourceVariable has well-defined semantics. Each
+  Unlike ref-based variable, a ResourceVariable has well-defined semantics. Each
   usage of a ResourceVariable in a TensorFlow graph adds a read_value operation
-  to the graph. The Tensors returned by a read_value operation are guaranteed
-  to see all modifications to the value of the variable which happen in any
+  to the graph. The Tensors returned by a read_value operation are guaranteed to
+  see all modifications to the value of the variable which happen in any
   operation on which the read_value depends on (either directly, indirectly, or
   via a control dependency) and guaranteed to not see any modification to the
   value of the variable from operations that depend on the read_value operation.
@@ -218,7 +219,7 @@ class ResourceVariable(variables.RefVariable):
   can cause tf.Variable and tf.ResourceVariable to behave differently:
 
   ```python
-  a = tf.ResourceVariable(1.0)
+  a = tf.Variable(1.0, use_resource=True)
   a.initializer.run()
 
   assign = a.assign(2.0)

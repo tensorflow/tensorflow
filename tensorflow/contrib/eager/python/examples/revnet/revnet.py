@@ -24,7 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
 import tensorflow as tf
 from tensorflow.contrib.eager.python.examples.revnet import blocks
 
@@ -45,6 +44,7 @@ class RevNet(tf.keras.Model):
     self._init_block = blocks.InitBlock(config=self.config)
     self._final_block = blocks.FinalBlock(config=self.config)
     self._block_list = self._construct_intermediate_blocks()
+    self._moving_average_variables = []
 
   def _construct_intermediate_blocks(self):
     # Precompute input shape after initial block
@@ -128,126 +128,90 @@ class RevNet(tf.keras.Model):
 
     return tf.reduce_mean(cross_ent)
 
-  def compute_gradients(self, inputs, labels, training=True, l2_reg=True):
+  def compute_gradients(self, saved_hidden, labels, training=True, l2_reg=True):
     """Manually computes gradients.
 
-    When eager execution is enabled, this method also SILENTLY updates the
-    running averages of batch normalization when `training` is set to True.
+    This method silently updates the running averages of batch normalization.
 
     Args:
-      inputs: Image tensor, either NHWC or NCHW, conforming to `data_format`
+      saved_hidden: List of hidden states Tensors
       labels: One-hot labels for classification
       training: Use the mini-batch stats in batch norm if set to True
       l2_reg: Apply l2 regularization
 
     Returns:
-      A tuple with the first entry being a list of all gradients, the second
-      entry being a list of respective variables, the third being the logits,
-      and the forth being the loss
+      A tuple with the first entry being a list of all gradients and the second
+      being the loss
     """
 
-    # Run forward pass to record hidden states
-    vars_and_vals = self.get_moving_stats()
-    _, saved_hidden = self(inputs, training=training)  # pylint:disable=not-callable
-    if tf.executing_eagerly():
-      # Restore moving averages when executing eagerly to avoid updating twice
-      self.restore_moving_stats(vars_and_vals)
-    else:
-      # Fetch batch norm updates in graph mode
-      updates = self.get_updates_for(inputs)
+    def _defunable_pop(l):
+      """Functional style list pop that works with `tfe.defun`."""
+      t, l = l[-1], l[:-1]
+      return t, l
 
-    grads_all = []
-    vars_all = []
-
-    # Manually backprop through last block
+    # Backprop through last block
     x = saved_hidden[-1]
     with tf.GradientTape() as tape:
       tape.watch(x)
-      # Running stats updated here
       logits = self._final_block(x, training=training)
       loss = self.compute_loss(logits, labels)
-
     grads_combined = tape.gradient(loss,
                                    [x] + self._final_block.trainable_variables)
-    dy, grads_ = grads_combined[0], grads_combined[1:]
-    grads_all += grads_
-    vars_all += self._final_block.trainable_variables
+    dy, final_grads = grads_combined[0], grads_combined[1:]
 
-    # Manually backprop through intermediate blocks
+    # Backprop through intermediate blocks
+    intermediate_grads = []
     for block in reversed(self._block_list):
-      y = saved_hidden.pop()
+      y, saved_hidden = _defunable_pop(saved_hidden)
       x = saved_hidden[-1]
-      # Running stats updated here
-      dy, grads, vars_ = block.backward_grads_and_vars(
-          x, y, dy, training=training)
-      grads_all += grads
-      vars_all += vars_
+      dy, grads = block.backward_grads(x, y, dy, training=training)
+      intermediate_grads = grads + intermediate_grads
 
-    # Manually backprop through first block
-    saved_hidden.pop()
-    x = saved_hidden.pop()
-    assert not saved_hidden  # Cleared after backprop
-
+    # Backprop through first block
+    _, saved_hidden = _defunable_pop(saved_hidden)
+    x, saved_hidden = _defunable_pop(saved_hidden)
+    assert not saved_hidden
     with tf.GradientTape() as tape:
-      # Running stats updated here
       y = self._init_block(x, training=training)
-
-    grads_all += tape.gradient(
+    init_grads = tape.gradient(
         y, self._init_block.trainable_variables, output_gradients=dy)
-    vars_all += self._init_block.trainable_variables
 
-    # Apply weight decay
+    # Ordering match up with `model.trainable_variables`
+    grads_all = init_grads + final_grads + intermediate_grads
     if l2_reg:
-      grads_all = self._apply_weight_decay(grads_all, vars_all)
+      grads_all = self._apply_weight_decay(grads_all)
 
-    if not tf.executing_eagerly():
-      # Force updates to be executed before gradient computation in graph mode
-      # This does nothing when the function is wrapped in defun
-      with tf.control_dependencies(updates):
-        grads_all[0] = tf.identity(grads_all[0])
+    return grads_all, loss
 
-    return grads_all, vars_all, logits, loss
-
-  def _apply_weight_decay(self, grads, vars_):
+  def _apply_weight_decay(self, grads):
     """Update gradients to reflect weight decay."""
-    # Don't decay bias
     return [
         g + self.config.weight_decay * v if v.name.endswith("kernel:0") else g
-        for g, v in zip(grads, vars_)
+        for g, v in zip(grads, self.trainable_variables)
     ]
 
   def get_moving_stats(self):
-    """Get moving averages of batch normalization.
+    """Get moving averages of batch normalization."""
+    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
+    with tf.device(device):
+      return [v.read_value() for v in self.moving_average_variables]
 
-    This is needed to avoid updating the running average twice in one iteration.
+  def restore_moving_stats(self, values):
+    """Restore moving averages of batch normalization."""
+    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
+    with tf.device(device):
+      for var_, val in zip(self.moving_average_variables, values):
+        var_.assign(val)
 
-    Returns:
-      A dictionary mapping variables for batch normalization moving averages
-      to their current values.
-    """
-    vars_and_vals = {}
+  @property
+  def moving_average_variables(self):
+    """Get all variables that are batch norm moving averages."""
 
-    def _is_moving_var(v):
+    def _is_moving_avg(v):
       n = v.name
       return n.endswith("moving_mean:0") or n.endswith("moving_variance:0")
 
-    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
-    with tf.device(device):
-      for v in filter(_is_moving_var, self.variables):
-        vars_and_vals[v] = v.read_value()
+    if not self._moving_average_variables:
+      self._moving_average_variables = filter(_is_moving_avg, self.variables)
 
-    return vars_and_vals
-
-  def restore_moving_stats(self, vars_and_vals):
-    """Restore moving averages of batch normalization.
-
-    This is needed to avoid updating the running average twice in one iteration.
-
-    Args:
-      vars_and_vals: The dictionary mapping variables to their previous values.
-    """
-    device = "/gpu:0" if tf.test.is_gpu_available() else "/cpu:0"
-    with tf.device(device):
-      for var_, val in six.iteritems(vars_and_vals):
-        # `assign` causes a copy to GPU (if variable is already on GPU)
-        var_.assign(val)
+    return self._moving_average_variables

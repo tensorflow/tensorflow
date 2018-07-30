@@ -107,6 +107,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       graph_options = config_pb2.GraphOptions()
 
     gpu_options = config_pb2.GPUOptions()
+    gpu_options.allow_growth = True
     if trt_convert.get_linked_tensorrt_version()[0] == 3:
       gpu_options.per_process_gpu_memory_fraction = 0.50
 

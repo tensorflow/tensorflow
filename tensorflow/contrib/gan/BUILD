@@ -196,11 +196,16 @@ py_test(
     srcs = ["python/losses/python/tuple_losses_test.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":losses_impl",
         ":namedtuples",
         ":tuple_losses",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
@@ -257,12 +262,15 @@ py_library(
 py_test(
     name = "random_tensor_pool_test",
     srcs = ["python/features/python/random_tensor_pool_test.py"],
+    shard_count = 6,
     srcs_version = "PY2AND3",
     deps = [
         ":random_tensor_pool",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//third_party/py/numpy",
     ],
 )

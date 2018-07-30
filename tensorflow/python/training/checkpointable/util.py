@@ -101,6 +101,7 @@ class _CheckpointRestoreCoordinator(object):
     # this checkpoint.
     self.restore_ops = []
     self.restore_ops_by_name = {}
+    self.new_restore_ops_callback = None
     # A mapping from optimizer proto ids to lists of slot variables to be
     # restored when the optimizer is tracked. Only includes slot variables whose
     # regular variables have already been created, and only for optimizer
@@ -120,6 +121,11 @@ class _CheckpointRestoreCoordinator(object):
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
+
+  def new_restore_ops(self, new_ops):
+    self.restore_ops.extend(new_ops)
+    if self.new_restore_ops_callback:
+      self.new_restore_ops_callback(new_ops)  # pylint: disable=not-callable
 
 
 class _NameBasedRestoreCoordinator(object):
@@ -361,24 +367,42 @@ class _ObjectIdentityWeakKeyDictionary(_ObjectIdentityDictionary):
         yield unwrapped
 
 
-class _ObjectIdentityWeakSet(collections.MutableSet):
-  """Like weakref.WeakSet, but compares objects with "is"."""
+class _ObjectIdentitySet(collections.MutableSet):
+  """Like the built-in set, but compares objects with "is"."""
 
-  def __init__(self):
-    self._storage = set()
+  def __init__(self, *args):
+    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+
+  def _wrap_key(self, key):
+    return _ObjectIdentityWrapper(key)
 
   def __contains__(self, key):
-    return _WeakObjectIdentityWrapper(key) in self._storage
+    return self._wrap_key(key) in self._storage
 
   def discard(self, key):
-    self._storage.discard(_WeakObjectIdentityWrapper(key))
+    self._storage.discard(self._wrap_key(key))
 
   def add(self, key):
-    self._storage.add(_WeakObjectIdentityWrapper(key))
+    self._storage.add(self._wrap_key(key))
+
+  def __len__(self):
+    return len(self._storage)
+
+  def __iter__(self):
+    keys = list(self._storage)
+    for key in keys:
+      yield key.unwrapped
+
+
+class _ObjectIdentityWeakSet(_ObjectIdentitySet):
+  """Like weakref.WeakSet, but compares objects with "is"."""
+
+  def _wrap_key(self, key):
+    return _WeakObjectIdentityWrapper(key)
 
   def __len__(self):
     # Iterate, discarding old weak refs
-    return len(list(self))
+    return len([_ for _ in self])
 
   def __iter__(self):
     keys = list(self._storage)
@@ -803,6 +827,31 @@ class _LoadStatus(object):
     pass
 
 
+def streaming_restore(status, session=None):
+  """When graph building, runs restore ops as soon as they come in.
+
+  Args:
+    status: A _LoadStatus objects from an object-based saver's
+      restore(). Streaming restore from name-based checkpoints is not currently
+      supported.
+    session: A session to run new restore ops in.
+  """
+  if context.executing_eagerly():
+    # Streaming restore is the default/only behavior when executing eagerly.
+    return
+  if session is None:
+    session = ops.get_default_session()
+  if isinstance(status, NameBasedSaverStatus):
+    raise NotImplementedError(
+        "Streaming restore not supported from name-based checkpoints. File a "
+        "feature request if this limitation bothers you.")
+  status.run_restore_ops(session=session)
+  # pylint: disable=protected-access
+  status._checkpoint.new_restore_ops_callback = (
+      lambda ops: session.run(ops, feed_dict=status._feed_dict))
+  # pylint: enable=protected-access
+
+
 class CheckpointLoadStatus(_LoadStatus):
   """Checks the status of checkpoint loading and manages restore ops.
 
@@ -857,8 +906,8 @@ class CheckpointLoadStatus(_LoadStatus):
     for checkpointable_object in list_objects(self._root_checkpointable):
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
-        set(self._checkpoint.all_python_objects)
-        - set(self._checkpoint.object_by_proto_id.values()))
+        _ObjectIdentitySet(self._checkpoint.all_python_objects)
+        - _ObjectIdentitySet(self._checkpoint.object_by_proto_id.values()))
     if unused_python_objects:
       raise AssertionError(
           ("Some Python objects were not bound to checkpointed values, likely "
@@ -974,11 +1023,13 @@ _DEPRECATED_RESTORE_INSTRUCTIONS = (
     "one this message is coming from) and use that checkpoint in the future.")
 
 
-@deprecation.deprecated(
-    date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
 class NameBasedSaverStatus(_LoadStatus):
   """Status for loading a name-based training checkpoint."""
 
+  # Ideally this deprecation decorator would be on the class, but that
+  # interferes with isinstance checks.
+  @deprecation.deprecated(
+      date=None, instructions=_DEPRECATED_RESTORE_INSTRUCTIONS)
   def __init__(self, checkpoint, root_checkpointable):
     self._checkpoint = checkpoint
     self._root_checkpointable = root_checkpointable

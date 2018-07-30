@@ -165,6 +165,8 @@ enum BuiltinOperator : byte {
   REDUCE_PROD = 81,
   REDUCE_MAX = 82,
   PACK = 83,
+  LOGICAL_OR = 84,
+  ONE_HOT = 85,
 }
 
 // Options for the builtin operators.
@@ -228,6 +230,8 @@ union BuiltinOptions {
   ArgMinOptions,
   FakeQuantOptions,
   PackOptions,
+  LogicalOrOptions,
+  OneHotOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -541,6 +545,13 @@ table FakeQuantOptions {
 
 table PackOptions {
   values_count:int;
+  axis:int;
+}
+
+table LogicalOrOptions {
+}
+
+table OneHotOptions {
   axis:int;
 }
 

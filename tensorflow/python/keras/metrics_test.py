@@ -196,7 +196,7 @@ class KerasMetricsTest(test.TestCase):
     # check config
     self.assertEqual(m.name, 'my_mean')
     self.assertTrue(m.stateful)
-    self.assertEqual(m.dtype, dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float32)
     self.assertEqual(len(m.variables), 2)
     self.evaluate(variables.global_variables_initializer())
 
@@ -212,7 +212,7 @@ class KerasMetricsTest(test.TestCase):
     # check update_state() and result() + state accumulation + tensor input
     update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
     self.evaluate(update_op)
-    self.assertEqual(self.evaluate(m.result()), 106 / 3)
+    self.assertAlmostEqual(self.evaluate(m.result()), 106 / 3, 2)
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
     self.assertEqual(self.evaluate(m.count), 3)
 
@@ -223,7 +223,8 @@ class KerasMetricsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_mean_with_sample_weight(self):
-    m = metrics.Mean()
+    m = metrics.Mean(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
     self.evaluate(variables.global_variables_initializer())
 
     # check scalar weight
@@ -307,6 +308,94 @@ class KerasMetricsTest(test.TestCase):
     self.evaluate(restore_update)
     self.assertEqual(200., self.evaluate(restore_mean.result()))
     self.assertEqual(3, self.evaluate(restore_mean.count))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_binary_accuracy(self):
+    acc_obj = metrics.BinaryAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.global_variables_initializer())
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[1], [0]], [[1], [0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check y_pred squeeze
+    update_op = acc_obj.update_state([[1], [1]], [[[1]], [[0]]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertAlmostEqual(result, 0.75, 2)  # 3/4
+
+    # check y_true squeeze
+    result_t = acc_obj([[[1]], [[1]]], [[1], [0]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.67, 2)  # 4/6
+
+    # check with sample_weight
+    result_t = acc_obj([[1], [1]], [[1], [0]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.67, 2)  # 4.5/6.7
+
+    # check incompatible shapes
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Shapes \(1,\) and \(2,\) are incompatible'):
+      acc_obj.update_state([1, 1], [1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_binary_accuracy_threshold(self):
+    acc_obj = metrics.BinaryAccuracy(threshold=0.7)
+    self.evaluate(variables.global_variables_initializer())
+    result_t = acc_obj([[1], [1], [0], [0]], [[0.9], [0.6], [0.4], [0.8]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.5, 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_result(self):
+
+    class InvalidResult(metrics.Metric):
+
+      def __init__(self, name='invalid-result', dtype=dtypes.float64):
+        super(InvalidResult, self).__init__(name=name, dtype=dtype)
+
+      def update_state(self, *args, **kwargs):
+        pass
+
+      def result(self):
+        return 1
+
+    invalid_result_obj = InvalidResult()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Metric invalid-result\'s result must be a Tensor or Operation, given:'
+    ):
+      invalid_result_obj.result()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_update(self):
+
+    class InvalidUpdate(metrics.Metric):
+
+      def __init__(self, name='invalid-update', dtype=dtypes.float64):
+        super(InvalidUpdate, self).__init__(name=name, dtype=dtype)
+
+      def update_state(self, *args, **kwargs):
+        return [1]
+
+      def result(self):
+        pass
+
+    invalid_update_obj = InvalidUpdate()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Metric invalid-update\'s update must be a Tensor or Operation, given:'
+    ):
+      invalid_update_obj.update_state()
 
 
 if __name__ == '__main__':

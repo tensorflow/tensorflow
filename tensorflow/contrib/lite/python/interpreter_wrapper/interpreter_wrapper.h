@@ -69,14 +69,28 @@ class InterpreterWrapper {
   PyObject* tensor(PyObject* base_object, int i);
 
  private:
-  InterpreterWrapper(std::unique_ptr<tflite::FlatBufferModel> model,
-                     std::unique_ptr<PythonErrorReporter> error_reporter);
+  // Helper function to construct an `InterpreterWrapper` object.
+  // It only returns InterpreterWrapper if it can construct an `Interpreter`.
+  // Otherwise it returns `nullptr`.
+  static InterpreterWrapper* CreateInterpreterWrapper(
+      std::unique_ptr<tflite::FlatBufferModel> model,
+      std::unique_ptr<PythonErrorReporter> error_reporter,
+      std::string* error_msg);
+
+  InterpreterWrapper(
+      std::unique_ptr<tflite::FlatBufferModel> model,
+      std::unique_ptr<PythonErrorReporter> error_reporter,
+      std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
+      std::unique_ptr<tflite::Interpreter> interpreter);
 
   // InterpreterWrapper is not copyable or assignable. We avoid the use of
   // InterpreterWrapper() = delete here for SWIG compatibility.
   InterpreterWrapper();
   InterpreterWrapper(const InterpreterWrapper& rhs);
 
+  // The public functions which creates `InterpreterWrapper` should ensure all
+  // these member variables are initialized successfully. Otherwise it should
+  // report the error and return `nullptr`.
   const std::unique_ptr<tflite::FlatBufferModel> model_;
   const std::unique_ptr<PythonErrorReporter> error_reporter_;
   const std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver_;

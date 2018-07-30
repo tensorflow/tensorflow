@@ -106,4 +106,32 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
   });
 }
 
+XlaOp Triangle(XlaOp x, bool lower) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    const int64 n_dims = ShapeUtil::Rank(shape);
+    TF_RET_CHECK(n_dims >= 2);
+    const int64 m = shape.dimensions(n_dims - 2);
+    const int64 n = shape.dimensions(n_dims - 1);
+    tensorflow::gtl::ArraySlice<int64> major_dims(
+        AsInt64Slice(shape.dimensions()), /*pos=*/0, /*len=*/n_dims - 2);
+    auto a = Iota(builder, U32, n);
+    auto b = Iota(builder, U32, m);
+    xla::XlaOp indicator;
+    if (lower) {
+      indicator = Ge(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
+    } else {
+      indicator = Le(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
+    }
+    auto mask = Broadcast(indicator, major_dims);
+
+    return Select(mask, x, Zeros(builder, shape));
+  });
+}
+
+XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }
+
+XlaOp LowerTriangle(XlaOp x) { return Triangle(x, true); }
+
 }  // namespace xla

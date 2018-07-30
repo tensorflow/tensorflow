@@ -713,6 +713,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       in_depths,         // in_depths
       {{in_rows,         // in_rows
         in_cols}},       // in_cols
+      FORMAT_NCHW,       // compute_data_format
       out_depths,        // out_depths
       {{patch_rows,      // filter_rows
         patch_cols,      // filter_cols

@@ -59,7 +59,7 @@ class CompilerTest(test.TestCase):
                 value=gast.Str('c'))
         ])
 
-    source, _ = compiler.ast_to_source(node, indentation='  ')
+    source = compiler.ast_to_source(node, indentation='  ')
     self.assertEqual(
         textwrap.dedent("""
             if 1:

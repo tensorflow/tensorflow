@@ -81,11 +81,6 @@ bool DotImplementedAsGemm(const HloInstruction& dot) {
 }  // namespace
 
 bool ImplementedAsGemm(const HloInstruction& hlo) {
-  // We can only do this if the HLO is unnested.
-  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
-    return false;
-  }
-
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
     return DotImplementedAsGemm(hlo);
