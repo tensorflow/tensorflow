@@ -26,5 +26,13 @@ plugins = {
     "data":["//tensorflow/compiler/plugin/poplar:disabled_manifest.txt"],
     "deps":[],
   },
+  "poplar_ipu_hw": {
+    "device":"IPU",
+    "types":"DT_FLOAT,DT_INT32",
+    "tags":[],
+    "args":["--disabled_manifest=tensorflow/compiler/plugin/poplar/disabled_manifest_ipu.txt"],
+    "data":["//tensorflow/compiler/plugin/poplar:disabled_manifest_ipu.txt"],
+    "deps":[],
+  },
 }
 
