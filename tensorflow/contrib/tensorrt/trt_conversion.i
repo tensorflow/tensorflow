@@ -101,6 +101,7 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 #include "tensorflow/core/util/stat_summarizer.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
+#include "tensorflow/contrib/tensorrt/test/utils.h"
 %}
 
 %ignoreall
@@ -110,6 +111,10 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 %unignore get_linked_tensorrt_version;
 %unignore get_loaded_tensorrt_version;
 %unignore is_tensorrt_enabled;
+%unignore enable_test_value;
+%unignore clear_test_values;
+%unignore add_test_value;
+%unignore get_test_value;
 
 %{
 
@@ -251,6 +256,22 @@ bool is_tensorrt_enabled() {
   return tensorflow::tensorrt::IsGoogleTensorRTEnabled();
 }
 
+void enable_test_value() {
+  tensorflow::tensorrt::test::EnableTestValue();
+}
+
+void clear_test_values(string pattern) {
+  tensorflow::tensorrt::test::ClearTestValues(pattern);
+}
+
+void add_test_value(string label, string value) {
+  tensorflow::tensorrt::test::AddTestValue(label, value);
+}
+
+string get_test_value(string label) {
+  return tensorflow::tensorrt::test::GetTestValue(label);
+}
+
 %}
 
 std::pair<string, string> calib_convert(string graph_def_string, bool is_dyn_op);
@@ -266,5 +287,9 @@ std::pair<string, string> trt_convert(string graph_def_string,
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 bool is_tensorrt_enabled();
+void enable_test_value();
+void clear_test_values(string pattern);
+void add_test_value(string label, string value);
+string get_test_value(string label);
 
 %unignoreall

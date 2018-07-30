@@ -20,6 +20,7 @@ limitations under the License.
 #include <map>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
+#include "tensorflow/contrib/tensorrt/test/utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -49,9 +51,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"             // NOLINT
+#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/protobuf/device_properties.pb.h"  // NOLINT
-#include "tensorflow/core/protobuf/rewriter_config.pb.h"    // NOLINT
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"  // NOLINT
 #include "tensorflow/core/util/device_name_utils.h"
 
 #if GOOGLE_CUDA
@@ -260,63 +262,6 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   return ConvertAfterShapes(cp);
 }
 
-bool IsUniformTensorValue(const tensorflow::TensorProto& tensor) {
-  using tensorflow::DataType;
-  switch (tensor.dtype()) {
-    case DataType::DT_HALF:  // fall-through
-    case DataType::DT_BFLOAT16:
-      return tensor.half_val_size() == 1;
-    case DataType::DT_FLOAT:
-      return tensor.float_val_size() == 1;
-    case DataType::DT_DOUBLE:
-      return tensor.double_val_size() == 1;
-    case DataType::DT_INT32:  // fall-through
-    case DataType::DT_INT16:  // fall-through
-    case DataType::DT_INT8:   // fall-through
-    case DataType::DT_UINT8:
-      return tensor.int_val_size() == 1;
-    case DataType::DT_STRING:
-      return tensor.string_val_size() == 1;
-    case DataType::DT_COMPLEX64:
-      return tensor.scomplex_val_size() == 1;
-    case DataType::DT_INT64:
-      return tensor.int64_val_size() == 1;
-    case DataType::DT_BOOL:
-      return tensor.bool_val_size() == 1;
-    case DataType::DT_COMPLEX128:
-      return tensor.dcomplex_val_size() == 1;
-    case DataType::DT_RESOURCE:
-      return tensor.resource_handle_val_size() == 1;
-    case DataType::DT_VARIANT:
-      return tensor.variant_val_size() == 1;
-    case DataType::DT_UINT32:
-      return tensor.uint32_val_size() == 1;
-    case DataType::DT_UINT64:
-      return tensor.uint64_val_size() == 1;
-    default:
-      return false;
-  }
-}
-
-std::unordered_set<int> GetAttributeInputs(const tensorflow::Node* node) {
-  typedef std::unordered_map<string, std::unordered_set<int>> InputMap;
-  static const InputMap attribute_inputs = {
-      {"Concat", {0}}, {"ConcatV2", {-1}}, {"Reshape", {1}}};
-  auto iter = attribute_inputs.find(node->type_string());
-  if (iter != attribute_inputs.end()) {
-    // Apply reverse indexing
-    std::unordered_set<int> result;
-    for (int idx : iter->second) {
-      if (idx < 0) {
-        idx += node->num_inputs();
-      }
-      result.insert(idx);
-    }
-    return result;
-  }
-  return {};
-}
-
 // Function to get subsegment information structure.
 tensorflow::Status GetEngineInfo(
     const tensorflow::Graph* g,
@@ -325,13 +270,10 @@ tensorflow::Status GetEngineInfo(
     const std::unordered_map<string, tensorflow::Node*>& node_map,
     const std::vector<tensorflow::Node*>& reverse_topo_order,
     EngineInfo* info) {
-  std::vector<int> subgraph_node_ids;
+  std::vector<int> subgraph_node_ids;  // Topologically sorted node ids.
+  std::set<string> subgraph_node_names = segment_nodes;
   std::set<int> added_const_node_ids;  // Used to prevent double insertion.
   std::set<string> segment_devices;
-  std::unordered_set<string> segment_consts;
-  std::vector<int> const_node_ids;
-  int input_port = 0;
-  int output_port = 0;
 
   // Map from src_node_name+port to the unique port numbers of the TRT op, where
   // the src_node_name is the name of the source node of the input/output
@@ -339,7 +281,7 @@ tensorflow::Status GetEngineInfo(
   // input/output edges must be in different split of the graph.
   // TODO(aaroey): consider using node id and port instead.
   // TODO(aaroey): using topo order instead of reverting reverse topo order.
-  std::unordered_map<string, int> created_edges;
+  std::unordered_map<string, int> input_to_engine_port, output_to_engine_port;
   for (auto it = reverse_topo_order.rbegin(); it != reverse_topo_order.rend();
        ++it) {
     const auto& node_name = (*it)->name();
@@ -358,133 +300,114 @@ tensorflow::Status GetEngineInfo(
     }
     const int node_id = node->id();
     subgraph_node_ids.push_back(node_id);
+    // Create input connections.
     for (const auto edge : node->in_edges()) {
       auto input_node = edge->src();
-      if (input_node->IsSource()) continue;
-      if (segment_nodes.count(input_node->name()) == 0) {
-        // Add constant input node into the segment. We don't care if it has
-        // other output edges going into other engines or TF nodes. Since we add
-        // it only to the subsegment node list, not the subsegment itself, it
-        // won't be removed from the graph. If it doesn't have any edges, TF
-        // will prune it out.
-        if (input_node->type_string() == "Const") {
-          bool is_supported = input_node->output_type(0) == DT_FLOAT ||
-                              input_node->output_type(0) == DT_INT32;
-          bool is_attribute_input =
-              GetAttributeInputs(node).count(edge->dst_input()) != 0;
-          const tensorflow::TensorProto& tensor_proto =
-              input_node->def().attr().at("value").tensor();
-          bool is_uniform = IsUniformTensorValue(tensor_proto);
-
-          // Const can be absorbed
-          if (is_supported && is_attribute_input && is_uniform) {
-            if (segment_consts.count(input_node->name()) != 0) {
-              continue;  // skip if already added
-            }
-            VLOG(0) << "Adding const node " << input_node->name();
-            const_node_ids.push_back(input_node->id());
-            segment_consts.insert(input_node->name());
-            int conn_count = 0;
-            for (auto cinp_e :
-                 input_node->in_edges()) {  // must be Control edges
-              if (!cinp_e->IsControlEdge() || cinp_e->src()->IsSource()) {
-                conn_count++;
-                continue;
-              }
-              VLOG(0) << info->engine_name << ": Control edge " << conn_count
-                      << " from node " << input_node->name()
-                      << " edge= " << cinp_e->src()->name();
-              auto cinp = cinp_e->src();
-              EngineConnection ec(cinp->name(), cinp->id(),
-                                  cinp_e->src_output(), input_node->name(),
-                                  input_node->id(), cinp_e->dst_input(), true,
-                                  -1, true);
-              info->connections.emplace_back(std::move(ec));
-            }
-            continue;
-          }
+      if (input_node->IsSource() || segment_nodes.count(input_node->name())) {
+        continue;
+      }
+      if (edge->IsControlEdge()) {
+        // Control input.
+        info->connections.emplace_back(
+            input_node->name(), input_node->id(), node_name, node_id,
+            /*input_edge=*/true);
+      } else if (input_node->type_string() == "Const") {
+        // Add constant data input nodes into the segment graphdef (thus also in
+        // the engine). We don't care if it has other output edges going into
+        // other engines or TF nodes. Since we add it only to the segment
+        // graphdef, not the segment itself, it won't be removed from the graph.
+        // If it doesn't have any edges, TF will prune it out.
+        // Note that the constant data input must be supported by the engine
+        // regardless of the datatype, since the segmenter already removed
+        // unsupported data input nodes.
+        if (!added_const_node_ids.insert(input_node->id()).second) {
+          // Already added before.
+          continue;
         }
-
-        // Non-const data/control edge
-        if (!edge->IsControlEdge()) {
-          string s(input_node->name());
-          StrAppend(&s, ":", edge->src_output());
-          VLOG(1) << "Input edge = " << s;
-          int port = input_port;
-          if (created_edges.count(s)) {
-            port = created_edges.at(s);
-          } else {
-            created_edges.insert({s, port});
-            input_port++;
-          }
-          EngineConnection ec(input_node->name(), input_node->id(),
-                              edge->src_output(), node_name, node_id,
-                              edge->dst_input(), true, port);
-          ec.connection_type = input_node->output_type(edge->src_output());
-          info->connections.emplace_back(std::move(ec));
+        VLOG(1) << "Adding const node " << input_node->name();
+        QCHECK(subgraph_node_names.insert(input_node->name()).second);
+#if 1
+        // Since we duplicate the const input node in both the segment graphdef
+        // and the engine, the segment node doesn't depend on it anymore, so we
+        // add a control dependency instead.
+        info->connections.emplace_back(
+            input_node->name(), input_node->id(), node_name, node_id,
+            /*input_edge=*/true);
+#else
+        // Add control inputs to the const node as control input connections to
+        // the engine.
+        for (const auto const_in_edge : input_node->in_edges()) {
+          QCHECK(const_in_edge->IsControlEdge());  // Must be control edge.
+          auto const_in_node = const_in_edge->src();
+          QCHECK(!segment_nodes.count(const_in_node->name()))
+              << "Loop found between segment and non-segment nodes, from "
+                 "segment node "
+              << const_in_node->name() << " to non-segment node "
+              << input_node->name() << " to segment node " << node->name();
+          if (const_in_node->IsSource()) continue;
+          VLOG(1) << "Control edge from node " << const_in_node->name()
+                  << " to " << input_node->name();
+          info->connections.emplace_back(
+              const_in_node->name(), const_in_node->id(), input_node->name(),
+              input_node->id(), /*input_edge=*/true);
+        }
+#endif
+      } else {
+        // Non-const data input.
+        int port = Graph::kControlSlot - 1;
+        // Use the source non-segment node name/port as key.
+        const string s = StrCat(input_node->name(), ":", edge->src_output());
+        VLOG(1) << "Input edge = " << s;
+        if (input_to_engine_port.count(s)) {
+          port = input_to_engine_port.at(s);
         } else {
-          EngineConnection ec(input_node->name(), input_node->id(),
-                              edge->src_output(), node_name, node_id,
-                              edge->dst_input(), true, -1, true);
-          ec.connection_type = input_node->output_type(edge->src_output());
-          info->connections.emplace_back(std::move(ec));
+          port = input_to_engine_port.size();
+          input_to_engine_port.insert({s, port});
         }
+        info->connections.emplace_back(input_node->name(), input_node->id(),
+                                       edge->src_output(), node_name, node_id,
+                                       edge->dst_input(), /*input_edge=*/true,
+                                       port);
       }
     }
-
+    // Create output connections.
     for (const auto edge : node->out_edges()) {
       auto output_node = edge->dst();
-      if (output_node->IsSink()) continue;
-      if (segment_nodes.count(output_node->name()) == 0) {
-        if (!edge->IsControlEdge()) {
-          string s(node_name);
-          StrAppend(&s, ":", edge->src_output());
-          VLOG(1) << "Output edge = " << s;
-          int port = output_port;
-          if (created_edges.count(s)) {
-            port = created_edges.at(s);
-          } else {
-            created_edges.insert({s, port});
-            output_port++;
-          }
-          info->connections.emplace_back(output_node->name(), output_node->id(),
-                                         edge->dst_input(), node_name, node_id,
-                                         edge->src_output(), false, port);
+      if (output_node->IsSink() || segment_nodes.count(output_node->name())) {
+        continue;
+      }
+      if (edge->IsControlEdge()) {
+        // Control output.
+        info->connections.emplace_back(
+            output_node->name(), output_node->id(), node_name, node_id,
+            /*input_edge=*/false);
+      } else {
+        // Data output.
+        int port = Graph::kControlSlot - 1;
+        // Use the source segment node name/port as key.
+        const string s = StrCat(node_name, ":", edge->src_output());
+        VLOG(1) << "Output edge = " << s;
+        if (output_to_engine_port.count(s)) {
+          port = output_to_engine_port.at(s);
         } else {
-          info->connections.emplace_back(output_node->name(), output_node->id(),
-                                         edge->dst_input(), node_name, node_id,
-                                         edge->src_output(), false, -1, true);
+          port = output_to_engine_port.size();
+          output_to_engine_port.insert({s, port});
         }
+        info->connections.emplace_back(output_node->name(), output_node->id(),
+                                       edge->dst_input(), node_name, node_id,
+                                       edge->src_output(), /*input_edge=*/false,
+                                       port);
       }
     }
-  }
+  }  // For each segment node in topological order.
 
-  // Fix control edges
-  for (size_t t = 0; t < info->connections.size(); t++) {
-    auto& conn = info->connections.at(t);
-    if (conn.is_control_edge) {
-      for (size_t k = 0; k < info->connections.size(); k++) {
-        if (k == t) continue;
-        const auto& other = info->connections.at(k);
-        if (conn.outside_id == other.outside_id && other.port_number != -1) {
-          VLOG(0) << "Updating control edge " << conn.outside_node_name
-                  << " -> " << conn.inside_node_name << " to input port "
-                  << other.port_number;
-          conn.port_number = other.port_number;
-          break;
-        }
-      }
-    }
-  }
-
-  // Construct the const nodes first
-  subgraph_node_ids.insert(subgraph_node_ids.begin(), const_node_ids.begin(),
-                           const_node_ids.end());
+  // Construct the const nodes first.
+  subgraph_node_ids.insert(subgraph_node_ids.begin(),
+                           added_const_node_ids.begin(),
+                           added_const_node_ids.end());
   TF_RETURN_IF_ERROR(ConvertSegmentToGraphDef(
-      g, graph_properties, subgraph_node_ids, &info->connections,
-      &info->segment_graph_def, &info->engine_name));
-  info->engine_type = EngineInfo::EngineType::TRTStatic;
-
+      g, graph_properties, subgraph_node_names, subgraph_node_ids,
+      &info->connections, &info->segment_graph_def, &info->engine_name));
   // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
@@ -502,36 +425,34 @@ tensorflow::Status GetEngineInfo(
 // Helper function to update edge connection from the removed node to the
 // engine node. If an outside node is gone, it must have been absorbed into
 // an engine node. Find the engine node.
-void UpdateToEngineNode(tensorflow::Node*& node, string& node_name, int& port,
-                        const std::vector<EngineInfo>& infos,
-                        size_t my_engine_id,
+void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
+                        const size_t my_engine_id,
                         const std::vector<Node*>& engine_nodes,
-                        bool update_input_edge) {
-  bool found_engine = false;
+                        const bool is_input_edge,
+                        const string& node_name,
+                        tensorflow::Node** node, int* port) {
   for (size_t t = 0; t < infos.size(); ++t) {
     if (t == my_engine_id) {
       continue;
     }
-    auto& connected_eng_info = infos.at(t);
-    for (const auto& eng_conn : connected_eng_info.connections) {
-      if (update_input_edge && eng_conn.is_input_edge) {
-        continue;
-      } else if (!update_input_edge && !eng_conn.is_input_edge) {
-        continue;
-      }
+    const auto& info = infos.at(t);
+    for (const auto& eng_conn : info.connections) {
+      // If the connection being updated is an input connection, the source of
+      // the connection must be an output connection of another engine. And vise
+      // versa.
+      if (is_input_edge == eng_conn.is_input_edge) continue;
       if (eng_conn.inside_node_name == node_name &&
-          eng_conn.inside_port == port) {
-        node = engine_nodes[t];
-        node_name = connected_eng_info.engine_name;
-        port = eng_conn.port_number;
-        found_engine = true;
-        break;
+          eng_conn.inside_port == *port) {
+        *node = CHECK_NOTNULL(engine_nodes[t]);
+        QCHECK_EQ(info.engine_name, (**node).name())
+            << "Engine name mismatch: " << info.engine_name << " vs "
+            << (**node).name();
+        *port = eng_conn.port_number;
+        return;
       }
     }
-    if (found_engine) break;
   }
-  CHECK(found_engine);
-  CHECK(node != nullptr);
+  LOG(FATAL) << "Node " << (**node).name() << " not found in any engine.";
 }
 
 // Function to insert a TRT engine node into the graph.
@@ -539,114 +460,91 @@ void UpdateToEngineNode(tensorflow::Node*& node, string& node_name, int& port,
 // 1. Each invocation of CreateTRTNode creates an engine node for infos[pos]
 // 2. When an engine node is created, add it into the graph with necessary
 //    re-wiring.
-//   2.1. If the outside connected node is existing, connect the engine
-//        node to it.
-//   2.2. If the outside connected node is gone, it must have been absorted
-//        into another engine node (which was processed before the processing
-//        one). Connect to the pre-existing engine node instead.
+//    2.1. If the outside connected node is existing, connect the engine
+//         node to it.
+//    2.2. If the outside connected node is gone, it must have been absorted
+//         into another engine node (which was processed before the processing
+//         one). Connect to the pre-existing engine node instead.
 // 3. In this way, we ensure the graph is topologically sort-able after each
 //    invocation of CreateTRTNode().
-
-tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
-                                 const std::vector<EngineInfo>& infos, int pos,
-                                 tensorflow::Allocator* alloc,
-                                 int max_batch_size,
-                                 std::vector<Node*>& engine_nodes) {
-  auto& info = infos.at(pos);
+tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
+                                 int max_batch_size, tensorflow::Graph* graph,
+                                 nvinfer1::IGpuAllocator* alloc,
+                                 std::vector<Node*>* engine_nodes) {
+  const auto& info = infos.at(pos);
+  TRT_RETURN_IF_TEST_VALUE(StrCat(info.engine_name, ":CreateTRTNode"), "fail");
   std::vector<tensorflow::TensorShapeProto> output_shape_protos;
   std::vector<tensorflow::TensorShapeProto> input_shape_protos;
-  std::vector<tensorflow::PartialTensorShape> shapes;
+  std::vector<tensorflow::PartialTensorShape> input_shapes;
   std::vector<tensorflow::NodeDefBuilder::NodeOut> inputs;
   std::vector<tensorflow::Node*> input_nodes;
   std::vector<tensorflow::Node*> control_input_nodes;
-  std::vector<string> control_input_names;
+  std::unordered_set<string> control_input_names;
   std::vector<tensorflow::DataType> out_types;
 
   VLOG(1) << "Processing " << info.engine_name;
-
-  // -- Preprocessing -- //
-  // collect needed info for creating the engine node in the graph
-  for (const auto conn : info.connections) {
-    // control edges
-    if (conn.is_control_edge) {
-      // skip control outputs for now. control output info are not needed for
+  // Collect needed info for creating the engine node in the graph
+  for (const auto& conn : info.connections) {
+    // Control edges
+    if (conn.is_control_edge()) {
+      // Skip control outputs for now. control output info are not needed for
       // node creation and will be processed later.
-      if (!conn.is_input_edge) {
-        continue;
-      }
+      if (!conn.is_input_edge) continue;
 
-      // control inputs
+      // Rewrire control input if it's not found in original graph.
       tensorflow::Node* input_node = graph->FindNodeId(conn.outside_id);
-      string input_node_name = conn.outside_node_name;
       int port = tensorflow::Graph::kControlSlot;
       if (!input_node) {
-        UpdateToEngineNode(input_node, input_node_name, port, infos, pos,
-                           engine_nodes, true);
+        UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/true,
+                           conn.outside_node_name, &input_node, &port);
+        QCHECK_EQ(Graph::kControlSlot, port);
       }
-      bool new_input = true;
-      for (const auto& name : control_input_names) {
-        if (name == input_node_name) {
-          new_input = false;
-          break;
-        }
+      if (!control_input_names.insert(input_node->name()).second) {
+        continue;
       }
-      if (new_input) {
-        control_input_nodes.push_back(input_node);
-        control_input_names.push_back(input_node_name);
-
-        VLOG(1) << "Engine Control Input " << input_node_name << ":" << port
-                << " -> " << info.engine_name << ":"
-                << tensorflow::Graph::kControlSlot;
-      }
-
-      // data edges
+      control_input_nodes.push_back(input_node);
+      VLOG(1) << "Engine Control Input " << input_node->name()
+              << " -> " << info.engine_name;
     } else {
-      // data outputs
+      // Data edges
       if (!conn.is_input_edge) {
+        // Set the shapes and data types of output edge.
         tensorflow::TensorShapeProto out_shape;
-        conn.inside_shape.AsProto(
-            &out_shape);  // shape of the output node inside segment
+        // shape of the output node inside segment
+        conn.inside_shape.AsProto(&out_shape);
         if (output_shape_protos.size() <= conn.port_number) {
           output_shape_protos.resize(conn.port_number + 1);
           out_types.resize(conn.port_number + 1);
         }
         output_shape_protos.at(conn.port_number) = out_shape;
         out_types.at(conn.port_number) = conn.connection_type;
-
-        // data input
       } else {
+        // Set the shapes and data types of input edge.
         tensorflow::TensorShapeProto in_shape;
         conn.outside_shape.AsProto(&in_shape);
-
         if (input_shape_protos.size() <= conn.port_number) {
           input_shape_protos.resize(conn.port_number + 1);
-          shapes.resize(conn.port_number + 1);
+          input_shapes.resize(conn.port_number + 1);
         }
         input_shape_protos.at(conn.port_number) = in_shape;
-        shapes.at(conn.port_number) = conn.outside_shape;
+        input_shapes.at(conn.port_number) = conn.outside_shape;
 
+        // Rewrire data input if it's not found in original graph.
         tensorflow::Node* input_node = graph->FindNodeId(conn.outside_id);
-        string input_node_name = conn.outside_node_name;
-        int input_port = conn.outside_port;
-        auto dtype = conn.connection_type;
-
+        int port = conn.outside_port;
         if (!input_node) {
-          UpdateToEngineNode(input_node, input_node_name, input_port, infos,
-                             pos, engine_nodes, true);
+          UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/true,
+                             conn.outside_node_name, &input_node, &port);
         }
-        bool new_input = true;
-        for (const auto& inp : inputs) {
-          if (inp.node == input_node_name && inp.index == input_port) {
-            new_input = false;
-            break;
-          }
-        }
-        if (new_input) {
-          inputs.emplace_back(input_node_name, input_port, dtype);
-          CHECK(input_node != nullptr);
-          input_nodes.push_back(input_node);
-
-          VLOG(1) << "Engine Input " << input_node_name << ":" << input_port
+        if (std::find_if(std::begin(inputs), std::end(inputs),
+                         [input_node, &port](
+                             const NodeDefBuilder::NodeOut& inp) {
+                           return inp.node == input_node->name() &&
+                               inp.index == port;
+                         }) == std::end(inputs)) {
+          inputs.emplace_back(input_node->name(), port, conn.connection_type);
+          input_nodes.push_back(CHECK_NOTNULL(input_node));
+          VLOG(1) << "Engine Input " << input_node->name() << ":" << port
                   << " -> " << info.engine_name << ":" << inputs.size() - 1;
         }
       }
@@ -662,14 +560,12 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     // Otherwise we skip node creation for this engine.
     Logger trt_logger;
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-    std::unique_ptr<TRTDeviceAllocator> allocator(
-        new TRTDeviceAllocator(alloc));
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
         info.segment_graph_def,
         info.precision_mode == INT8MODE ? FP32MODE : info.precision_mode,
-        max_batch_size, info.max_workspace_size_bytes, shapes, &trt_logger,
-        allocator.get(), /*calibrator=*/nullptr, &engine,
+        max_batch_size, info.max_workspace_size_bytes, input_shapes,
+        &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
         /*convert_successfully=*/nullptr));
     TrtUniquePtrType<nvinfer1::IHostMemory> engine_data(engine->serialize());
     segment_string =
@@ -711,7 +607,7 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
     VLOG(1) << ins;
   }
   node_builder.Input(inputs);
-  for (auto& c : control_input_names) {
+  for (const string& c : control_input_names) {
     node_builder.ControlInput(c);
   }
 
@@ -744,54 +640,50 @@ tensorflow::Status CreateTRTNode(tensorflow::Graph* graph,
   // Up until this point, graph is not modified. If we return !status.ok() from
   // here, this segment will be skipped
   tensorflow::Node* engine_node = graph->AddNode(trt_node, &status);
-  engine_nodes[pos] = engine_node;
+  (*engine_nodes)[pos] = engine_node;
   if (!status.ok()) {
     LOG(ERROR) << "Adding node failed " << status;
     return status;
   }
-  // input edges of the engine node
-  for (auto in : control_input_nodes) {
+  // Add control input and input edges to the engine node.
+  for (const auto in : control_input_nodes) {
     VLOG(1) << "Connecting control edge from " << in->name() << " to "
             << engine_node->name();
     graph->AddControlEdge(in, engine_node);
   }
-  int idx = 0;
   VLOG(1) << "input_nodes size = " << input_nodes.size();
-  for (auto in : inputs) {
-    Node* n = input_nodes[idx];
-    CHECK(n != nullptr);
+  for (int i = 0; i < input_nodes.size(); ++i) {
+    Node* n = input_nodes[i];
+    const auto& in = inputs[i];
+    CHECK_NOTNULL(n);
     VLOG(1) << "Connecting data edge from " << n->name() << ":" << in.index
-            << " to " << engine_node->name() << ":" << idx;
-    graph->AddEdge(n, in.index, engine_node, idx++);
+            << " to " << engine_node->name() << ":" << i;
+    graph->AddEdge(n, in.index, engine_node, i);
   }
+
   // Updates the inputs of output edges destination nodes, and point them to the
   // engine node.
-
   for (auto& conn : info.connections) {
     if (conn.is_input_edge) {
       continue;
     }
-
-    string out_name = conn.outside_node_name;
-    auto out_node = graph->FindNodeId(conn.outside_id);
-    int out_port = conn.outside_port;
-
-    if (!out_node) {
-      UpdateToEngineNode(out_node, out_name, out_port, infos, pos, engine_nodes,
-                         false);
+    tensorflow::Node* output_node = graph->FindNodeId(conn.outside_id);
+    int port = conn.outside_port;
+    if (!output_node) {
+      UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/false,
+                         conn.outside_node_name, &output_node, &port);
     }
-
     VLOG(1) << "Updating " << engine_node->name() << ":" << conn.port_number
-            << " to " << out_node->name() << ":" << out_port;
-
-    if (conn.is_control_edge) {
-      graph->AddControlEdge(engine_node, out_node);
+            << " to " << output_node->name() << ":" << port;
+    if (conn.is_control_edge()) {
+      QCHECK_EQ(Graph::kControlSlot, port);
+      graph->AddControlEdge(engine_node, output_node);
     } else {
       auto new_edge =
-          graph->AddEdge(engine_node, conn.port_number, out_node, out_port);
-      CHECK(new_edge) << "Adding a new edge failed " << engine_node->name()
-                      << ":" << conn.port_number << " -> " << out_node->name()
-                      << ":" << conn.outside_port;
+          graph->AddEdge(engine_node, conn.port_number, output_node, port);
+      QCHECK(new_edge) << "Adding a new edge failed " << engine_node->name()
+                       << ":" << conn.port_number << " -> "
+                       << output_node->name() << ":" << conn.outside_port;
     }
   }
   return status;
@@ -1077,19 +969,21 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
-    auto status = CreateTRTNode(&graph, engine_segments, i, device_alloc.second,
-                                params.max_batch_size, engine_nodes);
+    auto status = CreateTRTNode(engine_segments, i, params.max_batch_size,
+                                &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
+    const string msg = StrCat(
+        "Engine ", engine.engine_name, " creation for segment ", i,
+        ", composed of ", converted_segments.at(i).first.size(), " nodes");
     if (status.ok()) {
+      LOG(INFO) << msg << " succeeded.";
       for (auto node_name : converted_segments.at(i).first) {
         graph.RemoveNode(node_map.at(node_name));
       }
     } else {
       // Graph is not modified.
-      LOG(WARNING) << "Engine creation for segment " << i << ", composed of "
-                   << converted_segments.at(i).first.size()
-                   << " nodes failed: " << status << ". Skipping...";
+      LOG(WARNING) << msg << " failed: " << status << ". Skipping...";
     }
   }
   cudaSetDevice(old_cuda_device);
