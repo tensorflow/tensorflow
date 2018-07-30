@@ -289,7 +289,10 @@ llvm_copts = []
 
 # Platform specific sources for libSupport.
 
-llvm_support_platform_specific_srcs_glob = [
-    "lib/Support/Unix/*.inc",
-    "lib/Support/Unix/*.h",
-]
+def llvm_support_platform_specific_srcs_glob():
+    return select({
+        "//conditions:default": native.glob([
+            "lib/Support/Unix/*.inc",
+            "lib/Support/Unix/*.h",
+        ]),
+    })
