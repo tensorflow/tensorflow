@@ -23,6 +23,7 @@ import itertools
 import warnings
 import numpy as np
 import six
+import os
 
 from tensorflow.contrib.tensorrt.python import trt_convert
 # pylint: disable=unused-import
@@ -151,7 +152,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       rewriter_cfg.optimizers.extend(["constfold", "layout"])
       custom_op = rewriter_cfg.custom_optimizers.add()
       custom_op.name = "TensorRTOptimizer"
-      custom_op.parameter_map["minimum_segment_size"].i = 3
+      custom_op.parameter_map["minimum_segment_size"].i = 2
       custom_op.parameter_map["max_batch_size"].i = max(
           [dims[0] for dims in params.input_dims])
       custom_op.parameter_map["is_dynamic_op"].b = run_params.dynamic_engine
@@ -162,23 +163,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     else:
       graph_options = config_pb2.GraphOptions()
 
-    # Disable all other optimizations which can affect the converted graph.
-    off = rewriter_config_pb2.RewriterConfig.OFF
-    graph_options.optimizer_options.opt_level = config_pb2.OptimizerOptions.L0
-    graph_options.rewrite_options.layout_optimizer = off
-    graph_options.rewrite_options.constant_folding = off
-    graph_options.rewrite_options.shape_optimization = off
-    graph_options.rewrite_options.remapping = off
-    graph_options.rewrite_options.arithmetic_optimization = off
-    graph_options.rewrite_options.dependency_optimization = off
-    graph_options.rewrite_options.loop_optimization = off
-    graph_options.rewrite_options.function_optimization = off
-    graph_options.rewrite_options.debug_stripper = off
-    graph_options.rewrite_options.disable_model_pruning = True
-    graph_options.rewrite_options.scoped_allocator_optimization = off
-    graph_options.rewrite_options.memory_optimization = (
-        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-
     gpu_options = config_pb2.GPUOptions()
     gpu_options.allow_growth = True
     if trt_convert.get_linked_tensorrt_version()[0] == 3:
@@ -188,9 +172,14 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         gpu_options=gpu_options, graph_options=graph_options)
     return config
 
-  def _ExpectTestValue(self, engine_name, method, value):
+  def _ExpectTestValue(self, engine_name, method, expected_value):
+    label = "%s:%s" % (engine_name, method)
+    actual_value = trt_convert.get_test_value(label)
     self.assertEqual(
-        value, trt_convert.get_test_value("%s:%s" % (engine_name, method)))
+        expected_value,
+        actual_value,
+        msg="Unexpected test value with label %s. Actual: %s; expected: %s" %
+        (label, actual_value, expected_value))
 
   def _ExpectCalibration(self, engine_name, value):
     self._ExpectTestValue(engine_name, "ExecuteCalibration", value)
@@ -257,8 +246,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     graph_name = (
         self.__class__.__name__ + "_" + run_params.test_name + "_" + label +
         ".pbtxt")
-    logging.info("Writing graph to %s/%s", self.get_temp_dir(), graph_name)
-    graph_io.write_graph(gdef, self.get_temp_dir(), graph_name)
+    temp_dir = os.getenv('TRT_TEST_TMPDIR', self.get_temp_dir())
+    logging.info("Writing graph to %s/%s", temp_dir, graph_name)
+    graph_io.write_graph(gdef, temp_dir, graph_name)
 
   def _VerifyConnections(self, params, converted_gdef):
     old_to_new_node_map = {
@@ -314,8 +304,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         expected_input_map,
         actual_input_map,
-        msg="expected:\n%s\nvs actual:\n%s" % (expected_input_map,
-                                               actual_input_map))
+        msg="expected:\n%s\nvs actual:\n%s" % (sorted(
+            expected_input_map.items()), sorted(actual_input_map.items())))
 
   def _VerifyGraphDef(self, params, run_params, gdef, graph_state):
     self._WriteGraph(params, run_params, gdef, graph_state)
@@ -432,7 +422,7 @@ def _AddTests(test_class):
       logging.info(
           "Running test %s with parameters: use_optimizer=%s, "
           "precision_mode=%s, dynamic_engine=%s",
-          "testTfTRT_" + run_params.test_name, run_params.use_optimizer,
+          "testTfTrt_" + run_params.test_name, run_params.use_optimizer,
           run_params.precision_mode, run_params.dynamic_engine)
       self.RunTest(params, run_params)
 
@@ -461,7 +451,7 @@ def _AddTests(test_class):
         precision_mode=precision_mode,
         dynamic_engine=dynamic_engine,
         test_name=test_name)
-    setattr(test_class, "testTfTRT_" + test_name, _GetTest(run_params))
+    setattr(test_class, "testTfTrt_" + test_name, _GetTest(run_params))
 
 
 if trt_convert.is_tensorrt_enabled():
