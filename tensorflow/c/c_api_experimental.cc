@@ -84,6 +84,18 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
   return ret;
 }
 
+TF_Buffer* TF_CreateRunOptions(unsigned char enable_full_trace) {
+  tensorflow::RunOptions options;
+  if (enable_full_trace) {
+    options.set_trace_level(tensorflow::RunOptions::FULL_TRACE);
+  } else {
+    options.set_trace_level(tensorflow::RunOptions::NO_TRACE);
+  }
+  TF_Buffer* ret = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(options, ret));
+  return ret;
+}
+
 const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
   tensorflow::mutex_lock c(graph->mu);
   const auto& debug_str = graph->graph.ToGraphDefDebug().DebugString();
