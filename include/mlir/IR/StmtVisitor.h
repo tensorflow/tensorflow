@@ -179,7 +179,7 @@ public:
   }
 
   // Function to walk a statement in post order DFS.
-  void walkPostOrder(Statement *s) {
+  RetTy walkPostOrder(Statement *s) {
     static_assert(std::is_base_of<StmtWalker, SubClass>::value,
                   "Must pass the derived type to this template!");
 

@@ -52,9 +52,10 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
 
     // This method specialized to encode custom return logic.
     typedef llvm::iplist<Statement> StmtListType;
-    bool walk(StmtListType::iterator Start, StmtListType::iterator End) {
+    bool walkPostOrder(StmtListType::iterator Start,
+                       StmtListType::iterator End) {
       while (Start != End)
-        if (walk(&(*Start++)))
+        if (walkPostOrder(&(*Start++)))
           return true;
       return false;
     }
@@ -62,31 +63,31 @@ void LoopUnroll::runOnMLFunction(MLFunction *f) {
     // FIXME: can't use base class method for this because that in turn would
     // need to use the derived class method above. CRTP doesn't allow it, and
     // the compiler error resulting from it is also very misleading!
-    void walkMLFunction(MLFunction *f) { walk(f->begin(), f->end()); }
+    void walkPostOrder(MLFunction *f) { walkPostOrder(f->begin(), f->end()); }
 
-    bool walkForStmt(ForStmt *forStmt) {
-      bool hasInnerLoops = walk(forStmt->begin(), forStmt->end());
+    bool walkForStmtPostOrder(ForStmt *forStmt) {
+      bool hasInnerLoops = walkPostOrder(forStmt->begin(), forStmt->end());
       if (!hasInnerLoops)
         loops.push_back(forStmt);
       return true;
     }
 
-    bool walkIfStmt(IfStmt *ifStmt) {
-      if (walk(ifStmt->getThenClause()->begin(),
-               ifStmt->getThenClause()->end()) ||
-          walk(ifStmt->getElseClause()->begin(),
-               ifStmt->getElseClause()->end()))
+    bool walkIfStmtPostOrder(IfStmt *ifStmt) {
+      if (walkPostOrder(ifStmt->getThenClause()->begin(),
+                        ifStmt->getThenClause()->end()) ||
+          walkPostOrder(ifStmt->getElseClause()->begin(),
+                        ifStmt->getElseClause()->end()))
         return true;
       return false;
     }
 
     bool walkOpStmt(OperationStmt *opStmt) { return false; }
 
-    using StmtWalker<InnermostLoopGatherer, bool>::walk;
+    using StmtWalker<InnermostLoopGatherer, bool>::walkPostOrder;
   };
 
   InnermostLoopGatherer ilg;
-  ilg.walkMLFunction(f);
+  ilg.walkPostOrder(f);
   auto &loops = ilg.loops;
   for (auto *forStmt : loops)
     runOnForStmt(forStmt);
