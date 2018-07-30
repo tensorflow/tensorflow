@@ -54,6 +54,7 @@ def _MatrixDeterminantGrad(op, grad):
                                                    0))
   return multipliers * a_adj_inv
 
+
 @ops.RegisterGradient("MatrixSquareRoot")
 def _MatrixSquareRootGrad(op, grad):
   """Gradient for MatrixSquareRoot."""
@@ -65,53 +66,57 @@ def _MatrixSquareRootGrad(op, grad):
   # Solve the resulting Sylvester equation for dR
 
   # Used to find Kronecker products within the Sylvester equation
-  def _KroneckerProduct(mat1, mat2):
-    """Computes the Kronecker product of two matrices."""
-    m1, n1 = mat1.get_shape().as_list()
-    mat1_rsh = array_ops.reshape(mat1, [m1, 1, n1, 1])
-    m2, n2 = mat2.get_shape().as_list()
-    mat2_rsh = array_ops.reshape(mat2, [1, m2, 1, n2])
-    return array_ops.reshape(mat1_rsh * mat2_rsh, [m1 * m2, n1 * n2])
+  def _KroneckerProduct(b1, b2):
+    """Computes the Kronecker product of two batches of square matrices"""
+    b1_shape = array_ops.shape(b1)
+    b2_shape = array_ops.shape(b2)
+    b1_order = b1_shape[-1]
+    b2_order = b2_shape[-1]
 
-  sqrt_batch = op.outputs[0] # R
-  shape_batch = sqrt_batch.get_shape()
-  order = shape_batch.as_list()[-1] # m
-  identity = _linalg.eye(order, dtype=sqrt_batch.dtype) # m x m identity matrix
-  shape_matrix = [order, order] # Tensor may be a batch of matrices of shape m x m
+    shape_slice_size = [math_ops.subtract(array_ops.size(b1_shape), 2)]
+    shape_slice = array_ops.slice(b1_shape, [0], shape_slice_size) # Same for both batches
+    b1_reshape_shape = array_ops.concat([shape_slice, [b1_order],
+                                         [1], [b1_order], [1]], 0)
+    b2_reshape_shape = array_ops.concat([shape_slice, [1], [b2_order],
+                                         [1], [b2_order]], 0)
 
-  # Flatten batches containing R and dA
-  flat_sqrt = array_ops.reshape(sqrt_batch, [-1])
-  flat_grad = array_ops.reshape(grad, [-1])
+    b1_reshape = array_ops.reshape(b1, b1_reshape_shape)
+    b2_reshape = array_ops.reshape(b2, b2_reshape_shape)
 
-  # Split flattened batches into m x m matrices
-  num_elements = flat_sqrt.get_shape().as_list()[-1]
-  num_splits = int(num_elements / (order * order))
-  split_sqrt = array_ops.split(flat_sqrt, num_splits)
-  split_grad = array_ops.split(flat_grad, num_splits)
+    order_prod = b1_order * b2_order
+    kprod_shape = array_ops.concat([shape_slice, [order_prod], [order_prod]], 0)
+    return array_ops.reshape(b1_reshape * b2_reshape, kprod_shape)
 
-  matrix_gradients = [] # Raw gradients of all m x m matrices
-  for flat_sqrt_matrix, flat_grad_matrix in zip(split_sqrt, split_grad):
-    sqrt_matrix = array_ops.reshape(flat_sqrt_matrix, shape_matrix) # m x m matrix R
-    grad_matrix = array_ops.reshape(flat_grad_matrix, shape_matrix) # m x m matrix dA
+  sqrtm = op.outputs[0] # R
+  shape = array_ops.shape(sqrtm)
+  order = shape[-1] # m
+  matrix_count = math_ops.reduce_prod(shape[0:-2])
 
-    # The transpose of R is taken in the k1 term instead of k2 in
-    # order to prevent redundant transposition of R (i.e. (R')' = R)
-    sqrt_matrix_transpose = array_ops.matrix_transpose(sqrt_matrix)
-    k1 = _KroneckerProduct(identity, sqrt_matrix_transpose)
-    k2 = _KroneckerProduct(sqrt_matrix, identity)
+  # Get batch of m x m identity matrices
+  eye = linalg_ops.eye(order, dtype=sqrtm.dtype) # m x m identity matrix
+  eye_flat = array_ops.reshape(eye, [-1])
+  eye_tiled = array_ops.tile(eye_flat, [matrix_count])
+  eye_batch = array_ops.reshape(eye_tiled, shape)
 
-    # Solve for vec(dR) by vectorizing dA
-    inv_ksum = _linalg.inv(math_ops.add(k1, k2))
-    vec_da = array_ops.reshape(array_ops.matrix_transpose(grad_matrix), [-1])
-    vec_dsqrt = _linalg.einsum('ij,j->i', inv_ksum, vec_da) # Matrix vector product
+  # The transpose of R is taken in the k1 term instead of k2 in
+  # order to prevent redundant transposition of R (i.e. (R')' = R)
+  sqrtm_transpose = array_ops.matrix_transpose(sqrtm)
+  k1 = _KroneckerProduct(eye_batch, sqrtm_transpose)
+  k2 = _KroneckerProduct(sqrtm, eye_batch)
+  ksum = math_ops.add(k1, k2)
 
-    # Solve for dR by inverse vectorizing vec(dR)
-    dsqrt_transpose = array_ops.reshape(vec_dsqrt, shape_matrix)
-    dsqrt = array_ops.matrix_transpose(dsqrt_transpose)
-    matrix_gradients.append(dsqrt)
+  # Vectorize dA
+  shape_slice_size = [math_ops.subtract(array_ops.size(shape), 2)]
+  shape_slice = array_ops.slice(shape, [0], shape_slice_size)
+  shape_vec_da = array_ops.concat([shape_slice, [order * order], [1]], 0)
+  vec_da = array_ops.reshape(array_ops.matrix_transpose(grad), shape_vec_da)
 
-  # Reshape raw gradients to the original input shape
-  return array_ops.reshape(array_ops.stack(matrix_gradients), shape_batch)
+  # Solve for vec(dR)
+  vec_dsqrtm = linalg_ops.matrix_solve(ksum, vec_da)
+
+  # Solve for dR by inverse vectorizing vec(dR)
+  dsqrtm_transpose = array_ops.reshape(vec_dsqrtm, shape)
+  return array_ops.matrix_transpose(dsqrtm_transpose)
 
 
 @ops.RegisterGradient("LogMatrixDeterminant")
