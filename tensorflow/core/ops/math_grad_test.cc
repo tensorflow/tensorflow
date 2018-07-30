@@ -768,7 +768,7 @@ TEST_F(MathGradTest, UnsafeDiv) {
                             TensorShape({3, 1})));
     }
   }
-  {  // Swap x and y
+  {  // Swap x and y.
     SymGrad("UnsafeDiv", y, x, &dy, &dx);
     {
       auto g = [](float x, float y) {
