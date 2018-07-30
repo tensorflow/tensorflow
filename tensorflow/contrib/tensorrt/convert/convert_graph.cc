@@ -317,18 +317,18 @@ tensorflow::Status GetEngineInfo(
         // other engines or TF nodes. Since we add it only to the segment
         // graphdef, not the segment itself, it won't be removed from the graph.
         // If it doesn't have any edges, TF will prune it out.
-        // Note that the constant data input must be supported by the engine
-        // regardless of the datatype, since the segmenter already removed
-        // unsupported data input nodes.
+        //
+        // Note that the segmenter already ensure that the constant data input
+        // is valid and suppported by the engine.
         if (!added_const_node_ids.insert(input_node->id()).second) {
           // Already added before.
           continue;
         }
         VLOG(1) << "Adding const node " << input_node->name();
         QCHECK(subgraph_node_names.insert(input_node->name()).second);
-        // Since we duplicate the const input node in both the segment graphdef
-        // and the engine, the segment node doesn't depend on it anymore, so we
-        // add a control dependency instead.
+        // Since we already add (duplicate) the const input node to the segment
+        // graphdef, it's now not a data dependency any more, but to make the
+        // dependency correct we still add a control dependency.
         info->connections.emplace_back(
             input_node->name(), input_node->id(), node_name, node_id,
             /*input_edge=*/true);
