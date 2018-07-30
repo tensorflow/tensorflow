@@ -381,6 +381,14 @@ config_setting(
     },
 )
 
+# Setting to use when loading kernels dynamically
+config_setting(
+    name = "dynamic_loaded_kernels",
+    define_values = {
+        "dynamic_loaded_kernels": "true",
+    },
+)
+
 config_setting(
     name = "using_cuda_nvcc",
     define_values = {

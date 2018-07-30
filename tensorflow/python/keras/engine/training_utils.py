@@ -702,17 +702,16 @@ def populate_metric_names(model):
   for i in range(len(model.outputs)):
     metrics = model.nested_metrics[i]
     for metric in metrics:
-      base_metric_name = get_base_metric_name(metric)
+      base_metric_name = get_metric_name(metric)
       add_metric_name(model, base_metric_name, i)
 
 
-def get_base_metric_name(metric, weighted=False):
-  """Returns the metric name given the metric function.
+def get_metric_name(metric, weighted=False):
+  """Returns the metric name corresponding to the given metric input.
 
   Arguments:
       metric: Metric function name or reference.
-      weighted: Boolean indicating if the metric for which we are adding
-          names is weighted.
+      weighted: Boolean indicating if the given metric is weighted.
 
   Returns:
       a metric name.
@@ -734,6 +733,36 @@ def get_base_metric_name(metric, weighted=False):
     metric_name = metric_name_prefix + metric_name
 
   return metric_name
+
+
+def get_metric_function(metric, output_shape=None, loss_fn=None):
+  """Returns the metric function corresponding to the given metric input.
+
+  Arguments:
+      metric: Metric function name or reference.
+      output_shape: The shape of the output that this metric
+          will be calculated for.
+      loss_fn: The loss function used.
+
+  Returns:
+      The metric function.
+  """
+  if metric in ['accuracy', 'acc']:
+    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
+      return metrics_module.binary_accuracy  # case: binary accuracy
+    elif loss_fn == losses.sparse_categorical_crossentropy:
+      # case: categorical accuracy with sparse targets
+      return metrics_module.sparse_categorical_accuracy
+    return metrics_module.categorical_accuracy  # case: categorical accuracy
+  elif metric in ['crossentropy', 'ce']:
+    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
+      return metrics_module.binary_crossentropy  # case: binary cross-entropy
+    elif loss_fn == losses.sparse_categorical_crossentropy:
+      # case: categorical cross-entropy with sparse targets
+      return metrics_module.sparse_categorical_crossentropy
+    # case: categorical cross-entropy
+    return metrics_module.categorical_crossentropy
+  return metrics_module.get(metric)
 
 
 def add_metric_name(model, metric_name, index):
