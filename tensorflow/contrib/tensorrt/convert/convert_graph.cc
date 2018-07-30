@@ -326,32 +326,12 @@ tensorflow::Status GetEngineInfo(
         }
         VLOG(1) << "Adding const node " << input_node->name();
         QCHECK(subgraph_node_names.insert(input_node->name()).second);
-#if 1
         // Since we duplicate the const input node in both the segment graphdef
         // and the engine, the segment node doesn't depend on it anymore, so we
         // add a control dependency instead.
         info->connections.emplace_back(
             input_node->name(), input_node->id(), node_name, node_id,
             /*input_edge=*/true);
-#else
-        // Add control inputs to the const node as control input connections to
-        // the engine.
-        for (const auto const_in_edge : input_node->in_edges()) {
-          QCHECK(const_in_edge->IsControlEdge());  // Must be control edge.
-          auto const_in_node = const_in_edge->src();
-          QCHECK(!segment_nodes.count(const_in_node->name()))
-              << "Loop found between segment and non-segment nodes, from "
-                 "segment node "
-              << const_in_node->name() << " to non-segment node "
-              << input_node->name() << " to segment node " << node->name();
-          if (const_in_node->IsSource()) continue;
-          VLOG(1) << "Control edge from node " << const_in_node->name()
-                  << " to " << input_node->name();
-          info->connections.emplace_back(
-              const_in_node->name(), const_in_node->id(), input_node->name(),
-              input_node->id(), /*input_edge=*/true);
-        }
-#endif
       } else {
         // Non-const data input.
         int port = Graph::kControlSlot - 1;

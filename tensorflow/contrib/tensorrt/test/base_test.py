@@ -234,5 +234,109 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
         allclose_atol=1.e-06,
         allclose_rtol=1.e-06)
 
+
+class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing single segment."""
+    input_name = "input"
+    input_dims = [2, 32, 32, 3]
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtypes.float32, shape=input_dims, name=input_name)
+      with g.device("/GPU:0"):
+        n = inp
+        c = constant_op.constant(1.0, name="c")
+        n = math_ops.add(n, c, name="add")
+        n = math_ops.mul(n, n, name="mul")
+        n = math_ops.add(n, n, name="add1")
+      array_ops.squeeze(n, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        expected_engines={"my_trt_op_0": ["c", "add", "add1", "mul"]},
+        expected_output_dims=tuple(input_dims),
+        allclose_atol=1.e-06,
+        allclose_rtol=1.e-06)
+
+
+class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing multiple segment."""
+    input_name = "input"
+    input_dims = [2, 32, 32, 3]
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtypes.float32, shape=input_dims, name=input_name)
+      with g.device("/GPU:0"):
+        n = inp
+        c = constant_op.constant(1.0, name="c")
+        n = math_ops.add(n, c, name="add")
+        n = math_ops.mul(n, n, name="mul")
+        n = math_ops.add(n, n, name="add1")
+        n = self.trt_incompatible_op(n, name="incompatible1")
+        n = math_ops.add(n, c, name="add2")
+        n = math_ops.mul(n, n, name="mul1")
+        n = math_ops.add(n, n, name="add3")
+      array_ops.squeeze(n, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        expected_engines={
+            "my_trt_op_0": ["add2", "add3", "mul1"],
+            "my_trt_op_1": ["add", "add1", "mul"]
+        },
+        expected_output_dims=tuple(input_dims),
+        allclose_atol=1.e-06,
+        allclose_rtol=1.e-06)
+
+
+class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Create a graph containing multiple segment."""
+    input_name = "input"
+    input_dims = [2, 32, 32, 3]
+    g = ops.Graph()
+    with g.as_default():
+      inp = array_ops.placeholder(
+          dtype=dtypes.float32, shape=input_dims, name=input_name)
+      with g.device("/GPU:0"):
+        c1 = constant_op.constant(1.0, name="c1")
+        c2 = constant_op.constant(1.0, name="c2")
+        d1 = constant_op.constant(1.0, name="d1")
+        d2 = self.trt_incompatible_op(inp, name="d2")
+        with g.control_dependencies([d1, d2]):
+          add = math_ops.add(inp, c1, name="add")
+        with g.control_dependencies([d1, d2]):
+          mul = math_ops.mul(add, add, name="mul")
+        with g.control_dependencies([d1, d2]):
+          add1 = math_ops.add(mul, mul, name="add1")
+        edge = self.trt_incompatible_op(add1, name="incompatible")
+        with g.control_dependencies([d1, d2, add, mul]):
+          add2 = math_ops.add(edge, c2, name="add2")
+        with g.control_dependencies([d1, d2, add1, mul]):
+          mul1 = math_ops.mul(add2, add2, name="mul1")
+        with g.control_dependencies([d1, d2, add, add1]):
+          add3 = math_ops.add(mul1, mul1, name="add3")
+      array_ops.squeeze(add3, name=self.output_name)
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=[input_name],
+        input_dims=[input_dims],
+        expected_engines={
+            "my_trt_op_0": ["c1", "add", "add1", "mul"],
+            "my_trt_op_1": ["c2", "add2", "add3", "mul1"]
+        },
+        expected_output_dims=tuple(input_dims),
+        allclose_atol=1.e-06,
+        allclose_rtol=1.e-06)
+
+
 if __name__ == "__main__":
   test.main()
