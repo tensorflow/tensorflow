@@ -37,7 +37,7 @@ class OperationSet;
 ///   %2 = addf %0, %1 : f32
 ///
 class AddFOp
-    : public OpImpl::Base<AddFOp, OpImpl::TwoOperands, OpImpl::OneResult> {
+    : public OpBase<AddFOp, OpTrait::NOperands<2>::Impl, OpTrait::OneResult> {
 public:
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static StringRef getOperationName() { return "addf"; }
@@ -48,7 +48,7 @@ public:
 
 private:
   friend class Operation;
-  explicit AddFOp(const Operation *state) : Base(state) {}
+  explicit AddFOp(const Operation *state) : OpBase(state) {}
 };
 
 /// The "affine_apply" operation applies an affine map to a list of operands,
@@ -65,9 +65,8 @@ private:
 ///   #map42 = (d0)->(d0+1)
 ///   %y = affine_apply #map42(%x)
 ///
-class AffineApplyOp
-    : public OpImpl::Base<AffineApplyOp, OpImpl::VariadicOperands,
-                          OpImpl::VariadicResults> {
+class AffineApplyOp : public OpBase<AffineApplyOp, OpTrait::VariadicOperands,
+                                    OpTrait::VariadicResults> {
 public:
   // Returns the affine map to be applied by this operation.
   AffineMap *getAffineMap() const {
@@ -84,7 +83,7 @@ public:
 
 private:
   friend class Operation;
-  explicit AffineApplyOp(const Operation *state) : Base(state) {}
+  explicit AffineApplyOp(const Operation *state) : OpBase(state) {}
 };
 
 /// The "constant" operation requires a single attribute named "value".
@@ -94,7 +93,8 @@ private:
 ///   %2 = "constant"(){value: @foo} : (f32)->f32
 ///
 class ConstantOp
-    : public OpImpl::Base<ConstantOp, OpImpl::ZeroOperands, OpImpl::OneResult> {
+    : public OpBase<ConstantOp, OpTrait::ZeroOperands, OpTrait::OneResult/*,
+                         OpTrait::HasAttributeBase<"foo">::Impl*/> {
 public:
   Attribute *getValue() const { return getAttr("value"); }
 
@@ -106,7 +106,7 @@ public:
 
 protected:
   friend class Operation;
-  explicit ConstantOp(const Operation *state) : Base(state) {}
+  explicit ConstantOp(const Operation *state) : OpBase(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -133,8 +133,7 @@ private:
 ///
 ///   %1 = dim %0, 2 : tensor<?x?x?xf32>
 ///
-class DimOp
-    : public OpImpl::Base<DimOp, OpImpl::OneOperand, OpImpl::OneResult> {
+class DimOp : public OpBase<DimOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
@@ -151,7 +150,7 @@ public:
 
 private:
   friend class Operation;
-  explicit DimOp(const Operation *state) : Base(state) {}
+  explicit DimOp(const Operation *state) : OpBase(state) {}
 };
 
 /// The "load" op reads an element from a memref specified by an index list. The
@@ -163,7 +162,7 @@ private:
 ///   %3 = load %0[%1, %1] : memref<4x4xi32>
 ///
 class LoadOp
-    : public OpImpl::Base<LoadOp, OpImpl::VariadicOperands, OpImpl::OneResult> {
+    : public OpBase<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
   SSAValue *getMemRef() { return getOperand(0); }
   const SSAValue *getMemRef() const { return getOperand(0); }
@@ -185,7 +184,7 @@ public:
 
 private:
   friend class Operation;
-  explicit LoadOp(const Operation *state) : Base(state) {}
+  explicit LoadOp(const Operation *state) : OpBase(state) {}
 };
 
 /// Install the standard operations in the specified operation set.
