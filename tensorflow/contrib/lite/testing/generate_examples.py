@@ -1615,6 +1615,11 @@ def make_reshape_tests(zip_path):
       "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
       "output_shape": [[15, 28], [420], [1, -1, 5, 7], [-1]],
       "constant_shape": [True, False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1]],
+      "output_shape": [[]],
+      "constant_shape": [True, False],
   }]
 
   def build_graph(parameters):
