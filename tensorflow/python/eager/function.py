@@ -93,10 +93,11 @@ def capture_value(tensor_map, value, dtype, name):
 class CapturingGraph(ops.Graph):
   """Graph used when constructing eager functions."""
 
-  def __init__(self, captures):
+  def __init__(self):
     super(CapturingGraph, self).__init__()
     self._building_function = True
-    self.captures = captures
+    # Maps external tensor id -> internal tensor (e.g. input placeholder).
+    self.captures = {}
     # Map from resource tensor name to last op (in program order) which uses
     # this tensor. Used to enforce that execution order matches program order
     # for resource tensors.
@@ -471,8 +472,7 @@ class GraphModeFunction(object):
   def _construct_backprop_function(self):
     """Constructs the backprop function object for this function."""
     filtered_outputs = [x for x in self._python_returns if x is not None]
-    captures = {}
-    backwards_graph = CapturingGraph(captures)
+    backwards_graph = CapturingGraph()
     backwards_graph._graph_key = self._graph._graph_key  # pylint: disable=protected-access
     for collection in self._graph.collections:
       backwards_graph.get_collection_ref(
@@ -491,6 +491,7 @@ class GraphModeFunction(object):
         grad for grad in _flatten(in_gradients) if grad is not None)
     output_shapes = tuple(grad.shape for grad in backward_outputs)
 
+    captures = backwards_graph.captures
     ids = list(sorted(captures.keys()))
     if ids:
       extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])
@@ -660,8 +661,7 @@ def _deterministic_dict_values(kwds):
 def _trace_and_define_function(name, func, compiled, args, kwds):
   """Defines and returns graph-mode version of func."""
   graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  captures = {}
-  tmp_graph = CapturingGraph(captures)
+  tmp_graph = CapturingGraph()
   # Inherit the graph key, since this is used for matching variables in
   # optimizers.
   tmp_graph._graph_key = graph_key  # pylint: disable=protected-access
@@ -703,6 +703,7 @@ def _trace_and_define_function(name, func, compiled, args, kwds):
         if x is not None
     ]
 
+    captures = tmp_graph.captures
     ids = list(sorted(captures.keys()))
     if ids:
       extra_inputs, extra_placeholders = zip(* [captures[x] for x in ids])
