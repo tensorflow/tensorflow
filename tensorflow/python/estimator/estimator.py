@@ -1546,8 +1546,9 @@ def maybe_overwrite_model_dir_and_session_config(config, model_dir):
           "`model_dir` are set both in constructor and `RunConfig`, but with "
           "different values. In constructor: '{}', in `RunConfig`: "
           "'{}' ".format(model_dir, config.model_dir))
-    config = run_config.RunConfig.replace(config, model_dir=model_dir)
-  elif getattr(config, 'model_dir', None) is None:
+    if model_dir:
+      config = run_config.RunConfig.replace(config, model_dir=model_dir)
+  if getattr(config, 'model_dir', None) is None:
     model_dir = tempfile.mkdtemp()
     logging.warning('Using temporary folder as model directory: %s', model_dir)
     config = run_config.RunConfig.replace(config, model_dir=model_dir)
