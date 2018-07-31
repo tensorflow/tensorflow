@@ -1201,7 +1201,6 @@ _py_wrap_cc = rule(
             allow_files = True,
         ),
         "swig_includes": attr.label_list(
-            cfg = "data",
             allow_files = True,
         ),
         "deps": attr.label_list(
