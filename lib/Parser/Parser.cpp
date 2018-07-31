@@ -2117,7 +2117,7 @@ ParseResult MLFunctionParser::parseForStmt() {
   ForStmt *forStmt = builder.createFor(lowerBound, upperBound, step);
 
   // Create SSA value definition for the induction variable.
-  addDefinition({inductionVariableName, 0, loc}, forStmt->getInductionVar());
+  addDefinition({inductionVariableName, 0, loc}, forStmt);
 
   // If parsing of the for statement body fails,
   // MLIR contains for statement with those nested statements that have been

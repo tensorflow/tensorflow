@@ -187,7 +187,7 @@ private:
 };
 
 /// For statement represents an affine loop nest.
-class ForStmt : public Statement, public StmtBlock, private MLValue {
+class ForStmt : public Statement, public StmtBlock, public MLValue {
 public:
   // TODO: lower and upper bounds should be affine maps with
   // dimension and symbol use lists.
@@ -211,15 +211,12 @@ public:
     return block->getStmtBlockKind() == StmtBlockKind::For;
   }
 
-  // For statement represents induction variable by inheriting
-  // from MLValue. This design is hidden behind interfaces.
+  // For statement represents implicitly represents induction variable by
+  // inheriting from MLValue class. Whenever you need to refer to the loop
+  // induction variable, just use the for statement itself.
   static bool classof(const SSAValue *value) {
-    return value->getKind() == SSAValueKind::InductionVar;
+    return value->getKind() == SSAValueKind::ForStmt;
   }
-
-  /// MLValue methods
-  MLValue *getInductionVar() { return this; }
-  const MLValue *getInductionVar() const { return this; }
 
 private:
   AffineConstantExpr *lowerBound;

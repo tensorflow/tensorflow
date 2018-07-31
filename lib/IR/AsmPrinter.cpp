@@ -552,8 +552,8 @@ protected:
     case SSAValueKind::FnArgument:
       id = nextFnArgumentID++;
       break;
-    case SSAValueKind::InductionVar:
-      id = nextInductionVarID++;
+    case SSAValueKind::ForStmt:
+      id = nextLoopID++;
       break;
     }
     valueIDs[value] = id;
@@ -599,7 +599,7 @@ private:
   /// This is the value ID for each SSA value in the current function.
   DenseMap<const SSAValue *, unsigned> valueIDs;
   unsigned nextValueID = 0;
-  unsigned nextInductionVarID = 0;
+  unsigned nextLoopID = 0;
   unsigned nextFnArgumentID = 0;
 };
 } // end anonymous namespace
@@ -900,9 +900,7 @@ void MLFunctionPrinter::numberValues() {
       if (stmt->getNumResults() != 0)
         printer->numberValueID(stmt->getResult(0));
     }
-    void visitForStmt(ForStmt *stmt) {
-      printer->numberValueID(stmt->getInductionVar());
-    }
+    void visitForStmt(ForStmt *stmt) { printer->numberValueID(stmt); }
     MLFunctionPrinter *printer;
   };
 
@@ -948,7 +946,7 @@ void MLFunctionPrinter::print(const OperationStmt *stmt) {
 
 void MLFunctionPrinter::print(const ForStmt *stmt) {
   os.indent(numSpaces) << "for ";
-  printOperand(stmt->getInductionVar());
+  printOperand(stmt);
   os << " = " << *stmt->getLowerBound();
   os << " to " << *stmt->getUpperBound();
   if (stmt->getStep()->getValue() != 1)

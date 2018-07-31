@@ -33,11 +33,11 @@ class OperationStmt;
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
-  BBArgument,   // basic block argument
-  InstResult,   // instruction result
-  FnArgument,   // ML function argument
-  StmtResult,   // statement result
-  InductionVar, // for statement induction variable
+  BBArgument, // basic block argument
+  InstResult, // instruction result
+  FnArgument, // ML function argument
+  StmtResult, // statement result
+  ForStmt,    // for statement induction variable
 };
 
 /// This is the common base class for all values in the MLIR system,

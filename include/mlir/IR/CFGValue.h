@@ -51,7 +51,7 @@ public:
 
     case SSAValueKind::FnArgument:
     case SSAValueKind::StmtResult:
-    case SSAValueKind::InductionVar:
+    case SSAValueKind::ForStmt:
       return false;
     }
   }

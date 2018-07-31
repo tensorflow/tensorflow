@@ -198,7 +198,7 @@ OperationStmt *SSAValue::getDefiningStmt() {
 ForStmt::ForStmt(AffineConstantExpr *lowerBound, AffineConstantExpr *upperBound,
                  AffineConstantExpr *step, MLIRContext *context)
     : Statement(Kind::For), StmtBlock(StmtBlockKind::For),
-      MLValue(MLValueKind::InductionVar, Type::getAffineInt(context)),
+      MLValue(MLValueKind::ForStmt, Type::getAffineInt(context)),
       lowerBound(lowerBound), upperBound(upperBound), step(step) {}
 
 //===----------------------------------------------------------------------===//

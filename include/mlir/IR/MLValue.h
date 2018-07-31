@@ -36,7 +36,7 @@ class ForStmt;
 enum class MLValueKind {
   FnArgument = (int)SSAValueKind::FnArgument,
   StmtResult = (int)SSAValueKind::StmtResult,
-  InductionVar = (int)SSAValueKind::InductionVar,
+  ForStmt = (int)SSAValueKind::ForStmt,
 };
 
 /// The operand of ML function statement contains an MLValue.
@@ -49,7 +49,7 @@ public:
     switch (value->getKind()) {
     case SSAValueKind::FnArgument:
     case SSAValueKind::StmtResult:
-    case SSAValueKind::InductionVar:
+    case SSAValueKind::ForStmt:
       return true;
 
     case SSAValueKind::BBArgument:
@@ -104,26 +104,6 @@ private:
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
   OperationStmt *const owner;
-};
-
-/// This is a value defined by a loop induction variable.
-class InductionVar : public MLValue {
-public:
-  InductionVar(Type *type, ForStmt *owner)
-      : MLValue(MLValueKind::InductionVar, type), owner(owner) {}
-
-  static bool classof(const SSAValue *value) {
-    return value->getKind() == SSAValueKind::InductionVar;
-  }
-
-  ForStmt *getOwner() { return owner; }
-  const ForStmt *getOwner() const { return owner; }
-
-private:
-  /// The owner of this operand.
-  /// TODO: can encode this more efficiently to avoid the space hit of this
-  /// through bitpacking shenanigans.
-  ForStmt *const owner;
 };
 
 } // namespace mlir
