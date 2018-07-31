@@ -179,44 +179,15 @@ class Estimator(object):
     """
     Estimator._assert_members_are_not_overridden(self)
 
-    if config is None:
-      self._config = run_config.RunConfig()
-      logging.info('Using default config.')
-    else:
-      if not isinstance(config, run_config.RunConfig):
-        raise ValueError(
-            'config must be an instance of RunConfig, but provided %s.' %
-            config)
-      self._config = config
+    config = maybe_overwrite_model_dir_and_session_config(config, model_dir)
+    self._config = config
 
     # The distribute field contains an instance of DistributionStrategy.
     self._distribution = self._config.train_distribute
-
     # Model directory.
-    model_dir = compat_internal.path_to_str(model_dir)
-    if (model_dir is not None) and (self._config.model_dir is not None):
-      if model_dir != self._config.model_dir:
-        # TODO(alanyee): remove this suppression after it is no longer needed
-        # pylint: disable=g-doc-exception
-        raise ValueError(
-            "model_dir are set both in constructor and RunConfig, but with "
-            "different values. In constructor: '{}', in RunConfig: "
-            "'{}' ".format(model_dir, self._config.model_dir))
-        # pylint: enable=g-doc-exception
-
-    self._model_dir = model_dir or self._config.model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
-    if self._config.model_dir is None:
-      self._config = self._config.replace(model_dir=self._model_dir)
+    self._model_dir = self._config.model_dir
+    self._session_config = self._config.session_config
     logging.info('Using config: %s', str(vars(self._config)))
-
-    if self._config.session_config is None:
-      self._session_config = run_config.get_default_session_config()
-    else:
-      self._session_config = self._config.session_config
 
     self._device_fn = (
         self._config.device_fn or _get_replica_device_setter(self._config))
@@ -1540,6 +1511,48 @@ class Estimator(object):
       logging.info('Warm-starting with WarmStartSettings: %s' %
                    (self._warm_start_settings,))
       warm_starting_util.warm_start(*self._warm_start_settings)
+
+
+def maybe_overwrite_model_dir_and_session_config(config, model_dir):
+  """Overwrite estimator config by `model_dir` and `session_config` if needed.
+
+  Args:
+    config: Original estimator config.
+    model_dir: Estimator model checkpoint directory.
+
+  Returns:
+    Overwritten estimator config.
+
+  Raises:
+    ValueError: Model directory inconsistent between `model_dir` and `config`.
+  """
+
+  if config is None:
+    config = run_config.RunConfig()
+    logging.info('Using default config.')
+  if not isinstance(config, run_config.RunConfig):
+    raise ValueError(
+        'config must be an instance of `RunConfig`, but provided %s.' % config)
+
+  if config.session_config is None:
+    session_config = run_config.get_default_session_config()
+    config = run_config.RunConfig.replace(config, session_config=session_config)
+
+  model_dir = compat_internal.path_to_str(model_dir)
+  if model_dir is not None:
+    if (getattr(config, 'model_dir', None) is not None and
+        config.model_dir != model_dir):
+      raise ValueError(
+          "`model_dir` are set both in constructor and `RunConfig`, but with "
+          "different values. In constructor: '{}', in `RunConfig`: "
+          "'{}' ".format(model_dir, config.model_dir))
+    config = run_config.RunConfig.replace(config, model_dir=model_dir)
+  elif getattr(config, 'model_dir', None) is None:
+    model_dir = tempfile.mkdtemp()
+    logging.warning('Using temporary folder as model directory: %s', model_dir)
+    config = run_config.RunConfig.replace(config, model_dir=model_dir)
+
+  return config
 
 
 def create_per_tower_ready_op(scaffold):

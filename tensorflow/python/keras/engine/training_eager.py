@@ -589,7 +589,6 @@ def fit_loop(model,
              verbose=1,
              callbacks=None,
              shuffle=True,
-             callback_metrics=None,
              initial_epoch=0,
              steps_per_epoch=None,
              validation_steps=None):
@@ -611,10 +610,6 @@ def fit_loop(model,
       verbose: Verbosity mode, 0, 1 or 2
       callbacks: List of callbacks to be called during training
       shuffle: Whether to shuffle the data at the beginning of each epoch
-      callback_metrics: List of strings, the display names of the metrics
-          passed to the callbacks. They should be the
-          concatenation of list the display names of the outputs of
-           `f` and the list of display names of the outputs of `f_val`.
       initial_epoch: Epoch at which to start training
           (useful for resuming a previous training run)
       steps_per_epoch: Total number of steps (batches of samples)
@@ -646,6 +641,7 @@ def fit_loop(model,
 
     num_train_samples = None
     out_labels = None
+    callback_metrics = None
     if model._is_compiled:
       out_labels = model.metrics_names
       if do_validation:

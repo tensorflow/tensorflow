@@ -403,6 +403,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Any)
     HANDLE_OPERATORTYPENAME_CASE(LogicalAnd)
     HANDLE_OPERATORTYPENAME_CASE(LogicalNot)
+    HANDLE_OPERATORTYPENAME_CASE(LogicalOr)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -1618,11 +1619,12 @@ void CheckIsReadyForQuantization(const Model& model) {
           << "Array " << input << ", which is an input to the "
           << HelpfulOperatorTypeName(*op) << " operator producing the output "
           << "array " << op->outputs[0] << ", is lacking min/max data, "
-          << "which is necessary for quantization. Either target a "
-          << "non-quantized output format, or change the input graph to "
-          << "contain min/max information, or pass --default_ranges_min= and "
-          << "--default_ranges_max= if you do not care about the accuracy of "
-          << "results.";
+          << "which is necessary for quantization. If accuracy matters, either "
+          << "target a non-quantized output format, or run quantized training "
+          << "with your model from a floating point checkpoint to change the "
+          << "input graph to contain min/max information. If you don't care "
+          << "about accuracy, you can pass --default_ranges_min= and "
+          << "--default_ranges_max= for easy experimentation.";
     }
   }
 }

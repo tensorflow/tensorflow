@@ -65,6 +65,7 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kAny:
     case OperatorType::kLogicalAnd:
     case OperatorType::kLogicalNot:
+    case OperatorType::kLogicalOr:
       // These operators unconditionally produce bool outputs
       SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
       break;
@@ -141,7 +142,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
       CHECK_EQ(op->inputs.size(), 2);
       CHECK_EQ(op->outputs.size(), 2);
       CHECK(model->GetArray(op->inputs[1]).data_type == ArrayDataType::kInt32);
-      model->GetArray(op->outputs[0]).data_type = model->GetArray(op->inputs[0]).data_type;
+      model->GetArray(op->outputs[0]).data_type =
+          model->GetArray(op->inputs[0]).data_type;
       model->GetArray(op->outputs[1]).data_type = ArrayDataType ::kInt32;
       break;
     }

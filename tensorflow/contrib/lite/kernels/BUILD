@@ -170,6 +170,7 @@ cc_library(
         "hashtable_lookup.cc",
         "l2norm.cc",
         "local_response_norm.cc",
+        "logical.cc",
         "lsh_projection.cc",
         "lstm.cc",
         "maximum_minimum.cc",
@@ -1179,6 +1180,20 @@ tf_cc_test(
     tags = ["tflite_not_portable_ios"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "logical_test",
+    size = "small",
+    srcs = ["logical_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

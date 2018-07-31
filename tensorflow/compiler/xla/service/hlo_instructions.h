@@ -224,8 +224,7 @@ class HloAllReduceInstruction : public HloInstruction {
       HloComputation* reduce_computation,
       tensorflow::gtl::ArraySlice<int64> replica_group_ids,
       tensorflow::StringPiece barrier,
-      const tensorflow::gtl::optional<int64>& all_reduce_id =
-          tensorflow::gtl::nullopt);
+      const tensorflow::gtl::optional<int64>& all_reduce_id);
 
   // Returns the group ids of each replica for CrossReplicaSum op.
   const std::vector<int64>& replica_group_ids() const {

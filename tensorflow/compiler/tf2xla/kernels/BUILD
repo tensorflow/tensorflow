@@ -130,6 +130,7 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:numeric",
         "//tensorflow/compiler/xla/client/lib:prng",
+        "//tensorflow/compiler/xla/client/lib:sorting",
         "//tensorflow/core:framework",
         "//tensorflow/core:image_ops_op_lib",
         "//tensorflow/core:lib",

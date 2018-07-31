@@ -280,8 +280,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
     # This graph will store both the initialization and the call version of the
     # wrapped function. It will later be used by the backprop code to build the
     # backprop graph, if necessary.
-    captures = {}
-    tmp_graph = function.CapturingGraph(captures)
+    tmp_graph = function.CapturingGraph()
     # Inherit the graph key from the original graph to ensure optimizers don't
     # misbehave.
     tmp_graph._container = container  # pylint: disable=protected-access
@@ -331,6 +330,7 @@ def _graph_callable_internal(func, shape_and_dtypes):
 
   sorted_variables = sorted(variable_captures.variables.values(),
                             key=lambda x: x.name)
+  captures = tmp_graph.captures
   ids = list(sorted(captures.keys()))
   if ids:
     extra_inputs, extra_placeholders = zip(*[captures[x] for x in ids])

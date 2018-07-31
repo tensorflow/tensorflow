@@ -4877,6 +4877,146 @@ func Rsqrt(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// AudioSpectrogramAttr is an optional argument to AudioSpectrogram.
+type AudioSpectrogramAttr func(optionalAttr)
+
+// AudioSpectrogramMagnitudeSquared sets the optional magnitude_squared attribute to value.
+//
+// value: Whether to return the squared magnitude or just the
+// magnitude. Using squared magnitude can avoid extra calculations.
+// If not specified, defaults to false
+func AudioSpectrogramMagnitudeSquared(value bool) AudioSpectrogramAttr {
+	return func(m optionalAttr) {
+		m["magnitude_squared"] = value
+	}
+}
+
+// Produces a visualization of audio data over time.
+//
+// Spectrograms are a standard way of representing audio information as a series of
+// slices of frequency information, one slice for each window of time. By joining
+// these together into a sequence, they form a distinctive fingerprint of the sound
+// over time.
+//
+// This op expects to receive audio data as an input, stored as floats in the range
+// -1 to 1, together with a window width in samples, and a stride specifying how
+// far to move the window between slices. From this it generates a three
+// dimensional output. The lowest dimension has an amplitude value for each
+// frequency during that time slice. The next dimension is time, with successive
+// frequency slices. The final dimension is for the channels in the input, so a
+// stereo audio input would have two here for example.
+//
+// This means the layout when converted and saved as an image is rotated 90 degrees
+// clockwise from a typical spectrogram. Time is descending down the Y axis, and
+// the frequency decreases from left to right.
+//
+// Each value in the result represents the square root of the sum of the real and
+// imaginary parts of an FFT on the current window of samples. In this way, the
+// lowest dimension represents the power of each frequency in the current window,
+// and adjacent windows are concatenated in the next dimension.
+//
+// To get a more intuitive and visual look at what this operation does, you can run
+// tensorflow/examples/wav_to_spectrogram to read in an audio file and save out the
+// resulting spectrogram as a PNG image.
+//
+// Arguments:
+//	input: Float representation of audio data.
+//	window_size: How wide the input window is in samples. For the highest efficiency
+// this should be a power of two, but other values are accepted.
+//	stride: How widely apart the center of adjacent sample windows should be.
+//
+// Returns 3D representation of the audio frequencies as an image.
+func AudioSpectrogram(scope *Scope, input tf.Output, window_size int64, stride int64, optional ...AudioSpectrogramAttr) (spectrogram tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"window_size": window_size, "stride": stride}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "AudioSpectrogram",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CTCBeamSearchDecoderAttr is an optional argument to CTCBeamSearchDecoder.
+type CTCBeamSearchDecoderAttr func(optionalAttr)
+
+// CTCBeamSearchDecoderMergeRepeated sets the optional merge_repeated attribute to value.
+//
+// value: If true, merge repeated classes in output.
+// If not specified, defaults to true
+func CTCBeamSearchDecoderMergeRepeated(value bool) CTCBeamSearchDecoderAttr {
+	return func(m optionalAttr) {
+		m["merge_repeated"] = value
+	}
+}
+
+// Performs beam search decoding on the logits given in input.
+//
+// A note about the attribute merge_repeated: For the beam search decoder,
+// this means that if consecutive entries in a beam are the same, only
+// the first of these is emitted.  That is, when the top path is "A B B B B",
+// "A B" is returned if merge_repeated = True but "A B B B B" is
+// returned if merge_repeated = False.
+//
+// Arguments:
+//	inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
+//	sequence_length: A vector containing sequence lengths, size `(batch)`.
+//	beam_width: A scalar >= 0 (beam search beam width).
+//	top_paths: A scalar >= 0, <= beam_width (controls output size).
+//
+// Returns A list (length: top_paths) of indices matrices.  Matrix j,
+// size `(total_decoded_outputs[j] x 2)`, has indices of a
+// `SparseTensor<int64, 2>`.  The rows store: [batch, time].A list (length: top_paths) of values vectors.  Vector j,
+// size `(length total_decoded_outputs[j])`, has the values of a
+// `SparseTensor<int64, 2>`.  The vector stores the decoded classes for beam j.A list (length: top_paths) of shape vector.  Vector j,
+// size `(2)`, stores the shape of the decoded `SparseTensor[j]`.
+// Its values are: `[batch_size, max_decoded_length[j]]`.A matrix, shaped: `(batch_size x top_paths)`.  The
+// sequence log-probabilities.
+func CTCBeamSearchDecoder(scope *Scope, inputs tf.Output, sequence_length tf.Output, beam_width int64, top_paths int64, optional ...CTCBeamSearchDecoderAttr) (decoded_indices []tf.Output, decoded_values []tf.Output, decoded_shape []tf.Output, log_probability tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"beam_width": beam_width, "top_paths": top_paths}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CTCBeamSearchDecoder",
+		Input: []tf.Input{
+			inputs, sequence_length,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if decoded_indices, idx, err = makeOutputList(op, idx, "decoded_indices"); err != nil {
+		scope.UpdateErr("CTCBeamSearchDecoder", err)
+		return
+	}
+	if decoded_values, idx, err = makeOutputList(op, idx, "decoded_values"); err != nil {
+		scope.UpdateErr("CTCBeamSearchDecoder", err)
+		return
+	}
+	if decoded_shape, idx, err = makeOutputList(op, idx, "decoded_shape"); err != nil {
+		scope.UpdateErr("CTCBeamSearchDecoder", err)
+		return
+	}
+	log_probability = op.Output(idx)
+	return decoded_indices, decoded_values, decoded_shape, log_probability
+}
+
 // MatrixInverseAttr is an optional argument to MatrixInverse.
 type MatrixInverseAttr func(optionalAttr)
 
@@ -6022,146 +6162,6 @@ func Dilation2DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, ou
 		Type: "Dilation2DBackpropInput",
 		Input: []tf.Input{
 			input, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CTCBeamSearchDecoderAttr is an optional argument to CTCBeamSearchDecoder.
-type CTCBeamSearchDecoderAttr func(optionalAttr)
-
-// CTCBeamSearchDecoderMergeRepeated sets the optional merge_repeated attribute to value.
-//
-// value: If true, merge repeated classes in output.
-// If not specified, defaults to true
-func CTCBeamSearchDecoderMergeRepeated(value bool) CTCBeamSearchDecoderAttr {
-	return func(m optionalAttr) {
-		m["merge_repeated"] = value
-	}
-}
-
-// Performs beam search decoding on the logits given in input.
-//
-// A note about the attribute merge_repeated: For the beam search decoder,
-// this means that if consecutive entries in a beam are the same, only
-// the first of these is emitted.  That is, when the top path is "A B B B B",
-// "A B" is returned if merge_repeated = True but "A B B B B" is
-// returned if merge_repeated = False.
-//
-// Arguments:
-//	inputs: 3-D, shape: `(max_time x batch_size x num_classes)`, the logits.
-//	sequence_length: A vector containing sequence lengths, size `(batch)`.
-//	beam_width: A scalar >= 0 (beam search beam width).
-//	top_paths: A scalar >= 0, <= beam_width (controls output size).
-//
-// Returns A list (length: top_paths) of indices matrices.  Matrix j,
-// size `(total_decoded_outputs[j] x 2)`, has indices of a
-// `SparseTensor<int64, 2>`.  The rows store: [batch, time].A list (length: top_paths) of values vectors.  Vector j,
-// size `(length total_decoded_outputs[j])`, has the values of a
-// `SparseTensor<int64, 2>`.  The vector stores the decoded classes for beam j.A list (length: top_paths) of shape vector.  Vector j,
-// size `(2)`, stores the shape of the decoded `SparseTensor[j]`.
-// Its values are: `[batch_size, max_decoded_length[j]]`.A matrix, shaped: `(batch_size x top_paths)`.  The
-// sequence log-probabilities.
-func CTCBeamSearchDecoder(scope *Scope, inputs tf.Output, sequence_length tf.Output, beam_width int64, top_paths int64, optional ...CTCBeamSearchDecoderAttr) (decoded_indices []tf.Output, decoded_values []tf.Output, decoded_shape []tf.Output, log_probability tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"beam_width": beam_width, "top_paths": top_paths}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CTCBeamSearchDecoder",
-		Input: []tf.Input{
-			inputs, sequence_length,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if decoded_indices, idx, err = makeOutputList(op, idx, "decoded_indices"); err != nil {
-		scope.UpdateErr("CTCBeamSearchDecoder", err)
-		return
-	}
-	if decoded_values, idx, err = makeOutputList(op, idx, "decoded_values"); err != nil {
-		scope.UpdateErr("CTCBeamSearchDecoder", err)
-		return
-	}
-	if decoded_shape, idx, err = makeOutputList(op, idx, "decoded_shape"); err != nil {
-		scope.UpdateErr("CTCBeamSearchDecoder", err)
-		return
-	}
-	log_probability = op.Output(idx)
-	return decoded_indices, decoded_values, decoded_shape, log_probability
-}
-
-// AudioSpectrogramAttr is an optional argument to AudioSpectrogram.
-type AudioSpectrogramAttr func(optionalAttr)
-
-// AudioSpectrogramMagnitudeSquared sets the optional magnitude_squared attribute to value.
-//
-// value: Whether to return the squared magnitude or just the
-// magnitude. Using squared magnitude can avoid extra calculations.
-// If not specified, defaults to false
-func AudioSpectrogramMagnitudeSquared(value bool) AudioSpectrogramAttr {
-	return func(m optionalAttr) {
-		m["magnitude_squared"] = value
-	}
-}
-
-// Produces a visualization of audio data over time.
-//
-// Spectrograms are a standard way of representing audio information as a series of
-// slices of frequency information, one slice for each window of time. By joining
-// these together into a sequence, they form a distinctive fingerprint of the sound
-// over time.
-//
-// This op expects to receive audio data as an input, stored as floats in the range
-// -1 to 1, together with a window width in samples, and a stride specifying how
-// far to move the window between slices. From this it generates a three
-// dimensional output. The lowest dimension has an amplitude value for each
-// frequency during that time slice. The next dimension is time, with successive
-// frequency slices. The final dimension is for the channels in the input, so a
-// stereo audio input would have two here for example.
-//
-// This means the layout when converted and saved as an image is rotated 90 degrees
-// clockwise from a typical spectrogram. Time is descending down the Y axis, and
-// the frequency decreases from left to right.
-//
-// Each value in the result represents the square root of the sum of the real and
-// imaginary parts of an FFT on the current window of samples. In this way, the
-// lowest dimension represents the power of each frequency in the current window,
-// and adjacent windows are concatenated in the next dimension.
-//
-// To get a more intuitive and visual look at what this operation does, you can run
-// tensorflow/examples/wav_to_spectrogram to read in an audio file and save out the
-// resulting spectrogram as a PNG image.
-//
-// Arguments:
-//	input: Float representation of audio data.
-//	window_size: How wide the input window is in samples. For the highest efficiency
-// this should be a power of two, but other values are accepted.
-//	stride: How widely apart the center of adjacent sample windows should be.
-//
-// Returns 3D representation of the audio frequencies as an image.
-func AudioSpectrogram(scope *Scope, input tf.Output, window_size int64, stride int64, optional ...AudioSpectrogramAttr) (spectrogram tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"window_size": window_size, "stride": stride}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "AudioSpectrogram",
-		Input: []tf.Input{
-			input,
 		},
 		Attrs: attrs,
 	}

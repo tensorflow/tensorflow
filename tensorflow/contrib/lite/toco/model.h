@@ -147,6 +147,7 @@ enum class OperatorType : uint8 {
   kAny,
   kLogicalAnd,
   kLogicalNot,
+  kLogicalOr,
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -1788,6 +1789,17 @@ struct OneHotOperator : Operator {
 
   OneHotOperator() : Operator(OperatorType::kOneHot) {}
   int axis = -1;
+};
+
+// LogicalOr operator:
+//
+// Inputs:
+// Inputs[0]: required: A Bool tensor.
+// Inputs[1]: required: A Bool tensor.
+//
+// TensorFlow equivalent: LogicalOr.
+struct LogicalOrOperator : Operator {
+  LogicalOrOperator() : Operator(OperatorType::kLogicalOr) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

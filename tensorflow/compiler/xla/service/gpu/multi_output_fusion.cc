@@ -113,7 +113,7 @@ bool IsInputFusibleReduction(HloInstruction* instr) {
 // of input parameters differ. In such situtations it is beneficial not to fuse.
 // We consider input params with maximum rank only. Params with smaller ranks
 // will be broadcasted and have not been observed to cause data locality issues.
-// TODO(b/110927656): Improve reduce emitters to remove this limitation.
+// TODO(b/111977086): Improve reduce emitters to remove this limitation.
 bool ReduceFriendlyInputLayouts(HloInstruction* instr) {
   int64 max_rank = 0;
   const Layout* max_rank_layout;

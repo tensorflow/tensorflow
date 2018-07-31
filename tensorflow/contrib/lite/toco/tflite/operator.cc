@@ -1350,6 +1350,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<SliceOperator>("SLICE", OperatorType::kSlice));
   ops.emplace_back(new SimpleOperator<PowOperator>("POW", OperatorType::kPow));
+  ops.emplace_back(new SimpleOperator<LogicalOrOperator>(
+      "LOGICAL_OR", OperatorType::kLogicalOr));
   // Element-wise operator
   ops.emplace_back(new SimpleOperator<SinOperator>("SIN", OperatorType::kSin));
   ops.emplace_back(new SimpleOperator<LogOperator>("LOG", OperatorType::kLog));
