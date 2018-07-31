@@ -20,10 +20,10 @@ from __future__ import print_function
 
 from collections import namedtuple
 import itertools
+import os
 import warnings
 import numpy as np
 import six
-import os
 
 from tensorflow.contrib.tensorrt.python import trt_convert
 # pylint: disable=unused-import
@@ -54,7 +54,7 @@ def _IsQuantizationMode(mode):
   return mode == "INT8"
 
 
-class GraphState:
+class GraphState(object):
   ORIGINAL = 0
   CALIBRATE = 1
   INFERENCE = 2
@@ -246,7 +246,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     graph_name = (
         self.__class__.__name__ + "_" + run_params.test_name + "_" + label +
         ".pbtxt")
-    temp_dir = os.getenv('TRT_TEST_TMPDIR', self.get_temp_dir())
+    temp_dir = os.getenv("TRT_TEST_TMPDIR", self.get_temp_dir())
     logging.info("Writing graph to %s/%s", temp_dir, graph_name)
     graph_io.write_graph(gdef, temp_dir, graph_name)
 
@@ -254,12 +254,12 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     old_to_new_node_map = {
         self._ToString(n.name): self._ToString(n.name) for n in params.gdef.node
     }
-    for engine_name, node_names in params.expected_engines.iteritems():
+    for engine_name, node_names in params.expected_engines.items():
       for n in node_names:
         old_to_new_node_map[n] = engine_name
     name_to_node_map = {self._ToString(n.name): n for n in params.gdef.node}
 
-    def input_name(inp):
+    def _InputName(inp):
       inp = self._ToString(inp)
       prefix = ""
       if inp[0] == "^":
@@ -279,7 +279,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         expected_input_map[target_node_name] = set()
       input_set = expected_input_map[target_node_name]
       for inp in n.input:
-        (prefix, inp_name) = input_name(inp)
+        (prefix, inp_name) = _InputName(inp)
         # Add the input only if it's outside the segment (note that it could be
         # in a different engine).
         if (not is_engine_op or
@@ -298,7 +298,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       actual_input_map[name_str] = set()
       input_set = actual_input_map[name_str]
       for inp in n.input:
-        (prefix, node_name) = input_name(inp)
+        (prefix, node_name) = _InputName(inp)
         input_set.add(prefix + node_name)
 
     self.assertEqual(

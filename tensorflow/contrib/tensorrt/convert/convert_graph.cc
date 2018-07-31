@@ -308,9 +308,9 @@ tensorflow::Status GetEngineInfo(
       }
       if (edge->IsControlEdge()) {
         // Control input.
-        info->connections.emplace_back(
-            input_node->name(), input_node->id(), node_name, node_id,
-            /*input_edge=*/true);
+        info->connections.emplace_back(input_node->name(), input_node->id(),
+                                       node_name, node_id,
+                                       /*input_edge=*/true);
       } else if (input_node->type_string() == "Const") {
         // Add constant data input nodes into the segment graphdef (thus also in
         // the engine). We don't care if it has other output edges going into
@@ -329,9 +329,9 @@ tensorflow::Status GetEngineInfo(
         // Since we already add (duplicate) the const input node to the segment
         // graphdef, it's now not a data dependency any more, but to make the
         // dependency correct we still add a control dependency.
-        info->connections.emplace_back(
-            input_node->name(), input_node->id(), node_name, node_id,
-            /*input_edge=*/true);
+        info->connections.emplace_back(input_node->name(), input_node->id(),
+                                       node_name, node_id,
+                                       /*input_edge=*/true);
       } else {
         // Non-const data input.
         int port = Graph::kControlSlot - 1;
@@ -344,10 +344,9 @@ tensorflow::Status GetEngineInfo(
           port = input_to_engine_port.size();
           input_to_engine_port.insert({s, port});
         }
-        info->connections.emplace_back(input_node->name(), input_node->id(),
-                                       edge->src_output(), node_name, node_id,
-                                       edge->dst_input(), /*input_edge=*/true,
-                                       port);
+        info->connections.emplace_back(
+            input_node->name(), input_node->id(), edge->src_output(), node_name,
+            node_id, edge->dst_input(), /*input_edge=*/true, port);
       }
     }
     // Create output connections.
@@ -358,9 +357,9 @@ tensorflow::Status GetEngineInfo(
       }
       if (edge->IsControlEdge()) {
         // Control output.
-        info->connections.emplace_back(
-            output_node->name(), output_node->id(), node_name, node_id,
-            /*input_edge=*/false);
+        info->connections.emplace_back(output_node->name(), output_node->id(),
+                                       node_name, node_id,
+                                       /*input_edge=*/false);
       } else {
         // Data output.
         int port = Graph::kControlSlot - 1;
@@ -373,10 +372,9 @@ tensorflow::Status GetEngineInfo(
           port = output_to_engine_port.size();
           output_to_engine_port.insert({s, port});
         }
-        info->connections.emplace_back(output_node->name(), output_node->id(),
-                                       edge->dst_input(), node_name, node_id,
-                                       edge->src_output(), /*input_edge=*/false,
-                                       port);
+        info->connections.emplace_back(
+            output_node->name(), output_node->id(), edge->dst_input(),
+            node_name, node_id, edge->src_output(), /*input_edge=*/false, port);
       }
     }
   }  // For each segment node in topological order.
@@ -408,8 +406,7 @@ tensorflow::Status GetEngineInfo(
 void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
                         const size_t my_engine_id,
                         const std::vector<Node*>& engine_nodes,
-                        const bool is_input_edge,
-                        const string& node_name,
+                        const bool is_input_edge, const string& node_name,
                         tensorflow::Node** node, int* port) {
   for (size_t t = 0; t < infos.size(); ++t) {
     if (t == my_engine_id) {
@@ -483,8 +480,8 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
         continue;
       }
       control_input_nodes.push_back(input_node);
-      VLOG(1) << "Engine Control Input " << input_node->name()
-              << " -> " << info.engine_name;
+      VLOG(1) << "Engine Control Input " << input_node->name() << " -> "
+              << info.engine_name;
     } else {
       // Data edges
       if (!conn.is_input_edge) {
@@ -516,12 +513,11 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
           UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/true,
                              conn.outside_node_name, &input_node, &port);
         }
-        if (std::find_if(std::begin(inputs), std::end(inputs),
-                         [input_node, &port](
-                             const NodeDefBuilder::NodeOut& inp) {
-                           return inp.node == input_node->name() &&
-                               inp.index == port;
-                         }) == std::end(inputs)) {
+        if (std::find_if(
+                std::begin(inputs), std::end(inputs),
+                [input_node, &port](const NodeDefBuilder::NodeOut& inp) {
+                  return inp.node == input_node->name() && inp.index == port;
+                }) == std::end(inputs)) {
           inputs.emplace_back(input_node->name(), port, conn.connection_type);
           input_nodes.push_back(CHECK_NOTNULL(input_node));
           VLOG(1) << "Engine Input " << input_node->name() << ":" << port
@@ -953,9 +949,9 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    const string msg = StrCat(
-        "Engine ", engine.engine_name, " creation for segment ", i,
-        ", composed of ", converted_segments.at(i).first.size(), " nodes");
+    const string msg = StrCat("Engine ", engine.engine_name,
+                              " creation for segment ", i, ", composed of ",
+                              converted_segments.at(i).first.size(), " nodes");
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
       for (auto node_name : converted_segments.at(i).first) {

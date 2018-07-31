@@ -59,7 +59,7 @@ class TestValueManager {
   void Clear(const string& pattern) {
     if (TF_PREDICT_FALSE(enabled_)) {
       VLOG(1) << "Clearing test values";
-      if (pattern == "") {
+      if (pattern.empty()) {
         values_.clear();
         return;
       }

@@ -2691,7 +2691,7 @@ tensorflow::Status ConvertGraphDefToEngine(
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
     string node_name = node_def.name();
-    VLOG(1) << "Converting op name=" << node_name << ", op=" << node_def.op();
+    VLOG(2) << "Converting op name=" << node_name << ", op=" << node_def.op();
     if (tensorflow::str_util::StartsWith(node_name, kInputPHName) &&
         (node_def.op() == "Placeholder")) {
       nvinfer1::DimsCHW input_dim_pseudo_chw;
@@ -2871,7 +2871,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     old_to_new_id_map[node_id] = segment_def->node_size();
     auto snode = segment_def->add_node();
     snode->CopyFrom(node->def());
-    VLOG(1) << "Copying " << snode->name() << " to subgraph";
+    VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.
   for (int i = 0; i < connections->size(); ++i) {
@@ -2898,14 +2898,15 @@ tensorflow::Status ConvertSegmentToGraphDef(
               string(input.first.data(), input.first.size())) &&
           !str_util::StartsWith(input.first, kInputPHName)) {
         if (input.second == Graph::kControlSlot) {
-          VLOG(2) << "... removing control inputs " << input.first
+          VLOG(1) << "... removing control inputs " << input.first
                   << " from subgraph.";
           ++input_idx;
           continue;
         } else {
           return tensorflow::errors::InvalidArgument(
               "Found non control input outside the segment that is not an "
-              "engine connection to ", snode->name(), ": ", input.first);
+              "engine connection to ",
+              snode->name(), ": ", input.first);
         }
       }
       if (actual_input_idx != input_idx) {
@@ -2932,12 +2933,12 @@ bool InputEdgeValidator::operator()(const tensorflow::Edge* in_edge) const {
   nvinfer1::DataType trt_dtype;
   Status status = ValidateInputProperties(shape, dtype, &trt_dtype);
   if (!status.ok()) {
-    VLOG(2) << "--> Need to remove input node " << in_edge->dst()->name()
+    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
             << ": " << status;
     return false;
   }
   if (shape.dims() < 3 && in_edge->src()->type_string() != "Const") {
-    VLOG(2) << "--> Need to remove input node " << in_edge->dst()->name()
+    VLOG(1) << "--> Need to remove input node " << in_edge->dst()->name()
             << " which has an input at port " << in_edge->dst_input()
             << " with #dim<3 and is not a const: " << shape;
     return false;
@@ -2948,7 +2949,7 @@ bool InputEdgeValidator::operator()(const tensorflow::Edge* in_edge) const {
 bool OutputEdgeValidator::operator()(const tensorflow::Edge* out_edge) const {
   if (out_edge->IsControlEdge()) return true;
   if (out_edge->src()->type_string() == "Const") {
-    VLOG(2) << "--> Need to remove output node " << out_edge->src()->name()
+    VLOG(1) << "--> Need to remove output node " << out_edge->src()->name()
             << " which is a Const.";
     return false;
   }

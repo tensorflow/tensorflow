@@ -122,8 +122,8 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         input_dims=[input_dims],
         # TODO(aaroey): LayoutOptimizer adds additional nodes to the graph which
         # breaks the connection check, fix it.
-        # - my_trt_op_0 should have ["mul", "sub", "div1", "mul1", "add1", "add",
-        #   "sub1"];
+        # - my_trt_op_0 should have ["mul", "sub", "div1", "mul1", "add1",
+        #   "add", "sub1"];
         # - my_trt_op_1 should have ["weights","conv", "div"]
         expected_engines=["my_trt_op_0", "my_trt_op_1"],
         expected_output_dims=(100, 12, 12, 6),
@@ -330,8 +330,8 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         expected_engines={
-            "my_trt_op_0": ["c1", "add", "add1", "mul"],
-            "my_trt_op_1": ["c2", "add2", "add3", "mul1"]
+            "my_trt_op_0": ["c2", "add2", "add3", "mul1"],
+            "my_trt_op_1": ["c1", "add", "add1", "mul"]
         },
         expected_output_dims=tuple(input_dims),
         allclose_atol=1.e-06,
