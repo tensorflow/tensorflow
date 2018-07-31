@@ -1,0 +1,29 @@
+FROM debian:stretch
+
+LABEL maintainer="Jan Prach <jendap@google.com>"
+
+# Copy and run the install scripts.
+COPY install/*.sh /install/
+
+RUN echo "deb http://http.debian.net/debian stretch-backports main" | \
+    tee -a /etc/apt/sources.list
+
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends -t \
+    stretch-backports \
+    software-properties-common \
+    dirmngr \
+    gnupg \
+    openjdk-8-jre-headless \
+    ca-certificates-java && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN /install/install_bootstrap_deb_packages.sh
+RUN /install/install_deb_packages.sh
+RUN /install/install_pip_packages.sh
+RUN /install/install_bazel.sh
+RUN /install/install_golang.sh
+
+# Set up the master bazelrc configuration file.
+COPY install/.bazelrc /etc/bazel.bazelrc
