@@ -62,7 +62,7 @@ ArrayRef<AffineMap*> MemRefType::getAffineMaps() const {
   return ArrayRef<AffineMap*>(affineMapList, numAffineMaps);
 }
 
-unsigned MemRefType::getNumDynamicDims() {
+unsigned MemRefType::getNumDynamicDims() const {
   unsigned numDynamicDims = 0;
   for (int dimSize : getShape()) {
     if (dimSize < 0)

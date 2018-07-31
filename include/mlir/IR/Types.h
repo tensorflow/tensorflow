@@ -347,7 +347,7 @@ public:
   unsigned getMemorySpace() const { return memorySpace; }
 
   /// Returns the number of dimensions with dynamic size.
-  unsigned getNumDynamicDims();
+  unsigned getNumDynamicDims() const;
 
   static bool classof(const Type *type) {
     return type->getKind() == Kind::MemRef;
