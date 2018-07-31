@@ -1,5 +1,6 @@
 #include <algorithm>
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -126,7 +127,8 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   TF_ASSIGN_OR_RETURN(indices, FindInstructionInput(tensor_map, inst, 2));
 
   poplar::program::Sequence seq;
-  if (!input.isParallelWriteable()) {
+  if (!input.isParallelWriteable() ||
+      !res.annotations.inplace_instructions.count(inst)) {
     poplar::Tensor copy;
     TF_ASSIGN_OR_RETURN(
         copy, AddTensor(graph, std::make_pair(inst, 0),

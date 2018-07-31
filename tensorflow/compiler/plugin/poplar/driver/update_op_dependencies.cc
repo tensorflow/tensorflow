@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/update_op_dependencies.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -24,10 +24,29 @@ namespace xla {
 namespace poplarplugin {
 
 StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
+  std::vector<const HloInstruction*> to_remove;
+  auto entry_computation = module->entry_computation();
+  std::unique_ptr<HloReachabilityMap> reachability_map =
+      entry_computation->ComputeReachability();
 
   for (auto* inst : annotations_.inplace_instructions) {
+    // We only currently support inplace ops inside the entry computation
+    if (inst->parent() != module->entry_computation()) {
+      to_remove.push_back(inst);
+      continue;
+    }
+
     for (auto* peer : inst->operand(0)->users()) {
-      if (annotations_.inplace_instructions.count(peer) == 0) {
+      if (peer == inst) {
+        continue;
+      }
+
+      // If peer is a depenency of inst, remove inst from inplace list
+      if (reachability_map->IsConnected(peer, inst)) {
+        to_remove.push_back(inst);
+        break;
+      } else {
+        // Add ctrl dep, and remove peer from list
         HloInstruction* from;
         TF_ASSIGN_OR_RETURN(from,
                             module->LaunderConstInstructionFromModule(peer));
@@ -35,8 +54,15 @@ StatusOr<bool> UpdateOpDependenctOrdering::Run(HloModule* module) {
         TF_ASSIGN_OR_RETURN(to,
                             module->LaunderConstInstructionFromModule(inst));
         from->AddControlDependencyTo(to);
+        entry_computation->UpdateReachabilityThroughInstruction(
+            inst, reachability_map.get());
       }
     }
+  }
+
+  // remove instructions which are not actually in place anymore
+  for (auto* inst : to_remove) {
+    annotations_.inplace_instructions.erase(inst);
   }
 
   return true;

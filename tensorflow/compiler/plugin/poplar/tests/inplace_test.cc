@@ -28,9 +28,8 @@ namespace {
 
 using HloInplaceDependencyTest = HloTestBase;
 
-
 TEST_F(HloInplaceDependencyTest, ResourceUpdate) {
-std::string hlo = R"(
+  std::string hlo = R"(
 HloModule top
 
 ENTRY c1 {
@@ -60,9 +59,8 @@ ENTRY c1 {
   EXPECT_THAT(inst->name(), "s");
 }
 
-
 TEST_F(HloInplaceDependencyTest, DynamicSliceUpdateInWhile) {
-std::string hlo = R"(
+  std::string hlo = R"(
 HloModule top
 
 body {
@@ -113,7 +111,6 @@ ENTRY c1 {
   }
 }
 
-
 TEST_F(HloInplaceDependencyTest, DynamicUpdateSlice) {
   std::string hlo = R"(
 HloModule top
@@ -138,7 +135,6 @@ ENTRY c1 {
   auto* module0 = module.ValueOrDie().get();
   auto* entry = module0->entry_computation();
 
-
   CompilerAnnotations annotations;
 
   InplaceFinder inplaceFinder(annotations);
@@ -159,7 +155,7 @@ ENTRY c1 {
   EXPECT_THAT(instruction_order.size(), 10);
 
   std::map<std::string, unsigned int> order;
-  for (unsigned int i=0; i<instruction_order.size(); i++) {
+  for (unsigned int i = 0; i < instruction_order.size(); i++) {
     order[instruction_order[i]->name()] = i;
   }
 
@@ -177,6 +173,175 @@ ENTRY c1 {
   // All updates need to occur after all reads
   EXPECT_TRUE(order.at("t1") < order.at("u0"));
   EXPECT_TRUE(order.at("t2") < order.at("u1"));
+}
+
+TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
+  std::string hlo = R"(
+  HloModule top
+
+  ENTRY c1 {
+    p0 = s32[20] parameter(0)
+    p1 = s32[20] parameter(1)
+    u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+    u1 = s32[20] subtract(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+    ROOT root = (s32[20], s32[20]) tuple(u0, u1)
+   }
+  )";
+
+  auto module =
+      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+  auto* entry = module0->entry_computation();
+
+  CompilerAnnotations annotations;
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  std::set<std::string> in_place_ops = {"u0", "u1"};
+  EXPECT_THAT(annotations.inplace_instructions.size(), 2);
+  for (const auto* inst : annotations.inplace_instructions) {
+    EXPECT_THAT(in_place_ops.count(inst->name()), 1);
+  }
+
+  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
+  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+
+  std::vector<const HloInstruction*> instruction_order =
+      Scheduler::schedule(entry).ValueOrDie();
+
+  EXPECT_THAT(instruction_order.size(), 5);
+
+  std::map<std::string, unsigned int> order;
+  for (unsigned int i = 0; i < instruction_order.size(); i++) {
+    order[instruction_order[i]->name()] = i;
+  }
+
+  // Normal ordering
+  EXPECT_TRUE(order.at("p0") < order.at("u0"));
+  EXPECT_TRUE(order.at("p1") < order.at("u0"));
+  EXPECT_TRUE(order.at("p0") < order.at("u1"));
+  EXPECT_TRUE(order.at("p1") < order.at("u1"));
+  EXPECT_TRUE(order.at("u0") < order.at("root"));
+  EXPECT_TRUE(order.at("u1") < order.at("root"));
+
+  // Only one of the binary ops can be update in place
+  EXPECT_THAT(annotations.inplace_instructions.size(), 1);
+
+  auto* inst = *(annotations.inplace_instructions.begin());
+  EXPECT_TRUE(inst->name() == "u1" || inst->name() == "u0");
+}
+
+TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
+  std::string hlo = R"(
+    HloModule top
+
+    ENTRY c1 {
+      p0 = s32[20] parameter(0)
+      p1 = s32[20] parameter(1)
+      u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u1 = s32[20] subtract(u0, p0), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      ROOT root = (s32[20]) tuple(u1)
+     }
+    )";
+
+  auto module =
+      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+  auto* entry = module0->entry_computation();
+
+  CompilerAnnotations annotations;
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  std::set<std::string> in_place_ops = {"u0", "u1"};
+  EXPECT_THAT(annotations.inplace_instructions.size(), 2);
+  for (const auto* inst : annotations.inplace_instructions) {
+    EXPECT_THAT(in_place_ops.count(inst->name()), 1);
+  }
+
+  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
+  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+
+  std::vector<const HloInstruction*> instruction_order =
+      Scheduler::schedule(entry).ValueOrDie();
+
+  EXPECT_THAT(instruction_order.size(), 5);
+
+  std::map<std::string, unsigned int> order;
+  for (unsigned int i = 0; i < instruction_order.size(); i++) {
+    order[instruction_order[i]->name()] = i;
+  }
+
+  // Normal ordering
+  EXPECT_TRUE(order.at("p0") < order.at("u0"));
+  EXPECT_TRUE(order.at("p1") < order.at("u0"));
+  EXPECT_TRUE(order.at("u0") < order.at("u1"));
+  EXPECT_TRUE(order.at("u1") < order.at("root"));
+
+  // Only one of the binary ops can be update in place
+  ASSERT_THAT(annotations.inplace_instructions.size(), 1);
+
+  auto* inst = *(annotations.inplace_instructions.begin());
+  EXPECT_THAT(inst->name(), "u1");
+}
+
+TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
+  std::string hlo = R"(
+    HloModule top
+
+    ENTRY c1 {
+      p0 = s32[20] parameter(0)
+      p1 = s32[20] parameter(1)
+      p2 = s32[20] parameter(2)
+      u0 = s32[20] add(p0, p1), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      u1 = s32[20] add(p1, p2), metadata={op_type="ResourceApplyGradientDescent" op_name="name"}
+      ROOT root = (s32[20], s32[20]) tuple(u0, u1)
+     }
+    )";
+
+  auto module =
+      HloRunner::CreateModuleFromString(hlo, GetDebugOptionsForTest());
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+  auto* entry = module0->entry_computation();
+
+  CompilerAnnotations annotations;
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  std::set<std::string> in_place_ops = {"u0", "u1"};
+  EXPECT_THAT(annotations.inplace_instructions.size(), 2);
+  for (const auto* inst : annotations.inplace_instructions) {
+    EXPECT_THAT(in_place_ops.count(inst->name()), 1);
+  }
+
+  UpdateOpDependenctOrdering updateOpDependenctOrdering(annotations);
+  EXPECT_TRUE(updateOpDependenctOrdering.Run(module0).ValueOrDie());
+
+  std::vector<const HloInstruction*> instruction_order =
+      Scheduler::schedule(entry).ValueOrDie();
+
+  EXPECT_THAT(instruction_order.size(), 6);
+
+  std::map<std::string, unsigned int> order;
+  for (unsigned int i = 0; i < instruction_order.size(); i++) {
+    order[instruction_order[i]->name()] = i;
+  }
+
+  // Normal ordering
+  EXPECT_TRUE(order.at("p0") < order.at("u0"));
+  EXPECT_TRUE(order.at("p1") < order.at("u0"));
+  EXPECT_TRUE(order.at("p2") < order.at("u1"));
+  EXPECT_TRUE(order.at("u0") < order.at("u1"));
+  EXPECT_TRUE(order.at("u1") < order.at("root"));
+
+  // Both inplace_instructions are still inplace
+  ASSERT_THAT(annotations.inplace_instructions.size(), 2);
 }
 
 }  // namespace
