@@ -169,6 +169,7 @@ Status RunRestore(const RunOptions& run_options, const string& export_dir,
   const string variables_index_path = io::JoinPath(
       variables_directory, MetaFilename(kSavedModelVariablesFilename));
   if (!Env::Default()->FileExists(variables_index_path).ok()) {
+    LOG(INFO) << "Falied to restore variables from " << variables_index_path;
     LOG(INFO) << "The specified SavedModel has no variables; no checkpoints "
                  "were restored.";
     return Status::OK();
