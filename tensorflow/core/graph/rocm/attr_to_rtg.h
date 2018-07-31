@@ -27,6 +27,7 @@ namespace convert {
 void GetProgram(const NameAttrList&, void **, int&);
 void EvalProgram(void*, Tensor*, std::vector<const Tensor*>&, bool, void*, int);
 void GetOutputShape(void *, TensorShape&);
+void AdjustShape( void *, std::vector<const Tensor*>&);
 
 } // namspace convert
 } // namespace rtglib

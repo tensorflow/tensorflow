@@ -102,6 +102,7 @@ void RTGLaunchOp::Compute(OpKernelContext* ctx) {
         const Tensor& input = ctx->input(i);
         input_ptrs.push_back(&input);
     }
+    rtglib::convert::AdjustShape(program, input_ptrs);
     OP_REQUIRES(ctx, ctx->num_outputs() == 1,
                 errors::InvalidArgument("expect single output"));
     

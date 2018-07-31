@@ -115,6 +115,35 @@ void GetOutputShape(void * p_program, TensorShape& ret_shape)
     convert.getTensorShape(shape, ret_shape);
 }
 
+void AdjustShape(void * p_program, std::vector<const Tensor*>& input_ptrs)
+{
+    migraph::program* program = reinterpret_cast<migraph::program*>(p_program);
+    int param_cnt = 0;
+    Converter convert(program, nullptr);
+    bool recompute = false;
+    for (auto ins : migraph::iterator_for(*program)) {
+        string name = ins->op.name();
+        if (convert.starts_with(name, Converter::param_prefix)) {
+            const Tensor* ptr = input_ptrs[param_cnt++];
+            const TensorShape& dynamic_shape = ptr->shape();
+            TensorShape static_shape;
+            convert.getTensorShape(ins->result, static_shape);
+            if (static_shape != dynamic_shape) {
+                recompute = true;
+                ins->result = convert.getShape(ptr);
+            }
+        } else if (!recompute) {
+            break;
+        } else if (!convert.starts_with(name, Converter::literal_prefix)) {
+            ins->result = migraph::compute_shape(ins->op, ins->arguments);
+        }
+    }
+    if (recompute) {
+        std::cout << "---After adjustment to dynamic shape--" << std::endl;
+        std::cout << *program << std::endl;
+    }
+}
+
 } // namspace convert
 } // namespace rtglib
 } // namespace tensorflow 

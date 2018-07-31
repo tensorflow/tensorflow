@@ -779,7 +779,7 @@ Status BuildLaunchNode(std::unique_ptr<Graph>* g, Cluster& cluster, Converter& c
 
     NameAttrList func;
     func.Clear();
-    func.set_name("function");
+    func.set_name(name);
     (*func.mutable_attr())["func"] = value;
     NodeDef node_def;
     Status status =  op_builder.Attr("function", func)
@@ -877,6 +877,7 @@ Status ConvertSubgraphToRTG(std::unique_ptr<Graph>* g, Cluster& cluster, T_INPUT
         device = node->assigned_device_name();
     }
     std::cout << "---After encode---" << std::endl;
+    std::cout << cluster_name << std::endl;
     std::cout << *program << std::endl;
     // call program->optimize()
     Converter bwd_convert(program, nullptr);

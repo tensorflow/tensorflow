@@ -166,6 +166,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
+    copts= ["-g", "-O0"],
     alwayslink = 0,
 )
 
@@ -5233,7 +5234,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    copts = tf_copts(),
+    copts = tf_copts() + ["-g", "-O0"],
     linkopts = select({
         "//tensorflow:android": [
             "-ldl",
@@ -5305,6 +5306,7 @@ tf_kernel_library(
         "meta_support.h",
         "reference_gemm.h",
     ],
+    copts= ["-g", "-O0"],
     deps = [
         ":concat_lib_hdrs",
         ":conv_ops",
