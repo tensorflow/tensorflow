@@ -134,6 +134,7 @@ _allowed_symbols = ['bias_add',
                     'OPTIMIZER_SUMMARIES',
                     'regression_target',
                     'SPARSE_FEATURE_CROSS_DEFAULT_HASH_KEY',
-                    'summaries']
+                    'summaries',
+                    'WeightNorm']
 
 remove_undocumented(__name__, _allowed_symbols)
