@@ -3049,6 +3049,7 @@ tf_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:training",
     ],
+)
 
 # Custom op tests
 tf_custom_op_library(
