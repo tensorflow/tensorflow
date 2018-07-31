@@ -20,13 +20,16 @@ from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import continue_statements
 from tensorflow.contrib.autograph.core import converter_testing
+from tensorflow.python.eager import context as tfe_ctx
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
 class ContinueCanonicalizationTest(converter_testing.TestCase):
 
   def assertTransformedEquivalent(self, test_fn, *inputs):
-    with self.converted(test_fn, continue_statements, {}) as result:
+    with self.converted(test_fn, continue_statements, {},
+                        constant_op.constant) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
   def test_basic(self):
@@ -40,10 +43,11 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
-    self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 4)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 1)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 4)
 
   def test_for_loop(self):
 
@@ -56,10 +60,11 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v
 
-    self.assertTransformedEquivalent(test_fn, [])
-    self.assertTransformedEquivalent(test_fn, [1])
-    self.assertTransformedEquivalent(test_fn, [2])
-    self.assertTransformedEquivalent(test_fn, [1, 2, 3])
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, [])
+      self.assertTransformedEquivalent(test_fn, [1])
+      self.assertTransformedEquivalent(test_fn, [2])
+      self.assertTransformedEquivalent(test_fn, [1, 2, 3])
 
   def test_nested(self):
 
@@ -78,10 +83,11 @@ class ContinueCanonicalizationTest(converter_testing.TestCase):
         v.append(x)
       return v, u, w
 
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
-    self.assertTransformedEquivalent(test_fn, 3)
-    self.assertTransformedEquivalent(test_fn, 4)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 1)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 4)
 
 
 if __name__ == '__main__':
