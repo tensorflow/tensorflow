@@ -258,25 +258,27 @@ def to_graph(e,
     # Avoid overwriting entities that have been transformed.
     if key not in compiled_module.__dict__:
       compiled_module.__dict__[key] = val
-  compiled_fn = getattr(compiled_module, name)
+  compiled = getattr(compiled_module, name)
 
   # Need this so the source_mapping attribute is available for the context
   # manager to access for runtime errors.
   #
   # Note that compiler.ast_to_object attaches the source map 'ag_source_map__'
   # symbol to the compiled module.
+  # TODO(mdan): Record this statically in the generated code.
+  # TODO(mdan): Rename this attribute to 'autograph_info__'
   source_map_attribute_name = 'ag_source_map'
-  if getattr(compiled_fn, source_map_attribute_name, None) is not None:
+  if getattr(compiled, source_map_attribute_name, None) is not None:
     raise ValueError('cannot convert %s because is has an attribute '
                      '"%s", which is reserved for AutoGraph.' %
-                     (compiled_fn, source_map_attribute_name))
-  setattr(compiled_fn, source_map_attribute_name,
+                     (compiled, source_map_attribute_name))
+  setattr(compiled, source_map_attribute_name,
           compiled_module.__dict__['ag_source_map__'])
 
   if verbose:
     logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
 
-  return compiled_fn
+  return compiled
 
 
 def to_code(e,
