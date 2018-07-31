@@ -183,11 +183,12 @@ class EagerContext {
   Status GetClientAndContextID(Device* device, eager::EagerClient** client,
                                uint64* context_id);
 
+#endif
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs.
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
-#endif
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
@@ -254,9 +255,9 @@ class EagerContext {
   const gtl::FlatMap<string, uint64> remote_contexts_;
   gtl::FlatMap<Device*, std::pair<eager::EagerClient*, uint64>>
       device_to_client_cache_;
+#endif
 
   const bool use_send_tensor_rpc_;
-#endif
 };
 
 }  // namespace tensorflow

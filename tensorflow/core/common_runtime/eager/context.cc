@@ -217,7 +217,7 @@ Status EagerContext::FindDeviceByName(const string& name, Device** result) {
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   if (remote_device_manager_ == nullptr) return Status::OK();
-
+#ifndef __ANDROID__
   BlockingCounter blocking_counter(static_cast<int>(remote_contexts_.size()));
 
   std::vector<eager::RegisterFunctionRequest> requests(remote_contexts_.size());
@@ -247,6 +247,7 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   for (int i = 0; i < remote_contexts_.size(); i++) {
     TF_RETURN_IF_ERROR(statuses[i]);
   }
+#endif
   return Status::OK();
 }
 

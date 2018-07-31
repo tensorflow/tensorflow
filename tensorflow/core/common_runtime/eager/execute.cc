@@ -593,6 +593,7 @@ Status EagerLocalExecute(EagerOperation* op,
   return status;
 }
 
+#ifndef __ANDROID__
 std::function<void()> GetRemoteTensorDestructor(
     EagerContext* ctx, eager::EagerClient* eager_client, uint64 context_id,
     uint64 op_id, int output_num) {
@@ -623,6 +624,7 @@ std::function<void()> GetRemoteTensorDestructor(
     return tensorflow::Status::OK();
   };
 }
+#endif
 
 // When !ctx->UseSendTensorRPC(), then tensors are shipped between remote
 // devices by the receiver invoking the WorkerService.RecvTensor RPC *on the
@@ -634,6 +636,10 @@ std::function<void()> GetRemoteTensorDestructor(
 // *on the receiver*.
 Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              Device* recv_device, TensorHandle** result) {
+#ifdef __ANDROID__
+  return errors::Unimplemented(
+      "Eager's remote execution is not available on Android devices.");
+#else
   eager::EagerClient* eager_client;
   uint64 context_id;
   TF_RETURN_IF_ERROR(
@@ -672,6 +678,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
 
   return Status::OK();
+#endif
 }
 
 Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
