@@ -473,7 +473,6 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(tf_result, expanded_nums)
 
 
-@test_util.with_c_api
 class UnsafeDivTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
