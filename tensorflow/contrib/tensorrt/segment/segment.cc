@@ -414,10 +414,10 @@ tensorflow::Status SegmentGraph(
   }
   for (const SimpleNode* node : order) {
     // All output nodes of 'node' have been visited...
-    VLOG(2) << "Trying node " << node->name() << " id=" << node->id();
+    VLOG(3) << "Trying node " << node->name() << " id=" << node->id();
     // 'node' must be a TRT candidate...
     if (node_segments[node->id()].Value() == nullptr) {
-      VLOG(2) << "... not a TRT candidate";
+      VLOG(3) << "... not a TRT candidate";
       continue;
     }
     // Contract output edges to combine 'node' with output
@@ -426,22 +426,22 @@ tensorflow::Status SegmentGraph(
     while (true) {
       std::set<const SimpleEdge*> contract_edges;
       for (const SimpleEdge* out_edge : node->out_edges()) {
-        VLOG(2) << "... out node " << out_edge->dst()->name() << " ( "
+        VLOG(3) << "... out node " << out_edge->dst()->name() << " ( "
                 << out_edge->dst()->id() << " <- " << node->id() << " )";
         if (out_edge->IsControlEdge()) {
-          VLOG(2) << "... ... Control Edge, Skipping";
+          VLOG(3) << "... ... Control Edge, Skipping";
           continue;
         }
         // Out node must be TRT candidate...
         if (node_segments[out_edge->dst()->id()].Value() == nullptr) {
-          VLOG(2) << "... ... not a TRT candidate";
+          VLOG(3) << "... ... not a TRT candidate";
           continue;
         }
         if (CanContractEdge(out_edge, graph)) {
-          VLOG(2) << "... ... can contract";
+          VLOG(3) << "... ... can contract";
           contract_edges.insert(out_edge);
         } else {
-          VLOG(2) << "... ... cannot contract, would form cycle";
+          VLOG(3) << "... ... cannot contract, would form cycle";
         }
       }
       if (contract_edges.empty()) {
@@ -454,7 +454,7 @@ tensorflow::Status SegmentGraph(
         const SimpleNode* src = contract_edge->src();
         const SimpleNode* dst = contract_edge->dst();
 
-        VLOG(2) << "Merge " << src->name() << " <- " << dst->name() << " ("
+        VLOG(3) << "Merge " << src->name() << " <- " << dst->name() << " ("
                 << src->id() << " <- " << dst->id();
         node_segments[src->id()].Merge(&node_segments[dst->id()]);
 

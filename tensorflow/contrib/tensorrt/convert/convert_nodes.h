@@ -71,9 +71,7 @@ struct EngineConnection {
         is_input_edge(input_edge),
         port_number(Graph::kControlSlot) {}
 
-  bool is_control_edge() const {
-    return port_number == Graph::kControlSlot;
-  }
+  bool is_control_edge() const { return port_number == Graph::kControlSlot; }
 
   const string outside_node_name;
   const int outside_id;

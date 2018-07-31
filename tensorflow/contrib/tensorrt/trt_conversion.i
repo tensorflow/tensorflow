@@ -260,16 +260,28 @@ void enable_test_value() {
   tensorflow::tensorrt::test::EnableTestValue();
 }
 
-void clear_test_values(string pattern) {
-  tensorflow::tensorrt::test::ClearTestValues(pattern);
+#if PY_MAJOR_VERSION < 3
+#define TRT_PY_TO_CPP_STRING PyString_AsString
+#define TRT_CPP_TO_PY_STRING PyString_FromString
+#else
+#define TRT_PY_TO_CPP_STRING PyUnicode_AsUTF8
+#define TRT_CPP_TO_PY_STRING PyUnicode_FromString
+#endif
+
+void clear_test_values(PyObject* pattern) {
+  tensorflow::tensorrt::test::ClearTestValues(
+      string(TRT_PY_TO_CPP_STRING(pattern)));
 }
 
-void add_test_value(string label, string value) {
-  tensorflow::tensorrt::test::AddTestValue(label, value);
+void add_test_value(PyObject* label, PyObject* value) {
+  tensorflow::tensorrt::test::AddTestValue(
+      string(TRT_PY_TO_CPP_STRING(label)), string(TRT_PY_TO_CPP_STRING(value)));
 }
 
-string get_test_value(string label) {
-  return tensorflow::tensorrt::test::GetTestValue(label);
+PyObject* get_test_value(PyObject* label) {
+  string value = tensorflow::tensorrt::test::GetTestValue(
+      string(TRT_PY_TO_CPP_STRING(label)));
+  return TRT_CPP_TO_PY_STRING(value.c_str());
 }
 
 %}
@@ -288,8 +300,8 @@ version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 bool is_tensorrt_enabled();
 void enable_test_value();
-void clear_test_values(string pattern);
-void add_test_value(string label, string value);
-string get_test_value(string label);
+void clear_test_values(PyObject* pattern);
+void add_test_value(PyObject* label, PyObject* value);
+PyObject* get_test_value(PyObject* label);
 
 %unignoreall
