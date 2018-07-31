@@ -22,4 +22,5 @@ from __future__ import print_function
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 from tensorflow.contrib.tensorrt.python.trt_convert import calib_graph_to_infer_graph
 from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_graph
+from tensorflow.contrib.tensorrt.python.trt_convert import is_tensorrt_enabled
 # pylint: enable=unused-import,line-too-long

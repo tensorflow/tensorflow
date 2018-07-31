@@ -200,6 +200,13 @@ class HloTestBase : public ::testing::Test {
         ->ResetLayout(layout);
   }
 
+  void ForceResultLayout(HloModule* module, const Layout& layout,
+                         ShapeIndexView shape_index) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout, shape_index);
+  }
+
   // Convenience method to clear the layout of the computation result in
   // 'module'.
   void ForceClearResultLayout(HloModule* module) {

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace tensorflow {
 
@@ -246,6 +246,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building If";
 }
 
+REGISTER_XLA_OP(Name("If").AllowResourceTypes(), XlaIfOp);
 REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
 
 }  // namespace tensorflow

@@ -62,7 +62,7 @@ class SelfAttentionModule(tf.keras.Model):
         kernel_size=1,
         strides=(1, 1),
         data_format=data_format)
-    self.scale = tfe.Variable(0., trainable=True)
+    self.scale = tf.Variable(0., trainable=True)
 
   def call(self, x):
     f = self.f(x)

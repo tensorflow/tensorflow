@@ -71,7 +71,7 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
   return MemDesc();
 }
 
-Allocator* ProcessState::GetCPUAllocator(int numa_node) {
+VisitableAllocator* ProcessState::GetCPUAllocator(int numa_node) {
   CHECK_GE(numa_node, 0);
   if (!numa_enabled_) numa_node = 0;
   mutex_lock lock(mu_);

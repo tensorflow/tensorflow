@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
 #include <gtest/gtest.h>
-#include "absl/memory/memory.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
@@ -25,49 +24,9 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class ConstTransposeConvOpModel : public SingleOpModel {
-  // Just to be extra confusing, transpose_conv has an _input_ named
-  // "output_shape". This input sets the shape of the output tensor of the op.
-  // In this version of the test class, "output_shape" is a constant that must
-  // be specified in the constructor.
- public:
-  ConstTransposeConvOpModel(TfLiteRegistration* registration,
-                            std::initializer_list<int> input_shape,
-                            std::initializer_list<int> filter_shape,
-                            std::initializer_list<int> output_shape_data,
-                            Padding padding, int stride_w, int stride_h) {
-    output_shape_ = AddConstInput(TensorType_INT32, output_shape_data,
-                                  {static_cast<int>(output_shape_data.size())});
-    filter_ = AddInput(TensorType_FLOAT32);
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(
-        BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
-        CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
-            .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
-        BuiltinOperator_TRANSPOSE_CONV, registration);
-    BuildInterpreter({{4}, filter_shape, input_shape});
-  }
-
-  int output_shape() { return output_shape_; }
-  int filter() { return filter_; }
-  int input() { return input_; }
-
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int output_shape_;
-  int filter_;
-  int input_;
-  int output_;
-};
-
 class TransposeConvOpModel : public SingleOpModel {
  public:
-  TransposeConvOpModel(TfLiteRegistration* registration,
-                       std::initializer_list<int> input_shape,
+  TransposeConvOpModel(std::initializer_list<int> input_shape,
                        std::initializer_list<int> filter_shape, Padding padding,
                        int stride_w, int stride_h) {
     output_shape_ = AddInput(TensorType_INT32);
@@ -78,8 +37,6 @@ class TransposeConvOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, BuiltinOptions_TransposeConvOptions,
         CreateTransposeConvOptions(builder_, padding, stride_w, stride_h)
             .Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(
-        BuiltinOperator_TRANSPOSE_CONV, registration);
     BuildInterpreter({{4}, filter_shape, input_shape});
   }
 
@@ -97,15 +54,6 @@ class TransposeConvOpModel : public SingleOpModel {
   int output_;
 };
 
-const auto kKernelMap = new std::map<string, TfLiteRegistration*>({});
-
-class TransposeConvOpTest : public SingleOpTest {
- protected:
-  const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMap;
-  }
-};
-
 // Test case:
 // output = tf.nn.conv2d_backprop_input(
 //     tf.constant([ 1, 4, 4, 1 ]),
@@ -113,25 +61,9 @@ class TransposeConvOpTest : public SingleOpTest {
 //     tf.constant(np.arange(1, 17), shape=[ 1, 4, 4, 1 ], dtype=tf.float32),
 //     [1, 1, 1, 1 ],
 //     "SAME")
-TEST_P(TransposeConvOpTest, SimpleTest) {
-  TransposeConvOpModel m(GetRegistration(), {1, 4, 4, 1}, {1, 3, 3, 1},
-                         Padding_SAME, 1, 1);
+TEST(TransposeConvOpModelTest, SimpleTest) {
+  TransposeConvOpModel m({1, 4, 4, 1}, {1, 3, 3, 1}, Padding_SAME, 1, 1);
   m.PopulateTensor<int>(m.output_shape(), {1, 4, 4, 1});
-  m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  m.PopulateTensor<float>(
-      m.input(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({29, 62, 83, 75, 99, 192, 237, 198, 207, 372,
-                                417, 330, 263, 446, 485, 365}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
-}
-
-// Test case: Same as above, but with a const "output_shape"
-TEST_P(TransposeConvOpTest, ConstSimpleTest) {
-  ConstTransposeConvOpModel m(GetRegistration(), {1, 4, 4, 1}, {1, 4, 4, 1},
-                              {1, 3, 3, 1}, Padding_SAME, 1, 1);
   m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9});
   m.PopulateTensor<float>(
       m.input(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
@@ -155,9 +87,8 @@ TEST_P(TransposeConvOpTest, ConstSimpleTest) {
 //     "SAME")
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[18, 1])
-TEST_P(TransposeConvOpTest, TwoFiltersTest) {
-  TransposeConvOpModel m(GetRegistration(), {1, 4, 4, 2}, {1, 3, 3, 2},
-                         Padding_SAME, 1, 1);
+TEST(TransposeConvOpModelTest, TwoFiltersTest) {
+  TransposeConvOpModel m({1, 4, 4, 2}, {1, 3, 3, 2}, Padding_SAME, 1, 1);
   m.PopulateTensor<int>(m.output_shape(), {1, 4, 4, 1});
   m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                                        13, 14, 15, 16, 17, 18});
@@ -185,9 +116,8 @@ TEST_P(TransposeConvOpTest, TwoFiltersTest) {
 //     "VALID")
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[1, 18])
-TEST_P(TransposeConvOpTest, PaddingValidTest) {
-  TransposeConvOpModel m(GetRegistration(), {1, 4, 4, 2}, {1, 3, 3, 2},
-                         Padding_VALID, 1, 1);
+TEST(TransposeConvOpModelTest, PaddingValidTest) {
+  TransposeConvOpModel m({1, 4, 4, 2}, {1, 3, 3, 2}, Padding_VALID, 1, 1);
   m.PopulateTensor<int>(m.output_shape(), {1, 6, 6, 1});
   m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                                        13, 14, 15, 16, 17, 18});
@@ -216,9 +146,8 @@ TEST_P(TransposeConvOpTest, PaddingValidTest) {
 //     tf.constant(np.arange(1, 5), shape=[ 1, 2, 2, 1 ], dtype=tf.float32),
 //     [1, 2, 2, 1 ],
 //     "VALID")
-TEST_P(TransposeConvOpTest, StrideValidTest) {
-  TransposeConvOpModel m(GetRegistration(), {1, 2, 2, 1}, {1, 3, 3, 1},
-                         Padding_VALID, 2, 2);
+TEST(TransposeConvOpModelTest, StrideValidTest) {
+  TransposeConvOpModel m({1, 2, 2, 1}, {1, 3, 3, 1}, Padding_VALID, 2, 2);
   m.PopulateTensor<int>(m.output_shape(), {1, 5, 5, 1});
   m.PopulateTensor<float>(m.filter(), {1, 2, 3, 4, 5, 6, 7, 8, 9});
   m.PopulateTensor<float>(m.input(), {1, 2, 3, 4});
@@ -241,28 +170,9 @@ TEST_P(TransposeConvOpTest, StrideValidTest) {
 //     tf.constant(np.arange(1, 5), shape=[ 1, 2, 2, 1 ], dtype=tf.float32),
 //     [1, 2, 2, 1 ],
 //     "VALID")
-TEST_P(TransposeConvOpTest, MultiChannelTest) {
-  TransposeConvOpModel m(GetRegistration(), {1, 2, 2, 1}, {2, 3, 3, 1},
-                         Padding_VALID, 2, 2);
+TEST(TransposeConvOpModelTest, MultiChannelTest) {
+  TransposeConvOpModel m({1, 2, 2, 1}, {2, 3, 3, 1}, Padding_VALID, 2, 2);
   m.PopulateTensor<int>(m.output_shape(), {1, 5, 5, 2});
-  m.PopulateTensor<float>(m.filter(), {1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6,
-                                       8, 10, 12, 14, 16, 18});
-  m.PopulateTensor<float>(m.input(), {1, 2, 3, 4});
-  m.Invoke();
-
-  EXPECT_THAT(
-      m.GetOutput(),
-      ElementsAreArray({1,  2,  3,  4,  7,  10,  6,   8,  10, 12, 7,  8,  9,
-                        10, 25, 28, 18, 20, 22,  24,  16, 20, 24, 28, 62, 72,
-                        42, 48, 54, 60, 21, 24,  27,  30, 61, 68, 36, 40, 44,
-                        48, 39, 42, 45, 48, 103, 110, 60, 64, 68, 72}));
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 5, 5, 2}));
-}
-
-// Test case: Same as above, but with a const "output_shape"
-TEST_P(TransposeConvOpTest, ConstMultiChannelTest) {
-  ConstTransposeConvOpModel m(GetRegistration(), {1, 2, 2, 1}, {2, 3, 3, 1},
-                              {1, 5, 5, 2}, Padding_VALID, 2, 2);
   m.PopulateTensor<float>(m.filter(), {1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6,
                                        8, 10, 12, 14, 16, 18});
   m.PopulateTensor<float>(m.input(), {1, 2, 3, 4});
@@ -289,9 +199,8 @@ TEST_P(TransposeConvOpTest, ConstMultiChannelTest) {
 //     "SAME")
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[-1])
-TEST_P(TransposeConvOpTest, AccuracyTest) {
-  TransposeConvOpModel m(GetRegistration(), {1, 1, 2, 1}, {1, 3, 3, 1},
-                         Padding_SAME, 3, 3);
+TEST(TransposeConvOpModelTest, AccuracyTest) {
+  TransposeConvOpModel m({1, 1, 2, 1}, {1, 3, 3, 1}, Padding_SAME, 3, 3);
   m.PopulateTensor<int>(m.output_shape(), {1, 3, 4, 1});
   m.PopulateTensor<float>(m.filter(), {9, 5, 6, 9, 8, 5, 3, 1, 4});
   m.PopulateTensor<float>(m.input(), {323, 521});
@@ -302,10 +211,6 @@ TEST_P(TransposeConvOpTest, AccuracyTest) {
                                   4689., 4168., 323., 1292., 1563., 521.})));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 4, 1}));
 }
-
-INSTANTIATE_TEST_CASE_P(
-    TransposeConvOpTest, TransposeConvOpTest,
-    ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)));
 
 }  // namespace
 }  // namespace tflite

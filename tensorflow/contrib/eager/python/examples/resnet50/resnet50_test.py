@@ -29,6 +29,7 @@ import tensorflow.contrib.eager as tfe
 from tensorflow.contrib.eager.python.examples.resnet50 import resnet50
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.client import device_lib
+from tensorflow.python.eager import tape
 
 
 def device_and_data_format():
@@ -49,13 +50,21 @@ def random_batch(batch_size, data_format):
   return images, one_hot
 
 
-def compute_gradients(model, images, labels):
-  with tf.GradientTape() as tape:
+def compute_gradients(model, images, labels, num_replicas=1):
+  with tf.GradientTape() as grad_tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.contrib.summary.scalar(name='loss', tensor=loss)
-  return tape.gradient(loss, model.variables)
+    if num_replicas != 1:
+      loss /= num_replicas
+
+  # TODO(b/110991947): We can mistakenly trace the gradient call in
+  # multi-threaded environment. Explicitly disable recording until
+  # this is fixed.
+  with tape.stop_recording():
+    grads = grad_tape.gradient(loss, model.variables)
+  return grads
 
 
 def apply_gradients(model, optimizer, gradients):
@@ -188,11 +197,14 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         return (32,)
     return (16, 32)
 
-  def _report(self, label, start, num_iters, device, batch_size, data_format):
+  def _report(self, label, start, num_iters, device, batch_size, data_format,
+              num_replicas=1):
     avg_time = (time.time() - start) / num_iters
     dev = tf.DeviceSpec.from_string(device).device_type.lower()
-    name = '%s_%s_batch_%d_%s' % (label, dev, batch_size, data_format)
-    extras = {'examples_per_sec': batch_size / avg_time}
+    replica_str = '' if num_replicas == 1 else 'replicas_%d_' % num_replicas
+    name = '%s_%s_batch_%d_%s%s' % (label, dev, batch_size,
+                                    replica_str, data_format)
+    extras = {'examples_per_sec': (num_replicas * batch_size) / avg_time}
     self.report_benchmark(
         iters=num_iters, wall_time=avg_time, name=name, extras=extras)
 

@@ -44,6 +44,7 @@ limitations under the License.
 // * size_t is used to represent byte sizes of objects that are
 //   materialized in the address space of the calling process.
 // * int is used as an index into arrays.
+// * Deletion functions are safe to call on nullptr.
 //
 // Questions left to address:
 // * Might at some point need a way for callers to provide their own Env.
@@ -1235,6 +1236,11 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     int noutputs, const TF_Output* outputs, const char* const* output_names,
     const TF_FunctionOptions* opts, const char* description, TF_Status* status);
 
+// Returns the name of the graph function.
+// The return value points to memory that is only usable until the next
+// mutation to *func.
+TF_CAPI_EXPORT extern const char* TF_FunctionName(TF_Function* func);
+
 // Write out a serialized representation of `func` (as a FunctionDef protocol
 // message) to `output_func_def` (allocated by TF_NewBuffer()).
 // `output_func_def`'s underlying buffer will be freed when TF_DeleteBuffer()
@@ -1521,6 +1527,13 @@ TF_CAPI_EXPORT extern const char* TF_DeviceListType(const TF_DeviceList* list,
 TF_CAPI_EXPORT extern int64_t TF_DeviceListMemoryBytes(
     const TF_DeviceList* list, int index, TF_Status* status);
 
+// Retrieve the incarnation number of a given device.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and 0 will be returned.
+TF_CAPI_EXPORT extern uint64_t TF_DeviceListIncarnation(
+    const TF_DeviceList* list, int index, TF_Status* status);
+
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels
 
@@ -1602,6 +1615,18 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map,
                                                  const char* name,
                                                  size_t name_len,
                                                  TF_Status* status);
+
+// --------------------------------------------------------------------------
+// Kernel definition information.
+
+// Returns a serialized KernelList protocol buffer containing KernelDefs for all
+// registered kernels.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status);
+
+// Returns a serialized KernelList protocol buffer containing KernelDefs for all
+// kernels registered for the operation named `name`.
+TF_CAPI_EXPORT extern TF_Buffer* TF_GetRegisteredKernelsForOp(
+    const char* name, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

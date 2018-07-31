@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "segment_mean"
-    deprecation_message: "tf.segment_mean is deprecated, please use tf.math.segment_mean instead."
+    deprecated: true
   }
 }

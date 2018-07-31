@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -239,7 +239,7 @@ class HeapSimulatorTest : public HloTestBase {
 TEST_F(HeapSimulatorTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
 
   // Constants aren't assigned.  See b/32248867
   HeapSimulatorTracker tracker(TestName(), builder.Build(), {const0});
@@ -674,7 +674,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
   const BufferValue* DummyBufferValue() {
     const BufferValue::Id id = buffers_.size();
     auto const0 = builder_.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     buffers_.emplace_back(MakeUnique<HloValue>(id, const0, ShapeIndex{}));
     return buffers_.back().get();
   }

@@ -73,6 +73,20 @@ py_test(
 )
 
 py_test(
+    name = "csv_dataset_serialization_test",
+    size = "small",
+    srcs = ["csv_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/contrib/data/python/ops:readers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_test(
     name = "dataset_constructor_serialization_test",
     size = "medium",
     srcs = ["dataset_constructor_serialization_test.py"],

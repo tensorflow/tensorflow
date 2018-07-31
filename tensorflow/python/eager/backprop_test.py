@@ -96,6 +96,19 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(grads_and_vars[0][0], 1.0)
     self.assertAllEqual(id(grads_and_vars[0][1]), id(x))
 
+  def testGradientInsideLoop(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+
+      def body(_):
+        _ = v + 1.0  # This reads the variable inside the loop context
+        with backprop.GradientTape() as t:
+          result = v * 2
+        self.assertTrue(t.gradient(result, v) is not None)
+        return 1.0
+
+      control_flow_ops.while_loop(lambda i: False, body, [1.0])
+
   def testWhereGradient(self):
     # Note: where is special because only some of its arguments are of
     # differentiable dtypes.
@@ -223,10 +236,22 @@ class BackpropTest(test.TestCase):
 
   def testTapeStopRecording(self):
     with backprop.GradientTape() as t:
-      x = constant_op.constant(1.0)
+      x = resource_variable_ops.ResourceVariable(1.0)
       with t.stop_recording():
         y = x * x
     self.assertEqual(t.gradient(y, x), None)
+
+  def testTapeStopStartRecording(self):
+    with backprop.GradientTape(persistent=True) as t:
+      x = resource_variable_ops.ResourceVariable(1.0)
+      x2 = x * 2  # This should be differentiated through.
+      with t.stop_recording():
+        y = x2 * x2
+      z = x2 * x2
+    self.assertEqual(t.gradient(y, x2), None)
+
+    # If the x*2 was not differentiated through, this would be 2.0, not 4.0
+    self.assertEqual(t.gradient(z, x2).numpy(), 4.0)
 
   def testTapeReset(self):
     with backprop.GradientTape() as t:
@@ -900,32 +925,23 @@ class BackpropTest(test.TestCase):
         'did you forget to return a value from fn?'):
       val_and_grads_fn(x, y)
 
-  def testZerosCacheDoesntLeakAcrossModes(self):
-    with ops.Graph().as_default():
-      t = random_ops.random_normal(shape=[100, 2])
-      x = random_ops.random_normal(shape=[100, 4])
-      dy = random_ops.random_normal(shape=[100, 4])
-      with backprop.GradientTape() as gradient_tape:
-        gradient_tape.watch(x)
-        x1, _ = array_ops.split(x, num_or_size_splits=2, axis=1)
-        y1 = x1 ** 2.
-        y = array_ops.concat([y1, t], axis=1)
+  def testZerosCacheDoesntLeakAcrossGraphs(self):
+    with context.graph_mode():
+      def get_grad():
+        with ops.Graph().as_default(), self.test_session():
+          t = constant_op.constant(1, dtype=dtypes.float32, shape=(10, 4))
+          x = constant_op.constant(2, dtype=dtypes.float32, shape=(10, 4))
+          with backprop.GradientTape() as gt:
+            tape.watch(x)
+            x1, _ = array_ops.split(x, num_or_size_splits=2, axis=1)
+            y1 = x1**2
+            y = array_ops.concat([y1, t], axis=1)
+          return self.evaluate(gt.gradient(y, x))
 
-      dx = gradient_tape.gradient(y, x, output_gradients=dy)
-      with self.test_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(dx)
+      grad1 = get_grad()
+      grad2 = get_grad()
 
-    t = random_ops.random_normal(shape=[100, 2])
-    x = random_ops.random_normal(shape=[100, 4])
-    dy = random_ops.random_normal(shape=[100, 4])
-    with backprop.GradientTape() as gradient_tape:
-      gradient_tape.watch(x)
-      x1, _ = array_ops.split(x, num_or_size_splits=2, axis=1)
-      y1 = x1 ** 2.
-      y = array_ops.concat([y1, t], axis=1)
-
-    dx = gradient_tape.gradient(y, x, output_gradients=dy)
+      self.assertAllEqual(grad1, grad2)
 
 
 if __name__ == '__main__':

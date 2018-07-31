@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers
@@ -414,6 +415,69 @@ class IteratorTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(
             next_element, feed_dict={handle_placeholder: iterator_4_handle})
+
+  def testIteratorStringHandleFuture(self):
+    with forward_compat.forward_compatibility_horizon(2018, 8, 4):
+      dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
+      dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
+
+      iterator_3 = dataset_3.make_one_shot_iterator()
+      iterator_4 = dataset_4.make_one_shot_iterator()
+
+      handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
+      feedable_iterator = iterator_ops.Iterator.from_string_handle(
+          handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+      next_element = feedable_iterator.get_next()
+
+      self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
+      self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
+      self.assertEqual([], feedable_iterator.output_shapes)
+
+      with self.test_session() as sess:
+        iterator_3_handle = sess.run(iterator_3.string_handle())
+        iterator_4_handle = sess.run(iterator_4.string_handle())
+
+        self.assertEqual(
+            10,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            1,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            20,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            2,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            30,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        self.assertEqual(
+            3,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_3_handle}))
+        self.assertEqual(
+            40,
+            sess.run(
+                next_element,
+                feed_dict={handle_placeholder: iterator_4_handle}))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(
+              next_element, feed_dict={handle_placeholder: iterator_3_handle})
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(
+              next_element, feed_dict={handle_placeholder: iterator_4_handle})
 
   def testIteratorStringHandleReuseTensorObject(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])

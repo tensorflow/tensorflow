@@ -109,6 +109,19 @@ Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
   return Status::OK();
 }
 
+Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    CHECK(remote_shape_ != nullptr);
+    *shape = *(remote_shape_.get());
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    *shape = tensor_.shape();
+  }
+  return Status::OK();
+}
+
 Status TensorHandle::NumDims(int* num_dims) {
   if (IsRemote()) {
     TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));

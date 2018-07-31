@@ -71,8 +71,19 @@ cc_library(
 )
 
 cc_library(
+    name = "assert_next_dataset_op",
+    srcs = ["assert_next_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
     name = "dataset_kernels",
     deps = [
+        ":assert_next_dataset_op",
         ":csv_dataset_op",
         ":directed_interleave_dataset_op",
         ":ignore_errors_dataset_op",

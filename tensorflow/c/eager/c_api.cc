@@ -288,7 +288,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
                          opts->async, std::move(device_mgr), r);
 }
 
-void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) { delete ctx; }
+void TFE_DeleteContext(TFE_Context* ctx) { delete ctx; }
 
 TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   TF_DeviceList* list = new TF_DeviceList;
@@ -336,7 +336,7 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
-  DCHECK(h);
+  if (h == nullptr) return;
   if (h->handle) {
     h->handle->Unref();
   }
@@ -664,17 +664,17 @@ TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t) {
 
 const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
     TFE_TensorHandle* h, TF_Status* status) {
-  tensorflow::Device* d = nullptr;
-  tensorflow::Device* op_device = nullptr;
-  const tensorflow::Tensor* t = nullptr;
-  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
-  if (!status->status.ok()) return nullptr;
-  if (d != nullptr) {
+  if (!h->handle->OnHostCPU()) {
     status->status = tensorflow::errors::FailedPrecondition(
         "TFE_TensorHandle is placed in device (not host) memory. Cannot return "
         "a tensorflow::Tensor");
     return nullptr;
   }
+  tensorflow::Device* d = nullptr;
+  tensorflow::Device* op_device = nullptr;
+  const tensorflow::Tensor* t = nullptr;
+  status->status = h->handle->TensorAndDevice(&t, &d, &op_device);
+  if (!status->status.ok()) return nullptr;
   return t;
 }
 
