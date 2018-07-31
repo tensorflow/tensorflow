@@ -155,13 +155,13 @@ Token Lexer::lexComment() {
 
 /// Lex a bare identifier or keyword that starts with a letter.
 ///
-///   bare-id ::= (letter|[_]) (letter|digit|[_$])*
+///   bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 ///   integer-type ::= `i[1-9][0-9]*`
 ///
 Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
-  // Match the rest of the identifier regex: [0-9a-zA-Z_$]*
+  // Match the rest of the identifier regex: [0-9a-zA-Z_.$]*
   while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_' ||
-         *curPtr == '$')
+         *curPtr == '$' || *curPtr == '.')
     ++curPtr;
 
   // Check to see if this identifier is a keyword.
