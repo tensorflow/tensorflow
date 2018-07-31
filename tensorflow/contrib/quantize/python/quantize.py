@@ -278,6 +278,13 @@ def _FindLayersToQuantize(graph):
       ],
       ordered_inputs=False)
 
+  # batch_norms with forced updates have an Identity operation at the end.
+  # TODO(suharshs): Find a way to easily skip extra Identity operations. The
+  # current issue is that doing so can often match patterns across many layers
+  # incorrectly.
+  batch_norm_identity = graph_matcher.OpTypePattern(
+      'Identity', inputs=[folded_bias_add_pattern])
+
   bias_add_pattern = graph_matcher.OpTypePattern(
       'Add|BiasAdd', inputs=[layer_output_pattern, '*'], ordered_inputs=False)
 
@@ -286,20 +293,22 @@ def _FindLayersToQuantize(graph):
       'Add',
       inputs=[
           graph_matcher.OneofPattern(
-              [bias_add_pattern, folded_bias_add_pattern]), '*'
+              [bias_add_pattern, folded_bias_add_pattern, batch_norm_identity]),
+          '*'
       ],
       ordered_inputs=False)
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
   # TODO(suharshs): We should ideally skip Identity operations instead of
-  # treating them as an activation.
+  # treating them as activations.
   activation_pattern = graph_matcher.OpTypePattern(
       '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
               bias_add_pattern,
               folded_bias_add_pattern,
+              batch_norm_identity,
               bypass_pattern,
           ])
       ])

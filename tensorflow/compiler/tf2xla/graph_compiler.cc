@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -161,9 +161,8 @@ Status GraphCompiler::Compile() {
     outputs.resize(n->num_outputs());
     for (int o = 0; o < n->num_outputs(); ++o) {
       outputs[o] = op_context.release_output(o);
-      if (*op_context.is_output_dead() || outputs[o].tensor == nullptr) {
+      if (outputs[o].tensor == nullptr) {
         return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                (*op_context.is_output_dead() ? "(dead)" : ""),
                                 SummarizeNode(*n));
       }
     }

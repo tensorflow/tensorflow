@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 
+#include <fstream>
 #include <limits>
 #include <mutex>
 
@@ -67,22 +68,32 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 #if defined(__ANDROID__)
   return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();
 #elif defined(__linux__)
-  double bogomips;
-  FILE* fp = popen("grep '^bogomips' /proc/cpuinfo | head -1", "r");
-  if (fp == nullptr) {
+  // Read the contents of /proc/cpuinfo.
+  std::ifstream cpuinfo("/proc/cpuinfo");
+  if (!cpuinfo) {
+    LOG(WARNING) << "Failed to open /proc/cpuinfo";
     return INVALID_FREQUENCY;
   }
-  const int retval_of_bogomips = fscanf(fp, "bogomips : %lf", &bogomips);
-  if (retval_of_bogomips <= 0) {
-    return INVALID_FREQUENCY;
+  string line;
+  while (std::getline(cpuinfo, line)) {
+    double bogomips;
+    const int retval_of_bogomips =
+        sscanf(line.c_str(), "bogomips : %lf", &bogomips);
+    if (retval_of_bogomips > 0) {
+      const double freq_ghz = bogomips / 1000.0 / 2.0;
+      if (retval_of_bogomips != 1 || freq_ghz < 0.01) {
+        LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " Hz";
+        return INVALID_FREQUENCY;
+      }
+      const int64 freq_n =
+          static_cast<int64>(freq_ghz * 1000.0 * 1000.0 * 1000.0);
+      LOG(INFO) << "CPU Frequency: " << freq_n << " Hz";
+      return freq_n;
+    }
   }
-  pclose(fp);
-  const double freq_ghz = bogomips / 1000.0 / 2.0;
-  if (retval_of_bogomips != 1 || freq_ghz < 0.01) {
-    LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " Hz";
-    return INVALID_FREQUENCY;
-  }
-  return static_cast<int64>(freq_ghz * 1000.0 * 1000.0 * 1000.0);
+  LOG(WARNING) << "Failed to find bogomips in /proc/cpuinfo; cannot determine "
+                  "CPU frequency";
+  return INVALID_FREQUENCY;
 #elif defined(__APPLE__)
   int64 freq_hz;
   FILE* fp =

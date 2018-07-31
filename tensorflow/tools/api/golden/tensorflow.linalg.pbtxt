@@ -52,6 +52,10 @@ tf_module {
     name: "LinearOperatorScaledIdentity"
     mtype: "<class \'abc.ABCMeta\'>"
   }
+  member {
+    name: "LinearOperatorZeros"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
   member_method {
     name: "adjoint"
     argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "

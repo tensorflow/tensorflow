@@ -29,7 +29,6 @@ limitations under the License.
 //   When indices are out of bound, the ops will not succeed.
 //
 
-#include <unistd.h>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -112,8 +111,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       // TODO(alanchiao): refactor scalar multiply into separate function
       // for ease of adding a neon equivalent if ever necessary.
       for (int j = 0; j < col_size; j++) {
+        const int8_t* value_ptr = reinterpret_cast<int8_t*>(value->data.uint8);
         output->data.f[j + i * col_size] =
-            value->data.uint8[j + idx * col_size] * scaling_factor;
+            value_ptr[j + idx * col_size] * scaling_factor;
       }
     }
   }

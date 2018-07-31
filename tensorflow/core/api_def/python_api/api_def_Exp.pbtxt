@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "exp"
-    deprecation_message: "tf.exp is deprecated, please use tf.math.exp instead."
+    deprecated: true
   }
 }

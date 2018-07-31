@@ -27,8 +27,10 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as tf_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -38,11 +40,14 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import adam
+from tensorflow.python.training import momentum
+from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 
 
@@ -134,6 +139,18 @@ class FunctionTest(test.TestCase):
     out = sq_op(t)
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
+  def disabled_testRandomSeed(self):
+
+    @function.defun
+    def f():
+      return random_ops.random_normal(())
+
+    random_seed.set_random_seed(1)
+    x = f()
+    self.assertNotEqual(x, f())
+    random_seed.set_random_seed(1)
+    self.assertAllEqual(f(), x)
+
   def testNestedInputsDefunOpGraphMode(self):
     matmul = function.defun(math_ops.matmul)
 
@@ -195,6 +212,19 @@ class FunctionTest(test.TestCase):
     self.assertEqual(fn_op.output_dtypes, None)
     self.assertEqual(fn_op.output_shapes, None)
     self.assertAllEqual(fn_op(x, x), None)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testDefunCondGradient(self):
+
+    @function.defun
+    def f(x):
+      return control_flow_ops.cond(x > 0.5, lambda: 2 * x, lambda: 3 * x)
+
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(1.0)
+      t.watch(x)
+      y = f(x)
+    self.assertAllEqual(self.evaluate(t.gradient(y, x)), 2.0)
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -545,10 +575,8 @@ class FunctionTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFunctionWithResourcesOnDifferentDevices(self):
-    # TODO(akshayka): Remove the `skipTest` once we can whitelist ops as
-    # safe to be invoked with resources on different devices.
-    self.skipTest('The Placer disallows ops with resource inputs '
-                  'on different devices.')
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
 
     with ops.device('/cpu:0'):
       v_cpu = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
@@ -566,6 +594,44 @@ class FunctionTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
     expected = self.evaluate(sum_gather())
     self.assertAllEqual(expected, self.evaluate(defined()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOpInFunctionWithConflictingResourceInputs(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found.')
+
+    with ops.device('/cpu:0'):
+      v_cpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name='cpu')
+      v_also_cpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name='also_cpu')
+
+    with ops.device('/gpu:0'):
+      v_gpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name='gpu')
+
+    @function.defun
+    def resource_apply_adam():
+      training_ops.resource_apply_adam(
+          v_cpu.handle,
+          v_gpu.handle,
+          v_also_cpu.handle,
+          1.0,  # beta1_power
+          1.0,  # beta2_power
+          1.0,  # learning_rate
+          1.0,  # beta1
+          1.0,  # beta2
+          1.0,  # epsilon,
+          [1.0, 1.0, 1.0],  # grad
+          False)  # use_locking
+      return None
+
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError, 'Could not colocate node with its '
+        'resource and reference inputs.*'):
+      if not context.executing_eagerly():
+        self.evaluate(variables.global_variables_initializer())
+      self.evaluate(resource_apply_adam())
 
   def testFunctionHandlesInputsOnDifferentDevices(self):
     if not context.context().num_gpus():
@@ -1102,7 +1168,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
     def loss(v):
       return v**2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
     @function.defun
     def train():
@@ -1114,12 +1180,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
     value = train()
     self.assertEqual(value.numpy(), -1.0)
 
+  # TODO(b/111663004): This should work when the outer context is graph
+  # building.
+  def testOptimizerNonSlotVarsInDefunNoError(self):
+    def loss(v):
+      return v**2
+
+    optimizer = adam.AdamOptimizer(learning_rate=1.0)
+
+    @function.defun
+    def train():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      grad = backprop.implicit_grad(loss)(v)
+      optimizer.apply_gradients(grad)
+      return v.read_value()
+
+    train()
+
   def testOptimizerInDefunWithCapturedVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
     def loss():
       return v**2
 
-    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1.0)
+    optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
     @function.defun
     def train():

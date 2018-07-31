@@ -318,7 +318,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "iterator_ops_test",
     size = "small",
     srcs = ["iterator_ops_test.py"],
@@ -349,6 +349,7 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
+        "//tensorflow/python/compat:compat",
     ],
     grpc_enabled = True,
 )

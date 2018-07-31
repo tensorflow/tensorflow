@@ -17,7 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
@@ -42,7 +42,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   HloComputation::Builder builder(TestName());
 
   std::unique_ptr<Literal> literal =
-      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto param_shape = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
@@ -78,7 +78,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   llvm::Function* func = llvm::cast<llvm::Function>(
       ir_module.getOrInsertFunction("test_fn", llvm::Type::getVoidTy(context)));
   llvm::BasicBlock* bb = llvm::BasicBlock::Create(context, "body", func);
-  llvm::IRBuilder<> ir_builder(bb);
+  llvm::IRBuilder<> b(bb);
   auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
   llvm_ir::IrArray::Index zero2D({zero, zero});
 
@@ -90,7 +90,7 @@ TEST_F(CpuNoAliasTest, Concat) {
         ir_module.getOrInsertGlobal("param_x", array2d_type);
     llvm_ir::IrArray param_x_array(param_x_val, param_shape);
     aa.AddAliasingInformationToIrArray(*param_x, &param_x_array);
-    param_x_array.EmitReadArrayElement(zero2D, &ir_builder)
+    param_x_array.EmitReadArrayElement(zero2D, &b)
         ->setName("read_param_x_array");
   }
 
@@ -100,7 +100,7 @@ TEST_F(CpuNoAliasTest, Concat) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 4});
     llvm_ir::IrArray concat1_array(concat1_val, shape);
     aa.AddAliasingInformationToIrArray(*concat1, &concat1_array);
-    concat1_array.EmitReadArrayElement(zero2D, &ir_builder)
+    concat1_array.EmitReadArrayElement(zero2D, &b)
         ->setName("read_concat1_array");
   }
 
@@ -110,7 +110,7 @@ TEST_F(CpuNoAliasTest, Concat) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 6});
     llvm_ir::IrArray concat2_array(concat2_val, shape);
     aa.AddAliasingInformationToIrArray(*concat2, &concat2_array);
-    concat2_array.EmitReadArrayElement(zero2D, &ir_builder)
+    concat2_array.EmitReadArrayElement(zero2D, &b)
         ->setName("read_concat2_array");
   }
 

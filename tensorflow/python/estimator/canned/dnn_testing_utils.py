@@ -1271,6 +1271,8 @@ class BaseDNNRegressorEvaluateTest(object):
     self.assertAllClose({
         metric_keys.MetricKeys.LOSS: expected_loss,
         metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
+        metric_keys.MetricKeys.PREDICTION_MEAN: -2.08,
+        metric_keys.MetricKeys.LABEL_MEAN: 1.0,
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_regressor.evaluate(input_fn=_input_fn, steps=1))
 
@@ -1301,6 +1303,8 @@ class BaseDNNRegressorEvaluateTest(object):
     self.assertAllClose({
         metric_keys.MetricKeys.LOSS: expected_loss,
         metric_keys.MetricKeys.LOSS_MEAN: expected_loss / label_dimension,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 0.39 / 3.0,
+        metric_keys.MetricKeys.LABEL_MEAN: 0.5 / 3.0,
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_regressor.evaluate(input_fn=_input_fn, steps=1))
 

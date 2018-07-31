@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "polygamma"
-    deprecation_message: "tf.polygamma is deprecated, please use tf.math.polygamma instead."
+    deprecated: true
   }
 }

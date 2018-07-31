@@ -47,7 +47,9 @@ class XlaDeviceAllocator : public Allocator {
 class XlaTransferManager {
  public:
   explicit XlaTransferManager(
-      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      se::Stream* compute_stream, se::Stream* host_to_device_stream,
+      se::Stream* device_to_host_stream, xla::LocalClient* client,
+      bool transfer_as_literal,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
@@ -67,10 +69,17 @@ class XlaTransferManager {
   void TransferLiteralFromDevice(Tensor* host_tensor,
                                  const Tensor& device_tensor,
                                  const StatusCallback& done) const;
+  bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 
-  // Stream obtained from a Device, used to transfer tensors between
-  // CPU and device.
+  // The main compute stream of the device, used to synchronize the transfer
+  // streams if they are set.
   se::Stream* stream_;
+  // The stream to use for transferring data from host to device. Can be
+  // idential to stream_, but must not be nullptr.
+  se::Stream* host_to_device_stream_;
+  // The stream to use for transferring data from device to host. Can be
+  // idential to stream_, but must not be nullptr.
+  se::Stream* device_to_host_stream_;
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
@@ -86,7 +95,9 @@ class XlaTransferManager {
 class XlaDeviceContext : public DeviceContext {
  public:
   explicit XlaDeviceContext(
-      se::Stream* stream, xla::LocalClient* client, bool transfer_as_literal,
+      se::Stream* compute_stream, se::Stream* host_to_device_stream,
+      se::Stream* device_to_host_stream, xla::LocalClient* client,
+      bool transfer_as_literal,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn);
 
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,

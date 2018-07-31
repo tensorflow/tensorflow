@@ -61,9 +61,6 @@ class GenericTransferManager : public TransferManager {
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  protected:
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source) override;
-
   Status WriteSingleTupleIndexTable(
       se::Stream* stream,
       tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,

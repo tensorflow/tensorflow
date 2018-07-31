@@ -57,7 +57,7 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
 
   auto builder_c = HloComputation::Builder("C");
   HloInstruction* c = builder_c.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   HloComputation* computation_c =
       module->AddEmbeddedComputation(builder_c.Build());
 
@@ -145,7 +145,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto xla_while = builder.AddInstruction(
       HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
   module->AddEntryComputation(builder.Build());
@@ -208,7 +208,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
 
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto xla_while = builder.AddInstruction(
       HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(

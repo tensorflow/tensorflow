@@ -60,6 +60,10 @@ SAVED_MODEL_FILENAME_PBTXT = "saved_model.pbtxt"
 tf_export("saved_model.constants.SAVED_MODEL_FILENAME_PBTXT").export_constant(
     __name__, "SAVED_MODEL_FILENAME_PBTXT")
 
+# File name for json format of SavedModel.
+# Not exported while keras_saved_model is in contrib.
+SAVED_MODEL_FILENAME_JSON = "saved_model.json"
+
 # Subdirectory name containing the variables/checkpoint files.
 VARIABLES_DIRECTORY = "variables"
 tf_export("saved_model.constants.VARIABLES_DIRECTORY").export_constant(
@@ -69,5 +73,3 @@ tf_export("saved_model.constants.VARIABLES_DIRECTORY").export_constant(
 VARIABLES_FILENAME = "variables"
 tf_export("saved_model.constants.VARIABLES_FILENAME").export_constant(
     __name__, "VARIABLES_FILENAME")
-
-

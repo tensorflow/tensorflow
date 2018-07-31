@@ -1017,19 +1017,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kFusion) {
+    if (fusion_can_share_buffer_ != nullptr) {
+      return fusion_can_share_buffer_(user, operand);
+    }
     // Get the parameter associated with 'operand';
     HloInstruction* fusion_param =
         user->fused_parameter(user->operand_index(operand));
 
     const HloValue& value = GetValueDefinedAt(fusion_param, operand_index);
-    if (value.uses().size() != 1) {
-      if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
-        return true;
-      }
-      return false;
+    if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
+      return true;
     }
-    const HloUse& use = value.uses()[0];
-
     if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
         user->fusion_kind() == HloInstruction::FusionKind::kInput) {
       if (user->fused_expression_root()->opcode() ==
@@ -1039,13 +1037,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
         // Returns true iff there is exactly one use of 'operand' at shape index
         // 'operand_index', and this singleton use is the fused root at operand
         // index 0.
-        return use.instruction == user->fused_expression_root() &&
-               use.operand_number == 0;
-      } else {
-        return AreTransitiveUsesElementwiseOrTuple(fusion_param);
+        if (value.uses().size() == 1) {
+          const HloUse& use = value.uses()[0];
+          return use.instruction == user->fused_expression_root() &&
+                 use.operand_number == 0;
+        }
+        return false;
       }
-    } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
-               user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
+      return AreTransitiveUsesElementwiseOrTuple(fusion_param);
+    }
+    if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+        user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 
       // Check if one operand of kAdd fused root is kDot or kConvolution.
@@ -1066,11 +1068,12 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // Returns true iff there is exactly one use of 'operand' at shape index
       // 'operand_index', and this singleton use is the fused root (at operand
       // index 'other_add_operand_index').
-      return use.instruction == user->fused_expression_root() &&
-             use.operand_number == other_add_operand_index;
-    } else if (fusion_can_share_buffer_ != nullptr &&
-               fusion_can_share_buffer_(user, operand)) {
-      return true;
+      if (value.uses().size() == 1) {
+        const HloUse& use = value.uses()[0];
+        return use.instruction == user->fused_expression_root() &&
+               use.operand_number == other_add_operand_index;
+      }
+      return false;
     }
   }
 
@@ -1080,6 +1083,21 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // so here we just need to check that the use is at operand index 0.
     std::vector<int64> operand_indices = user->OperandIndices(operand);
     return operand_indices.size() == 1 && operand_indices[0] == 0;
+  }
+  if (user->opcode() == HloOpcode::kSort) {
+    // Only valid if there are no other users.
+    if (operand->users().size() != 1) {
+      return false;
+    }
+    // If we only sort keys, the output of sort is not a tuple, so we can always
+    // share the buffer.
+    if (user->operand_count() == 1) {
+      return true;
+    }
+    CHECK(!user_index.empty());
+    // Only share with the right tuple element buffer.
+    std::vector<int64> operand_indices = user->OperandIndices(operand);
+    return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {
     // Get all uses of value defined by 'operand' at 'operand_index'.

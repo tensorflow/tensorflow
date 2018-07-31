@@ -328,9 +328,8 @@ class MklConv2DBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
     return instance_;
   }
 
-  static std::string CreateKey(
-      const MklConvBwdFilterParams& convBwdFilterDims) {
-    std::string prefix = "conv2d_bwd_filter";
+  static string CreateKey(const MklConvBwdFilterParams& convBwdFilterDims) {
+    string prefix = "conv2d_bwd_filter";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
     key_creator.AddAsKey(convBwdFilterDims.src_dims);
@@ -346,13 +345,13 @@ class MklConv2DBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
 
   MklPrimitive* GetConv2dBwdFilter(
       const MklConvBwdFilterParams& convBwdFilterDims) {
-    std::string key = CreateKey(convBwdFilterDims);
+    string key = CreateKey(convBwdFilterDims);
     return this->GetOp(key);
   }
 
   void SetConv2dBwdFilter(
       const MklConvBwdFilterParams& convBwdFilterDims, MklPrimitive* op) {
-    std::string key = CreateKey(convBwdFilterDims);
+    string key = CreateKey(convBwdFilterDims);
     this->SetOp(key, op);
   }
 };
@@ -872,12 +871,10 @@ class MklConv2DCustomBackpropFilterOp
       }
 
       // check if src and diff_dst need reorder
-      std::vector<primitive> net;
       T *src_data = nullptr;
       if (fwd_src_md.data.format != conv2d_bwd_filter->GetSrcMemoryFormat()) {
         src.SetUsrMem(fwd_src_md, &src_tensor);
-        src.CheckReorderToOpMem(
-            bwd_filter_pd->src_primitive_desc(), &net);
+        src.CheckReorderToOpMem(bwd_filter_pd->src_primitive_desc());
         src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
       } else {
         src_data = static_cast<T*>(const_cast<T*>(
@@ -888,15 +885,13 @@ class MklConv2DCustomBackpropFilterOp
       if (diff_dst_md.data.format !=
           conv2d_bwd_filter->GetDiffDstMemoryFormat()) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
-        diff_dst.CheckReorderToOpMem(
-            bwd_filter_pd->diff_dst_primitive_desc(), &net);
+        diff_dst.CheckReorderToOpMem(bwd_filter_pd->diff_dst_primitive_desc());
         diff_dst_data = static_cast<T*>(
             diff_dst.GetOpMem().get_data_handle());
       } else {
         diff_dst_data = static_cast<T*>(const_cast<T*>(
             diff_dst_tensor.flat<T>().data()));
       }
-      stream(stream::kind::eager).submit(net).wait();
 
       // For backward filter, convert diff_filter back to Tensorflow layout
       // Here we prepare to reorder op memory back to user memory
@@ -929,9 +924,7 @@ class MklConv2DCustomBackpropFilterOp
 
       // Reorder diff_filter back to Tensorflow layout if necessary
       if (diff_filter_reorder_required) {
-        std::vector<primitive> net;
-        diff_filter.InsertReorderToUserMem(&net);
-        stream(stream::kind::eager).submit(net).wait();
+        diff_filter.InsertReorderToUserMem();
       }
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
