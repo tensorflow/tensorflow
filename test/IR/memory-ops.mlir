@@ -25,3 +25,21 @@ bb0:
   // CHECK:   return
   return
 }
+
+// CHECK-LABEL: cfgfunc @load_store
+cfgfunc @load_store() {
+bb0:
+  // CHECK: %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+  %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+
+  %1 = "constant"() {value: 0} : () -> affineint
+  %2 = "constant"() {value: 1} : () -> affineint
+
+  // CHECK: %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+  %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+
+  // CHECK: store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+  store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+
+  return
+}

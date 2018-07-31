@@ -383,6 +383,18 @@ public:
 };
 
 /// This class provides return value APIs for ops that are known to have a
+/// zero results.
+template <typename ConcreteType>
+class ZeroResult : public TraitBase<ConcreteType, ZeroResult> {
+public:
+  static const char *verifyTrait(const Operation *op) {
+    if (op->getNumResults() != 0)
+      return "requires zero results.";
+    return nullptr;
+  }
+};
+
+/// This class provides return value APIs for ops that are known to have a
 /// single result.
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {

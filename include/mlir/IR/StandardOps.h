@@ -225,6 +225,45 @@ private:
   explicit LoadOp(const Operation *state) : OpBase(state) {}
 };
 
+/// The "store" op writes an element to a memref specified by an index list.
+/// The arity of indices is the rank of the memref (i.e. if the memref being
+/// stored to is of rank 3, then 3 indices are required for the store following
+/// the memref identifier). The store instruction does not produce a result.
+///
+/// In the following example, the ssa value '%v' is stored in memref '%A' at
+/// indices [%i, %j]:
+///
+///   store %v, %A[%i, %j] : memref<4x128xf32, (d0, d1) -> (d0, d1), 0>
+///
+class StoreOp
+    : public OpBase<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+public:
+  SSAValue *getValueToStore() { return getOperand(0); }
+  const SSAValue *getValueToStore() const { return getOperand(0); }
+
+  SSAValue *getMemRef() { return getOperand(1); }
+  const SSAValue *getMemRef() const { return getOperand(1); }
+
+  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+    return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+  }
+
+  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const {
+    return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
+  }
+
+  static StringRef getOperationName() { return "store"; }
+
+  // Hooks to customize behavior of this op.
+  const char *verify() const;
+  static OpAsmParserResult parse(OpAsmParser *parser);
+  void print(OpAsmPrinter *p) const;
+
+private:
+  friend class Operation;
+  explicit StoreOp(const Operation *state) : OpBase(state) {}
+};
+
 /// Install the standard operations in the specified operation set.
 void registerStandardOperations(OperationSet &opSet);
 

@@ -311,9 +311,65 @@ const char *LoadOp::verify() const {
   return nullptr;
 }
 
+void StoreOp::print(OpAsmPrinter *p) const {
+  *p << "store " << *getValueToStore();
+  *p << ", " << *getMemRef() << '[';
+  p->printOperands(getIndices());
+  *p << "] : " << *getMemRef()->getType();
+}
+
+OpAsmParserResult StoreOp::parse(OpAsmParser *parser) {
+  OpAsmParser::OperandType storeValueInfo;
+  OpAsmParser::OperandType memrefInfo;
+  SmallVector<OpAsmParser::OperandType, 4> indexInfo;
+  SmallVector<SSAValue *, 4> operands;
+  MemRefType *memrefType;
+
+  auto affineIntTy = parser->getBuilder().getAffineIntType();
+  if (parser->parseOperand(storeValueInfo) || parser->parseComma() ||
+      parser->parseOperand(memrefInfo) ||
+      parser->parseOperandList(indexInfo, -1,
+                               OpAsmParser::Delimeter::SquareDelimeter) ||
+      parser->parseColonType(memrefType) ||
+      parser->resolveOperands(storeValueInfo, memrefType->getElementType(),
+                              operands) ||
+      parser->resolveOperands(memrefInfo, memrefType, operands) ||
+      parser->resolveOperands(indexInfo, affineIntTy, operands))
+    return {};
+
+  return OpAsmParserResult(operands, {});
+}
+
+const char *StoreOp::verify() const {
+  if (getNumOperands() < 2)
+    return "expected a value to store and a memref";
+
+  // Second operand is a memref type.
+  auto *memRefType = dyn_cast<MemRefType>(getMemRef()->getType());
+  if (!memRefType)
+    return "second operand must be a memref";
+
+  // First operand must have same type as memref element type.
+  if (getValueToStore()->getType() != memRefType->getElementType())
+    return "first operand must have same type memref element type ";
+
+  if (getNumOperands() != 2 + memRefType->getRank())
+    return "store index operand count not equal to memref rank";
+
+  for (auto *idx : getIndices())
+    if (!idx->getType()->isAffineInt())
+      return "index to load must have 'affineint' type";
+
+  // TODO: Verify we have the right number of indices.
+
+  // TODO: in MLFunction verify that the indices are parameters, IV's, or the
+  // result of an affine_apply.
+  return nullptr;
+}
+
 /// Install the standard operations in the specified operation set.
 void mlir::registerStandardOperations(OperationSet &opSet) {
-  opSet
-      .addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DimOp, LoadOp>(
-          /*prefix=*/"");
+  opSet.addOperations<AddFOp, AffineApplyOp, AllocOp, ConstantOp, DimOp, LoadOp,
+                      StoreOp>(
+      /*prefix=*/"");
 }

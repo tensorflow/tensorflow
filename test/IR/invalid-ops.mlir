@@ -88,3 +88,16 @@ bb0:
   %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{AffineMap symbol count mismatch: symbol operand count does not equal memref affine map symbol count}}
   return
 }
+
+// -----
+
+cfgfunc @test_store_zero_results() {
+bb0:
+  %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+  %1 = "constant"() {value: 0} : () -> affineint
+  %2 = "constant"() {value: 1} : () -> affineint
+  %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
+  // Test that store returns zero results.
+  %4 = store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1> // expected-error {{cannot name an operation with no results}}
+  return
+}
