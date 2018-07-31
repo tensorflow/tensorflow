@@ -365,7 +365,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
                           BufferSizeBytesFunction(),
                           /*color_alignment=*/[](LogicalBuffer::Color) {
-                            return kCudaMallocAlignBytes;
+                            return kXlaAllocatedBufferAlignBytes;
                           }));
   // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
   // include headers, so no need for us to print them ourselves.

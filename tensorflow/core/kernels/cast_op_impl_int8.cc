@@ -26,7 +26,6 @@ CastFunctorType GetCpuCastFromInt8(DataType dst_dtype) {
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
 CastFunctorType GetGpuCastFromInt8(DataType dst_dtype) {
   CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, int8);
   return nullptr;

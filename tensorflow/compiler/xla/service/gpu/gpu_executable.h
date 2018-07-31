@@ -65,11 +65,14 @@ class GpuExecutable : public Executable {
   }
 
   // Returns the compiled PTX for the computation.
-  const string& ptx() const { return ptx_; }
+  const string& text() const { return text_; }
 
   // Returns the cubin (compiled PTX) stored in this GpuExecutable.  May be
   // empty, in which case compilation is left up to the GPU driver.
+// TODO: Add ROCm equivalence
+#if GOOGLE_CUDA
   const std::vector<uint8>& cubin() const { return cubin_; }
+#endif // GOOGLE_CUDA
 
   // ExecuteOnStream will fail if the compute capability of the stream doesn't
   // match the compute capability passed to this object's constructor.

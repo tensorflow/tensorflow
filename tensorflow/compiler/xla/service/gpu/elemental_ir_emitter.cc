@@ -162,7 +162,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
   return EmitDeviceFunctionCall(
       callee_name, operands, input_types, output_type,
       {llvm::Attribute::ReadNone, llvm::Attribute::NoUnwind},
-      ir_builder_, module_);
+      b_, module_);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
@@ -298,50 +298,22 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatUnaryOp(
   }
 }
 
-llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
-    const string& callee_name,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
-    PrimitiveType output_type,
-    tensorflow::gtl::ArraySlice<llvm::Attribute::AttrKind> attributes) const {
-  std::vector<llvm::Type*> ir_input_types;
-  for (PrimitiveType input_type : input_types) {
-    ir_input_types.push_back(
-        llvm_ir::PrimitiveTypeToIrType(input_type, module_));
-  }
-  llvm::FunctionType* callee_type = llvm::FunctionType::get(
-      llvm_ir::PrimitiveTypeToIrType(output_type, module_),  // Return type.
-      ir_input_types,                                        // Parameter types.
-      false);  // No variadic arguments.
-
-  // Declares the callee if it is not declared already.
-  llvm::Function* callee = llvm::cast<llvm::Function>(
-      b_->GetInsertBlock()->getModule()->getOrInsertFunction(
-          llvm_ir::AsStringRef(callee_name), callee_type));
-
-  for (auto attribute : attributes) {
-    callee->addFnAttr(attribute);
-  }
-
-  return b_->CreateCall(callee, llvm_ir::AsArrayRef(operands));
-}
-
 llvm::Value* GpuElementalIrEmitter::EmitThreadId() const {
-  llvm::Value* block_id = ir_builder_->CreateIntCast(
+  llvm::Value* block_id = b_->CreateIntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::amdgcn_workgroup_id_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getInt32Ty(), /*isSigned=*/true, "block.id");
-  llvm::Value* thread_id_in_block = ir_builder_->CreateIntCast(
+                                   {}, {}, b_),
+      b_->getInt32Ty(), /*isSigned=*/true, "block.id");
+  llvm::Value* thread_id_in_block = b_->CreateIntCast(
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::amdgcn_workitem_id_x,
-                                   {}, {}, ir_builder_),
-      ir_builder_->getInt32Ty(), /*isSigned=*/true, "thread.id");
-  llvm::Value* threads_per_block = ir_builder_->CreateIntCast(
+                                   {}, {}, b_),
+      b_->getInt32Ty(), /*isSigned=*/true, "thread.id");
+  llvm::Value* threads_per_block = b_->CreateIntCast(
       EmitDeviceFunctionCall("__ockl_get_local_size",
-                             {ir_builder_->getInt32(0)},
-                             {U32}, U64, {}, ir_builder_, module_),
-      ir_builder_->getInt32Ty(), /*isSigned=*/true, "threads_per_block");
-  return ir_builder_->CreateNSWAdd(
-      ir_builder_->CreateNSWMul(block_id, threads_per_block),
+                             {b_->getInt32(0)},
+                             {U32}, U64, {}, b_, module_),
+      b_->getInt32Ty(), /*isSigned=*/true, "threads_per_block");
+  return b_->CreateNSWAdd(
+      b_->CreateNSWMul(block_id, threads_per_block),
       thread_id_in_block);
 }
 

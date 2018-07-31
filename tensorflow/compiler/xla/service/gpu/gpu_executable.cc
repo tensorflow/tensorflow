@@ -181,10 +181,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
 
   se::MultiModuleLoaderSpec module_spec;
-  if (!cubin().empty()) {
-    module_spec.AddCudaCubinInMemory(cubin());
-  }
-  module_spec.AddCudaPtxInMemory(ptx().c_str());
+  module_spec.AddCudaPtxInMemory(text().c_str());
 
   tensorflow::gtl::FlatMap<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;

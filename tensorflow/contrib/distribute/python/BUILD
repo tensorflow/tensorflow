@@ -224,9 +224,6 @@ py_test(
     ],
 )
 
-<<<<<<< HEAD
-gpu_py_test(
-=======
 py_test(
     name = "parameter_server_strategy_test",
     srcs = ["parameter_server_strategy_test.py"],
@@ -256,8 +253,7 @@ py_test(
     ],
 )
 
-cuda_py_test(
->>>>>>> upstream/master
+gpu_py_test(
     name = "mirrored_strategy_multigpu_test",
     srcs = ["mirrored_strategy_multigpu_test.py"],
     additional_deps = [
