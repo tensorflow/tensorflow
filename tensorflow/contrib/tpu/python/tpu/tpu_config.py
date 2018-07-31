@@ -44,7 +44,6 @@ class InputPipelineConfig(object):
   BROADCAST = 4
 
 
-# TODO(b/72511246) Provide a simplified api to configure model parallelism.
 class TPUConfig(
     collections.namedtuple('TPUConfig', [
         'iterations_per_loop',
