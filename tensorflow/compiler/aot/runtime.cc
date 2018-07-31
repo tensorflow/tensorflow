@@ -85,7 +85,9 @@ void* MallocContiguousBuffers(const intptr_t* sizes, size_t n, void** bufs,
   }
   uintptr_t pos = reinterpret_cast<uintptr_t>(contiguous);
   for (size_t i = 0; i < n; ++i) {
-    if (sizes[i] == -1) {
+    if (sizes[i] < 0) {
+      // bufs[i] is either a constant, an entry parameter or a thread local
+      // allocation.
       bufs[i] = nullptr;
     } else {
       bufs[i] = reinterpret_cast<void*>(pos);
